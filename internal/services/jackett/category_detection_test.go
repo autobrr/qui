@@ -100,7 +100,7 @@ func TestCategoryAssignment(t *testing.T) {
 			}
 
 			if len(req.Categories) == 0 {
-				service := NewService(nil)
+				service := NewService(nil, nil)
 				detectedType := service.detectContentType(req)
 				req.Categories = getCategoriesForContentType(detectedType)
 

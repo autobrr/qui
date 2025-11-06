@@ -500,8 +500,9 @@ func (app *Application) runServer() {
 		log.Fatal().Err(err).Msg("Failed to initialize torznab indexer store")
 	}
 
-	// Initialize Jackett/Torznab service
-	jackettService := jackett.NewService(torznabIndexerStore)
+	// Initialize Torznab torrent cache and Jackett/Torznab service
+	torznabTorrentCache := models.NewTorznabTorrentCacheStore(db)
+	jackettService := jackett.NewService(torznabIndexerStore, torznabTorrentCache)
 	log.Info().Msg("Torznab/Jackett service initialized")
 
 	// Initialize cross-seed automation store and service

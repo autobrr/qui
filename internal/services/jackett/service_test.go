@@ -12,7 +12,7 @@ import (
 )
 
 func TestDetectContentType(t *testing.T) {
-	s := NewService(nil)
+	s := NewService(nil, nil)
 
 	tests := []struct {
 		name     string
@@ -606,7 +606,7 @@ func TestSearchAutoDetectCategories(t *testing.T) {
 	store := &mockTorznabIndexerStore{
 		indexers: []*models.TorznabIndexer{},
 	}
-	s := NewService(store)
+	s := NewService(store, nil)
 
 	tests := []struct {
 		name             string
@@ -690,7 +690,7 @@ func TestFilterCategoriesForIndexer(t *testing.T) {
 
 func TestSearchGenericAutoDetectCategories(t *testing.T) {
 	store := &mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{}}
-	s := NewService(store)
+	s := NewService(store, nil)
 	req := &TorznabSearchRequest{Query: "Breaking Bad S01"}
 
 	resp, err := s.SearchGeneric(context.Background(), req)
@@ -716,7 +716,7 @@ func TestSearchWithLimit(t *testing.T) {
 	store := &mockTorznabIndexerStore{
 		indexers: []*models.TorznabIndexer{},
 	}
-	s := NewService(store)
+	s := NewService(store, nil)
 
 	// Test with empty store (no network calls)
 	tests := []struct {
@@ -759,7 +759,7 @@ func TestSearchGenericWithIndexerIDs(t *testing.T) {
 			{ID: 3, Name: "Indexer3", Enabled: false},
 		},
 	}
-	s := NewService(store)
+	s := NewService(store, nil)
 
 	tests := []struct {
 		name        string

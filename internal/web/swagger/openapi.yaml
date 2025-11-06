@@ -725,6 +725,39 @@ paths:
         '503':
           description: Instance unavailable
 
+  /api/instances/{instanceId}/cross-seed/status:
+    get:
+      tags:
+        - Cross-Seed
+      summary: Get cross-seed status for instance
+      description: Get cross-seed statistics and status for a specific qBittorrent instance
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      responses:
+        '200':
+          description: Cross-seed status for the instance
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  instance_id:
+                    type: integer
+                  cross_seeded:
+                    type: integer
+                    description: Number of torrents that have been cross-seeded
+                  pending:
+                    type: integer
+                    description: Number of torrents pending cross-seed
+                  last_cross_seed:
+                    type: string
+                    format: date-time
+                    nullable: true
+                    description: Timestamp of last cross-seed operation
+        '400':
+          description: Invalid instance ID
+        '500':
+          description: Failed to get cross-seed status
 
   /api/instances/{instanceId}/torrents:
     get:
@@ -2227,6 +2260,171 @@ paths:
           description: Automation is already running
         '500':
           description: Failed to trigger automation run
+
+  /api/cross-seed/search/run:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Start a cross-seed search run
+      description: Starts a new cross-seed search automation run for the specified instance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - instanceId
+              properties:
+                instanceId:
+                  type: integer
+                  description: qBittorrent instance ID
+                categories:
+                  type: array
+                  items:
+                    type: string
+                  description: Filter torrents by categories
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  description: Filter torrents by tags
+                intervalSeconds:
+                  type: integer
+                  description: Interval between processing torrents in seconds
+                indexerIds:
+                  type: array
+                  items:
+                    type: integer
+                  description: Specific indexers to search
+                cooldownMinutes:
+                  type: integer
+                  description: Cooldown period between searches for the same torrent
+      responses:
+        '200':
+          description: Search run started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  instance_id:
+                    type: integer
+                  status:
+                    type: string
+                  started_at:
+                    type: string
+                    format: date-time
+        '400':
+          description: Invalid request body
+        '500':
+          description: Failed to start search run
+
+  /api/cross-seed/search/run/cancel:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Cancel running search
+      description: Cancels the currently running cross-seed search automation
+      responses:
+        '204':
+          description: Search run cancelled successfully
+
+  /api/cross-seed/search/status:
+    get:
+      tags:
+        - Cross-Seed
+      summary: Get search run status
+      description: Returns the current status of the cross-seed search automation
+      responses:
+        '200':
+          description: Current search run status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  running:
+                    type: boolean
+                  current_run:
+                    type: object
+                    nullable: true
+        '500':
+          description: Failed to get search run status
+
+  /api/cross-seed/search/runs:
+    get:
+      tags:
+        - Cross-Seed
+      summary: List search run history
+      description: Returns the history of cross-seed search automation runs for an instance
+      parameters:
+        - name: instanceId
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: Instance ID to get runs for
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 25
+            maximum: 200
+          description: Maximum number of runs to return
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+          description: Number of runs to skip
+      responses:
+        '200':
+          description: List of search runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        '400':
+          description: Invalid query parameters
+        '500':
+          description: Failed to list search runs
+
+  /api/cross-seed/torrents/{instanceId}/{hash}/analyze:
+    get:
+      tags:
+        - Cross-Seed
+      summary: Analyze torrent for cross-seed search
+      description: Analyzes a torrent and returns information needed for cross-seed searching
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      responses:
+        '200':
+          description: Torrent analysis result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  size_bytes:
+                    type: integer
+                  content_path:
+                    type: string
+                  num_files:
+                    type: integer
+        '400':
+          description: Invalid parameters
+        '500':
+          description: Failed to analyze torrent
 
   /api/cross-seed/torrents/{instanceId}/{hash}/search:
     post:

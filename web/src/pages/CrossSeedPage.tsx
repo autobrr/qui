@@ -19,6 +19,8 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { api } from "@/lib/api"
 import type {
   CrossSeedAutomationSettings,
@@ -112,6 +114,13 @@ export function CrossSeedPage() {
   const [formInitialized, setFormInitialized] = useState(false)
   const [globalSettingsInitialized, setGlobalSettingsInitialized] = useState(false)
   const [dryRun, setDryRun] = useState(false)
+  const [searchInstanceId, setSearchInstanceId] = useState<number | null>(null)
+  const [searchCategories, setSearchCategories] = useState<string[]>([])
+  const [searchTags, setSearchTags] = useState<string[]>([])
+  const [searchIndexerIds, setSearchIndexerIds] = useState<number[]>([])
+  const [searchIntervalSeconds, setSearchIntervalSeconds] = useState(60)
+  const [searchCooldownMinutes, setSearchCooldownMinutes] = useState(360)
+  const [searchResultsOpen, setSearchResultsOpen] = useState(false)
 
   const { data: settings } = useQuery({
     queryKey: ["cross-seed", "settings"],
@@ -141,6 +150,25 @@ export function CrossSeedPage() {
     queryFn: () => api.listTorznabIndexers(),
   })
 
+  const { data: searchStatus, refetch: refetchSearchStatus } = useQuery({
+    queryKey: ["cross-seed", "search-status"],
+    queryFn: () => api.getCrossSeedSearchStatus(),
+    refetchInterval: 5_000,
+  })
+
+  const { data: searchMetadata } = useQuery({
+    queryKey: ["cross-seed", "search-metadata", searchInstanceId],
+    queryFn: async () => {
+      if (!searchInstanceId) return null
+      const [categories, tags] = await Promise.all([
+        api.getCategories(searchInstanceId),
+        api.getTags(searchInstanceId),
+      ])
+      return { categories, tags }
+    },
+    enabled: !!searchInstanceId,
+  })
+
   useEffect(() => {
     if (settings && !formInitialized) {
       setAutomationForm({
@@ -168,6 +196,12 @@ export function CrossSeedPage() {
     }
   }, [settings, globalSettingsInitialized])
 
+  useEffect(() => {
+    if (!searchInstanceId && instances && instances.length > 0) {
+      setSearchInstanceId(instances[0].id)
+    }
+  }, [instances, searchInstanceId])
+
   const updateSettingsMutation = useMutation({
     mutationFn: (payload: CrossSeedAutomationSettings) => api.updateCrossSeedSettings(payload),
     onSuccess: (data) => {
@@ -175,6 +209,28 @@ export function CrossSeedPage() {
       // Don't reinitialize the form since we just saved it
       queryClient.setQueryData(["cross-seed", "settings"], data)
       refetchStatus()
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+
+  const startSearchRunMutation = useMutation({
+    mutationFn: (payload: Parameters<typeof api.startCrossSeedSearchRun>[0]) => api.startCrossSeedSearchRun(payload),
+    onSuccess: () => {
+      toast.success("Search run started")
+      refetchSearchStatus()
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+
+  const cancelSearchRunMutation = useMutation({
+    mutationFn: () => api.cancelCrossSeedSearchRun(),
+    onSuccess: () => {
+      toast.success("Search run canceled")
+      refetchSearchStatus()
     },
     onError: (error: Error) => {
       toast.error(error.message)
@@ -306,6 +362,13 @@ export function CrossSeedPage() {
     return map
   }, [instances])
 
+  const searchCategoryOptions = useMemo(() => {
+    if (!searchMetadata?.categories) return [] as string[]
+    return Object.keys(searchMetadata.categories).sort()
+  }, [searchMetadata])
+
+  const searchTagOptions = useMemo(() => searchMetadata?.tags ?? [], [searchMetadata])
+
   const handleToggleInstance = (instanceId: number, checked: boolean) => {
     setAutomationForm(prev => {
       const nextIds = checked
@@ -324,10 +387,48 @@ export function CrossSeedPage() {
     })
   }
 
+  const toggleSearchCategory = (category: string) => {
+    setSearchCategories(prev =>
+      prev.includes(category) ? prev.filter(value => value !== category) : [...prev, category]
+    )
+  }
+
+  const toggleSearchTag = (tag: string) => {
+    setSearchTags(prev =>
+      prev.includes(tag) ? prev.filter(value => value !== tag) : [...prev, tag]
+    )
+  }
+
+  const toggleSearchIndexer = (indexerId: number) => {
+    setSearchIndexerIds(prev =>
+      prev.includes(indexerId) ? prev.filter(value => value !== indexerId) : [...prev, indexerId]
+    )
+  }
+
+  const handleStartSearchRun = () => {
+    if (!searchInstanceId) {
+      toast.error("Select an instance to run against")
+      return
+    }
+
+    startSearchRunMutation.mutate({
+      instanceId: searchInstanceId,
+      categories: searchCategories,
+      tags: searchTags,
+      intervalSeconds: Math.max(30, Number(searchIntervalSeconds) || 60),
+      indexerIds: searchIndexerIds,
+      cooldownMinutes: Math.max(30, Number(searchCooldownMinutes) || 360),
+    })
+  }
+
   const runSummary = useMemo(() => {
     if (!latestRun) return "No runs yet"
     return `${latestRun.status.toUpperCase()} • Added ${latestRun.torrentsAdded} / Failed ${latestRun.torrentsFailed} • ${formatDate(latestRun.startedAt)}`
   }, [latestRun])
+
+  const searchRunning = searchStatus?.running ?? false
+  const activeSearchRun = searchStatus?.run
+  const recentSearchResults = searchStatus?.recentResults ?? []
 
   return (
     <div className="space-y-6 p-6 pb-16">
@@ -373,15 +474,194 @@ export function CrossSeedPage() {
               Filters out search results with sizes differing by more than this percentage. Set to 0 for exact size matching.
             </p>
           </div>
-        </CardContent>
-        <CardFooter className="flex items-center gap-3">
-          <Button
-            onClick={handleGlobalSettingsSave}
-            disabled={updateGlobalSettingsMutation.isPending}
+      </CardContent>
+      <CardFooter className="flex items-center gap-3">
+        <Button
+          onClick={handleGlobalSettingsSave}
+          disabled={updateGlobalSettingsMutation.isPending}
           >
             {updateGlobalSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Save settings
           </Button>
+        </CardFooter>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Automated Search Runs</CardTitle>
+          <CardDescription>Continuously search Torznab indexers for cross-seed matches from a specific instance.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Source instance</Label>
+            <Select
+              value={searchInstanceId ? String(searchInstanceId) : ""}
+              onValueChange={(value) => setSearchInstanceId(Number(value))}
+              disabled={!instances?.length}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select an instance" />
+              </SelectTrigger>
+              <SelectContent>
+                {instances?.map(instance => (
+                  <SelectItem key={instance.id} value={String(instance.id)}>
+                    {instance.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!instances?.length && (
+              <p className="text-xs text-muted-foreground">Add an instance to enable automated searches.</p>
+            )}
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="search-interval">Interval between torrents (seconds)</Label>
+              <Input
+                id="search-interval"
+                type="number"
+                min={30}
+                value={searchIntervalSeconds}
+                onChange={event => setSearchIntervalSeconds(Math.max(30, Number(event.target.value) || 60))}
+              />
+              <p className="text-xs text-muted-foreground">Wait time before scanning the next torrent. Minimum 30 seconds.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="search-cooldown">Cooldown (minutes)</Label>
+              <Input
+                id="search-cooldown"
+                type="number"
+                min={30}
+                value={searchCooldownMinutes}
+                onChange={event => setSearchCooldownMinutes(Math.max(30, Number(event.target.value) || 360))}
+              />
+              <p className="text-xs text-muted-foreground">Skip torrents that were searched more recently than this window.</p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Categories</Label>
+            <p className="text-xs text-muted-foreground">Limit the run to specific qBittorrent categories. Leave empty to include all.</p>
+            <div className="flex flex-wrap gap-2">
+              {searchCategoryOptions.length > 0 ? (
+                searchCategoryOptions.map(category => (
+                  <Label key={category} className="flex items-center gap-2 border rounded-md px-2 py-1 text-xs cursor-pointer">
+                    <Checkbox checked={searchCategories.includes(category)} onCheckedChange={() => toggleSearchCategory(category)} />
+                    {category}
+                  </Label>
+                ))
+              ) : (
+                <p className="text-xs text-muted-foreground">Categories load after selecting an instance.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Tags</Label>
+            <p className="text-xs text-muted-foreground">Run can also be restricted to torrents containing at least one of these tags.</p>
+            <div className="flex flex-wrap gap-2">
+              {searchTagOptions.length > 0 ? (
+                searchTagOptions.map(tag => (
+                  <Label key={tag} className="flex items-center gap-2 border rounded-md px-2 py-1 text-xs cursor-pointer">
+                    <Checkbox checked={searchTags.includes(tag)} onCheckedChange={() => toggleSearchTag(tag)} />
+                    {tag}
+                  </Label>
+                ))
+              ) : (
+                <p className="text-xs text-muted-foreground">No tags found for this instance.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Indexers</Label>
+            <p className="text-xs text-muted-foreground">Select Torznab indexers to include. Incompatible indexers are automatically ignored based on capabilities.</p>
+            <div className="flex flex-wrap gap-2">
+              {indexers && indexers.length > 0 ? (
+                indexers.map(indexer => (
+                  <Label key={indexer.id} className="flex items-center gap-2 border rounded-md px-2 py-1 text-xs cursor-pointer">
+                    <Checkbox
+                      checked={searchIndexerIds.includes(indexer.id)}
+                      onCheckedChange={() => toggleSearchIndexer(indexer.id)}
+                    />
+                    {indexer.name}
+                  </Label>
+                ))
+              ) : (
+                <p className="text-xs text-muted-foreground">No Torznab indexers configured.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-md border p-3 space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <p className="font-medium">Run status</p>
+              <Badge variant={searchRunning ? "default" : "secondary"}>{searchRunning ? "RUNNING" : "IDLE"}</Badge>
+            </div>
+            {searchStatus?.currentTorrent ? (
+              <p className="text-xs text-muted-foreground">Currently processing: <span className="text-foreground">{searchStatus.currentTorrent.torrentName}</span></p>
+            ) : (
+              <p className="text-xs text-muted-foreground">No torrent is currently queued.</p>
+            )}
+            {activeSearchRun && (
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p>Processed {activeSearchRun.processed} / {activeSearchRun.totalTorrents || "?"}</p>
+                <p>
+                  Added {activeSearchRun.torrentsAdded} • Skipped {activeSearchRun.torrentsSkipped} • Failed {activeSearchRun.torrentsFailed}
+                </p>
+                <p>Started {formatDate(activeSearchRun.startedAt)}</p>
+              </div>
+            )}
+          </div>
+
+          <Collapsible open={searchResultsOpen} onOpenChange={setSearchResultsOpen} className="border rounded-md">
+            <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium">
+              <span>Recent additions</span>
+              <Badge variant="outline">{recentSearchResults.length}</Badge>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="px-3 pb-3">
+              {recentSearchResults.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No search results recorded yet.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {recentSearchResults.map(result => (
+                    <li key={`${result.torrentHash}-${result.processedAt}`} className="flex items-start justify-between gap-3 rounded border px-2 py-2">
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium leading-tight">{result.torrentName}</p>
+                        <p className="text-xs text-muted-foreground">{result.indexerName} • {result.releaseTitle}</p>
+                        {result.message && <p className="text-xs text-muted-foreground">{result.message}</p>}
+                        <p className="text-[10px] text-muted-foreground">{formatDate(result.processedAt)}</p>
+                      </div>
+                      <Badge variant={result.added ? "default" : "secondary"}>{result.added ? "Added" : "Skipped"}</Badge>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
+        </CardContent>
+        <CardFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-xs text-muted-foreground">
+            Next check: {searchStatus?.nextRunAt ? formatDate(searchStatus.nextRunAt) : "—"}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={handleStartSearchRun}
+              disabled={!searchInstanceId || startSearchRunMutation.isPending || searchRunning}
+            >
+              {startSearchRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Rocket className="mr-2 h-4 w-4" />}
+              Start run
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => cancelSearchRunMutation.mutate()}
+              disabled={!searchRunning || cancelSearchRunMutation.isPending}
+            >
+              {cancelSearchRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
+              Cancel
+            </Button>
+          </div>
         </CardFooter>
       </Card>
 

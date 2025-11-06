@@ -42,6 +42,7 @@ type Service struct {
 	indexerStore  IndexerStore
 	releaseParser *releases.Parser
 	rateLimiter   *RateLimiter
+	torrentCache  *models.TorznabTorrentCacheStore
 }
 
 // ErrMissingIndexerIdentifier signals that the Torznab backend requires an indexer ID to fetch caps.
@@ -49,6 +50,7 @@ var ErrMissingIndexerIdentifier = errors.New("torznab indexer identifier is requ
 
 const (
 	defaultRateLimitCooldown = 30 * time.Minute
+	defaultTorrentCacheTTL   = 12 * time.Hour
 )
 
 // searchContext carries additional metadata about the current Torznab search.
@@ -58,12 +60,22 @@ type searchContext struct {
 	searchMode  string
 }
 
+// TorrentDownloadRequest captures the metadata required to download (and cache) a torrent payload.
+type TorrentDownloadRequest struct {
+	IndexerID   int
+	DownloadURL string
+	GUID        string
+	Title       string
+	Size        int64
+}
+
 // NewService creates a new Jackett service
-func NewService(indexerStore IndexerStore) *Service {
+func NewService(indexerStore IndexerStore, cacheStore *models.TorznabTorrentCacheStore) *Service {
 	return &Service{
 		indexerStore:  indexerStore,
 		releaseParser: releases.NewDefaultParser(),
 		rateLimiter:   NewRateLimiter(defaultMinRequestInterval),
+		torrentCache:  cacheStore,
 	}
 }
 
@@ -309,25 +321,58 @@ func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int) (*Sea
 }
 
 // DownloadTorrent fetches the raw torrent bytes for a specific indexer result.
-func (s *Service) DownloadTorrent(ctx context.Context, indexerID int, downloadURL string) ([]byte, error) {
-	if indexerID <= 0 {
+func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadRequest) ([]byte, error) {
+	if req.IndexerID <= 0 {
 		return nil, fmt.Errorf("indexer ID must be positive")
 	}
 
-	indexer, err := s.indexerStore.Get(ctx, indexerID)
+	downloadURL := strings.TrimSpace(req.DownloadURL)
+	if downloadURL == "" {
+		return nil, fmt.Errorf("download URL is required")
+	}
+
+	cacheKey := strings.TrimSpace(req.GUID)
+	if cacheKey == "" {
+		cacheKey = downloadURL
+	}
+
+	if s.torrentCache != nil {
+		if data, ok, err := s.torrentCache.Fetch(ctx, req.IndexerID, cacheKey, defaultTorrentCacheTTL); err == nil && ok {
+			return data, nil
+		} else if err != nil {
+			log.Debug().Err(err).Msg("torznab torrent cache fetch failed")
+		}
+	}
+
+	indexer, err := s.indexerStore.Get(ctx, req.IndexerID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load indexer %d: %w", indexerID, err)
+		return nil, fmt.Errorf("failed to load indexer %d: %w", req.IndexerID, err)
 	}
 
 	apiKey, err := s.indexerStore.GetDecryptedAPIKey(indexer)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt API key for indexer %d: %w", indexerID, err)
+		return nil, fmt.Errorf("failed to decrypt API key for indexer %d: %w", req.IndexerID, err)
 	}
 
 	client := NewClient(indexer.BaseURL, apiKey, indexer.Backend, indexer.TimeoutSeconds)
 	data, err := client.Download(ctx, downloadURL)
 	if err != nil {
 		return nil, fmt.Errorf("torrent download failed: %w", err)
+	}
+
+	if s.torrentCache != nil {
+		entry := &models.TorznabTorrentCacheEntry{
+			IndexerID:   req.IndexerID,
+			CacheKey:    cacheKey,
+			GUID:        strings.TrimSpace(req.GUID),
+			DownloadURL: downloadURL,
+			Title:       strings.TrimSpace(req.Title),
+			SizeBytes:   req.Size,
+			TorrentData: data,
+		}
+		if err := s.torrentCache.Store(ctx, entry); err != nil {
+			log.Debug().Err(err).Msg("failed to cache torznab torrent payload")
+		}
 	}
 
 	return data, nil
@@ -1309,6 +1354,86 @@ func (s *Service) resolveIndexerSelection(ctx context.Context, indexerIDs []int)
 	}
 
 	return selected, nil
+}
+
+// FilterIndexersForCapabilities restricts requested indexers to those matching required caps/categories.
+func (s *Service) FilterIndexersForCapabilities(ctx context.Context, requested []int, requiredCaps []string, categories []int) ([]int, error) {
+	indexers, err := s.resolveIndexerSelection(ctx, requested)
+	if err != nil {
+		return nil, err
+	}
+	if len(indexers) == 0 {
+		return []int{}, nil
+	}
+
+	requiredCaps = normalizeCaps(requiredCaps)
+	result := make([]int, 0, len(indexers))
+	for _, indexer := range indexers {
+		if len(requiredCaps) > 0 && !indexerHasCapabilities(indexer.Capabilities, requiredCaps) {
+			continue
+		}
+		if len(categories) > 0 && !indexerSupportsCategories(indexer.Categories, categories) {
+			continue
+		}
+		result = append(result, indexer.ID)
+	}
+	return result, nil
+}
+
+func normalizeCaps(caps []string) []string {
+	seen := make(map[string]struct{}, len(caps))
+	result := make([]string, 0, len(caps))
+	for _, cap := range caps {
+		trimmed := strings.TrimSpace(strings.ToLower(cap))
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+	}
+	return result
+}
+
+func indexerHasCapabilities(current []string, required []string) bool {
+	if len(required) == 0 {
+		return true
+	}
+	available := make(map[string]struct{}, len(current))
+	for _, cap := range current {
+		available[strings.TrimSpace(strings.ToLower(cap))] = struct{}{}
+	}
+	for _, need := range required {
+		if _, ok := available[strings.ToLower(need)]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func indexerSupportsCategories(indexerCategories []models.TorznabIndexerCategory, requested []int) bool {
+	if len(requested) == 0 {
+		return true
+	}
+	supported := make(map[int]struct{}, len(indexerCategories)*2)
+	for _, cat := range indexerCategories {
+		supported[cat.CategoryID] = struct{}{}
+		if cat.ParentCategory != nil {
+			supported[*cat.ParentCategory] = struct{}{}
+		}
+	}
+	for _, req := range requested {
+		if _, ok := supported[req]; ok {
+			return true
+		}
+		parent := (req / 100) * 100
+		if _, ok := supported[parent]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // extractIndexerIDFromURL extracts the indexer ID from a Jackett URL

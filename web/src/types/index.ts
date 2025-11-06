@@ -1151,3 +1151,54 @@ export interface CrossSeedAutomationStatus {
   nextRunAt?: string
   running: boolean
 }
+
+export interface CrossSeedSearchFilters {
+  categories: string[]
+  tags: string[]
+}
+
+export interface CrossSeedSearchResult {
+  torrentHash: string
+  torrentName: string
+  indexerName: string
+  releaseTitle: string
+  added: boolean
+  message?: string
+  processedAt: string
+}
+
+export interface CrossSeedSearchRun {
+  id: number
+  instanceId: number
+  status: string
+  startedAt: string
+  completedAt?: string
+  totalTorrents: number
+  processed: number
+  torrentsAdded: number
+  torrentsFailed: number
+  torrentsSkipped: number
+  message?: string
+  errorMessage?: string
+  filters: CrossSeedSearchFilters
+  indexerIds: number[]
+  intervalSeconds: number
+  cooldownMinutes: number
+  results: CrossSeedSearchResult[]
+  createdAt: string
+}
+
+export interface CrossSeedSearchCandidate {
+  torrentHash: string
+  torrentName: string
+  category?: string
+  tags: string[]
+}
+
+export interface CrossSeedSearchStatus {
+  running: boolean
+  run?: CrossSeedSearchRun
+  currentTorrent?: CrossSeedSearchCandidate
+  recentResults: CrossSeedSearchResult[]
+  nextRunAt?: string
+}

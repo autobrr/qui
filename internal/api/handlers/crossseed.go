@@ -42,6 +42,15 @@ type automationRunRequest struct {
 	DryRun bool `json:"dryRun"`
 }
 
+type searchRunRequest struct {
+	InstanceID      int      `json:"instanceId"`
+	Categories      []string `json:"categories"`
+	Tags            []string `json:"tags"`
+	IntervalSeconds int      `json:"intervalSeconds"`
+	IndexerIDs      []int    `json:"indexerIds"`
+	CooldownMinutes int      `json:"cooldownMinutes"`
+}
+
 // NewCrossSeedHandler creates a new cross-seed handler
 func NewCrossSeedHandler(service *crossseed.Service) *CrossSeedHandler {
 	return &CrossSeedHandler{
@@ -67,6 +76,12 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 		r.Get("/status", h.GetAutomationStatus)
 		r.Get("/runs", h.ListAutomationRuns)
 		r.Post("/run", h.TriggerAutomationRun)
+		r.Route("/search", func(r chi.Router) {
+			r.Get("/status", h.GetSearchRunStatus)
+			r.Post("/run", h.StartSearchRun)
+			r.Post("/run/cancel", h.CancelSearchRun)
+			r.Get("/runs", h.ListSearchRunHistory)
+		})
 	})
 }
 
@@ -502,6 +517,90 @@ func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.R
 	}
 
 	RespondJSON(w, http.StatusAccepted, run)
+}
+
+// StartSearchRun starts a scoped search automation run.
+func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request) {
+	var req searchRunRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if req.InstanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceId is required")
+		return
+	}
+
+	run, err := h.service.StartSearchRun(r.Context(), crossseed.SearchRunOptions{
+		InstanceID:      req.InstanceID,
+		Categories:      req.Categories,
+		Tags:            req.Tags,
+		IntervalSeconds: req.IntervalSeconds,
+		IndexerIDs:      req.IndexerIDs,
+		CooldownMinutes: req.CooldownMinutes,
+		RequestedBy:     "api",
+	})
+	if err != nil {
+		if errors.Is(err, crossseed.ErrSearchRunActive) {
+			RespondError(w, http.StatusConflict, "Search run already active")
+			return
+		}
+		RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	RespondJSON(w, http.StatusAccepted, run)
+}
+
+// CancelSearchRun stops the active search run if present.
+func (h *CrossSeedHandler) CancelSearchRun(w http.ResponseWriter, r *http.Request) {
+	h.service.CancelSearchRun()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GetSearchRunStatus returns current search automation status.
+func (h *CrossSeedHandler) GetSearchRunStatus(w http.ResponseWriter, r *http.Request) {
+	status, err := h.service.GetSearchRunStatus(r.Context())
+	if err != nil {
+		RespondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	RespondJSON(w, http.StatusOK, status)
+}
+
+// ListSearchRunHistory returns stored search run history for an instance.
+func (h *CrossSeedHandler) ListSearchRunHistory(w http.ResponseWriter, r *http.Request) {
+	instanceStr := r.URL.Query().Get("instanceId")
+	if strings.TrimSpace(instanceStr) == "" {
+		RespondError(w, http.StatusBadRequest, "instanceId query parameter is required")
+		return
+	}
+	instanceID, err := strconv.Atoi(instanceStr)
+	if err != nil || instanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceId must be a positive integer")
+		return
+	}
+
+	limit := 25
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= 200 {
+			limit = parsed
+		}
+	}
+	offset := 0
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+
+	runs, err := h.service.ListSearchRuns(r.Context(), instanceID, limit, offset)
+	if err != nil {
+		RespondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, runs)
 }
 
 // GetCrossSeedStatus godoc

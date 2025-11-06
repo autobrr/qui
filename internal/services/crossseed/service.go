@@ -52,6 +52,10 @@ type Service struct {
 	automationCancel context.CancelFunc
 	automationWake   chan struct{}
 	runActive        atomic.Bool
+
+	searchMu     sync.RWMutex
+	searchCancel context.CancelFunc
+	searchState  *searchRunState
 }
 
 const searchResultCacheTTL = 5 * time.Minute
@@ -82,12 +86,59 @@ func NewService(
 // ErrAutomationRunning indicates a cross-seed automation run is already in progress.
 var ErrAutomationRunning = errors.New("cross-seed automation already running")
 
+// ErrSearchRunActive indicates a search automation run is in progress.
+var ErrSearchRunActive = errors.New("cross-seed search run already running")
+
 // AutomationRunOptions configures a manual automation run.
 type AutomationRunOptions struct {
 	RequestedBy string
 	Mode        models.CrossSeedRunMode
 	DryRun      bool
 	Limit       int
+}
+
+// SearchRunOptions configures how the library search automation operates.
+type SearchRunOptions struct {
+	InstanceID             int
+	Categories             []string
+	Tags                   []string
+	IntervalSeconds        int
+	IndexerIDs             []int
+	CooldownMinutes        int
+	FindIndividualEpisodes bool
+	RequestedBy            string
+	StartPaused            bool
+	CategoryOverride       *string
+	TagsOverride           []string
+}
+
+// SearchRunStatus summarises the current state of the active search run.
+type SearchRunStatus struct {
+	Running        bool                           `json:"running"`
+	Run            *models.CrossSeedSearchRun     `json:"run,omitempty"`
+	CurrentTorrent *SearchCandidateStatus         `json:"currentTorrent,omitempty"`
+	RecentResults  []models.CrossSeedSearchResult `json:"recentResults"`
+	NextRunAt      *time.Time                     `json:"nextRunAt,omitempty"`
+}
+
+// SearchCandidateStatus exposes metadata about the torrent currently being processed.
+type SearchCandidateStatus struct {
+	TorrentHash string   `json:"torrentHash"`
+	TorrentName string   `json:"torrentName"`
+	Category    string   `json:"category"`
+	Tags        []string `json:"tags"`
+}
+
+type searchRunState struct {
+	run   *models.CrossSeedSearchRun
+	opts  SearchRunOptions
+	queue []qbt.Torrent
+	index int
+
+	currentCandidate *SearchCandidateStatus
+	recentResults    []models.CrossSeedSearchResult
+	nextWake         time.Time
+	lastError        error
 }
 
 // AutomationStatus summarises scheduler state for the API.
@@ -284,6 +335,135 @@ func (s *Service) ListAutomationRuns(ctx context.Context, limit, offset int) ([]
 	return runs, nil
 }
 
+// StartSearchRun launches an on-demand search automation run for a single instance.
+func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*models.CrossSeedSearchRun, error) {
+	if s.automationStore == nil || s.jackettService == nil {
+		return nil, errors.New("cross-seed automation not configured")
+	}
+
+	if err := s.validateSearchRunOptions(ctx, &opts); err != nil {
+		return nil, err
+	}
+
+	settings, err := s.GetAutomationSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if settings != nil {
+		if opts.CategoryOverride == nil {
+			opts.CategoryOverride = settings.Category
+		}
+		if len(opts.TagsOverride) == 0 && len(settings.Tags) > 0 {
+			opts.TagsOverride = append([]string(nil), settings.Tags...)
+		}
+		opts.StartPaused = settings.StartPaused
+		if !settings.FindIndividualEpisodes {
+			opts.FindIndividualEpisodes = false
+		} else if !opts.FindIndividualEpisodes {
+			opts.FindIndividualEpisodes = settings.FindIndividualEpisodes
+		}
+	}
+	opts.TagsOverride = normalizeStringSlice(opts.TagsOverride)
+
+	s.searchMu.Lock()
+	if s.searchCancel != nil {
+		s.searchMu.Unlock()
+		return nil, ErrSearchRunActive
+	}
+
+	newRun := &models.CrossSeedSearchRun{
+		InstanceID:      opts.InstanceID,
+		Status:          models.CrossSeedSearchRunStatusRunning,
+		StartedAt:       time.Now().UTC(),
+		Filters:         models.CrossSeedSearchFilters{Categories: append([]string(nil), opts.Categories...), Tags: append([]string(nil), opts.Tags...)},
+		IndexerIDs:      append([]int(nil), opts.IndexerIDs...),
+		IntervalSeconds: opts.IntervalSeconds,
+		CooldownMinutes: opts.CooldownMinutes,
+		Results:         []models.CrossSeedSearchResult{},
+	}
+
+	storedRun, err := s.automationStore.CreateSearchRun(ctx, newRun)
+	if err != nil {
+		s.searchMu.Unlock()
+		return nil, err
+	}
+
+	state := &searchRunState{
+		run:           storedRun,
+		opts:          opts,
+		recentResults: make([]models.CrossSeedSearchResult, 0, 10),
+	}
+
+	runCtx, cancel := context.WithCancel(context.Background())
+	s.searchCancel = cancel
+	s.searchState = state
+	s.searchMu.Unlock()
+
+	go s.searchRunLoop(runCtx, state)
+
+	return storedRun, nil
+}
+
+// CancelSearchRun stops the active search run, if any.
+func (s *Service) CancelSearchRun() {
+	s.searchMu.RLock()
+	cancel := s.searchCancel
+	s.searchMu.RUnlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+// GetSearchRunStatus returns the latest information about the active search run.
+func (s *Service) GetSearchRunStatus(ctx context.Context) (*SearchRunStatus, error) {
+	status := &SearchRunStatus{Running: false, RecentResults: []models.CrossSeedSearchResult{}}
+
+	s.searchMu.RLock()
+	state := s.searchState
+	if state != nil {
+		status.Running = true
+		status.Run = cloneSearchRun(state.run)
+		if state.currentCandidate != nil {
+			candidate := *state.currentCandidate
+			status.CurrentTorrent = &candidate
+		}
+		if len(state.recentResults) > 0 {
+			status.RecentResults = append(status.RecentResults, state.recentResults...)
+		}
+		if !state.nextWake.IsZero() {
+			next := state.nextWake
+			status.NextRunAt = &next
+		}
+	}
+	s.searchMu.RUnlock()
+
+	return status, nil
+}
+
+func cloneSearchRun(run *models.CrossSeedSearchRun) *models.CrossSeedSearchRun {
+	if run == nil {
+		return nil
+	}
+
+	cloned := *run
+	cloned.Filters = models.CrossSeedSearchFilters{
+		Categories: append([]string(nil), run.Filters.Categories...),
+		Tags:       append([]string(nil), run.Filters.Tags...),
+	}
+	cloned.IndexerIDs = append([]int(nil), run.IndexerIDs...)
+	cloned.Results = append([]models.CrossSeedSearchResult(nil), run.Results...)
+
+	return &cloned
+}
+
+// ListSearchRuns returns stored search automation history for an instance.
+func (s *Service) ListSearchRuns(ctx context.Context, instanceID, limit, offset int) ([]*models.CrossSeedSearchRun, error) {
+	if s.automationStore == nil {
+		return []*models.CrossSeedSearchRun{}, nil
+	}
+	return s.automationStore.ListSearchRuns(ctx, instanceID, limit, offset)
+}
+
 func (s *Service) automationLoop(ctx context.Context) {
 	log.Info().Msg("Starting cross-seed automation loop")
 	defer log.Info().Msg("Cross-seed automation loop stopped")
@@ -328,6 +508,41 @@ func (s *Service) automationLoop(ctx context.Context) {
 
 		s.waitTimer(ctx, timer, nextDelay)
 	}
+}
+
+func (s *Service) validateSearchRunOptions(ctx context.Context, opts *SearchRunOptions) error {
+	if opts == nil {
+		return fmt.Errorf("options cannot be nil")
+	}
+	if opts.InstanceID <= 0 {
+		return fmt.Errorf("instance id must be positive")
+	}
+	if opts.IntervalSeconds < 30 {
+		if opts.IntervalSeconds == 0 {
+			opts.IntervalSeconds = 60
+		} else {
+			opts.IntervalSeconds = 30
+		}
+	}
+	if opts.CooldownMinutes <= 0 {
+		opts.CooldownMinutes = 360
+	}
+	opts.Categories = normalizeStringSlice(opts.Categories)
+	opts.Tags = normalizeStringSlice(opts.Tags)
+	opts.IndexerIDs = uniquePositiveInts(opts.IndexerIDs)
+	if opts.RequestedBy == "" {
+		opts.RequestedBy = "manual"
+	}
+
+	instance, err := s.instanceStore.Get(ctx, opts.InstanceID)
+	if err != nil {
+		return fmt.Errorf("load instance: %w", err)
+	}
+	if instance == nil {
+		return fmt.Errorf("instance %d not found", opts.InstanceID)
+	}
+
+	return nil
 }
 
 func (s *Service) waitTimer(ctx context.Context, timer *time.Timer, delay time.Duration) {
@@ -565,7 +780,13 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		return models.CrossSeedFeedItemStatusSkipped, nil, nil
 	}
 
-	torrentBytes, err := s.jackettService.DownloadTorrent(ctx, result.IndexerID, result.DownloadURL)
+	torrentBytes, err := s.jackettService.DownloadTorrent(ctx, jackett.TorrentDownloadRequest{
+		IndexerID:   result.IndexerID,
+		DownloadURL: result.DownloadURL,
+		GUID:        result.GUID,
+		Title:       result.Title,
+		Size:        result.Size,
+	})
 	if err != nil {
 		run.TorrentsFailed++
 		return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("download torrent: %w", err)
@@ -1738,7 +1959,13 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 			title = cachedResult.Title
 		}
 
-		torrentBytes, err := s.jackettService.DownloadTorrent(ctx, cachedResult.IndexerID, cachedResult.DownloadURL)
+		torrentBytes, err := s.jackettService.DownloadTorrent(ctx, jackett.TorrentDownloadRequest{
+			IndexerID:   cachedResult.IndexerID,
+			DownloadURL: cachedResult.DownloadURL,
+			GUID:        cachedResult.GUID,
+			Title:       cachedResult.Title,
+			Size:        cachedResult.Size,
+		})
 		if err != nil {
 			results = append(results, TorrentSearchAddResult{
 				Title:   title,
@@ -1881,6 +2108,475 @@ func (s *Service) getTorrentByHash(ctx context.Context, instanceID int, hash str
 	}
 
 	return nil, fmt.Errorf("torrent %s not found in instance %d", hash, instanceID)
+}
+
+func (s *Service) searchRunLoop(ctx context.Context, state *searchRunState) {
+	defer func() {
+		canceled := ctx.Err() == context.Canceled
+		s.finalizeSearchRun(state, canceled)
+	}()
+
+	if err := s.refreshSearchQueue(ctx, state); err != nil {
+		state.lastError = err
+		return
+	}
+
+	interval := time.Duration(state.opts.IntervalSeconds) * time.Second
+
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+
+		candidate, err := s.nextSearchCandidate(ctx, state)
+		if err != nil {
+			state.lastError = err
+			return
+		}
+		if candidate == nil {
+			return
+		}
+
+		s.setCurrentCandidate(state, candidate)
+
+		if err := s.processSearchCandidate(ctx, state, candidate); err != nil {
+			state.lastError = err
+		}
+
+		if interval > 0 {
+			s.setNextWake(state, time.Now().Add(interval))
+			t := time.NewTimer(interval)
+			select {
+			case <-ctx.Done():
+				t.Stop()
+				return
+			case <-t.C:
+			}
+			s.setNextWake(state, time.Time{})
+		}
+	}
+}
+
+func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
+	completed := time.Now().UTC()
+	s.searchMu.Lock()
+	state.run.CompletedAt = &completed
+	if s.searchState == state {
+		s.searchState.currentCandidate = nil
+	}
+	if canceled && state.lastError == nil {
+		state.run.Status = models.CrossSeedSearchRunStatusCanceled
+		msg := "search run canceled"
+		state.run.ErrorMessage = &msg
+	} else if state.lastError != nil {
+		state.run.Status = models.CrossSeedSearchRunStatusFailed
+		errMsg := state.lastError.Error()
+		state.run.ErrorMessage = &errMsg
+	} else {
+		state.run.Status = models.CrossSeedSearchRunStatusSuccess
+	}
+	s.searchMu.Unlock()
+
+	if updated, err := s.automationStore.UpdateSearchRun(context.Background(), state.run); err == nil {
+		s.searchMu.Lock()
+		if s.searchState == state {
+			state.run = updated
+			s.searchState.run = updated
+		}
+		s.searchMu.Unlock()
+	} else {
+		log.Warn().Err(err).Msg("failed to persist search run state")
+	}
+
+	s.searchMu.Lock()
+	if s.searchState == state {
+		s.searchState = nil
+		s.searchCancel = nil
+	}
+	s.searchMu.Unlock()
+}
+
+func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState) error {
+	torrents, err := s.syncManager.GetAllTorrents(ctx, state.opts.InstanceID)
+	if err != nil {
+		return fmt.Errorf("list torrents: %w", err)
+	}
+
+	filtered := make([]qbt.Torrent, 0, len(torrents))
+	for _, torrent := range torrents {
+		if matchesSearchFilters(&torrent, state.opts) {
+			filtered = append(filtered, torrent)
+		}
+	}
+
+	state.queue = filtered
+	state.index = 0
+	s.searchMu.Lock()
+	state.run.TotalTorrents = len(filtered)
+	s.searchMu.Unlock()
+	s.persistSearchRun(state)
+
+	return nil
+}
+
+func (s *Service) nextSearchCandidate(ctx context.Context, state *searchRunState) (*qbt.Torrent, error) {
+	for {
+		if state.index >= len(state.queue) {
+			return nil, nil
+		}
+
+		torrent := state.queue[state.index]
+		state.index++
+
+		skip, err := s.shouldSkipCandidate(ctx, state, &torrent)
+		if err != nil {
+			return nil, err
+		}
+		if skip {
+			continue
+		}
+		return &torrent, nil
+	}
+}
+
+func (s *Service) shouldSkipCandidate(ctx context.Context, state *searchRunState, torrent *qbt.Torrent) (bool, error) {
+	if torrent == nil {
+		return true, nil
+	}
+	if torrent.Hash == "" {
+		return true, nil
+	}
+	if torrent.Progress < 1.0 {
+		return true, nil
+	}
+
+	if s.automationStore == nil {
+		return false, nil
+	}
+
+	last, found, err := s.automationStore.GetSearchHistory(ctx, state.opts.InstanceID, torrent.Hash)
+	if err != nil {
+		return false, err
+	}
+	if !found {
+		return false, nil
+	}
+
+	cooldown := time.Duration(state.opts.CooldownMinutes) * time.Minute
+	if cooldown <= 0 {
+		return false, nil
+	}
+
+	return time.Since(last) < cooldown, nil
+}
+
+func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunState, torrent *qbt.Torrent) error {
+	s.searchMu.Lock()
+	state.run.Processed++
+	s.searchMu.Unlock()
+	processedAt := time.Now().UTC()
+
+	if s.automationStore != nil {
+		if err := s.automationStore.UpsertSearchHistory(ctx, state.opts.InstanceID, torrent.Hash, processedAt); err != nil {
+			log.Debug().Err(err).Msg("failed to update search history")
+		}
+	}
+
+	allowedIndexerIDs, _, err := s.filterIndexerIDsForTorrent(ctx, state.opts.InstanceID, torrent.Hash, state.opts.IndexerIDs)
+	if err != nil {
+		s.searchMu.Lock()
+		state.run.TorrentsFailed++
+		s.searchMu.Unlock()
+		s.appendSearchResult(state, models.CrossSeedSearchResult{
+			TorrentHash:  torrent.Hash,
+			TorrentName:  torrent.Name,
+			IndexerName:  "",
+			ReleaseTitle: "",
+			Added:        false,
+			Message:      fmt.Sprintf("analyze torrent: %v", err),
+			ProcessedAt:  processedAt,
+		})
+		s.persistSearchRun(state)
+		return err
+	}
+	if len(allowedIndexerIDs) == 0 {
+		s.searchMu.Lock()
+		state.run.TorrentsSkipped++
+		s.searchMu.Unlock()
+		s.appendSearchResult(state, models.CrossSeedSearchResult{
+			TorrentHash:  torrent.Hash,
+			TorrentName:  torrent.Name,
+			IndexerName:  "",
+			ReleaseTitle: "",
+			Added:        false,
+			Message:      "no indexers support required caps",
+			ProcessedAt:  processedAt,
+		})
+		s.persistSearchRun(state)
+		return nil
+	}
+
+	searchResp, err := s.SearchTorrentMatches(ctx, state.opts.InstanceID, torrent.Hash, TorrentSearchOptions{
+		IndexerIDs:             allowedIndexerIDs,
+		FindIndividualEpisodes: state.opts.FindIndividualEpisodes,
+	})
+	if err != nil {
+		s.searchMu.Lock()
+		state.run.TorrentsFailed++
+		s.searchMu.Unlock()
+		s.appendSearchResult(state, models.CrossSeedSearchResult{
+			TorrentHash:  torrent.Hash,
+			TorrentName:  torrent.Name,
+			IndexerName:  "",
+			ReleaseTitle: "",
+			Added:        false,
+			Message:      fmt.Sprintf("search failed: %v", err),
+			ProcessedAt:  processedAt,
+		})
+		s.persistSearchRun(state)
+		return err
+	}
+
+	if len(searchResp.Results) == 0 {
+		s.searchMu.Lock()
+		state.run.TorrentsSkipped++
+		s.searchMu.Unlock()
+		s.appendSearchResult(state, models.CrossSeedSearchResult{
+			TorrentHash:  torrent.Hash,
+			TorrentName:  torrent.Name,
+			IndexerName:  "",
+			ReleaseTitle: "",
+			Added:        false,
+			Message:      "no matches returned",
+			ProcessedAt:  processedAt,
+		})
+		s.persistSearchRun(state)
+		return nil
+	}
+
+	best := searchResp.Results[0]
+	data, err := s.jackettService.DownloadTorrent(ctx, jackett.TorrentDownloadRequest{
+		IndexerID:   best.IndexerID,
+		DownloadURL: best.DownloadURL,
+		GUID:        best.GUID,
+		Title:       best.Title,
+		Size:        best.Size,
+	})
+	if err != nil {
+		s.searchMu.Lock()
+		state.run.TorrentsFailed++
+		s.searchMu.Unlock()
+		s.appendSearchResult(state, models.CrossSeedSearchResult{
+			TorrentHash:  torrent.Hash,
+			TorrentName:  torrent.Name,
+			IndexerName:  best.Indexer,
+			ReleaseTitle: best.Title,
+			Added:        false,
+			Message:      fmt.Sprintf("download failed: %v", err),
+			ProcessedAt:  processedAt,
+		})
+		s.persistSearchRun(state)
+		return err
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(data)
+	startPaused := state.opts.StartPaused
+	request := &CrossSeedRequest{
+		TorrentData:            encoded,
+		TargetInstanceIDs:      []int{state.opts.InstanceID},
+		StartPaused:            &startPaused,
+		Tags:                   append([]string(nil), state.opts.TagsOverride...),
+		Category:               "",
+		FindIndividualEpisodes: state.opts.FindIndividualEpisodes,
+	}
+	if state.opts.CategoryOverride != nil && strings.TrimSpace(*state.opts.CategoryOverride) != "" {
+		cat := *state.opts.CategoryOverride
+		request.Category = cat
+	}
+	request.SkipIfExists = true
+
+	resp, err := s.CrossSeed(ctx, request)
+	result := models.CrossSeedSearchResult{
+		TorrentHash:  torrent.Hash,
+		TorrentName:  torrent.Name,
+		IndexerName:  best.Indexer,
+		ReleaseTitle: best.Title,
+		ProcessedAt:  processedAt,
+	}
+
+	if err != nil {
+		s.searchMu.Lock()
+		state.run.TorrentsFailed++
+		s.searchMu.Unlock()
+		result.Added = false
+		result.Message = fmt.Sprintf("cross-seed failed: %v", err)
+		s.appendSearchResult(state, result)
+		s.persistSearchRun(state)
+		return err
+	}
+
+	if resp.Success {
+		s.searchMu.Lock()
+		state.run.TorrentsAdded++
+		s.searchMu.Unlock()
+		result.Added = true
+		result.Message = fmt.Sprintf("added via %s", best.Indexer)
+	} else {
+		s.searchMu.Lock()
+		state.run.TorrentsSkipped++
+		s.searchMu.Unlock()
+		result.Added = false
+		result.Message = "no instances accepted torrent"
+	}
+
+	s.appendSearchResult(state, result)
+	s.persistSearchRun(state)
+
+	return nil
+}
+
+func (s *Service) filterIndexerIDsForTorrent(ctx context.Context, instanceID int, hash string, requested []int) ([]int, *TorrentInfo, error) {
+	info, err := s.AnalyzeTorrentForSearch(ctx, instanceID, hash)
+	if err != nil {
+		return nil, nil, err
+	}
+	ids, err := s.jackettService.FilterIndexersForCapabilities(ctx, requested, info.RequiredCaps, info.SearchCategories)
+	if err != nil {
+		return nil, nil, err
+	}
+	return ids, info, nil
+}
+
+func (s *Service) appendSearchResult(state *searchRunState, result models.CrossSeedSearchResult) {
+	s.searchMu.Lock()
+	state.run.Results = append(state.run.Results, result)
+	if s.searchState == state {
+		state.recentResults = append(state.recentResults, result)
+		if len(state.recentResults) > 10 {
+			state.recentResults = state.recentResults[len(state.recentResults)-10:]
+		}
+	}
+	s.searchMu.Unlock()
+}
+
+func (s *Service) persistSearchRun(state *searchRunState) {
+	updated, err := s.automationStore.UpdateSearchRun(context.Background(), state.run)
+	if err != nil {
+		log.Debug().Err(err).Msg("failed to persist search run progress")
+		return
+	}
+	s.searchMu.Lock()
+	if s.searchState == state {
+		state.run = updated
+	}
+	s.searchMu.Unlock()
+}
+
+func (s *Service) setCurrentCandidate(state *searchRunState, torrent *qbt.Torrent) {
+	status := &SearchCandidateStatus{
+		TorrentHash: torrent.Hash,
+		TorrentName: torrent.Name,
+		Category:    torrent.Category,
+		Tags:        splitTags(torrent.Tags),
+	}
+	s.searchMu.Lock()
+	if s.searchState == state {
+		state.currentCandidate = status
+	}
+	s.searchMu.Unlock()
+}
+
+func (s *Service) setNextWake(state *searchRunState, next time.Time) {
+	s.searchMu.Lock()
+	if s.searchState == state {
+		state.nextWake = next
+	}
+	s.searchMu.Unlock()
+}
+
+func matchesSearchFilters(torrent *qbt.Torrent, opts SearchRunOptions) bool {
+	if torrent == nil {
+		return false
+	}
+	if len(opts.Categories) > 0 {
+		matched := false
+		for _, category := range opts.Categories {
+			if category == torrent.Category {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	if len(opts.Tags) > 0 {
+		torrentTags := splitTags(torrent.Tags)
+		matched := false
+		for _, tag := range torrentTags {
+			for _, desired := range opts.Tags {
+				if strings.EqualFold(tag, desired) {
+					matched = true
+					break
+				}
+			}
+			if matched {
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	return true
+}
+
+func splitTags(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return []string{}
+	}
+	parts := strings.Split(raw, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+func normalizeStringSlice(values []string) []string {
+	seen := make(map[string]struct{})
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+	}
+	return result
+}
+
+func uniquePositiveInts(values []int) []int {
+	seen := make(map[int]struct{})
+	result := make([]int, 0, len(values))
+	for _, v := range values {
+		if v <= 0 {
+			continue
+		}
+		if _, exists := seen[v]; exists {
+			continue
+		}
+		seen[v] = struct{}{}
+		result = append(result, v)
+	}
+	return result
 }
 
 func evaluateReleaseMatch(source, candidate rls.Release) (float64, string) {

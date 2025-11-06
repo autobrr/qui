@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
@@ -97,6 +98,55 @@ type CrossSeedRun struct {
 	ErrorMessage    *string              `json:"errorMessage,omitempty"`
 	Results         []CrossSeedRunResult `json:"results,omitempty"`
 	CreatedAt       time.Time            `json:"createdAt"`
+}
+
+// CrossSeedSearchRunStatus represents the lifecycle state of an automated search pass.
+type CrossSeedSearchRunStatus string
+
+const (
+	CrossSeedSearchRunStatusRunning  CrossSeedSearchRunStatus = "running"
+	CrossSeedSearchRunStatusSuccess  CrossSeedSearchRunStatus = "success"
+	CrossSeedSearchRunStatusFailed   CrossSeedSearchRunStatus = "failed"
+	CrossSeedSearchRunStatusCanceled CrossSeedSearchRunStatus = "canceled"
+)
+
+// CrossSeedSearchFilters capture how torrents are selected for automated search runs.
+type CrossSeedSearchFilters struct {
+	Categories []string `json:"categories"`
+	Tags       []string `json:"tags"`
+}
+
+// CrossSeedSearchResult records the outcome of processing a single torrent during a search run.
+type CrossSeedSearchResult struct {
+	TorrentHash  string    `json:"torrentHash"`
+	TorrentName  string    `json:"torrentName"`
+	IndexerName  string    `json:"indexerName"`
+	ReleaseTitle string    `json:"releaseTitle"`
+	Added        bool      `json:"added"`
+	Message      string    `json:"message,omitempty"`
+	ProcessedAt  time.Time `json:"processedAt"`
+}
+
+// CrossSeedSearchRun stores metadata for library search automation runs.
+type CrossSeedSearchRun struct {
+	ID              int64                    `json:"id"`
+	InstanceID      int                      `json:"instanceId"`
+	Status          CrossSeedSearchRunStatus `json:"status"`
+	StartedAt       time.Time                `json:"startedAt"`
+	CompletedAt     *time.Time               `json:"completedAt,omitempty"`
+	TotalTorrents   int                      `json:"totalTorrents"`
+	Processed       int                      `json:"processed"`
+	TorrentsAdded   int                      `json:"torrentsAdded"`
+	TorrentsFailed  int                      `json:"torrentsFailed"`
+	TorrentsSkipped int                      `json:"torrentsSkipped"`
+	Message         *string                  `json:"message,omitempty"`
+	ErrorMessage    *string                  `json:"errorMessage,omitempty"`
+	Filters         CrossSeedSearchFilters   `json:"filters"`
+	IndexerIDs      []int                    `json:"indexerIds"`
+	IntervalSeconds int                      `json:"intervalSeconds"`
+	CooldownMinutes int                      `json:"cooldownMinutes"`
+	Results         []CrossSeedSearchResult  `json:"results"`
+	CreatedAt       time.Time                `json:"createdAt"`
 }
 
 // CrossSeedFeedItemStatus tracks processing state for feed items.
@@ -429,6 +479,237 @@ func (s *CrossSeedStore) ListRuns(ctx context.Context, limit, offset int) ([]*Cr
 	return runs, nil
 }
 
+// CreateSearchRun inserts a new record for a search automation run.
+func (s *CrossSeedStore) CreateSearchRun(ctx context.Context, run *CrossSeedSearchRun) (*CrossSeedSearchRun, error) {
+	if run == nil {
+		return nil, errors.New("run cannot be nil")
+	}
+	if run.InstanceID <= 0 {
+		return nil, errors.New("instance id must be positive")
+	}
+	if run.StartedAt.IsZero() {
+		run.StartedAt = time.Now().UTC()
+	}
+
+	filtersJSON, err := encodeSearchFilters(run.Filters)
+	if err != nil {
+		return nil, fmt.Errorf("encode filters: %w", err)
+	}
+	indexersJSON, err := encodeIntSlice(run.IndexerIDs)
+	if err != nil {
+		return nil, fmt.Errorf("encode indexers: %w", err)
+	}
+	resultsJSON, err := encodeSearchResults(run.Results)
+	if err != nil {
+		return nil, fmt.Errorf("encode results: %w", err)
+	}
+
+	const query = `
+		INSERT INTO cross_seed_search_runs (
+			instance_id, status, started_at, total_torrents, processed,
+			torrents_added, torrents_failed, torrents_skipped, message,
+			error_message, filters_json, indexer_ids_json, interval_seconds,
+			cooldown_minutes, results_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	result, err := s.db.ExecContext(ctx, query,
+		run.InstanceID,
+		run.Status,
+		run.StartedAt,
+		run.TotalTorrents,
+		run.Processed,
+		run.TorrentsAdded,
+		run.TorrentsFailed,
+		run.TorrentsSkipped,
+		run.Message,
+		run.ErrorMessage,
+		filtersJSON,
+		indexersJSON,
+		run.IntervalSeconds,
+		run.CooldownMinutes,
+		resultsJSON,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("insert search run: %w", err)
+	}
+
+	insertedID, err := result.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("get inserted search run id: %w", err)
+	}
+
+	return s.GetSearchRun(ctx, insertedID)
+}
+
+// UpdateSearchRun updates persisted metadata for a search run.
+func (s *CrossSeedStore) UpdateSearchRun(ctx context.Context, run *CrossSeedSearchRun) (*CrossSeedSearchRun, error) {
+	if run == nil {
+		return nil, errors.New("run cannot be nil")
+	}
+	if run.ID == 0 {
+		return nil, errors.New("run ID cannot be zero")
+	}
+
+	resultsJSON, err := encodeSearchResults(run.Results)
+	if err != nil {
+		return nil, fmt.Errorf("encode results: %w", err)
+	}
+	filtersJSON, err := encodeSearchFilters(run.Filters)
+	if err != nil {
+		return nil, fmt.Errorf("encode filters: %w", err)
+	}
+	indexersJSON, err := encodeIntSlice(run.IndexerIDs)
+	if err != nil {
+		return nil, fmt.Errorf("encode indexers: %w", err)
+	}
+
+	const query = `
+		UPDATE cross_seed_search_runs SET
+			status = ?,
+			started_at = ?,
+			completed_at = ?,
+			total_torrents = ?,
+			processed = ?,
+			torrents_added = ?,
+			torrents_failed = ?,
+			torrents_skipped = ?,
+			message = ?,
+			error_message = ?,
+			filters_json = ?,
+			indexer_ids_json = ?,
+			interval_seconds = ?,
+			cooldown_minutes = ?,
+			results_json = ?
+		WHERE id = ?
+	`
+
+	var completed interface{}
+	if run.CompletedAt != nil {
+		completed = run.CompletedAt
+	}
+
+	if _, err := s.db.ExecContext(ctx, query,
+		run.Status,
+		run.StartedAt,
+		completed,
+		run.TotalTorrents,
+		run.Processed,
+		run.TorrentsAdded,
+		run.TorrentsFailed,
+		run.TorrentsSkipped,
+		run.Message,
+		run.ErrorMessage,
+		filtersJSON,
+		indexersJSON,
+		run.IntervalSeconds,
+		run.CooldownMinutes,
+		resultsJSON,
+		run.ID,
+	); err != nil {
+		return nil, fmt.Errorf("update search run: %w", err)
+	}
+
+	return s.GetSearchRun(ctx, run.ID)
+}
+
+// GetSearchRun loads a specific search run by ID.
+func (s *CrossSeedStore) GetSearchRun(ctx context.Context, id int64) (*CrossSeedSearchRun, error) {
+	const query = `
+		SELECT id, instance_id, status, started_at, completed_at,
+		       total_torrents, processed, torrents_added, torrents_failed,
+		       torrents_skipped, message, error_message, filters_json,
+		       indexer_ids_json, interval_seconds, cooldown_minutes,
+		       results_json, created_at
+		FROM cross_seed_search_runs
+		WHERE id = ?
+	`
+
+	row := s.db.QueryRowContext(ctx, query, id)
+	return scanCrossSeedSearchRun(row)
+}
+
+// ListSearchRuns returns search automation history for an instance.
+func (s *CrossSeedStore) ListSearchRuns(ctx context.Context, instanceID, limit, offset int) ([]*CrossSeedSearchRun, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	const query = `
+		SELECT id, instance_id, status, started_at, completed_at,
+		       total_torrents, processed, torrents_added, torrents_failed,
+		       torrents_skipped, message, error_message, filters_json,
+		       indexer_ids_json, interval_seconds, cooldown_minutes,
+		       results_json, created_at
+		FROM cross_seed_search_runs
+		WHERE instance_id = ?
+		ORDER BY started_at DESC
+		LIMIT ? OFFSET ?
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, instanceID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list search runs: %w", err)
+	}
+	defer rows.Close()
+
+	var runs []*CrossSeedSearchRun
+	for rows.Next() {
+		run, err := scanCrossSeedSearchRun(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan search run: %w", err)
+		}
+		runs = append(runs, run)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate search runs: %w", err)
+	}
+
+	return runs, nil
+}
+
+// UpsertSearchHistory updates the last searched timestamp for a torrent on an instance.
+func (s *CrossSeedStore) UpsertSearchHistory(ctx context.Context, instanceID int, torrentHash string, searchedAt time.Time) error {
+	if instanceID <= 0 || strings.TrimSpace(torrentHash) == "" {
+		return fmt.Errorf("invalid search history parameters")
+	}
+
+	const query = `
+		INSERT INTO cross_seed_search_history (instance_id, torrent_hash, last_searched_at)
+		VALUES (?, ?, ?)
+		ON CONFLICT(instance_id, torrent_hash) DO UPDATE SET
+			last_searched_at = excluded.last_searched_at
+	`
+
+	if _, err := s.db.ExecContext(ctx, query, instanceID, torrentHash, searchedAt); err != nil {
+		return fmt.Errorf("upsert search history: %w", err)
+	}
+	return nil
+}
+
+// GetSearchHistory returns the last time a torrent was searched.
+func (s *CrossSeedStore) GetSearchHistory(ctx context.Context, instanceID int, torrentHash string) (time.Time, bool, error) {
+	const query = `
+		SELECT last_searched_at
+		FROM cross_seed_search_history
+		WHERE instance_id = ? AND torrent_hash = ?
+	`
+
+	var last time.Time
+	err := s.db.QueryRowContext(ctx, query, instanceID, torrentHash).Scan(&last)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return time.Time{}, false, nil
+		}
+		return time.Time{}, false, fmt.Errorf("get search history: %w", err)
+	}
+
+	return last, true, nil
+}
+
 // HasProcessedFeedItem reports whether a GUID/indexer pair has been handled.
 func (s *CrossSeedStore) HasProcessedFeedItem(ctx context.Context, guid string, indexerID int) (bool, CrossSeedFeedItemStatus, error) {
 	query := `
@@ -555,6 +836,57 @@ func scanCrossSeedRun(scanner interface {
 	return &run, nil
 }
 
+func scanCrossSeedSearchRun(scanner interface {
+	Scan(dest ...any) error
+}) (*CrossSeedSearchRun, error) {
+	var (
+		run          CrossSeedSearchRun
+		completedAt  sql.NullTime
+		filtersJSON  sql.NullString
+		indexersJSON sql.NullString
+		resultsJSON  sql.NullString
+	)
+
+	err := scanner.Scan(
+		&run.ID,
+		&run.InstanceID,
+		&run.Status,
+		&run.StartedAt,
+		&completedAt,
+		&run.TotalTorrents,
+		&run.Processed,
+		&run.TorrentsAdded,
+		&run.TorrentsFailed,
+		&run.TorrentsSkipped,
+		&run.Message,
+		&run.ErrorMessage,
+		&filtersJSON,
+		&indexersJSON,
+		&run.IntervalSeconds,
+		&run.CooldownMinutes,
+		&resultsJSON,
+		&run.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if completedAt.Valid {
+		run.CompletedAt = &completedAt.Time
+	}
+	if err := decodeSearchFilters(filtersJSON, &run.Filters); err != nil {
+		return nil, fmt.Errorf("decode filters: %w", err)
+	}
+	if err := decodeIntSlice(indexersJSON, &run.IndexerIDs); err != nil {
+		return nil, fmt.Errorf("decode indexer IDs: %w", err)
+	}
+	if err := decodeSearchResults(resultsJSON, &run.Results); err != nil {
+		return nil, fmt.Errorf("decode search results: %w", err)
+	}
+
+	return &run, nil
+}
+
 func encodeStringSlice(values []string) (string, error) {
 	if values == nil {
 		values = []string{}
@@ -620,6 +952,57 @@ func decodeRunResults(src sql.NullString, dest *[]CrossSeedRunResult) error {
 		return nil
 	}
 	var tmp []CrossSeedRunResult
+	if err := json.Unmarshal([]byte(src.String), &tmp); err != nil {
+		return err
+	}
+	*dest = tmp
+	return nil
+}
+
+func encodeSearchFilters(filters CrossSeedSearchFilters) (string, error) {
+	data, err := json.Marshal(filters)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func decodeSearchFilters(src sql.NullString, dest *CrossSeedSearchFilters) error {
+	if dest == nil {
+		return fmt.Errorf("destination cannot be nil")
+	}
+	if !src.Valid || src.String == "" {
+		*dest = CrossSeedSearchFilters{}
+		return nil
+	}
+	var tmp CrossSeedSearchFilters
+	if err := json.Unmarshal([]byte(src.String), &tmp); err != nil {
+		return err
+	}
+	*dest = tmp
+	return nil
+}
+
+func encodeSearchResults(results []CrossSeedSearchResult) (string, error) {
+	if results == nil {
+		results = []CrossSeedSearchResult{}
+	}
+	data, err := json.Marshal(results)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func decodeSearchResults(src sql.NullString, dest *[]CrossSeedSearchResult) error {
+	if dest == nil {
+		return fmt.Errorf("destination cannot be nil")
+	}
+	if !src.Valid || src.String == "" {
+		*dest = []CrossSeedSearchResult{}
+		return nil
+	}
+	var tmp []CrossSeedSearchResult
 	if err := json.Unmarshal([]byte(src.String), &tmp); err != nil {
 		return err
 	}

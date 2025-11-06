@@ -23,6 +23,8 @@ import type {
   CrossSeedTorrentInfo,
   CrossSeedTorrentSearchResponse,
   CrossSeedTorrentSearchSelection,
+  CrossSeedSearchRun,
+  CrossSeedSearchStatus,
   DuplicateTorrentMatch,
   ExternalProgram,
   ExternalProgramCreate,
@@ -826,6 +828,35 @@ class ApiClient {
     const query = search.toString()
     const suffix = query ? `?${query}` : ""
     return this.request<CrossSeedRun[]>(`/cross-seed/runs${suffix}`)
+  }
+
+  async getCrossSeedSearchStatus(): Promise<CrossSeedSearchStatus> {
+    return this.request<CrossSeedSearchStatus>("/cross-seed/search/status")
+  }
+
+  async startCrossSeedSearchRun(payload: {
+    instanceId: number
+    categories: string[]
+    tags: string[]
+    intervalSeconds: number
+    indexerIds: number[]
+    cooldownMinutes: number
+  }): Promise<CrossSeedSearchRun> {
+    return this.request<CrossSeedSearchRun>("/cross-seed/search/run", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async cancelCrossSeedSearchRun(): Promise<void> {
+    await this.request("/cross-seed/search/run/cancel", { method: "POST" })
+  }
+
+  async listCrossSeedSearchRuns(instanceId: number, params?: { limit?: number; offset?: number }): Promise<CrossSeedSearchRun[]> {
+    const search = new URLSearchParams({ instanceId: instanceId.toString() })
+    if (params?.limit !== undefined) search.set("limit", params.limit.toString())
+    if (params?.offset !== undefined) search.set("offset", params.offset.toString())
+    return this.request<CrossSeedSearchRun[]>(`/cross-seed/search/runs?${search.toString()}`)
   }
 
   async triggerCrossSeedRun(payload: { limit?: number; dryRun?: boolean } = {}): Promise<CrossSeedRun> {
