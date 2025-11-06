@@ -329,8 +329,6 @@ class ApiClient {
       limitSeedTime?: number
       contentLayout?: string
       rename?: string
-      tempPathEnabled?: boolean
-      tempPath?: string
     }
   ): Promise<{ success: boolean; message?: string }> {
     const formData = new FormData()
@@ -354,8 +352,6 @@ class ApiClient {
     if (data.rename) formData.append("rename", data.rename)
     // Only send savePath if autoTMM is false or undefined
     if (data.savePath && !data.autoTMM) formData.append("savepath", data.savePath)
-    if (data.tempPathEnabled !== undefined) formData.append("tempPathEnabled", data.tempPathEnabled.toString())
-    if (data.tempPath && data.tempPathEnabled) formData.append("temppath", data.tempPath)
 
     const response = await fetch(`${API_BASE}/instances/${instanceId}/torrents`, {
       method: "POST",

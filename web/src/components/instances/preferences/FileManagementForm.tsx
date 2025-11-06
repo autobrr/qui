@@ -202,18 +202,22 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
 
         <form.Field name="temp_path">
           {(field) => (
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Temporary Download Path</Label>
-              <p className="text-xs text-muted-foreground">
-                Directory where torrents are downloaded before moving to save path
-              </p>
-              <Input
-                value={field.state.value as string}
-                onChange={(e) => field.handleChange(e.target.value)}
-                placeholder="/temp-downloads"
-                disabled={!(form.getFieldValue("temp_path_enabled") as boolean)}
-              />
-            </div>
+            <form.Subscribe selector={(state) => state.values.temp_path_enabled}>
+              {(tempPathEnabled) => (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Temporary Download Path</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Directory where torrents are downloaded before moving to save path
+                  </p>
+                  <Input
+                    value={field.state.value as string}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    placeholder="/temp-downloads"
+                    disabled={!tempPathEnabled}
+                  />
+                </div>
+              )}
+            </form.Subscribe>
           )}
         </form.Field>
 
