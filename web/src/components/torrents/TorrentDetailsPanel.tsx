@@ -326,6 +326,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const displayInfohashV1 = incognitoMode && resolvedInfohashV1 ? incognitoHash : resolvedInfohashV1
   const displayInfohashV2 = incognitoMode && resolvedInfohashV2 ? incognitoHash : resolvedInfohashV2
   const displaySavePath = incognitoMode && properties?.save_path ? getLinuxSavePath(torrent.hash) : properties?.save_path
+  const tempPathEnabled = Boolean(properties?.download_path)
+  const displayTempPath = incognitoMode && properties?.download_path ? getLinuxSavePath(torrent.hash) : properties?.download_path
 
   const formatLimitLabel = (limit: number | null | undefined) => {
     if (limit == null || !Number.isFinite(limit) || limit <= 0) {
@@ -575,6 +577,30 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                         </div>
                       </div>
                     </div>
+
+                    {/* Temporary Download Path - shown if temp_path_enabled */}
+                    {tempPathEnabled && (
+                      <div className="space-y-3">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Download Path</h3>
+                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
+                          <div className="flex items-center gap-2">
+                            <div className="font-mono text-xs sm:text-sm break-all text-muted-foreground bg-background/50 rounded px-2.5 py-2 select-text flex-1">
+                              {displayTempPath || "N/A"}
+                            </div>
+                            {displayTempPath && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 shrink-0"
+                                onClick={() => copyToClipboard(displayTempPath, "Temporary path")}
+                              >
+                                <Copy className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Info Hash Display */}
                     <div className="space-y-3">

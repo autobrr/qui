@@ -8,6 +8,7 @@ import type {
   AuthResponse,
   BackupManifest,
   BackupRun,
+  BackupRunsResponse,
   BackupSettings,
   Category,
   DuplicateTorrentMatch,
@@ -220,14 +221,14 @@ class ApiClient {
     })
   }
 
-  async listBackupRuns(instanceId: number, params?: { limit?: number; offset?: number }): Promise<BackupRun[]> {
+  async listBackupRuns(instanceId: number, params?: { limit?: number; offset?: number }): Promise<BackupRunsResponse> {
     const search = new URLSearchParams()
     if (params?.limit !== undefined) search.set("limit", params.limit.toString())
     if (params?.offset !== undefined) search.set("offset", params.offset.toString())
 
     const query = search.toString()
     const suffix = query ? `?${query}` : ""
-    return this.request<BackupRun[]>(`/instances/${instanceId}/backups/runs${suffix}`)
+    return this.request<BackupRunsResponse>(`/instances/${instanceId}/backups/runs${suffix}`)
   }
 
   async getBackupManifest(instanceId: number, runId: number): Promise<BackupManifest> {

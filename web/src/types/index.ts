@@ -390,6 +390,11 @@ export interface BackupRun {
   progressPercentage?: number
 }
 
+export interface BackupRunsResponse {
+  runs: BackupRun[]
+  hasMore: boolean
+}
+
 export interface BackupManifestItem {
   hash: string
   name: string
