@@ -208,18 +208,23 @@ export function InstanceBackups() {
   })
   const runs = runsResponse?.runs ?? []
   const queryClient = useQueryClient()
+  const { data: firstPageResponse } = useBackupRuns(instanceId ?? 0, {
+    limit: BACKUPS_PER_PAGE,
+    offset: 0,
+    enabled: shouldLoadData && backupsPage > 1,
+  })
   const summaryRuns = useMemo(() => {
     if (!instanceId) return runs
     if (backupsPage === 1) return runs
-    const cached = queryClient.getQueryData<BackupRunsResponse>([
+    const freshest = firstPageResponse?.runs ?? queryClient.getQueryData<BackupRunsResponse>([
       "instance-backups",
       instanceId,
       "runs",
       BACKUPS_PER_PAGE,
       0,
-    ])
-    return cached?.runs ?? runs
-  }, [backupsPage, instanceId, queryClient, runs])
+    ])?.runs
+    return freshest ?? runs
+  }, [backupsPage, firstPageResponse, instanceId, queryClient, runs])
   const updateSettings = useUpdateBackupSettings(instanceId ?? 0)
   const triggerBackup = useTriggerBackup(instanceId ?? 0)
   const deleteRun = useDeleteBackupRun(instanceId ?? 0)
