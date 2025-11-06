@@ -1443,9 +1443,24 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		IndexerIDs: opts.IndexerIDs,
 	}
 
-	// Apply category filtering to the search request
+	// Apply category filtering to the search request with indexer-specific optimization
 	if len(contentInfo.Categories) > 0 {
-		searchReq.Categories = contentInfo.Categories
+		// If specific indexers are requested, optimize categories for those indexers
+		if len(opts.IndexerIDs) > 0 && s.jackettService != nil {
+			optimizedCategories := s.jackettService.GetOptimalCategoriesForIndexers(ctx, contentInfo.Categories, opts.IndexerIDs)
+			searchReq.Categories = optimizedCategories
+
+			log.Debug().
+				Str("torrentName", sourceTorrent.Name).
+				Str("contentType", contentInfo.ContentType).
+				Ints("originalCategories", contentInfo.Categories).
+				Ints("optimizedCategories", optimizedCategories).
+				Ints("targetIndexers", opts.IndexerIDs).
+				Msg("[CROSSSEED-SEARCH] Optimized categories for target indexers")
+		} else {
+			// Use original categories if no specific indexers or jackett service unavailable
+			searchReq.Categories = contentInfo.Categories
+		}
 
 		// Add season/episode info for TV content
 		if sourceRelease.Series > 0 {

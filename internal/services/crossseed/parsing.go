@@ -29,44 +29,44 @@ func DetermineContentType(release rls.Release) ContentTypeInfo {
 	switch release.Type {
 	case rls.Movie:
 		info.ContentType = "movie"
-		info.Categories = []int{2000}
+		info.Categories = []int{2000} // Movies
 		info.SearchType = "movie"
 		info.RequiredCaps = []string{"movie-search"}
 	case rls.Episode, rls.Series:
 		info.ContentType = "tv"
-		info.Categories = []int{5000}
+		info.Categories = []int{5000} // TV
 		info.SearchType = "tvsearch"
 		info.RequiredCaps = []string{"tv-search"}
 	case rls.Music:
 		info.ContentType = "music"
-		info.Categories = []int{3000}
+		info.Categories = []int{3000} // Audio
 		info.SearchType = "music"
-		info.RequiredCaps = []string{"music-search"}
+		info.RequiredCaps = []string{"music-search", "audio-search"}
 		info.IsMusic = true
 	case rls.Audiobook:
 		info.ContentType = "audiobook"
-		info.Categories = []int{3000}
+		info.Categories = []int{3000} // Audio
 		info.SearchType = "music"
-		info.RequiredCaps = []string{"music-search"}
+		info.RequiredCaps = []string{"music-search", "audio-search"}
 		info.IsMusic = true
 	case rls.Book:
 		info.ContentType = "book"
-		info.Categories = []int{8000}
+		info.Categories = []int{8000} // Books
 		info.SearchType = "book"
 		info.RequiredCaps = []string{"book-search"}
 	case rls.Comic:
 		info.ContentType = "comic"
-		info.Categories = []int{8020}
+		info.Categories = []int{8000} // Books (comics are under books)
 		info.SearchType = "book"
 		info.RequiredCaps = []string{"book-search"}
 	case rls.Game:
 		info.ContentType = "game"
-		info.Categories = []int{4000}
+		info.Categories = []int{4000} // PC
 		info.SearchType = "search"
 		info.RequiredCaps = []string{}
 	case rls.App:
 		info.ContentType = "app"
-		info.Categories = []int{4000}
+		info.Categories = []int{4000} // PC
 		info.SearchType = "search"
 		info.RequiredCaps = []string{}
 	default:
@@ -90,6 +90,54 @@ func DetermineContentType(release rls.Release) ContentTypeInfo {
 	}
 
 	return info
+}
+
+// OptimizeContentTypeForIndexers optimizes content type information for specific indexers
+// This function takes the basic content type and adjusts categories based on indexer capabilities
+func OptimizeContentTypeForIndexers(basicInfo ContentTypeInfo, indexerCategories []int) ContentTypeInfo {
+	if len(indexerCategories) == 0 || len(basicInfo.Categories) == 0 {
+		return basicInfo
+	}
+
+	// Create a map of available categories from the indexer
+	availableCategories := make(map[int]struct{})
+	for _, cat := range indexerCategories {
+		availableCategories[cat] = struct{}{}
+	}
+
+	// Filter the basic categories to only include those supported by the indexer
+	optimizedCategories := make([]int, 0, len(basicInfo.Categories))
+	for _, cat := range basicInfo.Categories {
+		if _, exists := availableCategories[cat]; exists {
+			optimizedCategories = append(optimizedCategories, cat)
+		} else {
+			// Try parent category
+			parent := cat / 100 * 100
+			if parent != cat {
+				if _, exists := availableCategories[parent]; exists {
+					optimizedCategories = append(optimizedCategories, parent)
+				}
+			}
+		}
+	}
+
+	// If no categories match, fall back to parent categories
+	if len(optimizedCategories) == 0 {
+		for _, cat := range basicInfo.Categories {
+			parent := cat / 100 * 100
+			if _, exists := availableCategories[parent]; exists {
+				optimizedCategories = append(optimizedCategories, parent)
+			}
+		}
+	}
+
+	// Create optimized info
+	optimizedInfo := basicInfo
+	if len(optimizedCategories) > 0 {
+		optimizedInfo.Categories = optimizedCategories
+	}
+
+	return optimizedInfo
 }
 
 // ParseMusicReleaseFromTorrentName extracts music-specific metadata from torrent name

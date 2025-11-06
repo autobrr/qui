@@ -369,6 +369,67 @@ func (s *Service) SyncIndexerCaps(ctx context.Context, indexerID int) (*models.T
 	return updated, nil
 }
 
+// MapCategoriesToIndexerCapabilities maps requested categories to categories supported by the specific indexer
+func (s *Service) MapCategoriesToIndexerCapabilities(ctx context.Context, indexer *models.TorznabIndexer, requestedCategories []int) []int {
+	if len(requestedCategories) == 0 {
+		return requestedCategories
+	}
+
+	// If indexer has no categories stored yet, return requested categories as-is
+	if len(indexer.Categories) == 0 {
+		return requestedCategories
+	}
+
+	// Build a map of available categories for this indexer
+	availableCategories := make(map[int]struct{})
+	parentCategories := make(map[int]struct{})
+
+	for _, cat := range indexer.Categories {
+		availableCategories[cat.CategoryID] = struct{}{}
+		if cat.ParentCategory != nil {
+			parentCategories[*cat.ParentCategory] = struct{}{}
+		}
+	}
+
+	// Map requested categories to what this indexer supports
+	mappedCategories := make([]int, 0, len(requestedCategories))
+
+	for _, requestedCat := range requestedCategories {
+		// Check if indexer directly supports this category
+		if _, exists := availableCategories[requestedCat]; exists {
+			mappedCategories = append(mappedCategories, requestedCat)
+			continue
+		}
+
+		// Check if this is a parent category that the indexer supports
+		if _, exists := parentCategories[requestedCat]; exists {
+			mappedCategories = append(mappedCategories, requestedCat)
+			continue
+		}
+
+		// Try to find a compatible category by checking parent categories
+		parent := deriveParentCategory(requestedCat)
+		if parent != requestedCat {
+			if _, exists := availableCategories[parent]; exists {
+				mappedCategories = append(mappedCategories, parent)
+				continue
+			}
+			if _, exists := parentCategories[parent]; exists {
+				mappedCategories = append(mappedCategories, parent)
+				continue
+			}
+		}
+	}
+
+	// If no categories mapped, return the original requested categories
+	// This allows the indexer restriction logic to handle the filtering
+	if len(mappedCategories) == 0 {
+		return requestedCategories
+	}
+
+	return mappedCategories
+}
+
 // searchMultipleIndexers searches multiple indexers in parallel and aggregates results
 func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) []Result {
 	type indexerResult struct {
@@ -542,34 +603,53 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 		s.ensureIndexerMetadata(ctx, client, idx, identifier, needCaps, needCategories)
 	}
 
+	// Check capabilities first
 	if len(requiredCaps) > 0 && len(idx.Capabilities) > 0 && !supportsAnyCapability(idx.Capabilities, requiredCaps) {
 		log.Info().
 			Int("indexer_id", idx.ID).
 			Str("indexer", idx.Name).
 			Strs("required_caps", requiredCaps).
+			Strs("indexer_caps", idx.Capabilities).
 			Msg("Skipping torznab indexer due to missing capabilities")
 		return true
 	}
 
+	// If no categories requested, continue with search
 	if len(requested) == 0 {
 		return false
 	}
 
+	// If indexer has no categories stored, continue (will use requested categories as-is)
 	if len(idx.Categories) == 0 {
 		return false
 	}
 
-	filtered, ok := filterCategoriesForIndexer(idx.Categories, requested)
+	// Map requested categories to what this indexer actually supports
+	mappedCategories := s.MapCategoriesToIndexerCapabilities(ctx, idx, requested)
+
+	// Filter mapped categories through indexer's supported categories
+	filtered, ok := filterCategoriesForIndexer(idx.Categories, mappedCategories)
 	if !ok {
 		log.Info().
 			Int("indexer_id", idx.ID).
 			Str("indexer", idx.Name).
 			Ints("requested_categories", requested).
+			Ints("mapped_categories", mappedCategories).
 			Msg("Skipping torznab indexer due to unsupported categories")
 		return true
 	}
 
+	// Update the params with the filtered categories
 	params["cat"] = formatCategoryList(filtered)
+
+	log.Debug().
+		Int("indexer_id", idx.ID).
+		Str("indexer", idx.Name).
+		Ints("requested_categories", requested).
+		Ints("mapped_categories", mappedCategories).
+		Ints("filtered_categories", filtered).
+		Msg("Applied category mapping and filtering for indexer")
+
 	return false
 }
 
@@ -1033,6 +1113,60 @@ func extractIndexerIDFromURL(baseURL, indexerName string) string {
 	// If no indexer ID found in URL, return the indexer name
 	// This handles cases where BaseURL is just the Jackett base URL
 	return strings.ToLower(strings.ReplaceAll(indexerName, " ", ""))
+}
+
+// GetOptimalCategoriesForIndexers returns categories optimized for the given indexers based on their capabilities
+func (s *Service) GetOptimalCategoriesForIndexers(ctx context.Context, requestedCategories []int, indexerIDs []int) []int {
+	if len(requestedCategories) == 0 || len(indexerIDs) == 0 {
+		return requestedCategories
+	}
+
+	// Get all specified indexers
+	var indexers []*models.TorznabIndexer
+	for _, id := range indexerIDs {
+		indexer, err := s.indexerStore.Get(ctx, id)
+		if err != nil {
+			log.Debug().Err(err).Int("indexer_id", id).Msg("Failed to get indexer for category mapping")
+			continue
+		}
+		if indexer.Enabled {
+			indexers = append(indexers, indexer)
+		}
+	}
+
+	if len(indexers) == 0 {
+		return requestedCategories
+	}
+
+	// Find the intersection of categories supported by all indexers
+	commonCategories := make(map[int]int) // category -> count of indexers supporting it
+
+	for _, indexer := range indexers {
+		mappedCategories := s.MapCategoriesToIndexerCapabilities(ctx, indexer, requestedCategories)
+		for _, cat := range mappedCategories {
+			commonCategories[cat]++
+		}
+	}
+
+	// Return categories that are supported by most indexers
+	threshold := len(indexers) / 2 // At least half of the indexers should support it
+	if threshold < 1 {
+		threshold = 1
+	}
+
+	optimalCategories := make([]int, 0, len(requestedCategories))
+	for _, requestedCat := range requestedCategories {
+		if count, exists := commonCategories[requestedCat]; exists && count >= threshold {
+			optimalCategories = append(optimalCategories, requestedCat)
+		}
+	}
+
+	// If no optimal categories found, return original requested categories
+	if len(optimalCategories) == 0 {
+		return requestedCategories
+	}
+
+	return optimalCategories
 }
 
 func resolveCapsIdentifier(indexer *models.TorznabIndexer) (string, error) {
