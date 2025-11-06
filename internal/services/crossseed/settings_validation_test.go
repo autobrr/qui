@@ -63,7 +63,7 @@ func TestUpdateAutomationSettingsSizeValidation(t *testing.T) {
 			if tt.expectError && err == nil {
 				t.Errorf("Expected error but got none")
 			}
-			if !tt.expectError && err == nil {
+			if !tt.expectError && err != nil {
 				t.Errorf("Expected success but got error: %v", err)
 			}
 
