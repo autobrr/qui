@@ -51,6 +51,9 @@ func NewCrossSeedHandler(service *crossseed.Service) *CrossSeedHandler {
 
 // Routes registers the cross-seed routes
 func (h *CrossSeedHandler) Routes(r chi.Router) {
+	// Register instance-scoped route at top level ## placeholder based on docs ##
+	r.Get("/instances/{instanceID}/cross-seed/status", h.GetCrossSeedStatus)
+
 	r.Route("/cross-seed", func(r chi.Router) {
 		r.Post("/find-candidates", h.FindCandidates)
 		r.Post("/cross", h.CrossSeed)
