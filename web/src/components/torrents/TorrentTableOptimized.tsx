@@ -642,6 +642,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const [crossSeedApplyResult, setCrossSeedApplyResult] = useState<CrossSeedApplyResponse | null>(null)
   const [crossSeedIndexerMode, setCrossSeedIndexerMode] = useState<"all" | "custom">("all")
   const [crossSeedIndexerSelection, setCrossSeedIndexerSelection] = useState<number[]>([])
+  const [crossSeedHasSearched, setCrossSeedHasSearched] = useState(false)
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
@@ -1526,6 +1527,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     setCrossSeedIndexerMode("all")
     setCrossSeedIndexerSelection([])
     setLastSourceTorrent(null)
+    setCrossSeedHasSearched(false)
   }, [])
 
   const toggleCrossSeedIndexer = useCallback((indexerId: number) => {
@@ -1569,6 +1571,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       setCrossSeedSearchError(null)
       setCrossSeedSearchResponse(null)
       setCrossSeedApplyResult(null)
+      setCrossSeedHasSearched(true)
 
       void api
         .searchCrossSeedTorrent(instanceId, torrent.hash, {
@@ -1626,15 +1629,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       setCrossSeedTagName("cross-seed")
       setCrossSeedIndexerMode("all")
       setCrossSeedIndexerSelection([])
-      setCrossSeedSearchLoading(true)
       setCrossSeedSearchError(null)
       setCrossSeedSearchResponse(null)
+      setCrossSeedHasSearched(false)
 
-      // Analyze the torrent to get search metadata
+      // Analyze the torrent to get search metadata (for indexer filtering)
+      // Don't set loading state - this is just metadata gathering, not searching
       void api
         .analyzeTorrentForCrossSeedSearch(instanceId, torrent.hash)
         .then(torrentInfo => {
-          // Update the search response with the source torrent metadata
+          // Update the search response with the source torrent metadata only
           setCrossSeedSearchResponse({
             sourceTorrent: torrentInfo,
             results: [],
@@ -1644,9 +1648,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           const message = error instanceof Error ? error.message : "Failed to analyze torrent"
           setCrossSeedSearchError(message)
           toast.error(message)
-        })
-        .finally(() => {
-          setCrossSeedSearchLoading(false)
         })
     },
     [api, hasEnabledCrossSeedIndexers, instanceId]
@@ -3052,6 +3053,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         onUseTagChange={setCrossSeedUseTag}
         tagName={crossSeedTagName}
         onTagNameChange={setCrossSeedTagName}
+        hasSearched={crossSeedHasSearched}
       />
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>

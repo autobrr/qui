@@ -71,6 +71,7 @@ export interface CrossSeedDialogProps {
   onUseTagChange: (value: boolean) => void
   tagName: string
   onTagNameChange: (value: string) => void
+  hasSearched: boolean
 }
 
 const CrossSeedDialogComponent = ({
@@ -104,14 +105,25 @@ const CrossSeedDialogComponent = ({
   onUseTagChange,
   tagName,
   onTagNameChange,
+  hasSearched,
 }: CrossSeedDialogProps) => {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[90vw] sm:max-w-3xl">
         <DialogHeader className="min-w-0">
           <DialogTitle>Search Cross-Seeds</DialogTitle>
-          <DialogDescription className="min-w-0 truncate" title={torrent?.name}>
-            {torrent ? `Indexers scanned for "${torrent.name}"` : "Indexers scanned"}
+          <DialogDescription className="min-w-0 truncate font-medium" title={torrent?.name}>
+            <p className="truncate font-bold font-mono text-sm" title={sourceTorrent?.name ?? torrent?.name}>
+              {sourceTorrent?.name ?? torrent?.name ?? "Torrent"}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {sourceTorrent?.category && (
+                <span className="mr-2">Category: {sourceTorrent.category}</span>
+              )}
+              {sourceTorrent?.size !== undefined && (
+                <span>Size: {formatBytes(sourceTorrent.size)}</span>
+              )}
+            </p>
           </DialogDescription>
         </DialogHeader>
         <div className="min-w-0 space-y-3 overflow-hidden">
@@ -158,7 +170,7 @@ const CrossSeedDialogComponent = ({
               </div>
             )}
           </div>
-          {isLoading ? (
+          {!hasSearched ? null : isLoading ? (
             <div className="flex items-center justify-center gap-3 py-12 text-sm text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin" />
               <span>Searching indexers…</span>
@@ -177,20 +189,7 @@ const CrossSeedDialogComponent = ({
             </div>
           ) : (
             <>
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium" title={sourceTorrent?.name ?? torrent?.name}>
-                    {sourceTorrent?.name ?? torrent?.name ?? "Torrent"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {sourceTorrent?.category && (
-                      <span className="mr-2">Category: {sourceTorrent.category}</span>
-                    )}
-                    {sourceTorrent?.size !== undefined && (
-                      <span>Size: {formatBytes(sourceTorrent.size)}</span>
-                    )}
-                  </p>
-                </div>
+              <div className="flex items-start justify-end gap-4">
                 <Badge variant="outline" className="shrink-0">
                   {selectionCount} / {results.length} selected
                 </Badge>
