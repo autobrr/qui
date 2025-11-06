@@ -612,6 +612,7 @@ export function Search() {
                             size="icon"
                             onClick={() => window.open(result.info_url, '_blank')}
                             title="View details"
+                            aria-label="View details"
                           >
                             <ExternalLink className="h-4 w-4" />
                           </Button>
@@ -621,6 +622,7 @@ export function Search() {
                           size="icon"
                           onClick={() => handleAddTorrent(result)}
                           title={canAddTorrent ? 'Add to instance' : 'Select an instance to add torrents'}
+                          aria-label={canAddTorrent ? "Add to instance" : "Select an instance to add torrents"}
                           disabled={!canAddTorrent}
                         >
                           <Plus className="h-4 w-4" />
@@ -630,6 +632,7 @@ export function Search() {
                           size="icon"
                           onClick={() => handleDownload(result)}
                           title="Download"
+                          aria-label="Download"
                           >
                             <Download className="h-4 w-4" />
                           </Button>
