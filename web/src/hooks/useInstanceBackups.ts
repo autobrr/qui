@@ -50,7 +50,19 @@ export function useTriggerBackup(instanceId: number) {
     onSuccess: (run: BackupRun) => {
       queryClient.invalidateQueries({ queryKey: ["instance-backups", instanceId, "runs"] })
       queryClient.setQueriesData<BackupRunsResponse>(
-        { queryKey: ["instance-backups", instanceId, "runs"] },
+        {
+          predicate: (query) => {
+            const key = query.queryKey
+            if (!Array.isArray(key)) {
+              return false
+            }
+            const [, keyInstanceId, section, , offset] = key
+            if (keyInstanceId !== instanceId || section !== "runs") {
+              return false
+            }
+            return offset === 0 || offset === null || offset === undefined
+          },
+        },
         (existing) => {
           if (!existing) {
             return { runs: [run], hasMore: false }
