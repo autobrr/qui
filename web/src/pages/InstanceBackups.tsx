@@ -77,12 +77,13 @@ import type {
   BackupRun,
   BackupRunKind,
   BackupRunStatus,
+  BackupRunsResponse,
   RestoreDiffChange,
   RestoreMode,
   RestorePlan,
   RestoreResult
 } from "@/types"
-import { useQueries } from "@tanstack/react-query"
+import { useQueries, useQueryClient } from "@tanstack/react-query"
 
 type SettingsFormState = {
   enabled: boolean
@@ -206,6 +207,19 @@ export function InstanceBackups() {
     enabled: shouldLoadData
   })
   const runs = runsResponse?.runs ?? []
+  const queryClient = useQueryClient()
+  const summaryRuns = useMemo(() => {
+    if (!instanceId) return runs
+    if (backupsPage === 1) return runs
+    const cached = queryClient.getQueryData<BackupRunsResponse>([
+      "instance-backups",
+      instanceId,
+      "runs",
+      BACKUPS_PER_PAGE,
+      0,
+    ])
+    return cached?.runs ?? runs
+  }, [backupsPage, instanceId, queryClient, runs])
   const updateSettings = useUpdateBackupSettings(instanceId ?? 0)
   const triggerBackup = useTriggerBackup(instanceId ?? 0)
   const deleteRun = useDeleteBackupRun(instanceId ?? 0)
@@ -328,8 +342,8 @@ export function InstanceBackups() {
     }
   }, [settings])
 
-  const lastRun = useMemo(() => (runs.length > 0 ? runs[0] : undefined), [runs])
-  const hasRuns = useMemo(() => runs.length > 0, [runs])
+  const lastRun = summaryRuns.length > 0 ? summaryRuns[0] : undefined
+  const hasRuns = summaryRuns.length > 0
 
   const hasActiveCadence = useMemo(() => {
     if (!formState) return false
@@ -773,7 +787,7 @@ export function InstanceBackups() {
               {runsLoading ? (
                 <p className="text-sm text-muted-foreground">Loading...</p>
               ) : (
-                <p className="text-2xl font-bold">{runs.filter(run => run.status === "running" || run.status === "pending").length}</p>
+                <p className="text-2xl font-bold">{summaryRuns.filter(run => run.status === "running" || run.status === "pending").length}</p>
               )}
               <p className="text-xs text-muted-foreground">Pending or running backups</p>
             </CardContent>
