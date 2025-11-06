@@ -105,6 +105,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("metricsHost", "127.0.0.1")
 	c.viper.SetDefault("metricsPort", 9074)
 	c.viper.SetDefault("metricsBasicAuthUsers", "")
+	c.viper.SetDefault("externalProgramAllowList", []string{})
 
 	// OIDC defaults
 	c.viper.SetDefault("oidcEnabled", false)
@@ -333,6 +334,14 @@ logLevel = "{{ .logLevel }}"
 # Example: "prometheus:$2y$10$example_bcrypt_hash_here"
 # Leave empty to disable authentication (default)
 #metricsBasicAuthUsers = ""
+
+# External program allow list
+# Restrict which executables can be started from qui.
+# Provide absolute paths to binaries or directories. Leave commented to allow any program.
+#externalProgramAllowList = [
+#       "/usr/local/bin/my-script",
+#       "/home/user/bin",
+#]
 
 # OpenID Connect (OIDC) Configuration
 # Enable OIDC authentication

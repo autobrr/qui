@@ -22,6 +22,8 @@ type Config struct {
 	MetricsPort           int    `toml:"metricsPort" mapstructure:"metricsPort"`
 	MetricsBasicAuthUsers string `toml:"metricsBasicAuthUsers" mapstructure:"metricsBasicAuthUsers"`
 
+	ExternalProgramAllowList []string `toml:"externalProgramAllowList" mapstructure:"externalProgramAllowList"`
+
 	// OIDC Configuration
 	OIDCEnabled             bool   `toml:"oidcEnabled" mapstructure:"oidcEnabled"`
 	OIDCIssuer              string `toml:"oidcIssuer" mapstructure:"oidcIssuer"`
