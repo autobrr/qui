@@ -63,7 +63,7 @@ func TestDetermineContentType(t *testing.T) {
 			wantType:    "audiobook",
 			wantCats:    []int{3000},
 			wantSearch:  "music",
-			wantCaps:    []string{"audio-search", "music-search"},
+			wantCaps:    []string{"music-search", "audio-search"},
 			wantIsMusic: true,
 		},
 		{

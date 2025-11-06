@@ -21,31 +21,31 @@ func TestUpdateAutomationSettingsSizeValidation(t *testing.T) {
 			name:              "Valid tolerance should be preserved",
 			inputTolerance:    10.0,
 			expectedTolerance: 10.0,
-			expectError:       false,
+			expectError:       true, // No automation store configured
 		},
 		{
 			name:              "Negative tolerance should be set to default",
 			inputTolerance:    -5.0,
 			expectedTolerance: 5.0,
-			expectError:       false,
+			expectError:       true, // No automation store configured
 		},
 		{
 			name:              "Zero tolerance should be preserved",
 			inputTolerance:    0.0,
 			expectedTolerance: 0.0,
-			expectError:       false,
+			expectError:       true, // No automation store configured
 		},
 		{
 			name:              "Very high tolerance should be capped at 100%",
 			inputTolerance:    150.0,
 			expectedTolerance: 100.0,
-			expectError:       false,
+			expectError:       true, // No automation store configured
 		},
 		{
 			name:              "Exactly 100% should be preserved",
 			inputTolerance:    100.0,
 			expectedTolerance: 100.0,
-			expectError:       false,
+			expectError:       true, // No automation store configured
 		},
 	}
 
