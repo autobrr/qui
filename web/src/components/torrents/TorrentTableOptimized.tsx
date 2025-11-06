@@ -113,6 +113,7 @@ import {
 } from "lucide-react"
 import { createPortal } from "react-dom"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
+import { DeleteFilesPreference } from "./DeleteFilesPreference"
 import { DraggableTableHeader } from "./DraggableTableHeader"
 import { SelectAllHotkey } from "./SelectAllHotkey"
 import {
@@ -130,7 +131,6 @@ import {
 } from "./TorrentDialogs"
 import { TorrentDropZone } from "./TorrentDropZone"
 import { createColumns } from "./TorrentTableColumns"
-import { DeleteFilesPreference } from "./DeleteFilesPreference"
 
 const TABLE_ALLOWED_VIEW_MODES = ["normal", "compact"] as const
 
@@ -404,7 +404,7 @@ const CompactRow = memo(({
   return (
     <div
       className={cn(
-        "flex flex-col gap-1 px-3 py-2 border-b cursor-pointer hover:bg-muted/50",
+        "relative flex flex-col gap-1 px-3 py-2 border-b cursor-pointer hover:bg-muted/50 overflow-hidden",
         isRowSelected && "bg-muted/50",
         isSelected && "bg-accent"
       )}
@@ -412,6 +412,16 @@ const CompactRow = memo(({
       onClick={(e) => onClick(e)}
       onContextMenu={onContextMenu}
     >
+      {/* Progress background overlay - only show when downloading */}
+      {torrent.progress < 1 && (
+        <div
+          className="absolute inset-0 -z-10 bg-primary/10 transition-all duration-300"
+          style={{
+            width: `${Math.min(100, Math.max(0, torrent.progress * 100))}%`,
+          }}
+          aria-hidden="true"
+        />
+      )}
       {/* Name with progress inline */}
       <div className="flex items-center gap-2">
         <div

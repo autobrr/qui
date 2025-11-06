@@ -3404,6 +3404,14 @@ func (sm *SyncManager) SetTorrentFilePriority(ctx context.Context, instanceID in
 		}
 	}
 
+	// Invalidate file cache since priorities changed
+	if fm := sm.getFilesManager(); fm != nil {
+		if err := fm.InvalidateCache(ctx, instanceID, hash); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
+				Msg("Failed to invalidate file cache after priority change")
+		}
+	}
+
 	sm.syncAfterModification(instanceID, client, "set_file_priority")
 
 	return nil
