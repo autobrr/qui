@@ -693,8 +693,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     })
   }, [enabledTorznabIndexers])
 
+  // Store the last known source torrent to maintain filtering during search
+  const [lastSourceTorrent, setLastSourceTorrent] = useState<CrossSeedTorrentSearchResponse["sourceTorrent"] | null>(null)
+
+  // Update the last source torrent when we get a new response
+  useEffect(() => {
+    if (crossSeedSearchResponse?.sourceTorrent) {
+      setLastSourceTorrent(crossSeedSearchResponse.sourceTorrent)
+    }
+  }, [crossSeedSearchResponse?.sourceTorrent])
+
   const crossSeedIndexerOptions = useMemo(() => {
-    const sourceTorrent = crossSeedSearchResponse?.sourceTorrent
+    // Use current response's source torrent, or fall back to the last known one
+    const sourceTorrent = crossSeedSearchResponse?.sourceTorrent ?? lastSourceTorrent
     if (!sourceTorrent) {
       return sortedEnabledIndexers.map(indexer => ({ id: indexer.id, name: indexer.name }))
     }
@@ -723,7 +734,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     })
 
     return filteredIndexers.map(indexer => ({ id: indexer.id, name: indexer.name }))
-  }, [sortedEnabledIndexers, crossSeedSearchResponse])
+  }, [sortedEnabledIndexers, crossSeedSearchResponse, lastSourceTorrent])
 
   const { data: crossSeedSettings } = useQuery({
     queryKey: ["cross-seed", "settings"],
@@ -1514,6 +1525,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     setCrossSeedApplyResult(null)
     setCrossSeedIndexerMode("all")
     setCrossSeedIndexerSelection([])
+    setLastSourceTorrent(null)
   }, [])
 
   const toggleCrossSeedIndexer = useCallback((indexerId: number) => {
