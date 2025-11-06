@@ -311,7 +311,15 @@ func (s *Service) automationLoop(ctx context.Context) {
 				RequestedBy: "scheduler",
 				Mode:        models.CrossSeedRunModeAuto,
 			}); err != nil {
-				if !errors.Is(err, ErrAutomationRunning) {
+				if errors.Is(err, ErrAutomationRunning) {
+					// Add a short delay to prevent tight loop when automation is already running
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(150 * time.Millisecond):
+						// Continue after delay
+					}
+				} else {
 					log.Warn().Err(err).Msg("Cross-seed automation run failed")
 				}
 			}
