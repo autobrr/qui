@@ -451,6 +451,18 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 
 	for _, indexer := range indexers {
 		go func(idx *models.TorznabIndexer) {
+			defer func() {
+				if r := recover(); r != nil {
+					err := fmt.Errorf("panic in indexer goroutine: %v", r)
+					log.Error().
+						Err(err).
+						Int("indexer_id", idx.ID).
+						Str("indexer", idx.Name).
+						Msg("Recovered from panic in indexer search")
+					resultsChan <- indexerResult{nil, err}
+				}
+			}()
+
 			// Get decrypted API key
 			apiKey, err := s.indexerStore.GetDecryptedAPIKey(idx)
 			if err != nil {
