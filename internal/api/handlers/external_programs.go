@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -19,6 +21,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
@@ -26,12 +29,14 @@ import (
 type ExternalProgramsHandler struct {
 	externalProgramStore *models.ExternalProgramStore
 	clientPool           *qbittorrent.ClientPool
+	config               *domain.Config
 }
 
-func NewExternalProgramsHandler(store *models.ExternalProgramStore, pool *qbittorrent.ClientPool) *ExternalProgramsHandler {
+func NewExternalProgramsHandler(store *models.ExternalProgramStore, pool *qbittorrent.ClientPool, cfg *domain.Config) *ExternalProgramsHandler {
 	return &ExternalProgramsHandler{
 		externalProgramStore: store,
 		clientPool:           pool,
+		config:               cfg,
 	}
 }
 
@@ -65,8 +70,14 @@ func (h *ExternalProgramsHandler) CreateExternalProgram(w http.ResponseWriter, r
 		return
 	}
 
+	req.Path = strings.TrimSpace(req.Path)
 	if req.Path == "" {
 		http.Error(w, "Path is required", http.StatusBadRequest)
+		return
+	}
+
+	if !h.isPathAllowed(req.Path) {
+		http.Error(w, "Program path is not allowed", http.StatusForbidden)
 		return
 	}
 
@@ -114,8 +125,14 @@ func (h *ExternalProgramsHandler) UpdateExternalProgram(w http.ResponseWriter, r
 		return
 	}
 
+	req.Path = strings.TrimSpace(req.Path)
 	if req.Path == "" {
 		http.Error(w, "Path is required", http.StatusBadRequest)
+		return
+	}
+
+	if !h.isPathAllowed(req.Path) {
+		http.Error(w, "Program path is not allowed", http.StatusForbidden)
 		return
 	}
 
@@ -203,6 +220,11 @@ func (h *ExternalProgramsHandler) ExecuteExternalProgram(w http.ResponseWriter, 
 		}
 		log.Error().Err(err).Int("programId", req.ProgramID).Msg("Failed to get external program")
 		http.Error(w, "Failed to get program configuration", http.StatusInternalServerError)
+		return
+	}
+
+	if !h.isPathAllowed(program.Path) {
+		http.Error(w, "Program path is not allowed", http.StatusForbidden)
 		return
 	}
 
@@ -418,6 +440,70 @@ func (h *ExternalProgramsHandler) buildArguments(template string, torrentData ma
 	}
 
 	return args
+}
+
+func (h *ExternalProgramsHandler) isPathAllowed(programPath string) bool {
+	programPath = strings.TrimSpace(programPath)
+	if programPath == "" {
+		return false
+	}
+
+	if h == nil || h.config == nil {
+		return true
+	}
+
+	allowList := h.config.ExternalProgramAllowList
+	if len(allowList) == 0 {
+		return true
+	}
+
+	cleanedProgramPath, err := filepath.Abs(programPath)
+	if err != nil {
+		cleanedProgramPath = filepath.Clean(programPath)
+	}
+	cleanedProgramPath = filepath.Clean(cleanedProgramPath)
+	normalizedProgramPath := normalizePathCase(cleanedProgramPath)
+
+	sep := string(os.PathSeparator)
+
+	for _, allowed := range allowList {
+		allowed = strings.TrimSpace(allowed)
+		if allowed == "" {
+			continue
+		}
+
+		allowedPath, err := filepath.Abs(allowed)
+		if err != nil {
+			allowedPath = filepath.Clean(allowed)
+		}
+		allowedPath = filepath.Clean(allowedPath)
+		normalizedAllowedPath := normalizePathCase(allowedPath)
+
+		if normalizedProgramPath == normalizedAllowedPath {
+			return true
+		}
+
+		allowedPrefix := allowedPath
+		if !strings.HasSuffix(allowedPrefix, sep) {
+			allowedPrefix += sep
+		}
+		normalizedAllowedPrefix := normalizePathCase(allowedPrefix)
+
+		if strings.HasPrefix(normalizedProgramPath, normalizedAllowedPrefix) {
+			return true
+		}
+	}
+
+	log.Warn().Str("path", programPath).Msg("External program path blocked by allow list")
+	return false
+}
+
+func normalizePathCase(p string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(p)
+	}
+
+	return p
 }
 
 // createTerminalCommand creates a command that spawns a terminal window on Unix/Linux
