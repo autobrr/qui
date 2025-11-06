@@ -13,7 +13,6 @@
 package crossseed
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -25,7 +24,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/anacrolix/torrent/metainfo"
 	"github.com/autobrr/autobrr/pkg/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
@@ -827,7 +825,7 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	}
 
 	// Parse torrent metadata to get name, hash, and files for validation
-	torrentName, torrentHash, sourceFiles, err := s.parseTorrentMetadata(torrentBytes)
+	torrentName, torrentHash, sourceFiles, err := ParseTorrentMetadata(torrentBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse torrent: %w", err)
 	}
@@ -1189,100 +1187,6 @@ func (s *Service) decodeTorrentData(data string) ([]byte, error) {
 	return decoded, nil
 }
 
-// parseTorrentName extracts the name and info hash from torrent bytes using anacrolix/torrent
-func (s *Service) parseTorrentName(torrentBytes []byte) (name string, hash string, err error) {
-	name, hash, _, err = s.parseTorrentMetadata(torrentBytes)
-	return name, hash, err
-}
-
-func (s *Service) parseTorrentMetadata(torrentBytes []byte) (name string, hash string, files qbt.TorrentFiles, err error) {
-	mi, err := metainfo.Load(bytes.NewReader(torrentBytes))
-	if err != nil {
-		return "", "", nil, fmt.Errorf("failed to parse torrent metainfo: %w", err)
-	}
-
-	info, err := mi.UnmarshalInfo()
-	if err != nil {
-		return "", "", nil, fmt.Errorf("failed to unmarshal torrent info: %w", err)
-	}
-
-	name = info.Name
-	hash = mi.HashInfoBytes().HexString()
-
-	if name == "" {
-		return "", "", nil, fmt.Errorf("torrent has no name")
-	}
-
-	files = buildTorrentFilesFromInfo(name, info)
-
-	return name, hash, files, nil
-}
-
-func buildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentFiles {
-	var files qbt.TorrentFiles
-
-	if len(info.Files) == 0 {
-		// Single file torrent
-		files = make(qbt.TorrentFiles, 1)
-		files[0] = struct {
-			Availability float32 `json:"availability"`
-			Index        int     `json:"index"`
-			IsSeed       bool    `json:"is_seed,omitempty"`
-			Name         string  `json:"name"`
-			PieceRange   []int   `json:"piece_range"`
-			Priority     int     `json:"priority"`
-			Progress     float32 `json:"progress"`
-			Size         int64   `json:"size"`
-		}{
-			Availability: 1,
-			Index:        0,
-			IsSeed:       true,
-			Name:         rootName,
-			PieceRange:   []int{0, 0},
-			Priority:     0,
-			Progress:     1,
-			Size:         info.Length,
-		}
-		return files
-	}
-
-	files = make(qbt.TorrentFiles, len(info.Files))
-	for i, f := range info.Files {
-		displayPath := f.DisplayPath(&info)
-		name := rootName
-		if info.IsDir() && displayPath != "" {
-			name = strings.Join([]string{rootName, displayPath}, "/")
-		} else if !info.IsDir() && displayPath != "" {
-			name = displayPath
-		}
-
-		pieceStart := f.BeginPieceIndex(info.PieceLength)
-		pieceEnd := f.EndPieceIndex(info.PieceLength)
-
-		files[i] = struct {
-			Availability float32 `json:"availability"`
-			Index        int     `json:"index"`
-			IsSeed       bool    `json:"is_seed,omitempty"`
-			Name         string  `json:"name"`
-			PieceRange   []int   `json:"piece_range"`
-			Priority     int     `json:"priority"`
-			Progress     float32 `json:"progress"`
-			Size         int64   `json:"size"`
-		}{
-			Availability: 1,
-			Index:        i,
-			IsSeed:       true,
-			Name:         name,
-			PieceRange:   []int{pieceStart, pieceEnd},
-			Priority:     0,
-			Progress:     1,
-			Size:         f.Length,
-		}
-	}
-
-	return files
-}
-
 // determineSavePath determines the appropriate save path for cross-seeding
 // This handles various scenarios:
 // - Season pack being added when individual episodes exist
@@ -1340,59 +1244,6 @@ func (s *Service) determineSavePath(newTorrentName string, matchedTorrent *qbt.T
 	return baseSavePath
 }
 
-// parseMusicReleaseFromTorrentName extracts music-specific metadata from torrent name
-// First tries RLS's built-in parsing, then falls back to manual "Artist - Album" format parsing
-func parseMusicReleaseFromTorrentName(baseRelease rls.Release, torrentName string) rls.Release {
-	// First, try RLS's built-in parsing on the torrent name directly
-	// This can handle complex release names like "Artist-Album-Edition-Source-Year-GROUP"
-	torrentRelease := rls.ParseString(torrentName)
-
-	// If RLS detected it as music and extracted artist/title, use that
-	if torrentRelease.Type == rls.Music && torrentRelease.Artist != "" && torrentRelease.Title != "" {
-		// Use RLS's parsed results but preserve any content-based detection from baseRelease
-		musicRelease := torrentRelease
-		// Keep any fields from content detection that might be more accurate
-		if baseRelease.Type == rls.Music {
-			musicRelease.Type = rls.Music
-		}
-		return musicRelease
-	}
-
-	// Fallback: use our manual parsing approach for simpler names
-	musicRelease := baseRelease
-	musicRelease.Type = rls.Music // Ensure it's marked as music
-
-	cleanName := torrentName
-
-	// Extract release group if present [GROUP]
-	if strings.Contains(cleanName, "[") && strings.Contains(cleanName, "]") {
-		groupStart := strings.LastIndex(cleanName, "[")
-		groupEnd := strings.LastIndex(cleanName, "]")
-		if groupEnd > groupStart {
-			musicRelease.Group = strings.TrimSpace(cleanName[groupStart+1 : groupEnd])
-			cleanName = strings.TrimSpace(cleanName[:groupStart])
-		}
-	}
-
-	// Remove year (YYYY) from the end for parsing
-	if strings.Contains(cleanName, "(") && strings.Contains(cleanName, ")") {
-		yearStart := strings.LastIndex(cleanName, "(")
-		yearEnd := strings.LastIndex(cleanName, ")")
-		if yearEnd > yearStart {
-			cleanName = strings.TrimSpace(cleanName[:yearStart])
-		}
-	}
-
-	// Parse "Artist - Album" format
-	if parts := strings.Split(cleanName, " - "); len(parts) >= 2 {
-		musicRelease.Artist = strings.TrimSpace(parts[0])
-		// Join remaining parts as album title (in case there are multiple " - " separators)
-		musicRelease.Title = strings.TrimSpace(strings.Join(parts[1:], " - "))
-	}
-
-	return musicRelease
-}
-
 // AnalyzeTorrentForSearch analyzes a torrent and returns metadata about how it would be searched,
 // without actually performing the search. This is useful for the UI to show what will be searched
 // and to filter indexers based on required capabilities.
@@ -1431,7 +1282,7 @@ func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, h
 	contentDetectionRelease := sourceRelease
 
 	if sourceFiles != nil && len(*sourceFiles) > 0 {
-		largestFile := s.findLargestFile(*sourceFiles)
+		largestFile := FindLargestFile(*sourceFiles)
 		if largestFile != nil {
 			largestFileRelease := s.releaseCache.Parse(largestFile.Name)
 			largestFileRelease = enrichReleaseFromTorrent(largestFileRelease, sourceRelease)
@@ -1441,71 +1292,8 @@ func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, h
 		}
 	}
 
-	// Determine content type and categories
-	var categories []int
-	contentTypeStr := "unknown"
-
-	switch contentDetectionRelease.Type {
-	case rls.Movie:
-		categories = []int{2000, 2010, 2040, 2050}
-		contentTypeStr = "movie"
-	case rls.Episode, rls.Series:
-		categories = []int{5000, 5010, 5040, 5050}
-		contentTypeStr = "tv"
-	case rls.Music:
-		categories = []int{3000}
-		contentTypeStr = "music"
-	case rls.Audiobook:
-		categories = []int{3000}
-		contentTypeStr = "audiobook"
-	case rls.Book:
-		categories = []int{8000, 8010}
-		contentTypeStr = "book"
-	case rls.Comic:
-		categories = []int{8020}
-		contentTypeStr = "comic"
-	case rls.Game:
-		categories = []int{4000}
-		contentTypeStr = "game"
-	case rls.App:
-		categories = []int{4000}
-		contentTypeStr = "app"
-	default:
-		if contentDetectionRelease.Series > 0 || contentDetectionRelease.Episode > 0 {
-			categories = []int{5000, 5010, 5040, 5050}
-			contentTypeStr = "tv"
-		} else if contentDetectionRelease.Year > 0 {
-			categories = []int{2000, 2010, 2040, 2050}
-			contentTypeStr = "movie"
-		}
-	}
-
-	// Determine search type and required capabilities
-	searchType := "search"
-	var requiredCaps []string
-
-	switch contentDetectionRelease.Type {
-	case rls.Movie:
-		searchType = "movie"
-		requiredCaps = []string{"movie-search"}
-	case rls.Episode, rls.Series:
-		searchType = "tvsearch"
-		requiredCaps = []string{"tv-search"}
-	case rls.Music, rls.Audiobook:
-		searchType = "music"
-		requiredCaps = []string{"music-search"}
-	case rls.Book, rls.Comic:
-		searchType = "book"
-		requiredCaps = []string{"book-search"}
-	default:
-		if contentDetectionRelease.Series > 0 || contentDetectionRelease.Episode > 0 {
-			searchType = "tvsearch"
-			requiredCaps = []string{"tv-search"}
-		} else if contentDetectionRelease.Year > 0 {
-			searchType = "movie"
-			requiredCaps = []string{"movie-search"}
-		}
-	}
+	// Use unified content type detection
+	contentInfo := DetermineContentType(contentDetectionRelease)
 
 	return &TorrentInfo{
 		InstanceID:       instanceID,
@@ -1515,10 +1303,10 @@ func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, h
 		Category:         sourceTorrent.Category,
 		Size:             sourceTorrent.Size,
 		Progress:         sourceTorrent.Progress,
-		ContentType:      contentTypeStr,
-		SearchType:       searchType,
-		SearchCategories: categories,
-		RequiredCaps:     requiredCaps,
+		ContentType:      contentInfo.ContentType,
+		SearchType:       contentInfo.SearchType,
+		SearchCategories: contentInfo.Categories,
+		RequiredCaps:     contentInfo.RequiredCaps,
 	}, nil
 }
 
@@ -1563,7 +1351,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	// For content type detection, use the largest file if available
 	var contentDetectionRelease rls.Release = sourceRelease
 	if sourceFiles != nil && len(*sourceFiles) > 0 {
-		largestFile := s.findLargestFile(*sourceFiles)
+		largestFile := FindLargestFile(*sourceFiles)
 		if largestFile != nil {
 			largestFileRelease := s.releaseCache.Parse(largestFile.Name)
 			// Use the largest file for content type detection, but enrich with torrent metadata
@@ -1583,58 +1371,16 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 	}
 
-	// Determine content type first to inform query generation
-	var categories []int
-	contentTypeStr := "unknown"
-	isMusic := false
-
-	switch contentDetectionRelease.Type {
-	case rls.Movie:
-		categories = []int{2000, 2010, 2040, 2050} // Movies, MoviesSD, MoviesHD, Movies4K
-		contentTypeStr = "movie"
-	case rls.Episode, rls.Series:
-		categories = []int{5000, 5010, 5040, 5050} // TV, TVSD, TVHD, TV4K
-		contentTypeStr = "tv"
-	case rls.Music:
-		categories = []int{3000} // Audio
-		contentTypeStr = "music"
-		isMusic = true
-	case rls.Audiobook:
-		categories = []int{3000} // Audio (audiobooks use same category)
-		contentTypeStr = "audiobook"
-		isMusic = true
-	case rls.Book:
-		categories = []int{8000, 8010} // Books, BooksEbook
-		contentTypeStr = "book"
-	case rls.Comic:
-		categories = []int{8020} // BooksComics
-		contentTypeStr = "comic"
-	case rls.Game:
-		categories = []int{4000} // PC
-		contentTypeStr = "game"
-	case rls.App:
-		categories = []int{4000} // PC
-		contentTypeStr = "app"
-	default:
-		// Fallback logic based on series/episode/year detection for unknown types
-		if contentDetectionRelease.Series > 0 || contentDetectionRelease.Episode > 0 {
-			categories = []int{5000, 5010, 5040, 5050} // TV categories
-			contentTypeStr = "tv"
-		} else if contentDetectionRelease.Year > 0 {
-			categories = []int{2000, 2010, 2040, 2050} // Movie categories
-			contentTypeStr = "movie"
-		}
-		// If we can't determine type, search all categories (don't set any)
-		// TODO: probably flag to stop any other content type matching
-	}
+	// Use unified content type detection with expanded categories for search
+	contentInfo := DetermineContentTypeForSearch(contentDetectionRelease)
 
 	query := strings.TrimSpace(opts.Query)
 	if query == "" {
 		// Use the appropriate release object based on content type
 		var queryRelease rls.Release
-		if isMusic && contentDetectionRelease.Type == rls.Music {
+		if contentInfo.IsMusic && contentDetectionRelease.Type == rls.Music {
 			// For music, create a proper music release object by parsing the torrent name as music
-			queryRelease = parseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
+			queryRelease = ParseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
 		} else {
 			// For other content types, use the torrent name release
 			queryRelease = sourceRelease
@@ -1642,7 +1388,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 
 		// Build a better search query from parsed release info instead of using full filename
 		if queryRelease.Title != "" {
-			if isMusic {
+			if contentInfo.IsMusic {
 				// For music, use artist and title format if available
 				if queryRelease.Artist != "" {
 					query = queryRelease.Artist + " " + queryRelease.Title
@@ -1660,7 +1406,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 			}
 
 			// For TV series, add season/episode info (but not for music)
-			if !isMusic && queryRelease.Series > 0 {
+			if !contentInfo.IsMusic && queryRelease.Series > 0 {
 				if queryRelease.Episode > 0 {
 					query += fmt.Sprintf(" S%02dE%02d", queryRelease.Series, queryRelease.Episode)
 				} else {
@@ -1671,7 +1417,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 			log.Debug().
 				Str("originalName", sourceTorrent.Name).
 				Str("generatedQuery", query).
-				Str("contentType", contentTypeStr).
+				Str("contentType", contentInfo.ContentType).
 				Msg("[CROSSSEED-SEARCH] Generated search query from parsed release")
 		} else {
 			// Fallback to full name if parsing failed
@@ -1698,8 +1444,8 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	// Apply category filtering to the search request
-	if len(categories) > 0 {
-		searchReq.Categories = categories
+	if len(contentInfo.Categories) > 0 {
+		searchReq.Categories = contentInfo.Categories
 
 		// Add season/episode info for TV content
 		if sourceRelease.Series > 0 {
@@ -1714,21 +1460,21 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 
 		// Use the appropriate release object for logging based on content type
 		var logRelease rls.Release
-		if isMusic && contentDetectionRelease.Type == rls.Music {
+		if contentInfo.IsMusic && contentDetectionRelease.Type == rls.Music {
 			// For music, create a proper music release object by parsing the torrent name as music
-			logRelease = parseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
+			logRelease = ParseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
 		} else {
 			logRelease = sourceRelease
 		}
 
 		logEvent := log.Debug().
 			Str("torrentName", sourceTorrent.Name).
-			Str("contentType", contentTypeStr).
-			Ints("categories", categories).
+			Str("contentType", contentInfo.ContentType).
+			Ints("categories", contentInfo.Categories).
 			Int("year", logRelease.Year)
 
 		// Show different metadata based on content type
-		if !isMusic {
+		if !contentInfo.IsMusic {
 			// For TV/Movies, show series/episode data
 			logEvent = logEvent.
 				Str("releaseType", logRelease.Type.String()).
@@ -1828,34 +1574,6 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		Float64("tolerancePercent", settings.SizeMismatchTolerancePercent).
 		Msg("[CROSSSEED-SEARCH] Search filtering completed")
 
-	// Determine search type based on content type
-	searchType := "search" // Default fallback
-	var requiredCaps []string
-
-	switch contentDetectionRelease.Type {
-	case rls.Movie:
-		searchType = "movie"
-		requiredCaps = []string{"movie-search"}
-	case rls.Episode, rls.Series:
-		searchType = "tvsearch"
-		requiredCaps = []string{"tv-search"}
-	case rls.Music, rls.Audiobook:
-		searchType = "music"
-		requiredCaps = []string{"music-search"}
-	case rls.Book, rls.Comic:
-		searchType = "book"
-		requiredCaps = []string{"book-search"}
-	default:
-		// For unknown types that matched series/episode, use tvsearch
-		if contentDetectionRelease.Series > 0 || contentDetectionRelease.Episode > 0 {
-			searchType = "tvsearch"
-			requiredCaps = []string{"tv-search"}
-		} else if contentDetectionRelease.Year > 0 {
-			searchType = "movie"
-			requiredCaps = []string{"movie-search"}
-		}
-	}
-
 	sourceInfo := TorrentInfo{
 		InstanceID:       instanceID,
 		InstanceName:     instance.Name,
@@ -1864,10 +1582,10 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		Category:         sourceTorrent.Category,
 		Size:             sourceTorrent.Size,
 		Progress:         sourceTorrent.Progress,
-		ContentType:      contentTypeStr,
-		SearchType:       searchType,
-		SearchCategories: categories,
-		RequiredCaps:     requiredCaps,
+		ContentType:      contentInfo.ContentType,
+		SearchType:       contentInfo.SearchType,
+		SearchCategories: contentInfo.Categories,
+		RequiredCaps:     contentInfo.RequiredCaps,
 	}
 
 	if len(scored) == 0 {
@@ -2305,35 +2023,6 @@ func (s *Service) waitForTorrentRecheck(ctx context.Context, instanceID int, tor
 
 		return torrent
 	}
-}
-
-// findLargestFile returns the file with the largest size from a list of torrent files.
-// This is useful for content type detection as the largest file usually represents the main content.
-func (s *Service) findLargestFile(files qbt.TorrentFiles) *struct {
-	Availability float32 `json:"availability"`
-	Index        int     `json:"index"`
-	IsSeed       bool    `json:"is_seed,omitempty"`
-	Name         string  `json:"name"`
-	PieceRange   []int   `json:"piece_range"`
-	Priority     int     `json:"priority"`
-	Progress     float32 `json:"progress"`
-	Size         int64   `json:"size"`
-} {
-	if len(files) == 0 {
-		return nil
-	}
-
-	largestIndex := 0
-	largestSize := files[0].Size
-
-	for i := 1; i < len(files); i++ {
-		if files[i].Size > largestSize {
-			largestIndex = i
-			largestSize = files[i].Size
-		}
-	}
-
-	return &files[largestIndex]
 }
 
 // isSizeWithinTolerance checks if two torrent sizes are within the specified tolerance percentage.

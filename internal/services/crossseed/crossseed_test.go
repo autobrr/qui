@@ -127,7 +127,6 @@ func TestDecodeTorrentData(t *testing.T) {
 
 // TestParseTorrentName tests torrent parsing and info hash calculation
 func TestParseTorrentName(t *testing.T) {
-	s := &Service{}
 
 	tests := []struct {
 		name        string
@@ -170,7 +169,7 @@ func TestParseTorrentName(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			torrentData := createTestTorrent(t, tt.torrentName, tt.files, 256*1024)
 
-			name, hash, err := s.parseTorrentName(torrentData)
+			name, hash, err := ParseTorrentName(torrentData)
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantName, name)
 			assert.Len(t, hash, tt.wantHashLen)
@@ -181,7 +180,6 @@ func TestParseTorrentName(t *testing.T) {
 
 // TestParseTorrentName_Errors tests error cases in torrent parsing
 func TestParseTorrentName_Errors(t *testing.T) {
-	s := &Service{}
 
 	tests := []struct {
 		name    string
@@ -207,7 +205,7 @@ func TestParseTorrentName_Errors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := s.parseTorrentName(tt.data)
+			_, _, err := ParseTorrentName(tt.data)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
