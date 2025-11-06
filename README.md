@@ -140,6 +140,9 @@ QUI__METRICS_ENABLED=true   # Optional: enable Prometheus metrics (default: fals
 QUI__METRICS_HOST=127.0.0.1  # Optional: metrics server bind address (default: 127.0.0.1)
 QUI__METRICS_PORT=9074       # Optional: metrics server port (default: 9074)
 QUI__METRICS_BASIC_AUTH_USERS=user:hash  # Optional: basic auth for metrics (bcrypt hashed)
+
+# External Programs
+# Configure the allow list from `config.toml`; there is no environment override to keep it read-only from the UI.
 ```
 
 When `logPath` is set the server writes to disk using size-based rotation. Adjust `logMaxSize` and `logMaxBackups` in `config.toml` or the corresponding environment variables shown above to control the rotation thresholds and retention.
@@ -323,6 +326,19 @@ scrape_configs:
 ```
 
 All metrics are labeled with `instance_id` and `instance_name` for multi-instance monitoring.
+
+## External Programs
+
+The torrent context menu can launch local scripts or applications through configurable "external programs". To keep that power feature safe, define an allow list in `config.toml` so only trusted paths can be executed:
+
+```toml
+externalProgramAllowList = [
+  "/usr/local/bin/sonarr",
+  "/home/user/bin"  # Directories allow any executable inside them
+]
+```
+
+Leave the list empty to keep the previous behaviour (any path accepted). The allow list lives exclusively in `config.toml`, which the web UI cannot edit, so you retain control over what binaries are exposed.
 
 ## Tracker Icons
 
