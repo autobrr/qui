@@ -492,6 +492,9 @@ func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, err
 	}
 
 	// Check cache first
+	if stmts == nil || conn == nil {
+		return nil, sql.ErrConnDone
+	}
 	if s, found := stmts.Get(query); found && s != nil {
 		if tx != nil {
 			// Return transaction-specific statement
