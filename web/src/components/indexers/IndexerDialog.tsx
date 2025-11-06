@@ -228,7 +228,7 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                   type="number"
                   value={formData.priority}
                   onChange={(e) =>
-                    setFormData({ ...formData, priority: parseInt(e.target.value) })
+                    setFormData({ ...formData, priority: parseInt(e.target.value, 10) })
                   }
                   min="0"
                   autoComplete="off"
@@ -243,7 +243,7 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                   type="number"
                   value={formData.timeout_seconds}
                   onChange={(e) =>
-                    setFormData({ ...formData, timeout_seconds: parseInt(e.target.value) })
+                    setFormData({ ...formData, timeout_seconds: parseInt(e.target.value, 10) })
                   }
                   min="5"
                   max="120"
