@@ -161,8 +161,9 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
       if (allInstancesData && Array.isArray(allInstancesData)) {
         // Timeout wrapper for individual instance searches
         const searchWithTimeout = async (instance: Instance, timeoutMs: number = 15000) => {
+          let timerHandle: any
           const timeoutPromise = new Promise<CrossSeedTorrent[]>((_, reject) => {
-            setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms`)), timeoutMs)
+            timerHandle = setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms`)), timeoutMs)
           })
           
           const searchPromise = searchCrossSeedMatches(
@@ -187,6 +188,10 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
               console.warn(`Failed to search cross-seeds on instance ${instance.name}:`, error)
             }
             return []
+          } finally {
+            if (timerHandle) {
+              clearTimeout(timerHandle)
+            }
           }
         }
 
