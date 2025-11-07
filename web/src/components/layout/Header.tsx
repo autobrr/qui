@@ -492,21 +492,25 @@ export function Header({
                   {updateInfo.self_update_supported && (
                     <DropdownMenuSeparator />
                   )}
-                  <DropdownMenuItem asChild>
-                    <a
-                      href={updateInfo.html_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400 cursor-pointer"
-                    >
-                      <Download className="mr-2 h-4 w-4" />
-                      <div className="flex flex-col">
-                        <span className="font-medium">Update Available</span>
-                        <span className="text-[10px] opacity-80">Version {updateInfo.tag_name}</span>
-                      </div>
-                    </a>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
+                  {!updateInfo.self_update_supported && (
+                    <>
+                      <DropdownMenuItem asChild>
+                        <a
+                          href={updateInfo.html_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400 cursor-pointer"
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          <div className="flex flex-col">
+                            <span className="font-medium">Update Available</span>
+                            <span className="text-[10px] opacity-80">Version {updateInfo.tag_name}</span>
+                          </div>
+                        </a>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
                 </>
               )}
               <DropdownMenuItem asChild>
