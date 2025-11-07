@@ -194,7 +194,6 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
         const searchPromises = allInstancesData.map(instance => searchWithTimeout(instance))
         
         // Use Promise.allSettled to get partial results even if some instances fail/timeout
-        console.log(`Starting cross-seed search across ${allInstancesData.length} instances...`)
         const searchResults = await Promise.allSettled(searchPromises)
         
         // Process results and collect successful matches
@@ -214,9 +213,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
             }
           }
         })
-        
-        console.log(`Cross-seed search completed: ${successfulSearches}/${allInstancesData.length} instances successful, ${timedOutSearches} timed out, ${failedSearches} failed. Total matches: ${allMatches.length}`)
-        
+
         // Show summary toast if there were any issues
         if (timedOutSearches > 0 || failedSearches > 0) {
           toast.info(`Search completed with partial results`, {
@@ -236,9 +233,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
         // Remove duplicates (in case the original torrent is already in the matches)
         const uniqueConditions = [...new Set(hashConditions)]
         const hashExpression = uniqueConditions.join(' || ')
-        
-        console.log('Cross-seed filter expression:', hashExpression)
-        
+
         // Create new filters with expression - clear all other filters to ensure clean filtering
         const newFilters: TorrentFilters = {
           status: [],
@@ -251,9 +246,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           excludeTrackers: [],
           expr: hashExpression
         }
-        
-        console.log('Applying cross-seed filters:', newFilters)
-        
+
         // Apply the filter immediately - the delay was unnecessary
         onFilterChange(newFilters)
         toast.success(`Found ${allMatches.length} cross-seeded torrents (showing ${uniqueConditions.length} total)`)

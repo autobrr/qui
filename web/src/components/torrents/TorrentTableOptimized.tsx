@@ -885,18 +885,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     // If we're doing cross-seed filtering, don't send column filters to backend
     // They will be applied client-side by TanStack Table (along with sorting)
     if (isDoingCrossSeedFiltering) {
-      console.log('[TorrentTable] Cross-seed filtering detected, applying column filters and sorting client-side only')
       return filterExpr // Only use the cross-seed expression for backend
     }
     
     // For regular filtering, combine column filters with existing filters
     if (columnExpr && filterExpr) {
       const combined = `(${columnExpr}) && (${filterExpr})`
-      console.log('[TorrentTable] Combined filter expression:', {
-        columnExpr,
-        filterExpr,
-        combined
-      })
       return combined
     }
     return columnExpr || filterExpr
@@ -1304,62 +1298,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     autoResetExpanded: false,
   })
 
-  // Debug effect to track table data changes in cross-seed mode
-  useEffect(() => {
-    if (isCrossSeedFiltering) {
-      console.log('[TorrentTable] Cross-seed filtering data:', {
-        sortedTorrentsCount: sortedTorrents.length,
-        columnFiltersCount: columnFilters.length,
-        hasColumnFilters: columnFilters.length > 0,
-        tableRowCount: table.getRowModel().rows.length,
-        filteredRowCount: table.getFilteredRowModel ? table.getFilteredRowModel().rows.length : 'N/A',
-        originalTorrentsCount: torrents?.length || 0,
-        sortedTorrentsSource: sortedTorrents === torrents ? 'torrents' : 'other',
-        // Show first few torrent names to verify data content - expand to see full details
-        firstFewTorrents: sortedTorrents.slice(0, 5).map(t => ({ 
-          name: t.name?.substring(0, 30), 
-          instance: 'instanceName' in t ? (t as any).instanceName : 'N/A',
-          hash: t.hash?.substring(0, 12)
-        })),
-        // Show all unique instance names to see if cross-seed data is preserved
-        allInstances: [...new Set(sortedTorrents.map(t => 'instanceName' in t ? (t as any).instanceName : 'N/A'))],
-        // Show the actual table rows being rendered
-        actualTableRows: table.getRowModel().rows.slice(0, 5).map(row => ({
-          id: row.id,
-          name: row.original.name?.substring(0, 30),
-          instance: 'instanceName' in row.original ? (row.original as any).instanceName : 'N/A'
-        })),
-        // Debug TanStack Table internal state
-        tableState: {
-          columnFilters: table.getState().columnFilters,
-          hasFilters: table.getState().columnFilters.length > 0,
-          coreRowCount: table.getCoreRowModel().rows.length,
-          currentRowModel: table.getRowModel().rows.length,
-          isUsingFilteredModel: table.getRowModel() === table.getFilteredRowModel()
-        },
-        // Debug virtualization state
-        virtualizationState: {
-          safeLoadedRows,
-          loadedRows,
-          virtualizerTotalSize: virtualizer.getTotalSize(),
-          virtualRowsLength: virtualRows.length,
-          isLoadingMoreRows,
-          // Show virtual rows indices being rendered
-          virtualRowIndices: virtualRows.map(vr => vr.index)
-        }
-      })
-    }
-  }, [isCrossSeedFiltering, sortedTorrents.length, columnFilters.length, table, torrents, sortedTorrents])
-
   // Fix virtualization when column filters are cleared in cross-seed mode
   useEffect(() => {
     if (isCrossSeedFiltering && columnFilters.length === 0) {
-      console.log('[TorrentTable] Column filters cleared in cross-seed mode, fixing virtualization')
-      console.log('[TorrentTable] Current loadedRows:', loadedRows, 'sortedTorrents.length:', sortedTorrents.length)
       // Reset loadedRows to ensure all rows are visible when filters are cleared
       const targetRows = Math.min(100, sortedTorrents.length)
       if (loadedRows < targetRows) {
-        console.log('[TorrentTable] Setting loadedRows from', loadedRows, 'to', targetRows)
         setLoadedRows(targetRows)
       }
     }
@@ -1748,8 +1692,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Filter lifecycle state machine
   useLayoutEffect(() => {
     if (filterLifecycleState === 'clearing-all' || filterLifecycleState === 'clearing-columns-only') {
-      console.log('[TorrentTable] Executing atomic clear operation, mode:', filterLifecycleState)
-      
+
       // Perform clearing operations atomically
       setColumnFilters([]);
       setSorting([]);
@@ -1762,7 +1705,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       
       // Only clear parent filters if clearing all (not just columns)
       if (filterLifecycleState === 'clearing-all') {
-        console.log('[TorrentTable] Clearing ALL filters including parent filters')
         const emptyFilters: TorrentFilters = {
           status: [],
           excludeStatus: [],
@@ -1774,10 +1716,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           excludeTrackers: []
         };
         onFilterChange?.(emptyFilters);
-      } else {
-        console.log('[TorrentTable] Clearing COLUMNS ONLY, preserving parent filters')
       }
-      
+
       // Transition to cleared state
       setFilterLifecycleState('cleared');
     } else if (filterLifecycleState === 'cleared') {
@@ -2247,21 +2187,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                           size="icon"
                           className="relative mr-1"
                           onClick={() => {
-                            console.log('[TorrentTable] CLEAR BUTTON CLICKED!')
-                            console.log('[TorrentTable] isCrossSeedFiltering:', isCrossSeedFiltering)
-                            console.log('[TorrentTable] Clearing column filters, isCrossSeedFiltering:', isCrossSeedFiltering, 'current torrents count:', sortedTorrents.length)
-                            console.log('[TorrentTable] Before clearing - table state:', {
-                              coreRows: table.getCoreRowModel().rows.length,
-                              currentRows: table.getRowModel().rows.length,
-                              filteredRows: table.getFilteredRowModel().rows.length,
-                              columnFilters: table.getState().columnFilters
-                            })
-                            console.log('[TorrentTable] Before clearing - loadedRows:', loadedRows, 'safeLoadedRows:', safeLoadedRows)
-                            
                             // Use atomic filter clearing to avoid race conditions
                             // Only clear column filters in cross-seed mode, clear all filters otherwise
                             const clearingMode = isCrossSeedFiltering ? 'columns-only' : 'all'
-                            console.log('[TorrentTable] Using clearing mode:', clearingMode)
                             clearFiltersAtomically(clearingMode)
                           }}
                         >
