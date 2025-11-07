@@ -793,6 +793,7 @@ class ApiClient {
   async getLatestVersion(): Promise<{
     tag_name: string
     name?: string
+    body?: string
     html_url: string
     published_at: string
     self_update_supported: boolean
@@ -801,6 +802,7 @@ class ApiClient {
       const response = await this.request<{
         tag_name: string
         name?: string
+        body?: string
         html_url: string
         published_at: string
         self_update_supported: boolean

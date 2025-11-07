@@ -3,13 +3,13 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { defineConfig } from "vite"
-import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
-import { VitePWA } from "vite-plugin-pwa"
-import { nodePolyfills } from "vite-plugin-node-polyfills"
+import react from "@vitejs/plugin-react"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { defineConfig } from "vite"
+import { nodePolyfills } from "vite-plugin-node-polyfills"
+import { VitePWA } from "vite-plugin-pwa"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -35,7 +35,7 @@ export default defineConfig(() => ({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp}"],
-        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // Allow larger bundles to be precached
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // Allow larger bundles to be precached
         sourcemap: true,
         // Avoid serving the SPA shell for backend proxy routes (also under custom base URLs)
         navigateFallbackDenylist: [/^\/api/, /\/proxy(?:\/|$)/],

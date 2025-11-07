@@ -30,6 +30,7 @@ func NewVersionHandler(updateService *update.Service) *VersionHandler {
 type LatestVersionResponse struct {
 	TagName             string `json:"tag_name"`
 	Name                string `json:"name,omitempty"`
+	Body                string `json:"body,omitempty"`
 	HTMLURL             string `json:"html_url"`
 	PublishedAt         string `json:"published_at"`
 	SelfUpdateSupported bool   `json:"self_update_supported"`
@@ -53,6 +54,10 @@ func (h *VersionHandler) GetLatestVersion(w http.ResponseWriter, r *http.Request
 
 	if release.Name != nil {
 		response.Name = *release.Name
+	}
+
+	if release.Body != nil {
+		response.Body = *release.Body
 	}
 
 	w.Header().Set("Content-Type", "application/json")
