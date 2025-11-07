@@ -2734,11 +2734,21 @@ components:
           items:
             type: string
           description: Filter by torrent status
+        excludeStatus:
+          type: array
+          items:
+            type: string
+          description: Array of strings to omit torrents with these statuses
         categories:
           type: array
           items:
             type: string
           description: Filter by categories
+        excludeCategories:
+          type: array
+          items:
+            type: string
+          description: Array of strings to omit specified categories
         tags:
           type: array
           items:
@@ -2754,6 +2764,16 @@ components:
           items:
             type: string
           description: Filter by tracker hostnames
+        excludeTrackers:
+          type: array
+          items:
+            type: string
+          description: Array of tracker hostnames to exclude
+        hashes:
+          type: array
+          items:
+            type: string
+          description: Array of torrent hashes to explicitly include
 
 tags:
   - name: Authentication
