@@ -482,12 +482,18 @@ export const useCrossSeedMatches = (
       })
   }, [matchingTorrentsQueries])
   
-  const isLoadingMatches = isLoadingInstances || (matchingTorrents.length === 0 && matchingTorrentsQueries.some((query: { isLoading: boolean }) => query.isLoading))
+  // Compute pending query count for granular loading indicators
+  const pendingQueryCount = useMemo(() => {
+    return matchingTorrentsQueries.filter((query: { isLoading: boolean }) => query.isLoading).length
+  }, [matchingTorrentsQueries])
+  
+  const isLoadingMatches = isLoadingInstances || (matchingTorrents.length === 0 && pendingQueryCount > 0)
 
   return {
     matchingTorrents,
     isLoadingMatches,
     isLoadingInstances,
+    pendingQueryCount,
     allInstances: allInstances || [],
   }
 }
