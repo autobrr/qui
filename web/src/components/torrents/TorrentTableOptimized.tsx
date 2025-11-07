@@ -11,6 +11,7 @@ import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
+import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
@@ -39,6 +40,7 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { TorrentContextMenu } from "./TorrentContextMenu"
+import { TORRENT_SORT_OPTIONS, type TorrentSortOptionValue, getDefaultSortOrder } from "./torrentSortOptions"
 
 import {
   AlertDialog,
@@ -50,7 +52,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -64,6 +68,8 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
@@ -77,9 +83,11 @@ import {
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences.ts"
 import { api } from "@/lib/api"
-import { useIncognitoMode } from "@/lib/incognito"
+import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import { getStateLabel } from "@/lib/torrent-state-utils"
 import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
+import { cn } from "@/lib/utils"
 import type { Category, ServerState, Torrent, TorrentCounts, TorrentFilters } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSearch } from "@tanstack/react-router"
@@ -93,14 +101,19 @@ import {
   EthernetPort,
   Eye,
   EyeOff,
+  Folder,
   Globe,
+  LayoutGrid,
   Loader2,
   Rabbit,
+  Table as TableIcon,
+  Tag,
   Turtle,
   X
 } from "lucide-react"
 import { createPortal } from "react-dom"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
+import { DeleteFilesPreference } from "./DeleteFilesPreference"
 import { DraggableTableHeader } from "./DraggableTableHeader"
 import { SelectAllHotkey } from "./SelectAllHotkey"
 import {
@@ -118,6 +131,8 @@ import {
 } from "./TorrentDialogs"
 import { TorrentDropZone } from "./TorrentDropZone"
 import { createColumns } from "./TorrentTableColumns"
+
+const TABLE_ALLOWED_VIEW_MODES = ["normal", "compact"] as const
 
 // Default values for persisted state hooks (module scope for stable references)
 const DEFAULT_COLUMN_VISIBILITY = {
@@ -208,6 +223,326 @@ function shallowEqualTrackerIcons(
   return true
 }
 
+// Compact view helper functions and components
+function getStatusBadgeVariant(state: string): "default" | "secondary" | "destructive" | "outline" {
+  switch (state) {
+    case "downloading":
+      return "default"
+    case "stalledDL":
+      return "secondary"
+    case "uploading":
+      return "default"
+    case "stalledUP":
+      return "secondary"
+    case "pausedDL":
+    case "pausedUP":
+      return "secondary"
+    case "error":
+    case "missingFiles":
+      return "destructive"
+    default:
+      return "outline"
+  }
+}
+
+function getStatusBadgeProps(torrent: Torrent, supportsTrackerHealth: boolean): {
+  variant: "default" | "secondary" | "destructive" | "outline"
+  label: string
+  className: string
+} {
+  const baseVariant = getStatusBadgeVariant(torrent.state)
+  let variant = baseVariant
+  let label = getStateLabel(torrent.state)
+  let className = ""
+
+  if (supportsTrackerHealth) {
+    const trackerHealth = torrent.tracker_health ?? null
+    if (trackerHealth === "tracker_down") {
+      label = "Tracker Down"
+      variant = "outline"
+      className = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
+    } else if (trackerHealth === "unregistered") {
+      label = "Unregistered"
+      variant = "outline"
+      className = "text-destructive border-destructive/40 bg-destructive/10"
+    }
+  }
+
+  return { variant, label, className }
+}
+
+const trackerIconSizeClasses = {
+  xs: "h-3 w-3 text-[8px]",
+  sm: "h-[14px] w-[14px] text-[9px]",
+  md: "h-4 w-4 text-[10px]",
+} as const
+
+type TrackerIconSize = keyof typeof trackerIconSizeClasses
+
+interface TrackerIconProps {
+  title: string
+  fallback: string
+  src: string | null
+  size?: TrackerIconSize
+  className?: string
+}
+
+const TrackerIcon = memo(({ title, fallback, src, size = "md", className }: TrackerIconProps) => {
+  const [hasError, setHasError] = useState(false)
+
+  useEffect(() => {
+    setHasError(false)
+  }, [src])
+
+  return (
+    <div className={cn("flex items-center justify-center", className)} title={title}>
+      <div
+        className={cn(
+          "flex items-center justify-center rounded-sm border border-border/40 bg-muted font-medium uppercase leading-none select-none",
+          trackerIconSizeClasses[size]
+        )}
+      >
+        {src && !hasError ? (
+          <img
+            src={src}
+            alt=""
+            className="h-full w-full rounded-[2px] object-cover"
+            loading="lazy"
+            draggable={false}
+            onError={() => setHasError(true)}
+          />
+        ) : (
+          <span aria-hidden="true">{fallback}</span>
+        )}
+      </div>
+    </div>
+  )
+}, (prev, next) =>
+  prev.title === next.title &&
+  prev.fallback === next.fallback &&
+  prev.src === next.src &&
+  prev.size === next.size &&
+  prev.className === next.className
+)
+
+const getTrackerDisplayMeta = (tracker?: string) => {
+  if (!tracker) {
+    return {
+      host: "",
+      fallback: "#",
+      title: "",
+    }
+  }
+
+  const trimmed = tracker.trim()
+  const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
+
+  let host = trimmed
+  try {
+    if (trimmed.includes("://")) {
+      const url = new URL(trimmed)
+      host = url.hostname
+    }
+  } catch {
+    // Keep host as trimmed value if URL parsing fails
+  }
+
+  return {
+    host,
+    fallback: fallbackLetter,
+    title: host,
+  }
+}
+
+// Compact row component for desktop
+interface CompactRowProps {
+  torrent: Torrent
+  rowId: string
+  isSelected: boolean
+  isRowSelected: boolean
+  onClick: (e: React.MouseEvent) => void
+  onContextMenu: () => void
+  onCheckboxPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void
+  onCheckboxChange: (torrent: Torrent, rowId: string, checked: boolean) => void
+  incognitoMode: boolean
+  speedUnit: "bytes" | "bits"
+  supportsTrackerHealth: boolean
+  trackerIcons?: Record<string, string>
+  style: React.CSSProperties
+}
+
+const CompactRow = memo(({
+  torrent,
+  rowId,
+  isSelected,
+  isRowSelected,
+  onClick,
+  onContextMenu,
+  onCheckboxPointerDown,
+  onCheckboxChange,
+  incognitoMode,
+  speedUnit,
+  supportsTrackerHealth,
+  trackerIcons,
+  style,
+}: CompactRowProps) => {
+  const displayName = incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name
+  const displayCategory = incognitoMode ? getLinuxCategory(torrent.hash) : torrent.category
+  const displayTags = incognitoMode ? getLinuxTags(torrent.hash) : torrent.tags
+  const displayRatio = incognitoMode ? getLinuxRatio(torrent.hash) : torrent.ratio
+
+  const { variant: statusBadgeVariant, label: statusBadgeLabel, className: statusBadgeClass } = useMemo(
+    () => getStatusBadgeProps(torrent, supportsTrackerHealth),
+    [torrent, supportsTrackerHealth]
+  )
+
+  const trackerValue = incognitoMode ? getLinuxTracker(torrent.hash) : torrent.tracker
+  const trackerMeta = useMemo(() => getTrackerDisplayMeta(trackerValue), [trackerValue])
+  const trackerIconSrc = trackerMeta.host ? trackerIcons?.[trackerMeta.host] ?? null : null
+
+  // Compact view
+  return (
+    <div
+      className={cn(
+        "relative flex flex-col gap-1 px-3 py-2 border-b cursor-pointer hover:bg-muted/50 overflow-hidden",
+        isRowSelected && "bg-muted/50",
+        isSelected && "bg-accent"
+      )}
+      style={style}
+      onClick={(e) => onClick(e)}
+      onContextMenu={onContextMenu}
+    >
+      {/* Progress background overlay - only show when downloading */}
+      {torrent.progress < 1 && (
+        <div
+          className="absolute inset-0 -z-10 bg-primary/10 transition-all duration-300"
+          style={{
+            width: `${Math.min(100, Math.max(0, torrent.progress * 100))}%`,
+          }}
+          aria-hidden="true"
+        />
+      )}
+      {/* Name with progress inline */}
+      <div className="flex items-center gap-2">
+        <div
+          className="flex items-center justify-center flex-shrink-0"
+          data-slot="checkbox"
+          onPointerDown={onCheckboxPointerDown}
+        >
+          <Checkbox
+            checked={isRowSelected}
+            onCheckedChange={(checked) => onCheckboxChange(torrent, rowId, checked === true)}
+            aria-label="Select torrent"
+            className="h-4 w-4"
+          />
+        </div>
+        <div className="flex-1 min-w-0 overflow-hidden">
+          <div className="flex items-center gap-1 whitespace-nowrap overflow-x-auto scrollbar-thin">
+            <TrackerIcon
+              title={trackerMeta.title}
+              fallback={trackerMeta.fallback}
+              src={trackerIconSrc}
+              size="sm"
+              className="flex-shrink-0"
+            />
+            <h3 className="font-medium text-sm truncate" title={displayName}>
+              {displayName}
+            </h3>
+          </div>
+        </div>
+        <Badge variant={statusBadgeVariant} className={cn("text-xs flex-shrink-0", statusBadgeClass)}>
+          {statusBadgeLabel}
+        </Badge>
+      </div>
+
+      {/* Downloaded/Size and Ratio */}
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">
+          {formatBytes(torrent.downloaded)} / {formatBytes(torrent.size)}
+        </span>
+        <div className="flex items-center gap-1">
+          <span className="text-muted-foreground">Ratio:</span>
+          <span className={cn(
+            "font-medium",
+            displayRatio >= 1 ? "[color:var(--chart-3)]" : "[color:var(--chart-4)]"
+          )}>
+            {displayRatio === -1 ? "∞" : displayRatio.toFixed(2)}
+          </span>
+        </div>
+      </div>
+
+      {/* Bottom row: Category/tags and percentage/speeds */}
+      <div className="flex items-center justify-between gap-2 text-xs">
+        {/* Left side: Category and Tags */}
+        <div className="flex items-center gap-2 text-muted-foreground min-w-0 overflow-hidden">
+          {displayCategory && (
+            <span className="flex items-center gap-1 flex-shrink-0">
+              <Folder className="h-3 w-3"/>
+              {displayCategory}
+            </span>
+          )}
+          {displayTags && (
+            <div className="flex items-center gap-1 min-w-0 overflow-hidden">
+              <Tag className="h-3 w-3 flex-shrink-0"/>
+              <span className="truncate">
+                {Array.isArray(displayTags) ? displayTags.join(", ") : displayTags}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Right side: Percentage and Speeds */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="text-muted-foreground">
+            {torrent.progress >= 0.99 && torrent.progress < 1 ? (
+              (Math.floor(torrent.progress * 1000) / 10).toFixed(1)
+            ) : (
+              Math.round(torrent.progress * 100)
+            )}%
+          </span>
+          {/* Speeds */}
+          {(torrent.dlspeed > 0 || torrent.upspeed > 0) && (
+            <div className="flex items-center gap-1">
+              {torrent.dlspeed > 0 && (
+                <span className="text-chart-2 font-medium">
+                  ↓{formatSpeedWithUnit(torrent.dlspeed, speedUnit)}
+                </span>
+              )}
+              {torrent.upspeed > 0 && (
+                <span className="text-chart-3 font-medium">
+                  ↑{formatSpeedWithUnit(torrent.upspeed, speedUnit)}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}, (prev, next) =>
+  prev.torrent.hash === next.torrent.hash &&
+  prev.rowId === next.rowId &&
+  prev.torrent.name === next.torrent.name &&
+  prev.torrent.category === next.torrent.category &&
+  prev.torrent.tags === next.torrent.tags &&
+  prev.torrent.tracker === next.torrent.tracker &&
+  prev.torrent.tracker_health === next.torrent.tracker_health &&
+  prev.torrent.state === next.torrent.state &&
+  prev.torrent.progress === next.torrent.progress &&
+  prev.torrent.dlspeed === next.torrent.dlspeed &&
+  prev.torrent.upspeed === next.torrent.upspeed &&
+  prev.torrent.downloaded === next.torrent.downloaded &&
+  prev.torrent.size === next.torrent.size &&
+  prev.torrent.ratio === next.torrent.ratio &&
+  prev.isSelected === next.isSelected &&
+  prev.isRowSelected === next.isRowSelected &&
+  prev.incognitoMode === next.incognitoMode &&
+  prev.speedUnit === next.speedUnit &&
+  prev.supportsTrackerHealth === next.supportsTrackerHealth &&
+  prev.trackerIcons === next.trackerIcons &&
+  prev.style === next.style
+)
+
 interface ExternalIPAddressProps {
   address?: string | null
   incognitoMode: boolean
@@ -221,12 +556,14 @@ const ExternalIPAddress = memo(
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <span
-            className="flex items-center gap-1 text-xs text-muted-foreground"
+          <Badge
+            variant="outline"
+            className="gap-1 px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground"
             aria-label={`External ${label}`}
           >
-            <EthernetPort className="h-3.5 w-3.5" />
-          </span>
+            <EthernetPort className="h-3.5 w-3.5 text-muted-foreground" />
+            <span>{label}</span>
+          </Badge>
         </TooltipTrigger>
         <TooltipContent>
           <p className="font-mono text-xs">
@@ -299,6 +636,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const { formatTimestamp } = useDateTimeFormatters()
   const { preferences } = useInstancePreferences(instanceId)
 
+  // Desktop view mode state (separate from mobile view mode)
+  const { viewMode: desktopViewMode, cycleViewMode } = usePersistedCompactViewState("normal", TABLE_ALLOWED_VIEW_MODES)
+
   const trackerIconsQuery = useTrackerIcons()
   const trackerIconsRef = useRef<Record<string, string> | undefined>(undefined)
   const trackerIcons = useMemo(() => {
@@ -344,6 +684,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const shiftPressedRef = useRef<boolean>(false)
   const lastSelectedIndexRef = useRef<number | null>(null)
 
+  const handleCompactCheckboxPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    shiftPressedRef.current = event.shiftKey
+  }, [])
+
   const resetSelectionState = useCallback(() => {
     setIsAllSelected(false)
     setExcludedFromSelectAll(new Set())
@@ -388,6 +732,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     setShowDeleteDialog,
     deleteFiles,
     setDeleteFiles,
+    isDeleteFilesLocked,
+    toggleDeleteFilesLock,
     showAddTagsDialog,
     setShowAddTagsDialog,
     showSetTagsDialog,
@@ -713,6 +1059,47 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   }, [rowSelection])
   const selectedRowIdSet = useMemo(() => new Set(selectedRowIds), [selectedRowIds])
 
+  useEffect(() => {
+    if (isAllSelected) {
+      if (excludedFromSelectAll.size === 0) {
+        return
+      }
+
+      const visibleHashes = new Set(sortedTorrents.map(torrent => torrent.hash))
+      const hasInvalidExclusion = Array.from(excludedFromSelectAll).some(hash => !visibleHashes.has(hash))
+
+      if (hasInvalidExclusion) {
+        resetSelectionState()
+      }
+
+      return
+    }
+
+    if (Object.keys(rowSelection).length === 0) {
+      return
+    }
+
+    const visibleRowIds = new Set(table.getRowModel().rows.map(row => row.id))
+    const hasInvalidSelection = Object.entries(rowSelection).some(([rowId, selected]) => selected && !visibleRowIds.has(rowId))
+
+    if (hasInvalidSelection) {
+      resetSelectionState()
+    }
+  }, [
+    excludedFromSelectAll,
+    isAllSelected,
+    resetSelectionState,
+    rowSelection,
+    sortedTorrents,
+  ])
+
+  // Reset selection when table becomes empty
+  useEffect(() => {
+    if (sortedTorrents.length === 0 && (isAllSelected || Object.keys(rowSelection).length > 0)) {
+      resetSelectionState()
+    }
+  }, [sortedTorrents.length, isAllSelected, rowSelection, resetSelectionState])
+
   // Custom selection handlers for "select all" functionality
   const handleSelectAll = useCallback(() => {
     // Gmail-style behavior: if any rows are selected, always deselect all
@@ -851,6 +1238,118 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     autoResetPageIndex: false,
     autoResetExpanded: false,
   })
+
+  const resolveSortColumnId = useCallback((field: string): string => {
+    const columns = table.getAllLeafColumns()
+    const directMatch = columns.find(column => column.id === field)
+    if (directMatch) {
+      return directMatch.id
+    }
+
+    const backendMatch = columns.find(column => getBackendSortField(column.id) === field)
+    if (backendMatch) {
+      return backendMatch.id
+    }
+
+    return field
+  }, [table, columnVisibility, columnOrder])
+
+  const compactSortOptions = useMemo(() => {
+    const columns = table.getAllLeafColumns()
+    const availableFields = new Set<string>()
+
+    for (const column of columns) {
+      availableFields.add(column.id)
+      availableFields.add(getBackendSortField(column.id))
+    }
+
+    return TORRENT_SORT_OPTIONS.filter(option => availableFields.has(option.value))
+  }, [table, columnVisibility, columnOrder])
+
+  const currentCompactSortLabel = useMemo(() => {
+    const directOption = compactSortOptions.find(option => option.value === activeSortField)
+    if (directOption) {
+      return directOption.label
+    }
+
+    const columns = table.getAllLeafColumns()
+    const directColumn = columns.find(column => column.id === activeSortField)
+    if (directColumn) {
+      const meta = directColumn.columnDef.meta as { headerString?: string } | undefined
+      if (meta?.headerString) {
+        return meta.headerString
+      }
+      if (typeof directColumn.columnDef.header === "string") {
+        return directColumn.columnDef.header
+      }
+      return directColumn.id
+    }
+
+    const backendColumn = columns.find(column => getBackendSortField(column.id) === activeSortField)
+    if (backendColumn) {
+      const meta = backendColumn.columnDef.meta as { headerString?: string } | undefined
+      if (meta?.headerString) {
+        return meta.headerString
+      }
+      if (typeof backendColumn.columnDef.header === "string") {
+        return backendColumn.columnDef.header
+      }
+      return backendColumn.id
+    }
+
+    return activeSortField
+  }, [compactSortOptions, activeSortField, table, columnVisibility, columnOrder])
+
+  const handleCompactSortFieldChange = useCallback((value: TorrentSortOptionValue) => {
+    if (activeSortField === value) {
+      return
+    }
+
+    const columnId = resolveSortColumnId(value)
+    const defaultOrder = getDefaultSortOrder(value)
+
+    setSorting([{ id: columnId, desc: defaultOrder === "desc" }])
+    setLastUserAction({
+      type: "sort",
+      timestamp: Date.now(),
+    })
+  }, [activeSortField, resolveSortColumnId, setSorting, setLastUserAction])
+
+  const handleCompactSortOrderToggle = useCallback(() => {
+    const columnId = resolveSortColumnId(activeSortField)
+    const nextDesc = activeSortOrder === "asc"
+
+    setSorting([{ id: columnId, desc: nextDesc }])
+    setLastUserAction({
+      type: "sort",
+      timestamp: Date.now(),
+    })
+  }, [activeSortField, activeSortOrder, resolveSortColumnId, setSorting, setLastUserAction])
+
+  const handleCompactCheckboxChange = useCallback((torrent: Torrent, rowId: string, checked: boolean) => {
+    const nextChecked = !!checked
+    const allRows = table.getRowModel().rows
+    const currentIndex = allRows.findIndex(r => r.id === rowId)
+
+    if (shiftPressedRef.current && lastSelectedIndexRef.current !== null && currentIndex !== -1) {
+      const start = Math.min(lastSelectedIndexRef.current, currentIndex)
+      const end = Math.max(lastSelectedIndexRef.current, currentIndex)
+
+      for (let i = start; i <= end; i++) {
+        const targetRow = allRows[i]
+        if (targetRow) {
+          handleRowSelection(targetRow.original.hash, nextChecked, targetRow.id)
+        }
+      }
+    } else {
+      handleRowSelection(torrent.hash, nextChecked, rowId)
+    }
+
+    if (currentIndex !== -1) {
+      lastSelectedIndexRef.current = currentIndex
+    }
+    shiftPressedRef.current = false
+  }, [handleRowSelection, table])
 
   // Get selected torrent hashes - handle both regular selection and "select all" mode
   const selectedHashes = useMemo((): string[] => {
@@ -1092,7 +1591,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const virtualizer = useVirtualizer({
     count: safeLoadedRows,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 40,
+    estimateSize: () => (desktopViewMode === "compact" ? 80 : 40),
     // Optimized overscan based on TanStack Virtual recommendations
     // Start small and adjust based on dataset size and performance
     overscan: sortedTorrents.length > 50000 ? 3 : sortedTorrents.length > 10000 ? 5 : sortedTorrents.length > 1000 ? 10 : 15,
@@ -1124,6 +1623,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   useEffect(() => {
     virtualizer.measure()
   }, [safeLoadedRows, virtualizer])
+
+  // Recalculate virtualized row sizes when view mode changes
+  useEffect(() => {
+    virtualizer.measure()
+  }, [desktopViewMode, virtualizer])
 
   const virtualRows = virtualizer.getVirtualItems()
 
@@ -1498,6 +2002,70 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
               const container = typeof document !== "undefined" ? document.getElementById("header-search-actions") : null
               const actions = (
                 <>
+                  {desktopViewMode === "compact" && compactSortOptions.length > 0 && (
+                    <div className="flex items-center">
+                      <DropdownMenu>
+                        <Tooltip disableHoverableContent={true}>
+                          <TooltipTrigger
+                            asChild
+                            onFocus={(e) => {
+                              e.preventDefault()
+                            }}
+                          >
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2 text-xs font-medium gap-1"
+                              >
+                                <ArrowUpDown className="h-3.5 w-3.5" />
+                                <span className="truncate">{currentCompactSortLabel}</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                          </TooltipTrigger>
+                          <TooltipContent>Change sort field</TooltipContent>
+                        </Tooltip>
+                        <DropdownMenuContent align="end" className="w-56 max-h-72 overflow-y-auto">
+                          <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuRadioGroup
+                            value={activeSortField}
+                            onValueChange={(value) => handleCompactSortFieldChange(value as TorrentSortOptionValue)}
+                          >
+                            {compactSortOptions.map(option => (
+                              <DropdownMenuRadioItem key={option.value} value={option.value} className="text-sm">
+                                {option.label}
+                              </DropdownMenuRadioItem>
+                            ))}
+                          </DropdownMenuRadioGroup>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <Tooltip disableHoverableContent={true}>
+                        <TooltipTrigger
+                          asChild
+                          onFocus={(e) => {
+                            e.preventDefault()
+                          }}
+                        >
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={handleCompactSortOrderToggle}
+                            aria-label={`Sort ${activeSortOrder === "desc" ? "ascending" : "descending"}`}
+                          >
+                            {activeSortOrder === "desc" ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronUp className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Sort {activeSortOrder === "desc" ? "ascending" : "descending"}</TooltipContent>
+                      </Tooltip>
+                    </div>
+                  )}
+
                   {columnFilters.length > 0 && (
                     <Tooltip>
                       <TooltipTrigger
@@ -1521,57 +2089,59 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                     </Tooltip>
                   )}
 
-                  <DropdownMenu>
-                    <Tooltip disableHoverableContent={true}>
-                      <TooltipTrigger
-                        asChild
-                        onFocus={(e) => {
-                          // Prevent tooltip from showing on focus - only show on hover
-                          e.preventDefault()
-                        }}
-                      >
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                          >
-                            <Columns3 className="h-4 w-4"/>
-                            <span className="sr-only">Toggle columns</span>
-                          </Button>
-                        </DropdownMenuTrigger>
-                      </TooltipTrigger>
-                      <TooltipContent>Toggle columns</TooltipContent>
-                    </Tooltip>
-                    <DropdownMenuContent align="end" className="w-48">
-                      <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
-                      <DropdownMenuSeparator/>
-                      {table
-                        .getAllColumns()
-                        .filter(
-                          (column) =>
-                            column.id !== "select" && // Never show select in visibility options
-                            column.getCanHide()
-                        )
-                        .map((column) => {
-                          return (
-                            <DropdownMenuCheckboxItem
-                              key={column.id}
-                              className="capitalize"
-                              checked={column.getIsVisible()}
-                              onCheckedChange={(value) =>
-                                column.toggleVisibility(!!value)
-                              }
-                              onSelect={(e) => e.preventDefault()}
+                  {desktopViewMode !== "compact" && (
+                    <DropdownMenu>
+                      <Tooltip disableHoverableContent={true}>
+                        <TooltipTrigger
+                          asChild
+                          onFocus={(e) => {
+                            // Prevent tooltip from showing on focus - only show on hover
+                            e.preventDefault()
+                          }}
+                        >
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="icon"
                             >
-                              <span className="truncate">
-                                {(column.columnDef.meta as { headerString?: string })?.headerString ||
-                                  (typeof column.columnDef.header === "string" ? column.columnDef.header : column.id)}
-                              </span>
-                            </DropdownMenuCheckboxItem>
+                              <Columns3 className="h-4 w-4"/>
+                              <span className="sr-only">Toggle columns</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent>Toggle columns</TooltipContent>
+                      </Tooltip>
+                      <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+                        <DropdownMenuSeparator/>
+                        {table
+                          .getAllColumns()
+                          .filter(
+                            (column) =>
+                              column.id !== "select" && // Never show select in visibility options
+                              column.getCanHide()
                           )
-                        })}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                          .map((column) => {
+                            return (
+                              <DropdownMenuCheckboxItem
+                                key={column.id}
+                                className="capitalize"
+                                checked={column.getIsVisible()}
+                                onCheckedChange={(value) =>
+                                  column.toggleVisibility(!!value)
+                                }
+                                onSelect={(e) => e.preventDefault()}
+                              >
+                                <span className="truncate">
+                                  {(column.columnDef.meta as { headerString?: string })?.headerString ||
+                                    (typeof column.columnDef.header === "string" ? column.columnDef.header : column.id)}
+                                </span>
+                              </DropdownMenuCheckboxItem>
+                            )
+                          })}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </>
               )
 
@@ -1620,9 +2190,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           )}
 
           <div style={{ position: "relative", minWidth: "min-content" }}>
-            {/* Header */}
-            <div className="sticky top-0 bg-background border-b" style={{ zIndex: 50 }}>
-              <DndContext
+            {/* Header - only show in normal table view */}
+            {desktopViewMode === "normal" && (
+              <div className="sticky top-0 bg-background border-b" style={{ zIndex: 50 }}>
+                <DndContext
                 sensors={sensors}
                 collisionDetection={closestCenter}
                 onDragEnd={(event) => {
@@ -1692,6 +2263,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                 })}
               </DndContext>
             </div>
+            )}
 
             {/* Body */}
             <div
@@ -1706,13 +2278,111 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                 if (!row || !row.original) return null
                 const torrent = row.original
                 const isSelected = selectedTorrent?.hash === torrent.hash
+                const isRowSelected = isAllSelected ? !excludedFromSelectAll.has(torrent.hash) : row.getIsSelected()
 
-                // Use memoized minTableWidth
+                // Render compact view for compact mode
+                if (desktopViewMode === "compact") {
+                  return (
+                    <TorrentContextMenu
+                      key={row.id}
+                      instanceId={instanceId}
+                      torrent={torrent}
+                      isSelected={isRowSelected}
+                      isAllSelected={isAllSelected}
+                      selectedHashes={selectedHashes}
+                      selectedTorrents={selectedTorrents}
+                      effectiveSelectionCount={effectiveSelectionCount}
+                      onTorrentSelect={onTorrentSelect}
+                      onAction={runAction}
+                      onPrepareDelete={prepareDeleteAction}
+                      onPrepareTags={prepareTagsAction}
+                      onPrepareCategory={prepareCategoryAction}
+                      onPrepareCreateCategory={prepareCreateCategoryAction}
+                      onPrepareShareLimit={prepareShareLimitAction}
+                      onPrepareSpeedLimits={prepareSpeedLimitAction}
+                      onPrepareLocation={prepareLocationAction}
+                      onPrepareRenameTorrent={prepareRenameTorrentAction}
+                      onPrepareRenameFile={prepareRenameFileAction}
+                      onPrepareRenameFolder={prepareRenameFolderAction}
+                      onPrepareRecheck={prepareRecheckAction}
+                      onPrepareReannounce={prepareReannounceAction}
+                      availableCategories={availableCategories}
+                      onSetCategory={handleSetCategoryDirect}
+                      isPending={isPending}
+                      onExport={handleExportWrapper}
+                      isExporting={isExportingTorrent}
+                      capabilities={capabilities}
+                      useSubcategories={allowSubcategories}
+                    >
+                      <CompactRow
+                        torrent={torrent}
+                        rowId={row.id}
+                        isSelected={isSelected}
+                        isRowSelected={isRowSelected}
+                        onClick={(e) => {
+                          const target = e.target as HTMLElement
+                          const isCheckboxElement = target.closest("[data-slot=\"checkbox\"]") || target.closest("[role=\"checkbox\"]")
+                          if (isCheckboxElement) {
+                            return
+                          }
+                          // Handle shift-click for range selection
+                          if (e.shiftKey) {
+                            e.preventDefault()
+                            const allRows = table.getRowModel().rows
+                            const currentIndex = allRows.findIndex(r => r.id === row.id)
+                            if (lastSelectedIndexRef.current !== null) {
+                              const start = Math.min(lastSelectedIndexRef.current, currentIndex)
+                              const end = Math.max(lastSelectedIndexRef.current, currentIndex)
+                              for (let i = start; i <= end; i++) {
+                                const targetRow = allRows[i]
+                                if (targetRow) {
+                                  handleRowSelection(targetRow.original.hash, true, targetRow.id)
+                                }
+                              }
+                            } else {
+                              handleRowSelection(torrent.hash, true, row.id)
+                              lastSelectedIndexRef.current = currentIndex
+                            }
+                          } else if (e.ctrlKey || e.metaKey) {
+                            const allRows = table.getRowModel().rows
+                            const currentIndex = allRows.findIndex(r => r.id === row.id)
+                            handleRowSelection(torrent.hash, !isRowSelected, row.id)
+                            lastSelectedIndexRef.current = currentIndex
+                          } else {
+                            onTorrentSelect?.(torrent)
+                          }
+                        }}
+                        onContextMenu={() => {
+                          if (!isRowSelected && selectedHashes.length <= 1) {
+                            setRowSelection({ [row.id]: true })
+                          }
+                        }}
+                        incognitoMode={incognitoMode}
+                        speedUnit={speedUnit}
+                        supportsTrackerHealth={supportsTrackerHealth}
+                        trackerIcons={trackerIcons}
+                        onCheckboxPointerDown={handleCompactCheckboxPointerDown}
+                        onCheckboxChange={handleCompactCheckboxChange}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          height: `${virtualRow.size}px`,
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
+                      />
+                    </TorrentContextMenu>
+                  )
+                }
+
+                // Use memoized minTableWidth for normal table view
                 return (
                   <TorrentContextMenu
                     key={row.id}
+                    instanceId={instanceId}
                     torrent={torrent}
-                    isSelected={row.getIsSelected()}
+                    isSelected={isRowSelected}
                     isAllSelected={isAllSelected}
                     selectedHashes={selectedHashes}
                     selectedTorrents={selectedTorrents}
@@ -1740,7 +2410,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                     useSubcategories={allowSubcategories}
                   >
                     <div
-                      className={`flex border-b cursor-pointer hover:bg-muted/50 ${row.getIsSelected() ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}
+                      className={`flex border-b cursor-pointer hover:bg-muted/50 ${isRowSelected ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}
                       style={{
                         position: "absolute",
                         top: 0,
@@ -1784,7 +2454,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             const allRows = table.getRowModel().rows
                             const currentIndex = allRows.findIndex(r => r.id === row.id)
 
-                            handleRowSelection(torrent.hash, !row.getIsSelected(), row.id)
+                            handleRowSelection(torrent.hash, !isRowSelected, row.id)
                             lastSelectedIndexRef.current = currentIndex
                           } else {
                             // Plain click - open details without changing checkbox selection state
@@ -1794,7 +2464,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       }}
                       onContextMenu={() => {
                         // Only select this row if not already selected and not part of a multi-selection
-                        if (!row.getIsSelected() && selectedHashes.length <= 1) {
+                        if (!isRowSelected && selectedHashes.length <= 1) {
                           setRowSelection({ [row.id]: true })
                         }
                       }}
@@ -1823,39 +2493,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         </TorrentDropZone>
 
         {/* Status bar */}
-        <div className="flex items-center justify-between p-2 border-t flex-shrink-0 select-none">
-          <div className="text-sm text-muted-foreground">
-            {/* Show special loading message when fetching without cache (cold load) */}
-            {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-1.5 border-t flex-shrink-0 select-none">
+          <div className="text-xs text-muted-foreground min-w-[200px]">
+            {effectiveSelectionCount > 0 ? (
               <>
-                <Loader2 className="h-3 w-3 animate-spin inline mr-1"/>
-                Loading torrents from instance... (no cache available)
-              </>
-            ) : totalCount === 0 ? (
-              "No torrents found"
-            ) : (
-              <>
-                {hasLoadedAll ? (
-                  `${torrents.length} torrent${torrents.length !== 1 ? "s" : ""}`
-                ) : isLoadingMore ? (
-                  "Loading more torrents..."
-                ) : (
-                  `${torrents.length} of ${totalCount} torrents loaded`
-                )}
-                {hasLoadedAll && safeLoadedRows < rows.length && " (scroll for more)"}
-              </>
-            )}
-            {effectiveSelectionCount > 0 && (
-              <>
-                <span className="ml-2">
-                  ({isAllSelected && excludedFromSelectAll.size === 0 ? `All ${effectiveSelectionCount}` : effectiveSelectionCount} selected
-                  {selectedTotalSize > 0 && <> • {selectedFormattedSize}</>})
+                <span>
+                  {isAllSelected && excludedFromSelectAll.size === 0 ? "All" : effectiveSelectionCount} selected
+                  {selectedTotalSize > 0 && <> • {selectedFormattedSize}</>}
                 </span>
                 {/* Keyboard shortcuts helper - only show on desktop */}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="hidden sm:inline-block ml-2 text-xs opacity-70 cursor-help">
-                      • Selection shortcuts
+                      Selection shortcuts
                     </span>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -1866,101 +2516,146 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                   </TooltipContent>
                 </Tooltip>
               </>
+            ) : (
+              <>
+                {/* Show special loading message when fetching without cache (cold load) */}
+                {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin inline mr-1"/>
+                    Loading torrents...
+                  </>
+                ) : totalCount === 0 ? (
+                  "No torrents found"
+                ) : (
+                  <>
+                    {hasLoadedAll ? (
+                      `${torrents.length} torrent${torrents.length !== 1 ? "s" : ""}`
+                    ) : isLoadingMore ? (
+                      "Loading more torrents..."
+                    ) : (
+                      `${torrents.length} of ${totalCount} torrents loaded`
+                    )}
+                    {hasLoadedAll && safeLoadedRows < rows.length && " (scroll for more)"}
+                  </>
+                )}
+              </>
             )}
           </div>
 
-
-          <div className="flex items-center gap-2 text-xs">
-            <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
+            <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
               <ChevronDown className="h-3 w-3 text-muted-foreground"/>
-              <span className="font-medium">{formatSpeedWithUnit(stats.totalDownloadSpeed || 0, speedUnit)}</span>
+              <span className="font-medium">{formatSpeedWithUnit(stats?.totalDownloadSpeed ?? 0, speedUnit)}</span>
               <ChevronUp className="h-3 w-3 text-muted-foreground"/>
-              <span className="font-medium">{formatSpeedWithUnit(stats.totalUploadSpeed || 0, speedUnit)}</span>
+              <span className="font-medium">{formatSpeedWithUnit(stats?.totalUploadSpeed ?? 0, speedUnit)}</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSpeedUnit(speedUnit === "bytes" ? "bits" : "bytes")}
+                    className="h-6 px-2 text-xs text-muted-foreground hover:text-accent-foreground"
+                  >
+                    <ArrowUpDown className="h-3 w-3" />
+                    <span>{speedUnit === "bytes" ? "MiB/s" : "Mbps"}</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {speedUnit === "bytes" ? "Switch to bits per second (bps)" : "Switch to bytes per second (B/s)"}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => void handleToggleAltSpeedLimits()}
+                    disabled={isTogglingAltSpeed}
+                    aria-pressed={isAltSpeedKnown ? altSpeedEnabled : undefined}
+                    aria-label={altSpeedAriaLabel}
+                    className={cn(
+                      "h-6 w-6 text-muted-foreground hover:text-accent-foreground",
+                      "disabled:opacity-60 disabled:cursor-not-allowed"
+                    )}
+                  >
+                    {isTogglingAltSpeed ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <AltSpeedIcon className={cn("h-3 w-3", altSpeedIconClass)} />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{altSpeedTooltip}</TooltipContent>
+              </Tooltip>
             </div>
-          </div>
-
-
-          <div className="flex items-center gap-4">
-            {/* Speed units toggle */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => setSpeedUnit(speedUnit === "bytes" ? "bits" : "bytes")}
-                  className="flex items-center gap-1 pl-1.5 py-0.5 rounded-sm transition-all hover:bg-muted/50"
-                >
-                  <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground"/>
-                  <span className="text-xs text-muted-foreground">
-                    {speedUnit === "bytes" ? "MiB/s" : "Mbps"}
-                  </span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {speedUnit === "bytes" ? "Switch to bits per second (bps)" : "Switch to bytes per second (B/s)"}
-              </TooltipContent>
-            </Tooltip>
-            {/* Incognito mode toggle */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => setIncognitoMode(!incognitoMode)}
-                  className="p-1 rounded-sm transition-all hover:bg-muted/50"
-                >
-                  {incognitoMode ? (
-                    <EyeOff className="h-3.5 w-3.5 text-muted-foreground"/>
-                  ) : (
-                    <Eye className="h-3.5 w-3.5 text-muted-foreground"/>
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {incognitoMode ? "Exit incognito mode" : "Enable incognito mode"}
-              </TooltipContent>
-            </Tooltip>
-            {/* External IPv4 */}
-            <ExternalIPAddress
-              address={serverState?.last_external_address_v4}
-              incognitoMode={incognitoMode}
-              label="IPv4"
-            />
-            {/* External IPv6 */}
-            <ExternalIPAddress
-              address={serverState?.last_external_address_v6}
-              incognitoMode={incognitoMode}
-              label="IPv6"
-            />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => void handleToggleAltSpeedLimits()}
-                  disabled={isTogglingAltSpeed}
-                  aria-pressed={isAltSpeedKnown ? altSpeedEnabled : undefined}
-                  aria-label={altSpeedAriaLabel}
-                  className="p-1 rounded-sm transition-all hover:bg-muted/50 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {isTogglingAltSpeed ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground"/>
-                  ) : (
-                    <AltSpeedIcon className={`h-3.5 w-3.5 ${altSpeedIconClass}`}/>
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {altSpeedTooltip}
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span
-                  aria-label={connectionStatusAriaLabel}
-                  className={`inline-flex h-5 w-5 items-center justify-center ${connectionStatusIconClass}`}
-                >
-                  <ConnectionStatusIcon className="h-3.5 w-3.5" aria-hidden="true"/>
+            <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={cycleViewMode}
+                className={cn(
+                  "h-6 px-2 text-xs hover:text-accent-foreground",
+                  "text-muted-foreground"
+                )}
+              >
+                {desktopViewMode === "normal" ? (
+                  <TableIcon className="h-3 w-3" />
+                ) : (
+                  <LayoutGrid className="h-3 w-3" />
+                )}
+                <span className="hidden sm:inline">
+                  {desktopViewMode === "normal" ? "Table view" : "Stacked view"}
                 </span>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-[220px]">
-                <p>{connectionStatusTooltip}</p>
-              </TooltipContent>
-            </Tooltip>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIncognitoMode(!incognitoMode)}
+                className={cn(
+                  "h-6 px-2 text-xs hover:text-accent-foreground",
+                  incognitoMode ? "text-foreground" : "text-muted-foreground"
+                )}
+              >
+                {incognitoMode ? (
+                  <EyeOff className="h-3 w-3" />
+                ) : (
+                  <Eye className="h-3 w-3" />
+                )}
+                <span className="hidden sm:inline">
+                  {incognitoMode ? "Incognito on" : "Incognito off"}
+                </span>
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <ExternalIPAddress
+                address={serverState?.last_external_address_v4}
+                incognitoMode={incognitoMode}
+                label="IPv4"
+              />
+              <ExternalIPAddress
+                address={serverState?.last_external_address_v6}
+                incognitoMode={incognitoMode}
+                label="IPv6"
+              />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    tabIndex={0}
+                    aria-label={connectionStatusAriaLabel}
+                    className={cn(
+                      "inline-flex h-6 w-6 items-center justify-center rounded-md border border-transparent",
+                      "text-muted-foreground",
+                      connectionStatusIconClass
+                    )}
+                  >
+                    <ConnectionStatusIcon className="h-3 w-3" aria-hidden="true"/>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[220px]">
+                  <p>{connectionStatusTooltip}</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
           </div>
         </div>
       </div>
@@ -1978,18 +2673,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="flex items-center space-x-2 py-4">
-            <input
-              type="checkbox"
-              id="deleteFiles"
-              checked={deleteFiles}
-              onChange={(e) => setDeleteFiles(e.target.checked)}
-              className="rounded border-input"
-            />
-            <label htmlFor="deleteFiles" className="text-sm font-medium">
-              Also delete files from disk
-            </label>
-          </div>
+          <DeleteFilesPreference
+            id="deleteFiles"
+            checked={deleteFiles}
+            onCheckedChange={setDeleteFiles}
+            isLocked={isDeleteFilesLocked}
+            onToggleLock={toggleDeleteFilesLock}
+          />
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction

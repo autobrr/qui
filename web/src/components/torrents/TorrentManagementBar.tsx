@@ -28,11 +28,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger
-} from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
@@ -57,7 +53,8 @@ import {
   Tag,
   Trash2
 } from "lucide-react"
-import { memo, useCallback, useMemo, type ChangeEvent } from "react"
+import { memo, useCallback, useMemo } from "react"
+import { DeleteFilesPreference } from "./DeleteFilesPreference"
 import {
   AddTagsDialog,
   SetCategoryDialog,
@@ -96,11 +93,13 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     return null
   }
 
+  const selectionCount = totalSelectionCount || selectedHashes.length
+
   // Use shared metadata hook to leverage cache from table and filter sidebar
   const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId)
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
-  
+
   const isLoadingTagsData = isMetadataLoading && availableTags.length === 0
   const isLoadingCategoriesData = isMetadataLoading && Object.keys(availableCategories).length === 0
 
@@ -110,6 +109,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     setShowDeleteDialog,
     deleteFiles,
     setDeleteFiles,
+    isDeleteFilesLocked,
+    toggleDeleteFilesLock,
     showAddTagsDialog,
     setShowAddTagsDialog,
     showSetTagsDialog,
@@ -153,8 +154,6 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       }
     },
   })
-
-  const selectionCount = totalSelectionCount || selectedHashes.length
 
   // Wrapper functions to adapt hook handlers to component needs
   const actionHashes = useMemo(() => (isAllSelected ? [] : selectedHashes), [isAllSelected, selectedHashes])
@@ -331,6 +330,10 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   const hasSelection = selectionCount > 0 || isAllSelected
   const isDisabled = !instanceId || !hasSelection
 
+  // Keep this guard after hooks so their invocation order stays stable.
+  if (!hasSelection) {
+    return null
+  }
 
   return (
     <>
@@ -603,18 +606,13 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="flex items-center space-x-2 py-4">
-            <input
-              type="checkbox"
-              id="deleteFiles"
-              checked={deleteFiles}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setDeleteFiles(e.target.checked)}
-              className="rounded border-input"
-            />
-            <label htmlFor="deleteFiles" className="text-sm font-medium">
-              Also delete files from disk
-            </label>
-          </div>
+          <DeleteFilesPreference
+            id="deleteFiles"
+            checked={deleteFiles}
+            onCheckedChange={setDeleteFiles}
+            isLocked={isDeleteFilesLocked}
+            onToggleLock={toggleDeleteFilesLock}
+          />
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction

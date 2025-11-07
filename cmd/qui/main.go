@@ -32,6 +32,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/update"
@@ -465,6 +466,7 @@ func (app *Application) runServer() {
 	}
 
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db)
+	externalProgramStore := models.NewExternalProgramStore(db)
 	errorStore := models.NewInstanceErrorStore(db)
 
 	// Initialize services
@@ -486,6 +488,9 @@ func (app *Application) runServer() {
 	// Initialize managers
 	syncManager := qbittorrent.NewSyncManager(clientPool)
 
+	// Initialize files manager for caching torrent file information
+	filesManagerService := filesmanager.NewService(db) // implements qbittorrent.FilesManager
+	syncManager.SetFilesManager(filesManagerService)
 	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, backups.Config{DataDir: cfg.GetDataDir()})
 	backupService.Start(context.Background())
@@ -501,7 +506,7 @@ func (app *Application) runServer() {
 
 	// Initialize client connections for all active instances on startup
 	go func() {
-		listCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		listCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		instances, err := instanceStore.List(listCtx)
 		cancel()
 
@@ -541,18 +546,19 @@ func (app *Application) runServer() {
 
 	// Start server in goroutine
 	httpServer := api.NewServer(&api.Dependencies{
-		Config:             cfg,
-		Version:            buildinfo.Version,
-		AuthService:        authService,
-		SessionManager:     sessionManager,
-		InstanceStore:      instanceStore,
-		ClientAPIKeyStore:  clientAPIKeyStore,
-		ClientPool:         clientPool,
-		SyncManager:        syncManager,
-		LicenseService:     licenseService,
-		UpdateService:      updateService,
-		TrackerIconService: trackerIconService,
-		BackupService:      backupService,
+		Config:               cfg,
+		Version:              buildinfo.Version,
+		AuthService:          authService,
+		SessionManager:       sessionManager,
+		InstanceStore:        instanceStore,
+		ClientAPIKeyStore:    clientAPIKeyStore,
+		ExternalProgramStore: externalProgramStore,
+		ClientPool:           clientPool,
+		SyncManager:          syncManager,
+		LicenseService:       licenseService,
+		UpdateService:        updateService,
+		TrackerIconService:   trackerIconService,
+		BackupService:        backupService,
 	})
 
 	errorChannel := make(chan error)

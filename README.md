@@ -15,6 +15,7 @@ A fast, modern web interface for qBittorrent. Supports managing multiple qBittor
 - **Multiple Themes**: Choose from various color themes
 - **Base URL Support**: Serve from a subdirectory (e.g., `/qui/`) for reverse proxy setups
 - **OIDC Single Sign-On**: Authenticate through your OpenID Connect provider
+- **External Programs**: Launch custom scripts from the torrent context menu ([guide](internal/api/handlers/EXTERNAL_PROGRAMS.md))
 
 
 ## Installation
@@ -139,6 +140,9 @@ QUI__METRICS_ENABLED=true   # Optional: enable Prometheus metrics (default: fals
 QUI__METRICS_HOST=127.0.0.1  # Optional: metrics server bind address (default: 127.0.0.1)
 QUI__METRICS_PORT=9074       # Optional: metrics server port (default: 9074)
 QUI__METRICS_BASIC_AUTH_USERS=user:hash  # Optional: basic auth for metrics (bcrypt hashed)
+
+# External Programs
+# Configure the allow list from `config.toml`; there is no environment override to keep it read-only from the UI.
 ```
 
 When `logPath` is set the server writes to disk using size-based rotation. Adjust `logMaxSize` and `logMaxBackups` in `config.toml` or the corresponding environment variables shown above to control the rotation thresholds and retention.
@@ -322,6 +326,19 @@ scrape_configs:
 ```
 
 All metrics are labeled with `instance_id` and `instance_name` for multi-instance monitoring.
+
+## External Programs
+
+The torrent context menu can launch local scripts or applications through configurable "external programs". To keep that power feature safe, define an allow list in `config.toml` so only trusted paths can be executed:
+
+```toml
+externalProgramAllowList = [
+  "/usr/local/bin/sonarr",
+  "/home/user/bin"  # Directories allow any executable inside them
+]
+```
+
+Leave the list empty to keep the previous behaviour (any path accepted). The allow list lives exclusively in `config.toml`, which the web UI cannot edit, so you retain control over what binaries are exposed.
 
 ## Tracker Icons
 
@@ -525,6 +542,7 @@ qui automatically detects the features available on each qBittorrent instance an
 | --- | --- | --- |
 | **Rename Torrent** | 4.1.0+ (Web API 2.0.0+) | Change the display name of torrents |
 | **Tracker Editing** | 4.1.5+ (Web API 2.2.0+) | Edit, add, and remove tracker URLs |
+| **File Priority Controls** | 4.1.5+ (Web API 2.2.0+) | Enable/disable files and adjust download priority levels |
 | **Rename File** | 4.2.1+ (Web API 2.4.0+) | Rename individual files within torrents |
 | **Rename Folder** | 4.3.3+ (Web API 2.7.0+) | Rename folders within torrents |
 | **Torrent Export (.torrent download)** | 4.5.0+ (Web API 2.8.11+) | Download .torrent files via `/api/v2/torrents/export`; first appeared in 4.5.0beta1 |

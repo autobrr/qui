@@ -8,9 +8,15 @@ import type {
   AuthResponse,
   BackupManifest,
   BackupRun,
+  BackupRunsResponse,
   BackupSettings,
   Category,
   DuplicateTorrentMatch,
+  ExternalProgram,
+  ExternalProgramCreate,
+  ExternalProgramExecute,
+  ExternalProgramExecuteResponse,
+  ExternalProgramUpdate,
   InstanceCapabilities,
   InstanceFormData,
   InstanceResponse,
@@ -178,6 +184,13 @@ class ApiClient {
     return this.request<InstanceCapabilities>(`/instances/${id}/capabilities`)
   }
 
+  async reorderInstances(instanceIds: number[]): Promise<InstanceResponse[]> {
+    return this.request<InstanceResponse[]>("/instances/order", {
+      method: "PUT",
+      body: JSON.stringify({ instanceIds }),
+    })
+  }
+
   async getBackupSettings(instanceId: number): Promise<BackupSettings> {
     return this.request<BackupSettings>(`/instances/${instanceId}/backups/settings`)
   }
@@ -208,14 +221,14 @@ class ApiClient {
     })
   }
 
-  async listBackupRuns(instanceId: number, params?: { limit?: number; offset?: number }): Promise<BackupRun[]> {
+  async listBackupRuns(instanceId: number, params?: { limit?: number; offset?: number }): Promise<BackupRunsResponse> {
     const search = new URLSearchParams()
     if (params?.limit !== undefined) search.set("limit", params.limit.toString())
     if (params?.offset !== undefined) search.set("offset", params.offset.toString())
 
     const query = search.toString()
     const suffix = query ? `?${query}` : ""
-    return this.request<BackupRun[]>(`/instances/${instanceId}/backups/runs${suffix}`)
+    return this.request<BackupRunsResponse>(`/instances/${instanceId}/backups/runs${suffix}`)
   }
 
   async getBackupManifest(instanceId: number, runId: number): Promise<BackupManifest> {
@@ -378,7 +391,7 @@ class ApiClient {
     instanceId: number,
     data: {
       hashes: string[]
-      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "toggleAutoTMM" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation" | "editTrackers" | "addTrackers" | "removeTrackers"
+      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "toggleAutoTMM" | "forceStart" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation" | "editTrackers" | "addTrackers" | "removeTrackers"
       deleteFiles?: boolean
       category?: string
       tags?: string  // Comma-separated tags string
@@ -457,6 +470,13 @@ class ApiClient {
 
   async getTorrentFiles(instanceId: number, hash: string): Promise<TorrentFile[]> {
     return this.request<TorrentFile[]>(`/instances/${instanceId}/torrents/${hash}/files`)
+  }
+
+  async setTorrentFilePriority(instanceId: number, hash: string, indices: number[], priority: number): Promise<void> {
+    return this.request(`/instances/${instanceId}/torrents/${hash}/files`, {
+      method: "PUT",
+      body: JSON.stringify({ indices, priority }),
+    })
   }
 
   async exportTorrent(instanceId: number, hash: string): Promise<{ blob: Blob; filename: string | null }> {
@@ -794,6 +814,38 @@ class ApiClient {
 
   async getTrackerIcons(): Promise<Record<string, string>> {
     return this.request<Record<string, string>>("/tracker-icons")
+  }
+
+  // External Programs endpoints
+  async listExternalPrograms(): Promise<ExternalProgram[]> {
+    return this.request<ExternalProgram[]>("/external-programs")
+  }
+
+  async createExternalProgram(program: ExternalProgramCreate): Promise<ExternalProgram> {
+    return this.request<ExternalProgram>("/external-programs", {
+      method: "POST",
+      body: JSON.stringify(program),
+    })
+  }
+
+  async updateExternalProgram(id: number, program: ExternalProgramUpdate): Promise<ExternalProgram> {
+    return this.request<ExternalProgram>(`/external-programs/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(program),
+    })
+  }
+
+  async deleteExternalProgram(id: number): Promise<void> {
+    return this.request(`/external-programs/${id}`, {
+      method: "DELETE",
+    })
+  }
+
+  async executeExternalProgram(request: ExternalProgramExecute): Promise<ExternalProgramExecuteResponse> {
+    return this.request<ExternalProgramExecuteResponse>("/external-programs/execute", {
+      method: "POST",
+      body: JSON.stringify(request),
+    })
   }
 }
 

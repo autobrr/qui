@@ -317,6 +317,209 @@ paths:
         '404':
           description: Client API key not found
 
+  /api/external-programs:
+    get:
+      tags:
+        - External Programs
+      summary: List external programs
+      description: Get all configured external programs
+      responses:
+        '200':
+          description: List of external programs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ExternalProgram'
+    post:
+      tags:
+        - External Programs
+      summary: Create external program
+      description: Add a new external program configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - path
+              properties:
+                name:
+                  type: string
+                  description: Display name for the external program
+                path:
+                  type: string
+                  description: Path to the executable
+                args_template:
+                  type: string
+                  description: Arguments template with variable substitution ({hash}, {name}, {save_path}, {content_path}, {category}, {tags}, {state}, {size}, {progress})
+                enabled:
+                  type: boolean
+                  default: true
+                  description: Whether this program is enabled
+                use_terminal:
+                  type: boolean
+                  default: true
+                  description: Whether to launch in a terminal window
+                path_mappings:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/PathMapping'
+                  default: []
+                  description: Path mappings to convert remote paths to local paths (useful for remote instances)
+      responses:
+        '201':
+          description: External program created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExternalProgram'
+        '409':
+          description: A program with this name already exists
+
+  /api/external-programs/{id}:
+    put:
+      tags:
+        - External Programs
+      summary: Update external program
+      description: Update an external program configuration
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - path
+              properties:
+                name:
+                  type: string
+                  description: Display name for the external program
+                path:
+                  type: string
+                  description: Path to the executable
+                args_template:
+                  type: string
+                  description: Arguments template with variable substitution
+                enabled:
+                  type: boolean
+                  description: Whether this program is enabled
+                use_terminal:
+                  type: boolean
+                  description: Whether to launch in a terminal window
+                path_mappings:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/PathMapping'
+                  description: Path mappings to convert remote paths to local paths
+      responses:
+        '200':
+          description: External program updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExternalProgram'
+        '404':
+          description: External program not found
+        '409':
+          description: A program with this name already exists
+    delete:
+      tags:
+        - External Programs
+      summary: Delete external program
+      description: Delete an external program configuration
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: External program deleted successfully
+        '404':
+          description: External program not found
+
+  /api/external-programs/execute:
+    post:
+      tags:
+        - External Programs
+      summary: Execute external program
+      description: |
+        Execute an external program for one or more torrents.
+        
+        The program is launched asynchronously, and this endpoint returns immediately after starting the process.
+        The 'success' field in the response indicates whether the program was successfully launched, not whether it completed successfully.
+        
+        The program path and arguments are passed through variable substitution where placeholders
+        like {hash}, {name}, {save_path}, etc. are replaced with actual torrent metadata.
+        
+        Security: On Windows, all arguments are escaped for cmd.exe using ^ before being passed
+        to CreateProcess to prevent command injection via malicious torrent names.
+        On Unix/Linux, arguments are wrapped in single quotes with proper escaping.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - program_id
+                - instance_id
+                - hashes
+              properties:
+                program_id:
+                  type: integer
+                  description: ID of the external program to execute
+                  example: 1
+                instance_id:
+                  type: integer
+                  description: ID of the qBittorrent instance where the torrents are located
+                  example: 1
+                hashes:
+                  type: array
+                  items:
+                    type: string
+                  description: Array of torrent hashes to execute the program for
+                  example: ["abc123def456", "789ghi012jkl"]
+      responses:
+        '200':
+          description: Execution results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        hash:
+                          type: string
+                        success:
+                          type: boolean
+                        message:
+                          type: string
+                        error:
+                          type: string
+        '400':
+          description: Invalid request (missing program_id, instance_id, or hashes; or program is disabled)
+        '404':
+          description: Program not found
+        '500':
+          description: Internal server error (failed to get client for instance, failed to retrieve torrent info)
+
   /api/instances:
     get:
       tags:
@@ -379,6 +582,40 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Instance'
+
+  /api/instances/order:
+    put:
+      tags:
+        - Instances
+      summary: Reorder instances
+      description: Update the display order for all configured instances. The list must include every instance ID exactly once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - instanceIds
+              properties:
+                instanceIds:
+                  type: array
+                  items:
+                    type: integer
+                  description: Instance IDs in the desired display order.
+      responses:
+        '200':
+          description: Updated list of instances in the new order
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Instance'
+        '400':
+          description: Invalid reorder request
+        '500':
+          description: Failed to persist the new instance order
 
   /api/instances/{instanceId}:
     put:
@@ -911,6 +1148,45 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/TorrentFile'
+    put:
+      tags:
+        - Torrent Details
+      summary: Update torrent file priorities
+      description: Adjust the download priority (including do-not-download) for one or more files in a torrent.
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - indices
+                - priority
+              properties:
+                indices:
+                  type: array
+                  description: File indices to update.
+                  minItems: 1
+                  items:
+                    type: integer
+                    minimum: 0
+                priority:
+                  type: integer
+                  description: Desired priority value (0-7, where 0 marks files as do-not-download).
+                  minimum: 0
+                  maximum: 7
+      responses:
+        '204':
+          description: File priorities updated successfully
+        '400':
+          description: Invalid request payload or priority
+        '409':
+          description: Torrent metadata not yet available
+        '500':
+          description: Failed to update file priorities
 
   /api/instances/{instanceId}/torrents/{hash}/rename:
     put:
@@ -2001,6 +2277,51 @@ components:
           format: date-time
           nullable: true
 
+    PathMapping:
+      type: object
+      description: Maps remote paths to local paths for external program execution
+      properties:
+        from:
+          type: string
+          description: Remote path prefix to match (e.g., "/mnt/remote-storage/downloads")
+          example: "/mnt/remote-storage/downloads"
+        to:
+          type: string
+          description: Local path prefix to replace with (e.g., "/home/user/downloads")
+          example: "/home/user/downloads"
+
+    ExternalProgram:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          description: Display name for the external program
+        path:
+          type: string
+          description: Path to the executable
+        args_template:
+          type: string
+          description: Arguments template with variable substitution
+        enabled:
+          type: boolean
+          description: Whether this program is enabled
+        use_terminal:
+          type: boolean
+          description: Whether to launch in a terminal window
+        path_mappings:
+          type: array
+          items:
+            $ref: '#/components/schemas/PathMapping'
+          description: Path mappings to convert remote paths to local paths for remote instances
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
     Instance:
       type: object
       properties:
@@ -2049,6 +2370,9 @@ components:
         tlsSkipVerify:
           type: boolean
           description: When true, TLS certificate errors from the upstream qBittorrent instance are ignored.
+        sortOrder:
+          type: integer
+          description: Display order preference for the instance.
 
 
     InstanceCapabilities:
@@ -2078,6 +2402,9 @@ components:
         supportsRenameFolder:
           type: boolean
           description: Whether the instance supports renaming folders within torrents (requires WebAPI 2.7.0+, qBittorrent 4.3.3+).
+        supportsFilePriority:
+          type: boolean
+          description: Whether the instance supports updating torrent file priorities (requires WebAPI 2.2.0+, qBittorrent 4.1.5+).
         supportsSubcategories:
           type: boolean
           description: Whether the instance supports nested torrent categories (requires WebAPI 2.9.0+, qBittorrent 4.6.0+).
@@ -2313,6 +2640,8 @@ tags:
     description: API key management
   - name: Client API Keys
     description: Client API key management for external applications
+  - name: External Programs
+    description: Manage and execute external applications
   - name: Instances
     description: qBittorrent instance management
   - name: Torrents

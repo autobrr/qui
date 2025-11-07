@@ -26,6 +26,7 @@ export const TORRENT_ACTIONS = {
   SET_TAGS: "setTags",
   SET_CATEGORY: "setCategory",
   TOGGLE_AUTO_TMM: "toggleAutoTMM",
+  FORCE_START: "forceStart",
   SET_SHARE_LIMIT: "setShareLimit",
   SET_UPLOAD_LIMIT: "setUploadLimit",
   SET_DOWNLOAD_LIMIT: "setDownloadLimit",
@@ -78,7 +79,12 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
 
   // Dialog states
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [deleteFiles, setDeleteFiles] = usePersistedDeleteFiles(false)
+  const {
+    deleteFiles,
+    setDeleteFiles,
+    isLocked: isDeleteFilesLocked,
+    toggleLock: toggleDeleteFilesLock,
+  } = usePersistedDeleteFiles(false)
   const [showAddTagsDialog, setShowAddTagsDialog] = useState(false)
   const [showSetTagsDialog, setShowSetTagsDialog] = useState(false)
   const [showRemoveTagsDialog, setShowRemoveTagsDialog] = useState(false)
@@ -181,7 +187,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
         }, refetchDelay)
       } else {
         // For other operations, refetch after delay
-        const refetchDelay = variables.action === "resume" ? 2000 : 1000
+        const refetchDelay = variables.action === "resume" || variables.action === "forceStart" ? 2000 : 1000
         setTimeout(() => {
           queryClient.refetchQueries({
             queryKey: ["torrents-list", instanceId],
@@ -815,6 +821,8 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setShowDeleteDialog,
     deleteFiles,
     setDeleteFiles,
+    isDeleteFilesLocked,
+    toggleDeleteFilesLock,
     showAddTagsDialog,
     setShowAddTagsDialog,
     showSetTagsDialog,
@@ -925,6 +933,9 @@ function showSuccessToast(action: TorrentAction, count: number, deleteFiles?: bo
       break
     case "toggleAutoTMM":
       toast.success(`${enable ? "Enabled" : "Disabled"} Auto TMM for ${count} ${torrentText}`)
+      break
+    case "forceStart":
+      toast.success(`${enable ? "Enabled" : "Disabled"} Force Start for ${count} ${torrentText}`)
       break
     case "setShareLimit":
       toast.success(`Set share limits for ${count} ${torrentText}`)

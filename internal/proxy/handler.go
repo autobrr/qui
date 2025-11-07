@@ -4,11 +4,13 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -75,12 +77,13 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 		bufferPool:        bufferPool,
 	}
 
-	// Configure the reverse proxy
+	// Configure the reverse proxy with retry logic for transient network errors
+	retryTransport := NewRetryTransport(sharedhttp.Transport)
 	h.proxy = &httputil.ReverseProxy{
 		Rewrite:      h.rewriteRequest,
 		BufferPool:   bufferPool,
 		ErrorHandler: h.errorHandler,
-		Transport:    sharedhttp.Transport,
+		Transport:    retryTransport,
 	}
 
 	return h
@@ -202,6 +205,44 @@ func combineInstanceAndRequestPath(instanceBasePath, strippedPath string) string
 	default:
 		return base + "/" + request
 	}
+}
+
+// bufferRequestBody reads the request body, restores it for ParseForm, and returns the buffered bytes.
+// This allows both parsing form data and forwarding the request body to the proxy.
+//
+// IMPORTANT: Limits body size to 10MB to prevent OOM attacks. Larger requests will be rejected.
+// This limit is appropriate for torrent operations which use small form data payloads.
+func bufferRequestBody(r *http.Request) ([]byte, error) {
+	const maxBodySize = 10 * 1024 * 1024 // 10MB limit
+
+	// Use LimitReader to prevent reading more than maxBodySize
+	// Reading exactly maxBodySize bytes is sufficient - we don't need to read extra
+	limitedReader := io.LimitReader(r.Body, maxBodySize)
+	bodyBytes, err := io.ReadAll(limitedReader)
+	if err != nil {
+		r.Body.Close()
+		return nil, err
+	}
+
+	// If we read exactly maxBodySize bytes, check if there's more data
+	// This avoids reading unnecessary bytes for overflow detection
+	if len(bodyBytes) == maxBodySize {
+		// Try to read one more byte to see if body exceeds limit
+		oneByte := make([]byte, 1)
+		n, _ := r.Body.Read(oneByte)
+		r.Body.Close()
+		if n > 0 {
+			// Body exceeds limit - use generic error message
+			return nil, fmt.Errorf("request body exceeds maximum allowed size")
+		}
+	} else {
+		r.Body.Close()
+	}
+
+	// Restore body for ParseForm or other consumers
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+	return bodyBytes, nil
 }
 
 // errorHandler handles proxy errors
@@ -355,6 +396,12 @@ func (h *Handler) Routes(r chi.Router) {
 		pr.Get("/api/v2/torrents/files", h.handleTorrentFiles)
 		pr.Get("/api/v2/torrents/search", h.handleTorrentSearch)
 
+		// Intercepted write operations for cache invalidation
+		pr.Post("/api/v2/torrents/setLocation", h.handleSetLocation)
+		pr.Post("/api/v2/torrents/renameFile", h.handleRenameFile)
+		pr.Post("/api/v2/torrents/renameFolder", h.handleRenameFolder)
+		pr.Post("/api/v2/torrents/delete", h.handleDeleteTorrents)
+
 		// Handle the base proxy path and any nested paths requested through the proxy
 		pr.HandleFunc("/", h.ServeHTTP)
 		pr.HandleFunc("/*", h.ServeHTTP)
@@ -487,14 +534,37 @@ func isHTTPSRequest(r *http.Request) bool {
 	return false
 }
 
+// validateQueryParams checks if all query parameters are in the allowed list
+// Returns true if validation passes, false if validation fails (and proxies upstream)
+func (h *Handler) validateQueryParams(w http.ResponseWriter, r *http.Request, allowedParams map[string]struct{}, endpoint string) bool {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+	queryParams := r.URL.Query()
+
+	for key := range queryParams {
+		if _, ok := allowedParams[strings.ToLower(key)]; !ok {
+			log.Trace().
+				Int("instanceId", instanceID).
+				Str("client", clientAPIKey.ClientName).
+				Str("endpoint", endpoint).
+				Str("param", key).
+				Str("value", queryParams.Get(key)).
+				Msg("Unsupported query parameter, proxying upstream")
+			h.ServeHTTP(w, r)
+			return false
+		}
+	}
+	return true
+}
+
 // handleTorrentsInfo handles /api/v2/torrents/info using qui's sync manager
 func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	ctx := qbittorrent.WithSkipTrackerHydration(r.Context())
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
 	// Extract standard qBittorrent API parameters (no advanced filtering)
-	queryParams := r.URL.Query()
 	allowedParams := map[string]struct{}{
 		"filter":   {},
 		"category": {},
@@ -505,19 +575,11 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 		"offset":   {},
 		"hashes":   {},
 	}
-
-	for key := range queryParams {
-		if _, ok := allowedParams[strings.ToLower(key)]; !ok {
-			log.Debug().
-				Int("instanceId", instanceID).
-				Str("client", clientAPIKey.ClientName).
-				Str("param", key).
-				Msg("Unsupported torrents/info query parameter, proxying upstream")
-			h.ServeHTTP(w, r)
-			return
-		}
+	if !h.validateQueryParams(w, r, allowedParams, "torrents/info") {
+		return
 	}
 
+	queryParams := r.URL.Query()
 	filter := queryParams.Get("filter")
 	category := queryParams.Get("category")
 	tag := queryParams.Get("tag")
@@ -639,6 +701,20 @@ func (h *Handler) handleTorrentSearch(w http.ResponseWriter, r *http.Request) {
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
 	// Extract qBittorrent API parameters
+	allowedParams := map[string]struct{}{
+		"search":   {},
+		"filter":   {},
+		"category": {},
+		"tag":      {},
+		"sort":     {},
+		"reverse":  {},
+		"limit":    {},
+		"offset":   {},
+	}
+	if !h.validateQueryParams(w, r, allowedParams, "torrents/search") {
+		return
+	}
+
 	queryParams := r.URL.Query()
 	search := queryParams.Get("search")
 	filter := queryParams.Get("filter")
@@ -733,6 +809,11 @@ func (h *Handler) handleCategories(w http.ResponseWriter, r *http.Request) {
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
+	// Categories endpoint doesn't accept query parameters
+	if !h.validateQueryParams(w, r, map[string]struct{}{}, "torrents/categories") {
+		return
+	}
+
 	log.Debug().
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
@@ -766,6 +847,11 @@ func (h *Handler) handleTags(w http.ResponseWriter, r *http.Request) {
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
+	// Tags endpoint doesn't accept query parameters
+	if !h.validateQueryParams(w, r, map[string]struct{}{}, "torrents/tags") {
+		return
+	}
+
 	log.Debug().
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
@@ -798,6 +884,13 @@ func (h *Handler) handleTorrentProperties(w http.ResponseWriter, r *http.Request
 	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	allowedParams := map[string]struct{}{
+		"hash": {},
+	}
+	if !h.validateQueryParams(w, r, allowedParams, "torrents/properties") {
+		return
+	}
 
 	hash := r.URL.Query().Get("hash")
 
@@ -835,6 +928,13 @@ func (h *Handler) handleTorrentTrackers(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	allowedParams := map[string]struct{}{
+		"hash": {},
+	}
+	if !h.validateQueryParams(w, r, allowedParams, "torrents/trackers") {
+		return
+	}
 
 	hash := r.URL.Query().Get("hash")
 
@@ -879,28 +979,66 @@ func (h *Handler) handleTorrentPeers(w http.ResponseWriter, r *http.Request) {
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
 		Str("hash", hash).
-		Msg("Handling torrent peers request via qui sync manager")
+		Msg("Proxying sync/torrentPeers request")
 
-	peers, err := h.syncManager.GetTorrentPeers(ctx, instanceID, hash)
-	if err != nil {
-		log.Error().
-			Err(err).
-			Int("instanceId", instanceID).
-			Str("hash", hash).
-			Msg("Failed to get torrent peers")
-		h.writeProxyError(w)
-		return
+	// Use a custom response writer to capture the response
+	buf := h.bufferPool.Get()
+	crwBody := buf[:0]
+	crw := &capturingResponseWriter{
+		ResponseWriter: w,
+		body:           crwBody,
+		statusCode:     http.StatusOK,
 	}
+	defer func() {
+		if buf != nil {
+			h.bufferPool.Put(buf[:cap(buf)])
+		}
+	}()
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	// Proxy the request
+	h.proxy.ServeHTTP(crw, r)
 
-	encoder := json.NewEncoder(w)
-	if err := encoder.Encode(peers); err != nil {
-		log.Error().
-			Err(err).
-			Int("instanceId", instanceID).
-			Msg("Failed to encode peers response")
+	// Update local peer sync manager state for successful responses
+	if crw.statusCode == http.StatusOK && len(crw.body) > 0 {
+		var peersData qbt.TorrentPeersResponse
+		if err := json.Unmarshal(crw.body, &peersData); err != nil {
+			log.Error().
+				Err(err).
+				Int("instanceId", instanceID).
+				Str("hash", hash).
+				Msg("Failed to parse sync/torrentPeers response")
+			return
+		}
+
+		// Check if this is a full update (FullUpdate field or rid == 0)
+		isFullUpdate := peersData.FullUpdate || peersData.Rid == 0
+
+		if isFullUpdate {
+			client, err := h.clientPool.GetClient(ctx, instanceID)
+			if err != nil {
+				log.Error().
+					Err(err).
+					Int("instanceId", instanceID).
+					Msg("Failed to get client for peer state update")
+				return
+			}
+
+			// Update peer state using the same pattern as maindata
+			client.UpdateWithPeersData(hash, &peersData)
+
+			log.Debug().
+				Int("instanceId", instanceID).
+				Str("hash", hash).
+				Int64("rid", peersData.Rid).
+				Int("peerCount", len(peersData.Peers)).
+				Msg("Updated local peer state from full sync/torrentPeers response")
+		} else {
+			log.Debug().
+				Int("instanceId", instanceID).
+				Str("hash", hash).
+				Int64("rid", peersData.Rid).
+				Msg("Skipping incremental sync/torrentPeers update")
+		}
 	}
 }
 
@@ -909,6 +1047,14 @@ func (h *Handler) handleTorrentFiles(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	allowedParams := map[string]struct{}{
+		"hash":    {},
+		"indexes": {},
+	}
+	if !h.validateQueryParams(w, r, allowedParams, "torrents/files") {
+		return
+	}
 
 	hash := r.URL.Query().Get("hash")
 
@@ -995,4 +1141,277 @@ func (h *Handler) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	// Return success response
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(proxyLoginSuccessBody))
+}
+
+// handleSetLocation handles /api/v2/torrents/setLocation and invalidates file cache
+func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	// Buffer body so we can parse form and still forward to proxy
+	bodyBytes, err := bufferRequestBody(r)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to read setLocation body")
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to parse setLocation form")
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	hashes := r.Form.Get("hashes")
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Str("hashes", hashes).
+		Msg("Intercepting setLocation request for cache invalidation")
+
+	// Defer cache invalidation to ensure it happens even if proxy panics
+	// Use background context with timeout to avoid cancellation issues
+	defer func() {
+		// Capture panic value if any
+		panicValue := recover()
+		if panicValue != nil {
+			log.Error().Interface("panic", panicValue).Int("instanceId", instanceID).
+				Msg("Recovered from panic during setLocation cache invalidation")
+		}
+
+		if hashes != "" {
+			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			hashList := strings.Split(hashes, "|")
+			failedInvalidations := 0
+			for _, hash := range hashList {
+				hash = strings.TrimSpace(hash)
+				if hash == "" {
+					continue
+				}
+				if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
+					failedInvalidations++
+					log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+						Msg("Failed to invalidate file cache after setLocation")
+				}
+			}
+			// Log summary if any invalidations failed
+			if failedInvalidations > 0 {
+				log.Warn().Int("instanceId", instanceID).Int("failed", failedInvalidations).Int("total", len(hashList)).
+					Msg("Some file cache invalidations failed after setLocation - cache may be stale")
+			}
+		}
+
+		// Re-panic with captured value to preserve stack trace
+		if panicValue != nil {
+			panic(panicValue)
+		}
+	}()
+
+	// Restore body for proxy
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+	// Forward to qBittorrent
+	h.proxy.ServeHTTP(w, r)
+}
+
+// handleRenameFile handles /api/v2/torrents/renameFile and invalidates file cache
+func (h *Handler) handleRenameFile(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	// Buffer body so we can parse form and still forward to proxy
+	bodyBytes, err := bufferRequestBody(r)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to read renameFile body")
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to parse renameFile form")
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	hash := r.Form.Get("hash")
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Str("hash", hash).
+		Msg("Intercepting renameFile request for cache invalidation")
+
+	// Defer cache invalidation to ensure it happens even if proxy panics
+	defer func() {
+		// Capture panic value if any
+		panicValue := recover()
+		if panicValue != nil {
+			log.Error().Interface("panic", panicValue).Int("instanceId", instanceID).
+				Msg("Recovered from panic during renameFile cache invalidation")
+		}
+
+		if hash != "" {
+			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
+				log.Error().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+					Msg("CRITICAL: Failed to invalidate file cache after renameFile - cache is now stale")
+			}
+		}
+
+		// Re-panic with captured value to preserve stack trace
+		if panicValue != nil {
+			panic(panicValue)
+		}
+	}()
+
+	// Restore body for proxy
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+	// Forward to qBittorrent
+	h.proxy.ServeHTTP(w, r)
+}
+
+// handleRenameFolder handles /api/v2/torrents/renameFolder and invalidates file cache
+func (h *Handler) handleRenameFolder(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	// Buffer body so we can parse form and still forward to proxy
+	bodyBytes, err := bufferRequestBody(r)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to read renameFolder body")
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to parse renameFolder form")
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	hash := r.Form.Get("hash")
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Str("hash", hash).
+		Msg("Intercepting renameFolder request for cache invalidation")
+
+	// Defer cache invalidation to ensure it happens even if proxy panics
+	defer func() {
+		// Capture panic value if any
+		panicValue := recover()
+		if panicValue != nil {
+			log.Error().Interface("panic", panicValue).Int("instanceId", instanceID).
+				Msg("Recovered from panic during renameFolder cache invalidation")
+		}
+
+		if hash != "" {
+			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
+				log.Error().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+					Msg("CRITICAL: Failed to invalidate file cache after renameFolder - cache is now stale")
+			}
+		}
+
+		// Re-panic with captured value to preserve stack trace
+		if panicValue != nil {
+			panic(panicValue)
+		}
+	}()
+
+	// Restore body for proxy
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+	// Forward to qBittorrent
+	h.proxy.ServeHTTP(w, r)
+}
+
+// handleDeleteTorrents handles /api/v2/torrents/delete and invalidates file cache
+func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	// Buffer body so we can parse form and still forward to proxy
+	bodyBytes, err := bufferRequestBody(r)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to read delete body")
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to parse delete form")
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	hashes := r.Form.Get("hashes")
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Str("hashes", hashes).
+		Msg("Intercepting delete request for cache invalidation")
+
+	// Defer cache invalidation to ensure it happens even if proxy panics
+	defer func() {
+		// Capture panic value if any
+		panicValue := recover()
+		if panicValue != nil {
+			log.Error().Interface("panic", panicValue).Int("instanceId", instanceID).
+				Msg("Recovered from panic during delete cache invalidation")
+		}
+
+		if hashes != "" {
+			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			hashList := strings.Split(hashes, "|")
+			failedInvalidations := 0
+			for _, hash := range hashList {
+				hash = strings.TrimSpace(hash)
+				if hash == "" {
+					continue
+				}
+				if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
+					failedInvalidations++
+					log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+						Msg("Failed to invalidate file cache after delete")
+				}
+			}
+			// Log summary if any invalidations failed
+			if failedInvalidations > 0 {
+				log.Warn().Int("instanceId", instanceID).Int("failed", failedInvalidations).Int("total", len(hashList)).
+					Msg("Some file cache invalidations failed after delete - cache may be stale")
+			}
+		}
+
+		// Re-panic with captured value to preserve stack trace
+		if panicValue != nil {
+			panic(panicValue)
+		}
+	}()
+
+	// Restore body for proxy
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+	// Forward to qBittorrent
+	h.proxy.ServeHTTP(w, r)
 }

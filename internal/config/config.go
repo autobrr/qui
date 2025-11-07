@@ -105,6 +105,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("metricsHost", "127.0.0.1")
 	c.viper.SetDefault("metricsPort", 9074)
 	c.viper.SetDefault("metricsBasicAuthUsers", "")
+	c.viper.SetDefault("externalProgramAllowList", []string{})
 
 	// OIDC defaults
 	c.viper.SetDefault("oidcEnabled", false)
@@ -334,6 +335,14 @@ logLevel = "{{ .logLevel }}"
 # Leave empty to disable authentication (default)
 #metricsBasicAuthUsers = ""
 
+# External program allow list
+# Restrict which executables can be started from qui.
+# Provide absolute paths to binaries or directories. Leave commented to allow any program.
+#externalProgramAllowList = [
+#       "/usr/local/bin/my-script",
+#       "/home/user/bin",
+#]
+
 # OpenID Connect (OIDC) Configuration
 # Enable OIDC authentication
 #oidcEnabled = false
@@ -491,7 +500,7 @@ func setupLogFile(path string, base io.Writer, maxSize, maxBackups int) (io.Writ
 	return io.MultiWriter(base, rotator), nil
 }
 
-func baseLogWriterForVersion(version string) io.Writer {
+func baseLogWriter(version string) io.Writer {
 	if isDevBuild(version) {
 		writer := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}
 		writer.PartsOrder = []string{zerolog.TimestampFieldName, zerolog.LevelFieldName, zerolog.MessageFieldName}
@@ -509,7 +518,7 @@ func baseLogWriterForVersion(version string) io.Writer {
 			if msg == "" {
 				return ""
 			}
-			return "--> " + msg
+			return msg
 		}
 		return writer
 	}
@@ -517,12 +526,12 @@ func baseLogWriterForVersion(version string) io.Writer {
 }
 
 func (c *AppConfig) baseLogWriter() io.Writer {
-	return baseLogWriterForVersion(c.version)
+	return baseLogWriter(c.version)
 }
 
 // DefaultLogWriter returns the base log writer for the provided version.
 func DefaultLogWriter(version string) io.Writer {
-	return baseLogWriterForVersion(version)
+	return baseLogWriter(version)
 }
 
 // InitDefaultLogger configures zerolog with the default writer for this version.

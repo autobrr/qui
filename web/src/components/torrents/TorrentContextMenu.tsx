@@ -23,6 +23,7 @@ import {
   CheckCircle,
   Copy,
   Download,
+  FastForward,
   FolderOpen,
   Gauge,
   Pause,
@@ -32,16 +33,21 @@ import {
   Sparkles,
   Sprout,
   Tag,
+  Terminal,
   Trash2
 } from "lucide-react"
 import { memo, useCallback, useMemo } from "react"
 import { toast } from "sonner"
+import { useQuery, useMutation } from "@tanstack/react-query"
+import { api } from "@/lib/api"
+import type { ExternalProgram } from "@/types"
 import { CategorySubmenu } from "./CategorySubmenu"
 import { QueueSubmenu } from "./QueueSubmenu"
 import { RenameSubmenu } from "./RenameSubmenu"
 
 interface TorrentContextMenuProps {
   children: React.ReactNode
+  instanceId: number
   torrent: Torrent
   isSelected: boolean
   isAllSelected?: boolean
@@ -73,6 +79,7 @@ interface TorrentContextMenuProps {
 
 export const TorrentContextMenu = memo(function TorrentContextMenu({
   children,
+  instanceId,
   torrent,
   isSelected,
   isAllSelected = false,
@@ -187,6 +194,11 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     void onExport(hashes, torrents)
   }, [hashes, onExport, torrents])
 
+  const forceStartStates = torrents.map(t => t.force_start)
+  const allForceStarted = forceStartStates.length > 0 && forceStartStates.every(state => state === true)
+  const allForceDisabled = forceStartStates.length > 0 && forceStartStates.every(state => state === false)
+  const forceStartMixed = forceStartStates.length > 0 && !allForceStarted && !allForceDisabled
+
   // TMM state calculation
   const tmmStates = torrents.map(t => t.auto_tmm)
   const allEnabled = tmmStates.length > 0 && tmmStates.every(state => state === true)
@@ -195,6 +207,10 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
 
   const handleQueueAction = useCallback((action: "topPriority" | "increasePriority" | "decreasePriority" | "bottomPriority") => {
     onAction(action as TorrentAction, hashes)
+  }, [onAction, hashes])
+
+  const handleForceStartToggle = useCallback((enable: boolean) => {
+    onAction(TORRENT_ACTIONS.FORCE_START, hashes, { enable })
   }, [onAction, hashes])
 
   const handleSetCategory = useCallback((category: string) => {
@@ -226,6 +242,34 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           <Play className="mr-2 h-4 w-4" />
           Resume {count > 1 ? `(${count})` : ""}
         </ContextMenuItem>
+        {forceStartMixed ? (
+          <>
+            <ContextMenuItem
+              onClick={() => handleForceStartToggle(true)}
+              disabled={isPending}
+            >
+              <FastForward className="mr-2 h-4 w-4" />
+              Force Start {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
+            </ContextMenuItem>
+            <ContextMenuItem
+              onClick={() => handleForceStartToggle(false)}
+              disabled={isPending}
+            >
+              <FastForward className="mr-2 h-4 w-4" />
+              Disable Force Start {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
+            </ContextMenuItem>
+          </>
+        ) : (
+          <ContextMenuItem
+            onClick={() => handleForceStartToggle(!allForceStarted)}
+            disabled={isPending}
+          >
+            <FastForward className="mr-2 h-4 w-4" />
+            {allForceStarted
+              ? `Disable Force Start ${count > 1 ? `(${count})` : ""}`
+              : `Force Start ${count > 1 ? `(${count})` : ""}`}
+          </ContextMenuItem>
+        )}
         <ContextMenuItem
           onClick={() => onAction(TORRENT_ACTIONS.PAUSE, hashes)}
           disabled={isPending}
@@ -346,6 +390,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           </ContextMenuItem>
         )}
         <ContextMenuSeparator />
+        <ExternalProgramsSubmenu instanceId={instanceId} hashes={hashes} />
         {supportsTorrentExport && (
           <ContextMenuItem
             onClick={handleExport}
@@ -385,3 +430,90 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     </ContextMenu>
   )
 })
+
+interface ExternalProgramsSubmenuProps {
+  instanceId: number
+  hashes: string[]
+}
+
+function ExternalProgramsSubmenu({ instanceId, hashes }: ExternalProgramsSubmenuProps) {
+  const { data: programs, isLoading } = useQuery({
+    queryKey: ["externalPrograms", "enabled"],
+    queryFn: () => api.listExternalPrograms(),
+    select: (data) => data.filter(p => p.enabled),
+    staleTime: 60 * 1000, // 1 minute
+  })
+
+  // Types derived from API for strong typing
+  type ExecResp = Awaited<ReturnType<typeof api.executeExternalProgram>>
+  type ExecVars = { program: ExternalProgram; instanceId: number; hashes: string[] }
+
+  const executeMutation = useMutation<ExecResp, Error, ExecVars>({
+    mutationFn: async ({ program, instanceId, hashes }) =>
+      api.executeExternalProgram({
+        program_id: program.id,
+        instance_id: instanceId,
+        hashes,
+      }),
+    onSuccess: (response) => {
+      const successCount = response.results.filter(r => r.success).length
+      const failureCount = response.results.length - successCount
+
+      if (failureCount === 0) {
+        toast.success(`External program executed successfully for ${successCount} torrent(s)`)
+      } else if (successCount === 0) {
+        toast.error(`Failed to execute external program for all ${failureCount} torrent(s)`)
+      } else {
+        toast.warning(`Executed for ${successCount} torrent(s), failed for ${failureCount}`)
+      }
+
+      // Log detailed errors in development only to avoid leaking PII/paths in production
+      if (import.meta.env.DEV) {
+        response.results.forEach(r => {
+          if (!r.success && r.error) console.error(`External program failed for ${r.hash}:`, r.error)
+        })
+      }
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : String(error)
+      toast.error(`Failed to execute external program: ${message}`)
+    },
+  })
+
+  const handleExecute = useCallback((program: ExternalProgram) => {
+    executeMutation.mutate({ program, instanceId, hashes })
+  }, [executeMutation, instanceId, hashes])
+
+  if (isLoading) {
+    return (
+      <ContextMenuItem disabled>
+        Loading programs...
+      </ContextMenuItem>
+    )
+  }
+
+  // programs is already filtered to enabled by select
+  if (!programs || programs.length === 0) {
+    return null // Don't show the submenu if no programs are enabled
+  }
+
+  return (
+    <ContextMenuSub>
+      <ContextMenuSubTrigger>
+        <Terminal className="mr-4 h-4 w-4" />
+        External Programs
+      </ContextMenuSubTrigger>
+      <ContextMenuSubContent>
+        {programs.map(program => (
+          <ContextMenuItem
+            key={program.id}
+            onClick={() => handleExecute(program)}
+            disabled={executeMutation.isPending}
+          >
+            {program.name}
+          </ContextMenuItem>
+        ))}
+      </ContextMenuSubContent>
+    </ContextMenuSub>
+  )
+}

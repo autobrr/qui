@@ -37,6 +37,7 @@ interface CategoryTreeProps {
   getCheckboxState: (state: "include" | "exclude" | "neutral") => boolean | "indeterminate"
   onCategoryCheckboxChange: (category: string) => void
   onCategoryPointerDown?: (event: ReactPointerEvent<HTMLElement>, category: string) => void
+  onCategoryPointerLeave?: (event: ReactPointerEvent<HTMLElement>) => void
   onCreateSubcategory: (parent: string) => void
   onEditCategory: (category: string) => void
   onDeleteCategory: (category: string) => void
@@ -109,6 +110,7 @@ const CategoryTreeNode = memo(({
   getCheckboxState,
   onCategoryCheckboxChange,
   onCategoryPointerDown,
+  onCategoryPointerLeave,
   onCreateSubcategory,
   onEditCategory,
   onDeleteCategory,
@@ -125,6 +127,7 @@ const CategoryTreeNode = memo(({
   getCheckboxState: (state: "include" | "exclude" | "neutral") => boolean | "indeterminate"
   onCategoryCheckboxChange: (category: string) => void
   onCategoryPointerDown?: (event: ReactPointerEvent<HTMLElement>, category: string) => void
+  onCategoryPointerLeave?: (event: ReactPointerEvent<HTMLElement>) => void
   onCreateSubcategory: (parent: string) => void
   onEditCategory: (category: string) => void
   onDeleteCategory: (category: string) => void
@@ -184,11 +187,12 @@ const CategoryTreeNode = memo(({
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <li
-            className="flex items-center gap-2 px-2 py-1.5 hover:bg-accent rounded-md cursor-pointer select-none"
-            style={{ paddingLeft: `${indentLevel + 8}px` }}
-            onPointerDown={handlePointerDown}
-            role="presentation"
-          >
+          className="flex items-center gap-2 px-2 py-1.5 hover:bg-accent rounded-md cursor-pointer select-none"
+          style={{ paddingLeft: `${indentLevel + 8}px` }}
+          onPointerDown={handlePointerDown}
+          onPointerLeave={onCategoryPointerLeave}
+          role="presentation"
+        >
             {useSubcategories && (
               <button
                 onClick={handleToggleCollapse}
@@ -265,6 +269,7 @@ const CategoryTreeNode = memo(({
               getCheckboxState={getCheckboxState}
               onCategoryCheckboxChange={onCategoryCheckboxChange}
               onCategoryPointerDown={onCategoryPointerDown}
+              onCategoryPointerLeave={onCategoryPointerLeave}
               onCreateSubcategory={onCreateSubcategory}
               onEditCategory={onEditCategory}
               onDeleteCategory={onDeleteCategory}
@@ -293,6 +298,7 @@ export const CategoryTree = memo(({
   getCheckboxState,
   onCategoryCheckboxChange,
   onCategoryPointerDown,
+  onCategoryPointerLeave,
   onCreateSubcategory,
   onEditCategory,
   onDeleteCategory,
@@ -333,13 +339,14 @@ export const CategoryTree = memo(({
   const uncategorizedCount = getCategoryCount("")
 
   return (
-    <div className="space-y-1">
+    <div className="flex flex-col gap-0">
       {/* All/Uncategorized special items */}
 
       <li
         className="flex items-center gap-2 px-2 py-1.5 hover:bg-accent rounded-md cursor-pointer"
         onClick={() => onCategoryCheckboxChange("")}
         onPointerDown={(event) => onCategoryPointerDown?.(event, "")}
+        onPointerLeave={onCategoryPointerLeave}
       >
         <Checkbox
           checked={uncategorizedCheckboxState}
@@ -364,6 +371,7 @@ export const CategoryTree = memo(({
           getCheckboxState={getCheckboxState}
           onCategoryCheckboxChange={onCategoryCheckboxChange}
           onCategoryPointerDown={onCategoryPointerDown}
+          onCategoryPointerLeave={onCategoryPointerLeave}
           onCreateSubcategory={onCreateSubcategory}
           onEditCategory={onEditCategory}
           onDeleteCategory={onDeleteCategory}

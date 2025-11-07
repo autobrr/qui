@@ -5,6 +5,7 @@
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
@@ -13,20 +14,23 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePersistedTabState } from "@/hooks/usePersistedTabState"
 import { api } from "@/lib/api"
 import { getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxSavePath, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
-import { copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
-import type { SortedPeersResponse, Torrent, TorrentPeer } from "@/types"
+import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
+import type { SortedPeersResponse, Torrent, TorrentFile, TorrentPeer } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import "flag-icons/css/flag-icons.min.css"
 import { Ban, Copy, Loader2, UserPlus } from "lucide-react"
-import { memo, useCallback, useEffect, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
 interface TorrentDetailsPanelProps {
@@ -69,12 +73,14 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const [peerToBan, setPeerToBan] = useState<TorrentPeer | null>(null)
   const [isReady, setIsReady] = useState(false)
   const { data: metadata } = useInstanceMetadata(instanceId)
+  const { data: capabilities } = useInstanceCapabilities(instanceId)
   const queryClient = useQueryClient()
   const [speedUnit] = useSpeedUnits()
   const [incognitoMode] = useIncognitoMode()
   const displayName = incognitoMode ? getLinuxIsoName(torrent?.hash ?? "") : torrent?.name
   const incognitoHash = incognitoMode && torrent?.hash ? getLinuxHash(torrent.hash) : undefined
-
+  const [pendingFileIndices, setPendingFileIndices] = useState<Set<number>>(() => new Set())
+  const supportsFilePriority = capabilities?.supportsFilePriority ?? false
   const copyToClipboard = useCallback(async (text: string, type: string) => {
     try {
       await copyTextToClipboard(text)
@@ -95,6 +101,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     const nextTab = isTabValue(value) ? value : DEFAULT_TAB
     setActiveTab(nextTab)
   }, [setActiveTab])
+
+  const isContentTabActive = activeTab === "content"
 
   // Fetch torrent properties
   const { data: properties, isLoading: loadingProperties } = useQuery({
@@ -123,7 +131,107 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     enabled: !!torrent && isReady, // Fetch immediately, don't wait for tab
     staleTime: 30000,
     gcTime: 5 * 60 * 1000,
+    refetchInterval: () => {
+      if (!isContentTabActive) return false
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        return 3000
+      }
+      return false
+    },
+    refetchOnWindowFocus: isContentTabActive,
+    refetchOnReconnect: isContentTabActive,
   })
+
+  const setFilePriorityMutation = useMutation<void, unknown, { indices: number[]; priority: number; hash: string }>({
+    mutationFn: async ({ indices, priority, hash }) => {
+      await api.setTorrentFilePriority(instanceId, hash, indices, priority)
+    },
+    onMutate: ({ indices }) => {
+      setPendingFileIndices(prev => {
+        const next = new Set(prev)
+        indices.forEach(index => next.add(index))
+        return next
+      })
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "Failed to update file priorities"
+      toast.error(message)
+    },
+    onSettled: (_, __, variables) => {
+      if (!variables) {
+        setPendingFileIndices(() => new Set())
+        return
+      }
+
+      setPendingFileIndices(prev => {
+        const next = new Set(prev)
+        variables.indices.forEach(index => next.delete(index))
+        return next
+      })
+    },
+  })
+
+  const fileSelectionStats = useMemo(() => {
+    if (!files) {
+      return { totalFiles: 0, selectedFiles: 0 }
+    }
+
+    let selected = 0
+    for (const file of files) {
+      if (file.priority !== 0) {
+        selected += 1
+      }
+    }
+
+    return { totalFiles: files.length, selectedFiles: selected }
+  }, [files])
+
+  const totalFiles = fileSelectionStats.totalFiles
+  const selectedFileCount = fileSelectionStats.selectedFiles
+  const canSelectAll = supportsFilePriority && (files?.some(file => file.priority === 0) ?? false)
+  const canDeselectAll = supportsFilePriority && (files?.some(file => file.priority !== 0) ?? false)
+
+  const handleToggleFileDownload = useCallback((file: TorrentFile, nextSelected: boolean) => {
+    if (!torrent || !supportsFilePriority) {
+      return
+    }
+
+    const desiredPriority = nextSelected ? Math.max(file.priority, 1) : 0
+    if (file.priority === desiredPriority) {
+      return
+    }
+
+    setFilePriorityMutation.mutate({ indices: [file.index], priority: desiredPriority, hash: torrent.hash })
+  }, [setFilePriorityMutation, supportsFilePriority, torrent])
+
+  const handleSelectAllFiles = useCallback(() => {
+    if (!torrent || !supportsFilePriority || !files) {
+      return
+    }
+
+    const indices = files.filter(file => file.priority === 0).map(file => file.index)
+    if (indices.length === 0) {
+      return
+    }
+
+    setFilePriorityMutation.mutate({ indices, priority: 1, hash: torrent.hash })
+  }, [files, setFilePriorityMutation, supportsFilePriority, torrent])
+
+  const handleDeselectAllFiles = useCallback(() => {
+    if (!torrent || !supportsFilePriority || !files) {
+      return
+    }
+
+    const indices = files.filter(file => file.priority !== 0).map(file => file.index)
+    if (indices.length === 0) {
+      return
+    }
+
+    setFilePriorityMutation.mutate({ indices, priority: 0, hash: torrent.hash })
+  }, [files, setFilePriorityMutation, supportsFilePriority, torrent])
 
   // Fetch torrent peers with optimized refetch
   const isPeersTabActive = activeTab === "peers"
@@ -218,6 +326,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const displayInfohashV1 = incognitoMode && resolvedInfohashV1 ? incognitoHash : resolvedInfohashV1
   const displayInfohashV2 = incognitoMode && resolvedInfohashV2 ? incognitoHash : resolvedInfohashV2
   const displaySavePath = incognitoMode && properties?.save_path ? getLinuxSavePath(torrent.hash) : properties?.save_path
+  const tempPathEnabled = Boolean(properties?.download_path)
+  const displayTempPath = incognitoMode && properties?.download_path ? getLinuxSavePath(torrent.hash) : properties?.download_path
 
   const formatLimitLabel = (limit: number | null | undefined) => {
     if (limit == null || !Number.isFinite(limit) || limit <= 0) {
@@ -241,10 +351,22 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between px-4 py-3 sm:px-6 border-b bg-muted/30">
-        <h3 className="text-sm font-semibold truncate flex-1 pr-2" title={displayName}>
-          {displayName}
-        </h3>
+      <div className="flex items-center px-4 py-3 sm:px-6 border-b bg-muted/30 gap-2">
+        <div className="flex flex-1 items-center gap-2 min-w-0 pr-12">
+          <h3 className="text-sm font-semibold truncate flex-1 min-w-0" title={displayName}>
+            {displayName}
+          </h3>
+          {displayName && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              onClick={() => copyToClipboard(displayName, "Torrent name")}
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
@@ -449,6 +571,30 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                         </div>
                       </div>
                     </div>
+
+                    {/* Temporary Download Path - shown if temp_path_enabled */}
+                    {tempPathEnabled && (
+                      <div className="space-y-3">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Download Path</h3>
+                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
+                          <div className="flex items-center gap-2">
+                            <div className="font-mono text-xs sm:text-sm break-all text-muted-foreground bg-background/50 rounded px-2.5 py-2 select-text flex-1">
+                              {displayTempPath || "N/A"}
+                            </div>
+                            {displayTempPath && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 shrink-0"
+                                onClick={() => copyToClipboard(displayTempPath, "Temporary path")}
+                              >
+                                <Copy className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Info Hash Display */}
                     <div className="space-y-3">
@@ -676,16 +822,18 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
                         // A seeder has exactly 1.0 progress
                         const isSeeder = progressValue === 1.0
+                        const flagDetails = getPeerFlagDetails(peer.flags, peer.flags_desc)
+                        const hasFlagDetails = flagDetails.length > 0
 
                         return (
                           <ContextMenu key={peerKey}>
                             <ContextMenuTrigger asChild>
-                              <div className={`bg-card/50 backdrop-blur-sm border ${isActive ? "border-border/70" : "border-border/30"} hover:border-border transition-all rounded-lg p-4 space-y-3 cursor-context-menu`}>
+                              <div className={`bg-card/50 backdrop-blur-sm border ${isActive ? "border-border/70" : "border-border/30"} hover:border-border transition-all rounded-lg p-4 space-y-3`}>
                                 {/* Peer Header */}
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="flex-1 space-y-1">
                                     <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="font-mono text-sm">{peer.ip}:{peer.port}</span>
+                                      <span className="font-mono text-sm cursor-context-menu">{peer.ip}:{peer.port}</span>
                                       {peer.country_code && (
                                         <span
                                           className={`fi fi-${peer.country_code.toLowerCase()} rounded text-sm`}
@@ -742,7 +890,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                 </div>
 
                                 {/* Connection Info */}
-                                {(peer.connection || peer.flags) && (
+                                {(peer.connection || hasFlagDetails) && (
                                   <>
                                     <Separator className="opacity-50" />
                                     <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
@@ -751,9 +899,44 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                           <span className="opacity-70">Connection:</span> {peer.connection}
                                         </div>
                                       )}
-                                      {peer.flags && (
-                                        <div>
-                                          <span className="opacity-70">Flags:</span> {peer.flags}
+                                      {hasFlagDetails && (
+                                        <div className="flex items-center gap-2">
+                                          <span className="opacity-70">Flags:</span>
+                                          <span className="inline-flex flex-wrap gap-1">
+                                            {flagDetails.map(({ flag, description }, index) => {
+                                              const flagKey = `${flag}-${index}`
+                                              const badgeClass =
+                                                "inline-flex items-center justify-center rounded border border-border/60 bg-muted/20 px-1 text-[12px] font-semibold leading-none text-foreground cursor-pointer"
+
+                                              if (!description) {
+                                                return (
+                                                  <span
+                                                    key={flagKey}
+                                                    className={badgeClass}
+                                                    aria-label={`Flag ${flag}`}
+                                                  >
+                                                    {flag}
+                                                  </span>
+                                                )
+                                              }
+
+                                              return (
+                                                <Tooltip key={flagKey}>
+                                                  <TooltipTrigger asChild>
+                                                    <span
+                                                      className={badgeClass}
+                                                      aria-label={description}
+                                                    >
+                                                      {flag}
+                                                    </span>
+                                                  </TooltipTrigger>
+                                                  <TooltipContent side="top">
+                                                    {description}
+                                                  </TooltipContent>
+                                                </Tooltip>
+                                              )
+                                            })}
+                                          </span>
                                         </div>
                                       )}
                                     </div>
@@ -807,31 +990,98 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                     <Loader2 className="h-6 w-6 animate-spin" />
                   </div>
                 ) : files && files.length > 0 ? (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">File Contents</h3>
-                      <span className="text-xs text-muted-foreground">{files.length} file{files.length !== 1 ? "s" : ""}</span>
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex flex-col gap-1">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">File Contents</h3>
+                        <span className="text-xs text-muted-foreground">
+                          {supportsFilePriority
+                            ? `${selectedFileCount} of ${totalFiles} selected`
+                            : `${files.length} file${files.length !== 1 ? "s" : ""}`}
+                        </span>
+                      </div>
+                      {supportsFilePriority ? (
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleSelectAllFiles}
+                            disabled={!canSelectAll || setFilePriorityMutation.isPending}
+                          >
+                            Select All
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleDeselectAllFiles}
+                            disabled={!canDeselectAll || setFilePriorityMutation.isPending}
+                          >
+                            Deselect All
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="text-xs text-muted-foreground max-w-sm">
+                          Selective downloads require a qBittorrent instance with Web API 2.0.0 or newer.
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-2">
-                      {files.map((file, index) => {
-                        const displayFileName = incognitoMode ? getLinuxFileName(torrent.hash, index) : file.name
+                      {files.map((file) => {
+                        const displayFileName = incognitoMode ? getLinuxFileName(torrent.hash, file.index) : file.name
                         const progressPercent = file.progress * 100
                         const isComplete = progressPercent === 100
+                        const isSkipped = file.priority === 0
+                        const isPending = pendingFileIndices.has(file.index)
 
                         return (
-                          <div key={index} className="bg-card/50 backdrop-blur-sm border border-border/50 hover:border-border transition-all rounded-lg p-4">
+                          <div
+                            key={file.index}
+                            className={cn(
+                              "bg-card/50 backdrop-blur-sm border border-border/50 rounded-lg p-4 transition-all",
+                              !isSkipped && "hover:border-border",
+                              isSkipped && "opacity-80"
+                            )}
+                          >
                             <div className="space-y-3">
                               <div className="flex items-start justify-between gap-3">
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-xs sm:text-sm font-mono text-muted-foreground break-all">{displayFileName}</p>
+                                <div className="flex flex-1 items-start gap-3 min-w-0">
+                                  {supportsFilePriority && (
+                                    <Checkbox
+                                      checked={!isSkipped}
+                                      disabled={isPending || !supportsFilePriority}
+                                      onCheckedChange={(checked) => handleToggleFileDownload(file, checked === true)}
+                                      aria-label={isSkipped ? "Select file for download" : "Skip file download"}
+                                      className="mt-0.5 shrink-0"
+                                    />
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <p
+                                      className={cn(
+                                        "text-xs sm:text-sm font-mono break-all text-muted-foreground",
+                                        isSkipped && supportsFilePriority && "text-muted-foreground/70"
+                                      )}
+                                    >
+                                      {displayFileName}
+                                    </p>
+                                  </div>
                                 </div>
-                                <Badge variant={isComplete ? "default" : "secondary"} className="shrink-0 text-xs">
-                                  {formatBytes(file.size)}
-                                </Badge>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  {isSkipped && supportsFilePriority && (
+                                    <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                                      Skipped
+                                    </Badge>
+                                  )}
+                                  <Badge variant={isComplete ? "default" : "secondary"} className="text-xs">
+                                    {formatBytes(file.size)}
+                                  </Badge>
+                                </div>
                               </div>
                               <div className="flex items-center gap-3">
                                 <Progress value={progressPercent} className="flex-1 h-1.5" />
-                                <span className={`text-xs font-medium ${isComplete ? "text-green-500" : "text-muted-foreground"}`}>
+                                {isPending && (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                                )}
+                                <span className={cn("text-xs font-medium", isComplete ? "text-green-500" : "text-muted-foreground")}>
                                   {Math.round(progressPercent)}%
                                 </span>
                               </div>

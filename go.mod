@@ -4,10 +4,11 @@ go 1.25
 
 require (
 	github.com/CAFxX/httpcompression v0.0.9
+	github.com/Hellseher/go-shellquote v0.1.0
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/autobrr/autobrr v1.68.0
-	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251026133409-408370ecae98
+	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251030185713-77d0b1c8908d
 	github.com/coreos/go-oidc/v3 v3.16.0
 	github.com/creativeprojects/go-selfupdate v1.5.1
 	github.com/expr-lang/expr v1.17.6
