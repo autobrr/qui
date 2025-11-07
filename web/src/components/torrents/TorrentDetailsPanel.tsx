@@ -87,9 +87,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const supportsFilePriority = capabilities?.supportsFilePriority ?? false
   const [selectedCrossSeedTorrents, setSelectedCrossSeedTorrents] = useState<Set<string>>(() => new Set())
   const [showDeleteCrossSeedDialog, setShowDeleteCrossSeedDialog] = useState(false)
-  const [deleteCrossSeedFiles, setDeleteCrossSeedFiles] = useState(true)
+  const [deleteCrossSeedFiles, setDeleteCrossSeedFiles] = useState(false)
   const [showDeleteCurrentDialog, setShowDeleteCurrentDialog] = useState(false)
-  const [deleteCurrentFiles, setDeleteCurrentFiles] = useState(true)
+  const [deleteCurrentFiles, setDeleteCurrentFiles] = useState(false)
   const copyToClipboard = useCallback(async (text: string, type: string) => {
     try {
       await copyTextToClipboard(text)
