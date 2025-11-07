@@ -19,7 +19,7 @@ import { searchCrossSeedMatches, type CrossSeedTorrent } from "@/lib/cross-seed-
 import { getLinuxIsoName, getLinuxSavePath, useIncognitoMode } from "@/lib/incognito"
 import { getTorrentDisplayHash } from "@/lib/torrent-utils"
 import { copyTextToClipboard } from "@/lib/utils"
-import type { Category, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
+import type { Category, Instance, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
 import {
   CheckCircle,
   Copy,
@@ -159,33 +159,71 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
       const allMatches: CrossSeedTorrent[] = []
       
       if (allInstancesData && Array.isArray(allInstancesData)) {
-        // Wait for all instance searches to complete before processing results
-        const searchPromises = allInstancesData.map(async (instance) => {
+        // Timeout wrapper for individual instance searches
+        const searchWithTimeout = async (instance: Instance, timeoutMs: number = 15000) => {
+          const timeoutPromise = new Promise<CrossSeedTorrent[]>((_, reject) => {
+            setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms`)), timeoutMs)
+          })
+          
+          const searchPromise = searchCrossSeedMatches(
+            selectedTorrent,
+            instance,
+            _instanceId,
+            torrentFilesData || [],
+            selectedTorrent.infohash_v1,
+            selectedTorrent.infohash_v2
+          )
+          
           try {
-            const matches = await searchCrossSeedMatches(
-              selectedTorrent,
-              instance,
-              _instanceId,
-              torrentFilesData || [],
-              selectedTorrent.infohash_v1,
-              selectedTorrent.infohash_v2
-            )
-            return matches
+            return await Promise.race([searchPromise, timeoutPromise])
           } catch (error) {
-            console.warn(`Failed to search cross-seeds on instance ${instance.name}:`, error)
+            if (error instanceof Error && error.message.includes('Timeout')) {
+              console.warn(`Cross-seed search timed out for instance ${instance.name} after ${timeoutMs}ms`)
+              toast.warning(`Search timed out for instance "${instance.name}"`, {
+                description: "Continuing with other instances...",
+                duration: 3000
+              })
+            } else {
+              console.warn(`Failed to search cross-seeds on instance ${instance.name}:`, error)
+            }
             return []
+          }
+        }
+
+        // Create search promises with timeout handling
+        const searchPromises = allInstancesData.map(instance => searchWithTimeout(instance))
+        
+        // Use Promise.allSettled to get partial results even if some instances fail/timeout
+        console.log(`Starting cross-seed search across ${allInstancesData.length} instances...`)
+        const searchResults = await Promise.allSettled(searchPromises)
+        
+        // Process results and collect successful matches
+        let successfulSearches = 0
+        let timedOutSearches = 0
+        let failedSearches = 0
+        
+        searchResults.forEach((result) => {
+          if (result.status === 'fulfilled') {
+            allMatches.push(...result.value)
+            successfulSearches++
+          } else {
+            if (result.reason?.message?.includes('Timeout')) {
+              timedOutSearches++
+            } else {
+              failedSearches++
+            }
           }
         })
         
-        // Wait for all searches to complete
-        const allSearchResults = await Promise.all(searchPromises)
+        console.log(`Cross-seed search completed: ${successfulSearches}/${allInstancesData.length} instances successful, ${timedOutSearches} timed out, ${failedSearches} failed. Total matches: ${allMatches.length}`)
         
-        // Flatten all results into a single array
-        allSearchResults.forEach(matches => {
-          allMatches.push(...matches)
-        })
-        
-        console.log(`Cross-seed search completed across ${allInstancesData.length} instances. Total matches: ${allMatches.length}`)
+        // Show summary toast if there were any issues
+        if (timedOutSearches > 0 || failedSearches > 0) {
+          toast.info(`Search completed with partial results`, {
+            description: `${successfulSearches}/${allInstancesData.length} instances searched successfully. ${timedOutSearches} timed out, ${failedSearches} failed.`,
+            duration: 5000
+          })
+        }
       }
       
       if (allMatches.length > 0) {
