@@ -1667,6 +1667,25 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		IndexerIDs: opts.IndexerIDs,
 	}
 
+	// Add music-specific parameters if we have them
+	if contentInfo.IsMusic {
+		// Parse music information from the source release or torrent name
+		var musicRelease rls.Release
+		if sourceRelease.Type == rls.Music && sourceRelease.Artist != "" {
+			musicRelease = sourceRelease
+		} else {
+			// Try to parse music info from torrent name
+			musicRelease = ParseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
+		}
+
+		if musicRelease.Artist != "" {
+			searchReq.Artist = musicRelease.Artist
+		}
+		if musicRelease.Title != "" {
+			searchReq.Album = musicRelease.Title // For music, Title represents the album
+		}
+	}
+
 	// Apply category filtering to the search request with indexer-specific optimization
 	if len(contentInfo.Categories) > 0 {
 		// If specific indexers are requested, optimize categories for those indexers

@@ -1027,6 +1027,23 @@ func (s *Service) buildSearchParams(req *TorznabSearchRequest, searchMode string
 			Msg("Adding year parameter to torznab search")
 	}
 
+	// Add music-specific parameters
+	if req.Artist != "" {
+		params.Set("artist", req.Artist)
+		log.Debug().
+			Str("search_mode", mode).
+			Str("artist", req.Artist).
+			Msg("Adding artist parameter to torznab search")
+	}
+
+	if req.Album != "" {
+		params.Set("album", req.Album)
+		log.Debug().
+			Str("search_mode", mode).
+			Str("album", req.Album).
+			Msg("Adding album parameter to torznab search")
+	}
+
 	if req.Limit > 0 {
 		params.Set("limit", strconv.Itoa(req.Limit))
 	}
@@ -1215,6 +1232,21 @@ func getPreferredCapabilities(req *TorznabSearchRequest, searchMode string) []st
 		if req.Year > 0 {
 			preferred = append(preferred, "tv-search-year")
 		}
+	case "music":
+		// For music searches, check for specific parameter capabilities that the indexer supports
+		// This allows us to use indexers that support music-search-artist, music-search-album, etc.
+		// even if they don't have the base "music-search" capability
+		if req.Artist != "" {
+			preferred = append(preferred, "music-search-artist", "audio-search-artist")
+		}
+		if req.Album != "" {
+			preferred = append(preferred, "music-search-album", "audio-search-album")
+		}
+		// Always add basic query support for music searches
+		preferred = append(preferred, "music-search-q", "audio-search-q")
+		if req.Year > 0 {
+			preferred = append(preferred, "music-search-year", "audio-search-year")
+		}
 	}
 
 	return preferred
@@ -1256,6 +1288,20 @@ func supportsPreferredCapabilities(current []string, preferred []string) bool {
 			// This is a basic capability like "movie-search"
 			basic = append(basic, cap)
 		}
+	}
+
+	// Check for music-specific parameter capabilities
+	musicSpecificCaps := make([]string, 0)
+	for _, cap := range paramSpecific {
+		if strings.HasPrefix(cap, "music-search-") || strings.HasPrefix(cap, "audio-search-") {
+			musicSpecificCaps = append(musicSpecificCaps, cap)
+		}
+	}
+
+	// For music searches, if indexer has specific music parameter capabilities,
+	// it can handle music searches even without base "music-search" capability
+	if len(musicSpecificCaps) > 0 && supportsAnyCapability(current, musicSpecificCaps) {
+		return true
 	}
 
 	// If indexer supports any parameter-specific capabilities, that's preferred

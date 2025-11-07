@@ -17,12 +17,16 @@ type TorznabSearchRequest struct {
 	IMDbID string `json:"imdb_id,omitempty"`
 	// TVDbID for TV shows (optional)
 	TVDbID string `json:"tvdb_id,omitempty"`
-	// Year for movies/shows (optional)
+	// Year for movies/shows/music (optional)
 	Year int `json:"year,omitempty"`
 	// Season for TV shows (optional)
 	Season *int `json:"season,omitempty"`
 	// Episode for TV shows (optional)
 	Episode *int `json:"episode,omitempty"`
+	// Artist for music searches (optional)
+	Artist string `json:"artist,omitempty"`
+	// Album for music searches (optional)
+	Album string `json:"album,omitempty"`
 	// Limit the number of results
 	Limit int `json:"limit,omitempty"`
 	// Offset for pagination
