@@ -27,6 +27,10 @@ export function UpdateBanner() {
     body: string
   } | null>(null)
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
+  const changelogRef = useRef<{
+    version: string
+    body: string
+  } | null>(null)
 
   const { data: updateInfo } = useQuery({
     queryKey: ["latest-version"],
@@ -58,10 +62,15 @@ export function UpdateBanner() {
 
         // Show changelog dialog if we have release notes
         if (versionInfo?.body) {
-          setChangelogData({
+          const latestRelease = {
             version: versionInfo.tag_name,
             body: versionInfo.body
-          })
+          }
+          setChangelogData(latestRelease)
+          changelogRef.current = latestRelease
+          setShowChangelog(true)
+        } else if (changelogRef.current) {
+          setChangelogData(changelogRef.current)
           setShowChangelog(true)
         } else {
           toast.success("Update completed successfully!")
@@ -95,7 +104,7 @@ export function UpdateBanner() {
   const cleanChangelog = (markdown: string) => {
     // Remove commit hashes (40 hex chars followed by ": ") from list items
     // Example: "* a7e79d862928c1bf8838b1a30678bdb3844d3315: feat(backups)..." -> "* feat(backups)..."
-    return markdown.replace(/^(\s*[*-]\s+)([a-f0-9]{40}):\s+/gm, '$1')
+    return markdown.replace(/^(\s*[*-]\s+)([a-f0-9]{40}):\s+/gm, "$1")
   }
 
   // Cleanup on unmount
@@ -108,13 +117,28 @@ export function UpdateBanner() {
     }
   }, [])
 
+  useEffect(() => {
+    if (updateInfo?.body) {
+      const latestRelease = {
+        version: updateInfo.tag_name,
+        body: updateInfo.body
+      }
+      setChangelogData(latestRelease)
+      changelogRef.current = latestRelease
+    }
+  }, [updateInfo])
+
   const updateMutation = useMutation({
     mutationFn: () => api.triggerSelfUpdate(),
-    onSuccess: ({ message }) => {
-      toast.success(message)
-      setDismissed(true)
-      // Start polling for reconnection
-      pollForReconnection()
+    onSuccess: ({ message, restart_pending }) => {
+      const notify = restart_pending ? toast.success : toast.info
+      notify(message)
+
+      if (restart_pending) {
+        setDismissed(true)
+        // Start polling for reconnection
+        pollForReconnection()
+      }
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : "Failed to start self-update"

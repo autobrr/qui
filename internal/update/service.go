@@ -144,9 +144,10 @@ func (s *Service) CanSelfUpdate() bool {
 }
 
 // RunSelfUpdate downloads the latest release and replaces the current binary when supported.
-func (s *Service) RunSelfUpdate(ctx context.Context) error {
+// Returns true when a newer binary was installed.
+func (s *Service) RunSelfUpdate(ctx context.Context) (bool, error) {
 	if !s.CanSelfUpdate() {
-		return ErrSelfUpdateUnsupported
+		return false, ErrSelfUpdateUnsupported
 	}
 
 	s.updateMu.Lock()
@@ -157,11 +158,16 @@ func (s *Service) RunSelfUpdate(ctx context.Context) error {
 		Version:    s.currentVersion,
 	})
 
-	if err := updater.Run(ctx); err != nil {
-		return err
+	updated, err := updater.Run(ctx)
+	if err != nil {
+		return false, err
 	}
 
-	s.log.Info().Msg("self-update completed successfully")
+	if updated {
+		s.log.Info().Msg("self-update completed successfully")
+	} else {
+		s.log.Info().Msg("self-update skipped - already running the latest version")
+	}
 
-	return nil
+	return updated, nil
 }

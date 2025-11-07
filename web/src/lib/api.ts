@@ -816,8 +816,8 @@ class ApiClient {
     }
   }
 
-  async triggerSelfUpdate(): Promise<{ message: string }> {
-    return this.request<{ message: string }>("/version/self-update", {
+  async triggerSelfUpdate(): Promise<{ message: string; restart_pending: boolean }> {
+    return this.request<{ message: string; restart_pending: boolean }>("/version/self-update", {
       method: "POST",
     })
   }

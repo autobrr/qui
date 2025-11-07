@@ -36,6 +36,11 @@ type LatestVersionResponse struct {
 	SelfUpdateSupported bool   `json:"self_update_supported"`
 }
 
+type SelfUpdateResponse struct {
+	Message        string `json:"message"`
+	RestartPending bool   `json:"restart_pending"`
+}
+
 func (h *VersionHandler) GetLatestVersion(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -74,7 +79,8 @@ func (h *VersionHandler) TriggerSelfUpdate(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := h.updateService.RunSelfUpdate(ctx); err != nil {
+	updated, err := h.updateService.RunSelfUpdate(ctx)
+	if err != nil {
 		if errors.Is(err, update.ErrSelfUpdateUnsupported) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -86,9 +92,20 @@ func (h *VersionHandler) TriggerSelfUpdate(w http.ResponseWriter, r *http.Reques
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+
+	if !updated {
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(SelfUpdateResponse{
+			Message:        "Already running the latest version. No restart scheduled.",
+			RestartPending: false,
+		})
+		return
+	}
+
 	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(map[string]string{
-		"message": "Update installed. qui will restart shortly.",
+	json.NewEncoder(w).Encode(SelfUpdateResponse{
+		Message:        "Update installed. qui will restart shortly.",
+		RestartPending: true,
 	})
 
 	go func() {
