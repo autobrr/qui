@@ -35,6 +35,11 @@ export function useServerReconnect() {
 
   // Poll for server reconnection after update
   const pollForReconnection = useCallback(() => {
+    // Prevent multiple concurrent polling sessions
+    if (pollingRef.current) {
+      return
+    }
+
     let attempts = 0
     const maxAttempts = 60 // Poll for up to 60 seconds
 
