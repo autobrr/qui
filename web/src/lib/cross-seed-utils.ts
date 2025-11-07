@@ -256,66 +256,79 @@ export const searchCrossSeedMatches = async (
     
     // For each match, check if we should do deep file matching
     console.log(`[CrossSeed] Starting deep file matching for ${matches.length} matches`)
-    const deepMatchResults = await Promise.all(
-      matches.map(async (t: Torrent) => {
-        // Skip deep matching if we already have strong matches (info hash, content path, or torrent name)
-        const hasStrongMatch = 
-          (resolvedInfohashV1 && t.infohash_v1 === resolvedInfohashV1) ||
-          (resolvedInfohashV2 && t.infohash_v2 === resolvedInfohashV2) ||
-          (normalizedContentPath && normalizePath(t.content_path) === normalizedContentPath) ||
-          (normalizedName && normalizeName(t.name) === normalizedName)
-        
-        if (hasStrongMatch) {
-          console.log(`[CrossSeed] Deep match: "${t.name}" - STRONG match, skipping deep file check`)
-          return { torrent: t, isMatch: true, matchType: 'strong' }
-        }
-        
-        // If we have files, do deep comparison
-        if (currentFiles.length > 0) {
-          console.log(`[CrossSeed] Deep match: "${t.name}" - Fetching files for deep comparison (current has ${currentFiles.length} files)`)
-          try {
-            const otherFiles = await api.getTorrentFiles(instance.id, t.hash)
-            console.log(`[CrossSeed] Deep match: "${t.name}" - Other torrent has ${otherFiles.length} files`)
-            
-            // Compare file structures
-            const currentFileSet = new Set(
-              currentFiles.map(f => ({
-                name: normalizeFileName(getBaseFileName(f.name)),
-                size: f.size
-              })).map(f => `${f.name}:${f.size}`)
-            )
-            
-            const otherFileSet = new Set(
-              otherFiles.map(f => ({
-                name: normalizeFileName(getBaseFileName(f.name)),
-                size: f.size
-              })).map(f => `${f.name}:${f.size}`)
-            )
-            
-            // Check overlap - if significant overlap, it's a match
-            const intersection = new Set([...currentFileSet].filter(x => otherFileSet.has(x)))
-            const overlapPercent = intersection.size / Math.max(currentFileSet.size, otherFileSet.size)
-            
-            console.log(`[CrossSeed] Deep match: "${t.name}" - File overlap: ${intersection.size}/${Math.max(currentFileSet.size, otherFileSet.size)} (${(overlapPercent * 100).toFixed(1)}%)`)
-            
-            if (overlapPercent > 0.8) { // 80% of files match
-              console.log(`[CrossSeed] Deep match: "${t.name}" - ✅ MATCH via deep file content (${(overlapPercent * 100).toFixed(1)}% overlap)`)
-              return { torrent: t, isMatch: true, matchType: 'file_content' }
-            } else {
-              console.log(`[CrossSeed] Deep match: "${t.name}" - ❌ Insufficient file overlap (${(overlapPercent * 100).toFixed(1)}% < 80%)`)
-            }
-          } catch (err) {
-            console.log(`[CrossSeed] Deep match: "${t.name}" - ⚠️  Could not fetch files for deep matching:`, err)
+    
+    // Concurrency-limited approach to prevent spawning hundreds of simultaneous requests
+    const MAX_CONCURRENT_REQUESTS = 4
+    const deepMatchResults: { torrent: Torrent; isMatch: boolean; matchType: string }[] = []
+    
+    // Process matches in batches with concurrency control
+    for (let i = 0; i < matches.length; i += MAX_CONCURRENT_REQUESTS) {
+      const batch = matches.slice(i, i + MAX_CONCURRENT_REQUESTS)
+      console.log(`[CrossSeed] Processing batch ${Math.floor(i / MAX_CONCURRENT_REQUESTS) + 1}/${Math.ceil(matches.length / MAX_CONCURRENT_REQUESTS)} (${batch.length} items)`)
+      
+      const batchResults = await Promise.all(
+        batch.map(async (t: Torrent) => {
+          // Skip deep matching if we already have strong matches (info hash, content path, or torrent name)
+          const hasStrongMatch = 
+            (resolvedInfohashV1 && t.infohash_v1 === resolvedInfohashV1) ||
+            (resolvedInfohashV2 && t.infohash_v2 === resolvedInfohashV2) ||
+            (normalizedContentPath && normalizePath(t.content_path) === normalizedContentPath) ||
+            (normalizedName && normalizeName(t.name) === normalizedName)
+          
+          if (hasStrongMatch) {
+            console.log(`[CrossSeed] Deep match: "${t.name}" - STRONG match, skipping deep file check`)
+            return { torrent: t, isMatch: true, matchType: 'strong' }
           }
-        } else {
-          console.log(`[CrossSeed] Deep match: "${t.name}" - No current files available, keeping as weak match`)
-        }
-        
-        // Keep weak matches (name, path) without deep verification
-        console.log(`[CrossSeed] Deep match: "${t.name}" - Keeping as WEAK match`)
-        return { torrent: t, isMatch: true, matchType: 'weak' }
-      })
-    )
+          
+          // If we have files, do deep comparison
+          if (currentFiles.length > 0) {
+            console.log(`[CrossSeed] Deep match: "${t.name}" - Fetching files for deep comparison (current has ${currentFiles.length} files)`)
+            try {
+              const otherFiles = await api.getTorrentFiles(instance.id, t.hash)
+              console.log(`[CrossSeed] Deep match: "${t.name}" - Other torrent has ${otherFiles.length} files`)
+              
+              // Compare file structures
+              const currentFileSet = new Set(
+                currentFiles.map(f => ({
+                  name: normalizeFileName(getBaseFileName(f.name)),
+                  size: f.size
+                })).map(f => `${f.name}:${f.size}`)
+              )
+              
+              const otherFileSet = new Set(
+                otherFiles.map(f => ({
+                  name: normalizeFileName(getBaseFileName(f.name)),
+                  size: f.size
+                })).map(f => `${f.name}:${f.size}`)
+              )
+              
+              // Check overlap - if significant overlap, it's a match
+              const intersection = new Set([...currentFileSet].filter(x => otherFileSet.has(x)))
+              const overlapPercent = intersection.size / Math.max(currentFileSet.size, otherFileSet.size)
+              
+              console.log(`[CrossSeed] Deep match: "${t.name}" - File overlap: ${intersection.size}/${Math.max(currentFileSet.size, otherFileSet.size)} (${(overlapPercent * 100).toFixed(1)}%)`)
+              
+              if (overlapPercent > 0.8) { // 80% of files match
+                console.log(`[CrossSeed] Deep match: "${t.name}" - ✅ MATCH via deep file content (${(overlapPercent * 100).toFixed(1)}% overlap)`)
+                return { torrent: t, isMatch: true, matchType: 'file_content' }
+              } else {
+                console.log(`[CrossSeed] Deep match: "${t.name}" - ❌ Insufficient file overlap (${(overlapPercent * 100).toFixed(1)}% < 80%)`)
+              }
+            } catch (err) {
+              console.log(`[CrossSeed] Deep match: "${t.name}" - ⚠️  Could not fetch files for deep matching:`, err)
+            }
+          } else {
+            console.log(`[CrossSeed] Deep match: "${t.name}" - No current files available, keeping as weak match`)
+          }
+          
+          // Keep weak matches (name, path) without deep verification
+          console.log(`[CrossSeed] Deep match: "${t.name}" - Keeping as WEAK match`)
+          return { torrent: t, isMatch: true, matchType: 'weak' }
+        })
+      )
+      
+      deepMatchResults.push(...batchResults)
+    }
     
     console.log(`[CrossSeed] Deep matching complete, processing ${deepMatchResults.length} results`)
     
