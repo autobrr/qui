@@ -40,7 +40,7 @@ import {
   useReactTable
 } from "@tanstack/react-table"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { TorrentContextMenu } from "./TorrentContextMenu"
 import { TORRENT_SORT_OPTIONS, type TorrentSortOptionValue, getDefaultSortOrder } from "./torrentSortOptions"
 
@@ -634,7 +634,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const [isAllSelected, setIsAllSelected] = useState(false)
   const [excludedFromSelectAll, setExcludedFromSelectAll] = useState<Set<string>>(new Set())
   const [dropPayload, setDropPayload] = useState<AddTorrentDropPayload | null>(null)
-  const [isClearingFilters, setIsClearingFilters] = useState(false) // Flag to prevent loadedRows reset during filter clearing
+
+  // Filter lifecycle state machine to replace fragile timing-based coordination
+  type FilterLifecycleState = 'idle' | 'clearing-all' | 'clearing-columns-only' | 'cleared'
+  const [filterLifecycleState, setFilterLifecycleState] = useState<FilterLifecycleState>('idle')
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
@@ -1071,6 +1074,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents
+
+  // Atomic filter clearing callback
+  const clearFiltersAtomically = useCallback((mode: 'all' | 'columns-only' = 'all') => {
+    setFilterLifecycleState(mode === 'all' ? 'clearing-all' : 'clearing-columns-only');
+  }, []);
   const effectiveServerState = useMemo(() => {
     const cached = serverStateRef.current
     const instanceChanged = cached.instanceId !== instanceId
@@ -1352,11 +1360,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       const targetRows = Math.min(100, sortedTorrents.length)
       if (loadedRows < targetRows) {
         console.log('[TorrentTable] Setting loadedRows from', loadedRows, 'to', targetRows)
-        setIsClearingFilters(true)
         setLoadedRows(targetRows)
-        setTimeout(() => {
-          setIsClearingFilters(false)
-        }, 100)
       }
     }
   }, [isCrossSeedFiltering, columnFilters.length, loadedRows, sortedTorrents.length])
@@ -1704,10 +1708,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Also keep loadedRows in sync with actual data to prevent status display issues
   useEffect(() => {
-    if (!isClearingFilters && loadedRows > rows.length && rows.length > 0) {
+    if (filterLifecycleState === 'idle' && loadedRows > rows.length && rows.length > 0) {
       setLoadedRows(rows.length)
     }
-  }, [loadedRows, rows.length, isClearingFilters])
+  }, [loadedRows, rows.length, filterLifecycleState])
 
   // useVirtualizer must be called at the top level, not inside useMemo
   const virtualizer = useVirtualizer({
@@ -1740,6 +1744,47 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       }
     },
   })
+
+  // Filter lifecycle state machine
+  useLayoutEffect(() => {
+    if (filterLifecycleState === 'clearing-all' || filterLifecycleState === 'clearing-columns-only') {
+      console.log('[TorrentTable] Executing atomic clear operation, mode:', filterLifecycleState)
+      
+      // Perform clearing operations atomically
+      setColumnFilters([]);
+      setSorting([]);
+      virtualizer.scrollToOffset(0);
+      virtualizer.measure();
+      
+      // Reset loadedRows to a reasonable initial value
+      const newLoadedRows = Math.min(100, sortedTorrents.length);
+      setLoadedRows(newLoadedRows);
+      
+      // Only clear parent filters if clearing all (not just columns)
+      if (filterLifecycleState === 'clearing-all') {
+        console.log('[TorrentTable] Clearing ALL filters including parent filters')
+        const emptyFilters: TorrentFilters = {
+          status: [],
+          excludeStatus: [],
+          categories: [],
+          excludeCategories: [],
+          tags: [],
+          excludeTags: [],
+          trackers: [],
+          excludeTrackers: []
+        };
+        onFilterChange?.(emptyFilters);
+      } else {
+        console.log('[TorrentTable] Clearing COLUMNS ONLY, preserving parent filters')
+      }
+      
+      // Transition to cleared state
+      setFilterLifecycleState('cleared');
+    } else if (filterLifecycleState === 'cleared') {
+      // Reset to idle state after clearing is complete
+      setFilterLifecycleState('idle');
+    }
+  }, [filterLifecycleState, virtualizer, onFilterChange, setLoadedRows, sortedTorrents.length]);
 
   // Force virtualizer to recalculate when count changes
   useEffect(() => {
@@ -2212,33 +2257,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                               columnFilters: table.getState().columnFilters
                             })
                             console.log('[TorrentTable] Before clearing - loadedRows:', loadedRows, 'safeLoadedRows:', safeLoadedRows)
-                            setColumnFilters([])
-                            // Force table refresh in cross-seed mode to ensure proper state reset
-                            if (isCrossSeedFiltering) {
-                              // Prevent other effects from interfering with loadedRows during filter clearing
-                              setIsClearingFilters(true)
-                              // Reset loadedRows to ensure virtualization shows all available rows
-                              const newLoadedRows = Math.min(100, sortedTorrents.length)
-                              console.log('[TorrentTable] Setting loadedRows to:', newLoadedRows)
-                              // Use setTimeout to ensure this happens after React processes the filter change
-                              setTimeout(() => {
-                                console.log('[TorrentTable] Delayed setting of loadedRows to:', newLoadedRows)
-                                setLoadedRows(newLoadedRows)
-                                // Re-enable other effects after a short delay
-                                setTimeout(() => {
-                                  setIsClearingFilters(false)
-                                }, 100)
-                              }, 0)
-                              // Try forcing table to recalculate by calling internal methods
-                              setTimeout(() => {
-                                console.log('[TorrentTable] After clearing - table state:', {
-                                  coreRows: table.getCoreRowModel().rows.length,
-                                  currentRows: table.getRowModel().rows.length,
-                                  filteredRows: table.getFilteredRowModel().rows.length,
-                                  columnFilters: table.getState().columnFilters
-                                })
-                              }, 100)
-                            }
+                            
+                            // Use atomic filter clearing to avoid race conditions
+                            // Only clear column filters in cross-seed mode, clear all filters otherwise
+                            const clearingMode = isCrossSeedFiltering ? 'columns-only' : 'all'
+                            console.log('[TorrentTable] Using clearing mode:', clearingMode)
+                            clearFiltersAtomically(clearingMode)
                           }}
                         >
                           <X className="h-4 w-4"/>
