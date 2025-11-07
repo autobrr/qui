@@ -431,7 +431,7 @@ export const useCrossSeedMatches = (
     const currentFiles = currentTorrentFiles || []
     
     return allInstances.map((instance) => ({
-      queryKey: ["torrents", instance.id, "crossseed", resolvedInfohashV1, resolvedInfohashV2, torrent.name, torrent.content_path, isDiscContent],
+      queryKey: ["torrents", instance.id, "crossseed", resolvedInfohashV1, resolvedInfohashV2, torrent.name, torrent.content_path, isDiscContent, currentFilesKey],
       queryFn: () => searchCrossSeedMatches(
         torrent,
         instance,
