@@ -35,6 +35,8 @@ import {
 import {
   flexRender,
   getCoreRowModel,
+  getFilteredRowModel,
+  getSortedRowModel,
   useReactTable
 } from "@tanstack/react-table"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -175,6 +177,7 @@ const DEFAULT_COLUMN_VISIBILITY = {
   infohash_v2: false,
   reannounce: false,
   private: false,
+  instance: false, // Hidden by default, shown when cross-seed filtering
 }
 const DEFAULT_COLUMN_SIZING = {}
 
@@ -631,6 +634,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const [isAllSelected, setIsAllSelected] = useState(false)
   const [excludedFromSelectAll, setExcludedFromSelectAll] = useState<Set<string>>(new Set())
   const [dropPayload, setDropPayload] = useState<AddTorrentDropPayload | null>(null)
+  const [isClearingFilters, setIsClearingFilters] = useState(false) // Flag to prevent loadedRows reset during filter clearing
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
@@ -864,16 +868,36 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Convert column filters to expr format for backend
   const columnFiltersExpr = useMemo(() => columnFiltersToExpr(columnFilters), [columnFilters])
 
+  // Detect if this is cross-seed filtering (same logic as in useTorrentsList)
+  const isDoingCrossSeedFiltering = useMemo(() => {
+    return filters?.expr?.includes('Hash ==') && filters?.expr?.includes('||')
+  }, [filters?.expr])
+
   // Combine column filters with any existing filter expression
+  // For cross-seed filtering, we'll apply column filters client-side only
   const combinedFiltersExpr = useMemo(() => {
     const columnExpr = columnFiltersExpr
     const filterExpr = filters?.expr
     
+    // If we're doing cross-seed filtering, don't send column filters to backend
+    // They will be applied client-side by TanStack Table (along with sorting)
+    if (isDoingCrossSeedFiltering) {
+      console.log('[TorrentTable] Cross-seed filtering detected, applying column filters and sorting client-side only')
+      return filterExpr // Only use the cross-seed expression for backend
+    }
+    
+    // For regular filtering, combine column filters with existing filters
     if (columnExpr && filterExpr) {
-      return `(${columnExpr}) && (${filterExpr})`
+      const combined = `(${columnExpr}) && (${filterExpr})`
+      console.log('[TorrentTable] Combined filter expression:', {
+        columnExpr,
+        filterExpr,
+        combined
+      })
+      return combined
     }
     return columnExpr || filterExpr
-  }, [columnFiltersExpr, filters?.expr])
+  }, [columnFiltersExpr, filters?.expr, isDoingCrossSeedFiltering])
 
   // Detect user-initiated changes
   useEffect(() => {
@@ -956,6 +980,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const allowSubcategories = Boolean(
     supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false)
   )
+
+  // When cross-seed filtering is active, ensure instance column is visible
+  useEffect(() => {
+    if (isDoingCrossSeedFiltering && columnVisibility.instance === false) {
+      setColumnVisibility(prev => ({ ...prev, instance: true }))
+    }
+  }, [isDoingCrossSeedFiltering, columnVisibility.instance, setColumnVisibility])
 
   // Delayed loading state to avoid flicker on fast loads
   useEffect(() => {
@@ -1213,7 +1244,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     data: sortedTorrents,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    manualSorting: true,
+    // For cross-seed filtering, enable client-side sorting and filtering
+    // For regular filtering, backend handles sorting and column filters
+    manualSorting: !isCrossSeedFiltering,
+    getSortedRowModel: isCrossSeedFiltering ? getSortedRowModel() : undefined,
+    manualFiltering: !isCrossSeedFiltering,
+    getFilteredRowModel: isCrossSeedFiltering ? getFilteredRowModel() : undefined,
     // Prefer stable torrent hash for row identity while keeping duplicates unique
     getRowId: (row: Torrent, index: number) => {
       const baseIdentity = row.hash ?? row.infohash_v1 ?? row.infohash_v2
@@ -1236,6 +1272,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       columnSizing,
       columnVisibility,
       columnOrder,
+      // Convert our custom ColumnFilter format to TanStack Table format when doing client-side filtering
+      ...(isCrossSeedFiltering && {
+        columnFilters: columnFilters.map(filter => ({
+          id: filter.columnId,
+          value: filter.value
+        }))
+      }),
     },
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
@@ -1252,6 +1295,71 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     autoResetPageIndex: false,
     autoResetExpanded: false,
   })
+
+  // Debug effect to track table data changes in cross-seed mode
+  useEffect(() => {
+    if (isCrossSeedFiltering) {
+      console.log('[TorrentTable] Cross-seed filtering data:', {
+        sortedTorrentsCount: sortedTorrents.length,
+        columnFiltersCount: columnFilters.length,
+        hasColumnFilters: columnFilters.length > 0,
+        tableRowCount: table.getRowModel().rows.length,
+        filteredRowCount: table.getFilteredRowModel ? table.getFilteredRowModel().rows.length : 'N/A',
+        originalTorrentsCount: torrents?.length || 0,
+        sortedTorrentsSource: sortedTorrents === torrents ? 'torrents' : 'other',
+        // Show first few torrent names to verify data content - expand to see full details
+        firstFewTorrents: sortedTorrents.slice(0, 5).map(t => ({ 
+          name: t.name?.substring(0, 30), 
+          instance: 'instanceName' in t ? (t as any).instanceName : 'N/A',
+          hash: t.hash?.substring(0, 12)
+        })),
+        // Show all unique instance names to see if cross-seed data is preserved
+        allInstances: [...new Set(sortedTorrents.map(t => 'instanceName' in t ? (t as any).instanceName : 'N/A'))],
+        // Show the actual table rows being rendered
+        actualTableRows: table.getRowModel().rows.slice(0, 5).map(row => ({
+          id: row.id,
+          name: row.original.name?.substring(0, 30),
+          instance: 'instanceName' in row.original ? (row.original as any).instanceName : 'N/A'
+        })),
+        // Debug TanStack Table internal state
+        tableState: {
+          columnFilters: table.getState().columnFilters,
+          hasFilters: table.getState().columnFilters.length > 0,
+          coreRowCount: table.getCoreRowModel().rows.length,
+          currentRowModel: table.getRowModel().rows.length,
+          isUsingFilteredModel: table.getRowModel() === table.getFilteredRowModel()
+        },
+        // Debug virtualization state
+        virtualizationState: {
+          safeLoadedRows,
+          loadedRows,
+          virtualizerTotalSize: virtualizer.getTotalSize(),
+          virtualRowsLength: virtualRows.length,
+          isLoadingMoreRows,
+          // Show virtual rows indices being rendered
+          virtualRowIndices: virtualRows.map(vr => vr.index)
+        }
+      })
+    }
+  }, [isCrossSeedFiltering, sortedTorrents.length, columnFilters.length, table, torrents, sortedTorrents])
+
+  // Fix virtualization when column filters are cleared in cross-seed mode
+  useEffect(() => {
+    if (isCrossSeedFiltering && columnFilters.length === 0) {
+      console.log('[TorrentTable] Column filters cleared in cross-seed mode, fixing virtualization')
+      console.log('[TorrentTable] Current loadedRows:', loadedRows, 'sortedTorrents.length:', sortedTorrents.length)
+      // Reset loadedRows to ensure all rows are visible when filters are cleared
+      const targetRows = Math.min(100, sortedTorrents.length)
+      if (loadedRows < targetRows) {
+        console.log('[TorrentTable] Setting loadedRows from', loadedRows, 'to', targetRows)
+        setIsClearingFilters(true)
+        setLoadedRows(targetRows)
+        setTimeout(() => {
+          setIsClearingFilters(false)
+        }, 100)
+      }
+    }
+  }, [isCrossSeedFiltering, columnFilters.length, loadedRows, sortedTorrents.length])
 
   const resolveSortColumnId = useCallback((field: string): string => {
     const columns = table.getAllLeafColumns()
@@ -1596,10 +1704,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Also keep loadedRows in sync with actual data to prevent status display issues
   useEffect(() => {
-    if (loadedRows > rows.length && rows.length > 0) {
+    if (!isClearingFilters && loadedRows > rows.length && rows.length > 0) {
       setLoadedRows(rows.length)
     }
-  }, [loadedRows, rows.length])
+  }, [loadedRows, rows.length, isClearingFilters])
 
   // useVirtualizer must be called at the top level, not inside useMemo
   const virtualizer = useVirtualizer({
@@ -2093,7 +2201,45 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                           variant="outline"
                           size="icon"
                           className="relative mr-1"
-                          onClick={() => setColumnFilters([])}
+                          onClick={() => {
+                            console.log('[TorrentTable] CLEAR BUTTON CLICKED!')
+                            console.log('[TorrentTable] isCrossSeedFiltering:', isCrossSeedFiltering)
+                            console.log('[TorrentTable] Clearing column filters, isCrossSeedFiltering:', isCrossSeedFiltering, 'current torrents count:', sortedTorrents.length)
+                            console.log('[TorrentTable] Before clearing - table state:', {
+                              coreRows: table.getCoreRowModel().rows.length,
+                              currentRows: table.getRowModel().rows.length,
+                              filteredRows: table.getFilteredRowModel().rows.length,
+                              columnFilters: table.getState().columnFilters
+                            })
+                            console.log('[TorrentTable] Before clearing - loadedRows:', loadedRows, 'safeLoadedRows:', safeLoadedRows)
+                            setColumnFilters([])
+                            // Force table refresh in cross-seed mode to ensure proper state reset
+                            if (isCrossSeedFiltering) {
+                              // Prevent other effects from interfering with loadedRows during filter clearing
+                              setIsClearingFilters(true)
+                              // Reset loadedRows to ensure virtualization shows all available rows
+                              const newLoadedRows = Math.min(100, sortedTorrents.length)
+                              console.log('[TorrentTable] Setting loadedRows to:', newLoadedRows)
+                              // Use setTimeout to ensure this happens after React processes the filter change
+                              setTimeout(() => {
+                                console.log('[TorrentTable] Delayed setting of loadedRows to:', newLoadedRows)
+                                setLoadedRows(newLoadedRows)
+                                // Re-enable other effects after a short delay
+                                setTimeout(() => {
+                                  setIsClearingFilters(false)
+                                }, 100)
+                              }, 0)
+                              // Try forcing table to recalculate by calling internal methods
+                              setTimeout(() => {
+                                console.log('[TorrentTable] After clearing - table state:', {
+                                  coreRows: table.getCoreRowModel().rows.length,
+                                  currentRows: table.getRowModel().rows.length,
+                                  filteredRows: table.getFilteredRowModel().rows.length,
+                                  columnFilters: table.getState().columnFilters
+                                })
+                              }, 100)
+                            }
+                          }}
                         >
                           <X className="h-4 w-4"/>
                           <span className="sr-only">Clear all column filters</span>

@@ -731,6 +731,18 @@ export const createColumns = (
         </span>
       )
     },
+    sortingFn: (rowA, rowB) => {
+      const ratioA = incognitoMode ? getLinuxRatio(rowA.original.hash) : rowA.original.ratio
+      const ratioB = incognitoMode ? getLinuxRatio(rowB.original.hash) : rowB.original.ratio
+      
+      // Handle infinity values: -1 should be treated as the highest value
+      if (ratioA === -1 && ratioB === -1) return 0
+      if (ratioA === -1) return 1  // ratioA is infinity, so it's greater
+      if (ratioB === -1) return -1 // ratioB is infinity, so it's greater
+      
+      // Normal numeric comparison
+      return ratioA - ratioB
+    },
     size: 90,
   },
   {
