@@ -49,6 +49,10 @@ func isRunningInContainer() bool {
 
 // isSelfUpdateSupportedPlatform returns true if the current GOOS supports in-place updates.
 // Windows binaries cannot safely replace themselves while running, so we block the feature.
+//
+// CRITICAL: This guard prevents runtime panics on Windows because the restart logic in
+// internal/api/handlers/version.go uses syscall.Exec, which only exists on Unix systems.
+// If you modify this function, ensure TestWindowsBlockedFromSelfUpdate still passes.
 func isSelfUpdateSupportedPlatform() bool {
 	return runtime.GOOS != "windows"
 }
