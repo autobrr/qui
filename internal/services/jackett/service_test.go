@@ -5,6 +5,7 @@ package jackett
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -1158,5 +1159,211 @@ func TestProwlarrCapabilityAwareYearWorkaround(t *testing.T) {
 				t.Errorf("Year parameter presence: got %v, expected %v", hasYearParam, tt.expectedYearParam)
 			}
 		})
+	}
+}
+
+func TestParseTorznabCaps_ProwlarrCompatibility(t *testing.T) {
+	// This XML represents what Prowlarr's IndexerCapabilities.GetXDocument() method generates
+	// Based on the IndexerCapabilities class from Prowlarr source code
+	prowlarrCapsXML := `<?xml version="1.0" encoding="UTF-8"?>
+<caps>
+	<server title="Prowlarr" />
+	<limits default="100" max="100" />
+	<searching>
+		<search available="yes" supportedParams="q" />
+		<tv-search available="yes" supportedParams="q,season,ep,imdbid,tvdbid,tmdbid,tvmazeid,traktid,doubanid,genre,year" />
+		<movie-search available="yes" supportedParams="q,imdbid,tmdbid,traktid,genre,doubanid,year" />
+		<music-search available="yes" supportedParams="q,album,artist,label,year,genre,track" />
+		<audio-search available="yes" supportedParams="q,album,artist,label,year,genre,track" />
+		<book-search available="yes" supportedParams="q,title,author,publisher,genre,year" />
+	</searching>
+	<categories>
+		<category id="2000" name="Movies">
+			<subcat id="2010" name="Foreign" />
+			<subcat id="2020" name="Other" />
+		</category>
+		<category id="5000" name="TV">
+			<subcat id="5070" name="Anime" />
+		</category>
+	</categories>
+</caps>`
+
+	caps, err := parseTorznabCaps(strings.NewReader(prowlarrCapsXML))
+	if err != nil {
+		t.Fatalf("Failed to parse Prowlarr caps XML: %v", err)
+	}
+
+	// Test that we parse all search types
+	expectedSearchTypes := []string{
+		"search", "tv-search", "movie-search", "music-search", "audio-search", "book-search",
+	}
+	for _, searchType := range expectedSearchTypes {
+		found := false
+		for _, cap := range caps.Capabilities {
+			if cap == searchType {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Missing basic search capability: %s", searchType)
+		}
+	}
+
+	// Test that we parse all movie-search parameters correctly
+	// Based on Prowlarr's MovieSearchParam enum and SupportedMovieSearchParams() method
+	expectedMovieParams := []string{
+		"movie-search-q",        // Always included
+		"movie-search-imdbid",   // MovieSearchImdbAvailable
+		"movie-search-tmdbid",   // MovieSearchTmdbAvailable
+		"movie-search-traktid",  // MovieSearchTraktAvailable
+		"movie-search-genre",    // MovieSearchGenreAvailable
+		"movie-search-doubanid", // MovieSearchDoubanAvailable
+		"movie-search-year",     // MovieSearchYearAvailable
+	}
+	for _, param := range expectedMovieParams {
+		found := false
+		for _, cap := range caps.Capabilities {
+			if cap == param {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Missing movie search parameter capability: %s", param)
+		}
+	}
+
+	// Test that we parse all tv-search parameters correctly
+	// Based on Prowlarr's TvSearchParam enum and SupportedTvSearchParams() method
+	expectedTvParams := []string{
+		"tv-search-q",        // Always included
+		"tv-search-season",   // TvSearchSeasonAvailable
+		"tv-search-ep",       // TvSearchEpAvailable
+		"tv-search-imdbid",   // TvSearchImdbAvailable
+		"tv-search-tvdbid",   // TvSearchTvdbAvailable
+		"tv-search-tmdbid",   // TvSearchTmdbAvailable
+		"tv-search-tvmazeid", // TvSearchTvMazeAvailable
+		"tv-search-traktid",  // TvSearchTraktAvailable
+		"tv-search-doubanid", // TvSearchDoubanAvailable
+		"tv-search-genre",    // TvSearchGenreAvailable
+		"tv-search-year",     // TvSearchYearAvailable
+	}
+	for _, param := range expectedTvParams {
+		found := false
+		for _, cap := range caps.Capabilities {
+			if cap == param {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Missing TV search parameter capability: %s", param)
+		}
+	}
+
+	// Test that we parse all music-search parameters correctly
+	// Based on Prowlarr's MusicSearchParam enum and SupportedMusicSearchParams() method
+	expectedMusicParams := []string{
+		"music-search-q",      // Always included
+		"music-search-album",  // MusicSearchAlbumAvailable
+		"music-search-artist", // MusicSearchArtistAvailable
+		"music-search-label",  // MusicSearchLabelAvailable
+		"music-search-year",   // MusicSearchYearAvailable
+		"music-search-genre",  // MusicSearchGenreAvailable
+		"music-search-track",  // MusicSearchTrackAvailable
+	}
+	for _, param := range expectedMusicParams {
+		found := false
+		for _, cap := range caps.Capabilities {
+			if cap == param {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Missing music search parameter capability: %s", param)
+		}
+	}
+
+	// Test that we parse all book-search parameters correctly
+	// Based on Prowlarr's BookSearchParam enum and SupportedBookSearchParams() method
+	expectedBookParams := []string{
+		"book-search-q",         // Always included
+		"book-search-title",     // BookSearchTitleAvailable
+		"book-search-author",    // BookSearchAuthorAvailable
+		"book-search-publisher", // BookSearchPublisherAvailable
+		"book-search-genre",     // BookSearchGenreAvailable
+		"book-search-year",      // BookSearchYearAvailable
+	}
+	for _, param := range expectedBookParams {
+		found := false
+		for _, cap := range caps.Capabilities {
+			if cap == param {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Missing book search parameter capability: %s", param)
+		}
+	}
+
+	// Test categories parsing (from Prowlarr's Categories.GetTorznabCategoryTree())
+	if len(caps.Categories) == 0 {
+		t.Error("No categories parsed")
+	}
+
+	// Find Movies category
+	foundMovies := false
+	foundMoviesForeign := false
+	foundMoviesOther := false
+	for _, cat := range caps.Categories {
+		if cat.CategoryID == 2000 && cat.CategoryName == "Movies" {
+			foundMovies = true
+		}
+		if cat.CategoryID == 2010 && cat.CategoryName == "Foreign" && cat.ParentCategory != nil && *cat.ParentCategory == 2000 {
+			foundMoviesForeign = true
+		}
+		if cat.CategoryID == 2020 && cat.CategoryName == "Other" && cat.ParentCategory != nil && *cat.ParentCategory == 2000 {
+			foundMoviesOther = true
+		}
+	}
+
+	if !foundMovies {
+		t.Error("Missing Movies category (2000)")
+	}
+	if !foundMoviesForeign {
+		t.Error("Missing Movies > Foreign subcategory (2010)")
+	}
+	if !foundMoviesOther {
+		t.Error("Missing Movies > Other subcategory (2020)")
+	}
+
+	// Verify we have all the capabilities we expect
+	t.Logf("Parsed %d capabilities total", len(caps.Capabilities))
+	t.Logf("Parsed %d categories total", len(caps.Categories))
+
+	// Verify our capability parsing creates exactly what we need for hasCapability checks
+	testCapabilities := []string{
+		"movie-search-year",   // Critical for our Prowlarr workaround
+		"movie-search-imdbid", // Common for movie searches
+		"tv-search-season",    // Common for TV searches
+		"tv-search-ep",        // Common for TV searches
+		"music-search-artist", // Common for music searches
+		"book-search-author",  // Common for book searches
+	}
+
+	for _, testCap := range testCapabilities {
+		found := false
+		for _, cap := range caps.Capabilities {
+			if cap == testCap {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Critical capability missing: %s", testCap)
+		}
 	}
 }
