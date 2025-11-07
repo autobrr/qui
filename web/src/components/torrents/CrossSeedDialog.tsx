@@ -133,14 +133,9 @@ const CrossSeedDialogComponent = ({
               <Badge variant="secondary" className="h-6 text-xs font-normal capitalize">
                 {sourceTorrent.contentType}
               </Badge>
-              {sourceTorrent.searchType && (
-                <Badge variant="outline" className="h-6 text-xs font-normal">
+              {sourceTorrent.searchType && sourceTorrent.searchType !== sourceTorrent.contentType && (
+                <Badge variant="outline" className="h-6 text-xs font-normal capitalize">
                   {sourceTorrent.searchType}
-                </Badge>
-              )}
-              {sourceTorrent.searchCategories && sourceTorrent.searchCategories.length > 0 && (
-                <Badge variant="outline" className="h-6 text-xs font-normal">
-                  {sourceTorrent.searchCategories.join(", ")}
                 </Badge>
               )}
             </div>
