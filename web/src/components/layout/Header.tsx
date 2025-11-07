@@ -29,6 +29,7 @@ import { useAuth } from "@/hooks/useAuth"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
+import { useServerReconnect } from "@/hooks/useServerReconnect"
 import { useTheme } from "@/hooks/useTheme"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -53,6 +54,7 @@ export function Header({
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string; [key: string]: unknown }
   const { state: layoutRouteState } = useLayoutRoute()
+  const { pollForReconnection, storeChangelog, ChangelogDialog } = useServerReconnect()
 
   // Get selection state from context
   const {
@@ -151,10 +153,23 @@ export function Header({
     refetchOnWindowFocus: false,
   })
 
+  // Store changelog data when update info is available
+  useEffect(() => {
+    if (updateInfo?.body) {
+      storeChangelog(updateInfo.tag_name, updateInfo.body)
+    }
+  }, [updateInfo, storeChangelog])
+
   const updateMutation = useMutation({
     mutationFn: () => api.triggerSelfUpdate(),
-    onSuccess: ({ message }) => {
-      toast.success(message)
+    onSuccess: ({ message, restart_pending }) => {
+      const notify = restart_pending ? toast.success : toast.info
+      notify(message)
+
+      if (restart_pending) {
+        // Start polling for reconnection
+        pollForReconnection()
+      }
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : "Failed to start self-update"
@@ -573,6 +588,7 @@ export function Header({
           </DropdownMenu>
         </div>
       </div>
+      <ChangelogDialog />
     </header>
   )
 }
