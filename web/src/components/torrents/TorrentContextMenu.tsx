@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/context-menu"
 import type { TorrentAction } from "@/hooks/useTorrentActions"
 import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
-import { searchCrossSeedMatches } from "@/lib/cross-seed-utils"
+import { searchCrossSeedMatches, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
 import { getLinuxIsoName, getLinuxSavePath, useIncognitoMode } from "@/lib/incognito"
 import { getTorrentDisplayHash } from "@/lib/torrent-utils"
 import { copyTextToClipboard } from "@/lib/utils"
@@ -136,6 +136,12 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
       return
     }
 
+    // Early guard: only allow for single torrent selection
+    if (torrents.length !== 1) {
+      toast.info("Cross-seed filtering only works with a single selected torrent")
+      return
+    }
+
     setIsSearchingCrossSeeds(true)
     toast.info("Identifying cross-seeded torrents...")
 
@@ -150,7 +156,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
       const torrentFilesData = await api.getTorrentFiles(_instanceId, selectedTorrent.hash)
       
       // Collect all cross-seed matches across all instances
-      const allMatches: any[] = []
+      const allMatches: CrossSeedTorrent[] = []
       
       if (allInstancesData && Array.isArray(allInstancesData)) {
         // Wait for all instance searches to complete before processing results
@@ -337,10 +343,15 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
         {onFilterChange && (
           <ContextMenuItem
             onClick={handleFilterCrossSeeds}
-            disabled={isPending || isSearchingCrossSeeds}
+            disabled={isPending || isSearchingCrossSeeds || count > 1}
+            title={count > 1 ? "Cross-seed filtering only works with a single selected torrent" : undefined}
           >
             <GitBranch className="mr-2 h-4 w-4" />
-            Filter Cross-Seeds {count > 1 ? `(${count})` : ""}
+            {count > 1 ? (
+              <span className="text-muted-foreground">Filter Cross-Seeds (single selection only)</span>
+            ) : (
+              <>Filter Cross-Seeds</>
+            )}
             {isSearchingCrossSeeds && <span className="ml-1 text-xs text-muted-foreground">...</span>}
           </ContextMenuItem>
         )}
