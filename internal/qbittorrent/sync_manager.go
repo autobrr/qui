@@ -4,6 +4,7 @@
 package qbittorrent
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -80,7 +81,8 @@ type TorrentResponse struct {
 	SessionID              string                     `json:"sessionId,omitempty"`   // Optional session tracking
 	CacheMetadata          *CacheMetadata             `json:"cacheMetadata,omitempty"`
 	TrackerHealthSupported bool                       `json:"trackerHealthSupported"`
-	IsCrossInstance        bool                       `json:"isCrossInstance"` // Indicates if this is a cross-instance response
+	IsCrossInstance        bool                       `json:"isCrossInstance"`          // Indicates if this is a cross-instance response
+	PartialResults         bool                       `json:"partialResults,omitempty"` // Indicates if some instances failed to respond
 }
 
 // TorrentStats represents aggregated torrent statistics
@@ -610,9 +612,15 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 
 	var allTorrents []CrossInstanceTorrentView
 	var totalCount int
+	var partialResults bool
 
 	// Iterate through all instances and collect matching torrents
 	for _, instance := range instances {
+		// Check for context cancellation before each network call
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
 		instanceResponse, err := sm.GetTorrentsWithFilters(ctx, instance.ID, 0, 0, "", "", search, filters)
 		if err != nil {
 			log.Warn().
@@ -620,7 +628,13 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 				Str("instanceName", instance.Name).
 				Err(err).
 				Msg("Failed to get torrents from instance for cross-instance filtering")
+			partialResults = true
 			continue
+		}
+
+		// Check for context cancellation after potentially blocking call
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
 		}
 
 		// Convert TorrentView to CrossInstanceTorrentView
@@ -652,12 +666,8 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 			})
 		case "size":
 			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
-				var result int
-				if a.Size < b.Size {
-					result = -1
-				} else if a.Size > b.Size {
-					result = 1
-				} else {
+				result := cmp.Compare(a.Size, b.Size)
+				if result == 0 {
 					// Secondary sort by name for deterministic ordering
 					result = strings.Compare(a.Name, b.Name)
 				}
@@ -668,12 +678,8 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 			})
 		case "progress":
 			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
-				var result int
-				if a.Progress < b.Progress {
-					result = -1
-				} else if a.Progress > b.Progress {
-					result = 1
-				} else {
+				result := cmp.Compare(a.Progress, b.Progress)
+				if result == 0 {
 					// Secondary sort by name for deterministic ordering
 					result = strings.Compare(a.Name, b.Name)
 				}
@@ -707,13 +713,29 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 	}
 
 	// Apply pagination
+	// Clamp offset to valid range [0, len(allTorrents)]
 	start := offset
-	end := offset + limit
+	if start < 0 {
+		start = 0
+	}
 	if start > len(allTorrents) {
 		start = len(allTorrents)
 	}
-	if end > len(allTorrents) {
+
+	// Handle limit: non-positive means "no limit"
+	var end int
+	if limit <= 0 {
 		end = len(allTorrents)
+	} else {
+		end = start + limit
+		if end > len(allTorrents) {
+			end = len(allTorrents)
+		}
+	}
+
+	// Ensure start <= end before slicing
+	if start > end {
+		start = end
 	}
 
 	paginatedTorrents := allTorrents[start:end]
@@ -725,6 +747,7 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 		HasMore:                hasMore,
 		TrackerHealthSupported: false, // Cross-instance doesn't support tracker health
 		IsCrossInstance:        true,
+		PartialResults:         partialResults,
 	}
 
 	return response, nil
@@ -2734,9 +2757,9 @@ func (sm *SyncManager) sortTorrentsByPriority(torrents []qbt.Torrent, desc bool)
 			return -1
 		}
 		if desc {
-			return int(a.Priority - b.Priority)
+			return cmp.Compare(a.Priority, b.Priority)
 		}
-		return int(b.Priority - a.Priority)
+		return cmp.Compare(b.Priority, a.Priority)
 	})
 }
 
