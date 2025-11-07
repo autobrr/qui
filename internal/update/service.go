@@ -19,6 +19,7 @@ const defaultCheckInterval = 2 * time.Hour
 type Service struct {
 	log            zerolog.Logger
 	currentVersion string
+	repository     string
 
 	mu             sync.RWMutex
 	releaseChecker *version.Checker
@@ -26,6 +27,8 @@ type Service struct {
 	lastChecked    time.Time
 	lastTag        string
 	isEnabled      bool
+
+	updateMu sync.Mutex
 }
 
 // NewService creates a new update Service instance.
@@ -34,6 +37,7 @@ func NewService(log zerolog.Logger, enabled bool, currentVersion, userAgent stri
 		log:            log.With().Str("component", "update").Logger(),
 		currentVersion: currentVersion,
 		releaseChecker: version.NewChecker("autobrr", "qui", userAgent),
+		repository:     "autobrr/qui",
 		isEnabled:      enabled,
 	}
 	return svc
@@ -126,4 +130,38 @@ func (s *Service) CheckUpdateAvailable(ctx context.Context) (*version.Release, e
 // SetEnabled toggles whether periodic update checks should run.
 func (s *Service) SetEnabled(enabled bool) {
 	s.isEnabled = enabled
+}
+
+// CanSelfUpdate returns true if the application supports running a self-update in the current environment.
+func (s *Service) CanSelfUpdate() bool {
+	if !isSelfUpdateSupportedPlatform() {
+		return false
+	}
+	if isRunningInContainer() {
+		return false
+	}
+	return true
+}
+
+// RunSelfUpdate downloads the latest release and replaces the current binary when supported.
+func (s *Service) RunSelfUpdate(ctx context.Context) error {
+	if !s.CanSelfUpdate() {
+		return ErrSelfUpdateUnsupported
+	}
+
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
+
+	updater := NewUpdater(Config{
+		Repository: s.repository,
+		Version:    s.currentVersion,
+	})
+
+	if err := updater.Run(ctx); err != nil {
+		return err
+	}
+
+	s.log.Info().Msg("self-update completed successfully")
+
+	return nil
 }

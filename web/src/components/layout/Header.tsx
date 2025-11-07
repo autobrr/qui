@@ -33,11 +33,12 @@ import { useTheme } from "@/hooks/useTheme"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
-import { ChevronsUpDown, Download, FileEdit, FunnelPlus, FunnelX, HardDrive, Home, Info, ListTodo, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
+import { ChevronsUpDown, Download, FileEdit, FunnelPlus, FunnelX, HardDrive, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
+import { toast } from "sonner"
 
 interface HeaderProps {
   children?: ReactNode
@@ -149,6 +150,21 @@ export function Header({
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   })
+
+  const updateMutation = useMutation({
+    mutationFn: () => api.triggerSelfUpdate(),
+    onSuccess: ({ message }) => {
+      toast.success(message)
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "Failed to start self-update"
+      toast.error(message)
+    },
+  })
+
+  const handleTriggerSelfUpdate = () => {
+    updateMutation.mutate()
+  }
 
   // Query instance capabilities via the dedicated lightweight endpoint
   const { data: instanceCapabilities } = useQuery<InstanceCapabilities>({
@@ -453,6 +469,29 @@ export function Header({
             <DropdownMenuContent align="end" className="w-52">
               {updateInfo && (
                 <>
+                  {updateInfo.self_update_supported && (
+                    <DropdownMenuItem
+                      onSelect={(event) => {
+                        event.preventDefault()
+                        handleTriggerSelfUpdate()
+                      }}
+                      className="cursor-pointer text-green-600 dark:text-green-400"
+                      disabled={updateMutation.isPending}
+                    >
+                      {updateMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="mr-2 h-4 w-4" />
+                      )}
+                      <div className="flex flex-col">
+                        <span className="font-medium">Update &amp; Restart</span>
+                        <span className="text-[10px] opacity-80">Version {updateInfo.tag_name}</span>
+                      </div>
+                    </DropdownMenuItem>
+                  )}
+                  {updateInfo.self_update_supported && (
+                    <DropdownMenuSeparator />
+                  )}
                   <DropdownMenuItem asChild>
                     <a
                       href={updateInfo.html_url}

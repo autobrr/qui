@@ -32,13 +32,14 @@ import {
   setThemeMode,
   type ThemeMode
 } from "@/utils/theme"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import { Link, useLocation } from "@tanstack/react-router"
 import {
   Archive,
   Check,
   Copyright,
   Download,
+  Loader2,
   Github,
   HardDrive,
   Home,
@@ -106,6 +107,21 @@ export function MobileFooterNav() {
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   })
+
+  const updateMutation = useMutation({
+    mutationFn: () => api.triggerSelfUpdate(),
+    onSuccess: ({ message }) => {
+      toast.success(message)
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "Failed to start self-update"
+      toast.error(message)
+    },
+  })
+
+  const handleTriggerSelfUpdate = () => {
+    updateMutation.mutate()
+  }
 
   const activeInstances = instances?.filter(i => i.connected) || []
   const isOnInstancePage = location.pathname.startsWith("/instances/")
@@ -253,6 +269,26 @@ export function MobileFooterNav() {
           <DropdownMenuContent align="end" side="top" className="mb-2 w-56">
             {updateInfo && (
               <>
+                {updateInfo.self_update_supported && (
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault()
+                      handleTriggerSelfUpdate()
+                    }}
+                    disabled={updateMutation.isPending}
+                    className="text-green-600 dark:text-green-400"
+                  >
+                    {updateMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                    <div className="flex flex-col ml-2">
+                      <span className="font-medium text-sm">Update &amp; Restart</span>
+                      <span className="text-[10px] opacity-80">Version {updateInfo.tag_name}</span>
+                    </div>
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem asChild>
                   <a
                     href={updateInfo.html_url}

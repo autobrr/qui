@@ -6,9 +6,10 @@
 import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import { useQuery } from "@tanstack/react-query"
-import { Download, X } from "lucide-react"
+import { useMutation, useQuery } from "@tanstack/react-query"
+import { Download, Loader2, X } from "lucide-react"
 import { useState } from "react"
+import { toast } from "sonner"
 
 export function UpdateBanner() {
   const [dismissed, setDismissed] = useState(false)
@@ -23,6 +24,18 @@ export function UpdateBanner() {
     refetchOnWindowFocus: false,
   })
 
+  const updateMutation = useMutation({
+    mutationFn: () => api.triggerSelfUpdate(),
+    onSuccess: ({ message }) => {
+      toast.success(message)
+      setDismissed(true)
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "Failed to start self-update"
+      toast.error(message)
+    },
+  })
+
   // Don't show banner if dismissed or no update available
   if (dismissed || !updateInfo) {
     return null
@@ -30,6 +43,10 @@ export function UpdateBanner() {
 
   const handleViewUpdate = () => {
     window.open(updateInfo.html_url, "_blank", "noopener,noreferrer")
+  }
+
+  const handleSelfUpdate = () => {
+    updateMutation.mutate()
   }
 
   const handleDismiss = () => {
@@ -50,14 +67,33 @@ export function UpdateBanner() {
           <p className="text-xs text-green-700 dark:text-green-300 mt-1">
             Version {updateInfo.tag_name} is now available
           </p>
-          <Button
-            size="sm"
-            variant="outline"
-            className="mt-2 h-6 text-xs border-green-300 text-green-700 hover:bg-green-100 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-900"
-            onClick={handleViewUpdate}
-          >
-            View Release
-          </Button>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {updateInfo.self_update_supported && (
+              <Button
+                size="sm"
+                className="h-6 text-xs"
+                onClick={handleSelfUpdate}
+                disabled={updateMutation.isPending}
+              >
+                {updateMutation.isPending ? (
+                  <span className="flex items-center gap-1">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Updating...
+                  </span>
+                ) : (
+                  "Update & Restart"
+                )}
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 text-xs border-green-300 text-green-700 hover:bg-green-100 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-900"
+              onClick={handleViewUpdate}
+            >
+              View Release
+            </Button>
+          </div>
         </div>
         <Button
           size="icon"

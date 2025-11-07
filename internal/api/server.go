@@ -275,6 +275,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 			// Version endpoint for update checks
 			r.Get("/version/latest", versionHandler.GetLatestVersion)
+			r.Post("/version/self-update", versionHandler.TriggerSelfUpdate)
 
 			// Instance management
 			r.Route("/instances", func(r chi.Router) {

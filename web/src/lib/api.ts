@@ -795,6 +795,7 @@ class ApiClient {
     name?: string
     html_url: string
     published_at: string
+    self_update_supported: boolean
   } | null> {
     try {
       const response = await this.request<{
@@ -802,6 +803,7 @@ class ApiClient {
         name?: string
         html_url: string
         published_at: string
+        self_update_supported: boolean
       } | null>("/version/latest")
 
       // Treat empty responses as no update available
@@ -810,6 +812,12 @@ class ApiClient {
       // Return null if no update available (204 status) or any error
       return null
     }
+  }
+
+  async triggerSelfUpdate(): Promise<{ message: string }> {
+    return this.request<{ message: string }>("/version/self-update", {
+      method: "POST",
+    })
   }
 
   async getTrackerIcons(): Promise<Record<string, string>> {
