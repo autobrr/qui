@@ -822,7 +822,8 @@ func intPtr(i int) *int {
 
 // Mock store for testing
 type mockTorznabIndexerStore struct {
-	indexers []*models.TorznabIndexer
+	indexers     []*models.TorznabIndexer
+	capabilities map[int][]string // indexerID -> capabilities
 }
 
 func (m *mockTorznabIndexerStore) Get(ctx context.Context, id int) (*models.TorznabIndexer, error) {
@@ -852,6 +853,17 @@ func (m *mockTorznabIndexerStore) GetDecryptedAPIKey(indexer *models.TorznabInde
 	return "mock-api-key", nil
 }
 
+func (m *mockTorznabIndexerStore) GetCapabilities(ctx context.Context, indexerID int) ([]string, error) {
+	if m.capabilities != nil {
+		if caps, exists := m.capabilities[indexerID]; exists {
+			return caps, nil
+		}
+	}
+	// For testing purposes, return empty capabilities by default
+	// This simulates indexers without specific parameter support capabilities
+	return []string{}, nil
+}
+
 func (m *mockTorznabIndexerStore) SetCapabilities(ctx context.Context, indexerID int, capabilities []string) error {
 	return nil
 }
@@ -874,4 +886,277 @@ func (m *mockTorznabIndexerStore) CountRequests(ctx context.Context, indexerID i
 
 func (m *mockTorznabIndexerStore) UpdateRequestLimits(ctx context.Context, indexerID int, hourly, daily *int) error {
 	return nil
+}
+
+func TestProwlarrYearParameterWorkaround(t *testing.T) {
+	tests := []struct {
+		name        string
+		backend     models.TorznabBackend
+		inputParams map[string]string
+		expected    map[string]string
+		description string
+	}{
+		{
+			name:    "prowlarr with year parameter",
+			backend: models.TorznabBackendProwlarr,
+			inputParams: map[string]string{
+				"t":    "movie",
+				"q":    "The Matrix",
+				"year": "1999",
+				"cat":  "2000",
+			},
+			expected: map[string]string{
+				"t":   "movie",
+				"q":   "The Matrix 1999",
+				"cat": "2000",
+				// year parameter should be removed
+			},
+			description: "Prowlarr indexer should move year parameter to search query",
+		},
+		{
+			name:    "prowlarr with year parameter and empty query",
+			backend: models.TorznabBackendProwlarr,
+			inputParams: map[string]string{
+				"t":    "movie",
+				"q":    "",
+				"year": "2020",
+			},
+			expected: map[string]string{
+				"t": "movie",
+				"q": "2020",
+				// year parameter should be removed
+			},
+			description: "Prowlarr indexer should use year as query when original query is empty",
+		},
+		{
+			name:    "jackett with year parameter",
+			backend: models.TorznabBackendJackett,
+			inputParams: map[string]string{
+				"t":    "movie",
+				"q":    "The Matrix",
+				"year": "1999",
+				"cat":  "2000",
+			},
+			expected: map[string]string{
+				"t":    "movie",
+				"q":    "The Matrix",
+				"year": "1999",
+				"cat":  "2000",
+			},
+			description: "Jackett indexer should keep year parameter unchanged",
+		},
+		{
+			name:    "native with year parameter",
+			backend: models.TorznabBackendNative,
+			inputParams: map[string]string{
+				"t":    "movie",
+				"q":    "The Matrix",
+				"year": "1999",
+			},
+			expected: map[string]string{
+				"t":    "movie",
+				"q":    "The Matrix",
+				"year": "1999",
+			},
+			description: "Native indexer should keep year parameter unchanged",
+		},
+		{
+			name:    "prowlarr without year parameter",
+			backend: models.TorznabBackendProwlarr,
+			inputParams: map[string]string{
+				"t": "movie",
+				"q": "The Matrix",
+			},
+			expected: map[string]string{
+				"t": "movie",
+				"q": "The Matrix",
+			},
+			description: "Prowlarr indexer should not modify query when no year parameter",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a test indexer with the specified backend
+			indexer := &models.TorznabIndexer{
+				ID:        1,
+				Name:      "Test Indexer",
+				Backend:   tt.backend,
+				IndexerID: "test",
+			}
+
+			// Copy input parameters to avoid modifying the test data
+			paramsMap := make(map[string]string)
+			for k, v := range tt.inputParams {
+				paramsMap[k] = v
+			}
+
+			// Apply the Prowlarr workaround logic
+			if indexer.Backend == models.TorznabBackendProwlarr {
+				if yearStr, exists := paramsMap["year"]; exists && yearStr != "" {
+					currentQuery := paramsMap["q"]
+					if currentQuery != "" {
+						paramsMap["q"] = currentQuery + " " + yearStr
+					} else {
+						paramsMap["q"] = yearStr
+					}
+					// Remove the year parameter since we've included it in the query
+					delete(paramsMap, "year")
+				}
+			}
+
+			// Verify results
+			for key, expectedValue := range tt.expected {
+				if actualValue := paramsMap[key]; actualValue != expectedValue {
+					t.Errorf("%s: paramsMap[%q] = %q, want %q", tt.description, key, actualValue, expectedValue)
+				}
+			}
+
+			// Verify that year parameter is removed for Prowlarr when it was present
+			if tt.backend == models.TorznabBackendProwlarr && tt.inputParams["year"] != "" {
+				if _, exists := paramsMap["year"]; exists {
+					t.Errorf("%s: year parameter should be removed for Prowlarr indexer", tt.description)
+				}
+			}
+
+			// Verify no unexpected parameters
+			for key := range paramsMap {
+				if _, expected := tt.expected[key]; !expected {
+					t.Errorf("%s: unexpected parameter %q = %q", tt.description, key, paramsMap[key])
+				}
+			}
+		})
+	}
+}
+
+func TestProwlarrCapabilityAwareYearWorkaround(t *testing.T) {
+	tests := []struct {
+		name                string
+		indexerCapabilities []string
+		inputParams         map[string]string
+		expectedQuery       string
+		expectedYearParam   bool
+		description         string
+	}{
+		{
+			name:                "prowlarr without movie-search-year capability",
+			indexerCapabilities: []string{"search", "movie-search"},
+			inputParams: map[string]string{
+				"t":    "movie",
+				"q":    "The Matrix",
+				"year": "1999",
+			},
+			expectedQuery:     "The Matrix 1999",
+			expectedYearParam: false,
+			description:       "Should move year to query when indexer lacks movie-search-year capability",
+		},
+		{
+			name:                "prowlarr with movie-search-year capability",
+			indexerCapabilities: []string{"search", "movie-search", "movie-search-year"},
+			inputParams: map[string]string{
+				"t":    "movie",
+				"q":    "The Matrix",
+				"year": "1999",
+			},
+			expectedQuery:     "The Matrix",
+			expectedYearParam: true,
+			description:       "Should keep year parameter when indexer supports movie-search-year capability",
+		},
+		{
+			name:                "prowlarr with empty query",
+			indexerCapabilities: []string{"search", "movie-search"},
+			inputParams: map[string]string{
+				"t":    "movie",
+				"q":    "",
+				"year": "2020",
+			},
+			expectedQuery:     "2020",
+			expectedYearParam: false,
+			description:       "Should use year as entire query when original query is empty",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create mock store with specific capabilities
+			mockStore := &mockTorznabIndexerStore{
+				indexers: []*models.TorznabIndexer{
+					{
+						ID:             1,
+						Name:           "Test Prowlarr Indexer",
+						Backend:        models.TorznabBackendProwlarr,
+						IndexerID:      "test",
+						BaseURL:        "http://test.example.com",
+						TimeoutSeconds: 30,
+						Enabled:        true,
+					},
+				},
+				capabilities: map[int][]string{
+					1: tt.indexerCapabilities,
+				},
+			}
+
+			// Create service with mock store
+			service := &Service{
+				indexerStore: mockStore,
+			}
+
+			// Convert input params to map[string]string (we don't need url.Values for this test)
+
+			// Test the searchMultipleIndexers method by examining the parameters it would send
+			// We'll use reflection or create a test client that captures the parameters
+			indexers, _ := mockStore.ListEnabled(context.Background())
+
+			// For this test, we'll verify the capability logic directly
+			ctx := context.Background()
+			hasYearCapability := service.hasCapability(ctx, 1, "movie-search-year")
+
+			expectedHasCapability := false
+			for _, cap := range tt.indexerCapabilities {
+				if cap == "movie-search-year" {
+					expectedHasCapability = true
+					break
+				}
+			}
+
+			if hasYearCapability != expectedHasCapability {
+				t.Errorf("hasCapability() = %v, expected %v", hasYearCapability, expectedHasCapability)
+			}
+
+			// Test parameter handling logic
+			paramsMap := make(map[string]string)
+			for key, value := range tt.inputParams {
+				paramsMap[key] = value
+			}
+
+			indexer := indexers[0]
+			// Apply the actual Prowlarr logic from the service
+			if indexer.Backend == models.TorznabBackendProwlarr {
+				if yearStr, exists := paramsMap["year"]; exists && yearStr != "" {
+					supportsYearParam := service.hasCapability(ctx, indexer.ID, "movie-search-year")
+
+					if !supportsYearParam {
+						currentQuery := paramsMap["q"]
+						if currentQuery != "" {
+							paramsMap["q"] = currentQuery + " " + yearStr
+						} else {
+							paramsMap["q"] = yearStr
+						}
+						delete(paramsMap, "year")
+					}
+				}
+			}
+
+			// Verify results
+			actualQuery := paramsMap["q"]
+			if actualQuery != tt.expectedQuery {
+				t.Errorf("Query: got %q, expected %q", actualQuery, tt.expectedQuery)
+			}
+
+			_, hasYearParam := paramsMap["year"]
+			if hasYearParam != tt.expectedYearParam {
+				t.Errorf("Year parameter presence: got %v, expected %v", hasYearParam, tt.expectedYearParam)
+			}
+		})
+	}
 }

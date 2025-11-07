@@ -29,6 +29,7 @@ type IndexerStore interface {
 	List(ctx context.Context) ([]*models.TorznabIndexer, error)
 	ListEnabled(ctx context.Context) ([]*models.TorznabIndexer, error)
 	GetDecryptedAPIKey(indexer *models.TorznabIndexer) (string, error)
+	GetCapabilities(ctx context.Context, indexerID int) ([]string, error)
 	SetCapabilities(ctx context.Context, indexerID int, capabilities []string) error
 	SetCategories(ctx context.Context, indexerID int, categories []models.TorznabIndexerCategory) error
 	RecordLatency(ctx context.Context, indexerID int, operationType string, latencyMs int, success bool) error
@@ -531,6 +532,43 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 				}
 			}
 
+			// Prowlarr workaround: Include year in search query instead of as parameter
+			// because Prowlarr's NewznabRequestGenerator doesn't handle year parameter for movie searches
+			// Only apply this workaround if the indexer doesn't support movie-search-year capability
+			if idx.Backend == models.TorznabBackendProwlarr {
+				if yearStr, exists := paramsMap["year"]; exists && yearStr != "" {
+					// Check if indexer supports movie-search-year capability
+					supportsYearParam := s.hasCapability(ctx, idx.ID, "movie-search-year")
+
+					if !supportsYearParam {
+						currentQuery := paramsMap["q"]
+						if currentQuery != "" {
+							paramsMap["q"] = currentQuery + " " + yearStr
+						} else {
+							paramsMap["q"] = yearStr
+						}
+						// Remove the year parameter since we've included it in the query
+						delete(paramsMap, "year")
+
+						log.Debug().
+							Int("indexer_id", idx.ID).
+							Str("indexer_name", idx.Name).
+							Str("original_query", currentQuery).
+							Str("modified_query", paramsMap["q"]).
+							Str("year", yearStr).
+							Bool("supports_year_param", supportsYearParam).
+							Msg("Prowlarr workaround: moved year parameter to search query")
+					} else {
+						log.Debug().
+							Int("indexer_id", idx.ID).
+							Str("indexer_name", idx.Name).
+							Str("year", yearStr).
+							Bool("supports_year_param", supportsYearParam).
+							Msg("Prowlarr indexer supports year parameter, keeping as parameter")
+					}
+				}
+			}
+
 			var searchFn func() ([]Result, error)
 			switch idx.Backend {
 			case models.TorznabBackendNative:
@@ -617,6 +655,15 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 			if recErr := s.indexerStore.RecordLatency(ctx, idx.ID, "search", latencyMs, err == nil); recErr != nil {
 				log.Debug().Err(recErr).Int("indexer_id", idx.ID).Msg("Failed to record torznab latency")
 			}
+
+			// Debug log search results
+			log.Debug().
+				Int("indexer_id", idx.ID).
+				Str("indexer", idx.Name).
+				Int("result_count", len(results)).
+				Int("latency_ms", latencyMs).
+				Interface("search_params", paramsMap).
+				Msg("Search completed")
 
 			if err != nil {
 				if cooldown, reason := detectRateLimit(err); reason {
@@ -776,45 +823,19 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 	// Handle conditional parameter addition based on indexer capabilities
 	s.applyCapabilitySpecificParams(idx, meta, params)
 
+	// Debug log final parameters after processing
+	log.Debug().
+		Int("indexer_id", idx.ID).
+		Str("indexer", idx.Name).
+		Interface("final_params", params).
+		Msg("Final search parameters after capability processing")
+
 	return false
 }
 
 func (s *Service) applyCapabilitySpecificParams(idx *models.TorznabIndexer, meta *searchContext, params map[string]string) {
 	if meta == nil || len(idx.Capabilities) == 0 {
 		return
-	}
-
-	// Handle year parameter - only add if indexer supports parameter-specific year capability
-	if yearStr, hasYear := params["_year"]; hasYear {
-		delete(params, "_year") // Remove temporary storage
-
-		var yearCapability string
-		switch meta.searchMode {
-		case "movie":
-			yearCapability = "movie-search-year"
-		case "tvsearch":
-			yearCapability = "tv-search-year"
-		}
-
-		if yearCapability != "" && supportsAnyCapability(idx.Capabilities, []string{yearCapability}) {
-			params["year"] = yearStr
-			log.Debug().
-				Int("indexer_id", idx.ID).
-				Str("indexer", idx.Name).
-				Str("search_mode", meta.searchMode).
-				Str("year", yearStr).
-				Str("capability", yearCapability).
-				Msg("Adding year parameter - indexer supports capability-specific year search")
-		} else {
-			log.Debug().
-				Int("indexer_id", idx.ID).
-				Str("indexer", idx.Name).
-				Str("search_mode", meta.searchMode).
-				Str("year", yearStr).
-				Str("missing_capability", yearCapability).
-				Strs("indexer_caps", idx.Capabilities).
-				Msg("Skipping year parameter - indexer does not support capability-specific year search")
-		}
 	}
 }
 
@@ -997,9 +1018,13 @@ func (s *Service) buildSearchParams(req *TorznabSearchRequest, searchMode string
 			Msg("Adding episode parameter to torznab search")
 	}
 
-	// Store year in params but don't set it yet - will be handled per-indexer
+	// Add year parameter directly - let Jackett handle indexer compatibility
 	if req.Year > 0 {
-		params.Set("_year", strconv.Itoa(req.Year)) // Temporary storage
+		params.Set("year", strconv.Itoa(req.Year))
+		log.Debug().
+			Str("search_mode", mode).
+			Int("year", req.Year).
+			Msg("Adding year parameter to torznab search")
 	}
 
 	if req.Limit > 0 {
@@ -1326,6 +1351,22 @@ func (s *Service) parseTVDbID(r Result) string {
 	// TVDb ID might be in various places depending on indexer
 	// This is a placeholder - would need to check actual Jackett response structure
 	return ""
+}
+
+// hasCapability checks if an indexer has a specific capability
+func (s *Service) hasCapability(ctx context.Context, indexerID int, capability string) bool {
+	caps, err := s.indexerStore.GetCapabilities(ctx, indexerID)
+	if err != nil {
+		return false
+	}
+
+	for _, cap := range caps {
+		if cap == capability {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (s *Service) resolveIndexerSelection(ctx context.Context, indexerIDs []int) ([]*models.TorznabIndexer, error) {
