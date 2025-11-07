@@ -2037,9 +2037,13 @@ paths:
             type: string
         - name: filters
           in: query
+          required: true
           schema:
             type: string
-            description: JSON object with filter criteria (`status`, `categories`, `tags`, `excludeTags`, `trackers`, `expr`)
+            description: |
+              JSON-encoded filter options. Must include the `expr` field for cross-instance filtering.
+              See CrossInstanceFilterOptions schema for structure details.
+            example: '{"expr":"Hash == \"abcd1234\" || Hash == \"efgh5678\""}'
       responses:
         '200':
           description: Paginated torrent list from all instances
@@ -2068,6 +2072,19 @@ paths:
                   isCrossInstance:
                     type: boolean
                     default: true
+                  partialResults:
+                    type: boolean
+                    description: Indicates if some instances failed to respond
+        '400':
+          description: Missing or invalid filters parameter
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Expression filter is required for cross-instance filtering"
         '500':
           description: Failed to get cross-instance torrents
 
@@ -2701,6 +2718,42 @@ components:
           example: "2.11.4"
         buildInfo:
           $ref: '#/components/schemas/QBittorrentBuildInfo'
+
+    CrossInstanceFilterOptions:
+      type: object
+      description: Filter options for cross-instance torrent filtering
+      required:
+        - expr
+      properties:
+        expr:
+          type: string
+          description: Expression filter (required for cross-instance filtering). Supports logical operators and hash matching.
+          example: 'Hash == "abcd1234" || Hash == "efgh5678"'
+        status:
+          type: array
+          items:
+            type: string
+          description: Filter by torrent status
+        categories:
+          type: array
+          items:
+            type: string
+          description: Filter by categories
+        tags:
+          type: array
+          items:
+            type: string
+          description: Filter by tags
+        excludeTags:
+          type: array
+          items:
+            type: string
+          description: Exclude torrents with these tags
+        trackers:
+          type: array
+          items:
+            type: string
+          description: Filter by tracker hostnames
 
 tags:
   - name: Authentication
