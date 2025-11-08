@@ -586,11 +586,11 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     },
   })
 
-  // Set up dropzone at component level to avoid conditional hook calls
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const existingFiles = form.getFieldValue("torrentFiles") || []
     const allFiles = [...existingFiles, ...acceptedFiles]
     form.setFieldValue("torrentFiles", allFiles.length > 0 ? allFiles : null)
+
     // Check for duplicates when files are dropped
     if (allFiles.length > 0) {
       checkForDuplicates(allFiles, "")
