@@ -825,13 +825,13 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                         <div
                           {...getRootProps()}
                           className={cn(
-                            "border-2 border-dashed rounded-md p-6 cursor-pointer transition-colors",
+                            "mt-2 border-2 border-dashed rounded-md p-6 cursor-pointer transition-colors",
                             isDragActive
                               ? "border-primary bg-primary/10"
                               : "border-border hover:border-primary/50 hover:bg-accent/50"
                           )}
                         >
-                          <input {...getInputProps()} ref={fileInputRef} id="torrentFiles" />
+                          <input {...getInputProps({ id: "torrentFiles" })} />
                           <div className="flex flex-col items-center justify-center text-center space-y-2">
                             <Upload className="h-8 w-8 text-muted-foreground" />
                             {isDragActive ? (
