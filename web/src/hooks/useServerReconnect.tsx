@@ -59,7 +59,7 @@ export function useServerReconnect() {
         // Show changelog dialog if we have release notes
         if (versionInfo?.body) {
           const latestRelease = {
-            version: versionInfo.tag_name,
+            version: versionInfo.tag_name ?? "Unknown",
             body: versionInfo.body
           }
           setChangelogData(latestRelease)
