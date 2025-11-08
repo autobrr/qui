@@ -721,6 +721,31 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       return sortedEnabledIndexers.map(indexer => ({ id: indexer.id, name: indexer.name }))
     }
 
+    // If we have pre-filtered indexers from the backend, use appropriate set based on search state
+    if (sourceTorrent.availableIndexers && sourceTorrent.filteredIndexers) {
+      // If search has been performed, show the final filtered results (capability + content filtering)
+      // If no search yet, show the initially available indexers (capability filtering only)
+      const targetIndexerIds = crossSeedHasSearched 
+        ? sourceTorrent.filteredIndexers 
+        : sourceTorrent.availableIndexers
+      
+      const filteredIndexerIds = new Set(targetIndexerIds)
+      const filteredIndexers = sortedEnabledIndexers.filter(indexer => 
+        filteredIndexerIds.has(indexer.id)
+      )
+      return filteredIndexers.map(indexer => ({ id: indexer.id, name: indexer.name }))
+    }
+
+    // Legacy fallback: if we have filtered indexers but no available indexers (old response format)
+    if (sourceTorrent.filteredIndexers && sourceTorrent.filteredIndexers.length >= 0) {
+      const filteredIndexerIds = new Set(sourceTorrent.filteredIndexers)
+      const filteredIndexers = sortedEnabledIndexers.filter(indexer => 
+        filteredIndexerIds.has(indexer.id)
+      )
+      return filteredIndexers.map(indexer => ({ id: indexer.id, name: indexer.name }))
+    }
+
+    // Fallback to the old capability/category filtering logic if no pre-filtering data
     // Filter indexers based on required capabilities and categories
     const requiredCaps = sourceTorrent.requiredCaps ?? []
     const requiredCategories = sourceTorrent.searchCategories ?? []
@@ -745,7 +770,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     })
 
     return filteredIndexers.map(indexer => ({ id: indexer.id, name: indexer.name }))
-  }, [sortedEnabledIndexers, crossSeedSearchResponse, lastSourceTorrent])
+  }, [sortedEnabledIndexers, crossSeedSearchResponse, lastSourceTorrent, crossSeedHasSearched])
 
   const { data: crossSeedSettings } = useQuery({
     queryKey: ["cross-seed", "settings"],

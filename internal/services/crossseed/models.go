@@ -79,6 +79,11 @@ type TorrentInfo struct {
 	SearchType       string        `json:"search_type,omitempty"`       // Search type to use: tvsearch, movie, music, book, search
 	SearchCategories []int         `json:"search_categories,omitempty"` // Torznab categories required for this search
 	RequiredCaps     []string      `json:"required_caps,omitempty"`     // Required indexer capabilities (e.g., "tv-search", "movie-search", "music-search")
+	// Pre-filtering information for UI context menu
+	AvailableIndexers []int          `json:"available_indexers,omitempty"` // Indexers available after capability filtering
+	FilteredIndexers  []int          `json:"filtered_indexers,omitempty"`  // Indexers available after content filtering
+	ExcludedIndexers  map[int]string `json:"excluded_indexers,omitempty"`  // Indexers excluded by content filtering with reasons
+	ContentMatches    []string       `json:"content_matches,omitempty"`    // Existing torrents that match this content
 }
 
 // TorrentFile represents a file in the torrent

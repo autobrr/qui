@@ -165,6 +165,36 @@ const CrossSeedDialogComponent = ({
               </div>
             )}
           </div>
+
+          {/* Content-based filtering info */}
+          {sourceTorrent && sourceTorrent.excludedIndexers && Object.keys(sourceTorrent.excludedIndexers).length > 0 && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm dark:border-blue-800 dark:bg-blue-950">
+              <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
+                <span className="font-medium">Smart Filtering Active</span>
+                <Badge variant="secondary" className="text-xs">
+                  {Object.keys(sourceTorrent.excludedIndexers).length} indexers filtered
+                </Badge>
+              </div>
+              <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">
+                {Object.keys(sourceTorrent.excludedIndexers).length} indexer{Object.keys(sourceTorrent.excludedIndexers).length === 1 ? '' : 's'} excluded because you already have similar content from the same tracker sources.
+              </p>
+              {sourceTorrent.contentMatches && sourceTorrent.contentMatches.length > 0 && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
+                    View existing content ({sourceTorrent.contentMatches.length} match{sourceTorrent.contentMatches.length === 1 ? '' : 'es'})
+                  </summary>
+                  <ul className="mt-1 ml-4 text-xs text-blue-600 dark:text-blue-400">
+                    {sourceTorrent.contentMatches.slice(0, 5).map((match, index) => (
+                      <li key={index} className="truncate">• {match}</li>
+                    ))}
+                    {sourceTorrent.contentMatches.length > 5 && (
+                      <li className="text-blue-500 dark:text-blue-500">• And {sourceTorrent.contentMatches.length - 5} more...</li>
+                    )}
+                  </ul>
+                </details>
+              )}
+            </div>
+          )}
           {!hasSearched ? null : isLoading ? (
             <div className="flex items-center justify-center gap-3 py-12 text-sm text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -384,8 +414,9 @@ const CrossSeedScopeSelector = memo(({
   const scopeSearchDisabled = isSearching || (indexerMode === "custom" && selectedCount === 0)
 
   const statusText = useMemo(() => {
+    const suffix = total === 1 ? "indexer" : "indexers"
     if (indexerMode === "all") {
-      return `${total} ${total === 1 ? "indexer" : "indexers"}`
+      return `${total} compatible ${suffix}`
     }
     if (selectedCount === 0) {
       return "None selected"

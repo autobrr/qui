@@ -1027,6 +1027,11 @@ export interface CrossSeedTorrentInfo {
   searchType?: string
   searchCategories?: number[]
   requiredCaps?: string[]
+  // Pre-filtering information for UI context menu
+  availableIndexers?: number[]
+  filteredIndexers?: number[]
+  excludedIndexers?: Record<number, string>
+  contentMatches?: string[]
 }
 
 export interface CrossSeedFindCandidatesResponse {
