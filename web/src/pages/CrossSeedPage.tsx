@@ -14,13 +14,14 @@ import {
   CardTitle
 } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { api } from "@/lib/api"
 import type {
   CrossSeedAutomationSettings,
@@ -37,7 +38,6 @@ import {
 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface AutomationFormState {
   enabled: boolean
@@ -103,6 +103,11 @@ export function CrossSeedPage() {
   const [searchIntervalSeconds, setSearchIntervalSeconds] = useState(60)
   const [searchCooldownMinutes, setSearchCooldownMinutes] = useState(360)
   const [searchResultsOpen, setSearchResultsOpen] = useState(false)
+  const [showIndexerFilters, setShowIndexerFilters] = useState(false)
+  const [showAutomationIndexerFilters, setShowAutomationIndexerFilters] = useState(false)
+  const [showSearchCategories, setShowSearchCategories] = useState(false)
+  const [showSearchTags, setShowSearchTags] = useState(false)
+  const [showAutomationInstances, setShowAutomationInstances] = useState(false)
 
   const { data: settings } = useQuery({
     queryKey: ["cross-seed", "settings"],
@@ -412,8 +417,8 @@ export function CrossSeedPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Automated Search Runs</CardTitle>
-          <CardDescription>Continuously search Torznab indexers for cross-seed matches from a specific instance.</CardDescription>
+          <CardTitle>Seeded Torrent Search</CardTitle>
+          <CardDescription>Walk the torrents you already seed on the selected instance, collapse identical content down to the oldest copy, and query Torznab feeds once per unique release while skipping trackers you already have it from.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -435,7 +440,7 @@ export function CrossSeedPage() {
               </SelectContent>
             </Select>
             {!instances?.length && (
-              <p className="text-xs text-muted-foreground">Add an instance to enable automated searches.</p>
+              <p className="text-xs text-muted-foreground">Add an instance to search the torrents you already seed.</p>
             )}
           </div>
 
@@ -449,7 +454,7 @@ export function CrossSeedPage() {
                 value={searchIntervalSeconds}
                 onChange={event => setSearchIntervalSeconds(Math.max(30, Number(event.target.value) || 60))}
               />
-              <p className="text-xs text-muted-foreground">Wait time before scanning the next torrent. Minimum 30 seconds.</p>
+              <p className="text-xs text-muted-foreground">Wait time before scanning the next seeded torrent. Minimum 30 seconds.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="search-cooldown">Cooldown (minutes)</Label>
@@ -458,95 +463,170 @@ export function CrossSeedPage() {
                 type="number"
                 min={30}
                 value={searchCooldownMinutes}
-                onChange={event => setSearchCooldownMinutes(Math.max(30, Number(event.target.value) || 360))}
+                onChange={event => setSearchCooldownMinutes(Number(event.target.value) || 0)}
               />
-              <p className="text-xs text-muted-foreground">Skip torrents that were searched more recently than this window.</p>
+              <p className="text-xs text-muted-foreground">Skip seeded torrents that were searched more recently than this window.</p>
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label>Categories</Label>
-            <p className="text-xs text-muted-foreground">Limit the run to specific qBittorrent categories. Leave empty to include all.</p>
-            <div className="flex flex-wrap gap-2">
-              {searchCategoryOptions.length > 0 ? (
-                searchCategoryOptions.map(category => (
-                  <Label key={category} className="flex items-center gap-2 border rounded-md px-2 py-1 text-xs cursor-pointer">
-                    <Checkbox checked={searchCategories.includes(category)} onCheckedChange={() => toggleSearchCategory(category)} />
-                    {category}
-                  </Label>
-                ))
-              ) : (
-                <p className="text-xs text-muted-foreground">Categories load after selecting an instance.</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Categories</Label>
+                <p className="text-xs text-muted-foreground">Limit the seeded-torrent scan to specific qBittorrent categories.</p>
+              </div>
+              {searchCategoryOptions.length > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  onClick={() => setShowSearchCategories(prev => !prev)}
+                >
+                  {showSearchCategories ? "Hide" : "Customize"}
+                </Button>
               )}
             </div>
+            <div className="text-xs text-muted-foreground">
+              {searchCategories.length === 0
+                ? "All categories will be included in the scan."
+                : `Only ${searchCategories.length} selected categor${searchCategories.length === 1 ? "y" : "ies"} will be scanned.`}
+            </div>
+            {showSearchCategories && (
+              <div className="flex flex-wrap gap-2">
+                {searchCategoryOptions.length > 0 ? (
+                  searchCategoryOptions.map(category => (
+                    <Label key={category} className="flex items-center gap-2 border rounded-md px-2 py-1 text-xs cursor-pointer">
+                      <Checkbox checked={searchCategories.includes(category)} onCheckedChange={() => toggleSearchCategory(category)} />
+                      {category}
+                    </Label>
+                  ))
+                ) : (
+                  <p className="text-xs text-muted-foreground">Categories load after selecting an instance.</p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">
-            <Label>Tags</Label>
-            <p className="text-xs text-muted-foreground">Run can also be restricted to torrents containing at least one of these tags.</p>
-            <div className="flex flex-wrap gap-2">
-              {searchTagOptions.length > 0 ? (
-                searchTagOptions.map(tag => (
-                  <Label key={tag} className="flex items-center gap-2 border rounded-md px-2 py-1 text-xs cursor-pointer">
-                    <Checkbox checked={searchTags.includes(tag)} onCheckedChange={() => toggleSearchTag(tag)} />
-                    {tag}
-                  </Label>
-                ))
-              ) : (
-                <p className="text-xs text-muted-foreground">No tags found for this instance.</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Tags</Label>
+                <p className="text-xs text-muted-foreground">Restrict the scan to torrents with at least one of these tags.</p>
+              </div>
+              {searchTagOptions.length > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  onClick={() => setShowSearchTags(prev => !prev)}
+                >
+                  {showSearchTags ? "Hide" : "Customize"}
+                </Button>
               )}
             </div>
+            <div className="text-xs text-muted-foreground">
+              {searchTags.length === 0
+                ? "All tags will be included in the scan."
+                : `Only ${searchTags.length} selected tag${searchTags.length === 1 ? "" : "s"} will be scanned.`}
+            </div>
+            {showSearchTags && (
+              <div className="flex flex-wrap gap-2">
+                {searchTagOptions.length > 0 ? (
+                  searchTagOptions.map(tag => (
+                    <Label key={tag} className="flex items-center gap-2 border rounded-md px-2 py-1 text-xs cursor-pointer">
+                      <Checkbox checked={searchTags.includes(tag)} onCheckedChange={() => toggleSearchTag(tag)} />
+                      {tag}
+                    </Label>
+                  ))
+                ) : (
+                  <p className="text-xs text-muted-foreground">No tags found for this instance.</p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">
-            <Label>Indexers</Label>
-            <p className="text-xs text-muted-foreground">Select Torznab indexers to include. Incompatible indexers are automatically ignored based on capabilities.</p>
-            <p className="text-xs text-muted-foreground">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Indexers</Label>
+                <p className="text-xs text-muted-foreground">Select Torznab indexers to query. Trackers you already seed from are skipped automatically.</p>
+              </div>
+              {indexers && indexers.length > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  onClick={() => setShowIndexerFilters(prev => !prev)}
+                >
+                  {showIndexerFilters ? "Hide" : "Customize"}
+                </Button>
+              )}
+            </div>
+            <div className="text-xs text-muted-foreground">
               {searchIndexerIds.length === 0
-                ? "Leave everything unchecked to search every enabled Torznab indexer."
-                : `Only the ${searchIndexerIds.length} selected indexer${searchIndexerIds.length === 1 ? "" : "s"} will be queried.`}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {indexers && indexers.length > 0 ? (
-                indexers.map(indexer => (
-                  <Label key={indexer.id} className="flex items-center gap-2 border rounded-md px-2 py-1 text-xs cursor-pointer">
-                    <Checkbox
-                      checked={searchIndexerIds.includes(indexer.id)}
-                      onCheckedChange={() => toggleSearchIndexer(indexer.id)}
-                    />
-                    {indexer.name}
-                  </Label>
-                ))
-              ) : (
-                <p className="text-xs text-muted-foreground">No Torznab indexers configured.</p>
-              )}
+                ? "All enabled Torznab indexers will be queried for matches."
+                : `Only ${searchIndexerIds.length} selected indexer${searchIndexerIds.length === 1 ? "" : "s"} will be queried.`}
             </div>
+            {showIndexerFilters && (
+              <div className="flex flex-wrap gap-2">
+                {indexers && indexers.length > 0 ? (
+                  indexers.map(indexer => (
+                    <Label key={indexer.id} className="flex items-center gap-2 border rounded-md px-2 py-1 text-xs cursor-pointer">
+                      <Checkbox
+                        checked={searchIndexerIds.includes(indexer.id)}
+                        onCheckedChange={() => toggleSearchIndexer(indexer.id)}
+                      />
+                      {indexer.name}
+                    </Label>
+                  ))
+                ) : (
+                  <p className="text-xs text-muted-foreground">No Torznab indexers configured.</p>
+                )}
+              </div>
+            )}
+            {!indexers?.length && (
+              <p className="text-xs text-muted-foreground">No Torznab indexers configured.</p>
+            )}
           </div>
 
-          <div className="rounded-md border p-3 space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <p className="font-medium">Run status</p>
+          <Separator />
+
+          <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">Status</p>
               <Badge variant={searchRunning ? "default" : "secondary"}>{searchRunning ? "RUNNING" : "IDLE"}</Badge>
             </div>
-            {searchStatus?.currentTorrent ? (
-              <p className="text-xs text-muted-foreground">Currently processing: <span className="text-foreground">{searchStatus.currentTorrent.torrentName}</span></p>
-            ) : (
-              <p className="text-xs text-muted-foreground">No torrent is currently queued.</p>
-            )}
-            {activeSearchRun && (
-              <div className="text-xs text-muted-foreground space-y-1">
-                <p>Processed {activeSearchRun.processed} / {activeSearchRun.totalTorrents || "?"}</p>
-                <p>
-                  Added {activeSearchRun.torrentsAdded} • Skipped {activeSearchRun.torrentsSkipped} • Failed {activeSearchRun.torrentsFailed}
-                </p>
-                <p>Started {formatDate(activeSearchRun.startedAt)}</p>
+            {searchStatus?.currentTorrent && (
+              <div className="text-xs">
+                <span className="text-muted-foreground">Currently processing:</span>{" "}
+                <span className="font-medium">{searchStatus.currentTorrent.torrentName}</span>
               </div>
+            )}
+            {activeSearchRun ? (
+              <div className="grid gap-2 text-xs">
+                <div className="flex items-center gap-4">
+                  <span className="text-muted-foreground">Progress:</span>
+                  <span className="font-medium">{activeSearchRun.processed} / {activeSearchRun.totalTorrents || "?"} torrents</span>
+                </div>
+                <div className="flex items-center gap-4">
+                  <span className="text-muted-foreground">Results:</span>
+                  <span className="font-medium">
+                    {activeSearchRun.torrentsAdded} added • {activeSearchRun.torrentsSkipped} skipped • {activeSearchRun.torrentsFailed} failed
+                  </span>
+                </div>
+                <div className="flex items-center gap-4">
+                  <span className="text-muted-foreground">Started:</span>
+                  <span className="font-medium">{formatDate(activeSearchRun.startedAt)}</span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">No active run</p>
             )}
           </div>
 
           <Collapsible open={searchResultsOpen} onOpenChange={setSearchResultsOpen} className="border rounded-md">
             <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium">
-              <span>Recent additions</span>
+              <span>Recent search additions</span>
               <Badge variant="outline">{recentSearchResults.length}</Badge>
             </CollapsibleTrigger>
             <CollapsibleContent className="px-3 pb-3">
@@ -570,10 +650,10 @@ export function CrossSeedPage() {
             </CollapsibleContent>
           </Collapsible>
         </CardContent>
-        <CardFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-xs text-muted-foreground">
-            Next check: {searchStatus?.nextRunAt ? formatDate(searchStatus.nextRunAt) : "—"}
-          </div>
+        <CardFooter className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-muted-foreground">
+            Next run: {searchStatus?.nextRunAt ? formatDate(searchStatus.nextRunAt) : "—"}
+          </p>
           <div className="flex items-center gap-2">
             <Button
               onClick={handleStartSearchRun}
@@ -596,39 +676,10 @@ export function CrossSeedPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Automation</CardTitle>
-          <CardDescription>Configure scheduled cross-seed scans and run them on-demand.</CardDescription>
+          <CardTitle>RSS Automation</CardTitle>
+          <CardDescription>Poll tracker RSS feeds on a fixed interval and add matching cross-seeds automatically.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-medium">Scheduler</p>
-              <p className="text-xs text-muted-foreground">
-                {automationStatus?.running ? "Automation run in progress" : automationStatus?.nextRunAt ? `Next run: ${formatDate(automationStatus.nextRunAt)}` : "Scheduler idle"}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2 text-xs">
-                <Switch id="automation-dry-run" checked={dryRun} onCheckedChange={value => setDryRun(!!value)} />
-                <Label htmlFor="automation-dry-run">Dry run</Label>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => triggerRunMutation.mutate({ limit: automationForm.maxResultsPerRun, dryRun })}
-                disabled={triggerRunMutation.isPending}
-              >
-                {triggerRunMutation.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Play className="mr-2 h-4 w-4" />
-                )}
-                Run now
-              </Button>
-            </div>
-          </div>
-
-          <Separator />
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
@@ -638,7 +689,7 @@ export function CrossSeedPage() {
                   checked={automationForm.enabled}
                   onCheckedChange={value => setAutomationForm(prev => ({ ...prev, enabled: !!value }))}
                 />
-                Enable automation
+                Enable RSS automation
               </Label>
             </div>
             <div className="space-y-2">
@@ -655,7 +706,7 @@ export function CrossSeedPage() {
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="automation-interval">Run interval (minutes)</Label>
+              <Label htmlFor="automation-interval">RSS run interval (minutes)</Label>
               <Input
                 id="automation-interval"
                 type="number"
@@ -665,7 +716,7 @@ export function CrossSeedPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="automation-max-results">Max results per run</Label>
+              <Label htmlFor="automation-max-results">Max RSS results per run</Label>
               <Input
                 id="automation-max-results"
                 type="number"
@@ -743,9 +794,29 @@ export function CrossSeedPage() {
             />
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Target instances</Label>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Target instances</Label>
+                <p className="text-xs text-muted-foreground">Select which qBittorrent instances will receive cross-seeds.</p>
+              </div>
+              {instances && instances.length > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  onClick={() => setShowAutomationInstances(prev => !prev)}
+                >
+                  {showAutomationInstances ? "Hide" : "Customize"}
+                </Button>
+              )}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {automationForm.targetInstanceIds.length === 0
+                ? "No instances selected. Please select at least one instance."
+                : `${automationForm.targetInstanceIds.length} instance${automationForm.targetInstanceIds.length === 1 ? "" : "s"} selected.`}
+            </div>
+            {showAutomationInstances && (
               <div className="flex flex-wrap gap-2">
                 {instances?.map(instance => (
                   <Label key={instance.id} className="flex items-center gap-2 text-xs font-medium border rounded-md px-2 py-1 cursor-pointer">
@@ -760,46 +831,106 @@ export function CrossSeedPage() {
                   <p className="text-xs text-muted-foreground">No instances available.</p>
                 )}
               </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Target indexers</Label>
+                <p className="text-xs text-muted-foreground">Select Torznab indexers to poll for RSS feeds.</p>
+              </div>
+              {indexers && indexers.length > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  onClick={() => setShowAutomationIndexerFilters(prev => !prev)}
+                >
+                  {showAutomationIndexerFilters ? "Hide" : "Customize"}
+                </Button>
+              )}
             </div>
-            <div className="space-y-2">
-              <Label>Target indexers</Label>
+            <div className="text-xs text-muted-foreground">
+              {automationForm.targetIndexerIds.length === 0
+                ? "All enabled Torznab indexers are eligible for RSS automation."
+                : `Only ${automationForm.targetIndexerIds.length} selected indexer${automationForm.targetIndexerIds.length === 1 ? "" : "s"} will be polled.`}
+            </div>
+            {showAutomationIndexerFilters && (
               <div className="flex flex-wrap gap-2">
-                {indexers?.map(indexer => {
-                  const id = Number(indexer.id)
-                  return (
-                    <Label key={indexer.id} className="flex items-center gap-2 text-xs font-medium border rounded-md px-2 py-1 cursor-pointer">
-                      <Checkbox
-                        checked={automationForm.targetIndexerIds.includes(id)}
-                        onCheckedChange={value => handleToggleIndexer(id, !!value)}
-                      />
-                      {indexer.name}
-                    </Label>
-                  )
-                })}
-                {(!indexers || indexers.length === 0) && (
+                {indexers && indexers.length > 0 ? (
+                  indexers.map(indexer => {
+                    const id = Number(indexer.id)
+                    return (
+                      <Label key={indexer.id} className="flex items-center gap-2 text-xs font-medium border rounded-md px-2 py-1 cursor-pointer">
+                        <Checkbox
+                          checked={automationForm.targetIndexerIds.includes(id)}
+                          onCheckedChange={value => handleToggleIndexer(id, !!value)}
+                        />
+                        {indexer.name}
+                      </Label>
+                    )
+                  })
+                ) : (
                   <p className="text-xs text-muted-foreground">No Torznab indexers configured.</p>
                 )}
               </div>
+            )}
+            {!indexers?.length && (
+              <p className="text-xs text-muted-foreground">No Torznab indexers configured.</p>
+            )}
+          </div>
+
+          <Separator />
+
+          <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">Status</p>
+              <Badge variant={automationStatus?.running ? "default" : "secondary"}>
+                {automationStatus?.running ? "RUNNING" : "IDLE"}
+              </Badge>
             </div>
+            {automationStatus?.running ? (
+              <p className="text-xs text-muted-foreground">RSS automation run in progress</p>
+            ) : (
+              <div className="text-xs">
+                <span className="text-muted-foreground">Next run:</span>{" "}
+                <span className="font-medium">{automationStatus?.nextRunAt ? formatDate(automationStatus.nextRunAt) : "—"}</span>
+              </div>
+            )}
           </div>
         </CardContent>
-        <CardFooter className="flex items-center gap-3">
-          <Button
-            onClick={handleAutomationSave}
-            disabled={updateSettingsMutation.isPending}
-          >
-            {updateSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Save settings
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              // Reset to defaults without triggering reinitialization
-              setAutomationForm(DEFAULT_AUTOMATION_FORM)
-            }}
-          >
-            Reset
-          </Button>
+        <CardFooter className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 text-xs">
+            <Switch id="automation-dry-run" checked={dryRun} onCheckedChange={value => setDryRun(!!value)} />
+            <Label htmlFor="automation-dry-run">Dry run</Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => triggerRunMutation.mutate({ limit: automationForm.maxResultsPerRun, dryRun })}
+              disabled={triggerRunMutation.isPending}
+            >
+              {triggerRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+              Run now
+            </Button>
+            <Button
+              onClick={handleAutomationSave}
+              disabled={updateSettingsMutation.isPending}
+            >
+              {updateSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save settings
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                // Reset to defaults without triggering reinitialization
+                setAutomationForm(DEFAULT_AUTOMATION_FORM)
+              }}
+            >
+              Reset
+            </Button>
+          </div>
         </CardFooter>
       </Card>
 
@@ -830,7 +961,7 @@ export function CrossSeedPage() {
               </div>
             ))
           ) : (
-            <p className="text-sm text-muted-foreground">No automation runs recorded yet.</p>
+            <p className="text-sm text-muted-foreground">No RSS automation runs recorded yet.</p>
           )}
         </CardContent>
       </Card>
