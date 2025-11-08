@@ -816,6 +816,38 @@ func TestSearchGenericWithIndexerIDs(t *testing.T) {
 	}
 }
 
+func TestSearchRespectsRequestedIndexerIDs(t *testing.T) {
+	store := &mockTorznabIndexerStore{
+		indexers: []*models.TorznabIndexer{
+			{ID: 1, Name: "Indexer1", Enabled: true},
+		},
+		panicOnListEnabled: true,
+	}
+	s := NewService(store, nil)
+
+	req := &TorznabSearchRequest{
+		Query:      "Example.Show.S01",
+		IndexerIDs: []int{999}, // request an indexer that does not exist/enabled
+	}
+
+	resp, err := s.Search(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected response, got nil")
+	}
+	if resp.Total != 0 {
+		t.Fatalf("expected no results, got %d", resp.Total)
+	}
+	if store.listEnabledCalls != 0 {
+		t.Fatalf("expected ListEnabled to be skipped, but was called %d times", store.listEnabledCalls)
+	}
+	if len(store.getCalls) != 1 || store.getCalls[0] != 999 {
+		t.Fatalf("expected Get to be called once with 999, calls: %#v", store.getCalls)
+	}
+}
+
 // Helper functions
 func intPtr(i int) *int {
 	return &i
@@ -823,11 +855,15 @@ func intPtr(i int) *int {
 
 // Mock store for testing
 type mockTorznabIndexerStore struct {
-	indexers     []*models.TorznabIndexer
-	capabilities map[int][]string // indexerID -> capabilities
+	indexers           []*models.TorznabIndexer
+	capabilities       map[int][]string // indexerID -> capabilities
+	panicOnListEnabled bool
+	listEnabledCalls   int
+	getCalls           []int
 }
 
 func (m *mockTorznabIndexerStore) Get(ctx context.Context, id int) (*models.TorznabIndexer, error) {
+	m.getCalls = append(m.getCalls, id)
 	for _, idx := range m.indexers {
 		if idx.ID == id {
 			return idx, nil
@@ -841,6 +877,10 @@ func (m *mockTorznabIndexerStore) List(ctx context.Context) ([]*models.TorznabIn
 }
 
 func (m *mockTorznabIndexerStore) ListEnabled(ctx context.Context) ([]*models.TorznabIndexer, error) {
+	m.listEnabledCalls++
+	if m.panicOnListEnabled {
+		panic("ListEnabled called unexpectedly")
+	}
 	enabled := make([]*models.TorznabIndexer, 0)
 	for _, idx := range m.indexers {
 		if idx.Enabled {

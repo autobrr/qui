@@ -132,13 +132,12 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 			Msg("Using provided categories with inferred content type")
 	}
 
-	// Get enabled indexers
-	indexers, err := s.indexerStore.ListEnabled(ctx)
+	indexersToSearch, err := s.resolveIndexerSelection(ctx, req.IndexerIDs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get enabled indexers: %w", err)
+		return nil, fmt.Errorf("resolve indexer selection: %w", err)
 	}
 
-	if len(indexers) == 0 {
+	if len(indexersToSearch) == 0 {
 		return &SearchResponse{
 			Results: []SearchResult{},
 			Total:   0,
@@ -154,8 +153,8 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 		searchMode:  searchMode,
 	}
 
-	// Search all enabled indexers
-	allResults := s.searchMultipleIndexers(ctx, indexers, params, meta)
+	// Search selected indexers (defaults to all enabled when none specified)
+	allResults := s.searchMultipleIndexers(ctx, indexersToSearch, params, meta)
 
 	// Convert results
 	searchResults := s.convertResults(allResults)
@@ -1432,6 +1431,9 @@ func (s *Service) resolveIndexerSelection(ctx context.Context, indexerIDs []int)
 				Err(err).
 				Int("indexer_id", id).
 				Msg("Failed to load requested indexer")
+			continue
+		}
+		if indexer == nil {
 			continue
 		}
 		if !indexer.Enabled {

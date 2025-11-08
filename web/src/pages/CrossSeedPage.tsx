@@ -25,7 +25,10 @@ import { api } from "@/lib/api"
 import type {
   CrossSeedAutomationSettings,
   CrossSeedAutomationStatus,
+  CrossSeedCandidate,
+  CrossSeedCandidateTorrent,
   CrossSeedFindCandidatesResponse,
+  CrossSeedInstanceResult,
   CrossSeedResponse,
   CrossSeedRun,
   InstanceResponse
@@ -577,6 +580,11 @@ export function CrossSeedPage() {
           <div className="space-y-2">
             <Label>Indexers</Label>
             <p className="text-xs text-muted-foreground">Select Torznab indexers to include. Incompatible indexers are automatically ignored based on capabilities.</p>
+            <p className="text-xs text-muted-foreground">
+              {searchIndexerIds.length === 0
+                ? "Leave everything unchecked to search every enabled Torznab indexer."
+                : `Only the ${searchIndexerIds.length} selected indexer${searchIndexerIds.length === 1 ? "" : "s"} will be queried.`}
+            </p>
             <div className="flex flex-wrap gap-2">
               {indexers && indexers.length > 0 ? (
                 indexers.map(indexer => (
@@ -718,7 +726,7 @@ export function CrossSeedPage() {
                   <p className="text-sm text-muted-foreground">No matching torrents found across your instances.</p>
                 ) : (
                   <div className="space-y-3">
-                    {candidateResult.candidates.map(candidate => (
+                    {candidateResult.candidates.map((candidate: CrossSeedCandidate) => (
                       <div key={`${candidate.instanceId}-${candidate.matchType ?? "unknown"}`} className="rounded border p-3">
                         <div className="flex items-center gap-2">
                           <p className="font-medium text-sm">
@@ -727,7 +735,7 @@ export function CrossSeedPage() {
                           <Badge variant="outline" className="text-xs capitalize">{(candidate.matchType ?? "unknown").replace(/-/g, " ")}</Badge>
                         </div>
                         <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
-                          {candidate.torrents.map(torrent => (
+                          {candidate.torrents.map((torrent: CrossSeedCandidateTorrent) => (
                             <li key={torrent.hash} className="flex items-center justify-between gap-2">
                               <span className="truncate">{torrent.name}</span>
                               <span>{(torrent.progress * 100).toFixed(0)}%</span>
@@ -855,7 +863,7 @@ export function CrossSeedPage() {
                   </Badge>
                 </div>
                 <div className="space-y-2">
-                  {crossSeedResult.results.map(result => (
+                  {crossSeedResult.results.map((result: CrossSeedInstanceResult) => (
                     <div key={`${result.instanceId}-${result.instanceName}`} className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-2">
                         {result.success ? (
