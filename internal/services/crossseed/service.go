@@ -2373,29 +2373,74 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		return nil
 	}
 
-	best := searchResp.Results[0]
-	data, err := s.jackettService.DownloadTorrent(ctx, jackett.TorrentDownloadRequest{
-		IndexerID:   best.IndexerID,
-		DownloadURL: best.DownloadURL,
-		GUID:        best.GUID,
-		Title:       best.Title,
-		Size:        best.Size,
-	})
-	if err != nil {
+	successCount := 0
+	nonSuccessAttempt := false
+	var attemptErrors []string
+
+	for _, match := range searchResp.Results {
+		attemptResult, err := s.executeCrossSeedSearchAttempt(ctx, state, torrent, match, processedAt)
+		if attemptResult != nil {
+			if attemptResult.Added {
+				s.searchMu.Lock()
+				state.run.TorrentsAdded++
+				s.searchMu.Unlock()
+				successCount++
+			} else {
+				nonSuccessAttempt = true
+			}
+			s.appendSearchResult(state, *attemptResult)
+		}
+		if err != nil {
+			attemptErrors = append(attemptErrors, fmt.Sprintf("%s: %v", match.Indexer, err))
+		}
+	}
+
+	s.persistSearchRun(state)
+
+	if successCount > 0 {
+		return nil
+	}
+
+	if len(attemptErrors) > 0 {
 		s.searchMu.Lock()
 		state.run.TorrentsFailed++
 		s.searchMu.Unlock()
-		s.appendSearchResult(state, models.CrossSeedSearchResult{
-			TorrentHash:  torrent.Hash,
-			TorrentName:  torrent.Name,
-			IndexerName:  best.Indexer,
-			ReleaseTitle: best.Title,
-			Added:        false,
-			Message:      fmt.Sprintf("download failed: %v", err),
-			ProcessedAt:  processedAt,
-		})
-		s.persistSearchRun(state)
-		return err
+		return fmt.Errorf("cross-seed matches failed: %s", attemptErrors[0])
+	}
+
+	if nonSuccessAttempt {
+		s.searchMu.Lock()
+		state.run.TorrentsSkipped++
+		s.searchMu.Unlock()
+		return nil
+	}
+
+	// Fallback: treat as skipped if no attempts recorded for some reason
+	s.searchMu.Lock()
+	state.run.TorrentsSkipped++
+	s.searchMu.Unlock()
+	return nil
+}
+
+func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *searchRunState, torrent *qbt.Torrent, match TorrentSearchResult, processedAt time.Time) (*models.CrossSeedSearchResult, error) {
+	result := &models.CrossSeedSearchResult{
+		TorrentHash:  torrent.Hash,
+		TorrentName:  torrent.Name,
+		IndexerName:  match.Indexer,
+		ReleaseTitle: match.Title,
+		ProcessedAt:  processedAt,
+	}
+
+	data, err := s.jackettService.DownloadTorrent(ctx, jackett.TorrentDownloadRequest{
+		IndexerID:   match.IndexerID,
+		DownloadURL: match.DownloadURL,
+		GUID:        match.GUID,
+		Title:       match.Title,
+		Size:        match.Size,
+	})
+	if err != nil {
+		result.Message = fmt.Sprintf("download failed: %v", err)
+		return result, fmt.Errorf("download failed: %w", err)
 	}
 
 	encoded := base64.StdEncoding.EncodeToString(data)
@@ -2415,43 +2460,20 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	request.SkipIfExists = true
 
 	resp, err := s.CrossSeed(ctx, request)
-	result := models.CrossSeedSearchResult{
-		TorrentHash:  torrent.Hash,
-		TorrentName:  torrent.Name,
-		IndexerName:  best.Indexer,
-		ReleaseTitle: best.Title,
-		ProcessedAt:  processedAt,
-	}
-
 	if err != nil {
-		s.searchMu.Lock()
-		state.run.TorrentsFailed++
-		s.searchMu.Unlock()
-		result.Added = false
 		result.Message = fmt.Sprintf("cross-seed failed: %v", err)
-		s.appendSearchResult(state, result)
-		s.persistSearchRun(state)
-		return err
+		return result, fmt.Errorf("cross-seed failed: %w", err)
 	}
 
 	if resp.Success {
-		s.searchMu.Lock()
-		state.run.TorrentsAdded++
-		s.searchMu.Unlock()
 		result.Added = true
-		result.Message = fmt.Sprintf("added via %s", best.Indexer)
-	} else {
-		s.searchMu.Lock()
-		state.run.TorrentsSkipped++
-		s.searchMu.Unlock()
-		result.Added = false
-		result.Message = "no instances accepted torrent"
+		result.Message = fmt.Sprintf("added via %s", match.Indexer)
+		return result, nil
 	}
 
-	s.appendSearchResult(state, result)
-	s.persistSearchRun(state)
-
-	return nil
+	result.Added = false
+	result.Message = fmt.Sprintf("no instances accepted torrent via %s", match.Indexer)
+	return result, nil
 }
 
 func (s *Service) filterIndexerIDsForTorrent(ctx context.Context, instanceID int, hash string, requested []int) ([]int, *TorrentInfo, error) {
