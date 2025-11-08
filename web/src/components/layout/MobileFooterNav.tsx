@@ -22,6 +22,7 @@ import { isThemePremium, themes } from "@/config/themes"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useHasPremiumAccess } from "@/hooks/useLicense"
+import { useServerReconnect } from "@/hooks/useServerReconnect"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
 import { cn } from "@/lib/utils"
@@ -32,13 +33,14 @@ import {
   setThemeMode,
   type ThemeMode
 } from "@/utils/theme"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import { Link, useLocation } from "@tanstack/react-router"
 import {
   Archive,
   Check,
   Copyright,
   Download,
+  Loader2,
   Github,
   HardDrive,
   Home,
@@ -91,6 +93,7 @@ export function MobileFooterNav() {
   const { isSelectionMode } = useTorrentSelection()
   const { currentMode, currentTheme } = useThemeChange()
   const { hasPremiumAccess } = useHasPremiumAccess()
+  const { pollForReconnection, storeChangelog, ChangelogDialog } = useServerReconnect()
   const [showThemeDialog, setShowThemeDialog] = useState(false)
   const appVersion = getAppVersion()
 
@@ -106,6 +109,34 @@ export function MobileFooterNav() {
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   })
+
+  // Store changelog data when update info is available
+  useEffect(() => {
+    if (updateInfo?.body) {
+      storeChangelog(updateInfo.tag_name, updateInfo.body)
+    }
+  }, [updateInfo, storeChangelog])
+
+  const updateMutation = useMutation({
+    mutationFn: () => api.triggerSelfUpdate(),
+    onSuccess: ({ message, restart_pending }) => {
+      const notify = restart_pending ? toast.success : toast.info
+      notify(message)
+
+      if (restart_pending) {
+        // Start polling for reconnection
+        pollForReconnection()
+      }
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "Failed to start self-update"
+      toast.error(message)
+    },
+  })
+
+  const handleTriggerSelfUpdate = () => {
+    updateMutation.mutate()
+  }
 
   const activeInstances = instances?.filter(i => i.connected) || []
   const isOnInstancePage = location.pathname.startsWith("/instances/")
@@ -253,20 +284,42 @@ export function MobileFooterNav() {
           <DropdownMenuContent align="end" side="top" className="mb-2 w-56">
             {updateInfo && (
               <>
-                <DropdownMenuItem asChild>
-                  <a
-                    href={updateInfo.html_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400"
+                {updateInfo.self_update_supported && (
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault()
+                      handleTriggerSelfUpdate()
+                    }}
+                    disabled={updateMutation.isPending}
+                    className="text-green-600 dark:text-green-400"
                   >
-                    <Download className="h-4 w-4" />
-                    <div className="flex flex-col">
-                      <span className="font-medium">Update Available</span>
+                    {updateMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                    <div className="flex flex-col ml-2">
+                      <span className="font-medium text-sm">Update &amp; Restart</span>
                       <span className="text-[10px] opacity-80">Version {updateInfo.tag_name}</span>
                     </div>
-                  </a>
-                </DropdownMenuItem>
+                  </DropdownMenuItem>
+                )}
+                {!updateInfo.self_update_supported && (
+                  <DropdownMenuItem asChild>
+                    <a
+                      href={updateInfo.html_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400"
+                    >
+                      <Download className="h-4 w-4" />
+                      <div className="flex flex-col">
+                        <span className="font-medium">Update Available</span>
+                        <span className="text-[10px] opacity-80">Version {updateInfo.tag_name}</span>
+                      </div>
+                    </a>
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
               </>
             )}
@@ -452,6 +505,8 @@ export function MobileFooterNav() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ChangelogDialog />
     </nav>
   )
 }

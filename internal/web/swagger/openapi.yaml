@@ -2037,6 +2037,30 @@ paths:
         '204':
           description: No update available - current version is latest
 
+  /api/version/self-update:
+    post:
+      tags:
+        - System
+      summary: Trigger self-update
+      description: Download and install the latest release when the server supports self-updating.
+      responses:
+        '202':
+          description: Update scheduled and restart pending
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelfUpdateResponse'
+        '200':
+          description: Already running the latest version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelfUpdateResponse'
+        '400':
+          description: Self-update is not supported in this environment
+        '500':
+          description: Failed to start self-update
+
   /api/instances/{instanceId}/backups/runs/{runId}/restore/preview:
     post:
       tags:
@@ -2562,6 +2586,7 @@ components:
         - tag_name
         - html_url
         - published_at
+        - self_update_supported
       properties:
         tag_name:
           type: string
@@ -2582,6 +2607,28 @@ components:
           format: date-time
           description: When the release was published
           example: "2025-09-23T10:30:00Z"
+        body:
+          type: string
+          nullable: true
+          description: Release notes in Markdown format
+        self_update_supported:
+          type: boolean
+          description: Whether the server supports self-updating in the current environment
+
+    SelfUpdateResponse:
+      type: object
+      description: Status message returned when requesting a self-update
+      required:
+        - message
+        - restart_pending
+      properties:
+        message:
+          type: string
+          description: Human-readable status message
+          example: "Update installed. qui will restart shortly."
+        restart_pending:
+          type: boolean
+          description: Indicates whether the server will restart to apply the update
 
     QBittorrentBuildInfo:
       type: object

@@ -793,15 +793,19 @@ class ApiClient {
   async getLatestVersion(): Promise<{
     tag_name: string
     name?: string
+    body?: string
     html_url: string
     published_at: string
+    self_update_supported: boolean
   } | null> {
     try {
       const response = await this.request<{
         tag_name: string
         name?: string
+        body?: string
         html_url: string
         published_at: string
+        self_update_supported: boolean
       } | null>("/version/latest")
 
       // Treat empty responses as no update available
@@ -810,6 +814,12 @@ class ApiClient {
       // Return null if no update available (204 status) or any error
       return null
     }
+  }
+
+  async triggerSelfUpdate(): Promise<{ message: string; restart_pending: boolean }> {
+    return this.request<{ message: string; restart_pending: boolean }>("/version/self-update", {
+      method: "POST",
+    })
   }
 
   async getTrackerIcons(): Promise<Record<string, string>> {

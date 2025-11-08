@@ -377,7 +377,16 @@ func RunUpdateCommand() *cobra.Command {
 				Repository: "autobrr/qui",
 				Version:    buildinfo.Version,
 			})
-			return updater.Run(cmd.Context())
+			updated, err := updater.Run(cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			if !updated {
+				cmd.Println("Already running the latest version.")
+			}
+
+			return nil
 		},
 	}
 

@@ -29,15 +29,17 @@ import { useAuth } from "@/hooks/useAuth"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
+import { useServerReconnect } from "@/hooks/useServerReconnect"
 import { useTheme } from "@/hooks/useTheme"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
-import { ChevronsUpDown, Download, FileEdit, FunnelPlus, FunnelX, HardDrive, Home, Info, ListTodo, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
+import { ChevronsUpDown, Download, FileEdit, FunnelPlus, FunnelX, HardDrive, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
+import { toast } from "sonner"
 
 interface HeaderProps {
   children?: ReactNode
@@ -52,6 +54,7 @@ export function Header({
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string; [key: string]: unknown }
   const { state: layoutRouteState } = useLayoutRoute()
+  const { pollForReconnection, storeChangelog, ChangelogDialog } = useServerReconnect()
 
   // Get selection state from context
   const {
@@ -149,6 +152,34 @@ export function Header({
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   })
+
+  // Store changelog data when update info is available
+  useEffect(() => {
+    if (updateInfo?.body) {
+      storeChangelog(updateInfo.tag_name, updateInfo.body)
+    }
+  }, [updateInfo, storeChangelog])
+
+  const updateMutation = useMutation({
+    mutationFn: () => api.triggerSelfUpdate(),
+    onSuccess: ({ message, restart_pending }) => {
+      const notify = restart_pending ? toast.success : toast.info
+      notify(message)
+
+      if (restart_pending) {
+        // Start polling for reconnection
+        pollForReconnection()
+      }
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "Failed to start self-update"
+      toast.error(message)
+    },
+  })
+
+  const handleTriggerSelfUpdate = () => {
+    updateMutation.mutate()
+  }
 
   // Query instance capabilities via the dedicated lightweight endpoint
   const { data: instanceCapabilities } = useQuery<InstanceCapabilities>({
@@ -453,21 +484,48 @@ export function Header({
             <DropdownMenuContent align="end" className="w-52">
               {updateInfo && (
                 <>
-                  <DropdownMenuItem asChild>
-                    <a
-                      href={updateInfo.html_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400 cursor-pointer"
+                  {updateInfo.self_update_supported && (
+                    <DropdownMenuItem
+                      onSelect={(event) => {
+                        event.preventDefault()
+                        handleTriggerSelfUpdate()
+                      }}
+                      className="cursor-pointer text-green-600 dark:text-green-400"
+                      disabled={updateMutation.isPending}
                     >
-                      <Download className="mr-2 h-4 w-4" />
+                      {updateMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="mr-2 h-4 w-4" />
+                      )}
                       <div className="flex flex-col">
-                        <span className="font-medium">Update Available</span>
+                        <span className="font-medium">Update &amp; Restart</span>
                         <span className="text-[10px] opacity-80">Version {updateInfo.tag_name}</span>
                       </div>
-                    </a>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
+                    </DropdownMenuItem>
+                  )}
+                  {updateInfo.self_update_supported && (
+                    <DropdownMenuSeparator />
+                  )}
+                  {!updateInfo.self_update_supported && (
+                    <>
+                      <DropdownMenuItem asChild>
+                        <a
+                          href={updateInfo.html_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400 cursor-pointer"
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          <div className="flex flex-col">
+                            <span className="font-medium">Update Available</span>
+                            <span className="text-[10px] opacity-80">Version {updateInfo.tag_name}</span>
+                          </div>
+                        </a>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
                 </>
               )}
               <DropdownMenuItem asChild>
@@ -530,6 +588,7 @@ export function Header({
           </DropdownMenu>
         </div>
       </div>
+      <ChangelogDialog />
     </header>
   )
 }
