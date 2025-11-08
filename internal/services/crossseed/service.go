@@ -2354,6 +2354,130 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 	s.searchMu.Unlock()
 }
 
+// deduplicateSourceTorrents removes duplicate torrents from the search queue by keeping only
+// the oldest instance of each unique content. This prevents searching the same content multiple
+// times when cross-seeds exist in the source instance.
+//
+// The deduplication works by:
+// 1. Parsing each torrent's release info (title, year, series, episode, group)
+// 2. Grouping torrents with matching content using the same logic as cross-seed matching
+// 3. For each group, keeping only the torrent with the earliest AddedOn timestamp
+//
+// This significantly reduces API calls and processing time when an instance contains multiple
+// cross-seeds of the same content from different trackers, while enforcing strict matching so
+// that season packs never collapse individual-episode queue entries.
+func (s *Service) deduplicateSourceTorrents(torrents []qbt.Torrent) []qbt.Torrent {
+	if len(torrents) <= 1 {
+		return torrents
+	}
+
+	// Parse all torrents and track their releases
+	type torrentWithRelease struct {
+		torrent qbt.Torrent
+		release rls.Release
+	}
+
+	parsed := make([]torrentWithRelease, 0, len(torrents))
+	for _, torrent := range torrents {
+		release := s.releaseCache.Parse(torrent.Name)
+		parsed = append(parsed, torrentWithRelease{
+			torrent: torrent,
+			release: release,
+		})
+	}
+
+	// Group torrents by matching content
+	// We'll track the oldest torrent for each unique content group
+	type contentGroup struct {
+		oldest     *qbt.Torrent
+		addedOn    int64
+		duplicates []string // Track duplicate names for logging
+	}
+
+	groups := make(map[int]*contentGroup)
+	groupIndex := 0
+
+	for i := range parsed {
+		current := &parsed[i]
+
+		// Try to find an existing group this torrent belongs to
+		foundGroup := -1
+		for _, existing := range parsed[:i] {
+			if s.releasesMatch(current.release, existing.release, false) {
+				// Find which group this existing torrent belongs to
+				for groupID, group := range groups {
+					if group.oldest.Hash == existing.torrent.Hash {
+						foundGroup = groupID
+						break
+					}
+					// Check if any duplicate in the group matches
+					for _, dupHash := range group.duplicates {
+						if dupHash == existing.torrent.Hash {
+							foundGroup = groupID
+							break
+						}
+					}
+					if foundGroup != -1 {
+						break
+					}
+				}
+				if foundGroup != -1 {
+					break
+				}
+			}
+		}
+
+		if foundGroup == -1 {
+			// Create new group with this torrent as the first member
+			groups[groupIndex] = &contentGroup{
+				oldest:     &current.torrent,
+				addedOn:    current.torrent.AddedOn,
+				duplicates: []string{},
+			}
+			groupIndex++
+		} else {
+			// Add to existing group, update oldest if this one is older
+			group := groups[foundGroup]
+			if current.torrent.AddedOn < group.addedOn {
+				// Current torrent is older, make it the representative
+				group.duplicates = append(group.duplicates, group.oldest.Hash)
+				group.oldest = &current.torrent
+				group.addedOn = current.torrent.AddedOn
+			} else {
+				// Keep existing oldest, track this as duplicate
+				group.duplicates = append(group.duplicates, current.torrent.Hash)
+			}
+		}
+	}
+
+	// Build deduplicated list from group representatives
+	deduplicated := make([]qbt.Torrent, 0, len(groups))
+	totalDuplicates := 0
+
+	for _, group := range groups {
+		deduplicated = append(deduplicated, *group.oldest)
+		if len(group.duplicates) > 0 {
+			totalDuplicates += len(group.duplicates)
+			log.Debug().
+				Str("representative", group.oldest.Name).
+				Str("representativeHash", group.oldest.Hash).
+				Int64("addedOn", group.oldest.AddedOn).
+				Int("duplicateCount", len(group.duplicates)).
+				Strs("duplicateHashes", group.duplicates).
+				Msg("[CROSSSEED-DEDUP] Grouped duplicate content, keeping oldest")
+		}
+	}
+
+	log.Info().
+		Int("originalCount", len(torrents)).
+		Int("deduplicatedCount", len(deduplicated)).
+		Int("duplicatesRemoved", totalDuplicates).
+		Int("uniqueContentGroups", len(groups)).
+		Msg("[CROSSSEED-DEDUP] Source torrent deduplication completed")
+
+	return deduplicated
+}
+
 func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState) error {
 	torrents, err := s.syncManager.GetAllTorrents(ctx, state.opts.InstanceID)
 	if err != nil {
@@ -2367,10 +2491,14 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 		}
 	}
 
-	state.queue = filtered
+	// Deduplicate source torrents to avoid searching the same content multiple times
+	// when cross-seeds exist in the source instance
+	deduplicated := s.deduplicateSourceTorrents(filtered)
+
+	state.queue = deduplicated
 	state.index = 0
 	s.searchMu.Lock()
-	state.run.TotalTorrents = len(filtered)
+	state.run.TotalTorrents = len(deduplicated)
 	s.searchMu.Unlock()
 	s.persistSearchRun(state)
 
