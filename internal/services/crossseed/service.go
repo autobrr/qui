@@ -2395,9 +2395,8 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		}
 	}
 
-	s.persistSearchRun(state)
-
 	if successCount > 0 {
+		s.persistSearchRun(state)
 		return nil
 	}
 
@@ -2405,6 +2404,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		s.searchMu.Lock()
 		state.run.TorrentsFailed++
 		s.searchMu.Unlock()
+		s.persistSearchRun(state)
 		return fmt.Errorf("cross-seed matches failed: %s", attemptErrors[0])
 	}
 
@@ -2412,6 +2412,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		s.searchMu.Lock()
 		state.run.TorrentsSkipped++
 		s.searchMu.Unlock()
+		s.persistSearchRun(state)
 		return nil
 	}
 
@@ -2419,6 +2420,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	s.searchMu.Lock()
 	state.run.TorrentsSkipped++
 	s.searchMu.Unlock()
+	s.persistSearchRun(state)
 	return nil
 }
 
