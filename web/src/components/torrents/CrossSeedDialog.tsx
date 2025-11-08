@@ -7,6 +7,11 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -31,8 +36,8 @@ import type {
   CrossSeedTorrentSearchResponse,
   Torrent
 } from "@/types"
-import { ChevronDown, Loader2, SlidersHorizontal } from "lucide-react"
-import { memo, useCallback, useMemo } from "react"
+import { ChevronDown, ChevronRight, Loader2, SlidersHorizontal } from "lucide-react"
+import { memo, useCallback, useMemo, useState } from "react"
 
 type CrossSeedSearchResult = CrossSeedTorrentSearchResponse["results"][number]
 type CrossSeedIndexerOption = {
@@ -124,42 +129,34 @@ const CrossSeedDialogComponent = ({
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [indexerNameMap, sourceTorrent?.excludedIndexers])
 
+  const [excludedOpen, setExcludedOpen] = useState(false)
+  const [applyResultOpen, setApplyResultOpen] = useState(true)
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[90vw] sm:max-w-3xl">
-        <DialogHeader className="min-w-0">
-          <DialogTitle>Search Cross-Seeds</DialogTitle>
-          <DialogDescription className="min-w-0 truncate font-medium" title={torrent?.name}>
-            <p className="truncate font-bold font-mono text-sm" title={sourceTorrent?.name ?? torrent?.name}>
+      <DialogContent className="max-h-[90vh] max-w-[90vw] sm:max-w-3xl flex flex-col">
+        <DialogHeader className="min-w-0 shrink-0 pb-3">
+          <DialogTitle className="text-base">Search Cross-Seeds</DialogTitle>
+          <DialogDescription className="min-w-0 space-y-1">
+            <p className="truncate font-mono text-xs font-medium" title={sourceTorrent?.name ?? torrent?.name}>
               {sourceTorrent?.name ?? torrent?.name ?? "Torrent"}
             </p>
-            <p className="text-xs text-muted-foreground">
-              {sourceTorrent?.category && (
-                <span className="mr-2">Category: {sourceTorrent.category}</span>
-              )}
-              {sourceTorrent?.size !== undefined && (
-                <span>Size: {formatBytes(sourceTorrent.size)}</span>
-              )}
-            </p>
+            {(sourceTorrent?.category || sourceTorrent?.size !== undefined || sourceTorrent?.contentType) && (
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                {sourceTorrent?.contentType && (
+                  <Badge variant="secondary" className="h-5 text-xs font-normal capitalize">
+                    {sourceTorrent.contentType}
+                  </Badge>
+                )}
+                {sourceTorrent?.category && <span>Category: {sourceTorrent.category}</span>}
+                {sourceTorrent?.size !== undefined && <span>Size: {formatBytes(sourceTorrent.size)}</span>}
+              </div>
+            )}
           </DialogDescription>
         </DialogHeader>
-        <div className="min-w-0 space-y-3 overflow-hidden">
-          {/* Metadata - Always visible when available */}
-          {sourceTorrent?.contentType && (
-            <div className="flex flex-wrap items-center gap-2 px-1">
-              <Badge variant="secondary" className="h-6 text-xs font-normal capitalize">
-                {sourceTorrent.contentType}
-              </Badge>
-              {sourceTorrent.searchType && sourceTorrent.searchType !== sourceTorrent.contentType && (
-                <Badge variant="outline" className="h-6 text-xs font-normal capitalize">
-                  {sourceTorrent.searchType}
-                </Badge>
-              )}
-            </div>
-          )}
-
+        <div className="min-w-0 space-y-2 overflow-y-auto overflow-x-hidden flex-1">
           {/* Search Scope Section */}
-          <div className="rounded-lg border border-border/60 bg-muted/30 p-4">
+          <div className="rounded-lg border border-border/60 bg-muted/30 p-2.5">
             {indexerOptions.length > 0 ? (
               <CrossSeedScopeSelector
                 indexerOptions={indexerOptions}
@@ -173,7 +170,7 @@ const CrossSeedDialogComponent = ({
                 isSearching={isLoading}
               />
             ) : sourceTorrent && (
-              <div className="space-y-2 text-sm text-yellow-600 dark:text-yellow-400">
+              <div className="space-y-1.5 text-sm text-yellow-600 dark:text-yellow-400">
                 <p className="font-medium">No compatible indexers found</p>
                 <p className="text-xs">
                   None of your enabled indexers support the required capabilities ({sourceTorrent.requiredCaps?.join(", ")})
@@ -185,84 +182,91 @@ const CrossSeedDialogComponent = ({
 
           {/* Content-based filtering info */}
           {excludedIndexerEntries.length > 0 && (
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm dark:border-blue-800 dark:bg-blue-950">
-              <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
-                <span className="font-medium">Smart Filtering Active</span>
-                <Badge variant="secondary" className="text-xs">
-                  {excludedIndexerEntries.length} {excludedIndexerEntries.length === 1 ? "indexer" : "indexers"} filtered
-                </Badge>
+            <Collapsible open={excludedOpen} onOpenChange={setExcludedOpen}>
+              <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950">
+                <CollapsibleTrigger className="w-full p-2.5 text-left hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors">
+                  <div className="flex items-center gap-2 text-sm text-blue-700 dark:text-blue-300">
+                    <ChevronRight className={`h-3.5 w-3.5 transition-transform ${excludedOpen ? "rotate-90" : ""}`} />
+                    <span className="font-medium">Smart Filtering Active</span>
+                    <Badge variant="secondary" className="text-xs">
+                      {excludedIndexerEntries.length} {excludedIndexerEntries.length === 1 ? "indexer" : "indexers"} filtered
+                    </Badge>
+                  </div>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="px-2.5 pb-2.5">
+                    <p className="text-xs text-blue-600 dark:text-blue-400">
+                      You already seed this release from these trackers, so they're excluded from the search.
+                    </p>
+                    <ul className="mt-2 ml-4 text-xs text-blue-600 dark:text-blue-400 space-y-0.5">
+                      {excludedIndexerEntries.map(entry => (
+                        <li key={entry.id} className="break-words">
+                          • {entry.name}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </CollapsibleContent>
               </div>
-              <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">
-                You already seed this release from these trackers, so they’re excluded from the search.
-              </p>
-              <ul className="mt-2 ml-4 text-xs text-blue-600 dark:text-blue-400 space-y-1">
-                {excludedIndexerEntries.map(entry => (
-                  <li key={entry.id} className="break-words">
-                    • {entry.name}
-                  </li>
-                ))}
-              </ul>
-            </div>
+            </Collapsible>
           )}
           {!hasSearched ? null : isLoading ? (
-            <div className="flex items-center justify-center gap-3 py-12 text-sm text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin" />
+            <div className="flex items-center justify-center gap-2.5 py-8 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
               <span>Searching indexers…</span>
             </div>
           ) : error ? (
-            <div className="space-y-3 rounded-md border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
-              <p className="break-words">{error}</p>
+            <div className="space-y-2 rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+              <p className="break-words text-xs">{error}</p>
               <div className="flex gap-2">
-                <Button size="sm" onClick={onRetry}>
+                <Button size="sm" onClick={onRetry} className="h-7">
                   Retry
                 </Button>
-                <Button size="sm" variant="outline" onClick={onClose}>
+                <Button size="sm" variant="outline" onClick={onClose} className="h-7">
                   Close
                 </Button>
               </div>
             </div>
           ) : (
             <>
-              <div className="flex items-start justify-end gap-4">
-                <Badge variant="outline" className="shrink-0">
-                  {selectionCount} / {results.length} selected
-                </Badge>
-              </div>
               {results.length === 0 ? (
-                <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
+                <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
                   No matches found across the enabled indexers.
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                    <span className="truncate">Select the releases you want to add</span>
-                    <div className="flex shrink-0 gap-2">
-                      <Button variant="outline" size="sm" onClick={onSelectAll}>
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="truncate text-muted-foreground">Select the releases you want to add</span>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Badge variant="outline" className="shrink-0 text-xs">
+                        {selectionCount} / {results.length}
+                      </Badge>
+                      <Button variant="outline" size="sm" onClick={onSelectAll} className="h-7">
                         Select All
                       </Button>
-                      <Button variant="outline" size="sm" onClick={onClearSelection}>
+                      <Button variant="outline" size="sm" onClick={onClearSelection} className="h-7">
                         Clear
                       </Button>
                     </div>
                   </div>
-                  <div className="max-h-72 space-y-2 overflow-x-hidden overflow-y-auto pr-1">
+                  <div className="space-y-2">
                     {results.map((result, index) => {
                       const key = getResultKey(result, index)
                       const checked = selectedKeys.has(key)
                       return (
-                        <div key={key} className="flex items-start gap-3 rounded-md border p-3">
+                        <div key={key} className="flex items-start gap-2.5 rounded-md border p-2.5">
                           <Checkbox
                             checked={checked}
                             onCheckedChange={() => onToggleSelection(result, index)}
                             aria-label={`Select ${result.title}`}
-                            className="shrink-0"
+                            className="shrink-0 mt-0.5"
                           />
                           <div className="min-w-0 flex-1 space-y-1">
-                            <div className="flex items-start justify-between gap-3">
-                              <span className="min-w-0 flex-1 truncate font-medium leading-tight" title={result.title}>{result.title}</span>
-                              <Badge variant="outline" className="shrink-0">{result.indexer}</Badge>
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="min-w-0 flex-1 truncate font-medium text-sm leading-tight" title={result.title}>{result.title}</span>
+                              <Badge variant="outline" className="shrink-0 text-xs">{result.indexer}</Badge>
                             </div>
-                            <div className="flex min-w-0 flex-wrap gap-x-3 text-xs text-muted-foreground">
+                            <div className="flex min-w-0 flex-wrap gap-x-2.5 text-xs text-muted-foreground">
                               <span className="shrink-0">{formatBytes(result.size)}</span>
                               <span className="shrink-0">{result.seeders} seeders</span>
                               {result.matchReason && <span className="min-w-0 truncate">Match: {result.matchReason}</span>}
@@ -273,7 +277,7 @@ const CrossSeedDialogComponent = ({
                       )
                     })}
                   </div>
-                  <div className="flex items-center justify-between gap-3 rounded-md border p-3">
+                  <div className="flex items-center justify-between gap-3 rounded-md border p-2.5">
                     <div className="flex items-center gap-2 shrink-0">
                       <Switch
                         id="cross-seed-tag-toggle"
@@ -289,47 +293,59 @@ const CrossSeedDialogComponent = ({
                       onChange={(event) => onTagNameChange(event.target.value)}
                       placeholder="cross-seed"
                       disabled={!useTag}
-                      className="w-32 min-w-0"
+                      className="w-32 min-w-0 h-8"
                     />
                   </div>
                 </>
               )}
               {applyResult && (
-                <div className="min-w-0 space-y-2 rounded-md border p-3">
-                  <p className="text-sm font-medium">Latest add attempt</p>
-                  <div className="max-h-72 space-y-2 overflow-x-hidden overflow-y-auto pr-1">
-                    {applyResult.results.map(result => (
-                      <div
-                        key={`${result.indexer}-${result.title}`}
-                        className="min-w-0 space-y-1 rounded border border-border/60 bg-muted/30 p-3"
-                      >
-                        <div className="flex items-center justify-between gap-2 text-sm">
-                          <span className="min-w-0 truncate">{result.indexer}</span>
-                          <Badge variant={result.success ? "outline" : "destructive"} className="shrink-0">
-                            {result.success ? "Queued" : "Check"}
-                          </Badge>
-                        </div>
-                        <p className="truncate text-xs text-muted-foreground" title={result.torrentName ?? result.title}>{result.torrentName ?? result.title}</p>
-                        {result.error && <p className="break-words text-xs text-destructive">{result.error}</p>}
-                        {result.instanceResults && result.instanceResults.length > 0 && (
-                          <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
-                            {result.instanceResults.map(instance => (
-                              <li key={`${result.indexer}-${instance.instanceId}-${instance.status}`} className="break-words">
-                                <span className="font-medium">{instance.instanceName}</span>:{" "}
-                                {instance.message ?? instance.status}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
+                <Collapsible open={applyResultOpen} onOpenChange={setApplyResultOpen}>
+                  <div className="min-w-0 space-y-2 rounded-md border">
+                    <CollapsibleTrigger className="w-full px-3 pt-2.5 pb-2 text-left hover:bg-muted/50 transition-colors">
+                      <div className="flex items-center gap-2">
+                        <ChevronRight className={`h-3.5 w-3.5 transition-transform ${applyResultOpen ? "rotate-90" : ""}`} />
+                        <p className="text-sm font-medium">Latest add attempt</p>
+                        <Badge variant="outline" className="text-xs">
+                          {applyResult.results.length}
+                        </Badge>
                       </div>
-                    ))}
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="px-3 pb-2.5 space-y-2">
+                        {applyResult.results.map(result => (
+                          <div
+                            key={`${result.indexer}-${result.title}`}
+                            className="min-w-0 space-y-1 rounded border border-border/60 bg-muted/30 p-2.5"
+                          >
+                            <div className="flex items-center justify-between gap-2 text-sm">
+                              <span className="min-w-0 truncate">{result.indexer}</span>
+                              <Badge variant={result.success ? "outline" : "destructive"} className="shrink-0 text-xs">
+                                {result.success ? "Queued" : "Check"}
+                              </Badge>
+                            </div>
+                            <p className="truncate text-xs text-muted-foreground" title={result.torrentName ?? result.title}>{result.torrentName ?? result.title}</p>
+                            {result.error && <p className="break-words text-xs text-destructive">{result.error}</p>}
+                            {result.instanceResults && result.instanceResults.length > 0 && (
+                              <ul className="mt-1.5 space-y-0.5 text-xs text-muted-foreground">
+                                {result.instanceResults.map(instance => (
+                                  <li key={`${result.indexer}-${instance.instanceId}-${instance.status}`} className="break-words">
+                                    <span className="font-medium">{instance.instanceName}</span>:{" "}
+                                    {instance.message ?? instance.status}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </CollapsibleContent>
                   </div>
-                </div>
+                </Collapsible>
               )}
             </>
           )}
         </div>
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={onClose}>
             Close
           </Button>
@@ -457,12 +473,12 @@ const CrossSeedScopeSelector = memo(({
   }, [onIndexerModeChange])
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
-          <h3 className="text-sm font-medium">Search Scope</h3>
+        <div className="flex items-center gap-1.5">
+          <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
+          <h3 className="text-xs font-medium">Search Scope</h3>
         </div>
         <div className="text-xs text-muted-foreground">
           {statusText}
@@ -470,15 +486,15 @@ const CrossSeedScopeSelector = memo(({
       </div>
 
       {/* Controls */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         {/* Mode Selection */}
-        <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/30 p-1">
+        <div className="flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/30 p-0.5">
           <Button
             size="sm"
             variant={indexerMode === "all" ? "secondary" : "ghost"}
             onClick={handleAllIndexersClick}
             disabled={isSearching}
-            className="h-8 flex-1 sm:flex-initial"
+            className="h-7 flex-1 sm:flex-initial text-xs"
           >
             All Compatible
           </Button>
@@ -487,7 +503,7 @@ const CrossSeedScopeSelector = memo(({
             variant={indexerMode === "custom" ? "secondary" : "ghost"}
             onClick={handleCustomIndexersClick}
             disabled={disableCustomSelection || isSearching}
-            className="h-8 flex-1 sm:flex-initial"
+            className="h-7 flex-1 sm:flex-initial text-xs"
           >
             Select Custom
           </Button>
@@ -502,19 +518,19 @@ const CrossSeedScopeSelector = memo(({
                   size="sm"
                   variant="outline"
                   disabled={isSearching}
-                  className="h-8"
+                  className="h-7 text-xs"
                 >
                   {selectedCount > 0 ? `${selectedCount} selected` : "Select indexers"}
-                  <ChevronDown className="ml-2 h-3 w-3" />
+                  <ChevronDown className="ml-1.5 h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-64" align="end">
-                <DropdownMenuLabel>Available Indexers</DropdownMenuLabel>
+                <DropdownMenuLabel className="text-xs">Available Indexers</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {indexerItems}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={onSelectAllIndexers}>Select all</DropdownMenuItem>
-                <DropdownMenuItem onClick={onClearIndexerSelection}>Clear selection</DropdownMenuItem>
+                <DropdownMenuItem onClick={onSelectAllIndexers} className="text-xs">Select all</DropdownMenuItem>
+                <DropdownMenuItem onClick={onClearIndexerSelection} className="text-xs">Clear selection</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -522,11 +538,11 @@ const CrossSeedScopeSelector = memo(({
             size="sm"
             onClick={onScopeSearch}
             disabled={scopeSearchDisabled}
-            className="h-8"
+            className="h-7 text-xs"
           >
             {isSearching ? (
               <>
-                <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
                 Searching
               </>
             ) : (
