@@ -1702,6 +1702,20 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	// Use unified content type detection with expanded categories for search
 	contentInfo := DetermineContentType(contentDetectionRelease)
 
+	sourceInfo := TorrentInfo{
+		InstanceID:       instanceID,
+		InstanceName:     instance.Name,
+		Hash:             sourceTorrent.Hash,
+		Name:             sourceTorrent.Name,
+		Category:         sourceTorrent.Category,
+		Size:             sourceTorrent.Size,
+		Progress:         sourceTorrent.Progress,
+		ContentType:      contentInfo.ContentType,
+		SearchType:       contentInfo.SearchType,
+		SearchCategories: contentInfo.Categories,
+		RequiredCaps:     contentInfo.RequiredCaps,
+	}
+
 	query := strings.TrimSpace(opts.Query)
 	if query == "" {
 		// Use the appropriate release object based on content type
@@ -1761,10 +1775,24 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	// Apply indexer filtering (capabilities and existing content)
-	filteredIndexerIDs, _, err := s.filterIndexerIDsForTorrent(ctx, instanceID, hash, opts.IndexerIDs)
+	filteredIndexerIDs, analyzedInfo, err := s.filterIndexerIDsForTorrent(ctx, instanceID, hash, opts.IndexerIDs)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to filter indexers for torrent search, using original list")
 		filteredIndexerIDs = opts.IndexerIDs
+	} else if analyzedInfo != nil {
+		sourceInfo = *analyzedInfo
+		// Keep runtime-derived torrent fields in sync with latest state
+		sourceInfo.InstanceID = instanceID
+		sourceInfo.InstanceName = instance.Name
+		sourceInfo.Hash = sourceTorrent.Hash
+		sourceInfo.Name = sourceTorrent.Name
+		sourceInfo.Category = sourceTorrent.Category
+		sourceInfo.Size = sourceTorrent.Size
+		sourceInfo.Progress = sourceTorrent.Progress
+		sourceInfo.ContentType = contentInfo.ContentType
+		sourceInfo.SearchType = contentInfo.SearchType
+		sourceInfo.SearchCategories = contentInfo.Categories
+		sourceInfo.RequiredCaps = contentInfo.RequiredCaps
 	}
 
 	if len(filteredIndexerIDs) == 0 {
@@ -1775,20 +1803,8 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 
 		// Return empty response instead of error to avoid breaking the UI
 		return &TorrentSearchResponse{
-			SourceTorrent: TorrentInfo{
-				InstanceID:       instanceID,
-				InstanceName:     instance.Name,
-				Hash:             sourceTorrent.Hash,
-				Name:             sourceTorrent.Name,
-				Category:         sourceTorrent.Category,
-				Size:             sourceTorrent.Size,
-				Progress:         sourceTorrent.Progress,
-				ContentType:      contentInfo.ContentType,
-				SearchType:       contentInfo.SearchType,
-				SearchCategories: contentInfo.Categories,
-				RequiredCaps:     contentInfo.RequiredCaps,
-			},
-			Results: []TorrentSearchResult{},
+			SourceTorrent: sourceInfo,
+			Results:       []TorrentSearchResult{},
 		}, nil
 	}
 
@@ -1973,20 +1989,6 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		Int("finalMatches", matchedResults).
 		Float64("tolerancePercent", settings.SizeMismatchTolerancePercent).
 		Msg("[CROSSSEED-SEARCH] Search filtering completed")
-
-	sourceInfo := TorrentInfo{
-		InstanceID:       instanceID,
-		InstanceName:     instance.Name,
-		Hash:             sourceTorrent.Hash,
-		Name:             sourceTorrent.Name,
-		Category:         sourceTorrent.Category,
-		Size:             sourceTorrent.Size,
-		Progress:         sourceTorrent.Progress,
-		ContentType:      contentInfo.ContentType,
-		SearchType:       contentInfo.SearchType,
-		SearchCategories: contentInfo.Categories,
-		RequiredCaps:     contentInfo.RequiredCaps,
-	}
 
 	if len(scored) == 0 {
 		return &TorrentSearchResponse{
@@ -2768,27 +2770,35 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 			continue
 		}
 
+		// Skip searching indexers that already provided the source torrent
+		if sourceTorrent != nil && s.torrentMatchesIndexer(*sourceTorrent, indexerName) {
+			shouldIncludeIndexer = false
+			exclusionReason = "already seeded from this tracker"
+		}
+
 		// Check if we already have content that this indexer would likely provide
 		// This is done by checking if existing torrents have tracker domains that match the indexer
-		for _, crossTorrent := range crossInstanceResponse.CrossInstanceTorrents {
-			// Skip the source torrent itself
-			if crossTorrent.InstanceID == instanceID && crossTorrent.Hash == sourceTorrent.Hash {
-				continue
-			}
+		if shouldIncludeIndexer {
+			for _, crossTorrent := range crossInstanceResponse.CrossInstanceTorrents {
+				// Skip the source torrent itself when evaluating other matches
+				if crossTorrent.InstanceID == instanceID && crossTorrent.Hash == sourceTorrent.Hash {
+					continue
+				}
 
-			// Parse the existing torrent to see if it matches the content we're looking for
-			existingRelease := s.releaseCache.Parse(crossTorrent.Name)
-			if !s.releasesMatch(sourceRelease, existingRelease, false) {
-				continue
-			}
+				// Parse the existing torrent to see if it matches the content we're looking for
+				existingRelease := s.releaseCache.Parse(crossTorrent.Name)
+				if !s.releasesMatch(sourceRelease, existingRelease, false) {
+					continue
+				}
 
-			// Check if this torrent came from a tracker that matches the indexer we're checking
-			torrentMatches := s.torrentMatchesIndexer(crossTorrent.TorrentView.Torrent, indexerName)
+				// Check if this torrent came from a tracker that matches the indexer we're checking
+				torrentMatches := s.torrentMatchesIndexer(crossTorrent.TorrentView.Torrent, indexerName)
 
-			if torrentMatches {
-				exclusionReason = fmt.Sprintf("has matching content from %s (%s)", crossTorrent.InstanceName, crossTorrent.Name)
-				shouldIncludeIndexer = false
-				break
+				if torrentMatches {
+					exclusionReason = fmt.Sprintf("has matching content from %s (%s)", crossTorrent.InstanceName, crossTorrent.Name)
+					shouldIncludeIndexer = false
+					break
+				}
 			}
 		}
 
@@ -2942,6 +2952,7 @@ func (s *Service) normalizeDomainName(domainName string) string {
 	// Remove hyphens, underscores, dots (except TLD), and spaces
 	normalized := strings.ReplaceAll(domainName, "-", "")
 	normalized = strings.ReplaceAll(normalized, "_", "")
+	normalized = strings.ReplaceAll(normalized, ".", "")
 	normalized = strings.ReplaceAll(normalized, " ", "")
 
 	return normalized

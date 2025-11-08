@@ -772,6 +772,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     return filteredIndexers.map(indexer => ({ id: indexer.id, name: indexer.name }))
   }, [sortedEnabledIndexers, crossSeedSearchResponse, lastSourceTorrent, crossSeedHasSearched])
 
+  const crossSeedIndexerNameMap = useMemo(() => {
+    const map: Record<number, string> = {}
+    for (const indexer of sortedEnabledIndexers) {
+      map[indexer.id] = indexer.name
+    }
+    return map
+  }, [sortedEnabledIndexers])
+
   const { data: crossSeedSettings } = useQuery({
     queryKey: ["cross-seed", "settings"],
     queryFn: () => api.getCrossSeedSettings(),
@@ -3072,6 +3080,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         indexerOptions={crossSeedIndexerOptions}
         indexerMode={crossSeedIndexerMode}
         selectedIndexerIds={crossSeedIndexerSelection}
+        indexerNameMap={crossSeedIndexerNameMap}
         onIndexerModeChange={handleCrossSeedIndexerModeChange}
         onToggleIndexer={toggleCrossSeedIndexer}
         onSelectAllIndexers={selectAllCrossSeedIndexers}

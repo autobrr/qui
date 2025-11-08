@@ -57,6 +57,28 @@ import { getApiBaseUrl, withBasePath } from "./base-url"
 
 const API_BASE = getApiBaseUrl()
 
+const normalizeExcludedIndexerMap = (excluded?: Record<string, string>): Record<number, string> | undefined => {
+  if (!excluded) {
+    return undefined
+  }
+
+  const normalizedEntries = Object.entries(excluded)
+    .map(([key, value]) => {
+      const numericKey = Number(key)
+      if (Number.isNaN(numericKey)) {
+        return null
+      }
+      return [numericKey, value] as const
+    })
+    .filter((entry): entry is readonly [number, string] => entry !== null)
+
+  if (normalizedEntries.length === 0) {
+    return undefined
+  }
+
+  return Object.fromEntries(normalizedEntries) as Record<number, string>
+}
+
 class ApiClient {
   private async request<T>(
     endpoint: string,
@@ -454,6 +476,10 @@ class ApiClient {
       search_type?: string
       search_categories?: number[]
       required_caps?: string[]
+      available_indexers?: number[]
+      filtered_indexers?: number[]
+      excluded_indexers?: Record<string, string>
+      content_matches?: string[]
     }
 
     const raw = await this.request<RawTorrentInfo>(
@@ -476,6 +502,10 @@ class ApiClient {
       searchType: raw.search_type,
       searchCategories: raw.search_categories,
       requiredCaps: raw.required_caps,
+      availableIndexers: raw.available_indexers,
+      filteredIndexers: raw.filtered_indexers,
+      excludedIndexers: normalizeExcludedIndexerMap(raw.excluded_indexers),
+      contentMatches: raw.content_matches,
     }
   }
 
@@ -519,6 +549,10 @@ class ApiClient {
       search_type?: string
       search_categories?: number[]
       required_caps?: string[]
+      available_indexers?: number[]
+      filtered_indexers?: number[]
+      excluded_indexers?: Record<string, string>
+      content_matches?: string[]
     } | null
 
     type RawSearchResult = {
@@ -567,6 +601,10 @@ class ApiClient {
       searchType: torrent?.search_type ?? undefined,
       searchCategories: torrent?.search_categories ?? undefined,
       requiredCaps: torrent?.required_caps ?? undefined,
+      availableIndexers: torrent?.available_indexers ?? undefined,
+      filteredIndexers: torrent?.filtered_indexers ?? undefined,
+      excludedIndexers: normalizeExcludedIndexerMap(torrent?.excluded_indexers),
+      contentMatches: torrent?.content_matches ?? undefined,
     })
 
     return {
