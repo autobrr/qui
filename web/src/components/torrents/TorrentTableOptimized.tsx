@@ -1751,6 +1751,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     resetCrossSeedState()
   }, [resetCrossSeedState])
 
+  const handleCrossSeedDialogOpenChange = useCallback((open: boolean) => {
+    if (!open) {
+      closeCrossSeedDialog()
+    } else {
+      setCrossSeedDialogOpen(true)
+    }
+  }, [closeCrossSeedDialog])
+
   const handleApplyCrossSeed = useCallback(async () => {
     if (!crossSeedTorrent || !crossSeedSearchResponse) {
       return
@@ -1808,7 +1816,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     instanceId,
     queryClient,
   ])
-  const crossSeedResults = crossSeedSearchResponse?.results ?? []
+
+  // Memoize cross-seed results to prevent creating new array reference on every render
+  const crossSeedResults = useMemo(() => crossSeedSearchResponse?.results ?? [], [crossSeedSearchResponse?.results])
   const crossSeedSourceTorrent = crossSeedSearchResponse?.sourceTorrent
   const crossSeedSelectionCount = crossSeedSelectedKeys.size
 
@@ -3061,13 +3071,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
       <CrossSeedDialog
         open={crossSeedDialogOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            closeCrossSeedDialog()
-          } else {
-            setCrossSeedDialogOpen(true)
-          }
-        }}
+        onOpenChange={handleCrossSeedDialogOpenChange}
         torrent={crossSeedTorrent}
         sourceTorrent={crossSeedSourceTorrent}
         results={crossSeedResults}
