@@ -170,7 +170,7 @@ const CrossSeedDialogComponent = ({
                 isSearching={isLoading}
               />
             ) : sourceTorrent && (
-              <div className="space-y-1.5 text-sm text-yellow-600 dark:text-yellow-400">
+              <div className="space-y-1.5 text-sm text-muted-foreground">
                 <p className="font-medium">No compatible indexers found</p>
                 <p className="text-xs">
                   None of your enabled indexers support the required capabilities ({sourceTorrent.requiredCaps?.join(", ")})
@@ -183,9 +183,9 @@ const CrossSeedDialogComponent = ({
           {/* Content-based filtering info */}
           {excludedIndexerEntries.length > 0 && (
             <Collapsible open={excludedOpen} onOpenChange={setExcludedOpen}>
-              <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950">
-                <CollapsibleTrigger className="w-full p-2.5 text-left hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors">
-                  <div className="flex items-center gap-2 text-sm text-blue-700 dark:text-blue-300">
+              <div className="rounded-lg border bg-accent/10">
+                <CollapsibleTrigger className="w-full p-2.5 text-left hover:bg-accent/20 transition-colors">
+                  <div className="flex items-center gap-2 text-sm text-accent-foreground">
                     <ChevronRight className={`h-3.5 w-3.5 transition-transform ${excludedOpen ? "rotate-90" : ""}`} />
                     <span className="font-medium">Smart Filtering Active</span>
                     <Badge variant="secondary" className="text-xs">
@@ -195,10 +195,10 @@ const CrossSeedDialogComponent = ({
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <div className="px-2.5 pb-2.5">
-                    <p className="text-xs text-blue-600 dark:text-blue-400">
+                    <p className="text-xs text-muted-foreground">
                       You already seed this release from these trackers, so they're excluded from the search.
                     </p>
-                    <ul className="mt-2 ml-4 text-xs text-blue-600 dark:text-blue-400 space-y-0.5">
+                    <ul className="mt-2 ml-4 text-xs text-muted-foreground space-y-0.5">
                       {excludedIndexerEntries.map(entry => (
                         <li key={entry.id} className="break-words">
                           • {entry.name}
