@@ -30,6 +30,7 @@ import {
   getCurrentThemeMode,
   setTheme,
   setThemeMode,
+  getThemeColors,
   type ThemeMode
 } from "@/utils/theme"
 import { useQuery } from "@tanstack/react-query"
@@ -53,13 +54,6 @@ import {
 import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
 
-
-// Helper to extract primary color from theme
-function getThemePrimaryColor(theme: typeof themes[0]) {
-  const isDark = document.documentElement.classList.contains("dark")
-  const cssVars = isDark ? theme.cssVars.dark : theme.cssVars.light
-  return cssVars["--primary"] || ""
-}
 
 // Custom hook for theme change detection
 const useThemeChange = () => {
@@ -430,9 +424,9 @@ export function MobileFooterNav() {
                         <div
                           className="h-4 w-4 rounded-full ring-1 ring-black/10 dark:ring-white/10 flex-shrink-0"
                           style={{
-                            backgroundColor: getThemePrimaryColor(theme),
+                            backgroundColor: getThemeColors(theme, '--primary'),
                             backgroundImage: "none",
-                            background: getThemePrimaryColor(theme) + " !important",
+                            background: getThemeColors(theme, '--primary') + " !important",
                           }}
                         />
                         <div className="flex items-center justify-between gap-2 flex-1 min-w-0">

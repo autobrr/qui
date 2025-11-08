@@ -9,6 +9,7 @@ import {
   getCurrentTheme,
   setTheme,
   setThemeMode,
+  getThemeColors,
   type ThemeMode
 } from "@/utils/theme";
 import { themes, isThemePremium } from "@/config/themes";
@@ -28,16 +29,6 @@ import { useHasPremiumAccess } from "@/hooks/useLicense.ts";
 
 // Constants
 const THEME_CHANGE_EVENT = "themechange";
-
-// Helper to extract primary color from theme
-function getThemePrimaryColor(theme: typeof themes[0]) {
-  // Check if dark mode is active by looking at the document element
-  const isDark = document.documentElement.classList.contains("dark");
-  const cssVars = isDark ? theme.cssVars.dark : theme.cssVars.light;
-
-  // Extract the primary color value from the theme
-  return cssVars["--primary"] || "";
-}
 
 // Custom hook for theme change detection
 const useThemeChange = () => {
@@ -172,9 +163,9 @@ export const ThemeToggle: React.FC = () => {
                   <div
                     className="h-4 w-4 rounded-full ring-1 ring-black/10 dark:ring-white/10 transition-all duration-300 ease-out"
                     style={{
-                      backgroundColor: getThemePrimaryColor(theme),
+                      backgroundColor: getThemeColors(theme, '--primary'),
                       backgroundImage: "none",
-                      background: getThemePrimaryColor(theme) + " !important",
+                      background: getThemeColors(theme, '--primary') + " !important",
                     }}
                   />
                   <div className="flex items-center justify-between gap-1.5 flex-1">
