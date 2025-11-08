@@ -25,22 +25,14 @@ import { api } from "@/lib/api"
 import type {
   CrossSeedAutomationSettings,
   CrossSeedAutomationStatus,
-  CrossSeedCandidate,
-  CrossSeedCandidateTorrent,
-  CrossSeedFindCandidatesResponse,
-  CrossSeedInstanceResult,
-  CrossSeedResponse,
-  CrossSeedRun,
-  InstanceResponse
+  CrossSeedRun
 } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
-  Check,
   Info,
   Loader2,
   Play,
   Rocket,
-  UploadCloud,
   XCircle
 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
@@ -86,19 +78,6 @@ function parseList(value: string): string[] {
     .split(/[\n,]/)
     .map(item => item.trim())
     .filter(Boolean)
-}
-
-async function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = reader.result as string
-      const base64 = result.includes(",") ? result.split(",")[1] : result
-      resolve(base64)
-    }
-    reader.onerror = () => reject(reader.error ?? new Error("Failed to read file"))
-    reader.readAsDataURL(file)
-  })
 }
 
 function formatDate(value?: string | null): string {
@@ -265,58 +244,6 @@ export function CrossSeedPage() {
     },
   })
 
-  const [findTorrentName, setFindTorrentName] = useState("")
-  const [findIgnorePatterns, setFindIgnorePatterns] = useState("")
-  const [candidateResult, setCandidateResult] = useState<CrossSeedFindCandidatesResponse | null>(null)
-
-  const findCandidatesMutation = useMutation({
-    mutationFn: (payload: { torrentName: string; ignorePatterns: string[] }) =>
-      api.findCrossSeedCandidates({
-        torrentName: payload.torrentName,
-        ignorePatterns: payload.ignorePatterns,
-        findIndividualEpisodes: globalSettings.findIndividualEpisodes,
-      }),
-    onSuccess: (data) => {
-      setCandidateResult(data)
-    },
-    onError: (error: Error) => {
-      toast.error(error.message)
-      setCandidateResult(null)
-    },
-  })
-
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [targetInstanceIds, setTargetInstanceIds] = useState<number[]>([])
-  const [crossSeedCategory, setCrossSeedCategory] = useState("")
-  const [crossSeedTags, setCrossSeedTags] = useState("")
-  const [crossSeedStartPaused, setCrossSeedStartPaused] = useState(true)
-  const [crossSeedResult, setCrossSeedResult] = useState<CrossSeedResponse | null>(null)
-
-  const crossSeedMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedFile) {
-        throw new Error("Select a .torrent file first")
-      }
-      const torrentData = await fileToBase64(selectedFile)
-      return api.crossSeed({
-        torrentData,
-        targetInstanceIds: targetInstanceIds.length > 0 ? targetInstanceIds : undefined,
-        category: crossSeedCategory.trim() || undefined,
-        tags: parseList(crossSeedTags),
-        startPaused: crossSeedStartPaused,
-        findIndividualEpisodes: globalSettings.findIndividualEpisodes,
-      })
-    },
-    onSuccess: (data) => {
-      toast.success("Cross-seed request submitted")
-      setCrossSeedResult(data)
-    },
-    onError: (error: Error) => {
-      toast.error(error.message)
-      setCrossSeedResult(null)
-    },
-  })
-
   const handleGlobalSettingsSave = () => {
     // Get current settings to merge with global changes
     if (!settings) return
@@ -358,12 +285,6 @@ export function CrossSeedPage() {
 
   const automationStatus: CrossSeedAutomationStatus | undefined = status
   const latestRun: CrossSeedRun | null | undefined = automationStatus?.lastRun
-
-  const instanceMap = useMemo(() => {
-    const map = new Map<number, InstanceResponse>()
-    instances?.forEach(inst => map.set(inst.id, inst))
-    return map
-  }, [instances])
 
   const searchCategoryOptions = useMemo(() => {
     if (!searchMetadata?.categories) return [] as string[]
@@ -672,218 +593,6 @@ export function CrossSeedPage() {
           </div>
         </CardFooter>
       </Card>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Find Candidates</CardTitle>
-            <CardDescription>UTTER USELESS FOR NOW. COULD A PROWLARR SEARCH. Analyse an incoming release name and discover existing torrents that can seed it.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="torrent-name">Torrent name</Label>
-              <Input
-                id="torrent-name"
-                placeholder="Example.Show.S01E01.1080p.WEB.x264-GROUP"
-                value={findTorrentName}
-                onChange={event => setFindTorrentName(event.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="ignore-patterns">Ignore patterns</Label>
-              <Textarea
-                id="ignore-patterns"
-                placeholder="*.nfo\n*sample*.mkv"
-                value={findIgnorePatterns}
-                onChange={event => setFindIgnorePatterns(event.target.value)}
-                rows={3}
-              />
-            </div>
-            <Button
-              onClick={() => {
-                if (!findTorrentName.trim()) {
-                  toast.error("Enter a torrent name to analyse")
-                  return
-                }
-                findCandidatesMutation.mutate({
-                  torrentName: findTorrentName.trim(),
-                  ignorePatterns: parseList(findIgnorePatterns.replace(/\r/g, "")),
-                })
-              }}
-              disabled={findCandidatesMutation.isPending}
-            >
-              {findCandidatesMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Find candidates
-            </Button>
-
-            {candidateResult && (
-              <div className="rounded-md border p-4 space-y-4">
-                <div>
-                  <p className="text-sm font-medium">Source torrent</p>
-                  <p className="text-xs text-muted-foreground break-all">{candidateResult.sourceTorrent?.name ?? findTorrentName}</p>
-                </div>
-                {candidateResult.candidates.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No matching torrents found across your instances.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {candidateResult.candidates.map((candidate: CrossSeedCandidate) => (
-                      <div key={`${candidate.instanceId}-${candidate.matchType ?? "unknown"}`} className="rounded border p-3">
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium text-sm">
-                            {instanceMap.get(candidate.instanceId)?.name ?? candidate.instanceName}
-                          </p>
-                          <Badge variant="outline" className="text-xs capitalize">{(candidate.matchType ?? "unknown").replace(/-/g, " ")}</Badge>
-                        </div>
-                        <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
-                          {candidate.torrents.map((torrent: CrossSeedCandidateTorrent) => (
-                            <li key={torrent.hash} className="flex items-center justify-between gap-2">
-                              <span className="truncate">{torrent.name}</span>
-                              <span>{(torrent.progress * 100).toFixed(0)}%</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Cross-seed Manually</CardTitle>
-            <CardDescription>Upload a .torrent file and automatically map it to existing data.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="torrent-file">Torrent file</Label>
-              <Input
-                id="torrent-file"
-                type="file"
-                accept=".torrent"
-                onChange={event => {
-                  const file = event.target.files?.[0]
-                  setSelectedFile(file ?? null)
-                }}
-              />
-              {selectedFile && (
-                <p className="text-xs text-muted-foreground">{selectedFile.name}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label>Target instances</Label>
-              <div className="flex flex-wrap gap-2">
-                {instances?.map(instance => {
-                  const checked = targetInstanceIds.includes(instance.id)
-                  return (
-                    <Label key={instance.id} className="flex items-center gap-2 text-xs font-medium border rounded-md px-2 py-1 cursor-pointer">
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={value => {
-                          setTargetInstanceIds(prev => {
-                            if (value) return Array.from(new Set([...prev, instance.id]))
-                            return prev.filter(id => id !== instance.id)
-                          })
-                        }}
-                      />
-                      {instance.name}
-                    </Label>
-                  )
-                })}
-                {(!instances || instances.length === 0) && (
-                  <p className="text-xs text-muted-foreground">Add an instance first to cross-seed.</p>
-                )}
-              </div>
-              <p className="text-[10px] text-muted-foreground">Leave empty to target any instance with matching data.</p>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="crossseed-category">Category</Label>
-                <Input
-                  id="crossseed-category"
-                  placeholder="Optional category"
-                  value={crossSeedCategory}
-                  onChange={event => setCrossSeedCategory(event.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="crossseed-tags">Tags</Label>
-                <Input
-                  id="crossseed-tags"
-                  placeholder="Comma separated"
-                  value={crossSeedTags}
-                  onChange={event => setCrossSeedTags(event.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Switch
-                id="crossseed-start-paused"
-                checked={crossSeedStartPaused}
-                onCheckedChange={value => setCrossSeedStartPaused(!!value)}
-              />
-              <Label htmlFor="crossseed-start-paused" className="text-sm">Start torrents paused</Label>
-            </div>
-          </CardContent>
-          <CardFooter className="flex items-center gap-3">
-            <Button
-              onClick={() => crossSeedMutation.mutate()}
-              disabled={crossSeedMutation.isPending}
-            >
-              {crossSeedMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              <UploadCloud className="mr-2 h-4 w-4" />
-              Cross-seed
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setSelectedFile(null)
-                setTargetInstanceIds([])
-                setCrossSeedCategory("")
-                setCrossSeedTags("")
-                setCrossSeedStartPaused(true)
-                setCrossSeedResult(null)
-              }}
-            >
-              Reset
-            </Button>
-          </CardFooter>
-          {crossSeedResult && (
-            <CardContent>
-              <div className="rounded-md border p-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm">Results</span>
-                  <Badge variant={crossSeedResult.success ? "default" : "destructive"} className="text-xs">
-                    {crossSeedResult.success ? "SUCCESS" : "PARTIAL"}
-                  </Badge>
-                </div>
-                <div className="space-y-2">
-                  {crossSeedResult.results.map((result: CrossSeedInstanceResult) => (
-                    <div key={`${result.instanceId}-${result.instanceName}`} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        {result.success ? (
-                          <Check className="h-4 w-4 text-green-500" />
-                        ) : result.status === "exists" ? (
-                          <Rocket className="h-4 w-4 text-blue-500" />
-                        ) : (
-                          <XCircle className="h-4 w-4 text-destructive" />
-                        )}
-                        <span>{result.instanceName}</span>
-                      </div>
-                      <span className="text-xs text-muted-foreground">{result.message || result.status}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          )}
-        </Card>
-      </div>
 
       <Card>
         <CardHeader>

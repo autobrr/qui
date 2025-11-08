@@ -997,21 +997,6 @@ export interface DiscoverJackettResponse {
   indexers: JackettIndexer[]
 }
 
-export interface CrossSeedCandidateTorrent {
-  hash: string
-  name: string
-  progress: number
-  size: number
-  category?: string
-}
-
-export interface CrossSeedCandidate {
-  instanceId: number
-  instanceName: string
-  torrents: CrossSeedCandidateTorrent[]
-  matchType: string
-}
-
 export interface CrossSeedTorrentInfo {
   instanceId?: number
   instanceName?: string
@@ -1034,11 +1019,6 @@ export interface CrossSeedTorrentInfo {
   contentMatches?: string[]
 }
 
-export interface CrossSeedFindCandidatesResponse {
-  sourceTorrent: CrossSeedTorrentInfo
-  candidates: CrossSeedCandidate[]
-}
-
 export interface CrossSeedInstanceResult {
   instanceId: number
   instanceName: string
@@ -1051,12 +1031,6 @@ export interface CrossSeedInstanceResult {
     progress: number
     size: number
   }
-}
-
-export interface CrossSeedResponse {
-  success: boolean
-  results: CrossSeedInstanceResult[]
-  torrentInfo?: CrossSeedTorrentInfo
 }
 
 export interface CrossSeedTorrentSearchResult {

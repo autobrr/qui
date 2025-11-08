@@ -64,8 +64,6 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 	r.Get("/instances/{instanceID}/cross-seed/status", h.GetCrossSeedStatus)
 
 	r.Route("/cross-seed", func(r chi.Router) {
-		r.Post("/find-candidates", h.FindCandidates)
-		r.Post("/cross", h.CrossSeed)
 		r.Route("/torrents", func(r chi.Router) {
 			r.Get("/{instanceID}/{hash}/analyze", h.AnalyzeTorrentForSearch)
 			r.Post("/{instanceID}/{hash}/search", h.SearchTorrentMatches)
@@ -83,91 +81,6 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 			r.Get("/runs", h.ListSearchRunHistory)
 		})
 	})
-}
-
-// FindCandidates godoc
-// @Summary Find cross-seed candidates
-// @Description Finds potential torrents to cross-seed across instances
-// @Tags cross-seed
-// @Accept json
-// @Produce json
-// @Param request body crossseed.FindCandidatesRequest true "Find candidates request"
-// @Success 200 {object} crossseed.FindCandidatesResponse
-// @Failure 400 {object} httphelpers.ErrorResponse
-// @Failure 500 {object} httphelpers.ErrorResponse
-// @Security ApiKeyAuth
-// @Router /api/cross-seed/find-candidates [post]
-func (h *CrossSeedHandler) FindCandidates(w http.ResponseWriter, r *http.Request) {
-	var req crossseed.FindCandidatesRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Error().Err(err).Msg("Failed to decode find candidates request")
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	// Validate request
-	if req.TorrentName == "" {
-		RespondError(w, http.StatusBadRequest, "torrent_name is required")
-		return
-	}
-
-	// Find candidates
-	response, err := h.service.FindCandidates(r.Context(), &req)
-	if err != nil {
-		log.Error().
-			Err(err).
-			Str("torrent_name", req.TorrentName).
-			Msg("Failed to find cross-seed candidates")
-		RespondError(w, http.StatusInternalServerError, "Failed to find candidates")
-		return
-	}
-
-	RespondJSON(w, http.StatusOK, response)
-}
-
-// CrossSeed godoc
-// @Summary Cross-seed a torrent
-// @Description Cross-seeds a torrent to target instances with matching files
-// @Tags cross-seed
-// @Accept json
-// @Produce json
-// @Param request body crossseed.CrossSeedRequest true "Cross-seed request"
-// @Success 200 {object} crossseed.CrossSeedResponse
-// @Failure 400 {object} httphelpers.ErrorResponse
-// @Failure 500 {object} httphelpers.ErrorResponse
-// @Security ApiKeyAuth
-// @Router /api/cross-seed/cross [post]
-func (h *CrossSeedHandler) CrossSeed(w http.ResponseWriter, r *http.Request) {
-	var req crossseed.CrossSeedRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Error().Err(err).Msg("Failed to decode cross-seed request")
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	// Validate request
-	if req.TorrentData == "" {
-		RespondError(w, http.StatusBadRequest, "torrent_data is required")
-		return
-	}
-
-	// Perform cross-seed
-	response, err := h.service.CrossSeed(r.Context(), &req)
-	if err != nil {
-		log.Error().
-			Err(err).
-			Msg("Failed to cross-seed torrent")
-		RespondError(w, http.StatusInternalServerError, "Failed to cross-seed torrent")
-		return
-	}
-
-	// Determine HTTP status based on results
-	status := http.StatusOK
-	if !response.Success {
-		status = http.StatusPartialContent // 206 indicates partial success or all failures
-	}
-
-	RespondJSON(w, status, response)
 }
 
 // AnalyzeTorrentForSearch godoc
