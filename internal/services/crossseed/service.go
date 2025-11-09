@@ -57,9 +57,27 @@ type Service struct {
 	searchMu     sync.RWMutex
 	searchCancel context.CancelFunc
 	searchState  *searchRunState
+
+	// domainMappings provides static mappings between tracker domains and indexer domains
+	domainMappings map[string][]string
 }
 
 const searchResultCacheTTL = 5 * time.Minute
+
+// initializeDomainMappings returns a hardcoded mapping of tracker domains to indexer domains.
+// This helps map tracker domains (from existing torrents) to indexer domains (from Jackett/Prowlarr)
+// for better cross-seed matching when domains don't match exactly.
+//
+// Format: tracker_domain -> []indexer_domains
+func initializeDomainMappings() map[string][]string {
+	return map[string][]string{
+		// BTN (BroadcastHe.Net) - landof.tv is an alternative domain for BTN
+		"landof.tv": {"broadcasthe.net"},
+
+		// Add more specific domain aliases as needed
+		// "tracker.domain": {"indexer.domain"},
+	}
+}
 
 // NewService creates a new cross-seed service
 func NewService(
@@ -81,6 +99,7 @@ func NewService(
 		automationStore:   automationStore,
 		jackettService:    jackettService,
 		automationWake:    make(chan struct{}, 1),
+		domainMappings:    initializeDomainMappings(),
 	}
 }
 
@@ -3012,6 +3031,31 @@ func (s *Service) torrentMatchesIndexer(torrent qbt.Torrent, indexerName string,
 	if s.jackettService != nil {
 		if domain, err := s.jackettService.GetIndexerDomain(context.Background(), indexerName); err == nil && domain != "" {
 			specificIndexerDomain = domain
+		}
+	}
+
+	// Check hardcoded domain mappings first
+	for _, trackerDomain := range trackerDomains {
+		normalizedTrackerDomain := strings.ToLower(trackerDomain)
+
+		// Check if this tracker domain maps to the indexer domain
+		if mappedDomains, exists := s.domainMappings[normalizedTrackerDomain]; exists {
+			for _, mappedDomain := range mappedDomains {
+				normalizedMappedDomain := strings.ToLower(mappedDomain)
+
+				// Check if mapped domain matches indexer name or specific indexer domain
+				if normalizedMappedDomain == normalizedIndexerName ||
+					(specificIndexerDomain != "" && normalizedMappedDomain == strings.ToLower(specificIndexerDomain)) {
+					log.Info().
+						Str("matchType", "hardcoded_mapping").
+						Str("trackerDomain", trackerDomain).
+						Str("mappedDomain", mappedDomain).
+						Str("indexerName", indexerName).
+						Str("specificIndexerDomain", specificIndexerDomain).
+						Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Hardcoded domain mapping ***")
+					return true
+				}
+			}
 		}
 	}
 
