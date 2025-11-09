@@ -3135,7 +3135,7 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 	if s.jackettService != nil {
 		if domains, err := s.jackettService.GetEnabledTrackerDomains(ctx); err == nil {
 			indexerDomains = domains
-			log.Info().
+			log.Debug().
 				Strs("indexerDomains", indexerDomains).
 				Int("domainCount", len(indexerDomains)).
 				Msg("[CROSSSEED-FILTER] Pre-fetched indexer domains for enhanced matching")
@@ -3194,7 +3194,7 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 
 			// Extract tracker domains for this torrent
 			trackerDomains := s.extractTrackerDomainsFromTorrent(crossTorrent.TorrentView.Torrent)
-			log.Info().
+			log.Debug().
 				Str("matchingTorrentName", crossTorrent.Name).
 				Str("matchingInstanceName", crossTorrent.InstanceName).
 				Strs("trackerDomains", trackerDomains).
@@ -3310,7 +3310,7 @@ func (s *Service) torrentMatchesIndexer(torrent qbt.Torrent, indexerName string,
 				// Check if mapped domain matches indexer name or specific indexer domain
 				if normalizedMappedDomain == normalizedIndexerName ||
 					(specificIndexerDomain != "" && normalizedMappedDomain == strings.ToLower(specificIndexerDomain)) {
-					log.Info().
+					log.Debug().
 						Str("matchType", "hardcoded_mapping").
 						Str("trackerDomain", trackerDomain).
 						Str("mappedDomain", mappedDomain).
@@ -3329,7 +3329,7 @@ func (s *Service) torrentMatchesIndexer(torrent qbt.Torrent, indexerName string,
 
 		// 1. Direct match: normalized indexer name matches domain
 		if normalizedIndexerName == normalizedDomain {
-			log.Info().
+			log.Debug().
 				Str("matchType", "direct").
 				Str("domain", domain).
 				Str("indexerName", indexerName).
@@ -3343,7 +3343,7 @@ func (s *Service) torrentMatchesIndexer(torrent qbt.Torrent, indexerName string,
 
 			// Direct domain match
 			if normalizedDomain == normalizedSpecificDomain {
-				log.Info().
+				log.Debug().
 					Str("matchType", "specific_indexer_domain_direct").
 					Str("torrentDomain", domain).
 					Str("indexerDomain", specificIndexerDomain).
@@ -3354,7 +3354,7 @@ func (s *Service) torrentMatchesIndexer(torrent qbt.Torrent, indexerName string,
 
 			// Check if indexer name matches the indexer domain (handles cases where indexer name is the domain)
 			if normalizedIndexerName == normalizedSpecificDomain {
-				log.Info().
+				log.Debug().
 					Str("matchType", "indexer_name_to_specific_domain").
 					Str("torrentDomain", domain).
 					Str("indexerDomain", specificIndexerDomain).
@@ -3366,7 +3366,7 @@ func (s *Service) torrentMatchesIndexer(torrent qbt.Torrent, indexerName string,
 
 		// 3. Partial match: domain contains normalized indexer name or vice versa
 		if strings.Contains(normalizedDomain, normalizedIndexerName) {
-			log.Info().
+			log.Debug().
 				Str("matchType", "domain_contains_indexer").
 				Str("domain", domain).
 				Str("indexerName", indexerName).
@@ -3374,7 +3374,7 @@ func (s *Service) torrentMatchesIndexer(torrent qbt.Torrent, indexerName string,
 			return true
 		}
 		if strings.Contains(normalizedIndexerName, normalizedDomain) {
-			log.Info().
+			log.Debug().
 				Str("matchType", "indexer_contains_domain").
 				Str("domain", domain).
 				Str("indexerName", indexerName).
@@ -3388,7 +3388,7 @@ func (s *Service) torrentMatchesIndexer(torrent qbt.Torrent, indexerName string,
 
 			// Check if torrent domain contains indexer domain or vice versa
 			if strings.Contains(normalizedDomain, normalizedSpecificDomain) {
-				log.Info().
+				log.Debug().
 					Str("matchType", "torrent_domain_contains_specific_indexer_domain").
 					Str("torrentDomain", domain).
 					Str("indexerDomain", specificIndexerDomain).
@@ -3397,7 +3397,7 @@ func (s *Service) torrentMatchesIndexer(torrent qbt.Torrent, indexerName string,
 				return true
 			}
 			if strings.Contains(normalizedSpecificDomain, normalizedDomain) {
-				log.Info().
+				log.Debug().
 					Str("matchType", "specific_indexer_domain_contains_torrent_domain").
 					Str("torrentDomain", domain).
 					Str("indexerDomain", specificIndexerDomain).
@@ -3419,7 +3419,7 @@ func (s *Service) torrentMatchesIndexer(torrent qbt.Torrent, indexerName string,
 
 		// Direct match after normalization
 		if normalizedIndexerName == normalizedDomainName {
-			log.Info().
+			log.Debug().
 				Str("matchType", "normalized_match").
 				Str("domain", domain).
 				Str("normalizedDomainName", normalizedDomainName).
@@ -3430,7 +3430,7 @@ func (s *Service) torrentMatchesIndexer(torrent qbt.Torrent, indexerName string,
 
 		// Partial match after normalization
 		if strings.Contains(normalizedDomainName, normalizedIndexerName) {
-			log.Info().
+			log.Debug().
 				Str("matchType", "normalized_domain_contains_indexer").
 				Str("domain", domain).
 				Str("normalizedDomainName", normalizedDomainName).
@@ -3439,7 +3439,7 @@ func (s *Service) torrentMatchesIndexer(torrent qbt.Torrent, indexerName string,
 			return true
 		}
 		if strings.Contains(normalizedIndexerName, normalizedDomainName) {
-			log.Info().
+			log.Debug().
 				Str("matchType", "normalized_indexer_contains_domain").
 				Str("domain", domain).
 				Str("normalizedDomainName", normalizedDomainName).
@@ -3466,7 +3466,7 @@ func (s *Service) torrentMatchesIndexer(torrent qbt.Torrent, indexerName string,
 
 			// Compare normalized torrent domain with normalized indexer domain
 			if normalizedDomainName == normalizedIndexerDomainName {
-				log.Info().
+				log.Debug().
 					Str("matchType", "normalized_specific_indexer_domain_match").
 					Str("torrentDomain", domain).
 					Str("indexerDomain", specificIndexerDomain).
@@ -3479,7 +3479,7 @@ func (s *Service) torrentMatchesIndexer(torrent qbt.Torrent, indexerName string,
 
 			// Partial matches with normalized indexer domains
 			if strings.Contains(normalizedDomainName, normalizedIndexerDomainName) {
-				log.Info().
+				log.Debug().
 					Str("matchType", "normalized_torrent_domain_contains_specific_indexer").
 					Str("torrentDomain", domain).
 					Str("indexerDomain", specificIndexerDomain).
@@ -3490,7 +3490,7 @@ func (s *Service) torrentMatchesIndexer(torrent qbt.Torrent, indexerName string,
 				return true
 			}
 			if strings.Contains(normalizedIndexerDomainName, normalizedDomainName) {
-				log.Info().
+				log.Debug().
 					Str("matchType", "normalized_specific_indexer_domain_contains_torrent").
 					Str("torrentDomain", domain).
 					Str("indexerDomain", specificIndexerDomain).
@@ -3503,7 +3503,7 @@ func (s *Service) torrentMatchesIndexer(torrent qbt.Torrent, indexerName string,
 
 			// Check TLD-stripped match against specific indexer domain
 			if domainWithoutTLD == indexerDomainWithoutTLD {
-				log.Info().
+				log.Debug().
 					Str("matchType", "tld_stripped_specific_indexer_domain").
 					Str("torrentDomain", domain).
 					Str("indexerDomain", specificIndexerDomain).
@@ -3515,7 +3515,7 @@ func (s *Service) torrentMatchesIndexer(torrent qbt.Torrent, indexerName string,
 			}
 		} // Check original TLD-stripped match for backward compatibility
 		if normalizedIndexerName == domainWithoutTLD {
-			log.Info().
+			log.Debug().
 				Str("matchType", "tld_stripped").
 				Str("domain", domain).
 				Str("domainWithoutTLD", domainWithoutTLD).
