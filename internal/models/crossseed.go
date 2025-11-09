@@ -584,7 +584,7 @@ func (s *CrossSeedStore) UpdateSearchRun(ctx context.Context, run *CrossSeedSear
 		WHERE id = ?
 	`
 
-	var completed interface{}
+	var completed any
 	if run.CompletedAt != nil {
 		completed = run.CompletedAt
 	}

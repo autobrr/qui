@@ -5,6 +5,8 @@ package jackett
 
 import (
 	"context"
+	"maps"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1038,9 +1040,7 @@ func TestProwlarrYearParameterWorkaround(t *testing.T) {
 
 			// Prepare input parameters
 			inputParams := make(map[string]string)
-			for k, v := range tt.inputParams {
-				inputParams[k] = v
-			}
+			maps.Copy(inputParams, tt.inputParams)
 
 			// Call the actual service method to apply the workaround
 			ctx := context.Background()
@@ -1152,13 +1152,7 @@ func TestProwlarrCapabilityAwareYearWorkaround(t *testing.T) {
 			ctx := context.Background()
 			hasYearCapability := service.hasCapability(ctx, 1, "movie-search-year")
 
-			expectedHasCapability := false
-			for _, cap := range tt.indexerCapabilities {
-				if cap == "movie-search-year" {
-					expectedHasCapability = true
-					break
-				}
-			}
+			expectedHasCapability := slices.Contains(tt.indexerCapabilities, "movie-search-year")
 
 			if hasYearCapability != expectedHasCapability {
 				t.Errorf("hasCapability() = %v, expected %v", hasYearCapability, expectedHasCapability)
@@ -1166,9 +1160,7 @@ func TestProwlarrCapabilityAwareYearWorkaround(t *testing.T) {
 
 			// Test parameter handling logic
 			paramsMap := make(map[string]string)
-			for key, value := range tt.inputParams {
-				paramsMap[key] = value
-			}
+			maps.Copy(paramsMap, tt.inputParams)
 
 			indexer := indexers[0]
 			// Apply the actual Prowlarr logic from the service
@@ -1238,13 +1230,7 @@ func TestParseTorznabCaps_ProwlarrCompatibility(t *testing.T) {
 		"search", "tv-search", "movie-search", "music-search", "audio-search", "book-search",
 	}
 	for _, searchType := range expectedSearchTypes {
-		found := false
-		for _, cap := range caps.Capabilities {
-			if cap == searchType {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(caps.Capabilities, searchType)
 		if !found {
 			t.Errorf("Missing basic search capability: %s", searchType)
 		}
@@ -1262,13 +1248,7 @@ func TestParseTorznabCaps_ProwlarrCompatibility(t *testing.T) {
 		"movie-search-year",     // MovieSearchYearAvailable
 	}
 	for _, param := range expectedMovieParams {
-		found := false
-		for _, cap := range caps.Capabilities {
-			if cap == param {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(caps.Capabilities, param)
 		if !found {
 			t.Errorf("Missing movie search parameter capability: %s", param)
 		}
@@ -1290,13 +1270,7 @@ func TestParseTorznabCaps_ProwlarrCompatibility(t *testing.T) {
 		"tv-search-year",     // TvSearchYearAvailable
 	}
 	for _, param := range expectedTvParams {
-		found := false
-		for _, cap := range caps.Capabilities {
-			if cap == param {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(caps.Capabilities, param)
 		if !found {
 			t.Errorf("Missing TV search parameter capability: %s", param)
 		}
@@ -1314,13 +1288,7 @@ func TestParseTorznabCaps_ProwlarrCompatibility(t *testing.T) {
 		"music-search-track",  // MusicSearchTrackAvailable
 	}
 	for _, param := range expectedMusicParams {
-		found := false
-		for _, cap := range caps.Capabilities {
-			if cap == param {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(caps.Capabilities, param)
 		if !found {
 			t.Errorf("Missing music search parameter capability: %s", param)
 		}
@@ -1337,13 +1305,7 @@ func TestParseTorznabCaps_ProwlarrCompatibility(t *testing.T) {
 		"book-search-year",      // BookSearchYearAvailable
 	}
 	for _, param := range expectedBookParams {
-		found := false
-		for _, cap := range caps.Capabilities {
-			if cap == param {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(caps.Capabilities, param)
 		if !found {
 			t.Errorf("Missing book search parameter capability: %s", param)
 		}
@@ -1395,13 +1357,7 @@ func TestParseTorznabCaps_ProwlarrCompatibility(t *testing.T) {
 	}
 
 	for _, testCap := range testCapabilities {
-		found := false
-		for _, cap := range caps.Capabilities {
-			if cap == testCap {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(caps.Capabilities, testCap)
 		if !found {
 			t.Errorf("Critical capability missing: %s", testCap)
 		}

@@ -73,12 +73,12 @@ type IndexerDetail struct {
 
 // IndexerField represents a configuration field for an indexer
 type IndexerField struct {
-	Order    int         `json:"order"`
-	Name     string      `json:"name"`
-	Label    string      `json:"label"`
-	Value    interface{} `json:"value"`
-	Type     string      `json:"type"`
-	Advanced bool        `json:"advanced"`
+	Order    int    `json:"order"`
+	Name     string `json:"name"`
+	Label    string `json:"label"`
+	Value    any    `json:"value"`
+	Type     string `json:"type"`
+	Advanced bool   `json:"advanced"`
 }
 
 // SearchIndexer performs a Torznab search via the specified Prowlarr indexer ID.

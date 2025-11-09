@@ -589,7 +589,7 @@ func (h *CrossSeedHandler) GetCrossSeedStatus(w http.ResponseWriter, r *http.Req
 	// - Total data cross-seeded
 	// - Recent cross-seed operations
 
-	status := map[string]interface{}{
+	status := map[string]any{
 		"instance_id":     instanceID,
 		"cross_seeded":    0,
 		"pending":         0,

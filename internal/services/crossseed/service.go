@@ -17,7 +17,9 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -642,11 +644,7 @@ func (s *Service) computeNextRunDelay(ctx context.Context, settings *models.Cros
 	if intervalMinutes <= 0 {
 		intervalMinutes = 120
 	}
-	interval := time.Duration(intervalMinutes) * time.Minute
-
-	if interval < time.Minute {
-		interval = time.Minute
-	}
+	interval := max(time.Duration(intervalMinutes)*time.Minute, time.Minute)
 
 	lastRun, err := s.automationStore.GetLatestRun(ctx)
 	if err != nil {
@@ -663,10 +661,7 @@ func (s *Service) computeNextRunDelay(ctx context.Context, settings *models.Cros
 		return 0, true
 	}
 
-	remaining := interval - elapsed
-	if remaining < time.Second {
-		remaining = time.Second
-	}
+	remaining := max(interval-elapsed, time.Second)
 
 	return remaining, false
 }
@@ -695,10 +690,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		limit = 50
 	}
 
-	releaseFetchLimit := int(math.Ceil(float64(limit) * 1.5))
-	if releaseFetchLimit < limit {
-		releaseFetchLimit = limit
-	}
+	releaseFetchLimit := max(int(math.Ceil(float64(limit)*1.5)), limit)
 
 	searchResp, err := s.jackettService.Recent(ctx, releaseFetchLimit, settings.TargetIndexerIDs)
 	if err != nil {
@@ -1361,8 +1353,7 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	if len(req.Tags) == 0 && matchedTorrent.Tags != "" {
-		split := strings.Split(matchedTorrent.Tags, ",")
-		for _, tag := range split {
+		for tag := range strings.SplitSeq(matchedTorrent.Tags, ",") {
 			addTag(tag)
 		}
 	}
@@ -1803,9 +1794,7 @@ func (s *Service) performAsyncContentFiltering(ctx context.Context, instanceID i
 			ContentMatches:        append([]string(nil), state.ContentMatches...),
 		}
 		// Copy excluded indexers map
-		for k, v := range state.ExcludedIndexers {
-			cachedState.ExcludedIndexers[k] = v
-		}
+		maps.Copy(cachedState.ExcludedIndexers, state.ExcludedIndexers)
 
 		log.Debug().
 			Str("torrentHash", hash).
@@ -2043,10 +2032,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	if limit <= 0 {
 		limit = 40
 	}
-	requestLimit := limit * 3
-	if requestLimit < limit {
-		requestLimit = limit
-	}
+	requestLimit := max(limit*3, limit)
 
 	// Apply indexer filtering (capabilities first, then optionally content filtering async)
 	var filteredIndexerIDs []int
@@ -2770,11 +2756,8 @@ func (s *Service) deduplicateSourceTorrents(torrents []qbt.Torrent) []qbt.Torren
 						break
 					}
 					// Check if any duplicate in the group matches
-					for _, dupHash := range group.duplicates {
-						if dupHash == existing.torrent.Hash {
-							foundGroup = groupID
-							break
-						}
+					if slices.Contains(group.duplicates, existing.torrent.Hash) {
+						foundGroup = groupID
 					}
 					if foundGroup != -1 {
 						break
@@ -3860,13 +3843,7 @@ func matchesSearchFilters(torrent *qbt.Torrent, opts SearchRunOptions) bool {
 		return false
 	}
 	if len(opts.Categories) > 0 {
-		matched := false
-		for _, category := range opts.Categories {
-			if category == torrent.Category {
-				matched = true
-				break
-			}
-		}
+		matched := slices.Contains(opts.Categories, torrent.Category)
 		if !matched {
 			return false
 		}

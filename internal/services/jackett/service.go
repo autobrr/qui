@@ -659,7 +659,7 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 
 	// Collect all results
 	var allResults []Result
-	for i := 0; i < len(indexers); i++ {
+	for range indexers {
 		result := <-resultsChan
 		if result.err == nil {
 			allResults = append(allResults, result.results...)
@@ -1402,13 +1402,7 @@ func (s *Service) hasCapability(ctx context.Context, indexerID int, capability s
 		return false
 	}
 
-	for _, cap := range caps {
-		if cap == capability {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(caps, capability)
 }
 
 func (s *Service) resolveIndexerSelection(ctx context.Context, indexerIDs []int) ([]*models.TorznabIndexer, error) {
@@ -1575,10 +1569,9 @@ func (s *Service) GetOptimalCategoriesForIndexers(ctx context.Context, requested
 	}
 
 	// Return categories that are supported by most indexers
-	threshold := len(indexers) / 2 // At least half of the indexers should support it
-	if threshold < 1 {
-		threshold = 1
-	}
+	threshold := max(
+		// At least half of the indexers should support it
+		len(indexers)/2, 1)
 
 	optimalCategories := make([]int, 0, len(requestedCategories))
 	for _, requestedCat := range requestedCategories {

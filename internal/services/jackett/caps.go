@@ -98,8 +98,8 @@ func appendSearchCapabilities(capabilities []string, searchType string, searchNo
 
 	// Add detailed parameter support capabilities if available
 	if searchNode.SupportedParams != "" {
-		params := strings.Split(searchNode.SupportedParams, ",")
-		for _, param := range params {
+		params := strings.SplitSeq(searchNode.SupportedParams, ",")
+		for param := range params {
 			param = strings.TrimSpace(param)
 			if param != "" {
 				// Create specific capability names for supported parameters

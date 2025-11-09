@@ -34,7 +34,7 @@ func createTestTorrent(t *testing.T, name string, files []string, pieceLength in
 		dir := filepath.Dir(path)
 		require.NoError(t, os.MkdirAll(dir, 0755))
 
-		content := []byte(fmt.Sprintf("test content for %s", f))
+		content := fmt.Appendf(nil, "test content for %s", f)
 		require.NoError(t, os.WriteFile(path, content, 0644))
 	}
 
