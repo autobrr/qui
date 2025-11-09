@@ -649,7 +649,7 @@ func TestSearchAutoDetectCategories(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := s.Search(context.Background(), tt.req)
 			// Error expected since no indexers configured
-			if err != nil && err.Error() != "query is required" {
+			if err == nil || err.Error() != "query is required" {
 				// Check that categories were set
 				if len(tt.req.Categories) != len(tt.expectedCats) {
 					t.Errorf("Categories count = %d, want %d", len(tt.req.Categories), len(tt.expectedCats))
