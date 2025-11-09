@@ -817,7 +817,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const lastSelectedIndexRef = useRef<number | null>(null)
 
   // Cross-seed async filtering polling
-  const crossSeedPollingRef = useRef<NodeJS.Timeout | null>(null)
+  const crossSeedPollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const crossSeedPollingInFlightRef = useRef<boolean>(false)
 
   const handleCompactCheckboxPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     shiftPressedRef.current = event.shiftKey
@@ -1872,6 +1873,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
 
     const pollForUpdates = async () => {
+      // Skip if already running to prevent overlapping calls
+      if (crossSeedPollingInFlightRef.current) {
+        return
+      }
+
+      crossSeedPollingInFlightRef.current = true
       try {
         if (!sourceTorrent.hash) {
           console.warn("Source torrent hash is undefined, stopping polling")
@@ -1906,6 +1913,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           clearInterval(crossSeedPollingRef.current)
           crossSeedPollingRef.current = null
         }
+      } finally {
+        crossSeedPollingInFlightRef.current = false
       }
     }
 
@@ -1918,6 +1927,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         clearInterval(crossSeedPollingRef.current)
         crossSeedPollingRef.current = null
       }
+      crossSeedPollingInFlightRef.current = false
     }
   }, [api, instanceId, crossSeedSearchResponse, crossSeedDialogOpen])
 
@@ -1926,6 +1936,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     if (!crossSeedDialogOpen && crossSeedPollingRef.current) {
       clearInterval(crossSeedPollingRef.current)
       crossSeedPollingRef.current = null
+      crossSeedPollingInFlightRef.current = false
     }
   }, [crossSeedDialogOpen])
 
