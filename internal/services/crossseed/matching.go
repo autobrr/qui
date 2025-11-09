@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"sort"
 	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -140,8 +141,94 @@ func (s *Service) releasesMatch(source, candidate rls.Release, findIndividualEpi
 	}
 	// If source has no group, we don't care about candidate's group
 
-	// Resolution matching is optional - different qualities can cross-seed if files match.
+	// Source must match if both are present (WEB-DL vs BluRay produce different files)
+	sourceSource := strings.ToUpper(strings.TrimSpace(source.Source))
+	candidateSource := strings.ToUpper(strings.TrimSpace(candidate.Source))
+	if sourceSource != "" && candidateSource != "" && sourceSource != candidateSource {
+		return false
+	}
+
+	// Resolution must match if both are present (1080p vs 2160p are different files)
+	sourceRes := strings.ToUpper(strings.TrimSpace(source.Resolution))
+	candidateRes := strings.ToUpper(strings.TrimSpace(candidate.Resolution))
+	if sourceRes != "" && candidateRes != "" && sourceRes != candidateRes {
+		return false
+	}
+
+	// Collection must match if both are present (NF vs AMZN vs Criterion are different sources)
+	sourceCollection := strings.ToUpper(strings.TrimSpace(source.Collection))
+	candidateCollection := strings.ToUpper(strings.TrimSpace(candidate.Collection))
+	if sourceCollection != "" && candidateCollection != "" && sourceCollection != candidateCollection {
+		return false
+	}
+
+	// Codec must match if both are present (H.264 vs HEVC produce different files)
+	if len(source.Codec) > 0 && len(candidate.Codec) > 0 {
+		sourceCodec := joinNormalizedSlice(source.Codec)
+		candidateCodec := joinNormalizedSlice(candidate.Codec)
+		if sourceCodec != candidateCodec {
+			return false
+		}
+	}
+
+	// HDR must match if both are present (HDR vs SDR are different encodes)
+	if len(source.HDR) > 0 && len(candidate.HDR) > 0 {
+		sourceHDR := joinNormalizedSlice(source.HDR)
+		candidateHDR := joinNormalizedSlice(candidate.HDR)
+		if sourceHDR != candidateHDR {
+			return false
+		}
+	}
+
+	// Audio must match if both are present (different audio codecs mean different files)
+	if len(source.Audio) > 0 && len(candidate.Audio) > 0 {
+		sourceAudio := joinNormalizedSlice(source.Audio)
+		candidateAudio := joinNormalizedSlice(candidate.Audio)
+		if sourceAudio != candidateAudio {
+			return false
+		}
+	}
+
+	// Channels must match if both are present (5.1 vs 7.1 are different audio tracks)
+	sourceChannels := strings.ToUpper(strings.TrimSpace(source.Channels))
+	candidateChannels := strings.ToUpper(strings.TrimSpace(candidate.Channels))
+	if sourceChannels != "" && candidateChannels != "" && sourceChannels != candidateChannels {
+		return false
+	}
+
+	// Cut must match if both are present (Theatrical vs Extended are different versions)
+	if len(source.Cut) > 0 && len(candidate.Cut) > 0 {
+		sourceCut := joinNormalizedSlice(source.Cut)
+		candidateCut := joinNormalizedSlice(candidate.Cut)
+		if sourceCut != candidateCut {
+			return false
+		}
+	}
+
+	// Edition must match if both are present (Remastered vs Original are different)
+	if len(source.Edition) > 0 && len(candidate.Edition) > 0 {
+		sourceEdition := joinNormalizedSlice(source.Edition)
+		candidateEdition := joinNormalizedSlice(candidate.Edition)
+		if sourceEdition != candidateEdition {
+			return false
+		}
+	}
+
 	return true
+}
+
+// joinNormalizedSlice converts a string slice to a normalized uppercase string for comparison.
+// Uppercases and joins elements to ensure consistent comparison regardless of case or order.
+func joinNormalizedSlice(slice []string) string {
+	if len(slice) == 0 {
+		return ""
+	}
+	normalized := make([]string, len(slice))
+	for i, s := range slice {
+		normalized[i] = strings.ToUpper(strings.TrimSpace(s))
+	}
+	sort.Strings(normalized)
+	return strings.Join(normalized, " ")
 }
 
 // getMatchTypeFromTitle checks if a candidate torrent has files matching what we want based on parsed title.
