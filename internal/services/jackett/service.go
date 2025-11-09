@@ -532,42 +532,8 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 				}
 			}
 
-			// Prowlarr workaround: Include year in search query instead of as parameter
-			// because Prowlarr's NewznabRequestGenerator doesn't handle year parameter for movie searches
-			// Only apply this workaround if the indexer doesn't support movie-search-year capability
-			if idx.Backend == models.TorznabBackendProwlarr {
-				if yearStr, exists := paramsMap["year"]; exists && yearStr != "" {
-					// Check if indexer supports movie-search-year capability
-					supportsYearParam := s.hasCapability(ctx, idx.ID, "movie-search-year")
-
-					if !supportsYearParam {
-						currentQuery := paramsMap["q"]
-						if currentQuery != "" {
-							paramsMap["q"] = currentQuery + " " + yearStr
-						} else {
-							paramsMap["q"] = yearStr
-						}
-						// Remove the year parameter since we've included it in the query
-						delete(paramsMap, "year")
-
-						log.Debug().
-							Int("indexer_id", idx.ID).
-							Str("indexer_name", idx.Name).
-							Str("original_query", currentQuery).
-							Str("modified_query", paramsMap["q"]).
-							Str("year", yearStr).
-							Bool("supports_year_param", supportsYearParam).
-							Msg("Prowlarr workaround: moved year parameter to search query")
-					} else {
-						log.Debug().
-							Int("indexer_id", idx.ID).
-							Str("indexer_name", idx.Name).
-							Str("year", yearStr).
-							Bool("supports_year_param", supportsYearParam).
-							Msg("Prowlarr indexer supports year parameter, keeping as parameter")
-					}
-				}
-			}
+			// Apply Prowlarr workaround for year parameter
+			s.applyProwlarrWorkaround(ctx, idx, paramsMap)
 
 			var searchFn func() ([]Result, error)
 			switch idx.Backend {
@@ -837,6 +803,36 @@ func (s *Service) applyCapabilitySpecificParams(idx *models.TorznabIndexer, meta
 	if meta == nil || len(idx.Capabilities) == 0 {
 		return
 	}
+}
+
+// applyProwlarrWorkaround applies the Prowlarr year parameter workaround to search parameters.
+// It always moves the year parameter into the search query for Prowlarr indexers.
+func (s *Service) applyProwlarrWorkaround(ctx context.Context, idx *models.TorznabIndexer, params map[string]string) {
+	if idx.Backend != models.TorznabBackendProwlarr {
+		return
+	}
+
+	yearStr, exists := params["year"]
+	if !exists || yearStr == "" {
+		return
+	}
+
+	currentQuery := params["q"]
+	if currentQuery != "" {
+		params["q"] = currentQuery + " " + yearStr
+	} else {
+		params["q"] = yearStr
+	}
+	// Remove the year parameter since we've included it in the query
+	delete(params, "year")
+
+	log.Debug().
+		Int("indexer_id", idx.ID).
+		Str("indexer_name", idx.Name).
+		Str("original_query", currentQuery).
+		Str("modified_query", params["q"]).
+		Str("year", yearStr).
+		Msg("Prowlarr workaround: moved year parameter to search query")
 }
 
 func (s *Service) ensureIndexerMetadata(ctx context.Context, client *Client, idx *models.TorznabIndexer, identifier string, ensureCaps bool, ensureCategories bool) {

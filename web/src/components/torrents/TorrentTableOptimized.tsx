@@ -737,7 +737,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
 
     // Legacy fallback: if we have filtered indexers but no available indexers (old response format)
-    if (sourceTorrent.filteredIndexers && sourceTorrent.filteredIndexers.length >= 0) {
+    if (sourceTorrent.filteredIndexers && sourceTorrent.filteredIndexers.length > 0) {
       const filteredIndexerIds = new Set(sourceTorrent.filteredIndexers)
       const filteredIndexers = sortedEnabledIndexers.filter(indexer => 
         filteredIndexerIds.has(indexer.id)

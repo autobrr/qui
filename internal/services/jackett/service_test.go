@@ -1026,44 +1026,44 @@ func TestProwlarrYearParameterWorkaround(t *testing.T) {
 				IndexerID: "test",
 			}
 
-			// Copy input parameters to avoid modifying the test data
-			paramsMap := make(map[string]string)
+			// Set up mock store
+			mockStore := &mockTorznabIndexerStore{
+				capabilities: make(map[int][]string),
+			}
+
+			// Create service with mock store
+			service := &Service{
+				indexerStore: mockStore,
+			}
+
+			// Prepare input parameters
+			inputParams := make(map[string]string)
 			for k, v := range tt.inputParams {
-				paramsMap[k] = v
+				inputParams[k] = v
 			}
 
-			// Apply the Prowlarr workaround logic
-			if indexer.Backend == models.TorznabBackendProwlarr {
-				if yearStr, exists := paramsMap["year"]; exists && yearStr != "" {
-					currentQuery := paramsMap["q"]
-					if currentQuery != "" {
-						paramsMap["q"] = currentQuery + " " + yearStr
-					} else {
-						paramsMap["q"] = yearStr
-					}
-					// Remove the year parameter since we've included it in the query
-					delete(paramsMap, "year")
-				}
-			}
+			// Call the actual service method to apply the workaround
+			ctx := context.Background()
+			service.applyProwlarrWorkaround(ctx, indexer, inputParams)
 
-			// Verify results
+			// Assert expected parameter values
 			for key, expectedValue := range tt.expected {
-				if actualValue := paramsMap[key]; actualValue != expectedValue {
+				if actualValue := inputParams[key]; actualValue != expectedValue {
 					t.Errorf("%s: paramsMap[%q] = %q, want %q", tt.description, key, actualValue, expectedValue)
 				}
 			}
 
-			// Verify that year parameter is removed for Prowlarr when it was present
+			// Assert year parameter is removed for Prowlarr when it was present
 			if tt.backend == models.TorznabBackendProwlarr && tt.inputParams["year"] != "" {
-				if _, exists := paramsMap["year"]; exists {
+				if _, exists := inputParams["year"]; exists {
 					t.Errorf("%s: year parameter should be removed for Prowlarr indexer", tt.description)
 				}
 			}
 
-			// Verify no unexpected parameters
-			for key := range paramsMap {
+			// Assert no unexpected parameters exist
+			for key := range inputParams {
 				if _, expected := tt.expected[key]; !expected {
-					t.Errorf("%s: unexpected parameter %q = %q", tt.description, key, paramsMap[key])
+					t.Errorf("%s: unexpected parameter %q = %q", tt.description, key, inputParams[key])
 				}
 			}
 		})
