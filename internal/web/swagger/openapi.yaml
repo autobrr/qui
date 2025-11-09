@@ -2999,7 +2999,7 @@ components:
     CrossSeedInstanceResult:
       type: object
       properties:
-        instanceId:
+        instance_id:
           type: integer
         instanceName:
           type: string
@@ -3014,7 +3014,7 @@ components:
     CrossSeedRunResult:
       type: object
       properties:
-        instanceId:
+        instance_id:
           type: integer
         instanceName:
           type: string
@@ -3045,7 +3045,7 @@ components:
         status:
           type: string
           enum: [pending, running, success, partial, failed]
-        startedAt:
+        started_at:
           type: string
           format: date-time
         completedAt:
@@ -3131,7 +3131,7 @@ components:
     CrossSeedTorrentInfo:
       type: object
       properties:
-        instanceId:
+        instance_id:
           type: integer
           nullable: true
         instanceName:
