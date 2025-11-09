@@ -47,6 +47,7 @@ type Service struct {
 	searchResultCache *ttlcache.Cache[string, []TorrentSearchResult]
 	// asyncFilteringCache stores async filtering state by torrent key for UI polling
 	asyncFilteringCache *ttlcache.Cache[string, *AsyncIndexerFilteringState]
+	indexerDomainCache  *ttlcache.Cache[string, string]
 
 	automationStore *models.CrossSeedStore
 	jackettService  *jackett.Service
@@ -66,6 +67,7 @@ type Service struct {
 
 const (
 	searchResultCacheTTL         = 5 * time.Minute
+	indexerDomainCacheTTL        = 1 * time.Minute
 	contentFilteringWaitTimeout  = 5 * time.Second
 	contentFilteringPollInterval = 150 * time.Millisecond
 )
@@ -98,6 +100,8 @@ func NewService(
 
 	asyncFilteringCache := ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}.
 		SetDefaultTTL(searchResultCacheTTL)) // Use same TTL as search results
+	indexerDomainCache := ttlcache.New(ttlcache.Options[string, string]{}.
+		SetDefaultTTL(indexerDomainCacheTTL))
 
 	return &Service{
 		instanceStore:       instanceStore,
@@ -106,6 +110,7 @@ func NewService(
 		releaseCache:        NewReleaseCache(),
 		searchResultCache:   searchCache,
 		asyncFilteringCache: asyncFilteringCache,
+		indexerDomainCache:  indexerDomainCache,
 		automationStore:     automationStore,
 		jackettService:      jackettService,
 		automationWake:      make(chan struct{}, 1),
@@ -1732,7 +1737,7 @@ func (s *Service) performAsyncContentFiltering(ctx context.Context, instanceID i
 		Ints("indexerIDs", indexerIDs).
 		Msg("[CROSSSEED-ASYNC] Starting background content filtering")
 
-	filteredIndexers, err := s.filterIndexersByExistingContent(ctx, instanceID, hash, indexerIDs, indexerInfo)
+	filteredIndexers, excludedIndexers, contentMatches, err := s.filterIndexersByExistingContent(ctx, instanceID, hash, indexerIDs, indexerInfo)
 
 	// Use atomic-like updates to avoid race conditions
 	// Note: In a production system, you might want to use sync.Mutex for more complex state updates
@@ -1741,51 +1746,12 @@ func (s *Service) performAsyncContentFiltering(ctx context.Context, instanceID i
 		log.Warn().Err(err).Msg("Failed to filter indexers by existing content during async filtering")
 		state.Error = fmt.Sprintf("Content filtering failed: %v", err)
 		state.FilteredIndexers = indexerIDs // Fall back to capability-filtered list
+		state.ExcludedIndexers = nil
+		state.ContentMatches = nil
 	} else {
 		state.FilteredIndexers = filteredIndexers
-
-		// Calculate excluded indexers and their reasons
-		excludedIndexers := make(map[int]string)
-		for _, indexerID := range indexerIDs {
-			found := false
-			for _, filteredID := range filteredIndexers {
-				if indexerID == filteredID {
-					found = true
-					break
-				}
-			}
-			if !found {
-				indexerName := jackett.GetIndexerNameFromInfo(indexerInfo, indexerID)
-				if indexerName == "" {
-					indexerName = fmt.Sprintf("Indexer-%d", indexerID)
-				}
-				excludedIndexers[indexerID] = fmt.Sprintf("Content already available from %s sources", indexerName)
-			}
-		}
 		state.ExcludedIndexers = excludedIndexers
-
-		// Get content matches for display
-		sourceTorrent, err := s.getTorrentByHash(ctx, instanceID, hash)
-		if err == nil {
-			sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
-			crossInstanceResponse, err := s.syncManager.GetCrossInstanceTorrentsWithFilters(ctx, 0, 0, "", "", "", qbittorrent.FilterOptions{})
-			if err == nil {
-				var contentMatches []string
-				for _, crossTorrent := range crossInstanceResponse.CrossInstanceTorrents {
-					// Skip the source torrent itself
-					if crossTorrent.InstanceID == instanceID && crossTorrent.Hash == sourceTorrent.Hash {
-						continue
-					}
-
-					// Parse the existing torrent to see if it matches the content we're looking for
-					existingRelease := s.releaseCache.Parse(crossTorrent.Name)
-					if s.releasesMatch(sourceRelease, existingRelease, false) {
-						contentMatches = append(contentMatches, fmt.Sprintf("%s (%s)", crossTorrent.Name, crossTorrent.InstanceName))
-					}
-				}
-				state.ContentMatches = contentMatches
-			}
-		}
+		state.ContentMatches = contentMatches
 	}
 
 	// Mark content filtering as completed (this should be the last operation)
@@ -3296,20 +3262,20 @@ func (s *Service) GetAsyncFilteringStatus(ctx context.Context, instanceID int, h
 }
 
 // filterIndexersByExistingContent removes indexers for which we already have matching content
-// This prevents redundant searches against indexers that are likely to return torrents
+// with the same tracker domains. This reduces redundant cross-seed searches by avoiding indexers
 // we already have from the same tracker sources.
 //
 // The filtering works by:
 // 1. Getting the source torrent being searched for and parsing its release info
-// 2. Retrieving all existing torrents from all instances using GetCrossInstanceTorrentsWithFilters
+// 2. Retrieving cached torrents from the source instance (no additional qBittorrent calls)
 // 3. For each indexer, checking if existing torrents from matching tracker domains contain similar content
 // 4. Removing indexers where we already have matching content from associated tracker domains
 //
 // This is similar to how indexers are filtered for tracker capability mismatches,
 // but focuses on content duplication rather than technical capabilities.
-func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceID int, hash string, indexerIDs []int, indexerInfo map[int]jackett.EnabledIndexerInfo) ([]int, error) {
+func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceID int, hash string, indexerIDs []int, indexerInfo map[int]jackett.EnabledIndexerInfo) ([]int, map[int]string, []string, error) {
 	if len(indexerIDs) == 0 {
-		return indexerIDs, nil
+		return indexerIDs, nil, nil, nil
 	}
 
 	// If indexer info not provided, fetch it ourselves
@@ -3318,7 +3284,7 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 		indexerInfo, err = s.jackettService.GetEnabledIndexersInfo(ctx)
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to fetch indexer info for content filtering, proceeding without filtering")
-			return indexerIDs, nil
+			return indexerIDs, nil, nil, nil
 		}
 	}
 	if indexerInfo == nil {
@@ -3336,7 +3302,7 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 	testFilteringEnabled := false // Set to true to test if filtering is working
 	if testFilteringEnabled {
 		log.Debug().Msg("[CROSSSEED-FILTER] *** TEST MODE: FILTERING OUT ALL INDEXERS ***")
-		return []int{}, nil
+		return []int{}, nil, nil, nil
 	}
 
 	log.Debug().
@@ -3346,24 +3312,10 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 		Int("inputCount", len(indexerIDs)).
 		Msg("[CROSSSEED-FILTER] Starting indexer content filtering")
 
-	// Pre-fetch indexer domains once for performance optimization
-	var indexerDomains []string
-	if s.jackettService != nil {
-		if domains, err := s.jackettService.GetEnabledTrackerDomains(ctx); err == nil {
-			indexerDomains = domains
-			log.Debug().
-				Strs("indexerDomains", indexerDomains).
-				Int("domainCount", len(indexerDomains)).
-				Msg("[CROSSSEED-FILTER] Pre-fetched indexer domains for enhanced matching")
-		} else {
-			log.Debug().Err(err).Msg("[CROSSSEED-FILTER] Failed to fetch indexer domains, using name-only matching")
-		}
-	}
-
 	// Get the source torrent being searched for
 	sourceTorrent, err := s.getTorrentByHash(ctx, instanceID, hash)
 	if err != nil {
-		return indexerIDs, err
+		return indexerIDs, nil, nil, err
 	}
 
 	log.Debug().
@@ -3383,20 +3335,29 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 		Str("sourceType", sourceRelease.Type.String()).
 		Msg("[CROSSSEED-FILTER] Parsed source release info")
 
-	// Get existing torrents from all instances to check for matches
-	crossInstanceResponse, err := s.syncManager.GetCrossInstanceTorrentsWithFilters(ctx, 0, 0, "", "", "", qbittorrent.FilterOptions{})
+	// Get cached torrents from the active instance only
+	instanceTorrents, err := s.syncManager.GetCachedInstanceTorrents(ctx, instanceID)
 	if err != nil {
-		return indexerIDs, fmt.Errorf("failed to get cross-instance torrents: %w", err)
+		return indexerIDs, nil, nil, fmt.Errorf("failed to get cached instance torrents: %w", err)
 	}
 
 	log.Debug().
-		Int("crossInstanceTorrentsCount", len(crossInstanceResponse.CrossInstanceTorrents)).
-		Msg("[CROSSSEED-FILTER] Retrieved cross-instance torrents")
+		Int("instanceID", instanceID).
+		Int("cachedInstanceTorrents", len(instanceTorrents)).
+		Msg("[CROSSSEED-FILTER] Retrieved cached instance torrents")
 
-	// First, let's see what content we're working with and potential matches
-	var potentialMatches []string
-	var contentMatchCount int
-	for _, crossTorrent := range crossInstanceResponse.CrossInstanceTorrents {
+	type matchedTorrent struct {
+		view           qbittorrent.CrossInstanceTorrentView
+		trackerDomains []string
+	}
+
+	var (
+		matchedContent   []matchedTorrent
+		contentMatches   []string
+		potentialMatches []string
+	)
+
+	for _, crossTorrent := range instanceTorrents {
 		// Skip the source torrent itself
 		if crossTorrent.InstanceID == instanceID && crossTorrent.Hash == sourceTorrent.Hash {
 			continue
@@ -3404,23 +3365,30 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 
 		// Parse the existing torrent to see if it matches the content we're looking for
 		existingRelease := s.releaseCache.Parse(crossTorrent.Name)
-		if s.releasesMatch(sourceRelease, existingRelease, false) {
-			contentMatchCount++
-			potentialMatches = append(potentialMatches, fmt.Sprintf("%s (Instance: %s)", crossTorrent.Name, crossTorrent.InstanceName))
-
-			// Extract tracker domains for this torrent
-			trackerDomains := s.extractTrackerDomainsFromTorrent(crossTorrent.TorrentView.Torrent)
-			log.Debug().
-				Str("matchingTorrentName", crossTorrent.Name).
-				Str("matchingInstanceName", crossTorrent.InstanceName).
-				Strs("trackerDomains", trackerDomains).
-				Msg("[CROSSSEED-FILTER] Found content match with tracker domains")
+		if !s.releasesMatch(sourceRelease, existingRelease, false) {
+			continue
 		}
+
+		matchLabel := fmt.Sprintf("%s (%s)", crossTorrent.Name, crossTorrent.InstanceName)
+		potentialMatches = append(potentialMatches, fmt.Sprintf("%s (Instance: %s)", crossTorrent.Name, crossTorrent.InstanceName))
+		contentMatches = append(contentMatches, matchLabel)
+
+		trackerDomains := s.extractTrackerDomainsFromTorrent(crossTorrent.TorrentView.Torrent)
+		matchedContent = append(matchedContent, matchedTorrent{
+			view:           crossTorrent,
+			trackerDomains: trackerDomains,
+		})
+
+		log.Debug().
+			Str("matchingTorrentName", crossTorrent.Name).
+			Str("matchingInstanceName", crossTorrent.InstanceName).
+			Strs("trackerDomains", trackerDomains).
+			Msg("[CROSSSEED-FILTER] Found content match with tracker domains")
 	}
 
 	log.Debug().
-		Int("totalCrossInstanceTorrents", len(crossInstanceResponse.CrossInstanceTorrents)).
-		Int("contentMatches", contentMatchCount).
+		Int("instanceID", instanceID).
+		Int("contentMatches", len(matchedContent)).
 		Strs("potentialMatches", potentialMatches).
 		Msg("[CROSSSEED-FILTER] Content matching analysis")
 
@@ -3444,31 +3412,16 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 		}
 
 		// Skip searching indexers that already provided the source torrent
-		if sourceTorrent != nil && s.torrentMatchesIndexer(*sourceTorrent, indexerName, indexerDomains) {
+		if sourceTorrent != nil && s.torrentMatchesIndexer(*sourceTorrent, indexerName) {
 			shouldIncludeIndexer = false
 			exclusionReason = "already seeded from this tracker"
 		}
 
 		// Check if we already have content that this indexer would likely provide
-		// This is done by checking if existing torrents have tracker domains that match the indexer
-		if shouldIncludeIndexer {
-			for _, crossTorrent := range crossInstanceResponse.CrossInstanceTorrents {
-				// Skip the source torrent itself when evaluating other matches
-				if crossTorrent.InstanceID == instanceID && crossTorrent.Hash == sourceTorrent.Hash {
-					continue
-				}
-
-				// Parse the existing torrent to see if it matches the content we're looking for
-				existingRelease := s.releaseCache.Parse(crossTorrent.Name)
-				if !s.releasesMatch(sourceRelease, existingRelease, false) {
-					continue
-				}
-
-				// Check if this torrent came from a tracker that matches the indexer we're checking
-				torrentMatches := s.torrentMatchesIndexer(crossTorrent.TorrentView.Torrent, indexerName, indexerDomains)
-
-				if torrentMatches {
-					exclusionReason = fmt.Sprintf("has matching content from %s (%s)", crossTorrent.InstanceName, crossTorrent.Name)
+		if shouldIncludeIndexer && len(matchedContent) > 0 {
+			for _, match := range matchedContent {
+				if s.trackerDomainsMatchIndexer(match.trackerDomains, indexerName) {
+					exclusionReason = fmt.Sprintf("has matching content from %s (%s)", match.view.InstanceName, match.view.Name)
 					shouldIncludeIndexer = false
 					break
 				}
@@ -3494,25 +3447,23 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 		Interface("excludedIndexers", excludedIndexers).
 		Msg("[CROSSSEED-FILTER] Content filtering completed")
 
-	return filteredIndexerIDs, nil
+	return filteredIndexerIDs, excludedIndexers, contentMatches, nil
 }
 
-// torrentMatchesIndexer checks if a torrent came from a tracker associated with the given indexer
-// with optional pre-fetched indexer domains for performance optimization
-func (s *Service) torrentMatchesIndexer(torrent qbt.Torrent, indexerName string, indexerDomains ...[]string) bool {
-	// Extract tracker domains from the torrent
+// torrentMatchesIndexer checks if a torrent came from a tracker associated with the given indexer.
+func (s *Service) torrentMatchesIndexer(torrent qbt.Torrent, indexerName string) bool {
 	trackerDomains := s.extractTrackerDomainsFromTorrent(torrent)
+	return s.trackerDomainsMatchIndexer(trackerDomains, indexerName)
+}
 
-	// Enhanced indexer name normalization
-	normalizedIndexerName := s.normalizeIndexerName(indexerName)
-
-	// Get the specific domain for this indexer (not all domains)
-	var specificIndexerDomain string
-	if s.jackettService != nil {
-		if domain, err := s.jackettService.GetIndexerDomain(context.Background(), indexerName); err == nil && domain != "" {
-			specificIndexerDomain = domain
-		}
+// trackerDomainsMatchIndexer checks if any of the provided domains align with the target indexer.
+func (s *Service) trackerDomainsMatchIndexer(trackerDomains []string, indexerName string) bool {
+	if len(trackerDomains) == 0 {
+		return false
 	}
+
+	normalizedIndexerName := s.normalizeIndexerName(indexerName)
+	specificIndexerDomain := s.getCachedIndexerDomain(indexerName)
 
 	// Check hardcoded domain mappings first
 	for _, trackerDomain := range trackerDomains {
@@ -3742,6 +3693,30 @@ func (s *Service) torrentMatchesIndexer(torrent qbt.Torrent, indexerName string,
 	}
 
 	return false
+}
+
+// getCachedIndexerDomain returns a cached specific domain for the given indexer when available.
+func (s *Service) getCachedIndexerDomain(indexerName string) string {
+	if s.jackettService == nil || indexerName == "" {
+		return ""
+	}
+
+	if s.indexerDomainCache != nil {
+		if cached, ok := s.indexerDomainCache.Get(indexerName); ok {
+			return cached
+		}
+	}
+
+	domain, err := s.jackettService.GetIndexerDomain(context.Background(), indexerName)
+	if err != nil || domain == "" {
+		return ""
+	}
+
+	if s.indexerDomainCache != nil {
+		s.indexerDomainCache.Set(indexerName, domain, indexerDomainCacheTTL)
+	}
+
+	return domain
 }
 
 // normalizeIndexerName normalizes indexer names for comparison

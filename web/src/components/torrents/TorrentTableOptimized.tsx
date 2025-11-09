@@ -1918,8 +1918,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       }
     }
 
-    // Start polling every 2 seconds
-    crossSeedPollingRef.current = setInterval(pollForUpdates, 2000)
+    // Start polling every 0.5 seconds so UI updates quickly once filtering finishes
+    crossSeedPollingRef.current = setInterval(pollForUpdates, 500)
 
     // Cleanup function
     return () => {

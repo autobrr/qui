@@ -467,7 +467,8 @@ const CrossSeedScopeSelector = memo(({
   const selectedCount = selectedIndexerIds.length
   const excludedCount = excludedIndexerIds.length
   const disableCustomSelection = total === 0
-  const scopeSearchDisabled = isSearching || (indexerMode === "custom" && selectedCount === 0)
+  const filteringInProgress = !contentFilteringCompleted
+  const scopeSearchDisabled = filteringInProgress || isSearching || (indexerMode === "custom" && selectedCount === 0)
 
   // Calculate the actual count of indexers that will be used for search
   const searchIndexerCount = useMemo(() => {
@@ -593,7 +594,12 @@ const CrossSeedScopeSelector = memo(({
             disabled={scopeSearchDisabled}
             className="h-7 text-xs"
           >
-            {isSearching ? (
+            {filteringInProgress ? (
+              <>
+                <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                Filtering…
+              </>
+            ) : isSearching ? (
               <>
                 <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
                 Searching
