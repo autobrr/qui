@@ -94,16 +94,14 @@ const (
 
 // initializeDomainMappings returns a hardcoded mapping of tracker domains to indexer domains.
 // This helps map tracker domains (from existing torrents) to indexer domains (from Jackett/Prowlarr)
-// for better cross-seed matching when domains don't match exactly.
+// for better indexer matching when tracker has no correlation with indexer name/domain.
 //
 // Format: tracker_domain -> []indexer_domains
 func initializeDomainMappings() map[string][]string {
 	return map[string][]string{
-		// BTN (BroadcastHe.Net) - landof.tv is an alternative domain for BTN
-		"landof.tv": {"broadcasthe.net"},
-
-		// Add more specific domain aliases as needed
-		// "tracker.domain": {"indexer.domain"},
+		"landof.tv":      {"broadcasthe.net"},
+		"flacsfor.me":    {"redacted.sh"},
+		"home.opsfet.ch": {"orpheus.network"},
 	}
 }
 
