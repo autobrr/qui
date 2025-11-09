@@ -2330,6 +2330,27 @@ paths:
         '500':
           description: Failed to analyze torrent
 
+  /api/cross-seed/torrents/{instanceId}/{hash}/async-status:
+    get:
+      tags:
+        - Cross-Seed
+      summary: Get async filtering status
+      description: Returns the current async filtering progress for a torrent, including whether content filtering has completed
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      responses:
+        '200':
+          description: Current async filtering state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsyncIndexerFilteringState'
+        '400':
+          description: Invalid parameters
+        '500':
+          description: Failed to get filtering status
+
   /api/cross-seed/torrents/{instanceId}/{hash}/search:
     post:
       tags:
@@ -3161,6 +3182,65 @@ components:
         fileCount:
           type: integer
           nullable: true
+        contentType:
+          type: string
+          nullable: true
+        searchType:
+          type: string
+          nullable: true
+        searchCategories:
+          type: array
+          items:
+            type: integer
+        requiredCaps:
+          type: array
+          items:
+            type: string
+        availableIndexers:
+          type: array
+          items:
+            type: integer
+        filteredIndexers:
+          type: array
+          items:
+            type: integer
+        excludedIndexers:
+          type: object
+          additionalProperties:
+            type: string
+        contentMatches:
+          type: array
+          items:
+            type: string
+        contentFilteringCompleted:
+          type: boolean
+          nullable: true
+
+    AsyncIndexerFilteringState:
+      type: object
+      properties:
+        capabilities_completed:
+          type: boolean
+        content_completed:
+          type: boolean
+        capability_indexers:
+          type: array
+          items:
+            type: integer
+        filtered_indexers:
+          type: array
+          items:
+            type: integer
+        excluded_indexers:
+          type: object
+          additionalProperties:
+            type: string
+        content_matches:
+          type: array
+          items:
+            type: string
+        error:
+          type: string
 
     CrossSeedTorrentSearchRequest:
       type: object
