@@ -36,10 +36,28 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
+// instanceProvider captures the instance store methods the service relies on.
+type instanceProvider interface {
+	Get(ctx context.Context, id int) (*models.Instance, error)
+	List(ctx context.Context) ([]*models.Instance, error)
+}
+
+// qbittorrentSync exposes the sync manager functionality needed by the service.
+type qbittorrentSync interface {
+	GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
+	GetTorrentFiles(ctx context.Context, instanceID int, hash string) (*qbt.TorrentFiles, error)
+	GetTorrentProperties(ctx context.Context, instanceID int, hash string) (*qbt.TorrentProperties, error)
+	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error
+	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
+	GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error)
+	ExtractDomainFromURL(urlStr string) string
+	GetQBittorrentSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error)
+}
+
 // Service provides cross-seed functionality
 type Service struct {
-	instanceStore *models.InstanceStore
-	syncManager   *qbittorrent.SyncManager
+	instanceStore instanceProvider
+	syncManager   qbittorrentSync
 	filesManager  *filesmanager.Service
 	releaseCache  *ReleaseCache
 	// searchResultCache stores the most recent search results per torrent hash so that
@@ -123,6 +141,12 @@ var ErrAutomationRunning = errors.New("cross-seed automation already running")
 
 // ErrSearchRunActive indicates a search automation run is in progress.
 var ErrSearchRunActive = errors.New("cross-seed search run already running")
+
+// ErrInvalidWebhookRequest indicates a webhook check payload failed validation.
+var ErrInvalidWebhookRequest = errors.New("invalid webhook request")
+
+// ErrWebhookInstanceNotFound indicates the requested instance does not exist.
+var ErrWebhookInstanceNotFound = errors.New("cross-seed instance not found")
 
 // AutomationRunOptions configures a manual automation run.
 type AutomationRunOptions struct {
@@ -4104,4 +4128,126 @@ func (s *Service) isSizeWithinTolerance(sourceSize, candidateSize int64, toleran
 
 	candidateSizeFloat := float64(candidateSize)
 	return candidateSizeFloat >= minAcceptableSize && candidateSizeFloat <= maxAcceptableSize
+}
+
+// CheckWebhook checks if a release announced by autobrr can be cross-seeded with existing torrents.
+// This endpoint is designed for autobrr webhook integration where autobrr sends parsed release metadata
+// and we check if any existing torrents across our instances match, indicating a cross-seed opportunity.
+func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*WebhookCheckResponse, error) {
+	if req.TorrentName == "" {
+		return nil, fmt.Errorf("%w: torrentName is required", ErrInvalidWebhookRequest)
+	}
+	if req.InstanceID <= 0 {
+		return nil, fmt.Errorf("%w: instanceId is required and must be a positive integer", ErrInvalidWebhookRequest)
+	}
+
+	// Parse the incoming release using rls - this extracts all metadata from the torrent name
+	incomingRelease := s.releaseCache.Parse(req.TorrentName)
+
+	// Get automation settings for sizeMismatchTolerancePercent
+	// Note: We always use strict matching (findIndividualEpisodes=false) for webhook checks
+	// because season packs and individual episodes have incompatible file structures.
+	settings, err := s.GetAutomationSettings(ctx)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to load automation settings for webhook check, using defaults")
+		settings = &models.CrossSeedAutomationSettings{
+			SizeMismatchTolerancePercent: 5.0,
+		}
+	}
+
+	// Get the target instance
+	instance, err := s.instanceStore.Get(ctx, req.InstanceID)
+	if err != nil {
+		if errors.Is(err, models.ErrInstanceNotFound) {
+			return nil, fmt.Errorf("%w: instance %d not found", ErrWebhookInstanceNotFound, req.InstanceID)
+		}
+		return nil, fmt.Errorf("failed to get instance %d: %w", req.InstanceID, err)
+	}
+	instances := []*models.Instance{instance}
+
+	var matches []WebhookCheckMatch
+
+	// Search each instance for matching torrents
+	for _, instance := range instances {
+		// Get all torrents from this instance using cached sync data
+		torrentsView, err := s.syncManager.GetCachedInstanceTorrents(ctx, instance.ID)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instance.ID).Msg("Failed to get torrents from instance")
+			continue
+		}
+
+		// Convert CrossInstanceTorrentView to qbt.Torrent for matching
+		torrents := make([]qbt.Torrent, len(torrentsView))
+		for i, tv := range torrentsView {
+			torrents[i] = tv.Torrent
+		}
+
+		// Check each torrent for a match
+		for _, torrent := range torrents {
+			// Parse the existing torrent's release info
+			existingRelease := s.releaseCache.Parse(torrent.Name)
+
+			// Check if releases match using strict matching (always false for findIndividualEpisodes)
+			// We use strict matching for cross-seed validation because season packs and individual
+			// episodes have different file structures and cannot be cross-seeded, even if the
+			// content is related. qBittorrent would have to recheck/redownload everything.
+			if !s.releasesMatch(incomingRelease, existingRelease, false) {
+				continue
+			}
+
+			// Determine match type
+			matchType := "metadata"
+			var sizeDiff float64
+
+			if req.Size > 0 && torrent.Size > 0 {
+				// Calculate size difference percentage
+				if torrent.Size > 0 {
+					diff := math.Abs(float64(req.Size) - float64(torrent.Size))
+					sizeDiff = (diff / float64(torrent.Size)) * 100.0
+				}
+
+				// Check if size is within tolerance
+				if s.isSizeWithinTolerance(int64(req.Size), torrent.Size, settings.SizeMismatchTolerancePercent) {
+					if sizeDiff < 0.1 {
+						matchType = "exact"
+					} else {
+						matchType = "size"
+					}
+				} else {
+					// Size is outside tolerance, skip this match
+					log.Debug().
+						Str("incomingName", req.TorrentName).
+						Str("existingName", torrent.Name).
+						Uint64("incomingSize", req.Size).
+						Int64("existingSize", torrent.Size).
+						Float64("sizeDiff", sizeDiff).
+						Float64("tolerance", settings.SizeMismatchTolerancePercent).
+						Msg("Skipping match due to size mismatch")
+					continue
+				}
+			}
+
+			matches = append(matches, WebhookCheckMatch{
+				InstanceID:   instance.ID,
+				InstanceName: instance.Name,
+				TorrentHash:  torrent.Hash,
+				TorrentName:  torrent.Name,
+				MatchType:    matchType,
+				SizeDiff:     sizeDiff,
+			})
+		}
+	}
+
+	// Build response
+	canCrossSeed := len(matches) > 0
+	recommendation := "skip"
+	if canCrossSeed {
+		recommendation = "download"
+	}
+
+	return &WebhookCheckResponse{
+		CanCrossSeed:   canCrossSeed,
+		Matches:        matches,
+		Recommendation: recommendation,
+	}, nil
 }

@@ -238,3 +238,31 @@ type AsyncTorrentAnalysis struct {
 	TorrentInfo    *TorrentInfo                `json:"torrent_info"`
 	FilteringState *AsyncIndexerFilteringState `json:"filtering_state"`
 }
+
+// WebhookCheckRequest represents a request from autobrr to check if a release can be cross-seeded.
+// The torrentName is parsed using the rls library to extract all metadata, so only the name is required.
+type WebhookCheckRequest struct {
+	// TorrentName is the release name as announced (required)
+	TorrentName string `json:"torrentName"`
+	// InstanceID is the target instance to check against (required - must match the instance where autobrr will download)
+	InstanceID int `json:"instanceId"`
+	// Size is the total torrent size in bytes (optional - enables size validation if provided)
+	Size uint64 `json:"size,omitempty"`
+}
+
+// WebhookCheckMatch represents a matched torrent in an instance
+type WebhookCheckMatch struct {
+	InstanceID   int     `json:"instanceId"`
+	InstanceName string  `json:"instanceName"`
+	TorrentHash  string  `json:"torrentHash"`
+	TorrentName  string  `json:"torrentName"`
+	MatchType    string  `json:"matchType"` // "metadata", "exact", "size"
+	SizeDiff     float64 `json:"sizeDiff,omitempty"`
+}
+
+// WebhookCheckResponse represents the response to a webhook check request
+type WebhookCheckResponse struct {
+	CanCrossSeed   bool                `json:"canCrossSeed"`
+	Matches        []WebhookCheckMatch `json:"matches"`
+	Recommendation string              `json:"recommendation"` // "download" or "skip"
+}

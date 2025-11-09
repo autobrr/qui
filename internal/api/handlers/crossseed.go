@@ -81,6 +81,9 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 			r.Post("/run/cancel", h.CancelSearchRun)
 			r.Get("/runs", h.ListSearchRunHistory)
 		})
+		r.Route("/webhook", func(r chi.Router) {
+			r.Post("/check", h.WebhookCheck)
+		})
 	})
 }
 
@@ -594,4 +597,51 @@ func (h *CrossSeedHandler) GetCrossSeedStatus(w http.ResponseWriter, r *http.Req
 	}
 
 	RespondJSON(w, http.StatusOK, status)
+}
+
+// WebhookCheck godoc
+// @Summary Check if a release can be cross-seeded (autobrr webhook)
+// @Description Accepts release metadata from autobrr and checks if matching torrents exist across instances
+// @Tags cross-seed
+// @Accept json
+// @Produce json
+// @Param request body crossseed.WebhookCheckRequest true "Release metadata from autobrr"
+// @Success 200 {object} crossseed.WebhookCheckResponse "Matches found (recommendation=download)"
+// @Failure 404 {object} crossseed.WebhookCheckResponse "No matches found (recommendation=skip)"
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/webhook/check [post]
+func (h *CrossSeedHandler) WebhookCheck(w http.ResponseWriter, r *http.Request) {
+	var req crossseed.WebhookCheckRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode webhook check request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	response, err := h.service.CheckWebhook(r.Context(), &req)
+	if err != nil {
+		switch {
+		case errors.Is(err, crossseed.ErrInvalidWebhookRequest):
+			log.Warn().Err(err).Msg("Invalid webhook payload")
+			RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		case errors.Is(err, crossseed.ErrWebhookInstanceNotFound):
+			log.Warn().Err(err).Msg("Webhook instance not found")
+			RespondError(w, http.StatusNotFound, err.Error())
+			return
+		default:
+			log.Error().Err(err).Msg("Failed to check webhook")
+			RespondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+
+	if !response.CanCrossSeed {
+		RespondJSON(w, http.StatusNotFound, response)
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, response)
 }

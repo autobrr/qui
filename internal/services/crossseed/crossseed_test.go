@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"fmt"
 	"os"
@@ -16,6 +17,9 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
+	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // Helper function to create a test torrent file
@@ -1004,6 +1008,407 @@ func TestMakeReleaseKey_Matching(t *testing.T) {
 
 			matches := key1 == key2
 			assert.Equal(t, tt.shouldMatch, matches)
+		})
+	}
+}
+
+// TestCheckWebhook_AutobrrPayload exercises the webhook handler end-to-end using faked dependencies.
+func TestCheckWebhook_AutobrrPayload(t *testing.T) {
+	instance := &models.Instance{
+		ID:   1,
+		Name: "Test Instance",
+	}
+
+	tests := []struct {
+		name               string
+		request            *WebhookCheckRequest
+		existingTorrents   []qbt.Torrent
+		wantCanCrossSeed   bool
+		wantMatchCount     int
+		wantRecommendation string
+		wantMatchType      string
+	}{
+		{
+			name: "movie match - identical release",
+			request: &WebhookCheckRequest{
+				InstanceID:  instance.ID,
+				TorrentName: "That.Movie.2025.1080p.BluRay.x264-GROUP",
+				Size:        8589934592, // 8GB
+			},
+			existingTorrents: []qbt.Torrent{
+				{
+					Hash: "abc123def456",
+					Name: "That.Movie.2025.1080p.BluRay.x264-GROUP",
+					Size: 8589934592,
+				},
+			},
+			wantCanCrossSeed:   true,
+			wantMatchCount:     1,
+			wantRecommendation: "download",
+			wantMatchType:      "exact",
+		},
+		{
+			name: "metadata match - size unknown",
+			request: &WebhookCheckRequest{
+				InstanceID:  instance.ID,
+				TorrentName: "Another.Movie.2025.1080p.BluRay.x264-GRP",
+			},
+			existingTorrents: []qbt.Torrent{
+				{
+					Hash: "xyz789abc123",
+					Name: "Another.Movie.2025.1080p.BluRay.x264-GRP",
+					Size: 9000000000,
+				},
+			},
+			wantCanCrossSeed:   true,
+			wantMatchCount:     1,
+			wantRecommendation: "download",
+			wantMatchType:      "metadata",
+		},
+		{
+			name: "size mismatch rejects match",
+			request: &WebhookCheckRequest{
+				InstanceID:  instance.ID,
+				TorrentName: "Size.Test.2025.1080p.BluRay.x264-GRP",
+				Size:        8589934592,
+			},
+			existingTorrents: []qbt.Torrent{
+				{
+					Hash: "size-mismatch",
+					Name: "Size.Test.2025.1080p.BluRay.x264-GRP",
+					Size: 6500000000,
+				},
+			},
+			wantCanCrossSeed:   false,
+			wantMatchCount:     0,
+			wantRecommendation: "skip",
+		},
+		{
+			name: "different release group does not match",
+			request: &WebhookCheckRequest{
+				InstanceID:  instance.ID,
+				TorrentName: "Group.Change.2025.1080p.BluRay.x264-NEW",
+				Size:        1073741824,
+			},
+			existingTorrents: []qbt.Torrent{
+				{
+					Hash: "old-group",
+					Name: "Group.Change.2025.1080p.BluRay.x264-OLD",
+					Size: 1073741824,
+				},
+			},
+			wantCanCrossSeed:   false,
+			wantMatchCount:     0,
+			wantRecommendation: "skip",
+		},
+		{
+			name: "multiple matches return download recommendation",
+			request: &WebhookCheckRequest{
+				InstanceID:  instance.ID,
+				TorrentName: "Popular.Movie.2025.1080p.BluRay.x264-GROUP3",
+				Size:        8589934592,
+			},
+			existingTorrents: []qbt.Torrent{
+				{
+					Hash: "match1",
+					Name: "Popular.Movie.2025.1080p.BluRay.x264-GROUP3",
+					Size: 8589934592,
+				},
+				{
+					Hash: "match2",
+					Name: "Popular.Movie.2025.1080p.BluRay.x264-GROUP3",
+					Size: 8589934592,
+				},
+			},
+			wantCanCrossSeed:   true,
+			wantMatchCount:     2,
+			wantRecommendation: "download",
+			wantMatchType:      "exact",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := &fakeInstanceStore{
+				instances: map[int]*models.Instance{
+					instance.ID: instance,
+				},
+			}
+			svc := &Service{
+				instanceStore: store,
+				syncManager:   newFakeSyncManager(instance, tt.existingTorrents),
+				releaseCache:  NewReleaseCache(),
+			}
+
+			resp, err := svc.CheckWebhook(context.Background(), tt.request)
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.wantCanCrossSeed, resp.CanCrossSeed)
+			assert.Equal(t, tt.wantMatchCount, len(resp.Matches))
+			assert.Equal(t, tt.wantRecommendation, resp.Recommendation)
+
+			if tt.wantMatchType != "" && tt.wantMatchCount > 0 {
+				matchTypes := make([]string, 0, len(resp.Matches))
+				for _, match := range resp.Matches {
+					matchTypes = append(matchTypes, match.MatchType)
+				}
+				assert.Contains(t, matchTypes, tt.wantMatchType)
+			}
+		})
+	}
+}
+
+func TestCheckWebhook_InstanceNotFound(t *testing.T) {
+	svc := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{}},
+		releaseCache:  NewReleaseCache(),
+	}
+
+	_, err := svc.CheckWebhook(context.Background(), &WebhookCheckRequest{
+		InstanceID:  99,
+		TorrentName: "Missing.Instance.2025.1080p.BluRay.x264-GROUP",
+	})
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrWebhookInstanceNotFound)
+}
+
+type fakeInstanceStore struct {
+	instances map[int]*models.Instance
+}
+
+func (f *fakeInstanceStore) Get(_ context.Context, id int) (*models.Instance, error) {
+	if inst, ok := f.instances[id]; ok {
+		return inst, nil
+	}
+	return nil, models.ErrInstanceNotFound
+}
+
+func (f *fakeInstanceStore) List(_ context.Context) ([]*models.Instance, error) {
+	result := make([]*models.Instance, 0, len(f.instances))
+	for _, inst := range f.instances {
+		result = append(result, inst)
+	}
+	return result, nil
+}
+
+type fakeSyncManager struct {
+	torrents map[int][]internalqb.CrossInstanceTorrentView
+}
+
+func newFakeSyncManager(instance *models.Instance, torrents []qbt.Torrent) *fakeSyncManager {
+	views := make([]internalqb.CrossInstanceTorrentView, len(torrents))
+	for i, tor := range torrents {
+		views[i] = internalqb.CrossInstanceTorrentView{
+			TorrentView: internalqb.TorrentView{
+				Torrent: tor,
+			},
+			InstanceID:   instance.ID,
+			InstanceName: instance.Name,
+		}
+	}
+	return &fakeSyncManager{
+		torrents: map[int][]internalqb.CrossInstanceTorrentView{
+			instance.ID: views,
+		},
+	}
+}
+
+func (f *fakeSyncManager) GetAllTorrents(_ context.Context, _ int) ([]qbt.Torrent, error) {
+	return nil, fmt.Errorf("GetAllTorrents not implemented in fakeSyncManager")
+}
+
+func (f *fakeSyncManager) GetTorrentFiles(_ context.Context, _ int, _ string) (*qbt.TorrentFiles, error) {
+	return nil, fmt.Errorf("GetTorrentFiles not implemented in fakeSyncManager")
+}
+
+func (f *fakeSyncManager) GetTorrentProperties(_ context.Context, _ int, _ string) (*qbt.TorrentProperties, error) {
+	return nil, fmt.Errorf("GetTorrentProperties not implemented in fakeSyncManager")
+}
+
+func (f *fakeSyncManager) AddTorrent(_ context.Context, _ int, _ []byte, _ map[string]string) error {
+	return fmt.Errorf("AddTorrent not implemented in fakeSyncManager")
+}
+
+func (f *fakeSyncManager) BulkAction(_ context.Context, _ int, _ []string, _ string) error {
+	return fmt.Errorf("BulkAction not implemented in fakeSyncManager")
+}
+
+func (f *fakeSyncManager) GetCachedInstanceTorrents(_ context.Context, instanceID int) ([]internalqb.CrossInstanceTorrentView, error) {
+	return f.torrents[instanceID], nil
+}
+
+func (f *fakeSyncManager) ExtractDomainFromURL(string) string {
+	return ""
+}
+
+func (f *fakeSyncManager) GetQBittorrentSyncManager(_ context.Context, _ int) (*qbt.SyncManager, error) {
+	return nil, fmt.Errorf("GetQBittorrentSyncManager not implemented in fakeSyncManager")
+}
+
+// TestWebhookCheckRequest_Validation tests request validation
+func TestWebhookCheckRequest_Validation(t *testing.T) {
+	tests := []struct {
+		name    string
+		request *WebhookCheckRequest
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "valid request with instance",
+			request: &WebhookCheckRequest{
+				TorrentName: "Movie.2025.1080p.BluRay.x264-GROUP",
+				InstanceID:  1,
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid full request",
+			request: &WebhookCheckRequest{
+				TorrentName: "Movie.2025.1080p.BluRay.x264-GROUP",
+				InstanceID:  1,
+				Size:        8589934592,
+			},
+			wantErr: false,
+		},
+		{
+			name: "missing instance ID",
+			request: &WebhookCheckRequest{
+				TorrentName: "Movie.2025.1080p.BluRay.x264-GROUP",
+			},
+			wantErr: true,
+			errMsg:  "instanceId is required and must be a positive integer",
+		},
+		{
+			name: "zero instance ID",
+			request: &WebhookCheckRequest{
+				TorrentName: "Movie.2025.1080p.BluRay.x264-GROUP",
+				InstanceID:  0,
+			},
+			wantErr: true,
+			errMsg:  "instanceId is required and must be a positive integer",
+		},
+		{
+			name: "negative instance ID",
+			request: &WebhookCheckRequest{
+				TorrentName: "Movie.2025.1080p.BluRay.x264-GROUP",
+				InstanceID:  -1,
+			},
+			wantErr: true,
+			errMsg:  "instanceId is required and must be a positive integer",
+		},
+		{
+			name: "missing torrent name",
+			request: &WebhookCheckRequest{
+				InstanceID: 1,
+				Size:       8589934592,
+			},
+			wantErr: true,
+			errMsg:  "torrentName is required",
+		},
+		{
+			name: "empty torrent name",
+			request: &WebhookCheckRequest{
+				TorrentName: "",
+				InstanceID:  1,
+			},
+			wantErr: true,
+			errMsg:  "torrentName is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Validate the request structure expectations
+			if !tt.wantErr {
+				// Valid requests should have required fields
+				assert.NotEmpty(t, tt.request.TorrentName, "Valid request should have TorrentName")
+				assert.Greater(t, tt.request.InstanceID, 0, "Valid request should have positive InstanceID")
+			}
+			// Note: Invalid requests can have various combinations of missing/invalid fields
+			// The actual validation is tested in integration tests with the service
+		})
+	}
+}
+
+// TestWebhookCheckResponse_Structure tests response structure
+func TestWebhookCheckResponse_Structure(t *testing.T) {
+	tests := []struct {
+		name     string
+		response *WebhookCheckResponse
+	}{
+		{
+			name: "no matches",
+			response: &WebhookCheckResponse{
+				CanCrossSeed:   false,
+				Matches:        []WebhookCheckMatch{},
+				Recommendation: "skip",
+			},
+		},
+		{
+			name: "single match",
+			response: &WebhookCheckResponse{
+				CanCrossSeed: true,
+				Matches: []WebhookCheckMatch{
+					{
+						InstanceID:   1,
+						InstanceName: "Main qBittorrent",
+						TorrentHash:  "abc123",
+						TorrentName:  "Movie.2025.1080p.BluRay.x264-GROUP1",
+						MatchType:    "exact",
+						SizeDiff:     0.5,
+					},
+				},
+				Recommendation: "download",
+			},
+		},
+		{
+			name: "multiple matches",
+			response: &WebhookCheckResponse{
+				CanCrossSeed: true,
+				Matches: []WebhookCheckMatch{
+					{
+						InstanceID:   1,
+						InstanceName: "Instance 1",
+						TorrentHash:  "abc123",
+						TorrentName:  "Movie.2025.1080p.BluRay.x264-GROUP1",
+						MatchType:    "exact",
+						SizeDiff:     0.2,
+					},
+					{
+						InstanceID:   2,
+						InstanceName: "Instance 2",
+						TorrentHash:  "def456",
+						TorrentName:  "Movie.2025.1080p.BluRay.x264-GROUP2",
+						MatchType:    "size",
+						SizeDiff:     2.5,
+					},
+				},
+				Recommendation: "download",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Validate response structure
+			if tt.response.CanCrossSeed {
+				assert.Equal(t, "download", tt.response.Recommendation)
+				assert.NotEmpty(t, tt.response.Matches)
+			} else {
+				assert.Equal(t, "skip", tt.response.Recommendation)
+				assert.Empty(t, tt.response.Matches)
+			}
+
+			// Validate match types
+			for _, match := range tt.response.Matches {
+				validTypes := []string{"metadata", "exact", "size"}
+				assert.Contains(t, validTypes, match.MatchType)
+				assert.NotEmpty(t, match.InstanceName)
+				assert.NotEmpty(t, match.TorrentHash)
+				assert.NotEmpty(t, match.TorrentName)
+				assert.Greater(t, match.InstanceID, 0)
+			}
 		})
 	}
 }

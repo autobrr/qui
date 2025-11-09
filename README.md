@@ -424,6 +424,8 @@ http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz
 - Leave username/password blank and press **Test**
 - Leave basic auth blank since qui handles that
 
+For cross-seed integration with autobrr, see the [Cross-Seed](#cross-seed) section below.
+
 **cross-seed**
 - Open cross-seed config file
 - Add or edit the `torrentClients` section.
@@ -463,6 +465,82 @@ This reverse proxy will work with any application that supports qBittorrent's We
 **Version String Errors:**
 - This was a common issue that's now resolved with the new proxy implementation
 - Try regenerating the Client API Key if you still see version parsing errors
+
+## Cross-Seed
+
+qui includes intelligent cross-seeding capabilities that help you automatically find and add matching torrents across different trackers. This allows you to maximize your ratio by seeding the same content to multiple trackers.
+
+### autobrr Integration
+
+qui can integrate directly with autobrr through a webhook endpoint. When autobrr receives a new release, it can check qui to see if you already have matching content across your qBittorrent instances - indicating a cross-seed opportunity.
+
+#### How It Works
+
+1. autobrr sees a new release from a tracker
+2. autobrr sends the torrentname and target instance ID to qui's webhook endpoint
+3. qui searches the specified qBittorrent instance for matching content
+4. qui responds whether you can cross-seed (200 OK) or not (404 Not Found)
+5. autobrr can decide to download based on the response
+
+#### Setup
+
+**1. Create an API Key in qui**
+- Go to **Settings → API Keys** in qui
+- Click **Create API Key**
+- Give it a name like "autobrr webhook"
+- Copy the generated API key
+
+**2. Configure autobrr External Filter**
+
+In your autobrr filter, go to the **External** tab and click **Add new**:
+
+**Type:** `Webhook`
+
+**Name:** `qui` (or any name you prefer)
+
+**On Error:** `Reject`
+
+**Endpoint:**
+```
+http://localhost:7476/api/cross-seed/webhook/check
+```
+
+**HTTP Method:** `POST`
+
+**HTTP Request Headers:**
+```
+X-API-Key=YOUR_QUI_API_KEY,Content-Type=application/json
+```
+
+**Expected HTTP Status Code:** `200`
+
+> qui returns `404 Not Found` when no cross-seed matches exist (recommendation `skip`). Leaving the expected status at `200` lets autobrr automatically reject those responses. You'll also see a `404` if the provided `instanceId` is not configured in qui—fix the filter rather than retrying.
+
+> Invalid payloads return `400 Bad Request`, so double-check `torrentName` and `instanceId` if autobrr reports a validation error.
+
+**Data (JSON):**
+```json
+{
+  "torrentName": "{{ .TorrentName }}",
+  "instanceId": 1
+}
+```
+
+**Field Descriptions:**
+- `torrentName` (required): The release name as announced
+- `instanceId` (required): The target qBittorrent instance ID to check against. This **must** match the instance where your autobrr filter action will download to. You can find instance IDs in the qui web UI under Instances.
+- `size` (optional): The total torrent size in bytes - enables size validation when provided
+
+Click **Save** to create the external filter.
+
+#### Settings
+
+Cross-seed matching behavior is controlled by settings in qui's Cross-Seed page:
+
+**Global Settings:**
+- **Size mismatch tolerance** - Maximum size difference percentage (default: 5%)
+
+These settings affect both the webhook endpoint and qui's other cross-seed features.
 
 ## Docker
 
