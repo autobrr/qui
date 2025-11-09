@@ -853,12 +853,13 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	encodedTorrent := base64.StdEncoding.EncodeToString(torrentBytes)
 	startPaused := settings.StartPaused
 
+	skipIfExists := true
 	req := &CrossSeedRequest{
 		TorrentData:       encodedTorrent,
 		TargetInstanceIDs: append([]int(nil), settings.TargetInstanceIDs...),
 		Tags:              append([]string(nil), settings.Tags...),
 		IgnorePatterns:    append([]string(nil), settings.IgnorePatterns...),
-		SkipIfExists:      true,
+		SkipIfExists:      &skipIfExists,
 	}
 	if settings.Category != nil {
 		req.Category = *settings.Category
@@ -3160,6 +3161,7 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 
 	encoded := base64.StdEncoding.EncodeToString(data)
 	startPaused := state.opts.StartPaused
+	skipIfExists := true
 	request := &CrossSeedRequest{
 		TorrentData:            encoded,
 		TargetInstanceIDs:      []int{state.opts.InstanceID},
@@ -3167,13 +3169,12 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		Tags:                   append([]string(nil), state.opts.TagsOverride...),
 		Category:               "",
 		FindIndividualEpisodes: state.opts.FindIndividualEpisodes,
+		SkipIfExists:           &skipIfExists,
 	}
 	if state.opts.CategoryOverride != nil && strings.TrimSpace(*state.opts.CategoryOverride) != "" {
 		cat := *state.opts.CategoryOverride
 		request.Category = cat
 	}
-	request.SkipIfExists = true
-
 	resp, err := s.CrossSeed(ctx, request)
 	if err != nil {
 		result.Message = fmt.Sprintf("cross-seed failed: %v", err)

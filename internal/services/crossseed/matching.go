@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -450,21 +451,25 @@ func shouldIgnoreFile(filename string, patterns []string) bool {
 	lower := strings.ToLower(filename)
 
 	for _, pattern := range patterns {
-		pattern = strings.ToLower(pattern)
-		// Simple glob matching.
-		if strings.Contains(pattern, "*") {
-			parts := strings.Split(pattern, "*")
-			matches := true
-			for _, part := range parts {
-				if part != "" && !strings.Contains(lower, part) {
-					matches = false
-					break
-				}
-			}
-			if matches {
+		pattern = strings.ToLower(strings.TrimSpace(pattern))
+		if pattern == "" {
+			continue
+		}
+
+		// Backwards compatibility: treat plain strings as suffix matches (".nfo", "sample", etc.).
+		if !strings.ContainsAny(pattern, "*?[") {
+			if strings.HasSuffix(lower, pattern) {
 				return true
 			}
-		} else if strings.HasSuffix(lower, pattern) {
+			continue
+		}
+
+		matches, err := filepath.Match(pattern, lower)
+		if err != nil {
+			log.Debug().Err(err).Str("pattern", pattern).Msg("Invalid ignore pattern skipped")
+			continue
+		}
+		if matches {
 			return true
 		}
 	}

@@ -21,7 +21,7 @@ type CrossSeedRequest struct {
 	// IgnorePatterns specify files to ignore when matching
 	IgnorePatterns []string `json:"ignore_patterns,omitempty"`
 	// SkipIfExists if true, skip cross-seeding if torrent already exists on target
-	SkipIfExists bool `json:"skip_if_exists,omitempty"`
+	SkipIfExists *bool `json:"skip_if_exists,omitempty"`
 	// StartPaused controls whether newly added torrents start paused
 	StartPaused *bool `json:"start_paused,omitempty"`
 	// AddCrossSeedTag controls whether the service should automatically tag added torrents as cross-seeds.

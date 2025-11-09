@@ -6,6 +6,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -573,6 +574,7 @@ func (h *CrossSeedHandler) ListSearchRunHistory(w http.ResponseWriter, r *http.R
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} httphelpers.ErrorResponse
 // @Failure 500 {object} httphelpers.ErrorResponse
+// @Failure 501 {object} httphelpers.ErrorResponse
 // @Security ApiKeyAuth
 // @Router /api/instances/{instanceID}/cross-seed/status [get]
 func (h *CrossSeedHandler) GetCrossSeedStatus(w http.ResponseWriter, r *http.Request) {
@@ -583,20 +585,8 @@ func (h *CrossSeedHandler) GetCrossSeedStatus(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// TODO: Implement cross-seed status retrieval
-	// This could include:
-	// - Count of torrents tagged with "qui-cross-seed"
-	// - Total data cross-seeded
-	// - Recent cross-seed operations
-
-	status := map[string]any{
-		"instance_id":     instanceID,
-		"cross_seeded":    0,
-		"pending":         0,
-		"last_cross_seed": nil,
-	}
-
-	RespondJSON(w, http.StatusOK, status)
+	// Metrics have not been implemented yet; make this explicit to clients instead of returning misleading data.
+	RespondError(w, http.StatusNotImplemented, fmt.Sprintf("cross-seed status for instance %d is not implemented yet", instanceID))
 }
 
 // WebhookCheck godoc
