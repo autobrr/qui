@@ -655,6 +655,13 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		return run, err
 	}
 
+	// Pre-fetch all indexer info (names and domains) for performance
+	indexerInfo, err := s.jackettService.GetEnabledIndexersInfo(ctx)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to fetch indexer info, will use fallback lookups")
+		indexerInfo = make(map[int]jackett.EnabledIndexerInfo) // Empty map as fallback
+	}
+
 	processed := 0
 	var runErr error
 
@@ -684,7 +691,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 			continue
 		}
 
-		status, infoHash, procErr := s.processAutomationCandidate(ctx, run, settings, result, opts)
+		status, infoHash, procErr := s.processAutomationCandidate(ctx, run, settings, result, opts, indexerInfo)
 		if procErr != nil {
 			if runErr == nil {
 				runErr = procErr
@@ -734,9 +741,9 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 	return run, runErr
 }
 
-func (s *Service) processAutomationCandidate(ctx context.Context, run *models.CrossSeedRun, settings *models.CrossSeedAutomationSettings, result jackett.SearchResult, opts AutomationRunOptions) (models.CrossSeedFeedItemStatus, *string, error) {
+func (s *Service) processAutomationCandidate(ctx context.Context, run *models.CrossSeedRun, settings *models.CrossSeedAutomationSettings, result jackett.SearchResult, opts AutomationRunOptions, indexerInfo map[int]jackett.EnabledIndexerInfo) (models.CrossSeedFeedItemStatus, *string, error) {
 	sourceIndexer := result.Indexer
-	if resolved := s.jackettService.GetIndexerName(ctx, result.IndexerID); resolved != "" {
+	if resolved := jackett.GetIndexerNameFromInfo(indexerInfo, result.IndexerID); resolved != "" {
 		sourceIndexer = resolved
 	}
 
@@ -1501,6 +1508,18 @@ func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, h
 		return nil, fmt.Errorf("torrent %s is not fully downloaded (progress %.2f)", sourceTorrent.Name, sourceTorrent.Progress)
 	}
 
+	// Pre-fetch all indexer info (names and domains) for performance
+	var indexerInfo map[int]jackett.EnabledIndexerInfo
+	if s.jackettService != nil {
+		indexerInfo, err = s.jackettService.GetEnabledIndexersInfo(ctx)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to fetch indexer info during analysis, using fallback lookups")
+			indexerInfo = make(map[int]jackett.EnabledIndexerInfo) // Empty map as fallback
+		}
+	} else {
+		indexerInfo = make(map[int]jackett.EnabledIndexerInfo)
+	}
+
 	// Get files to find the largest file for better content type detection
 	sourceFiles, err := s.syncManager.GetTorrentFiles(ctx, instanceID, hash)
 	if err != nil {
@@ -1564,7 +1583,7 @@ func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, h
 
 			// Then filter by existing content
 			if len(availableIndexers) > 0 {
-				filteredIndexers, err = s.filterIndexersByExistingContent(ctx, instanceID, hash, availableIndexers)
+				filteredIndexers, err = s.filterIndexersByExistingContent(ctx, instanceID, hash, availableIndexers, indexerInfo)
 				if err != nil {
 					log.Warn().Err(err).Msg("Failed to filter indexers by content during analysis")
 					filteredIndexers = availableIndexers
@@ -1580,7 +1599,7 @@ func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, h
 							}
 						}
 						if !found {
-							indexerName := s.jackettService.GetIndexerName(ctx, indexerID)
+							indexerName := jackett.GetIndexerNameFromInfo(indexerInfo, indexerID)
 							excludedIndexers[indexerID] = fmt.Sprintf("Content already available from %s sources", indexerName)
 						}
 					}
@@ -2758,7 +2777,7 @@ func (s *Service) filterIndexerIDsForTorrent(ctx context.Context, instanceID int
 	}
 
 	// Then, filter out indexers for which we already have matching content
-	contentFilteredIDs, err := s.filterIndexersByExistingContent(ctx, instanceID, hash, capabilityFilteredIDs)
+	contentFilteredIDs, err := s.filterIndexersByExistingContent(ctx, instanceID, hash, capabilityFilteredIDs, nil)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to filter indexers by existing content, proceeding with capability-filtered list")
 		return capabilityFilteredIDs, info, nil
@@ -2789,9 +2808,22 @@ func (s *Service) filterIndexerIDsForTorrent(ctx context.Context, instanceID int
 //
 // This is similar to how indexers are filtered for tracker capability mismatches,
 // but focuses on content duplication rather than technical capabilities.
-func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceID int, hash string, indexerIDs []int) ([]int, error) {
+func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceID int, hash string, indexerIDs []int, indexerInfo map[int]jackett.EnabledIndexerInfo) ([]int, error) {
 	if len(indexerIDs) == 0 {
 		return indexerIDs, nil
+	}
+
+	// If indexer info not provided, fetch it ourselves
+	if indexerInfo == nil && s.jackettService != nil {
+		var err error
+		indexerInfo, err = s.jackettService.GetEnabledIndexersInfo(ctx)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to fetch indexer info for content filtering, proceeding without filtering")
+			return indexerIDs, nil
+		}
+	}
+	if indexerInfo == nil {
+		indexerInfo = make(map[int]jackett.EnabledIndexerInfo)
 	}
 
 	log.Debug().
@@ -2902,7 +2934,7 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 		exclusionReason := ""
 
 		// Get indexer information
-		indexerName := s.jackettService.GetIndexerName(ctx, indexerID)
+		indexerName := jackett.GetIndexerNameFromInfo(indexerInfo, indexerID)
 		if indexerName == "" {
 			// If we can't get indexer info, include it to be safe
 			filteredIndexerIDs = append(filteredIndexerIDs, indexerID)

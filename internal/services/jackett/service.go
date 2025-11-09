@@ -1806,6 +1806,105 @@ func (s *Service) GetTrackerDomains(ctx context.Context) ([]string, error) {
 	return domains, nil
 }
 
+// EnabledIndexerInfo holds both name and domain information for an enabled indexer
+type EnabledIndexerInfo struct {
+	ID     int
+	Name   string
+	Domain string
+}
+
+// GetEnabledIndexersInfo retrieves both names and domains for all enabled indexers in a single operation
+func (s *Service) GetEnabledIndexersInfo(ctx context.Context) (map[int]EnabledIndexerInfo, error) {
+	indexers, err := s.indexerStore.ListEnabled(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list enabled indexers: %w", err)
+	}
+
+	indexerMap := make(map[int]EnabledIndexerInfo)
+
+	// Group indexers by backend for efficient processing
+	var jackettIndexers, prowlarrIndexers, nativeIndexers []*models.TorznabIndexer
+	for _, indexer := range indexers {
+		switch indexer.Backend {
+		case models.TorznabBackendProwlarr:
+			prowlarrIndexers = append(prowlarrIndexers, indexer)
+		case models.TorznabBackendNative:
+			nativeIndexers = append(nativeIndexers, indexer)
+		default: // Jackett
+			jackettIndexers = append(jackettIndexers, indexer)
+		}
+	}
+
+	// Handle Jackett and Native indexers (use BaseURL for domain)
+	for _, indexer := range append(jackettIndexers, nativeIndexers...) {
+		domain := ""
+		if indexer.BaseURL != "" {
+			domain = extractDomainFromURL(indexer.BaseURL)
+		}
+
+		indexerMap[indexer.ID] = EnabledIndexerInfo{
+			ID:     indexer.ID,
+			Name:   indexer.Name,
+			Domain: domain,
+		}
+	}
+
+	// Handle Prowlarr indexers (need to query Prowlarr API for actual tracker domains)
+	if len(prowlarrIndexers) > 0 {
+		// First add the basic info (name) for all Prowlarr indexers
+		for _, indexer := range prowlarrIndexers {
+			indexerMap[indexer.ID] = EnabledIndexerInfo{
+				ID:     indexer.ID,
+				Name:   indexer.Name,
+				Domain: "", // Will be filled below
+			}
+		}
+
+		// Get Prowlarr domains and update the map
+		prowlarrDomains, err := s.getProwlarrTrackerDomains(ctx, prowlarrIndexers)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to get Prowlarr tracker domains, falling back to BaseURL")
+			// Fallback to BaseURL for Prowlarr indexers
+			for _, indexer := range prowlarrIndexers {
+				if info, exists := indexerMap[indexer.ID]; exists {
+					domain := ""
+					if indexer.BaseURL != "" {
+						domain = extractDomainFromURL(indexer.BaseURL)
+					}
+					info.Domain = domain
+					indexerMap[indexer.ID] = info
+				}
+			}
+		} else {
+			// Update with actual Prowlarr domains
+			for i, indexer := range prowlarrIndexers {
+				if info, exists := indexerMap[indexer.ID]; exists && i < len(prowlarrDomains) {
+					info.Domain = prowlarrDomains[i]
+					indexerMap[indexer.ID] = info
+				}
+			}
+		}
+	}
+
+	return indexerMap, nil
+}
+
+// GetIndexerNameFromInfo returns the indexer name for a given ID using cached indexer info
+func GetIndexerNameFromInfo(indexerInfo map[int]EnabledIndexerInfo, indexerID int) string {
+	if info, exists := indexerInfo[indexerID]; exists {
+		return info.Name
+	}
+	return ""
+}
+
+// GetIndexerDomainFromInfo returns the indexer domain for a given ID using cached indexer info
+func GetIndexerDomainFromInfo(indexerInfo map[int]EnabledIndexerInfo, indexerID int) string {
+	if info, exists := indexerInfo[indexerID]; exists {
+		return info.Domain
+	}
+	return ""
+}
+
 // GetEnabledTrackerDomains extracts domain names from enabled indexers only
 func (s *Service) GetEnabledTrackerDomains(ctx context.Context) ([]string, error) {
 	indexers, err := s.indexerStore.ListEnabled(ctx)
