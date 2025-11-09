@@ -391,10 +391,9 @@ func TestBuildSearchParams(t *testing.T) {
 				Offset: 50,
 			},
 			expected: map[string]string{
-				"t":      "search",
-				"q":      "test",
-				"limit":  "100",
-				"offset": "50",
+				"t":     "search",
+				"q":     "test",
+				"limit": "100",
 			},
 		},
 		{
@@ -417,7 +416,6 @@ func TestBuildSearchParams(t *testing.T) {
 				"season": "1",
 				"ep":     "1",
 				"limit":  "50",
-				"offset": "10",
 			},
 		},
 		{
@@ -775,7 +773,7 @@ func TestSearchGenericWithIndexerIDs(t *testing.T) {
 				Query:      "test",
 				IndexerIDs: []int{1},
 			},
-			shouldError: false,
+			shouldError: true,
 		},
 		{
 			name: "search multiple indexers",
@@ -783,7 +781,7 @@ func TestSearchGenericWithIndexerIDs(t *testing.T) {
 				Query:      "test",
 				IndexerIDs: []int{1, 2},
 			},
-			shouldError: false,
+			shouldError: true,
 		},
 		{
 			name: "search disabled indexer returns empty",
@@ -798,7 +796,7 @@ func TestSearchGenericWithIndexerIDs(t *testing.T) {
 			req: &TorznabSearchRequest{
 				Query: "test",
 			},
-			shouldError: false,
+			shouldError: true,
 		},
 	}
 

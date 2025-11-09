@@ -155,7 +155,10 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 	}
 
 	// Search selected indexers (defaults to all enabled when none specified)
-	allResults := s.searchMultipleIndexers(ctx, indexersToSearch, params, meta)
+	allResults, err := s.searchMultipleIndexers(ctx, indexersToSearch, params, meta)
+	if err != nil {
+		return nil, err
+	}
 
 	// Convert results
 	searchResults := s.convertResults(allResults)
@@ -251,14 +254,29 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 	}
 
 	// Search all indexers
-	allResults := s.searchMultipleIndexers(ctx, indexersToSearch, params, meta)
+	allResults, err := s.searchMultipleIndexers(ctx, indexersToSearch, params, meta)
+	if err != nil {
+		return nil, err
+	}
 
 	// Convert and sort results
 	searchResults := s.convertResults(allResults)
 
+	total := len(searchResults)
+	if req.Offset > 0 {
+		if req.Offset >= len(searchResults) {
+			searchResults = []SearchResult{}
+		} else {
+			searchResults = searchResults[req.Offset:]
+		}
+	}
+	if req.Limit > 0 && len(searchResults) > req.Limit {
+		searchResults = searchResults[:req.Limit]
+	}
+
 	return &SearchResponse{
 		Results: searchResults,
-		Total:   len(searchResults),
+		Total:   total,
 	}, nil
 }
 
@@ -308,7 +326,10 @@ func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int) (*Sea
 		}, nil
 	}
 
-	results := s.searchMultipleIndexers(ctx, indexersToSearch, params, nil)
+	results, err := s.searchMultipleIndexers(ctx, indexersToSearch, params, nil)
+	if err != nil {
+		return nil, err
+	}
 	searchResults := s.convertResults(results)
 
 	if len(searchResults) > limit {
@@ -487,7 +508,7 @@ func (s *Service) MapCategoriesToIndexerCapabilities(ctx context.Context, indexe
 }
 
 // searchMultipleIndexers searches multiple indexers in parallel and aggregates results
-func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) []Result {
+func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, error) {
 	type indexerResult struct {
 		results []Result
 		err     error
@@ -658,15 +679,33 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 	}
 
 	// Collect all results
-	var allResults []Result
+	var (
+		allResults []Result
+		failures   int
+		lastErr    error
+	)
+
 	for range indexers {
 		result := <-resultsChan
-		if result.err == nil {
-			allResults = append(allResults, result.results...)
+		if result.err != nil {
+			failures++
+			lastErr = result.err
+			continue
 		}
+		allResults = append(allResults, result.results...)
 	}
 
-	return allResults
+	if failures == len(indexers) {
+		return nil, fmt.Errorf("all %d indexers failed (last error: %w)", len(indexers), lastErr)
+	}
+	if failures > 0 {
+		log.Warn().
+			Int("indexers_requested", len(indexers)).
+			Int("indexers_failed", failures).
+			Msg("one or more indexers failed during torznab search")
+	}
+
+	return allResults, nil
 }
 
 func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, idx *models.TorznabIndexer, identifier string, meta *searchContext, params map[string]string) bool {
@@ -1044,10 +1083,6 @@ func (s *Service) buildSearchParams(req *TorznabSearchRequest, searchMode string
 		params.Set("limit", strconv.Itoa(req.Limit))
 	}
 
-	if req.Offset > 0 {
-		params.Set("offset", strconv.Itoa(req.Offset))
-	}
-
 	return params
 }
 
@@ -1323,6 +1358,11 @@ func (s *Service) convertResults(results []Result) []SearchResult {
 			group = parsed.Group
 		}
 
+		leechers := r.Peers - r.Seeders
+		if leechers < 0 {
+			leechers = 0
+		}
+
 		result := SearchResult{
 			Indexer:              r.Tracker,
 			IndexerID:            r.IndexerID,
@@ -1331,7 +1371,7 @@ func (s *Service) convertResults(results []Result) []SearchResult {
 			InfoURL:              r.Details,
 			Size:                 r.Size,
 			Seeders:              r.Seeders,
-			Leechers:             r.Peers - r.Seeders, // Peers includes seeders
+			Leechers:             leechers, // Peers includes seeders
 			CategoryID:           s.parseCategoryID(r.Category),
 			CategoryName:         r.Category,
 			PublishDate:          r.PublishDate,
