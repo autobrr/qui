@@ -84,6 +84,8 @@ type TorrentInfo struct {
 	FilteredIndexers  []int          `json:"filtered_indexers,omitempty"`  // Indexers available after content filtering
 	ExcludedIndexers  map[int]string `json:"excluded_indexers,omitempty"`  // Indexers excluded by content filtering with reasons
 	ContentMatches    []string       `json:"content_matches,omitempty"`    // Existing torrents that match this content
+	// Async filtering status
+	ContentFilteringCompleted bool `json:"content_filtering_completed,omitempty"` // Whether async content filtering has finished
 }
 
 // TorrentFile represents a file in the torrent
@@ -218,4 +220,21 @@ type TorrentSearchAddResult struct {
 // ApplyTorrentSearchResponse aggregates the results of adding multiple search selections.
 type ApplyTorrentSearchResponse struct {
 	Results []TorrentSearchAddResult `json:"results"`
+}
+
+// AsyncIndexerFilteringState represents the state of async indexer filtering operations
+type AsyncIndexerFilteringState struct {
+	CapabilitiesCompleted bool           `json:"capabilities_completed"`
+	ContentCompleted      bool           `json:"content_completed"`
+	CapabilityIndexers    []int          `json:"capability_indexers,omitempty"`
+	FilteredIndexers      []int          `json:"filtered_indexers,omitempty"`
+	ExcludedIndexers      map[int]string `json:"excluded_indexers,omitempty"`
+	ContentMatches        []string       `json:"content_matches,omitempty"`
+	Error                 string         `json:"error,omitempty"`
+}
+
+// AsyncTorrentAnalysis represents the result of async torrent analysis with filtering state
+type AsyncTorrentAnalysis struct {
+	TorrentInfo    *TorrentInfo                `json:"torrent_info"`
+	FilteringState *AsyncIndexerFilteringState `json:"filtering_state"`
 }

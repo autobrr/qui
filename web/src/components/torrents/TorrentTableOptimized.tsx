@@ -816,6 +816,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const shiftPressedRef = useRef<boolean>(false)
   const lastSelectedIndexRef = useRef<number | null>(null)
 
+  // Cross-seed async filtering polling
+  const crossSeedPollingRef = useRef<NodeJS.Timeout | null>(null)
+
   const handleCompactCheckboxPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     shiftPressedRef.current = event.shiftKey
   }, [])
@@ -1851,6 +1854,80 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       setAltSpeedOverride(null)
     }
   }, [serverAltSpeedEnabled, altSpeedOverride])
+
+  // Poll for async cross-seed filtering status updates
+  useEffect(() => {
+    const sourceTorrent = crossSeedSearchResponse?.sourceTorrent
+    
+    // Only start polling if:
+    // 1. We have a source torrent from analysis
+    // 2. Content filtering is not yet completed
+    // 3. Dialog is open
+    // 4. Not already polling
+    if (!sourceTorrent || 
+        sourceTorrent.contentFilteringCompleted || 
+        !crossSeedDialogOpen || 
+        crossSeedPollingRef.current) {
+      return
+    }
+
+    const pollForUpdates = async () => {
+      try {
+        if (!sourceTorrent.hash) {
+          console.warn("Source torrent hash is undefined, stopping polling")
+          if (crossSeedPollingRef.current) {
+            clearInterval(crossSeedPollingRef.current)
+            crossSeedPollingRef.current = null
+          }
+          return
+        }
+
+        const status = await api.getAsyncFilteringStatus(instanceId, sourceTorrent.hash)
+        
+        // If content filtering is now completed, get the updated analysis
+        if (status.contentCompleted) {
+          const updatedAnalysis = await api.analyzeTorrentForCrossSeedSearch(instanceId, sourceTorrent.hash)
+          
+          setCrossSeedSearchResponse(prev => prev ? {
+            ...prev,
+            sourceTorrent: updatedAnalysis
+          } : null)
+          
+          // Stop polling
+          if (crossSeedPollingRef.current) {
+            clearInterval(crossSeedPollingRef.current)
+            crossSeedPollingRef.current = null
+          }
+        }
+      } catch (error) {
+        console.warn("Failed to poll async filtering status:", error)
+        // Stop polling on error
+        if (crossSeedPollingRef.current) {
+          clearInterval(crossSeedPollingRef.current)
+          crossSeedPollingRef.current = null
+        }
+      }
+    }
+
+    // Start polling every 2 seconds
+    crossSeedPollingRef.current = setInterval(pollForUpdates, 2000)
+
+    // Cleanup function
+    return () => {
+      if (crossSeedPollingRef.current) {
+        clearInterval(crossSeedPollingRef.current)
+        crossSeedPollingRef.current = null
+      }
+    }
+  }, [api, instanceId, crossSeedSearchResponse, crossSeedDialogOpen])
+
+  // Clean up polling when dialog closes
+  useEffect(() => {
+    if (!crossSeedDialogOpen && crossSeedPollingRef.current) {
+      clearInterval(crossSeedPollingRef.current)
+      crossSeedPollingRef.current = null
+    }
+  }, [crossSeedDialogOpen])
 
   const handleToggleAltSpeedLimits = useCallback(async () => {
     if (isTogglingAltSpeed) {

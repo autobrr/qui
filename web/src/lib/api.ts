@@ -5,6 +5,7 @@
 
 import type {
   AppPreferences,
+  AsyncIndexerFilteringState,
   AuthResponse,
   BackupManifest,
   BackupRun,
@@ -480,6 +481,7 @@ class ApiClient {
       filtered_indexers?: number[]
       excluded_indexers?: Record<string, string>
       content_matches?: string[]
+      content_filtering_completed?: boolean
     }
 
     const raw = await this.request<RawTorrentInfo>(
@@ -505,6 +507,35 @@ class ApiClient {
       availableIndexers: raw.available_indexers,
       filteredIndexers: raw.filtered_indexers,
       excludedIndexers: normalizeExcludedIndexerMap(raw.excluded_indexers),
+      contentMatches: raw.content_matches,
+      contentFilteringCompleted: raw.content_filtering_completed,
+    }
+  }
+
+  async getAsyncFilteringStatus(
+    instanceId: number,
+    hash: string
+  ): Promise<AsyncIndexerFilteringState> {
+    type RawAsyncFilteringState = {
+      capabilities_completed: boolean
+      content_completed: boolean
+      capability_indexers: number[]
+      filtered_indexers: number[]
+      excluded_indexers: Record<string, string>
+      content_matches: string[]
+    }
+
+    const raw = await this.request<RawAsyncFilteringState>(
+      `/cross-seed/torrents/${instanceId}/${hash}/async-status`,
+      { method: "GET" }
+    )
+
+    return {
+      capabilitiesCompleted: raw.capabilities_completed,
+      contentCompleted: raw.content_completed,
+      capabilityIndexers: raw.capability_indexers,
+      filteredIndexers: raw.filtered_indexers,
+      excludedIndexers: normalizeExcludedIndexerMap(raw.excluded_indexers) || {},
       contentMatches: raw.content_matches,
     }
   }

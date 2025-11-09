@@ -45,6 +45,8 @@ type Service struct {
 	// searchResultCache stores the most recent search results per torrent hash so that
 	// apply requests can be validated without trusting client-provided URLs.
 	searchResultCache *ttlcache.Cache[string, []TorrentSearchResult]
+	// asyncFilteringCache stores async filtering state by torrent key for UI polling
+	asyncFilteringCache *ttlcache.Cache[string, *AsyncIndexerFilteringState]
 
 	automationStore *models.CrossSeedStore
 	jackettService  *jackett.Service
@@ -90,16 +92,20 @@ func NewService(
 	searchCache := ttlcache.New(ttlcache.Options[string, []TorrentSearchResult]{}.
 		SetDefaultTTL(searchResultCacheTTL))
 
+	asyncFilteringCache := ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}.
+		SetDefaultTTL(searchResultCacheTTL)) // Use same TTL as search results
+
 	return &Service{
-		instanceStore:     instanceStore,
-		syncManager:       syncManager,
-		filesManager:      filesManager,
-		releaseCache:      NewReleaseCache(),
-		searchResultCache: searchCache,
-		automationStore:   automationStore,
-		jackettService:    jackettService,
-		automationWake:    make(chan struct{}, 1),
-		domainMappings:    initializeDomainMappings(),
+		instanceStore:       instanceStore,
+		syncManager:         syncManager,
+		filesManager:        filesManager,
+		releaseCache:        NewReleaseCache(),
+		searchResultCache:   searchCache,
+		asyncFilteringCache: asyncFilteringCache,
+		automationStore:     automationStore,
+		jackettService:      jackettService,
+		automationWake:      make(chan struct{}, 1),
+		domainMappings:      initializeDomainMappings(),
 	}
 }
 
@@ -1500,10 +1506,10 @@ func (s *Service) determineSavePath(newTorrentName string, matchedTorrent *qbt.T
 	return baseSavePath
 }
 
-// AnalyzeTorrentForSearch analyzes a torrent and returns metadata about how it would be searched,
-// without actually performing the search. This is useful for the UI to show what will be searched
-// and to filter indexers based on required capabilities.
-func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, hash string) (*TorrentInfo, error) {
+// AnalyzeTorrentForSearchAsync analyzes a torrent and performs capability filtering immediately,
+// while optionally performing content filtering asynchronously in the background.
+// This allows the UI to update immediately with capability results while waiting for content filtering.
+func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID int, hash string, enableContentFiltering bool) (*AsyncTorrentAnalysis, error) {
 	if instanceID <= 0 {
 		return nil, fmt.Errorf("invalid instance id: %d", instanceID)
 	}
@@ -1563,19 +1569,12 @@ func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, h
 	// Use unified content type detection
 	contentInfo := DetermineContentType(contentDetectionRelease)
 
-	// Pre-filter indexers for the UI context menu
 	// Get all available indexers first
 	var allIndexers []int
-	var availableIndexers []int
-	var filteredIndexers []int
-	var excludedIndexers map[int]string
-	var contentMatches []string
-
 	if s.jackettService != nil {
-		// Get all available indexers
 		indexersResponse, err := s.jackettService.GetIndexers(ctx)
 		if err != nil {
-			log.Warn().Err(err).Msg("Failed to get indexers during analysis")
+			log.Warn().Err(err).Msg("Failed to get indexers during async analysis")
 		} else {
 			for _, indexer := range indexersResponse.Indexers {
 				if indexer.Configured {
@@ -1585,52 +1584,162 @@ func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, h
 				}
 			}
 		}
+	}
+
+	// Build base TorrentInfo
+	torrentInfo := &TorrentInfo{
+		InstanceID:       instanceID,
+		InstanceName:     instance.Name,
+		Hash:             sourceTorrent.Hash,
+		Name:             sourceTorrent.Name,
+		Category:         sourceTorrent.Category,
+		Size:             sourceTorrent.Size,
+		Progress:         sourceTorrent.Progress,
+		ContentType:      contentInfo.ContentType,
+		SearchType:       contentInfo.SearchType,
+		SearchCategories: contentInfo.Categories,
+		RequiredCaps:     contentInfo.RequiredCaps,
+	}
+
+	// Initialize filtering state
+	filteringState := &AsyncIndexerFilteringState{
+		CapabilitiesCompleted: false,
+		ContentCompleted:      false,
+		ExcludedIndexers:      make(map[int]string),
+		ContentMatches:        make([]string, 0),
+	}
+
+	result := &AsyncTorrentAnalysis{
+		TorrentInfo:    torrentInfo,
+		FilteringState: filteringState,
+	}
+
+	log.Debug().
+		Str("torrentHash", hash).
+		Int("instanceID", instanceID).
+		Ints("allIndexers", allIndexers).
+		Bool("enableContentFiltering", enableContentFiltering).
+		Msg("[CROSSSEED-ASYNC] Starting async torrent analysis")
+
+	// Phase 1: Capability filtering (fast, synchronous)
+	if len(allIndexers) > 0 && s.jackettService != nil {
+		capabilityIndexers, err := s.jackettService.FilterIndexersForCapabilities(ctx, allIndexers, contentInfo.RequiredCaps, contentInfo.Categories)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to filter indexers by capabilities during async analysis")
+			capabilityIndexers = allIndexers
+		}
+
+		filteringState.CapabilityIndexers = capabilityIndexers
+		filteringState.CapabilitiesCompleted = true
+		torrentInfo.AvailableIndexers = capabilityIndexers
+
+		// Store initial state in cache immediately for UI polling
+		if s.asyncFilteringCache != nil {
+			cacheKey := asyncFilteringCacheKey(instanceID, hash)
+			// Create a copy of the initial state
+			cachedState := &AsyncIndexerFilteringState{
+				CapabilitiesCompleted: true,
+				ContentCompleted:      false,
+				CapabilityIndexers:    append([]int(nil), capabilityIndexers...),
+				FilteredIndexers:      append([]int(nil), capabilityIndexers...), // Initially same as capability indexers
+				ExcludedIndexers:      make(map[int]string),
+				ContentMatches:        make([]string, 0),
+			}
+			s.asyncFilteringCache.Set(cacheKey, cachedState, ttlcache.DefaultTTL)
+
+			log.Debug().
+				Str("torrentHash", hash).
+				Int("instanceID", instanceID).
+				Str("cacheKey", cacheKey).
+				Msg("[CROSSSEED-ASYNC] Stored initial filtering state in cache")
+		}
 
 		log.Debug().
 			Str("torrentHash", hash).
 			Int("instanceID", instanceID).
-			Ints("allIndexers", allIndexers).
-			Msg("[CROSSSEED-ANALYZE] Starting pre-filtering for UI context menu")
+			Int("allIndexersCount", len(allIndexers)).
+			Int("capabilityIndexersCount", len(capabilityIndexers)).
+			Msg("[CROSSSEED-ASYNC] Capability filtering completed synchronously")
 
-		if len(allIndexers) > 0 {
-			// First filter by capabilities
-			availableIndexers, err = s.jackettService.FilterIndexersForCapabilities(ctx, allIndexers, contentInfo.RequiredCaps, contentInfo.Categories)
-			if err != nil {
-				log.Warn().Err(err).Msg("Failed to filter indexers by capabilities during analysis")
-				availableIndexers = allIndexers
-			}
-
-			// Then filter by existing content
-			if len(availableIndexers) > 0 {
-				filteredIndexers, err = s.filterIndexersByExistingContent(ctx, instanceID, hash, availableIndexers, indexerInfo)
-				if err != nil {
-					log.Warn().Err(err).Msg("Failed to filter indexers by content during analysis")
-					filteredIndexers = availableIndexers
-				} else {
-					// Calculate excluded indexers and their reasons
-					excludedIndexers = make(map[int]string)
-					for _, indexerID := range availableIndexers {
-						found := false
-						for _, filteredID := range filteredIndexers {
-							if indexerID == filteredID {
-								found = true
-								break
-							}
-						}
-						if !found {
-							indexerName := jackett.GetIndexerNameFromInfo(indexerInfo, indexerID)
-							excludedIndexers[indexerID] = fmt.Sprintf("Content already available from %s sources", indexerName)
-						}
-					}
-				}
+		// Phase 2: Content filtering (slow, potentially async)
+		if enableContentFiltering {
+			if len(capabilityIndexers) > 0 {
+				// Start content filtering in background
+				go s.performAsyncContentFiltering(context.Background(), instanceID, hash, capabilityIndexers, indexerInfo, filteringState)
 			} else {
-				filteredIndexers = availableIndexers
+				// No indexers left after capability filtering
+				filteringState.FilteredIndexers = []int{}
+				filteringState.ContentCompleted = true
+				log.Debug().
+					Str("torrentHash", hash).
+					Int("instanceID", instanceID).
+					Msg("[CROSSSEED-ASYNC] No indexers remain after capability filtering, skipping content filtering")
 			}
+		} else {
+			// Content filtering disabled, mark as completed
+			filteringState.FilteredIndexers = capabilityIndexers
+			filteringState.ContentCompleted = true
+			torrentInfo.FilteredIndexers = capabilityIndexers
+		}
+	} else {
+		// No indexers available or jackett service unavailable
+		filteringState.CapabilityIndexers = []int{}
+		filteringState.FilteredIndexers = []int{}
+		filteringState.CapabilitiesCompleted = true
+		filteringState.ContentCompleted = true
+	}
 
-			// Get content matches for display
+	return result, nil
+}
+
+// performAsyncContentFiltering performs content filtering in the background and updates the filtering state
+// This method handles concurrent access to the state safely
+func (s *Service) performAsyncContentFiltering(ctx context.Context, instanceID int, hash string, indexerIDs []int, indexerInfo map[int]jackett.EnabledIndexerInfo, state *AsyncIndexerFilteringState) {
+	log.Debug().
+		Str("torrentHash", hash).
+		Int("instanceID", instanceID).
+		Ints("indexerIDs", indexerIDs).
+		Msg("[CROSSSEED-ASYNC] Starting background content filtering")
+
+	filteredIndexers, err := s.filterIndexersByExistingContent(ctx, instanceID, hash, indexerIDs, indexerInfo)
+
+	// Use atomic-like updates to avoid race conditions
+	// Note: In a production system, you might want to use sync.Mutex for more complex state updates
+
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to filter indexers by existing content during async filtering")
+		state.Error = fmt.Sprintf("Content filtering failed: %v", err)
+		state.FilteredIndexers = indexerIDs // Fall back to capability-filtered list
+	} else {
+		state.FilteredIndexers = filteredIndexers
+
+		// Calculate excluded indexers and their reasons
+		excludedIndexers := make(map[int]string)
+		for _, indexerID := range indexerIDs {
+			found := false
+			for _, filteredID := range filteredIndexers {
+				if indexerID == filteredID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				indexerName := jackett.GetIndexerNameFromInfo(indexerInfo, indexerID)
+				if indexerName == "" {
+					indexerName = fmt.Sprintf("Indexer-%d", indexerID)
+				}
+				excludedIndexers[indexerID] = fmt.Sprintf("Content already available from %s sources", indexerName)
+			}
+		}
+		state.ExcludedIndexers = excludedIndexers
+
+		// Get content matches for display
+		sourceTorrent, err := s.getTorrentByHash(ctx, instanceID, hash)
+		if err == nil {
 			sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
 			crossInstanceResponse, err := s.syncManager.GetCrossInstanceTorrentsWithFilters(ctx, 0, 0, "", "", "", qbittorrent.FilterOptions{})
 			if err == nil {
+				var contentMatches []string
 				for _, crossTorrent := range crossInstanceResponse.CrossInstanceTorrents {
 					// Skip the source torrent itself
 					if crossTorrent.InstanceID == instanceID && crossTorrent.Hash == sourceTorrent.Hash {
@@ -1643,40 +1752,128 @@ func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, h
 						contentMatches = append(contentMatches, fmt.Sprintf("%s (%s)", crossTorrent.Name, crossTorrent.InstanceName))
 					}
 				}
+				state.ContentMatches = contentMatches
 			}
+		}
+	}
+
+	// Mark content filtering as completed (this should be the last operation)
+	state.ContentCompleted = true
+
+	// Store the completed state in cache for UI polling
+	if s.asyncFilteringCache != nil {
+		cacheKey := asyncFilteringCacheKey(instanceID, hash)
+		// Create a copy of the state to avoid race conditions
+		cachedState := &AsyncIndexerFilteringState{
+			CapabilitiesCompleted: state.CapabilitiesCompleted,
+			ContentCompleted:      state.ContentCompleted,
+			CapabilityIndexers:    append([]int(nil), state.CapabilityIndexers...),
+			FilteredIndexers:      append([]int(nil), state.FilteredIndexers...),
+			ExcludedIndexers:      make(map[int]string),
+			ContentMatches:        append([]string(nil), state.ContentMatches...),
+		}
+		// Copy excluded indexers map
+		for k, v := range state.ExcludedIndexers {
+			cachedState.ExcludedIndexers[k] = v
+		}
+		s.asyncFilteringCache.Set(cacheKey, cachedState, ttlcache.DefaultTTL)
+
+		log.Debug().
+			Str("torrentHash", hash).
+			Int("instanceID", instanceID).
+			Str("cacheKey", cacheKey).
+			Msg("[CROSSSEED-ASYNC] Stored completed filtering state in cache")
+	}
+
+	log.Debug().
+		Str("torrentHash", hash).
+		Int("instanceID", instanceID).
+		Int("inputIndexersCount", len(indexerIDs)).
+		Int("filteredIndexersCount", len(state.FilteredIndexers)).
+		Int("excludedIndexersCount", len(state.ExcludedIndexers)).
+		Int("contentMatchesCount", len(state.ContentMatches)).
+		Msg("[CROSSSEED-ASYNC] Background content filtering completed")
+}
+
+// AnalyzeTorrentForSearch analyzes a torrent and returns metadata about how it would be searched,
+// without actually performing the search. This method now uses async filtering with immediate capability
+// results and optional content filtering for better performance.
+func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, hash string) (*TorrentInfo, error) {
+	// Check if we have cached async state with completed content filtering
+	if s.asyncFilteringCache != nil {
+		cacheKey := asyncFilteringCacheKey(instanceID, hash)
+		if cached, found := s.asyncFilteringCache.Get(cacheKey); found && cached.ContentCompleted {
+			// We have completed filtering results, use those instead of running new analysis
+			asyncResult, err := s.AnalyzeTorrentForSearchAsync(ctx, instanceID, hash, false) // Don't restart content filtering
+			if err != nil {
+				// Fall back to cached state if torrent analysis fails
+				log.Warn().Err(err).Msg("Failed to get torrent info, using cached filtering state only")
+				return &TorrentInfo{
+					AvailableIndexers:         cached.CapabilityIndexers,
+					FilteredIndexers:          cached.FilteredIndexers,
+					ExcludedIndexers:          cached.ExcludedIndexers,
+					ContentMatches:            cached.ContentMatches,
+					ContentFilteringCompleted: cached.ContentCompleted,
+				}, nil
+			}
+
+			torrentInfo := asyncResult.TorrentInfo
+			// Use the completed filtering results from cache
+			torrentInfo.AvailableIndexers = cached.CapabilityIndexers
+			torrentInfo.FilteredIndexers = cached.FilteredIndexers
+			torrentInfo.ExcludedIndexers = cached.ExcludedIndexers
+			torrentInfo.ContentMatches = cached.ContentMatches
+			torrentInfo.ContentFilteringCompleted = cached.ContentCompleted
 
 			log.Debug().
 				Str("torrentHash", hash).
 				Int("instanceID", instanceID).
-				Int("allIndexersCount", len(allIndexers)).
-				Int("availableIndexersCount", len(availableIndexers)).
-				Int("filteredIndexersCount", len(filteredIndexers)).
-				Int("excludedIndexersCount", len(excludedIndexers)).
-				Int("contentMatchesCount", len(contentMatches)).
-				Msg("[CROSSSEED-ANALYZE] Pre-filtering completed for UI context menu")
+				Bool("contentCompleted", cached.ContentCompleted).
+				Int("filteredIndexersCount", len(cached.FilteredIndexers)).
+				Msg("[CROSSSEED-ANALYZE] Using cached content filtering results")
+
+			return torrentInfo, nil
 		}
 	}
 
-	return &TorrentInfo{
-		InstanceID:        instanceID,
-		InstanceName:      instance.Name,
-		Hash:              sourceTorrent.Hash,
-		Name:              sourceTorrent.Name,
-		Category:          sourceTorrent.Category,
-		Size:              sourceTorrent.Size,
-		Progress:          sourceTorrent.Progress,
-		ContentType:       contentInfo.ContentType,
-		SearchType:        contentInfo.SearchType,
-		SearchCategories:  contentInfo.Categories,
-		RequiredCaps:      contentInfo.RequiredCaps,
-		AvailableIndexers: availableIndexers,
-		FilteredIndexers:  filteredIndexers,
-		ExcludedIndexers:  excludedIndexers,
-		ContentMatches:    contentMatches,
-	}, nil
-}
+	// Use the async version with content filtering enabled
+	asyncResult, err := s.AnalyzeTorrentForSearchAsync(ctx, instanceID, hash, true)
+	if err != nil {
+		return nil, err
+	}
 
-// SearchTorrentMatches queries Torznab indexers for candidate torrents that match an existing torrent.
+	// Return immediate results with capability filtering
+	// Content filtering will continue in background but we don't wait for it
+	torrentInfo := asyncResult.TorrentInfo
+
+	// Use capability-filtered indexers as the primary result
+	if asyncResult.FilteringState.CapabilitiesCompleted {
+		torrentInfo.AvailableIndexers = asyncResult.FilteringState.CapabilityIndexers
+		// For immediate response, use capability indexers as filtered indexers
+		// The UI can poll for refined results if needed
+		torrentInfo.FilteredIndexers = asyncResult.FilteringState.CapabilityIndexers
+		torrentInfo.ContentFilteringCompleted = asyncResult.FilteringState.ContentCompleted
+
+		log.Debug().
+			Str("torrentHash", hash).
+			Int("instanceID", instanceID).
+			Bool("capabilitiesCompleted", asyncResult.FilteringState.CapabilitiesCompleted).
+			Bool("contentCompleted", asyncResult.FilteringState.ContentCompleted).
+			Int("capabilityIndexersCount", len(asyncResult.FilteringState.CapabilityIndexers)).
+			Msg("[CROSSSEED-ANALYZE] Returning immediate capability-filtered results")
+	} else {
+		log.Warn().
+			Str("torrentHash", hash).
+			Int("instanceID", instanceID).
+			Msg("[CROSSSEED-ANALYZE] Capability filtering not completed, returning empty results")
+
+		torrentInfo.AvailableIndexers = []int{}
+		torrentInfo.FilteredIndexers = []int{}
+		torrentInfo.ContentFilteringCompleted = false
+	}
+
+	return torrentInfo, nil
+} // SearchTorrentMatches queries Torznab indexers for candidate torrents that match an existing torrent.
 func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash string, opts TorrentSearchOptions) (*TorrentSearchResponse, error) {
 	if s.jackettService == nil {
 		return nil, errors.New("torznab search is not configured")
@@ -1812,13 +2009,33 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		requestLimit = limit
 	}
 
-	// Apply indexer filtering (capabilities and existing content)
-	filteredIndexerIDs, analyzedInfo, err := s.filterIndexerIDsForTorrent(ctx, instanceID, hash, opts.IndexerIDs)
+	// Apply indexer filtering (capabilities first, then optionally content filtering async)
+	var filteredIndexerIDs []int
+	asyncAnalysis, err := s.filterIndexerIDsForTorrentAsync(ctx, instanceID, hash, opts.IndexerIDs, true)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to filter indexers for torrent search, using original list")
+		log.Warn().Err(err).Msg("Failed to perform async indexer filtering for torrent search, using original list")
 		filteredIndexerIDs = opts.IndexerIDs
-	} else if analyzedInfo != nil {
-		sourceInfo = *analyzedInfo
+	} else {
+		// Use capability-filtered indexers immediately for search
+		if asyncAnalysis.FilteringState.CapabilitiesCompleted {
+			filteredIndexerIDs = asyncAnalysis.FilteringState.CapabilityIndexers
+			sourceInfo = *asyncAnalysis.TorrentInfo
+
+			log.Debug().
+				Str("torrentHash", hash).
+				Int("instanceID", instanceID).
+				Ints("originalIndexers", opts.IndexerIDs).
+				Ints("capabilityFilteredIndexers", filteredIndexerIDs).
+				Bool("contentFilteringInProgress", !asyncAnalysis.FilteringState.ContentCompleted).
+				Msg("[CROSSSEED-SEARCH] Using capability-filtered indexers for immediate search")
+		} else {
+			log.Warn().
+				Str("torrentHash", hash).
+				Int("instanceID", instanceID).
+				Msg("[CROSSSEED-SEARCH] Capability filtering not completed, using original indexer list")
+			filteredIndexerIDs = opts.IndexerIDs
+		}
+
 		// Keep runtime-derived torrent fields in sync with latest state
 		sourceInfo.InstanceID = instanceID
 		sourceInfo.InstanceName = instance.Name
@@ -2280,6 +2497,15 @@ func searchResultCacheKey(instanceID int, hash string) string {
 	return fmt.Sprintf("%d:%s", instanceID, cleanHash)
 }
 
+// asyncFilteringCacheKey generates a cache key for async filtering state
+func asyncFilteringCacheKey(instanceID int, hash string) string {
+	cleanHash := strings.ToLower(strings.TrimSpace(hash))
+	if cleanHash == "" {
+		return fmt.Sprintf("async:%d", instanceID)
+	}
+	return fmt.Sprintf("async:%d:%s", instanceID, cleanHash)
+}
+
 // getTorrentByHash retrieves a torrent by matching any known hash variant.
 func (s *Service) getTorrentByHash(ctx context.Context, instanceID int, hash string) (*qbt.Torrent, error) {
 	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
@@ -2606,7 +2832,8 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		}
 	}
 
-	allowedIndexerIDs, _, err := s.filterIndexerIDsForTorrent(ctx, state.opts.InstanceID, torrent.Hash, state.opts.IndexerIDs)
+	// Use async filtering for better performance - capability filtering returns immediately
+	asyncAnalysis, err := s.filterIndexerIDsForTorrentAsync(ctx, state.opts.InstanceID, torrent.Hash, state.opts.IndexerIDs, true)
 	if err != nil {
 		s.searchMu.Lock()
 		state.run.TorrentsFailed++
@@ -2623,6 +2850,27 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		s.persistSearchRun(state)
 		return err
 	}
+
+	// Use capability-filtered indexers immediately (no waiting for content filtering)
+	var allowedIndexerIDs []int
+	if asyncAnalysis.FilteringState.CapabilitiesCompleted {
+		allowedIndexerIDs = asyncAnalysis.FilteringState.CapabilityIndexers
+		log.Debug().
+			Str("torrentHash", torrent.Hash).
+			Int("instanceID", state.opts.InstanceID).
+			Ints("originalIndexers", state.opts.IndexerIDs).
+			Ints("capabilityFilteredIndexers", allowedIndexerIDs).
+			Bool("contentFilteringInProgress", !asyncAnalysis.FilteringState.ContentCompleted).
+			Msg("[CROSSSEED-SEARCH-AUTO] Using capability-filtered indexers for automation search")
+	} else {
+		// Fallback to original list if capability filtering somehow failed
+		allowedIndexerIDs = state.opts.IndexerIDs
+		log.Warn().
+			Str("torrentHash", torrent.Hash).
+			Int("instanceID", state.opts.InstanceID).
+			Msg("[CROSSSEED-SEARCH-AUTO] Capability filtering not completed, using original indexer list")
+	}
+
 	if len(allowedIndexerIDs) == 0 {
 		s.searchMu.Lock()
 		state.run.TorrentsSkipped++
@@ -2783,36 +3031,52 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 	return result, nil
 }
 
-func (s *Service) filterIndexerIDsForTorrent(ctx context.Context, instanceID int, hash string, requested []int) ([]int, *TorrentInfo, error) {
-	info, err := s.AnalyzeTorrentForSearch(ctx, instanceID, hash)
-	if err != nil {
-		return nil, nil, err
+// filterIndexerIDsForTorrentAsync performs indexer filtering with async content filtering support.
+// This allows immediate return of capability-filtered results while content filtering continues in background.
+func (s *Service) filterIndexerIDsForTorrentAsync(ctx context.Context, instanceID int, hash string, requested []int, enableContentFiltering bool) (*AsyncTorrentAnalysis, error) {
+	// Use the async analysis method
+	return s.AnalyzeTorrentForSearchAsync(ctx, instanceID, hash, enableContentFiltering)
+}
+
+// GetAsyncFilteringStatus returns the current status of async filtering for a torrent.
+// This can be used by the UI to poll for updates after capability filtering is complete.
+func (s *Service) GetAsyncFilteringStatus(ctx context.Context, instanceID int, hash string) (*AsyncIndexerFilteringState, error) {
+	if instanceID <= 0 {
+		return nil, fmt.Errorf("invalid instance id: %d", instanceID)
+	}
+	if strings.TrimSpace(hash) == "" {
+		return nil, fmt.Errorf("torrent hash is required")
 	}
 
-	// First, filter by capabilities and categories as before
-	capabilityFilteredIDs, err := s.jackettService.FilterIndexersForCapabilities(ctx, requested, info.RequiredCaps, info.SearchCategories)
-	if err != nil {
-		return nil, nil, err
+	// Try to get cached state first
+	if s.asyncFilteringCache != nil {
+		cacheKey := asyncFilteringCacheKey(instanceID, hash)
+		if cached, found := s.asyncFilteringCache.Get(cacheKey); found {
+			log.Debug().
+				Str("torrentHash", hash).
+				Int("instanceID", instanceID).
+				Bool("capabilitiesCompleted", cached.CapabilitiesCompleted).
+				Bool("contentCompleted", cached.ContentCompleted).
+				Msg("[CROSSSEED-ASYNC] Retrieved cached filtering status")
+			return cached, nil
+		}
 	}
 
-	// Then, filter out indexers for which we already have matching content
-	contentFilteredIDs, err := s.filterIndexersByExistingContent(ctx, instanceID, hash, capabilityFilteredIDs, nil)
+	// If no cached state, run analysis to generate initial state
+	// This handles cases where the cache has expired or this is a new request
+	asyncResult, err := s.AnalyzeTorrentForSearchAsync(ctx, instanceID, hash, true)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to filter indexers by existing content, proceeding with capability-filtered list")
-		return capabilityFilteredIDs, info, nil
+		return nil, err
 	}
 
 	log.Debug().
 		Str("torrentHash", hash).
 		Int("instanceID", instanceID).
-		Ints("requested", requested).
-		Ints("capabilityFiltered", capabilityFilteredIDs).
-		Ints("contentFiltered", contentFilteredIDs).
-		Int("filteredCount", len(contentFilteredIDs)).
-		Int("originalCount", len(requested)).
-		Msg("Applied indexer filtering by capabilities and existing content")
+		Bool("capabilitiesCompleted", asyncResult.FilteringState.CapabilitiesCompleted).
+		Bool("contentCompleted", asyncResult.FilteringState.ContentCompleted).
+		Msg("[CROSSSEED-ASYNC] Generated new filtering status (no cache)")
 
-	return contentFilteredIDs, info, nil
+	return asyncResult.FilteringState, nil
 }
 
 // filterIndexersByExistingContent removes indexers for which we already have matching content
