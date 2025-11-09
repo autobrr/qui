@@ -20,6 +20,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/prowlarr"
 	"github.com/autobrr/qui/pkg/releases"
 )
 
@@ -1778,4 +1779,304 @@ func getCategoriesForContentType(ct contentType) []int {
 		// Return common categories
 		return []int{CategoryMovies, CategoryTV}
 	}
+}
+
+// GetTrackerDomains extracts domain names from all configured indexers
+func (s *Service) GetTrackerDomains(ctx context.Context) ([]string, error) {
+	indexers, err := s.indexerStore.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list indexers: %w", err)
+	}
+
+	domainMap := make(map[string]bool)
+	var domains []string
+
+	for _, indexer := range indexers {
+		if indexer.BaseURL != "" {
+			domain := extractDomainFromURL(indexer.BaseURL)
+			if domain != "" && !domainMap[domain] {
+				domainMap[domain] = true
+				domains = append(domains, domain)
+			}
+		}
+	}
+
+	// Sort for consistent output
+	sort.Strings(domains)
+	return domains, nil
+}
+
+// GetEnabledTrackerDomains extracts domain names from enabled indexers only
+func (s *Service) GetEnabledTrackerDomains(ctx context.Context) ([]string, error) {
+	indexers, err := s.indexerStore.ListEnabled(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list enabled indexers: %w", err)
+	}
+
+	domainMap := make(map[string]bool)
+	var domains []string
+
+	// Group indexers by backend for efficient processing
+	var jackettIndexers, prowlarrIndexers, nativeIndexers []*models.TorznabIndexer
+	for _, indexer := range indexers {
+		switch indexer.Backend {
+		case models.TorznabBackendProwlarr:
+			prowlarrIndexers = append(prowlarrIndexers, indexer)
+		case models.TorznabBackendNative:
+			nativeIndexers = append(nativeIndexers, indexer)
+		default: // Jackett
+			jackettIndexers = append(jackettIndexers, indexer)
+		}
+	}
+
+	// Handle Jackett and Native indexers (use BaseURL)
+	for _, indexer := range append(jackettIndexers, nativeIndexers...) {
+		if indexer.BaseURL != "" {
+			domain := extractDomainFromURL(indexer.BaseURL)
+			if domain != "" && !domainMap[domain] {
+				domainMap[domain] = true
+				domains = append(domains, domain)
+			}
+		}
+	}
+
+	// Handle Prowlarr indexers (need to query Prowlarr API for actual tracker domains)
+	if len(prowlarrIndexers) > 0 {
+		prowlarrDomains, err := s.getProwlarrTrackerDomains(ctx, prowlarrIndexers)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to get Prowlarr tracker domains, falling back to BaseURL")
+			// Fallback to BaseURL for Prowlarr indexers
+			for _, indexer := range prowlarrIndexers {
+				if indexer.BaseURL != "" {
+					domain := extractDomainFromURL(indexer.BaseURL)
+					if domain != "" && !domainMap[domain] {
+						domainMap[domain] = true
+						domains = append(domains, domain)
+					}
+				}
+			}
+		} else {
+			for _, domain := range prowlarrDomains {
+				if domain != "" && !domainMap[domain] {
+					domainMap[domain] = true
+					domains = append(domains, domain)
+				}
+			}
+		}
+	}
+
+	// Sort for consistent output
+	sort.Strings(domains)
+	return domains, nil
+}
+
+// extractDomainFromURL extracts the domain from a URL string
+func extractDomainFromURL(urlStr string) string {
+	if urlStr == "" {
+		return ""
+	}
+
+	// Parse the URL
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return ""
+	}
+
+	// Extract hostname
+	hostname := u.Hostname()
+	if hostname == "" {
+		return ""
+	}
+
+	// Remove common subdomains
+	parts := strings.Split(hostname, ".")
+	if len(parts) >= 3 {
+		// Remove www, api, etc.
+		if parts[0] == "www" || parts[0] == "api" || parts[0] == "tracker" {
+			hostname = strings.Join(parts[1:], ".")
+		}
+	}
+
+	return hostname
+}
+
+// TrackerDomainInfo represents detailed information about a tracker domain
+type TrackerDomainInfo struct {
+	Domain    string `json:"domain"`
+	IndexerID int    `json:"indexer_id"`
+	Name      string `json:"name"`
+	BaseURL   string `json:"base_url"`
+	JackettID string `json:"jackett_id,omitempty"`
+	Backend   string `json:"backend"`
+	Enabled   bool   `json:"enabled"`
+}
+
+// GetTrackerDomainDetails returns detailed information about tracker domains from all indexers
+func (s *Service) GetTrackerDomainDetails(ctx context.Context) ([]TrackerDomainInfo, error) {
+	indexers, err := s.indexerStore.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list indexers: %w", err)
+	}
+
+	var domainInfos []TrackerDomainInfo
+
+	for _, indexer := range indexers {
+		if indexer.BaseURL != "" {
+			domain := extractDomainFromURL(indexer.BaseURL)
+			if domain != "" {
+				domainInfos = append(domainInfos, TrackerDomainInfo{
+					Domain:    domain,
+					IndexerID: indexer.ID,
+					Name:      indexer.Name,
+					BaseURL:   indexer.BaseURL,
+					JackettID: indexer.IndexerID,
+					Backend:   string(indexer.Backend),
+					Enabled:   indexer.Enabled,
+				})
+			}
+		}
+	}
+
+	// Sort by domain name for consistent output
+	sort.Slice(domainInfos, func(i, j int) bool {
+		return domainInfos[i].Domain < domainInfos[j].Domain
+	})
+
+	return domainInfos, nil
+}
+
+// GetIndexerDomain gets the tracker domain for a specific indexer by name
+func (s *Service) GetIndexerDomain(ctx context.Context, indexerName string) (string, error) {
+	indexers, err := s.indexerStore.ListEnabled(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to list enabled indexers: %w", err)
+	}
+
+	// Find the indexer by name
+	var targetIndexer *models.TorznabIndexer
+	for _, indexer := range indexers {
+		if indexer.Name == indexerName {
+			targetIndexer = indexer
+			break
+		}
+	}
+
+	if targetIndexer == nil {
+		return "", fmt.Errorf("indexer not found: %s", indexerName)
+	}
+
+	// Handle different backends
+	switch targetIndexer.Backend {
+	case models.TorznabBackendProwlarr:
+		// For Prowlarr, get the specific tracker domain for this indexer
+		domain, err := s.getProwlarrIndexerDomain(ctx, targetIndexer)
+		if err != nil || domain == "" {
+			// Fallback to BaseURL extraction
+			return extractDomainFromURL(targetIndexer.BaseURL), nil
+		}
+		return domain, nil
+	default:
+		// For Jackett/Native, use BaseURL directly
+		return extractDomainFromURL(targetIndexer.BaseURL), nil
+	}
+}
+
+// getProwlarrIndexerDomain gets the tracker domain for a specific Prowlarr indexer
+func (s *Service) getProwlarrIndexerDomain(ctx context.Context, indexer *models.TorznabIndexer) (string, error) {
+	if indexer.Backend != models.TorznabBackendProwlarr {
+		return "", fmt.Errorf("indexer is not a Prowlarr indexer")
+	}
+
+	// Get the API key for this indexer
+	apiKey, err := s.indexerStore.GetDecryptedAPIKey(indexer)
+	if err != nil {
+		return "", fmt.Errorf("failed to decrypt API key: %w", err)
+	}
+
+	// Create Prowlarr client
+	client := NewClient(indexer.BaseURL, apiKey, models.TorznabBackendProwlarr, 30)
+	if client.prowlarr == nil {
+		return "", fmt.Errorf("failed to create Prowlarr client")
+	}
+
+	// Parse the indexer ID from the IndexerID field
+	// For Prowlarr, the IndexerID should be a numeric string
+	indexerIDStr := strings.TrimSpace(indexer.IndexerID)
+	if indexerIDStr == "" {
+		return "", fmt.Errorf("prowlarr indexer ID is empty")
+	}
+
+	// Convert to int for the API call
+	indexerIDInt := 0
+	if _, err := fmt.Sscanf(indexerIDStr, "%d", &indexerIDInt); err != nil {
+		return "", fmt.Errorf("invalid Prowlarr indexer ID format: %s", indexerIDStr)
+	}
+
+	// Get detailed indexer information from Prowlarr
+	detail, err := client.prowlarr.GetIndexer(ctx, indexerIDInt)
+	if err != nil {
+		return "", fmt.Errorf("failed to get indexer details from Prowlarr: %w", err)
+	}
+
+	// Extract the tracker domain from the indexer configuration
+	domain := prowlarr.ExtractDomainFromIndexerFields(detail.Fields)
+	if domain == "" {
+		return "", fmt.Errorf("could not extract domain from Prowlarr indexer fields")
+	}
+
+	return domain, nil
+}
+
+// getProwlarrTrackerDomains queries Prowlarr API to get actual tracker domains for the given indexers
+func (s *Service) getProwlarrTrackerDomains(ctx context.Context, prowlarrIndexers []*models.TorznabIndexer) ([]string, error) {
+	if len(prowlarrIndexers) == 0 {
+		return nil, nil
+	}
+
+	// Group indexers by Prowlarr instance (BaseURL + API key combination)
+	prowlarrGroups := make(map[string][]*models.TorznabIndexer)
+	for _, indexer := range prowlarrIndexers {
+		key := indexer.BaseURL // Use BaseURL as the key since it represents the Prowlarr instance
+		prowlarrGroups[key] = append(prowlarrGroups[key], indexer)
+	}
+
+	var allDomains []string
+
+	// Query each Prowlarr instance
+	for baseURL, indexers := range prowlarrGroups {
+		if len(indexers) == 0 {
+			continue
+		}
+
+		// Use the first indexer's API key (all indexers in the same group should have the same API key)
+		apiKey, err := s.indexerStore.GetDecryptedAPIKey(indexers[0])
+		if err != nil {
+			log.Warn().Err(err).Str("baseURL", baseURL).Msg("Failed to decrypt API key for Prowlarr instance")
+			continue
+		}
+
+		// Create Prowlarr client for this instance
+		client := NewClient(baseURL, apiKey, models.TorznabBackendProwlarr, 30)
+		if client.prowlarr == nil {
+			log.Warn().Str("baseURL", baseURL).Msg("Failed to create Prowlarr client")
+			continue
+		}
+
+		// Get tracker domains from this Prowlarr instance
+		domains, err := client.prowlarr.GetTrackerDomains(ctx)
+		if err != nil {
+			log.Warn().Err(err).Str("baseURL", baseURL).Msg("Failed to get tracker domains from Prowlarr")
+			continue
+		}
+
+		log.Debug().
+			Strs("domains", domains).
+			Int("domainCount", len(domains)).
+			Str("prowlarrInstance", baseURL).
+			Msg("Retrieved tracker domains from Prowlarr")
+
+		allDomains = append(allDomains, domains...)
+	}
+
+	return allDomains, nil
 }
