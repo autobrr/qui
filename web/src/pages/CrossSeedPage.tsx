@@ -358,6 +358,27 @@ export function CrossSeedPage() {
   const searchRunning = searchStatus?.running ?? false
   const activeSearchRun = searchStatus?.run
   const recentSearchResults = searchStatus?.recentResults ?? []
+  const recentAddedResults = useMemo(
+    () => recentSearchResults.filter(result => result.added),
+    [recentSearchResults]
+  )
+
+  const estimatedCompletionInfo = useMemo(() => {
+    if (!activeSearchRun) {
+      return null
+    }
+    const total = activeSearchRun.totalTorrents ?? 0
+    const interval = activeSearchRun.intervalSeconds ?? 0
+    if (total === 0 || interval <= 0) {
+      return null
+    }
+    const remaining = Math.max(total - activeSearchRun.processed, 0)
+    if (remaining === 0) {
+      return null
+    }
+    const eta = new Date(Date.now() + remaining * interval * 1000)
+    return { eta, remaining, interval }
+  }, [activeSearchRun])
 
   return (
     <div className="space-y-6 p-6 pb-16">
@@ -614,27 +635,38 @@ export function CrossSeedPage() {
                     {activeSearchRun.torrentsAdded} added • {activeSearchRun.torrentsSkipped} skipped • {activeSearchRun.torrentsFailed} failed
                   </span>
                 </div>
-                <div className="flex items-center gap-4">
-                  <span className="text-muted-foreground">Started:</span>
-                  <span className="font-medium">{formatDate(activeSearchRun.startedAt)}</span>
-                </div>
+              <div className="flex items-center gap-4">
+                <span className="text-muted-foreground">Started:</span>
+                <span className="font-medium">{formatDate(activeSearchRun.startedAt)}</span>
               </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">No active run</p>
-            )}
-          </div>
+              {estimatedCompletionInfo && (
+                <div className="flex items-center gap-4">
+                  <span className="text-muted-foreground">Est. completion:</span>
+                  <div className="flex flex-col">
+                    <span className="font-medium">{formatDate(estimatedCompletionInfo.eta.toISOString())}</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      ≈ {estimatedCompletionInfo.remaining} torrents remaining @ {estimatedCompletionInfo.interval}s intervals
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">No active run</p>
+          )}
+        </div>
 
           <Collapsible open={searchResultsOpen} onOpenChange={setSearchResultsOpen} className="border rounded-md">
             <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium">
               <span>Recent search additions</span>
-              <Badge variant="outline">{recentSearchResults.length}</Badge>
+              <Badge variant="outline">{recentAddedResults.length}</Badge>
             </CollapsibleTrigger>
             <CollapsibleContent className="px-3 pb-3">
-              {recentSearchResults.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No search results recorded yet.</p>
+              {recentAddedResults.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No added cross-seed results recorded yet.</p>
               ) : (
                 <ul className="space-y-2">
-                  {recentSearchResults.map(result => (
+                  {recentAddedResults.map(result => (
                     <li key={`${result.torrentHash}-${result.processedAt}`} className="flex items-start justify-between gap-3 rounded border px-2 py-2">
                       <div className="space-y-1">
                         <p className="text-sm font-medium leading-tight">{result.torrentName}</p>
@@ -642,7 +674,7 @@ export function CrossSeedPage() {
                         {result.message && <p className="text-xs text-muted-foreground">{result.message}</p>}
                         <p className="text-[10px] text-muted-foreground">{formatDate(result.processedAt)}</p>
                       </div>
-                      <Badge variant={result.added ? "default" : "secondary"}>{result.added ? "Added" : "Skipped"}</Badge>
+                      <Badge variant="default">Added</Badge>
                     </li>
                   ))}
                 </ul>
