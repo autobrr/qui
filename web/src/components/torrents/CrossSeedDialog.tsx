@@ -162,6 +162,8 @@ const CrossSeedDialogComponent = ({
                 indexerOptions={indexerOptions}
                 indexerMode={indexerMode}
                 selectedIndexerIds={selectedIndexerIds}
+                excludedIndexerIds={excludedIndexerEntries.map(entry => entry.id)}
+                contentFilteringCompleted={sourceTorrent?.contentFilteringCompleted ?? false}
                 onIndexerModeChange={onIndexerModeChange}
                 onToggleIndexer={onToggleIndexer}
                 onSelectAllIndexers={onSelectAllIndexers}
@@ -181,35 +183,59 @@ const CrossSeedDialogComponent = ({
           </div>
 
           {/* Content-based filtering info */}
-          {excludedIndexerEntries.length > 0 && (
+          {(sourceTorrent && !sourceTorrent.contentFilteringCompleted) || excludedIndexerEntries.length > 0 ? (
             <Collapsible open={excludedOpen} onOpenChange={setExcludedOpen}>
               <div className="rounded-lg border bg-accent/10">
                 <CollapsibleTrigger className="w-full p-2.5 text-left hover:bg-accent/20 transition-colors">
                   <div className="flex items-center gap-2 text-sm text-accent-foreground">
                     <ChevronRight className={`h-3.5 w-3.5 transition-transform ${excludedOpen ? "rotate-90" : ""}`} />
-                    <span className="font-medium">Smart Filtering Active</span>
-                    <Badge variant="secondary" className="text-xs">
-                      {excludedIndexerEntries.length} {excludedIndexerEntries.length === 1 ? "indexer" : "indexers"} filtered
-                    </Badge>
+                    {!sourceTorrent?.contentFilteringCompleted ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <span className="font-medium">Content Filtering In Progress</span>
+                        <Badge variant="secondary" className="text-xs">
+                          Analyzing existing content...
+                        </Badge>
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-medium">Smart Filtering Active</span>
+                        <Badge variant="secondary" className="text-xs">
+                          {excludedIndexerEntries.length} {excludedIndexerEntries.length === 1 ? "indexer" : "indexers"} filtered
+                        </Badge>
+                      </>
+                    )}
                   </div>
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <div className="px-2.5 pb-2.5">
-                    <p className="text-xs text-muted-foreground">
-                      You already seed this release from these trackers, so they're excluded from the search.
-                    </p>
-                    <ul className="mt-2 ml-4 text-xs text-muted-foreground space-y-0.5">
-                      {excludedIndexerEntries.map(entry => (
-                        <li key={entry.id} className="break-words">
-                          • {entry.name}
-                        </li>
-                      ))}
-                    </ul>
+                    {!sourceTorrent?.contentFilteringCompleted ? (
+                      <p className="text-xs text-muted-foreground">
+                        Checking your existing torrents to find duplicates and exclude redundant trackers. This helps avoid downloading the same content multiple times.
+                      </p>
+                    ) : excludedIndexerEntries.length > 0 ? (
+                      <>
+                        <p className="text-xs text-muted-foreground">
+                          You already seed this release from these trackers, so they're excluded from the search.
+                        </p>
+                        <ul className="mt-2 ml-4 text-xs text-muted-foreground space-y-0.5">
+                          {excludedIndexerEntries.map(entry => (
+                            <li key={entry.id} className="break-words">
+                              • {entry.name}
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Content filtering completed. No duplicate content found on your enabled trackers.
+                      </p>
+                    )}
                   </div>
                 </CollapsibleContent>
               </div>
             </Collapsible>
-          )}
+          ) : null}
           {!hasSearched ? null : isLoading ? (
             <div className="flex items-center justify-center gap-2.5 py-8 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -388,6 +414,8 @@ interface CrossSeedScopeSelectorProps {
   indexerOptions: CrossSeedIndexerOption[]
   indexerMode: "all" | "custom"
   selectedIndexerIds: number[]
+  excludedIndexerIds: number[]
+  contentFilteringCompleted: boolean
   onIndexerModeChange: (mode: "all" | "custom") => void
   onToggleIndexer: (indexerId: number) => void
   onSelectAllIndexers: () => void
@@ -426,6 +454,8 @@ const CrossSeedScopeSelector = memo(({
   indexerOptions,
   indexerMode,
   selectedIndexerIds,
+  excludedIndexerIds,
+  contentFilteringCompleted,
   onIndexerModeChange,
   onToggleIndexer,
   onSelectAllIndexers,
@@ -435,8 +465,19 @@ const CrossSeedScopeSelector = memo(({
 }: CrossSeedScopeSelectorProps) => {
   const total = indexerOptions.length
   const selectedCount = selectedIndexerIds.length
+  const excludedCount = excludedIndexerIds.length
   const disableCustomSelection = total === 0
   const scopeSearchDisabled = isSearching || (indexerMode === "custom" && selectedCount === 0)
+
+  // Calculate the actual count of indexers that will be used for search
+  const searchIndexerCount = useMemo(() => {
+    if (indexerMode === "all") {
+      return Math.max(0, total - excludedCount)
+    }
+    // For custom mode, exclude any selected indexers that are also excluded
+    const availableSelected = selectedIndexerIds.filter(id => !excludedIndexerIds.includes(id))
+    return availableSelected.length
+  }, [indexerMode, total, excludedCount, selectedIndexerIds, excludedIndexerIds])
 
   const statusText = useMemo(() => {
     const suffix = total === 1 ? "indexer" : "indexers"
@@ -448,6 +489,11 @@ const CrossSeedScopeSelector = memo(({
     }
     return `${selectedCount} of ${total} selected`
   }, [indexerMode, total, selectedCount])
+
+  const searchText = useMemo(() => {
+    const suffix = searchIndexerCount === 1 ? "indexer" : "indexers"
+    return `${searchIndexerCount} ${suffix} for search`
+  }, [searchIndexerCount])
 
   // Memoize the dropdown items to prevent recreation on each render
   const indexerItems = useMemo(
@@ -480,8 +526,15 @@ const CrossSeedScopeSelector = memo(({
           <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
           <h3 className="text-xs font-medium">Search Scope</h3>
         </div>
-        <div className="text-xs text-muted-foreground">
-          {statusText}
+        <div className="flex flex-col items-end gap-0.5">
+          <div className="text-xs text-muted-foreground">
+            {statusText}
+          </div>
+          {contentFilteringCompleted && excludedCount > 0 && (
+            <div className="text-xs font-medium text-primary">
+              {searchText}
+            </div>
+          )}
         </div>
       </div>
 
