@@ -64,7 +64,11 @@ type Service struct {
 	domainMappings map[string][]string
 }
 
-const searchResultCacheTTL = 5 * time.Minute
+const (
+	searchResultCacheTTL         = 5 * time.Minute
+	contentFilteringWaitTimeout  = 5 * time.Second
+	contentFilteringPollInterval = 150 * time.Millisecond
+)
 
 // initializeDomainMappings returns a hardcoded mapping of tracker domains to indexer domains.
 // This helps map tracker domains (from existing torrents) to indexer domains (from Jackett/Prowlarr)
@@ -2952,37 +2956,33 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		return err
 	}
 
-	// Use capability-filtered indexers immediately (no waiting for content filtering)
-	var allowedIndexerIDs []int
-	if asyncAnalysis.FilteringState.CapabilitiesCompleted {
-		allowedIndexerIDs = asyncAnalysis.FilteringState.CapabilityIndexers
+	filteringState := asyncAnalysis.FilteringState
+	allowedIndexerIDs, skipReason := s.resolveAllowedIndexerIDs(ctx, torrent.Hash, filteringState, state.opts.IndexerIDs)
+
+	if len(allowedIndexerIDs) > 0 {
 		log.Debug().
 			Str("torrentHash", torrent.Hash).
 			Int("instanceID", state.opts.InstanceID).
 			Ints("originalIndexers", state.opts.IndexerIDs).
-			Ints("capabilityFilteredIndexers", allowedIndexerIDs).
-			Bool("contentFilteringInProgress", !asyncAnalysis.FilteringState.ContentCompleted).
-			Msg("[CROSSSEED-SEARCH-AUTO] Using capability-filtered indexers for automation search")
-	} else {
-		// Fallback to original list if capability filtering somehow failed
-		allowedIndexerIDs = state.opts.IndexerIDs
-		log.Warn().
-			Str("torrentHash", torrent.Hash).
-			Int("instanceID", state.opts.InstanceID).
-			Msg("[CROSSSEED-SEARCH-AUTO] Capability filtering not completed, using original indexer list")
+			Ints("selectedIndexers", allowedIndexerIDs).
+			Bool("contentFilteringCompleted", filteringState != nil && filteringState.ContentCompleted).
+			Msg("[CROSSSEED-SEARCH-AUTO] Using resolved indexer set for automation search")
 	}
 
 	if len(allowedIndexerIDs) == 0 {
 		s.searchMu.Lock()
 		state.run.TorrentsSkipped++
 		s.searchMu.Unlock()
+		if skipReason == "" {
+			skipReason = "no indexers support required caps"
+		}
 		s.appendSearchResult(state, models.CrossSeedSearchResult{
 			TorrentHash:  torrent.Hash,
 			TorrentName:  torrent.Name,
 			IndexerName:  "",
 			ReleaseTitle: "",
 			Added:        false,
-			Message:      "no indexers support required caps",
+			Message:      skipReason,
 			ProcessedAt:  processedAt,
 		})
 		s.persistSearchRun(state)
@@ -3076,6 +3076,92 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	s.searchMu.Unlock()
 	s.persistSearchRun(state)
 	return nil
+}
+
+func (s *Service) resolveAllowedIndexerIDs(ctx context.Context, torrentHash string, filteringState *AsyncIndexerFilteringState, fallback []int) ([]int, string) {
+	if filteringState == nil {
+		return fallback, ""
+	}
+
+	if filteringState.CapabilitiesCompleted && !filteringState.ContentCompleted {
+		completed, waited, timedOut := s.waitForContentFilteringCompletion(ctx, torrentHash, filteringState)
+		if waited > 0 {
+			log.Debug().
+				Str("torrentHash", torrentHash).
+				Dur("waited", waited).
+				Bool("completed", completed).
+				Bool("timedOut", timedOut).
+				Msg("[CROSSSEED-SEARCH-AUTO] Waited for content filtering during seeded search")
+		}
+	}
+
+	if filteringState.ContentCompleted {
+		if len(filteringState.FilteredIndexers) > 0 {
+			return filteringState.FilteredIndexers, ""
+		}
+		return nil, s.describeFilteringSkipReason(filteringState)
+	}
+
+	if filteringState.CapabilitiesCompleted {
+		if len(filteringState.CapabilityIndexers) > 0 {
+			return filteringState.CapabilityIndexers, ""
+		}
+		return nil, "no indexers support required caps"
+	}
+
+	if len(fallback) > 0 {
+		return fallback, ""
+	}
+
+	return fallback, ""
+}
+
+func (s *Service) waitForContentFilteringCompletion(ctx context.Context, torrentHash string, state *AsyncIndexerFilteringState) (bool, time.Duration, bool) {
+	if state == nil {
+		return false, 0, false
+	}
+	if state.ContentCompleted {
+		return true, 0, false
+	}
+
+	start := time.Now()
+	waitCtx, cancel := context.WithTimeout(ctx, contentFilteringWaitTimeout)
+	defer cancel()
+
+	ticker := time.NewTicker(contentFilteringPollInterval)
+	defer ticker.Stop()
+
+	for {
+		if state.ContentCompleted {
+			return true, time.Since(start), false
+		}
+
+		select {
+		case <-ticker.C:
+			if state.ContentCompleted {
+				return true, time.Since(start), false
+			}
+		case <-waitCtx.Done():
+			err := waitCtx.Err()
+			return state.ContentCompleted, time.Since(start), errors.Is(err, context.DeadlineExceeded)
+		}
+	}
+}
+
+func (s *Service) describeFilteringSkipReason(state *AsyncIndexerFilteringState) string {
+	if state == nil {
+		return "no indexers available"
+	}
+	if len(state.ExcludedIndexers) > 0 {
+		return fmt.Sprintf("skipped: already seeded from %d tracker(s)", len(state.ExcludedIndexers))
+	}
+	if state.Error != "" {
+		return fmt.Sprintf("content filtering failed: %s", state.Error)
+	}
+	if state.CapabilitiesCompleted && len(state.CapabilityIndexers) == 0 {
+		return "no indexers support required caps"
+	}
+	return "no eligible indexers after filtering"
 }
 
 func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *searchRunState, torrent *qbt.Torrent, match TorrentSearchResult, processedAt time.Time) (*models.CrossSeedSearchResult, error) {
