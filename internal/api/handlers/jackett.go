@@ -560,10 +560,12 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 		Msg("Testing torznab indexer connectivity")
 
 	// Run a lightweight search via the service to validate connectivity
+	// Use CacheModeBypass to prevent test searches from cluttering recent search history
 	_, err = h.service.SearchGeneric(r.Context(), &jackett.TorznabSearchRequest{
 		Query:      "test",
 		Limit:      1,
 		IndexerIDs: []int{id},
+		CacheMode:  jackett.CacheModeBypass,
 	})
 
 	// Update test status in database

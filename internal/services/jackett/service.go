@@ -284,11 +284,9 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 		Total:   total,
 	}
 
-	if cacheEnabled && cacheSig != nil {
+	if cacheEnabled && cacheSig != nil && cacheReadAllowed {
 		now := time.Now().UTC()
-		if cacheReadAllowed {
-			s.annotateSearchResponse(response, scope, false, now, now.Add(s.searchCacheTTL), nil)
-		}
+		s.annotateSearchResponse(response, scope, false, now, now.Add(s.searchCacheTTL), nil)
 		s.persistSearchCacheEntry(ctx, scope, cacheSig, req, indexerIDs, response, now)
 	}
 
@@ -406,11 +404,9 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 		Total:   total,
 	}
 
-	if cacheEnabled && cacheSig != nil {
+	if cacheEnabled && cacheSig != nil && cacheReadAllowed {
 		now := time.Now().UTC()
-		if cacheReadAllowed {
-			s.annotateSearchResponse(response, scope, false, now, now.Add(s.searchCacheTTL), nil)
-		}
+		s.annotateSearchResponse(response, scope, false, now, now.Add(s.searchCacheTTL), nil)
 		s.persistSearchCacheEntry(ctx, scope, cacheSig, req, indexerIDs, response, now)
 	}
 
