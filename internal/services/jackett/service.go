@@ -83,8 +83,9 @@ type searchContext struct {
 }
 
 type searchCacheSignature struct {
-	Key         string
-	Fingerprint string
+	Key             string
+	Fingerprint     string
+	BaseFingerprint string
 }
 
 type searchCacheKeyPayload struct {
@@ -251,7 +252,7 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 	if cacheEnabled {
 		cacheSig = s.buildSearchCacheSignature(scope, req, detectedType, searchMode, indexerIDs)
 		if cacheReadAllowed {
-			if resp, ok := s.tryServeSearchCache(ctx, cacheSig); ok {
+			if resp, ok := s.tryServeSearchCache(ctx, cacheSig, scope, req, indexerIDs); ok {
 				return resp, nil
 			}
 		}
@@ -374,7 +375,7 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 	if cacheEnabled {
 		cacheSig = s.buildSearchCacheSignature(scope, req, detectedType, searchMode, indexerIDs)
 		if cacheReadAllowed {
-			if resp, ok := s.tryServeSearchCache(ctx, cacheSig); ok {
+			if resp, ok := s.tryServeSearchCache(ctx, cacheSig, scope, req, indexerIDs); ok {
 				return resp, nil
 			}
 		}
@@ -562,19 +563,13 @@ func (s *Service) buildSearchCacheSignature(scope string, req *TorznabSearchRequ
 		return nil
 	}
 
-	categories := append([]int(nil), req.Categories...)
-	if len(categories) > 1 {
-		slices.Sort(categories)
-	}
-
-	normalizedIndexerIDs := append([]int(nil), indexerIDs...)
-	if len(normalizedIndexerIDs) > 1 {
-		slices.Sort(normalizedIndexerIDs)
-	}
+	categories := canonicalizeIntSlice(req.Categories)
+	normalizedIndexerIDs := canonicalizeIntSlice(indexerIDs)
+	query := canonicalizeQuery(req.Query)
 
 	payload := searchCacheKeyPayload{
 		Scope:       scope,
-		Query:       strings.ToLower(strings.TrimSpace(req.Query)),
+		Query:       query,
 		Categories:  categories,
 		IndexerIDs:  normalizedIndexerIDs,
 		IMDbID:      strings.TrimSpace(req.IMDbID),
@@ -590,20 +585,21 @@ func (s *Service) buildSearchCacheSignature(scope string, req *TorznabSearchRequ
 		ContentType: detectedType,
 	}
 
-	raw, err := json.Marshal(payload)
+	fullFingerprint, baseFingerprint, err := buildSearchCacheFingerprints(payload)
 	if err != nil {
 		log.Debug().Err(err).Msg("Failed to marshal torznab search cache payload")
 		return nil
 	}
 
-	sum := sha256.Sum256(raw)
+	sum := sha256.Sum256([]byte(fullFingerprint))
 	return &searchCacheSignature{
-		Key:         hex.EncodeToString(sum[:]),
-		Fingerprint: string(raw),
+		Key:             hex.EncodeToString(sum[:]),
+		Fingerprint:     fullFingerprint,
+		BaseFingerprint: baseFingerprint,
 	}
 }
 
-func (s *Service) tryServeSearchCache(ctx context.Context, sig *searchCacheSignature) (*SearchResponse, bool) {
+func (s *Service) tryServeSearchCache(ctx context.Context, sig *searchCacheSignature, scope string, req *TorznabSearchRequest, indexerIDs []int) (*SearchResponse, bool) {
 	if !s.shouldUseSearchCache() || sig == nil || sig.Key == "" {
 		return nil, false
 	}
@@ -613,17 +609,79 @@ func (s *Service) tryServeSearchCache(ctx context.Context, sig *searchCacheSigna
 		log.Debug().Err(err).Msg("torznab search cache fetch failed")
 		return nil, false
 	}
-	if !found {
+	if found {
+		var response SearchResponse
+		if err := json.Unmarshal(entry.ResponseData, &response); err != nil {
+			log.Warn().Err(err).Msg("Failed to decode cached torznab search response")
+			return nil, false
+		}
+
+		s.annotateSearchResponse(&response, entry.Scope, true, entry.CachedAt, entry.ExpiresAt, &entry.LastUsedAt)
+		return &response, true
+	}
+
+	return s.tryServeSearchCacheSuperset(ctx, sig, scope, req, indexerIDs)
+}
+
+func (s *Service) tryServeSearchCacheSuperset(ctx context.Context, sig *searchCacheSignature, scope string, req *TorznabSearchRequest, indexerIDs []int) (*SearchResponse, bool) {
+	if !s.shouldUseSearchCache() || sig == nil || req == nil || s.searchCache == nil {
+		return nil, false
+	}
+	if len(indexerIDs) == 0 || sig.BaseFingerprint == "" {
+		return nil, false
+	}
+
+	normalizedQuery := canonicalizeQuery(req.Query)
+	candidates, err := s.searchCache.FindActiveByScopeAndQuery(ctx, scope, normalizedQuery)
+	if err != nil {
+		log.Debug().Err(err).Msg("torznab superset cache lookup failed")
+		return nil, false
+	}
+	if len(candidates) == 0 {
+		return nil, false
+	}
+
+	requestedIDs := canonicalizeIntSlice(indexerIDs)
+	var bestEntry *models.TorznabSearchCacheEntry
+
+	for _, entry := range candidates {
+		if entry == nil || entry.RequestFingerprint == "" {
+			continue
+		}
+
+		baseFingerprint, err := buildBaseFingerprintFromRaw(entry.RequestFingerprint)
+		if err != nil {
+			log.Debug().Err(err).Msg("failed to normalize cached search fingerprint")
+			continue
+		}
+		if baseFingerprint != sig.BaseFingerprint {
+			continue
+		}
+		if !containsAllIndexerIDs(entry.IndexerIDs, requestedIDs) {
+			continue
+		}
+
+		if bestEntry == nil || len(entry.IndexerIDs) < len(bestEntry.IndexerIDs) {
+			bestEntry = entry
+		}
+	}
+
+	if bestEntry == nil {
 		return nil, false
 	}
 
 	var response SearchResponse
-	if err := json.Unmarshal(entry.ResponseData, &response); err != nil {
-		log.Warn().Err(err).Msg("Failed to decode cached torznab search response")
+	if err := json.Unmarshal(bestEntry.ResponseData, &response); err != nil {
+		log.Warn().Err(err).Msg("failed to decode cached torznab search response (superset)")
 		return nil, false
 	}
 
-	s.annotateSearchResponse(&response, entry.Scope, true, entry.CachedAt, entry.ExpiresAt, &entry.LastUsedAt)
+	filtered := filterResultsByIndexerIDs(response.Results, requestedIDs)
+	response.Results = filtered
+	response.Total = len(filtered)
+
+	s.annotateSearchResponse(&response, scope, true, bestEntry.CachedAt, bestEntry.ExpiresAt, &bestEntry.LastUsedAt)
+	go s.searchCache.Touch(context.Background(), bestEntry.ID)
 	return &response, true
 }
 
@@ -663,12 +721,16 @@ func (s *Service) persistSearchCacheEntry(ctx context.Context, scope string, sig
 		return
 	}
 
+	canonicalQuery := canonicalizeQuery(req.Query)
+	canonicalCategories := canonicalizeIntSlice(req.Categories)
+	canonicalIndexerIDs := canonicalizeIntSlice(indexerIDs)
+
 	entry := &models.TorznabSearchCacheEntry{
 		CacheKey:           sig.Key,
 		Scope:              scope,
-		Query:              strings.ToLower(strings.TrimSpace(req.Query)),
-		Categories:         append([]int(nil), req.Categories...),
-		IndexerIDs:         append([]int(nil), indexerIDs...),
+		Query:              canonicalQuery,
+		Categories:         canonicalCategories,
+		IndexerIDs:         canonicalIndexerIDs,
 		RequestFingerprint: sig.Fingerprint,
 		ResponseData:       payload,
 		TotalResults:       resp.Total,
@@ -683,6 +745,90 @@ func (s *Service) persistSearchCacheEntry(ctx context.Context, scope string, sig
 	}
 
 	s.maybeScheduleSearchCacheCleanup()
+}
+
+func canonicalizeQuery(q string) string {
+	return strings.ToLower(strings.TrimSpace(q))
+}
+
+func canonicalizeIntSlice(values []int) []int {
+	if len(values) == 0 {
+		return nil
+	}
+	normalized := append([]int(nil), values...)
+	slices.Sort(normalized)
+	normalized = slices.Compact(normalized)
+	return normalized
+}
+
+func containsAllIndexerIDs(superset []int, subset []int) bool {
+	if len(subset) == 0 {
+		return true
+	}
+	if len(superset) == 0 {
+		return false
+	}
+
+	set := make(map[int]struct{}, len(superset))
+	for _, id := range superset {
+		set[id] = struct{}{}
+	}
+
+	for _, id := range subset {
+		if _, ok := set[id]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func filterResultsByIndexerIDs(results []SearchResult, allowed []int) []SearchResult {
+	if len(allowed) == 0 {
+		return results
+	}
+
+	set := make(map[int]struct{}, len(allowed))
+	for _, id := range allowed {
+		set[id] = struct{}{}
+	}
+
+	filtered := make([]SearchResult, 0, len(results))
+	for _, res := range results {
+		if _, ok := set[res.IndexerID]; ok {
+			filtered = append(filtered, res)
+		}
+	}
+	return filtered
+}
+
+func buildSearchCacheFingerprints(payload searchCacheKeyPayload) (string, string, error) {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return "", "", err
+	}
+
+	basePayload := payload
+	basePayload.IndexerIDs = nil
+	baseRaw, err := json.Marshal(basePayload)
+	if err != nil {
+		return "", "", err
+	}
+
+	return string(raw), string(baseRaw), nil
+}
+
+func buildBaseFingerprintFromRaw(raw string) (string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return "", fmt.Errorf("empty fingerprint")
+	}
+
+	var payload searchCacheKeyPayload
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return "", err
+	}
+
+	_, base, err := buildSearchCacheFingerprints(payload)
+	return base, err
 }
 
 func (s *Service) maybeScheduleSearchCacheCleanup() {

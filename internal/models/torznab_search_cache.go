@@ -16,6 +16,7 @@ import (
 
 // TorznabSearchCacheEntry captures a cached Torznab search response.
 type TorznabSearchCacheEntry struct {
+	ID                 int64
 	CacheKey           string
 	Scope              string
 	Query              string
@@ -127,9 +128,10 @@ func (s *TorznabSearchCacheStore) Fetch(ctx context.Context, cacheKey string) (*
 	}
 
 	entry := &TorznabSearchCacheEntry{
+		ID:                 id,
 		CacheKey:           cacheKey,
 		Scope:              scope,
-		Query:              queryValue.String,
+		Query:              strings.TrimSpace(queryValue.String),
 		RequestFingerprint: fingerprint,
 		ResponseData:       response,
 		TotalResults:       total,
@@ -306,6 +308,91 @@ func (s *TorznabSearchCacheStore) RecentSearches(ctx context.Context, scope stri
 	return results, nil
 }
 
+// FindActiveByScopeAndQuery returns matching, non-expired cache entries for a scope/query pair.
+func (s *TorznabSearchCacheStore) FindActiveByScopeAndQuery(ctx context.Context, scope string, query string) ([]*TorznabSearchCacheEntry, error) {
+	scope = strings.TrimSpace(scope)
+	query = strings.TrimSpace(query)
+
+	if scope == "" || query == "" {
+		return nil, nil
+	}
+
+	const findQuery = `
+		SELECT id, cache_key, scope, query, categories_json, indexer_ids_json, request_fingerprint,
+		       response_data, total_results, cached_at, last_used_at, expires_at, hit_count
+		FROM torznab_search_cache
+		WHERE scope = ? AND query = ? AND expires_at > CURRENT_TIMESTAMP
+		ORDER BY LENGTH(indexer_matcher) ASC
+	`
+
+	rows, err := s.db.QueryContext(ctx, findQuery, scope, query)
+	if err != nil {
+		return nil, fmt.Errorf("find torznab search cache entries: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []*TorznabSearchCacheEntry
+	for rows.Next() {
+		var (
+			id             int64
+			cacheKey       string
+			scopeValue     string
+			queryValue     sql.NullString
+			categoriesJSON sql.NullString
+			indexersJSON   sql.NullString
+			fingerprint    string
+			response       []byte
+			total          int
+			cachedAt       time.Time
+			lastUsedAt     time.Time
+			expiresAt      time.Time
+			hitCount       int64
+		)
+
+		if err := rows.Scan(
+			&id,
+			&cacheKey,
+			&scopeValue,
+			&queryValue,
+			&categoriesJSON,
+			&indexersJSON,
+			&fingerprint,
+			&response,
+			&total,
+			&cachedAt,
+			&lastUsedAt,
+			&expiresAt,
+			&hitCount,
+		); err != nil {
+			return nil, fmt.Errorf("scan torznab search cache entries: %w", err)
+		}
+
+		entry := &TorznabSearchCacheEntry{
+			ID:                 id,
+			CacheKey:           cacheKey,
+			Scope:              scopeValue,
+			Query:              strings.TrimSpace(queryValue.String),
+			RequestFingerprint: fingerprint,
+			ResponseData:       response,
+			TotalResults:       total,
+			CachedAt:           cachedAt,
+			LastUsedAt:         lastUsedAt,
+			ExpiresAt:          expiresAt,
+			HitCount:           hitCount,
+			Categories:         decodeIntArray(categoriesJSON.String),
+			IndexerIDs:         decodeIntArray(indexersJSON.String),
+		}
+
+		entries = append(entries, entry)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate torznab search cache entries: %w", err)
+	}
+
+	return entries, nil
+}
+
 // CleanupExpired removes all expired cache rows.
 func (s *TorznabSearchCacheStore) CleanupExpired(ctx context.Context) (int64, error) {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM torznab_search_cache WHERE expires_at <= CURRENT_TIMESTAMP`)
@@ -463,10 +550,24 @@ func (s *TorznabSearchCacheStore) UpdateSettings(ctx context.Context, ttlMinutes
 }
 
 func (s *TorznabSearchCacheStore) touchEntry(ctx context.Context, id int64) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	_, _ = s.db.ExecContext(ctx, `UPDATE torznab_search_cache SET last_used_at = CURRENT_TIMESTAMP, hit_count = hit_count + 1 WHERE id = ?`, id)
 }
 
+// Touch updates last_used_at and hit_count for a cache entry.
+func (s *TorznabSearchCacheStore) Touch(ctx context.Context, id int64) {
+	if s == nil || id <= 0 {
+		return
+	}
+	s.touchEntry(ctx, id)
+}
+
 func (s *TorznabSearchCacheStore) deleteEntry(ctx context.Context, id int64) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM torznab_search_cache WHERE id = ?`, id)
 }
 
