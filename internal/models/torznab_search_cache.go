@@ -12,8 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/dbinterface"
 )
 
 // TorznabSearchCacheEntry captures a cached Torznab search response.
@@ -125,7 +126,7 @@ func (s *TorznabSearchCacheStore) Fetch(ctx context.Context, cacheKey string) (*
 	}
 
 	if time.Now().After(expiresAt) {
-		go s.deleteEntry(context.Background(), id)
+		s.deleteEntry(ctx, id)
 		return nil, false, nil
 	}
 
@@ -145,7 +146,7 @@ func (s *TorznabSearchCacheStore) Fetch(ctx context.Context, cacheKey string) (*
 		IndexerIDs:         decodeIntArray(indexersJSON.String),
 	}
 
-	go s.touchEntry(context.Background(), id)
+	s.touchEntry(ctx, id)
 
 	return entry, true, nil
 }
