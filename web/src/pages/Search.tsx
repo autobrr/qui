@@ -5,6 +5,7 @@
 
 import { AddTorrentDialog, type AddTorrentDropPayload } from '@/components/torrents/AddTorrentDialog'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,11 +13,13 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useInstances } from '@/hooks/useInstances'
 import { api } from '@/lib/api'
-import type { TorznabIndexer, TorznabSearchResult } from '@/types'
-import { ArrowDown, ArrowUp, ArrowUpDown, Download, ExternalLink, Plus, Search as SearchIcon } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { formatRelativeTime } from '@/lib/utils'
+import type { TorznabIndexer, TorznabSearchRequest, TorznabSearchResponse, TorznabSearchResult } from '@/types'
+import { ArrowDown, ArrowUp, ArrowUpDown, Download, ExternalLink, Plus, RefreshCw, Search as SearchIcon } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 export function Search() {
@@ -34,6 +37,33 @@ export function Search() {
   const [resultsFilter, setResultsFilter] = useState('')
   const [sortColumn, setSortColumn] = useState<'title' | 'indexer' | 'size' | 'seeders' | 'category' | 'published' | 'source' | 'collection' | 'group' | null>('seeders')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [cacheMetadata, setCacheMetadata] = useState<TorznabSearchResponse["cache"] | null>(null)
+  const [refreshConfirmOpen, setRefreshConfirmOpen] = useState(false)
+  const [refreshCooldownUntil, setRefreshCooldownUntil] = useState(0)
+  const [, forceRefreshTick] = useState(0)
+
+  const REFRESH_COOLDOWN_MS = 30_000
+  const refreshCooldownRemaining = Math.max(0, refreshCooldownUntil - Date.now())
+  const canForceRefresh = !loading && refreshCooldownRemaining <= 0 && (results.length > 0 || cacheMetadata)
+  const showRefreshButton = results.length > 0 || cacheMetadata
+
+  useEffect(() => {
+    if (!refreshCooldownUntil) {
+      return
+    }
+
+    const id = window.setInterval(() => {
+      if (Date.now() >= refreshCooldownUntil) {
+        setRefreshCooldownUntil(0)
+        forceRefreshTick(tick => tick + 1)
+        window.clearInterval(id)
+      } else {
+        forceRefreshTick(tick => tick + 1)
+      }
+    }, 1_000)
+
+    return () => window.clearInterval(id)
+  }, [refreshCooldownUntil, forceRefreshTick])
 
   const formatBackend = (backend: TorznabIndexer['backend']) => {
     switch (backend) {
@@ -45,6 +75,62 @@ export function Search() {
         return 'Jackett'
     }
   }
+
+  const validateSearchInputs = useCallback(() => {
+    if (!query.trim()) {
+      toast.error('Please enter a search query')
+      return false
+    }
+
+    if (selectedIndexers.size === 0) {
+      toast.error('Please select at least one indexer')
+      return false
+    }
+
+    if (indexers.length === 0) {
+      toast.error('No enabled indexers available. Please add and enable indexers first.')
+      return false
+    }
+
+    return true
+  }, [indexers.length, query, selectedIndexers])
+
+  const runSearch = useCallback(
+    async ({ bypassCache = false }: { bypassCache?: boolean } = {}) => {
+      setLoading(true)
+      setCacheMetadata(null)
+
+      try {
+        const payload: Omit<TorznabSearchRequest, "categories"> = {
+          query: query.trim(),
+          indexer_ids: Array.from(selectedIndexers),
+        }
+
+        if (bypassCache) {
+          payload.cache_mode = "bypass"
+        }
+
+        const response = await api.searchTorznab(payload)
+        setResults(response.results)
+        setTotal(response.total)
+        setCacheMetadata(response.cache ?? null)
+
+        if (response.results.length === 0) {
+          toast.info('No results found')
+        } else {
+          const cacheSuffix = response.cache?.hit ? ' (cached)' : ''
+          toast.success(`Found ${response.total} results${cacheSuffix}`)
+        }
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+        toast.error(`Search failed: ${errorMsg}`)
+        console.error('Search error:', error)
+      } finally {
+        setLoading(false)
+      }
+    },
+    [api, query, selectedIndexers]
+  )
 
   // Build a category ID to name map from all indexers
   // Only use parent categories (multiples of 1000) for cleaner display
@@ -141,43 +227,10 @@ export function Search() {
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-    if (!query.trim()) {
-      toast.error('Please enter a search query')
+    if (!validateSearchInputs()) {
       return
     }
-
-    if (selectedIndexers.size === 0) {
-      toast.error('Please select at least one indexer')
-      return
-    }
-
-    if (indexers.length === 0) {
-      toast.error('No enabled indexers available. Please add and enable indexers first.')
-      return
-    }
-
-    setLoading(true)
-    try {
-      const response = await api.searchTorznab({ 
-        query,
-        indexer_ids: Array.from(selectedIndexers)
-      })
-      setResults(response.results)
-      setTotal(response.total)
-      
-      if (response.results.length === 0) {
-        toast.info('No results found')
-      } else {
-        toast.success(`Found ${response.total} results`)
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
-      toast.error(`Search failed: ${errorMsg}`)
-      console.error('Search error:', error)
-    } finally {
-      setLoading(false)
-    }
+    await runSearch()
   }
 
   const formatSize = (bytes: number): string => {
@@ -191,6 +244,17 @@ export function Search() {
   const formatDate = (dateStr: string): string => {
     const date = new Date(dateStr)
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString()
+  }
+
+  const handleForceRefreshConfirm = async () => {
+    if (!validateSearchInputs()) {
+      setRefreshConfirmOpen(false)
+      return
+    }
+
+    setRefreshConfirmOpen(false)
+    setRefreshCooldownUntil(Date.now() + REFRESH_COOLDOWN_MS)
+    await runSearch({ bypassCache: true })
   }
 
   const handleSort = (column: Exclude<typeof sortColumn, null>) => {
@@ -322,10 +386,46 @@ export function Search() {
     <div className="container mx-auto p-6">
       <Card>
         <CardHeader>
-          <CardTitle>Search Indexers</CardTitle>
-          <CardDescription>
-            Search across all enabled indexers. Categories are automatically detected based on your query.
-          </CardDescription>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex-1">
+              <CardTitle>Search Indexers</CardTitle>
+              <CardDescription>
+                Search across all enabled indexers. Categories are automatically detected based on your query.
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge
+                      variant={cacheMetadata?.hit ? 'secondary' : 'outline'}
+                      className={!cacheMetadata ? 'invisible' : ''}
+                    >
+                      {cacheMetadata?.hit ? 'Cache hit' : 'Live fetch'}
+                    </Badge>
+                  </TooltipTrigger>
+                  {cacheMetadata && (
+                    <TooltipContent>
+                      <p className="text-xs">
+                        Cached {formatRelativeTime(cacheMetadata.cachedAt)} · Expires {formatRelativeTime(cacheMetadata.expiresAt)}
+                      </p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={`h-7 w-7 opacity-40 transition-opacity hover:opacity-100 ${!showRefreshButton ? 'invisible' : ''}`}
+                onClick={() => setRefreshConfirmOpen(true)}
+                disabled={!canForceRefresh}
+                title={refreshCooldownRemaining > 0 ? `Ready in ${Math.ceil(refreshCooldownRemaining / 1000)}s` : 'Refresh from indexers'}
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSearch} className="space-y-4">
@@ -661,14 +761,34 @@ export function Search() {
       </Card>
 
       {selectedInstanceId && (
-        <AddTorrentDialog
-          instanceId={selectedInstanceId}
-          open={addDialogOpen}
-          onOpenChange={handleDialogOpenChange}
-          dropPayload={addDialogPayload}
-          onDropPayloadConsumed={() => setAddDialogPayload(null)}
-        />
+      <AddTorrentDialog
+        instanceId={selectedInstanceId}
+        open={addDialogOpen}
+        onOpenChange={handleDialogOpenChange}
+        dropPayload={addDialogPayload}
+        onDropPayloadConsumed={() => setAddDialogPayload(null)}
+      />
       )}
+
+      <AlertDialog open={refreshConfirmOpen} onOpenChange={setRefreshConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Bypass the cache?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will send the request directly to every selected indexer. Use sparingly to avoid rate limits. You can refresh again after a short cooldown.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleForceRefreshConfirm}
+              disabled={!canForceRefresh || loading}
+            >
+              Refresh now
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

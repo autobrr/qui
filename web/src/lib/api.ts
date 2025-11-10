@@ -52,6 +52,8 @@ import type {
   TorznabIndexerLatencyStats,
   TorznabSearchRequest,
   TorznabSearchResponse,
+  TorznabSearchCacheMetadata,
+  TorznabSearchCacheStats,
   User
 } from "@/types"
 import { getApiBaseUrl, withBasePath } from "./base-url"
@@ -548,6 +550,7 @@ class ApiClient {
       limit?: number
       indexerIds?: number[]
       findIndividualEpisodes?: boolean
+      cacheMode?: "bypass"
     } = {}
   ): Promise<CrossSeedTorrentSearchResponse> {
     const body: Record<string, unknown> = {}
@@ -563,6 +566,9 @@ class ApiClient {
     }
     if (options.findIndividualEpisodes !== undefined) {
       body.find_individual_episodes = options.findIndividualEpisodes
+    }
+    if (options.cacheMode) {
+      body.cache_mode = options.cacheMode
     }
 
     type RawTorrentInfo = {
@@ -610,6 +616,7 @@ class ApiClient {
     type RawSearchResponse = {
       source_torrent: RawTorrentInfo
       results?: RawSearchResult[]
+      cache?: TorznabSearchCacheMetadata
     }
 
     const response = await this.request<RawSearchResponse>(`/cross-seed/torrents/${instanceId}/${hash}/search`, {
@@ -660,6 +667,7 @@ class ApiClient {
         matchReason: result.match_reason ?? undefined,
         matchScore: result.match_score ?? 0,
       })),
+      cache: response.cache,
     }
   }
 
@@ -1299,6 +1307,17 @@ class ApiClient {
     return this.request<TorznabSearchResponse>("/torznab/search", {
       method: "POST",
       body: JSON.stringify(request),
+    })
+  }
+
+  async getTorznabSearchCacheStats(): Promise<TorznabSearchCacheStats> {
+    return this.request<TorznabSearchCacheStats>("/torznab/search/cache")
+  }
+
+  async updateTorznabSearchCacheSettings(ttlMinutes: number): Promise<TorznabSearchCacheStats> {
+    return this.request<TorznabSearchCacheStats>("/torznab/search/cache/settings", {
+      method: "PUT",
+      body: JSON.stringify({ ttlMinutes }),
     })
   }
 

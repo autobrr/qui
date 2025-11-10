@@ -2149,6 +2149,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		Query:      query,
 		Limit:      requestLimit,
 		IndexerIDs: filteredIndexerIDs,
+		CacheMode:  opts.CacheMode,
 	}
 
 	// Add music-specific parameters if we have them
@@ -2325,6 +2326,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		return &TorrentSearchResponse{
 			SourceTorrent: sourceInfo,
 			Results:       []TorrentSearchResult{},
+			Cache:         searchResp.Cache,
 		}, nil
 	}
 
@@ -2378,6 +2380,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	return &TorrentSearchResponse{
 		SourceTorrent: sourceInfo,
 		Results:       results,
+		Cache:         searchResp.Cache,
 	}, nil
 }
 

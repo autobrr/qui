@@ -33,12 +33,25 @@ type TorznabSearchRequest struct {
 	Offset int `json:"offset,omitempty"`
 	// IndexerIDs to search (empty = all enabled indexers)
 	IndexerIDs []int `json:"indexer_ids,omitempty"`
+	// CacheMode controls cache behaviour (""=default, "bypass" = skip cache)
+	CacheMode string `json:"cache_mode,omitempty"`
 }
 
 // SearchResponse represents the response from a Torznab search
 type SearchResponse struct {
-	Results []SearchResult `json:"results"`
-	Total   int            `json:"total"`
+	Results []SearchResult       `json:"results"`
+	Total   int                  `json:"total"`
+	Cache   *SearchCacheMetadata `json:"cache,omitempty"`
+}
+
+// SearchCacheMetadata describes how the response was sourced.
+type SearchCacheMetadata struct {
+	Hit       bool       `json:"hit"`
+	Scope     string     `json:"scope"`
+	Source    string     `json:"source"`
+	CachedAt  time.Time  `json:"cachedAt"`
+	ExpiresAt time.Time  `json:"expiresAt"`
+	LastUsed  *time.Time `json:"lastUsed,omitempty"`
 }
 
 // SearchResult represents a single search result from Jackett
@@ -148,4 +161,7 @@ const (
 	CategoryBooks       = 7000
 	CategoryBooksEbook  = 7020
 	CategoryBooksComics = 7030
+
+	CacheModeDefault = ""
+	CacheModeBypass  = "bypass"
 )

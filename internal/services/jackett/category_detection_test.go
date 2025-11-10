@@ -50,15 +50,17 @@ func TestContentDetectionSkippedWhenCategoriesProvided(t *testing.T) {
 				// Content detection would happen here
 				detectedType = contentTypeMovie // Just use a dummy value for this test
 			} else {
-				// When categories are provided, skip content detection
-				detectedType = contentTypeUnknown
-			}
+			// When categories are provided, skip content detection
+			detectedType = contentTypeUnknown
+		}
 
-			if tt.expectDetection {
-				assert.NotEqual(t, contentTypeUnknown, detectedType, "Should have detected content type")
-			} else {
-				assert.Equal(t, contentTypeUnknown, detectedType, "Should have skipped content detection")
-			}
+		assert.Equal(t, tt.query, req.Query)
+
+		if tt.expectDetection {
+			assert.NotEqual(t, contentTypeUnknown, detectedType, "Should have detected content type")
+		} else {
+			assert.Equal(t, contentTypeUnknown, detectedType, "Should have skipped content detection")
+		}
 		})
 	}
 }
@@ -100,7 +102,7 @@ func TestCategoryAssignment(t *testing.T) {
 			}
 
 			if len(req.Categories) == 0 {
-				service := NewService(nil, nil)
+				service := NewService(nil)
 				detectedType := service.detectContentType(req)
 				req.Categories = getCategoriesForContentType(detectedType)
 

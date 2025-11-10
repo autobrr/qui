@@ -5,6 +5,9 @@ package jackett
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -12,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"slices"
@@ -41,10 +45,16 @@ type IndexerStore interface {
 
 // Service provides Jackett integration for Torznab searching
 type Service struct {
-	indexerStore  IndexerStore
-	releaseParser *releases.Parser
-	rateLimiter   *RateLimiter
-	torrentCache  *models.TorznabTorrentCacheStore
+	indexerStore       IndexerStore
+	releaseParser      *releases.Parser
+	rateLimiter        *RateLimiter
+	torrentCache       *models.TorznabTorrentCacheStore
+	searchCache        *models.TorznabSearchCacheStore
+	searchCacheTTL     time.Duration
+	searchCacheEnabled bool
+
+	searchCacheCleanupMu   sync.Mutex
+	nextSearchCacheCleanup time.Time
 }
 
 // ErrMissingIndexerIdentifier signals that the Torznab backend requires an indexer ID to fetch caps.
@@ -53,6 +63,16 @@ var ErrMissingIndexerIdentifier = errors.New("torznab indexer identifier is requ
 const (
 	defaultRateLimitCooldown = 30 * time.Minute
 	defaultTorrentCacheTTL   = 12 * time.Hour
+	defaultSearchCacheTTL    = 24 * time.Hour
+	minSearchCacheTTL        = defaultSearchCacheTTL
+
+	searchCacheCleanupInterval = 6 * time.Hour
+
+	searchCacheScopeCrossSeed = "cross_seed"
+	searchCacheScopeGeneral   = "general"
+
+	searchCacheSourceNetwork = "network"
+	searchCacheSourceCache   = "cache"
 )
 
 // searchContext carries additional metadata about the current Torznab search.
@@ -60,6 +80,29 @@ type searchContext struct {
 	categories  []int
 	contentType contentType
 	searchMode  string
+}
+
+type searchCacheSignature struct {
+	Key         string
+	Fingerprint string
+}
+
+type searchCacheKeyPayload struct {
+	Scope       string      `json:"scope"`
+	Query       string      `json:"query"`
+	Categories  []int       `json:"categories,omitempty"`
+	IndexerIDs  []int       `json:"indexer_ids,omitempty"`
+	IMDbID      string      `json:"imdb_id,omitempty"`
+	TVDbID      string      `json:"tvdb_id,omitempty"`
+	Year        int         `json:"year,omitempty"`
+	Season      *int        `json:"season,omitempty"`
+	Episode     *int        `json:"episode,omitempty"`
+	Artist      string      `json:"artist,omitempty"`
+	Album       string      `json:"album,omitempty"`
+	Limit       int         `json:"limit"`
+	Offset      int         `json:"offset"`
+	SearchMode  string      `json:"search_mode,omitempty"`
+	ContentType contentType `json:"content_type"`
 }
 
 // TorrentDownloadRequest captures the metadata required to download (and cache) a torrent payload.
@@ -71,13 +114,59 @@ type TorrentDownloadRequest struct {
 	Size        int64
 }
 
+// ServiceOption configures optional behaviour on the Jackett service.
+type ServiceOption func(*Service)
+
+// Exported constants for cache settings.
+const (
+	DefaultSearchCacheTTL        = defaultSearchCacheTTL
+	MinSearchCacheTTL            = minSearchCacheTTL
+	MinSearchCacheTTLMinutes     = int(minSearchCacheTTL / time.Minute)
+	DefaultSearchCacheTTLMinutes = int(defaultSearchCacheTTL / time.Minute)
+)
+
+// SearchCacheConfig defines caching behaviour for Torznab search queries.
+type SearchCacheConfig struct {
+	TTL time.Duration
+}
+
 // NewService creates a new Jackett service
-func NewService(indexerStore IndexerStore, cacheStore *models.TorznabTorrentCacheStore) *Service {
-	return &Service{
-		indexerStore:  indexerStore,
-		releaseParser: releases.NewDefaultParser(),
-		rateLimiter:   NewRateLimiter(defaultMinRequestInterval),
-		torrentCache:  cacheStore,
+func NewService(indexerStore IndexerStore, opts ...ServiceOption) *Service {
+	s := &Service{
+		indexerStore:       indexerStore,
+		releaseParser:      releases.NewDefaultParser(),
+		rateLimiter:        NewRateLimiter(defaultMinRequestInterval),
+		searchCacheTTL:     defaultSearchCacheTTL,
+		searchCacheEnabled: true,
+	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(s)
+		}
+	}
+	return s
+}
+
+// WithTorrentCache wires a torrent payload cache into the service.
+func WithTorrentCache(cache *models.TorznabTorrentCacheStore) ServiceOption {
+	return func(s *Service) {
+		s.torrentCache = cache
+	}
+}
+
+// WithSearchCache wires the search cache store and configuration.
+func WithSearchCache(cache *models.TorznabSearchCacheStore, cfg SearchCacheConfig) ServiceOption {
+	return func(s *Service) {
+		s.searchCache = cache
+		ttl := cfg.TTL
+		if ttl <= 0 {
+			ttl = defaultSearchCacheTTL
+		}
+		if ttl < minSearchCacheTTL {
+			ttl = minSearchCacheTTL
+		}
+		s.searchCacheTTL = ttl
+		s.searchCacheEnabled = cache != nil
 	}
 }
 
@@ -145,6 +234,7 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 		}, nil
 	}
 
+	indexerIDs := collectIndexerIDs(indexersToSearch)
 	// Build search parameters
 	searchMode := searchModeForContentType(detectedType)
 	params := s.buildSearchParams(req, searchMode)
@@ -152,6 +242,19 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 		categories:  append([]int(nil), req.Categories...),
 		contentType: detectedType,
 		searchMode:  searchMode,
+	}
+
+	cacheEnabled := s.shouldUseSearchCache()
+	cacheReadAllowed := cacheEnabled && req.CacheMode != CacheModeBypass
+	var cacheSig *searchCacheSignature
+	scope := searchCacheScopeCrossSeed
+	if cacheEnabled {
+		cacheSig = s.buildSearchCacheSignature(scope, req, detectedType, searchMode, indexerIDs)
+		if cacheReadAllowed {
+			if resp, ok := s.tryServeSearchCache(ctx, cacheSig); ok {
+				return resp, nil
+			}
+		}
 	}
 
 	// Search selected indexers (defaults to all enabled when none specified)
@@ -176,10 +279,20 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 		searchResults = searchResults[:req.Limit]
 	}
 
-	return &SearchResponse{
+	response := &SearchResponse{
 		Results: searchResults,
 		Total:   total,
-	}, nil
+	}
+
+	if cacheEnabled && cacheSig != nil {
+		now := time.Now()
+		if cacheReadAllowed {
+			s.annotateSearchResponse(response, scope, false, now, now.Add(s.searchCacheTTL), nil)
+		}
+		s.persistSearchCacheEntry(ctx, scope, cacheSig, req, indexerIDs, response, now)
+	}
+
+	return response, nil
 }
 
 // SearchGeneric performs a general Torznab search across specified or all enabled indexers
@@ -253,6 +366,20 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 		}, nil
 	}
 
+	indexerIDs := collectIndexerIDs(indexersToSearch)
+	cacheEnabled := s.shouldUseSearchCache()
+	cacheReadAllowed := cacheEnabled && req.CacheMode != CacheModeBypass
+	var cacheSig *searchCacheSignature
+	scope := searchCacheScopeGeneral
+	if cacheEnabled {
+		cacheSig = s.buildSearchCacheSignature(scope, req, detectedType, searchMode, indexerIDs)
+		if cacheReadAllowed {
+			if resp, ok := s.tryServeSearchCache(ctx, cacheSig); ok {
+				return resp, nil
+			}
+		}
+	}
+
 	// Search all indexers
 	allResults, err := s.searchMultipleIndexers(ctx, indexersToSearch, params, meta)
 	if err != nil {
@@ -274,10 +401,20 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 		searchResults = searchResults[:req.Limit]
 	}
 
-	return &SearchResponse{
+	response := &SearchResponse{
 		Results: searchResults,
 		Total:   total,
-	}, nil
+	}
+
+	if cacheEnabled && cacheSig != nil {
+		now := time.Now()
+		if cacheReadAllowed {
+			s.annotateSearchResponse(response, scope, false, now, now.Add(s.searchCacheTTL), nil)
+		}
+		s.persistSearchCacheEntry(ctx, scope, cacheSig, req, indexerIDs, response, now)
+	}
+
+	return response, nil
 }
 
 // GetIndexers retrieves all configured Torznab indexers
@@ -398,6 +535,240 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 	}
 
 	return data, nil
+}
+
+func collectIndexerIDs(indexers []*models.TorznabIndexer) []int {
+	if len(indexers) == 0 {
+		return nil
+	}
+
+	ids := make([]int, 0, len(indexers))
+	for _, idx := range indexers {
+		if idx == nil {
+			continue
+		}
+		ids = append(ids, idx.ID)
+	}
+	slices.Sort(ids)
+	return ids
+}
+
+func (s *Service) shouldUseSearchCache() bool {
+	return s != nil && s.searchCacheEnabled && s.searchCache != nil && s.searchCacheTTL > 0
+}
+
+func (s *Service) buildSearchCacheSignature(scope string, req *TorznabSearchRequest, detectedType contentType, searchMode string, indexerIDs []int) *searchCacheSignature {
+	if !s.shouldUseSearchCache() || req == nil {
+		return nil
+	}
+
+	categories := append([]int(nil), req.Categories...)
+	if len(categories) > 1 {
+		slices.Sort(categories)
+	}
+
+	normalizedIndexerIDs := append([]int(nil), indexerIDs...)
+	if len(normalizedIndexerIDs) > 1 {
+		slices.Sort(normalizedIndexerIDs)
+	}
+
+	payload := searchCacheKeyPayload{
+		Scope:       scope,
+		Query:       strings.ToLower(strings.TrimSpace(req.Query)),
+		Categories:  categories,
+		IndexerIDs:  normalizedIndexerIDs,
+		IMDbID:      strings.TrimSpace(req.IMDbID),
+		TVDbID:      strings.TrimSpace(req.TVDbID),
+		Year:        req.Year,
+		Season:      req.Season,
+		Episode:     req.Episode,
+		Artist:      strings.TrimSpace(req.Artist),
+		Album:       strings.TrimSpace(req.Album),
+		Limit:       req.Limit,
+		Offset:      req.Offset,
+		SearchMode:  searchMode,
+		ContentType: detectedType,
+	}
+
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		log.Debug().Err(err).Msg("Failed to marshal torznab search cache payload")
+		return nil
+	}
+
+	sum := sha256.Sum256(raw)
+	return &searchCacheSignature{
+		Key:         hex.EncodeToString(sum[:]),
+		Fingerprint: string(raw),
+	}
+}
+
+func (s *Service) tryServeSearchCache(ctx context.Context, sig *searchCacheSignature) (*SearchResponse, bool) {
+	if !s.shouldUseSearchCache() || sig == nil || sig.Key == "" {
+		return nil, false
+	}
+
+	entry, found, err := s.searchCache.Fetch(ctx, sig.Key)
+	if err != nil {
+		log.Debug().Err(err).Msg("torznab search cache fetch failed")
+		return nil, false
+	}
+	if !found {
+		return nil, false
+	}
+
+	var response SearchResponse
+	if err := json.Unmarshal(entry.ResponseData, &response); err != nil {
+		log.Warn().Err(err).Msg("Failed to decode cached torznab search response")
+		return nil, false
+	}
+
+	s.annotateSearchResponse(&response, entry.Scope, true, entry.CachedAt, entry.ExpiresAt, &entry.LastUsedAt)
+	return &response, true
+}
+
+func (s *Service) annotateSearchResponse(resp *SearchResponse, scope string, hit bool, cachedAt time.Time, expiresAt time.Time, lastUsed *time.Time) {
+	if resp == nil || !s.shouldUseSearchCache() {
+		return
+	}
+
+	source := searchCacheSourceNetwork
+	if hit {
+		source = searchCacheSourceCache
+	}
+
+	resp.Cache = &SearchCacheMetadata{
+		Hit:       hit,
+		Scope:     scope,
+		Source:    source,
+		CachedAt:  cachedAt,
+		ExpiresAt: expiresAt,
+		LastUsed:  lastUsed,
+	}
+}
+
+func (s *Service) persistSearchCacheEntry(ctx context.Context, scope string, sig *searchCacheSignature, req *TorznabSearchRequest, indexerIDs []int, resp *SearchResponse, cachedAt time.Time) {
+	if !s.shouldUseSearchCache() || sig == nil || resp == nil || s.searchCache == nil {
+		return
+	}
+
+	// Marshal a copy without cache metadata to keep stored payload slim
+	cachePayload := SearchResponse{
+		Results: resp.Results,
+		Total:   resp.Total,
+	}
+	payload, err := json.Marshal(&cachePayload)
+	if err != nil {
+		log.Debug().Err(err).Msg("Failed to encode torznab search response for cache")
+		return
+	}
+
+	entry := &models.TorznabSearchCacheEntry{
+		CacheKey:           sig.Key,
+		Scope:              scope,
+		Query:              strings.ToLower(strings.TrimSpace(req.Query)),
+		Categories:         append([]int(nil), req.Categories...),
+		IndexerIDs:         append([]int(nil), indexerIDs...),
+		RequestFingerprint: sig.Fingerprint,
+		ResponseData:       payload,
+		TotalResults:       resp.Total,
+		CachedAt:           cachedAt,
+		LastUsedAt:         cachedAt,
+		ExpiresAt:          cachedAt.Add(s.searchCacheTTL),
+	}
+
+	if err := s.searchCache.Store(ctx, entry); err != nil {
+		log.Debug().Err(err).Msg("Failed to persist torznab search cache entry")
+		return
+	}
+
+	s.maybeScheduleSearchCacheCleanup()
+}
+
+func (s *Service) maybeScheduleSearchCacheCleanup() {
+	if !s.shouldUseSearchCache() {
+		return
+	}
+
+	s.searchCacheCleanupMu.Lock()
+	if time.Now().Before(s.nextSearchCacheCleanup) {
+		s.searchCacheCleanupMu.Unlock()
+		return
+	}
+	s.nextSearchCacheCleanup = time.Now().Add(searchCacheCleanupInterval)
+	s.searchCacheCleanupMu.Unlock()
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if deleted, err := s.searchCache.CleanupExpired(ctx); err != nil {
+			log.Debug().Err(err).Msg("Failed to cleanup torznab search cache")
+		} else if deleted > 0 {
+			log.Debug().Int64("deleted", deleted).Msg("Cleaned up expired torznab search cache entries")
+		}
+	}()
+}
+
+// FlushSearchCache removes all cached search responses.
+func (s *Service) FlushSearchCache(ctx context.Context) (int64, error) {
+	if !s.shouldUseSearchCache() {
+		return 0, nil
+	}
+	return s.searchCache.Flush(ctx)
+}
+
+// InvalidateSearchCache clears cached searches referencing the provided indexers.
+func (s *Service) InvalidateSearchCache(ctx context.Context, indexerIDs []int) (int64, error) {
+	if !s.shouldUseSearchCache() || len(indexerIDs) == 0 {
+		return 0, nil
+	}
+	return s.searchCache.InvalidateByIndexerIDs(ctx, indexerIDs)
+}
+
+// GetSearchCacheStats returns summary stats for the cache table.
+func (s *Service) GetSearchCacheStats(ctx context.Context) (*models.TorznabSearchCacheStats, error) {
+	stats := &models.TorznabSearchCacheStats{
+		Enabled:    s.searchCacheEnabled,
+		TTLMinutes: int(s.searchCacheTTL / time.Minute),
+	}
+
+	if !s.shouldUseSearchCache() {
+		return stats, nil
+	}
+
+	dbStats, err := s.searchCache.Stats(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if dbStats != nil {
+		dbStats.Enabled = stats.Enabled
+		dbStats.TTLMinutes = stats.TTLMinutes
+		return dbStats, nil
+	}
+
+	return stats, nil
+}
+
+// UpdateSearchCacheSettings updates the TTL configuration at runtime.
+func (s *Service) UpdateSearchCacheSettings(ctx context.Context, ttlMinutes int) (*models.TorznabSearchCacheSettings, error) {
+	if s == nil || s.searchCache == nil {
+		return nil, fmt.Errorf("search cache is not configured")
+	}
+	if ttlMinutes < MinSearchCacheTTLMinutes {
+		return nil, fmt.Errorf("ttlMinutes must be at least %d", MinSearchCacheTTLMinutes)
+	}
+
+	settings, err := s.searchCache.UpdateSettings(ctx, ttlMinutes)
+	if err != nil {
+		return nil, err
+	}
+
+	s.searchCacheTTL = time.Duration(ttlMinutes) * time.Minute
+	s.searchCacheEnabled = true
+
+	return settings, nil
 }
 
 // SyncIndexerCaps fetches and persists Torznab capabilities and categories for an indexer.

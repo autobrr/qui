@@ -1,0 +1,413 @@
+// Copyright (c) 2025, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package models
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/autobrr/qui/internal/dbinterface"
+)
+
+// TorznabSearchCacheEntry captures a cached Torznab search response.
+type TorznabSearchCacheEntry struct {
+	CacheKey           string
+	Scope              string
+	Query              string
+	Categories         []int
+	IndexerIDs         []int
+	RequestFingerprint string
+	ResponseData       []byte
+	TotalResults       int
+	CachedAt           time.Time
+	LastUsedAt         time.Time
+	ExpiresAt          time.Time
+	HitCount           int64
+}
+
+// TorznabSearchCacheStats provides aggregated cache metrics for observability.
+type TorznabSearchCacheStats struct {
+	Entries         int64      `json:"entries"`
+	TotalHits       int64      `json:"totalHits"`
+	ApproxSizeBytes int64      `json:"approxSizeBytes"`
+	OldestCachedAt  *time.Time `json:"oldestCachedAt,omitempty"`
+	NewestCachedAt  *time.Time `json:"newestCachedAt,omitempty"`
+	LastUsedAt      *time.Time `json:"lastUsedAt,omitempty"`
+	Enabled         bool       `json:"enabled"`
+	TTLMinutes      int        `json:"ttlMinutes"`
+}
+
+// TorznabSearchCacheSettings tracks persisted cache configuration.
+type TorznabSearchCacheSettings struct {
+	TTLMinutes int
+	UpdatedAt  *time.Time
+}
+
+// TorznabSearchCacheStore persists search cache entries.
+type TorznabSearchCacheStore struct {
+	db dbinterface.Querier
+}
+
+// NewTorznabSearchCacheStore constructs a new search cache store.
+func NewTorznabSearchCacheStore(db dbinterface.Querier) *TorznabSearchCacheStore {
+	return &TorznabSearchCacheStore{db: db}
+}
+
+// Fetch returns a cached search response by cache key.
+func (s *TorznabSearchCacheStore) Fetch(ctx context.Context, cacheKey string) (*TorznabSearchCacheEntry, bool, error) {
+	if strings.TrimSpace(cacheKey) == "" {
+		return nil, false, fmt.Errorf("cache key cannot be empty")
+	}
+
+	const fetchQuery = `
+		SELECT id, scope, query, categories_json, indexer_ids_json, request_fingerprint,
+		       response_data, total_results, cached_at, last_used_at, expires_at, hit_count
+		FROM torznab_search_cache
+		WHERE cache_key = ?
+	`
+
+	var (
+		id             int64
+		scope          string
+		queryValue     sql.NullString
+		categoriesJSON sql.NullString
+		indexersJSON   sql.NullString
+		fingerprint    string
+		response       []byte
+		total          int
+		cachedAt       time.Time
+		lastUsedAt     time.Time
+		expiresAt      time.Time
+		hitCount       int64
+	)
+
+	err := s.db.QueryRowContext(ctx, fetchQuery, cacheKey).Scan(
+		&id,
+		&scope,
+		&queryValue,
+		&categoriesJSON,
+		&indexersJSON,
+		&fingerprint,
+		&response,
+		&total,
+		&cachedAt,
+		&lastUsedAt,
+		&expiresAt,
+		&hitCount,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("fetch torznab search cache: %w", err)
+	}
+
+	if time.Now().After(expiresAt) {
+		go s.deleteEntry(context.Background(), id)
+		return nil, false, nil
+	}
+
+	entry := &TorznabSearchCacheEntry{
+		CacheKey:           cacheKey,
+		Scope:              scope,
+		Query:              queryValue.String,
+		RequestFingerprint: fingerprint,
+		ResponseData:       response,
+		TotalResults:       total,
+		CachedAt:           cachedAt,
+		LastUsedAt:         lastUsedAt,
+		ExpiresAt:          expiresAt,
+		HitCount:           hitCount,
+		Categories:         decodeIntArray(categoriesJSON.String),
+		IndexerIDs:         decodeIntArray(indexersJSON.String),
+	}
+
+	go s.touchEntry(context.Background(), id)
+
+	return entry, true, nil
+}
+
+// Store inserts or updates a cached search response.
+func (s *TorznabSearchCacheStore) Store(ctx context.Context, entry *TorznabSearchCacheEntry) error {
+	if entry == nil {
+		return fmt.Errorf("entry cannot be nil")
+	}
+	if strings.TrimSpace(entry.CacheKey) == "" {
+		return fmt.Errorf("cache key cannot be empty")
+	}
+	if strings.TrimSpace(entry.RequestFingerprint) == "" {
+		return fmt.Errorf("request fingerprint cannot be empty")
+	}
+	if len(entry.ResponseData) == 0 {
+		return fmt.Errorf("response data cannot be empty")
+	}
+	if entry.ExpiresAt.Before(entry.CachedAt) {
+		return fmt.Errorf("expiresAt must be after cachedAt")
+	}
+
+	categoriesJSON, err := json.Marshal(entry.Categories)
+	if err != nil {
+		return fmt.Errorf("encode categories: %w", err)
+	}
+	indexersJSON, err := json.Marshal(entry.IndexerIDs)
+	if err != nil {
+		return fmt.Errorf("encode indexer ids: %w", err)
+	}
+
+	indexerMatcher := buildIndexerMatcher(entry.IndexerIDs)
+	const query = `
+		INSERT INTO torznab_search_cache (
+			cache_key, scope, query, categories_json, indexer_ids_json, indexer_matcher,
+			request_fingerprint, response_data, total_results, cached_at, last_used_at, expires_at, hit_count
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+		ON CONFLICT(cache_key) DO UPDATE SET
+			scope = excluded.scope,
+			query = excluded.query,
+			categories_json = excluded.categories_json,
+			indexer_ids_json = excluded.indexer_ids_json,
+			indexer_matcher = excluded.indexer_matcher,
+			request_fingerprint = excluded.request_fingerprint,
+			response_data = excluded.response_data,
+			total_results = excluded.total_results,
+			cached_at = excluded.cached_at,
+			last_used_at = excluded.last_used_at,
+			expires_at = excluded.expires_at,
+			hit_count = excluded.hit_count
+	`
+
+	if _, err := s.db.ExecContext(
+		ctx,
+		query,
+		entry.CacheKey,
+		entry.Scope,
+		entry.Query,
+		string(categoriesJSON),
+		string(indexersJSON),
+		indexerMatcher,
+		entry.RequestFingerprint,
+		entry.ResponseData,
+		entry.TotalResults,
+		entry.CachedAt,
+		entry.LastUsedAt,
+		entry.ExpiresAt,
+	); err != nil {
+		return fmt.Errorf("store torznab search cache entry: %w", err)
+	}
+
+	return nil
+}
+
+// CleanupExpired removes all expired cache rows.
+func (s *TorznabSearchCacheStore) CleanupExpired(ctx context.Context) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM torznab_search_cache WHERE expires_at <= CURRENT_TIMESTAMP`)
+	if err != nil {
+		return 0, fmt.Errorf("cleanup torznab search cache: %w", err)
+	}
+	deleted, err := res.RowsAffected()
+	if err != nil {
+		return 0, nil
+	}
+	return deleted, nil
+}
+
+// Flush removes every cache entry.
+func (s *TorznabSearchCacheStore) Flush(ctx context.Context) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM torznab_search_cache`)
+	if err != nil {
+		return 0, fmt.Errorf("flush torznab search cache: %w", err)
+	}
+	deleted, err := res.RowsAffected()
+	if err != nil {
+		return 0, nil
+	}
+	return deleted, nil
+}
+
+// InvalidateByIndexerIDs removes cache entries referencing any of the provided indexers.
+func (s *TorznabSearchCacheStore) InvalidateByIndexerIDs(ctx context.Context, indexerIDs []int) (int64, error) {
+	if len(indexerIDs) == 0 {
+		return 0, nil
+	}
+
+	var (
+		conditions []string
+		args       []any
+	)
+	for _, id := range indexerIDs {
+		if id <= 0 {
+			continue
+		}
+		conditions = append(conditions, "instr(indexer_matcher, ?) > 0")
+		args = append(args, fmt.Sprintf("|%d|", id))
+	}
+	if len(conditions) == 0 {
+		return 0, nil
+	}
+
+	query := fmt.Sprintf("DELETE FROM torznab_search_cache WHERE %s", strings.Join(conditions, " OR "))
+	res, err := s.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, fmt.Errorf("invalidate torznab search cache: %w", err)
+	}
+	deleted, err := res.RowsAffected()
+	if err != nil {
+		return 0, nil
+	}
+	return deleted, nil
+}
+
+// Stats returns summary metrics for the search cache table.
+func (s *TorznabSearchCacheStore) Stats(ctx context.Context) (*TorznabSearchCacheStats, error) {
+	const query = `
+		SELECT
+			COUNT(*) AS entries,
+			COALESCE(SUM(hit_count), 0) AS total_hits,
+			COALESCE(SUM(LENGTH(response_data)), 0) AS approx_size,
+			MIN(cached_at) AS oldest_cached,
+			MAX(cached_at) AS newest_cached,
+			MAX(last_used_at) AS last_used
+		FROM torznab_search_cache
+	`
+
+	var (
+		entries      int64
+		totalHits    int64
+		sizeBytes    int64
+		oldestCached sql.NullString
+		newestCached sql.NullString
+		lastUsed     sql.NullString
+	)
+
+	err := s.db.QueryRowContext(ctx, query).Scan(
+		&entries,
+		&totalHits,
+		&sizeBytes,
+		&oldestCached,
+		&newestCached,
+		&lastUsed,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("torznab search cache stats: %w", err)
+	}
+
+	stats := &TorznabSearchCacheStats{
+		Entries:         entries,
+		TotalHits:       totalHits,
+		ApproxSizeBytes: sizeBytes,
+	}
+	if t := parseSQLiteTime(oldestCached); t != nil {
+		stats.OldestCachedAt = t
+	}
+	if t := parseSQLiteTime(newestCached); t != nil {
+		stats.NewestCachedAt = t
+	}
+	if t := parseSQLiteTime(lastUsed); t != nil {
+		stats.LastUsedAt = t
+	}
+	return stats, nil
+}
+
+// GetSettings returns the current cache settings (if any).
+func (s *TorznabSearchCacheStore) GetSettings(ctx context.Context) (*TorznabSearchCacheSettings, error) {
+	const query = `SELECT ttl_minutes, updated_at FROM torznab_search_cache_settings WHERE id = 1`
+
+	var (
+		ttlMinutes int
+		updatedRaw sql.NullString
+	)
+
+	err := s.db.QueryRowContext(ctx, query).Scan(&ttlMinutes, &updatedRaw)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get torznab search cache settings: %w", err)
+	}
+
+	settings := &TorznabSearchCacheSettings{
+		TTLMinutes: ttlMinutes,
+	}
+	if ts := parseSQLiteTime(updatedRaw); ts != nil {
+		settings.UpdatedAt = ts
+	}
+
+	return settings, nil
+}
+
+// UpdateSettings persists TTL minutes and returns the updated settings.
+func (s *TorznabSearchCacheStore) UpdateSettings(ctx context.Context, ttlMinutes int) (*TorznabSearchCacheSettings, error) {
+	if ttlMinutes <= 0 {
+		return nil, fmt.Errorf("ttlMinutes must be positive")
+	}
+
+	const query = `
+		INSERT INTO torznab_search_cache_settings (id, ttl_minutes)
+		VALUES (1, ?)
+		ON CONFLICT(id) DO UPDATE SET ttl_minutes = excluded.ttl_minutes
+	`
+
+	if _, err := s.db.ExecContext(ctx, query, ttlMinutes); err != nil {
+		return nil, fmt.Errorf("update torznab search cache settings: %w", err)
+	}
+
+	return s.GetSettings(ctx)
+}
+
+func (s *TorznabSearchCacheStore) touchEntry(ctx context.Context, id int64) {
+	_, _ = s.db.ExecContext(ctx, `UPDATE torznab_search_cache SET last_used_at = CURRENT_TIMESTAMP, hit_count = hit_count + 1 WHERE id = ?`, id)
+}
+
+func (s *TorznabSearchCacheStore) deleteEntry(ctx context.Context, id int64) {
+	_, _ = s.db.ExecContext(ctx, `DELETE FROM torznab_search_cache WHERE id = ?`, id)
+}
+
+func decodeIntArray(raw string) []int {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var values []int
+	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+		return nil
+	}
+	return values
+}
+
+func parseSQLiteTime(value sql.NullString) *time.Time {
+	if !value.Valid {
+		return nil
+	}
+
+	layouts := []string{
+		"2006-01-02 15:04:05.999999999Z07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+		time.RFC3339,
+		time.RFC3339Nano,
+	}
+
+	for _, layout := range layouts {
+		if ts, err := time.Parse(layout, value.String); err == nil {
+			return &ts
+		}
+	}
+
+	return nil
+}
+
+func buildIndexerMatcher(ids []int) string {
+	if len(ids) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(ids)+1)
+	parts = append(parts, "")
+	for _, id := range ids {
+		parts = append(parts, fmt.Sprintf("%d", id))
+	}
+	parts = append(parts, "")
+	return strings.Join(parts, "|")
+}

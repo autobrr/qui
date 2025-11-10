@@ -500,9 +500,25 @@ func (app *Application) runServer() {
 		log.Fatal().Err(err).Msg("Failed to initialize torznab indexer store")
 	}
 
-	// Initialize Torznab torrent cache and Jackett/Torznab service
+	// Initialize Torznab torrent cache, search cache and Jackett/Torznab service
 	torznabTorrentCache := models.NewTorznabTorrentCacheStore(db)
-	jackettService := jackett.NewService(torznabIndexerStore, torznabTorrentCache)
+	torznabSearchCache := models.NewTorznabSearchCacheStore(db)
+	cacheTTL := jackett.DefaultSearchCacheTTL
+	if cacheSettings, err := torznabSearchCache.GetSettings(context.Background()); err != nil {
+		log.Warn().Err(err).Msg("Using default torznab search cache TTL (failed to load settings)")
+	} else if cacheSettings != nil && cacheSettings.TTLMinutes > 0 {
+		cacheTTL = time.Duration(cacheSettings.TTLMinutes) * time.Minute
+		if cacheTTL < jackett.MinSearchCacheTTL {
+			cacheTTL = jackett.MinSearchCacheTTL
+		}
+	}
+	jackettService := jackett.NewService(
+		torznabIndexerStore,
+		jackett.WithTorrentCache(torznabTorrentCache),
+		jackett.WithSearchCache(torznabSearchCache, jackett.SearchCacheConfig{
+			TTL: cacheTTL,
+		}),
+	)
 	log.Info().Msg("Torznab/Jackett service initialized")
 
 	// Initialize cross-seed automation store and service

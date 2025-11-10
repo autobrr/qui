@@ -653,6 +653,27 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const [crossSeedIndexerMode, setCrossSeedIndexerMode] = useState<"all" | "custom">("all")
   const [crossSeedIndexerSelection, setCrossSeedIndexerSelection] = useState<number[]>([])
   const [crossSeedHasSearched, setCrossSeedHasSearched] = useState(false)
+  const [crossSeedRefreshCooldownUntil, setCrossSeedRefreshCooldownUntil] = useState(0)
+  const [, forceCrossSeedCooldownTick] = useState(0)
+  const CROSS_SEED_REFRESH_COOLDOWN_MS = 30_000
+
+  useEffect(() => {
+    if (!crossSeedRefreshCooldownUntil) {
+      return
+    }
+
+    const id = window.setInterval(() => {
+      if (Date.now() >= crossSeedRefreshCooldownUntil) {
+        setCrossSeedRefreshCooldownUntil(0)
+        forceCrossSeedCooldownTick(tick => tick + 1)
+        window.clearInterval(id)
+      } else {
+        forceCrossSeedCooldownTick(tick => tick + 1)
+      }
+    }, 1_000)
+
+    return () => window.clearInterval(id)
+  }, [crossSeedRefreshCooldownUntil, forceCrossSeedCooldownTick])
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
@@ -1602,7 +1623,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   }, [])
 
   const runCrossSeedSearch = useCallback(
-    (torrent: Torrent, indexerOverride?: number[] | null) => {
+    (torrent: Torrent, indexerOverride?: number[] | null, options?: { bypassCache?: boolean }) => {
       if (!torrent) {
         return
       }
@@ -1624,6 +1645,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         .searchCrossSeedTorrent(instanceId, torrent.hash, {
           findIndividualEpisodes: crossSeedSettings?.findIndividualEpisodes ?? false,
           indexerIds: resolvedIndexerIds && resolvedIndexerIds.length > 0 ? resolvedIndexerIds : undefined,
+          cacheMode: options?.bypassCache ? "bypass" : undefined,
         })
         .then(response => {
           setCrossSeedSearchResponse(response)
@@ -1656,6 +1678,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       instanceId,
     ]
   )
+
+  const handleCrossSeedForceRefresh = useCallback(() => {
+    if (!crossSeedTorrent) {
+      return
+    }
+    setCrossSeedRefreshCooldownUntil(Date.now() + CROSS_SEED_REFRESH_COOLDOWN_MS)
+    runCrossSeedSearch(crossSeedTorrent, undefined, { bypassCache: true })
+  }, [CROSS_SEED_REFRESH_COOLDOWN_MS, crossSeedTorrent, runCrossSeedSearch])
 
   const handleCrossSeedSearch = useCallback(
     (torrent: Torrent) => {
@@ -1825,6 +1855,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const crossSeedResults = useMemo(() => crossSeedSearchResponse?.results ?? [], [crossSeedSearchResponse?.results])
   const crossSeedSourceTorrent = crossSeedSearchResponse?.sourceTorrent
   const crossSeedSelectionCount = crossSeedSelectedKeys.size
+  const crossSeedRefreshRemaining = Math.max(0, crossSeedRefreshCooldownUntil - Date.now())
+  const crossSeedRefreshLabel =
+    crossSeedRefreshRemaining > 0 ? `Ready in ${Math.ceil(crossSeedRefreshRemaining / 1000)}s` : undefined
+  const canForceCrossSeedRefresh =
+    !!crossSeedTorrent && !crossSeedSearchLoading && crossSeedRefreshRemaining <= 0
 
   const [altSpeedOverride, setAltSpeedOverride] = useState<boolean | null>(null)
   const serverAltSpeedEnabled = effectiveServerState?.use_alt_speed_limits
@@ -3190,6 +3225,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         tagName={crossSeedTagName}
         onTagNameChange={setCrossSeedTagName}
         hasSearched={crossSeedHasSearched}
+        cacheMetadata={crossSeedSearchResponse?.cache ?? null}
+        onForceRefresh={canForceCrossSeedRefresh ? handleCrossSeedForceRefresh : undefined}
+        canForceRefresh={canForceCrossSeedRefresh}
+        refreshCooldownLabel={crossSeedRefreshLabel}
       />
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>

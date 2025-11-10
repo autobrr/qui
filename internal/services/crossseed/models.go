@@ -5,6 +5,8 @@ package crossseed
 
 import (
 	qbt "github.com/autobrr/go-qbittorrent"
+
+	"github.com/autobrr/qui/internal/services/jackett"
 )
 
 // CrossSeedRequest represents a request to cross-seed a torrent
@@ -160,6 +162,8 @@ type TorrentSearchOptions struct {
 	// FindIndividualEpisodes controls whether to find individual episodes when searching with season packs
 	// If false (default), season packs will only match with other season packs
 	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
+	// CacheMode forces cache behaviour when querying Torznab ("" = default, "bypass" = skip cache)
+	CacheMode string `json:"cache_mode,omitempty"`
 }
 
 // TorrentSearchResult represents an indexer search result that appears to match the seeded torrent.
@@ -186,8 +190,9 @@ type TorrentSearchResult struct {
 
 // TorrentSearchResponse bundles the seeded torrent information with potential cross-seed matches.
 type TorrentSearchResponse struct {
-	SourceTorrent TorrentInfo           `json:"source_torrent"`
-	Results       []TorrentSearchResult `json:"results"`
+	SourceTorrent TorrentInfo                  `json:"source_torrent"`
+	Results       []TorrentSearchResult        `json:"results"`
+	Cache         *jackett.SearchCacheMetadata `json:"cache,omitempty"`
 }
 
 // TorrentSearchSelection represents a user-selected search result that should be added for cross-seeding.

@@ -23,12 +23,14 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { api } from "@/lib/api"
+import { formatRelativeTime } from "@/lib/utils"
 import type {
   CrossSeedAutomationSettings,
   CrossSeedAutomationStatus,
   CrossSeedRun
 } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Link } from "@tanstack/react-router"
 import {
   Info,
   Loader2,
@@ -154,6 +156,12 @@ export function CrossSeedPage() {
       return { categories, tags }
     },
     enabled: !!searchInstanceId,
+  })
+
+  const { data: searchCacheStats } = useQuery({
+    queryKey: ["torznab", "search-cache", "stats", "cross-seed"],
+    queryFn: () => api.getTorznabSearchCacheStats(),
+    staleTime: 60 * 1000,
   })
 
   useEffect(() => {
@@ -393,6 +401,23 @@ export function CrossSeedPage() {
           <CardDescription>Settings that apply to all cross-seed operations.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {searchCacheStats && (
+            <div className="rounded-lg border border-dashed border-border/70 bg-muted/60 p-3 text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={searchCacheStats.enabled ? "secondary" : "outline"}>
+                  {searchCacheStats.enabled ? "Cache enabled" : "Cache disabled"}
+                </Badge>
+                <span>TTL {searchCacheStats.ttlMinutes} min</span>
+                <span>{searchCacheStats.entries} cached searches</span>
+                <span>Last used {formatRelativeTime(searchCacheStats.lastUsedAt)}</span>
+              </div>
+              <Button variant="link" size="xs" className="px-0" asChild>
+                <Link to="/settings" search={{ tab: "search-cache" }}>
+                  Manage cache settings
+                </Link>
+              </Button>
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="global-find-individual-episodes" className="flex items-center gap-2">
               <Switch

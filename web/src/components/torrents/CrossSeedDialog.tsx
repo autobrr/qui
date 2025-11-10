@@ -36,8 +36,9 @@ import type {
   CrossSeedTorrentSearchResponse,
   Torrent
 } from "@/types"
-import { ChevronDown, ChevronRight, Loader2, SlidersHorizontal } from "lucide-react"
+import { ChevronDown, ChevronRight, Loader2, RefreshCw, SlidersHorizontal } from "lucide-react"
 import { memo, useCallback, useMemo, useState } from "react"
+import { formatRelativeTime } from "@/lib/utils"
 
 type CrossSeedSearchResult = CrossSeedTorrentSearchResponse["results"][number]
 type CrossSeedIndexerOption = {
@@ -78,6 +79,10 @@ export interface CrossSeedDialogProps {
   tagName: string
   onTagNameChange: (value: string) => void
   hasSearched: boolean
+  cacheMetadata?: CrossSeedTorrentSearchResponse["cache"] | null
+  canForceRefresh?: boolean
+  refreshCooldownLabel?: string
+  onForceRefresh?: () => void
 }
 
 const CrossSeedDialogComponent = ({
@@ -113,6 +118,10 @@ const CrossSeedDialogComponent = ({
   tagName,
   onTagNameChange,
   hasSearched,
+  cacheMetadata,
+  canForceRefresh,
+  refreshCooldownLabel,
+  onForceRefresh,
 }: CrossSeedDialogProps) => {
   const excludedIndexerEntries = useMemo(() => {
     if (!sourceTorrent?.excludedIndexers) {
@@ -153,6 +162,35 @@ const CrossSeedDialogComponent = ({
               </div>
             )}
           </DialogDescription>
+          {cacheMetadata && (
+            <div className="mt-2 space-y-2 rounded-lg border border-dashed border-border/70 p-2 text-xs text-muted-foreground">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <span>
+                  {cacheMetadata.hit ? "Served from cache" : "Fresh search"} · {cacheMetadata.scope?.replace("_", " ") ?? "torznab"}
+                </span>
+                <span>
+                  Cached {formatRelativeTime(cacheMetadata.cachedAt)} · Expires {formatRelativeTime(cacheMetadata.expiresAt)}
+                </span>
+              </div>
+              {onForceRefresh && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!canForceRefresh}
+                    onClick={onForceRefresh}
+                  >
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Refresh from indexers
+                  </Button>
+                  {!canForceRefresh && refreshCooldownLabel && (
+                    <span className="text-[11px] text-muted-foreground">{refreshCooldownLabel}</span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </DialogHeader>
         <div className="min-w-0 space-y-2 overflow-y-auto overflow-x-hidden flex-1">
           {/* Search Scope Section */}

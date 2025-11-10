@@ -950,11 +950,33 @@ export interface TorznabSearchRequest {
   limit?: number
   offset?: number
   indexer_ids?: number[]
+  cache_mode?: "bypass"
 }
 
 export interface TorznabSearchResponse {
   results: TorznabSearchResult[]
   total: number
+  cache?: TorznabSearchCacheMetadata
+}
+
+export interface TorznabSearchCacheMetadata {
+  hit: boolean
+  scope: string
+  source: string
+  cachedAt: string
+  expiresAt: string
+  lastUsed?: string
+}
+
+export interface TorznabSearchCacheStats {
+  entries: number
+  totalHits: number
+  approxSizeBytes: number
+  oldestCachedAt?: string
+  newestCachedAt?: string
+  lastUsedAt?: string
+  enabled: boolean
+  ttlMinutes: number
 }
 
 export interface TorznabSearchResult {
@@ -1068,6 +1090,7 @@ export interface CrossSeedTorrentSearchResult {
 export interface CrossSeedTorrentSearchResponse {
   sourceTorrent: CrossSeedTorrentInfo
   results: CrossSeedTorrentSearchResult[]
+  cache?: TorznabSearchCacheMetadata
 }
 
 export interface CrossSeedTorrentSearchSelection {

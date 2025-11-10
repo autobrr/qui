@@ -6,6 +6,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -55,6 +56,11 @@ func (h *JackettHandler) Routes(r chi.Router) {
 
 		// General Torznab search
 		r.Post("/search", h.Search)
+
+		r.Route("/search/cache", func(r chi.Router) {
+			r.Get("/", h.GetSearchCacheStats)
+			r.Put("/settings", h.UpdateSearchCacheSettings)
+		})
 	})
 }
 
@@ -136,6 +142,49 @@ func (h *JackettHandler) Search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RespondJSON(w, http.StatusOK, response)
+}
+
+// GetSearchCacheStats returns summary metrics for the search cache.
+func (h *JackettHandler) GetSearchCacheStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.service.GetSearchCacheStats(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load torznab search cache stats")
+		RespondError(w, http.StatusInternalServerError, "Failed to load cache stats")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, stats)
+}
+
+// UpdateSearchCacheSettings updates TTL configuration via the API.
+func (h *JackettHandler) UpdateSearchCacheSettings(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		TTLMinutes int `json:"ttlMinutes"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if req.TTLMinutes < jackett.MinSearchCacheTTLMinutes {
+		RespondError(w, http.StatusBadRequest, fmt.Sprintf("ttlMinutes must be at least %d", jackett.MinSearchCacheTTLMinutes))
+		return
+	}
+
+	if _, err := h.service.UpdateSearchCacheSettings(r.Context(), req.TTLMinutes); err != nil {
+		log.Error().Err(err).Msg("Failed to update torznab search cache settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to update cache settings")
+		return
+	}
+
+	stats, err := h.service.GetSearchCacheStats(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Cache settings updated but failed to reload stats")
+		RespondError(w, http.StatusInternalServerError, "Updated settings but failed to reload stats")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, stats)
 }
 
 // ListIndexers godoc
@@ -392,6 +441,15 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if h.service != nil {
+		if _, err := h.service.InvalidateSearchCache(r.Context(), []int{indexer.ID}); err != nil {
+			log.Debug().
+				Err(err).
+				Int("indexer_id", indexer.ID).
+				Msg("Failed to invalidate search cache after indexer update")
+		}
+	}
+
 	RespondJSON(w, http.StatusOK, indexer)
 }
 
@@ -421,6 +479,15 @@ func (h *JackettHandler) DeleteIndexer(w http.ResponseWriter, r *http.Request) {
 		log.Error().Err(err).Int("indexer_id", id).Msg("Failed to delete indexer")
 		RespondError(w, http.StatusInternalServerError, "Failed to delete indexer")
 		return
+	}
+
+	if h.service != nil {
+		if _, err := h.service.InvalidateSearchCache(r.Context(), []int{id}); err != nil {
+			log.Debug().
+				Err(err).
+				Int("indexer_id", id).
+				Msg("Failed to invalidate search cache after indexer deletion")
+		}
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -523,6 +590,13 @@ func (h *JackettHandler) SyncIndexerCaps(w http.ResponseWriter, r *http.Request)
 			RespondError(w, http.StatusInternalServerError, "Failed to sync caps: "+err.Error())
 			return
 		}
+	}
+
+	if _, err := h.service.InvalidateSearchCache(r.Context(), []int{indexer.ID}); err != nil {
+		log.Debug().
+			Err(err).
+			Int("indexer_id", indexer.ID).
+			Msg("Failed to invalidate search cache after caps sync")
 	}
 
 	RespondJSON(w, http.StatusOK, indexer)
