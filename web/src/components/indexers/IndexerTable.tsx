@@ -3,18 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Edit2, Trash2, TestTube, Check, X, RefreshCw, ArrowUpDown, Filter } from 'lucide-react'
-import { useMemo, useState } from 'react'
-import { Button } from '@/components/ui/button'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -23,7 +13,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import type { TorznabIndexer } from '@/types'
+import { ArrowUpDown, Check, Edit2, Filter, RefreshCw, TestTube, Trash2, X } from 'lucide-react'
+import { useMemo, useState } from 'react'
 
 type SortField = 'name' | 'backend' | 'priority' | 'status'
 type SortDirection = 'asc' | 'desc'
@@ -47,15 +47,23 @@ export function IndexerTable({
   onSyncCaps,
   onTestAll,
 }: IndexerTableProps) {
-  const [allCapabilitiesExpanded, setAllCapabilitiesExpanded] = useState(false)
+  const [expandedCapabilities, setExpandedCapabilities] = useState<Set<number>>(new Set())
   const [sortField, setSortField] = useState<SortField>('priority')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [filterStatus, setFilterStatus] = useState<'all' | 'enabled' | 'disabled'>('all')
   const [filterTestStatus, setFilterTestStatus] = useState<'all' | 'ok' | 'error' | 'untested'>('all')
   const [filterBackend, setFilterBackend] = useState<'all' | 'jackett' | 'prowlarr' | 'native'>('all')
 
-  const toggleAllCapabilities = () => {
-    setAllCapabilitiesExpanded(prev => !prev)
+  const toggleCapabilities = (indexerId: number) => {
+    setExpandedCapabilities(prev => {
+      const next = new Set(prev)
+      if (next.has(indexerId)) {
+        next.delete(indexerId)
+      } else {
+        next.add(indexerId)
+      }
+      return next
+    })
   }
 
   const handleSort = (field: SortField) => {
@@ -369,14 +377,14 @@ export function IndexerTable({
                   <TableCell className="hidden xl:table-cell">
                     {indexer.capabilities && indexer.capabilities.length > 0 ? (
                       <div className="max-w-xs">
-                    {allCapabilitiesExpanded ? (
+                    {expandedCapabilities.has(indexer.id) ? (
                       // Expanded view - show all capabilities
                       <div className="space-y-1">
                         <div className="flex flex-wrap gap-1">
                           {indexer.capabilities.map((cap) => (
-                            <Badge 
-                              key={cap} 
-                              variant="secondary" 
+                            <Badge
+                              key={cap}
+                              variant="secondary"
                               className="text-xs"
                               title={`Capability: ${cap}`}
                             >
@@ -388,8 +396,8 @@ export function IndexerTable({
                           variant="ghost"
                           size="sm"
                           className="h-5 px-2 text-xs text-muted-foreground hover:text-foreground"
-                          onClick={toggleAllCapabilities}
-                          title="Collapse all capabilities"
+                          onClick={() => toggleCapabilities(indexer.id)}
+                          title="Collapse capabilities"
                         >
                           Collapse
                         </Button>
@@ -403,14 +411,15 @@ export function IndexerTable({
                           </Badge>
                         ))}
                         {indexer.capabilities.length > 2 && (
-                          <Badge 
-                            variant="outline" 
-                            className="text-xs cursor-pointer hover:bg-accent flex-shrink-0"
-                            onClick={toggleAllCapabilities}
-                            title={`Click to show all ${indexer.capabilities.length} capabilities for all indexers`}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs h-5 px-1.5 flex-shrink-0"
+                            onClick={() => toggleCapabilities(indexer.id)}
+                            title={`Click to show all ${indexer.capabilities.length} capabilities`}
                           >
                             +{indexer.capabilities.length - 2}
-                          </Badge>
+                          </Button>
                         )}
                       </div>
                     )}
@@ -426,6 +435,7 @@ export function IndexerTable({
                       className="h-6 px-2 text-xs"
                       onClick={() => onSyncCaps(indexer.id)}
                       title="Sync capabilities from backend"
+                      aria-label="Sync capabilities from backend"
                     >
                       Sync
                     </Button>
