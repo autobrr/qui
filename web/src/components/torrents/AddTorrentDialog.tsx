@@ -832,7 +832,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                           )}
                         >
                           <input {...getInputProps({ id: "torrentFiles" })} />
-                          <div className="flex flex-col items-center justify-center text-center space-y-2">
+                          <div className="flex flex-col items-center justify-center text-center space-y-2 h-22">
                             <Upload className="h-8 w-8 text-muted-foreground" />
                             {isDragActive ? (
                               <p className="text-sm font-medium">Drop the torrent files here...</p>
