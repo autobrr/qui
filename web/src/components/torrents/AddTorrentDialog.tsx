@@ -823,13 +823,14 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                       <div className="space-y-2">
                         <Label htmlFor="torrentFiles">Torrent Files</Label>
                         <div
-                          {...getRootProps()}
-                          className={cn(
-                            "mt-2 border-2 border-dashed rounded-md p-6 cursor-pointer transition-colors",
-                            isDragActive
-                              ? "border-primary bg-primary/10"
-                              : "border-border hover:border-primary/50 hover:bg-accent/50"
-                          )}
+                          {...getRootProps({
+                            className: cn(
+                              "mt-2 border border-dashed rounded-md p-6 cursor-pointer transition-colors backdrop-blur-md",
+                              "data-[drag-active]:border-primary data-[drag-active]:bg-background/10",
+                              "border-border hover:border-primary/30 hover:bg-accent/30"
+                            )
+                          })}
+                          data-drag-active={isDragActive ? "" : undefined}
                         >
                           <input {...getInputProps({ id: "torrentFiles" })} />
                           <div className="flex flex-col items-center justify-center text-center space-y-2 h-22">
