@@ -555,12 +555,14 @@ func (s *TorznabSearchCacheStore) touchEntry(ctx context.Context, id int64) {
 		ctx = context.Background()
 	}
 	now := time.Now().UTC()
-	_, _ = s.db.ExecContext(
+	if _, err := s.db.ExecContext(
 		ctx,
 		`UPDATE torznab_search_cache SET last_used_at = ?, hit_count = hit_count + 1 WHERE id = ?`,
 		now,
 		id,
-	)
+	); err != nil {
+		log.Error().Err(err).Int64("id", id).Msg("torznab search cache touch failed")
+	}
 }
 
 // Touch updates last_used_at and hit_count for a cache entry.
