@@ -600,7 +600,7 @@ func buildIndexerMatcher(ids []int) string {
 	if len(ids) == 0 {
 		return ""
 	}
-	parts := make([]string, 0, len(ids)+1)
+	parts := make([]string, 0, len(ids)+2)
 	parts = append(parts, "")
 	for _, id := range ids {
 		parts = append(parts, fmt.Sprintf("%d", id))
