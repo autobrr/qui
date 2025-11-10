@@ -14,9 +14,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { useDateTimeFormatters } from '@/hooks/useDateTimeFormatters'
 import { useInstances } from '@/hooks/useInstances'
 import { api } from '@/lib/api'
-import { formatRelativeTime } from '@/lib/utils'
 import type { TorznabIndexer, TorznabRecentSearch, TorznabSearchRequest, TorznabSearchResponse, TorznabSearchResult } from '@/types'
 import { ArrowDown, ArrowUp, ArrowUpDown, Download, ExternalLink, Plus, RefreshCw, Search as SearchIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -44,6 +44,32 @@ export function Search() {
   const [recentSearches, setRecentSearches] = useState<TorznabRecentSearch[] | null>(null)
   const [queryFocused, setQueryFocused] = useState(false)
   const queryInputRef = useRef<HTMLInputElement | null>(null)
+  const blurTimeoutRef = useRef<number | null>(null)
+  const rafIdRef = useRef<number | null>(null)
+  const { formatDate } = useDateTimeFormatters()
+
+  // Cleanup timeouts and RAF on unmount
+  useEffect(() => {
+    return () => {
+      if (blurTimeoutRef.current !== null) {
+        window.clearTimeout(blurTimeoutRef.current)
+      }
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current)
+      }
+    }
+  }, [])
+
+  const formatCacheTimestamp = useCallback((value?: string | null) => {
+    if (!value) {
+      return "—"
+    }
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) {
+      return "—"
+    }
+    return formatDate(parsed)
+  }, [formatDate])
 
   const REFRESH_COOLDOWN_MS = 30_000
   const refreshCooldownRemaining = Math.max(0, refreshCooldownUntil - Date.now())
@@ -261,11 +287,6 @@ export function Search() {
     return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`
   }
 
-  const formatDate = (dateStr: string): string => {
-    const date = new Date(dateStr)
-    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString()
-  }
-
   const handleForceRefreshConfirm = async () => {
     if (!validateSearchInputs()) {
       setRefreshConfirmOpen(false)
@@ -393,11 +414,14 @@ export function Search() {
 
   const handleSuggestionClick = useCallback((value: string) => {
     setQuery(value)
-    requestAnimationFrame(() => {
+    const rafId = requestAnimationFrame(() => {
       queryInputRef.current?.focus()
     })
+    rafIdRef.current = rafId
     const normalized = value.trim()
     if (!validateSearchInputs(normalized)) {
+      cancelAnimationFrame(rafId)
+      rafIdRef.current = null
       return
     }
     void runSearch({ queryOverride: normalized })
@@ -456,7 +480,7 @@ export function Search() {
                   {cacheMetadata && (
                     <TooltipContent>
                       <p className="text-xs">
-                        Cached {formatRelativeTime(cacheMetadata.cachedAt)} · Expires {formatRelativeTime(cacheMetadata.expiresAt)}
+                        Cached {formatCacheTimestamp(cacheMetadata.cachedAt)} · Expires {formatCacheTimestamp(cacheMetadata.expiresAt)}
                       </p>
                     </TooltipContent>
                   )}
@@ -488,9 +512,23 @@ export function Search() {
                   autoComplete="off"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  onFocus={() => setQueryFocused(true)}
+                  onFocus={() => {
+                    // Clear any pending blur timeout
+                    if (blurTimeoutRef.current !== null) {
+                      window.clearTimeout(blurTimeoutRef.current)
+                      blurTimeoutRef.current = null
+                    }
+                    setQueryFocused(true)
+                  }}
                   onBlur={() => {
-                    window.setTimeout(() => setQueryFocused(false), 100)
+                    // Clear any existing timeout
+                    if (blurTimeoutRef.current !== null) {
+                      window.clearTimeout(blurTimeoutRef.current)
+                    }
+                    blurTimeoutRef.current = window.setTimeout(() => {
+                      setQueryFocused(false)
+                      blurTimeoutRef.current = null
+                    }, 100)
                   }}
                   placeholder="Enter search query (e.g., 'Ubuntu', 'Breaking Bad S01E01', 'Interstellar 2014')"
                   disabled={loading}
@@ -509,7 +547,7 @@ export function Search() {
                           {search.query}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {search.totalResults} results · {formatRelativeTime(search.lastUsedAt ?? search.cachedAt)}
+                          {search.totalResults} results · {formatCacheTimestamp(search.lastUsedAt ?? search.cachedAt)}
                         </div>
                       </button>
                     ))}
@@ -676,7 +714,7 @@ export function Search() {
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <p className="font-medium text-foreground text-sm">{search.query || "Untitled search"}</p>
-                                <span className="text-xs text-muted-foreground shrink-0">{formatRelativeTime(search.lastUsedAt ?? search.cachedAt)}</span>
+                                <span className="text-xs text-muted-foreground shrink-0">{formatCacheTimestamp(search.lastUsedAt ?? search.cachedAt)}</span>
                               </div>
                               <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                                 <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
@@ -823,7 +861,7 @@ export function Search() {
                         )}
                       </td>
                       <td className="p-2 align-middle whitespace-nowrap text-sm text-muted-foreground">
-                        {formatDate(result.publish_date)}
+                        {formatCacheTimestamp(result.publish_date)}
                       </td>
                       <td className="p-2 align-middle whitespace-nowrap text-right">
                         <div className="flex justify-end gap-2">

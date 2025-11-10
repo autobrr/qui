@@ -23,8 +23,8 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api } from "@/lib/api"
-import { formatRelativeTime } from "@/lib/utils"
 import type {
   CrossSeedAutomationSettings,
   CrossSeedAutomationStatus,
@@ -40,7 +40,7 @@ import {
   Rocket,
   XCircle
 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
 interface AutomationFormState {
@@ -84,17 +84,9 @@ function parseList(value: string): string[] {
     .filter(Boolean)
 }
 
-function formatDate(value?: string | null): string {
-  if (!value) return "—"
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-  return date.toLocaleString()
-}
-
 export function CrossSeedPage() {
   const queryClient = useQueryClient()
+  const { formatDate } = useDateTimeFormatters()
   const [automationForm, setAutomationForm] = useState<AutomationFormState>(DEFAULT_AUTOMATION_FORM)
   const [globalSettings, setGlobalSettings] = useState<GlobalCrossSeedSettings>(DEFAULT_GLOBAL_SETTINGS)
   const [formInitialized, setFormInitialized] = useState(false)
@@ -113,6 +105,16 @@ export function CrossSeedPage() {
   const [showSearchTags, setShowSearchTags] = useState(false)
   const [showAutomationInstances, setShowAutomationInstances] = useState(false)
   const [rssRunsOpen, setRssRunsOpen] = useState(false)
+  const formatDateValue = useCallback((value?: string | Date | null) => {
+    if (!value) {
+      return "—"
+    }
+    const date = value instanceof Date ? value : new Date(value)
+    if (Number.isNaN(date.getTime())) {
+      return "—"
+    }
+    return formatDate(date)
+  }, [formatDate])
 
   const { data: settings } = useQuery({
     queryKey: ["cross-seed", "settings"],
@@ -166,6 +168,17 @@ export function CrossSeedPage() {
     queryFn: () => api.getTorznabSearchCacheStats(),
     staleTime: 60 * 1000,
   })
+
+  const formatCacheTimestamp = useCallback((value?: string | null) => {
+    if (!value) {
+      return "—"
+    }
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) {
+      return "—"
+    }
+    return formatDateValue(parsed)
+  }, [formatDateValue])
 
   useEffect(() => {
     if (settings && !formInitialized) {
@@ -363,8 +376,8 @@ export function CrossSeedPage() {
 
   const runSummary = useMemo(() => {
     if (!latestRun) return "No runs yet"
-    return `${latestRun.status.toUpperCase()} • Added ${latestRun.torrentsAdded} / Failed ${latestRun.torrentsFailed} • ${formatDate(latestRun.startedAt)}`
-  }, [latestRun])
+    return `${latestRun.status.toUpperCase()} • Added ${latestRun.torrentsAdded} / Failed ${latestRun.torrentsFailed} • ${formatDateValue(latestRun.startedAt)}`
+  }, [latestRun, formatDateValue])
 
   const searchRunning = searchStatus?.running ?? false
   const activeSearchRun = searchStatus?.run
@@ -619,7 +632,7 @@ export function CrossSeedPage() {
             ) : (
               <div className="text-xs">
                 <span className="text-muted-foreground">Next run:</span>{" "}
-                <span className="font-medium">{automationStatus?.nextRunAt ? formatDate(automationStatus.nextRunAt) : "—"}</span>
+                <span className="font-medium">{automationStatus?.nextRunAt ? formatDateValue(automationStatus.nextRunAt) : "—"}</span>
               </div>
             )}
           </div>
@@ -639,7 +652,7 @@ export function CrossSeedPage() {
                         <Badge variant="outline" className="uppercase text-xs">{run.status}</Badge>
                         <span>{run.triggeredBy}</span>
                       </div>
-                      <span className="text-xs text-muted-foreground">{formatDate(run.startedAt)}</span>
+                      <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
                     </div>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
                       <span>Added {run.torrentsAdded}</span>
@@ -899,13 +912,13 @@ export function CrossSeedPage() {
                 </div>
               <div className="flex items-center gap-4">
                 <span className="text-muted-foreground">Started:</span>
-                <span className="font-medium">{formatDate(activeSearchRun.startedAt)}</span>
+                <span className="font-medium">{formatDateValue(activeSearchRun.startedAt)}</span>
               </div>
               {estimatedCompletionInfo && (
                 <div className="flex items-center gap-4">
                   <span className="text-muted-foreground">Est. completion:</span>
                   <div className="flex flex-col">
-                    <span className="font-medium">{formatDate(estimatedCompletionInfo.eta.toISOString())}</span>
+                    <span className="font-medium">{formatDateValue(estimatedCompletionInfo.eta)}</span>
                     <span className="text-[10px] text-muted-foreground">
                       ≈ {estimatedCompletionInfo.remaining} torrents remaining @ {estimatedCompletionInfo.interval}s intervals
                     </span>
@@ -934,7 +947,7 @@ export function CrossSeedPage() {
                         <p className="text-sm font-medium leading-tight">{result.torrentName}</p>
                         <p className="text-xs text-muted-foreground">{result.indexerName} • {result.releaseTitle}</p>
                         {result.message && <p className="text-xs text-muted-foreground">{result.message}</p>}
-                        <p className="text-[10px] text-muted-foreground">{formatDate(result.processedAt)}</p>
+                        <p className="text-[10px] text-muted-foreground">{formatDateValue(result.processedAt)}</p>
                       </div>
                       <Badge variant="default">Added</Badge>
                     </li>
@@ -946,7 +959,7 @@ export function CrossSeedPage() {
         </CardContent>
         <CardFooter className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-muted-foreground">
-            Next run: {searchStatus?.nextRunAt ? formatDate(searchStatus.nextRunAt) : "—"}
+            Next run: {searchStatus?.nextRunAt ? formatDateValue(searchStatus.nextRunAt) : "—"}
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -981,7 +994,7 @@ export function CrossSeedPage() {
                 </Badge>
                 <span>TTL {searchCacheStats.ttlMinutes} min</span>
                 <span>{searchCacheStats.entries} cached searches</span>
-                <span>Last used {formatRelativeTime(searchCacheStats.lastUsedAt)}</span>
+                <span>Last used {formatCacheTimestamp(searchCacheStats.lastUsedAt)}</span>
               </div>
               <Button variant="link" size="xs" className="px-0" asChild>
                 <Link to="/settings" search={{ tab: "search-cache" }}>

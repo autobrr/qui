@@ -12,13 +12,12 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"slices"
 
 	"github.com/moistari/rls"
 	"github.com/rs/zerolog/log"
@@ -286,7 +285,7 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 	}
 
 	if cacheEnabled && cacheSig != nil {
-		now := time.Now()
+		now := time.Now().UTC()
 		if cacheReadAllowed {
 			s.annotateSearchResponse(response, scope, false, now, now.Add(s.searchCacheTTL), nil)
 		}
@@ -408,7 +407,7 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 	}
 
 	if cacheEnabled && cacheSig != nil {
-		now := time.Now()
+		now := time.Now().UTC()
 		if cacheReadAllowed {
 			s.annotateSearchResponse(response, scope, false, now, now.Add(s.searchCacheTTL), nil)
 		}
@@ -710,6 +709,9 @@ func (s *Service) persistSearchCacheEntry(ctx context.Context, scope string, sig
 		return
 	}
 
+	cachedAt = cachedAt.UTC()
+	expiresAt := cachedAt.Add(s.searchCacheTTL)
+
 	// Marshal a copy without cache metadata to keep stored payload slim
 	cachePayload := SearchResponse{
 		Results: resp.Results,
@@ -736,7 +738,7 @@ func (s *Service) persistSearchCacheEntry(ctx context.Context, scope string, sig
 		TotalResults:       resp.Total,
 		CachedAt:           cachedAt,
 		LastUsedAt:         cachedAt,
-		ExpiresAt:          cachedAt.Add(s.searchCacheTTL),
+		ExpiresAt:          expiresAt,
 	}
 
 	if err := s.searchCache.Store(ctx, entry); err != nil {

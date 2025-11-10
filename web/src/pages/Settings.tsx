@@ -46,7 +46,7 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
-import { copyTextToClipboard, formatBytes, formatRelativeTime } from "@/lib/utils"
+import { copyTextToClipboard, formatBytes } from "@/lib/utils"
 import type { Instance, TorznabSearchCacheStats } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -557,9 +557,21 @@ function TorznabSearchCachePanel() {
     staleTime: 30_000,
     refetchInterval: 60_000,
   })
+  const { formatDate } = useDateTimeFormatters()
 
   const stats: TorznabSearchCacheStats | undefined = statsQuery.data
   const [ttlInput, setTtlInput] = useState("")
+
+  const formatCacheTimestamp = (value?: string | null) => {
+    if (!value) {
+      return "—"
+    }
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) {
+      return "—"
+    }
+    return formatDate(parsed)
+  }
 
   useEffect(() => {
     if (stats?.ttlMinutes !== undefined) {
@@ -612,10 +624,10 @@ function TorznabSearchCachePanel() {
       { label: "Hit count", value: stats?.totalHits?.toLocaleString() ?? "0" },
       { label: "Approx. size", value: approxSize > 0 ? formatBytes(approxSize) : "—" },
       { label: "TTL", value: ttlMinutes > 0 ? `${ttlMinutes} minutes` : "—" },
-      { label: "Newest entry", value: stats?.newestCachedAt ? formatRelativeTime(stats.newestCachedAt) : "—" },
-      { label: "Last used", value: stats?.lastUsedAt ? formatRelativeTime(stats.lastUsedAt) : "—" },
+      { label: "Newest entry", value: formatCacheTimestamp(stats?.newestCachedAt) },
+      { label: "Last used", value: formatCacheTimestamp(stats?.lastUsedAt) },
     ],
-    [approxSize, stats?.entries, stats?.lastUsedAt, stats?.newestCachedAt, stats?.totalHits, ttlMinutes]
+    [approxSize, formatDate, stats?.entries, stats?.lastUsedAt, stats?.newestCachedAt, stats?.totalHits, ttlMinutes]
   )
 
   return (

@@ -558,7 +558,7 @@ func (s *TorznabSearchCacheStore) touchEntry(ctx context.Context, id int64) {
 
 // Touch updates last_used_at and hit_count for a cache entry.
 func (s *TorznabSearchCacheStore) Touch(ctx context.Context, id int64) {
-	if s == nil || id <= 0 {
+	if id <= 0 {
 		return
 	}
 	s.touchEntry(ctx, id)
@@ -587,20 +587,26 @@ func parseSQLiteTime(value sql.NullString) *time.Time {
 		return nil
 	}
 
-	layouts := []string{
-		"2006-01-02 15:04:05.999999999Z07:00",
-		"2006-01-02 15:04:05.999999999",
-		"2006-01-02 15:04:05",
-		time.RFC3339,
-		time.RFC3339Nano,
+	if ts, err := time.Parse(time.RFC3339Nano, value.String); err == nil {
+		return &ts
+	}
+	if ts, err := time.Parse(time.RFC3339, value.String); err == nil {
+		return &ts
 	}
 
-	for _, layout := range layouts {
+	legacyLayouts := []string{
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+		"2006-01-02 15:04:05 -0700 MST",
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05-07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+	}
+	for _, layout := range legacyLayouts {
 		if ts, err := time.Parse(layout, value.String); err == nil {
 			return &ts
 		}
 	}
-
 	return nil
 }
 
