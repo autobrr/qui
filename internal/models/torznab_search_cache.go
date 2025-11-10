@@ -459,9 +459,9 @@ func (s *TorznabSearchCacheStore) Stats(ctx context.Context) (*TorznabSearchCach
 			COUNT(*) AS entries,
 			COALESCE(SUM(hit_count), 0) AS total_hits,
 			COALESCE(SUM(LENGTH(response_data)), 0) AS approx_size,
-			MIN(cached_at) AS oldest_cached,
-			MAX(cached_at) AS newest_cached,
-			MAX(last_used_at) AS last_used
+			unixepoch(MIN(cached_at)) AS oldest_cached,
+			unixepoch(MAX(cached_at)) AS newest_cached,
+			unixepoch(MAX(last_used_at)) AS last_used
 		FROM torznab_search_cache
 	`
 
@@ -469,9 +469,9 @@ func (s *TorznabSearchCacheStore) Stats(ctx context.Context) (*TorznabSearchCach
 		entries      int64
 		totalHits    int64
 		sizeBytes    int64
-		oldestCached sql.NullString
-		newestCached sql.NullString
-		lastUsed     sql.NullString
+		oldestCached sql.NullInt64
+		newestCached sql.NullInt64
+		lastUsed     sql.NullInt64
 	)
 
 	err := s.db.QueryRowContext(ctx, query).Scan(
@@ -491,13 +491,13 @@ func (s *TorznabSearchCacheStore) Stats(ctx context.Context) (*TorznabSearchCach
 		TotalHits:       totalHits,
 		ApproxSizeBytes: sizeBytes,
 	}
-	if t := parseSQLiteTime(oldestCached); t != nil {
+	if t := timeFromUnixNull(oldestCached); t != nil {
 		stats.OldestCachedAt = t
 	}
-	if t := parseSQLiteTime(newestCached); t != nil {
+	if t := timeFromUnixNull(newestCached); t != nil {
 		stats.NewestCachedAt = t
 	}
-	if t := parseSQLiteTime(lastUsed); t != nil {
+	if t := timeFromUnixNull(lastUsed); t != nil {
 		stats.LastUsedAt = t
 	}
 	return stats, nil
@@ -505,11 +505,11 @@ func (s *TorznabSearchCacheStore) Stats(ctx context.Context) (*TorznabSearchCach
 
 // GetSettings returns the current cache settings (if any).
 func (s *TorznabSearchCacheStore) GetSettings(ctx context.Context) (*TorznabSearchCacheSettings, error) {
-	const query = `SELECT ttl_minutes, updated_at FROM torznab_search_cache_settings WHERE id = 1`
+	const query = `SELECT ttl_minutes, unixepoch(updated_at) FROM torznab_search_cache_settings WHERE id = 1`
 
 	var (
 		ttlMinutes int
-		updatedRaw sql.NullString
+		updatedRaw sql.NullInt64
 	)
 
 	err := s.db.QueryRowContext(ctx, query).Scan(&ttlMinutes, &updatedRaw)
@@ -523,7 +523,7 @@ func (s *TorznabSearchCacheStore) GetSettings(ctx context.Context) (*TorznabSear
 	settings := &TorznabSearchCacheSettings{
 		TTLMinutes: ttlMinutes,
 	}
-	if ts := parseSQLiteTime(updatedRaw); ts != nil {
+	if ts := timeFromUnixNull(updatedRaw); ts != nil {
 		settings.UpdatedAt = ts
 	}
 
@@ -553,7 +553,13 @@ func (s *TorznabSearchCacheStore) touchEntry(ctx context.Context, id int64) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	_, _ = s.db.ExecContext(ctx, `UPDATE torznab_search_cache SET last_used_at = CURRENT_TIMESTAMP, hit_count = hit_count + 1 WHERE id = ?`, id)
+	now := time.Now().UTC()
+	_, _ = s.db.ExecContext(
+		ctx,
+		`UPDATE torznab_search_cache SET last_used_at = ?, hit_count = hit_count + 1 WHERE id = ?`,
+		now,
+		id,
+	)
 }
 
 // Touch updates last_used_at and hit_count for a cache entry.
@@ -582,32 +588,12 @@ func decodeIntArray(raw string) []int {
 	return values
 }
 
-func parseSQLiteTime(value sql.NullString) *time.Time {
+func timeFromUnixNull(value sql.NullInt64) *time.Time {
 	if !value.Valid {
 		return nil
 	}
-
-	if ts, err := time.Parse(time.RFC3339Nano, value.String); err == nil {
-		return &ts
-	}
-	if ts, err := time.Parse(time.RFC3339, value.String); err == nil {
-		return &ts
-	}
-
-	legacyLayouts := []string{
-		"2006-01-02 15:04:05.999999999 -0700 MST",
-		"2006-01-02 15:04:05 -0700 MST",
-		"2006-01-02 15:04:05.999999999-07:00",
-		"2006-01-02 15:04:05-07:00",
-		"2006-01-02 15:04:05.999999999",
-		"2006-01-02 15:04:05",
-	}
-	for _, layout := range legacyLayouts {
-		if ts, err := time.Parse(layout, value.String); err == nil {
-			return &ts
-		}
-	}
-	return nil
+	ts := time.Unix(value.Int64, 0).UTC()
+	return &ts
 }
 
 func buildIndexerMatcher(ids []int) string {
