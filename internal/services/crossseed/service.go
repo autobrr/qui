@@ -576,15 +576,11 @@ func (s *Service) validateSearchRunOptions(ctx context.Context, opts *SearchRunO
 	if opts.InstanceID <= 0 {
 		return fmt.Errorf("instance id must be positive")
 	}
-	if opts.IntervalSeconds < 30 {
-		if opts.IntervalSeconds == 0 {
-			opts.IntervalSeconds = 60
-		} else {
-			opts.IntervalSeconds = 30
-		}
+	if opts.IntervalSeconds < 60 {
+		opts.IntervalSeconds = 60
 	}
-	if opts.CooldownMinutes <= 0 {
-		opts.CooldownMinutes = 360
+	if opts.CooldownMinutes < 720 {
+		opts.CooldownMinutes = 720
 	}
 	opts.Categories = normalizeStringSlice(opts.Categories)
 	opts.Tags = normalizeStringSlice(opts.Tags)

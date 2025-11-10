@@ -101,7 +101,7 @@ export function CrossSeedPage() {
   const [searchTags, setSearchTags] = useState<string[]>([])
   const [searchIndexerIds, setSearchIndexerIds] = useState<number[]>([])
   const [searchIntervalSeconds, setSearchIntervalSeconds] = useState(60)
-  const [searchCooldownMinutes, setSearchCooldownMinutes] = useState(360)
+  const [searchCooldownMinutes, setSearchCooldownMinutes] = useState(720)
   const [searchResultsOpen, setSearchResultsOpen] = useState(false)
   const [showIndexerFilters, setShowIndexerFilters] = useState(false)
   const [showAutomationIndexerFilters, setShowAutomationIndexerFilters] = useState(false)
@@ -344,9 +344,9 @@ export function CrossSeedPage() {
       instanceId: searchInstanceId,
       categories: searchCategories,
       tags: searchTags,
-      intervalSeconds: Math.max(30, Number(searchIntervalSeconds) || 60),
+      intervalSeconds: Math.max(60, Number(searchIntervalSeconds) || 60),
       indexerIds: searchIndexerIds,
-      cooldownMinutes: Math.max(30, Number(searchCooldownMinutes) || 360),
+      cooldownMinutes: Math.max(720, Number(searchCooldownMinutes) || 720),
     })
   }
 
@@ -471,22 +471,22 @@ export function CrossSeedPage() {
               <Input
                 id="search-interval"
                 type="number"
-                min={30}
+                min={60}
                 value={searchIntervalSeconds}
-                onChange={event => setSearchIntervalSeconds(Math.max(30, Number(event.target.value) || 60))}
+                onChange={event => setSearchIntervalSeconds(Math.max(60, Number(event.target.value) || 60))}
               />
-              <p className="text-xs text-muted-foreground">Wait time before scanning the next seeded torrent. Minimum 30 seconds.</p>
+              <p className="text-xs text-muted-foreground">Wait time before scanning the next seeded torrent. Minimum 60 seconds.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="search-cooldown">Cooldown (minutes)</Label>
               <Input
                 id="search-cooldown"
                 type="number"
-                min={30}
+                min={720}
                 value={searchCooldownMinutes}
-                onChange={event => setSearchCooldownMinutes(Number(event.target.value) || 0)}
+                onChange={event => setSearchCooldownMinutes(Math.max(720, Number(event.target.value) || 720))}
               />
-              <p className="text-xs text-muted-foreground">Skip seeded torrents that were searched more recently than this window.</p>
+              <p className="text-xs text-muted-foreground">Skip seeded torrents that were searched more recently than this window. Minimum 720 minutes.</p>
             </div>
           </div>
 
