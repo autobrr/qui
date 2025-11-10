@@ -41,7 +41,7 @@ export function Search() {
   const [refreshConfirmOpen, setRefreshConfirmOpen] = useState(false)
   const [refreshCooldownUntil, setRefreshCooldownUntil] = useState(0)
   const [, forceRefreshTick] = useState(0)
-  const [recentSearches, setRecentSearches] = useState<TorznabRecentSearch[]>([])
+  const [recentSearches, setRecentSearches] = useState<TorznabRecentSearch[] | null>(null)
   const [queryFocused, setQueryFocused] = useState(false)
   const queryInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -102,9 +102,10 @@ export function Search() {
   const refreshRecentSearches = useCallback(async () => {
     try {
       const data = await api.getRecentTorznabSearches(20, "general")
-      setRecentSearches(data)
+      setRecentSearches(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error("Load recent searches error:", error)
+      setRecentSearches([])
     }
   }, [api])
 
@@ -374,16 +375,17 @@ export function Search() {
   }, [results, resultsFilter, sortColumn, sortOrder, categoryMap])
 
   const suggestionMatches = useMemo(() => {
-    if (recentSearches.length === 0) {
+    const searches = recentSearches ?? []
+    if (searches.length === 0) {
       return []
     }
 
     const normalizedQuery = query.trim().toLowerCase()
     if (!normalizedQuery) {
-      return recentSearches.slice(0, 5)
+      return searches.slice(0, 5)
     }
 
-    const matches = recentSearches.filter(search => search.query.toLowerCase().includes(normalizedQuery))
+    const matches = searches.filter(search => search.query.toLowerCase().includes(normalizedQuery))
     return matches.slice(0, 5)
   }, [recentSearches, query])
 
@@ -570,7 +572,7 @@ export function Search() {
                     </Button>
                   </div>
                 </div>
-                <Accordion type="multiple" defaultValue={['prowlarr', 'jackett', 'native']} className="border rounded-lg">
+                <Accordion type="multiple" className="border rounded-lg">
                   {(['prowlarr', 'jackett', 'native'] as const).map((backend) => {
                     const backendIndexers = indexersByBackend[backend] || []
                     if (backendIndexers.length === 0) return null
@@ -579,7 +581,7 @@ export function Search() {
 
                     return (
                       <AccordionItem key={backend} value={backend} className="border-0 last:border-b-0">
-                        <AccordionTrigger className="hover:no-underline py-3 px-4 hover:bg-muted/50">
+                        <AccordionTrigger className="hover:no-underline py-3 px-4 bg-muted/50 hover:bg-muted">
                           <div className="flex items-center gap-2 flex-1">
                             <span className="text-sm font-medium">{formatBackend(backend)}</span>
                             <Badge variant="secondary" className="text-[10px] font-normal">
@@ -648,22 +650,22 @@ export function Search() {
               </div>
             )}
 
-            {recentSearches.length > 0 && (
+            {(recentSearches?.length ?? 0) > 0 && (
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Recent searches</Label>
                 <Accordion type="single" collapsible className="border rounded-lg">
                   <AccordionItem value="recent-searches" className="border-0">
-                    <AccordionTrigger className="hover:no-underline py-3 px-4 hover:bg-muted/50">
+                    <AccordionTrigger className="hover:no-underline py-3 px-4 bg-muted/50 hover:bg-muted">
                       <div className="flex items-center gap-2 flex-1">
                         <span className="text-sm font-medium">History</span>
                         <Badge variant="secondary" className="text-[10px] font-normal">
-                          {recentSearches.length}
+                          {recentSearches?.length ?? 0}
                         </Badge>
                       </div>
                     </AccordionTrigger>
                     <AccordionContent className="px-4 pb-3 pt-1">
                       <div className="flex flex-col gap-2">
-                        {recentSearches.map(search => {
+                        {(recentSearches ?? []).map(search => {
                           const indexerSummary = search.indexerIds.length > 0 ? `${search.indexerIds.length} indexers` : "All indexers"
                           return (
                             <button
