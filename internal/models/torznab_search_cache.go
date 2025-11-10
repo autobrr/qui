@@ -191,9 +191,7 @@ func (s *TorznabSearchCacheStore) Store(ctx context.Context, entry *TorznabSearc
 			response_data = excluded.response_data,
 			total_results = excluded.total_results,
 			cached_at = excluded.cached_at,
-			last_used_at = excluded.last_used_at,
-			expires_at = excluded.expires_at,
-			hit_count = excluded.hit_count
+			expires_at = excluded.expires_at
 	`
 
 	if _, err := s.db.ExecContext(
