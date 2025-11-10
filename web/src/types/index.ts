@@ -979,6 +979,19 @@ export interface TorznabSearchCacheStats {
   ttlMinutes: number
 }
 
+export interface TorznabRecentSearch {
+  cacheKey: string
+  scope: string
+  query: string
+  categories: number[]
+  indexerIds: number[]
+  totalResults: number
+  cachedAt: string
+  lastUsedAt?: string
+  expiresAt: string
+  hitCount: number
+}
+
 export interface TorznabSearchResult {
   indexer: string
   title: string

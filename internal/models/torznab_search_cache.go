@@ -42,6 +42,20 @@ type TorznabSearchCacheStats struct {
 	TTLMinutes      int        `json:"ttlMinutes"`
 }
 
+// TorznabRecentSearch captures metadata about a cached search request for UI consumption.
+type TorznabRecentSearch struct {
+	CacheKey     string     `json:"cacheKey"`
+	Scope        string     `json:"scope"`
+	Query        string     `json:"query"`
+	Categories   []int      `json:"categories"`
+	IndexerIDs   []int      `json:"indexerIds"`
+	TotalResults int        `json:"totalResults"`
+	CachedAt     time.Time  `json:"cachedAt"`
+	LastUsedAt   *time.Time `json:"lastUsedAt,omitempty"`
+	ExpiresAt    time.Time  `json:"expiresAt"`
+	HitCount     int64      `json:"hitCount"`
+}
+
 // TorznabSearchCacheSettings tracks persisted cache configuration.
 type TorznabSearchCacheSettings struct {
 	TTLMinutes int
@@ -200,6 +214,96 @@ func (s *TorznabSearchCacheStore) Store(ctx context.Context, entry *TorznabSearc
 	}
 
 	return nil
+}
+
+// RecentSearches returns the most recently used cached search queries.
+func (s *TorznabSearchCacheStore) RecentSearches(ctx context.Context, scope string, limit int) ([]*TorznabRecentSearch, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	scopeFilter := strings.TrimSpace(scope)
+	query := `
+		SELECT cache_key, scope, COALESCE(query, ''), categories_json, indexer_ids_json,
+		       total_results, cached_at, last_used_at, expires_at, hit_count
+		FROM torznab_search_cache
+		WHERE TRIM(COALESCE(query, '')) != ''
+	`
+
+	var args []any
+	if scopeFilter != "" {
+		query += " AND scope = ?"
+		args = append(args, scopeFilter)
+	}
+
+	query += `
+		ORDER BY COALESCE(last_used_at, cached_at) DESC
+		LIMIT ?
+	`
+	args = append(args, limit)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("recent torznab searches: %w", err)
+	}
+	defer rows.Close()
+
+	var results []*TorznabRecentSearch
+	for rows.Next() {
+		var (
+			cacheKey       string
+			scopeValue     string
+			queryValue     string
+			categoriesJSON sql.NullString
+			indexersJSON   sql.NullString
+			totalResults   int
+			cachedAt       time.Time
+			lastUsed       sql.NullTime
+			expiresAt      time.Time
+			hitCount       int64
+		)
+
+		if err := rows.Scan(
+			&cacheKey,
+			&scopeValue,
+			&queryValue,
+			&categoriesJSON,
+			&indexersJSON,
+			&totalResults,
+			&cachedAt,
+			&lastUsed,
+			&expiresAt,
+			&hitCount,
+		); err != nil {
+			return nil, fmt.Errorf("scan recent torznab searches: %w", err)
+		}
+
+		entry := &TorznabRecentSearch{
+			CacheKey:     cacheKey,
+			Scope:        scopeValue,
+			Query:        strings.TrimSpace(queryValue),
+			Categories:   decodeIntArray(categoriesJSON.String),
+			IndexerIDs:   decodeIntArray(indexersJSON.String),
+			TotalResults: totalResults,
+			CachedAt:     cachedAt,
+			ExpiresAt:    expiresAt,
+			HitCount:     hitCount,
+		}
+		if lastUsed.Valid {
+			entry.LastUsedAt = &lastUsed.Time
+		}
+
+		results = append(results, entry)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate recent torznab searches: %w", err)
+	}
+
+	return results, nil
 }
 
 // CleanupExpired removes all expired cache rows.

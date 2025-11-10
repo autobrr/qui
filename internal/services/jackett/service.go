@@ -751,6 +751,14 @@ func (s *Service) GetSearchCacheStats(ctx context.Context) (*models.TorznabSearc
 	return stats, nil
 }
 
+// GetRecentSearches returns the most recently cached search queries for UI hints.
+func (s *Service) GetRecentSearches(ctx context.Context, scope string, limit int) ([]*models.TorznabRecentSearch, error) {
+	if s == nil || !s.shouldUseSearchCache() || s.searchCache == nil {
+		return []*models.TorznabRecentSearch{}, nil
+	}
+	return s.searchCache.RecentSearches(ctx, scope, limit)
+}
+
 // UpdateSearchCacheSettings updates the TTL configuration at runtime.
 func (s *Service) UpdateSearchCacheSettings(ctx context.Context, ttlMinutes int) (*models.TorznabSearchCacheSettings, error) {
 	if s == nil || s.searchCache == nil {

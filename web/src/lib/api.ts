@@ -54,6 +54,7 @@ import type {
   TorznabSearchResponse,
   TorznabSearchCacheMetadata,
   TorznabSearchCacheStats,
+  TorznabRecentSearch,
   User
 } from "@/types"
 import { getApiBaseUrl, withBasePath } from "./base-url"
@@ -1308,6 +1309,18 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify(request),
     })
+  }
+
+  async getRecentTorznabSearches(limit?: number, scope?: string): Promise<TorznabRecentSearch[]> {
+    const params = new URLSearchParams()
+    if (limit && limit > 0) {
+      params.set("limit", String(limit))
+    }
+    if (scope) {
+      params.set("scope", scope)
+    }
+    const query = params.toString() ? `?${params.toString()}` : ""
+    return this.request<TorznabRecentSearch[]>(`/torznab/search/recent${query}`)
   }
 
   async getTorznabSearchCacheStats(): Promise<TorznabSearchCacheStats> {

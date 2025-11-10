@@ -18,6 +18,11 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
+const (
+	defaultRecentSearchLimit = 10
+	maxRecentSearchLimit     = 50
+)
+
 // JackettHandler handles Jackett/Torznab API endpoints
 type JackettHandler struct {
 	service      *jackett.Service
@@ -55,6 +60,7 @@ func (h *JackettHandler) Routes(r chi.Router) {
 		r.Post("/cross-seed/search", h.CrossSeedSearch)
 
 		// General Torznab search
+		r.Get("/search/recent", h.ListRecentSearches)
 		r.Post("/search", h.Search)
 
 		r.Route("/search/cache", func(r chi.Router) {
@@ -142,6 +148,33 @@ func (h *JackettHandler) Search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RespondJSON(w, http.StatusOK, response)
+}
+
+// ListRecentSearches returns the latest cached search queries for autocomplete support.
+func (h *JackettHandler) ListRecentSearches(w http.ResponseWriter, r *http.Request) {
+	limit := defaultRecentSearchLimit
+	if limitParam := strings.TrimSpace(r.URL.Query().Get("limit")); limitParam != "" {
+		if parsed, err := strconv.Atoi(limitParam); err == nil {
+			switch {
+			case parsed <= 0:
+				// keep default
+			case parsed > maxRecentSearchLimit:
+				limit = maxRecentSearchLimit
+			default:
+				limit = parsed
+			}
+		}
+	}
+
+	scope := strings.TrimSpace(r.URL.Query().Get("scope"))
+	searches, err := h.service.GetRecentSearches(r.Context(), scope, limit)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load recent torznab searches")
+		RespondError(w, http.StatusInternalServerError, "Failed to load recent searches")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, searches)
 }
 
 // GetSearchCacheStats returns summary metrics for the search cache.

@@ -17,9 +17,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useInstances } from '@/hooks/useInstances'
 import { api } from '@/lib/api'
 import { formatRelativeTime } from '@/lib/utils'
-import type { TorznabIndexer, TorznabSearchRequest, TorznabSearchResponse, TorznabSearchResult } from '@/types'
+import type { TorznabIndexer, TorznabRecentSearch, TorznabSearchRequest, TorznabSearchResponse, TorznabSearchResult } from '@/types'
 import { ArrowDown, ArrowUp, ArrowUpDown, Download, ExternalLink, Plus, RefreshCw, Search as SearchIcon } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 export function Search() {
@@ -41,6 +41,9 @@ export function Search() {
   const [refreshConfirmOpen, setRefreshConfirmOpen] = useState(false)
   const [refreshCooldownUntil, setRefreshCooldownUntil] = useState(0)
   const [, forceRefreshTick] = useState(0)
+  const [recentSearches, setRecentSearches] = useState<TorznabRecentSearch[]>([])
+  const [queryFocused, setQueryFocused] = useState(false)
+  const queryInputRef = useRef<HTMLInputElement | null>(null)
 
   const REFRESH_COOLDOWN_MS = 30_000
   const refreshCooldownRemaining = Math.max(0, refreshCooldownUntil - Date.now())
@@ -76,8 +79,9 @@ export function Search() {
     }
   }
 
-  const validateSearchInputs = useCallback(() => {
-    if (!query.trim()) {
+  const validateSearchInputs = useCallback((overrideQuery?: string) => {
+    const normalizedQuery = (overrideQuery ?? query).trim()
+    if (!normalizedQuery) {
       toast.error('Please enter a search query')
       return false
     }
@@ -95,14 +99,24 @@ export function Search() {
     return true
   }, [indexers.length, query, selectedIndexers])
 
+  const refreshRecentSearches = useCallback(async () => {
+    try {
+      const data = await api.getRecentTorznabSearches(20, "general")
+      setRecentSearches(data)
+    } catch (error) {
+      console.error("Load recent searches error:", error)
+    }
+  }, [api])
+
   const runSearch = useCallback(
-    async ({ bypassCache = false }: { bypassCache?: boolean } = {}) => {
+    async ({ bypassCache = false, queryOverride }: { bypassCache?: boolean; queryOverride?: string } = {}) => {
+      const searchQuery = (queryOverride ?? query).trim()
       setLoading(true)
       setCacheMetadata(null)
 
       try {
         const payload: Omit<TorznabSearchRequest, "categories"> = {
-          query: query.trim(),
+          query: searchQuery,
           indexer_ids: Array.from(selectedIndexers),
         }
 
@@ -121,6 +135,7 @@ export function Search() {
           const cacheSuffix = response.cache?.hit ? ' (cached)' : ''
           toast.success(`Found ${response.total} results${cacheSuffix}`)
         }
+        void refreshRecentSearches()
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : 'Unknown error'
         toast.error(`Search failed: ${errorMsg}`)
@@ -129,7 +144,7 @@ export function Search() {
         setLoading(false)
       }
     },
-    [api, query, selectedIndexers]
+    [api, query, selectedIndexers, refreshRecentSearches]
   )
 
   // Build a category ID to name map from all indexers
@@ -190,6 +205,10 @@ export function Search() {
     }
     loadIndexers()
   }, [])
+
+  useEffect(() => {
+    refreshRecentSearches()
+  }, [refreshRecentSearches])
 
   useEffect(() => {
     if (!instances || instances.length === 0) {
@@ -354,6 +373,34 @@ export function Search() {
     return sorted
   }, [results, resultsFilter, sortColumn, sortOrder, categoryMap])
 
+  const suggestionMatches = useMemo(() => {
+    if (recentSearches.length === 0) {
+      return []
+    }
+
+    const normalizedQuery = query.trim().toLowerCase()
+    if (!normalizedQuery) {
+      return recentSearches.slice(0, 5)
+    }
+
+    const matches = recentSearches.filter(search => search.query.toLowerCase().includes(normalizedQuery))
+    return matches.slice(0, 5)
+  }, [recentSearches, query])
+
+  const shouldShowSuggestions = queryFocused && suggestionMatches.length > 0
+
+  const handleSuggestionClick = useCallback((value: string) => {
+    setQuery(value)
+    requestAnimationFrame(() => {
+      queryInputRef.current?.focus()
+    })
+    const normalized = value.trim()
+    if (!validateSearchInputs(normalized)) {
+      return
+    }
+    void runSearch({ queryOverride: normalized })
+  }, [runSearch, validateSearchInputs])
+
   const handleDownload = (result: TorznabSearchResult) => {
     window.open(result.download_url, '_blank')
   }
@@ -430,16 +477,42 @@ export function Search() {
         <CardContent>
           <form onSubmit={handleSearch} className="space-y-4">
             <div className="flex gap-2">
-              <div className="flex-1">
+              <div className="flex-1 relative">
                 <Label htmlFor="query" className="sr-only">Search Query</Label>
                 <Input
+                  ref={queryInputRef}
                   id="query"
                   type="text"
+                  autoComplete="off"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
+                  onFocus={() => setQueryFocused(true)}
+                  onBlur={() => {
+                    window.setTimeout(() => setQueryFocused(false), 100)
+                  }}
                   placeholder="Enter search query (e.g., 'Ubuntu', 'Breaking Bad S01E01', 'Interstellar 2014')"
                   disabled={loading}
                 />
+                {shouldShowSuggestions && (
+                  <div className="absolute left-0 right-0 z-20 mt-1 rounded-md border bg-popover shadow-lg">
+                    {suggestionMatches.map((search) => (
+                      <button
+                        type="button"
+                        key={search.cacheKey}
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-muted focus-visible:outline-none"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => handleSuggestionClick(search.query)}
+                      >
+                        <div className="font-medium text-foreground">
+                          {search.query}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {search.totalResults} results · {formatRelativeTime(search.lastUsedAt ?? search.cachedAt)}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <Button type="submit" disabled={loading || !query.trim() || selectedIndexers.size === 0}>
                 <SearchIcon className="mr-2 h-4 w-4" />
@@ -475,7 +548,7 @@ export function Search() {
 
             {/* Indexer Selection */}
             {!loadingIndexers && indexers.length > 0 && (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label className="text-sm font-medium">Indexers ({selectedIndexers.size} of {indexers.length} selected)</Label>
                   <div className="flex gap-2">
@@ -514,8 +587,8 @@ export function Search() {
                             </Badge>
                           </div>
                         </AccordionTrigger>
-                        <AccordionContent>
-                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 px-4 pb-4 pt-2">
+                        <AccordionContent className="px-4 pb-3 pt-1">
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                             {backendIndexers.map((indexer) => {
                               // Only show parent categories (category_id is multiple of 1000 in Torznab spec)
                               const parentCategories = indexer.categories
@@ -539,7 +612,7 @@ export function Search() {
                                     id={`indexer-${indexer.id}`}
                                     checked={isSelected}
                                     onCheckedChange={() => toggleIndexer(indexer.id)}
-                                    className="mt-0.5"
+                                    className="mt-0.5 shrink-0"
                                   />
                                   <div className="flex-1 min-w-0 space-y-1.5">
                                     <div className="text-sm font-medium leading-none">
@@ -572,6 +645,52 @@ export function Search() {
             {!loadingIndexers && indexers.length === 0 && (
               <div className="text-sm text-muted-foreground">
                 No enabled indexers available. Please add and enable indexers in the <a href="/settings?tab=indexers" className="text-primary hover:underline">Indexers page</a>.
+              </div>
+            )}
+
+            {recentSearches.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Recent searches</Label>
+                <Accordion type="single" collapsible className="border rounded-lg">
+                  <AccordionItem value="recent-searches" className="border-0">
+                    <AccordionTrigger className="hover:no-underline py-3 px-4 hover:bg-muted/50">
+                      <div className="flex items-center gap-2 flex-1">
+                        <span className="text-sm font-medium">History</span>
+                        <Badge variant="secondary" className="text-[10px] font-normal">
+                          {recentSearches.length}
+                        </Badge>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="px-4 pb-3 pt-1">
+                      <div className="flex flex-col gap-2">
+                        {recentSearches.map(search => {
+                          const indexerSummary = search.indexerIds.length > 0 ? `${search.indexerIds.length} indexers` : "All indexers"
+                          return (
+                            <button
+                              type="button"
+                              key={`${search.cacheKey}-${search.cachedAt}`}
+                              className="rounded-md border px-3 py-2 text-left transition hover:border-primary hover:bg-muted/40 focus-visible:outline-none"
+                              onClick={() => handleSuggestionClick(search.query)}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="font-medium text-foreground text-sm">{search.query || "Untitled search"}</p>
+                                <span className="text-xs text-muted-foreground shrink-0">{formatRelativeTime(search.lastUsedAt ?? search.cachedAt)}</span>
+                              </div>
+                              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                                  {search.scope === "cross_seed" ? "Cross-seed" : "General"}
+                                </Badge>
+                                <span>{indexerSummary}</span>
+                                <span>{search.totalResults} results</span>
+                                {search.hitCount > 0 && <span>{search.hitCount} hits</span>}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
               </div>
             )}
           </form>
