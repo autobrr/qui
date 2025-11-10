@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
+	"github.com/rs/zerolog/log"
 )
 
 // TorznabSearchCacheEntry captures a cached Torznab search response.
@@ -399,7 +400,7 @@ func (s *TorznabSearchCacheStore) CleanupExpired(ctx context.Context) (int64, er
 	}
 	deleted, err := res.RowsAffected()
 	if err != nil {
-		return 0, nil
+		return 0, fmt.Errorf("cleanup torznab search cache rows affected: %w", err)
 	}
 	return deleted, nil
 }
@@ -412,7 +413,7 @@ func (s *TorznabSearchCacheStore) Flush(ctx context.Context) (int64, error) {
 	}
 	deleted, err := res.RowsAffected()
 	if err != nil {
-		return 0, nil
+		return 0, fmt.Errorf("flush torznab search cache rows affected: %w", err)
 	}
 	return deleted, nil
 }
@@ -445,7 +446,7 @@ func (s *TorznabSearchCacheStore) InvalidateByIndexerIDs(ctx context.Context, in
 	}
 	deleted, err := res.RowsAffected()
 	if err != nil {
-		return 0, nil
+		return 0, fmt.Errorf("invalidate torznab search cache rows affected: %w", err)
 	}
 	return deleted, nil
 }
@@ -581,6 +582,7 @@ func decodeIntArray(raw string) []int {
 	}
 	var values []int
 	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+		log.Debug().Err(err).Msg("torznab search cache decode int array failed")
 		return nil
 	}
 	return values
