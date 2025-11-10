@@ -3,16 +3,32 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useEffect, useState } from "react"
-import { toast } from "sonner"
-import { Plus, RefreshCw } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
+import { api } from "@/lib/api"
+import type { TorznabIndexer } from "@/types"
+import { ChevronDown, Plus, RefreshCw, Trash2 } from "lucide-react"
+import { useEffect, useState } from "react"
+import { toast } from "sonner"
 import { AutodiscoveryDialog } from "./AutodiscoveryDialog"
 import { IndexerDialog } from "./IndexerDialog"
 import { IndexerTable } from "./IndexerTable"
-import type { TorznabIndexer } from "@/types"
-import { api } from "@/lib/api"
 
 interface IndexersPageProps {
   withContainer?: boolean
@@ -25,6 +41,8 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [autodiscoveryOpen, setAutodiscoveryOpen] = useState(false)
   const [editingIndexer, setEditingIndexer] = useState<TorznabIndexer | null>(null)
+  const [deleteIndexerId, setDeleteIndexerId] = useState<number | null>(null)
+  const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false)
 
   const loadIndexers = async () => {
     try {
@@ -48,16 +66,49 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
     setEditDialogOpen(true)
   }
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this indexer?")) return
+  const handleDelete = (id: number) => {
+    setDeleteIndexerId(id)
+  }
+
+  const confirmDelete = async () => {
+    if (deleteIndexerId === null) return
 
     try {
-      await api.deleteTorznabIndexer(id)
+      await api.deleteTorznabIndexer(deleteIndexerId)
       toast.success("Indexer deleted successfully")
+      setDeleteIndexerId(null)
       loadIndexers()
     } catch (error) {
       toast.error("Failed to delete indexer")
     }
+  }
+
+  const handleDeleteAll = async () => {
+    if (indexers.length === 0) return
+
+    const results = await Promise.allSettled(
+      indexers.map(indexer =>
+        api.deleteTorznabIndexer(indexer.id)
+          .then(() => ({ id: indexer.id, name: indexer.name, success: true }))
+          .catch(error => ({ id: indexer.id, name: indexer.name, success: false, error }))
+      )
+    )
+
+    const successCount = results.filter(r => r.status === 'fulfilled' && r.value.success).length
+    const failCount = indexers.length - successCount
+
+    if (failCount === 0) {
+      toast.success(`Deleted all ${indexers.length} indexers`)
+    } else {
+      const failedNames = results
+        .filter(r => r.status === 'fulfilled' && !r.value.success)
+        .map(r => r.status === 'fulfilled' ? r.value.name : '')
+        .join(', ')
+      toast.warning(`Deleted ${successCount} indexers, ${failCount} failed: ${failedNames}`)
+    }
+
+    setShowDeleteAllDialog(false)
+    loadIndexers()
   }
 
   const handleTest = async (id: number) => {
@@ -132,23 +183,34 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
             <div className="flex flex-wrap gap-2 justify-end">
               <Button
                 variant="outline"
-                onClick={handleTestAll}
+                onClick={() => setShowDeleteAllDialog(true)}
                 disabled={loading || indexers.length === 0}
               >
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Test All
+                <Trash2 className="h-4 w-4" />
+                Delete All
               </Button>
-              <Button
-                variant="outline"
-                onClick={() => setAutodiscoveryOpen(true)}
-              >
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Discover Indexers
-              </Button>
-              <Button onClick={() => setAddDialogOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Indexer
-              </Button>
+              <div className="flex">
+                <Button
+                  onClick={() => setAutodiscoveryOpen(true)}
+                  className="rounded-r-none"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Discover
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button className="rounded-l-none border-l px-2">
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setAddDialogOpen(true)}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add single
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -159,6 +221,7 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
             onEdit={handleEdit}
             onDelete={handleDelete}
             onTest={handleTest}
+            onTestAll={handleTestAll}
             onSyncCaps={async (id) => {
               try {
                 const updated = await api.syncTorznabCaps(id)
@@ -193,6 +256,46 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
           loadIndexers()
         }}
       />
+
+      <AlertDialog open={!!deleteIndexerId} onOpenChange={() => setDeleteIndexerId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Indexer?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the indexer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showDeleteAllDialog} onOpenChange={setShowDeleteAllDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete All Indexers?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete all {indexers.length} indexers.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteAll}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete All
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </>
   )
