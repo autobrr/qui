@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -458,9 +459,9 @@ func (s *TorznabSearchCacheStore) Stats(ctx context.Context) (*TorznabSearchCach
 			COUNT(*) AS entries,
 			COALESCE(SUM(hit_count), 0) AS total_hits,
 			COALESCE(SUM(LENGTH(response_data)), 0) AS approx_size,
-			unixepoch(MIN(cached_at)) AS oldest_cached,
-			unixepoch(MAX(cached_at)) AS newest_cached,
-			unixepoch(MAX(last_used_at)) AS last_used
+			MIN(cached_at) AS oldest_cached,
+			MAX(cached_at) AS newest_cached,
+			MAX(last_used_at) AS last_used
 		FROM torznab_search_cache
 	`
 
@@ -468,9 +469,9 @@ func (s *TorznabSearchCacheStore) Stats(ctx context.Context) (*TorznabSearchCach
 		entries      int64
 		totalHits    int64
 		sizeBytes    int64
-		oldestCached sql.NullInt64
-		newestCached sql.NullInt64
-		lastUsed     sql.NullInt64
+		oldestCached sql.NullString
+		newestCached sql.NullString
+		lastUsed     sql.NullString
 	)
 
 	err := s.db.QueryRowContext(ctx, query).Scan(
@@ -490,13 +491,13 @@ func (s *TorznabSearchCacheStore) Stats(ctx context.Context) (*TorznabSearchCach
 		TotalHits:       totalHits,
 		ApproxSizeBytes: sizeBytes,
 	}
-	if t := timeFromUnixNull(oldestCached); t != nil {
+	if t := parseCacheTimestamp(oldestCached); t != nil {
 		stats.OldestCachedAt = t
 	}
-	if t := timeFromUnixNull(newestCached); t != nil {
+	if t := parseCacheTimestamp(newestCached); t != nil {
 		stats.NewestCachedAt = t
 	}
-	if t := timeFromUnixNull(lastUsed); t != nil {
+	if t := parseCacheTimestamp(lastUsed); t != nil {
 		stats.LastUsedAt = t
 	}
 	return stats, nil
@@ -594,6 +595,52 @@ func timeFromUnixNull(value sql.NullInt64) *time.Time {
 	}
 	ts := time.Unix(value.Int64, 0).UTC()
 	return &ts
+}
+
+type cacheTimestampLayout struct {
+	layout   string
+	location *time.Location
+}
+
+var cacheTimestampLayouts = []cacheTimestampLayout{
+	{layout: time.RFC3339Nano},
+	{layout: time.RFC3339},
+	{layout: "2006-01-02 15:04:05.999999999 -0700 MST"},
+	{layout: "2006-01-02 15:04:05 -0700 MST"},
+	{layout: "2006-01-02 15:04:05.999999999", location: time.UTC},
+	{layout: "2006-01-02 15:04:05", location: time.UTC},
+}
+
+func parseCacheTimestamp(value sql.NullString) *time.Time {
+	if !value.Valid {
+		return nil
+	}
+	raw := strings.TrimSpace(value.String)
+	if raw == "" {
+		return nil
+	}
+	for _, spec := range cacheTimestampLayouts {
+		var parsed time.Time
+		var err error
+		if spec.location != nil {
+			parsed, err = time.ParseInLocation(spec.layout, raw, spec.location)
+		} else {
+			parsed, err = time.Parse(spec.layout, raw)
+		}
+		if err != nil {
+			continue
+		}
+		t := parsed.UTC()
+		return &t
+	}
+	if unix, err := strconv.ParseFloat(raw, 64); err == nil {
+		secs := int64(unix)
+		nanos := int64((unix - float64(secs)) * 1_000_000_000)
+		t := time.Unix(secs, nanos).UTC()
+		return &t
+	}
+	log.Debug().Str("timestamp", raw).Msg("torznab search cache stats: unrecognized timestamp format")
+	return nil
 }
 
 func buildIndexerMatcher(ids []int) string {
