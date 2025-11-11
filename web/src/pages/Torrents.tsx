@@ -126,9 +126,6 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
         transformedCounts[`tracker:${tracker}`] = count as number
       })
 
-      // Add filtered total count for cross-seed display
-      transformedCounts.filtered = _total
-
       setTorrentCounts(transformedCounts)
     }
 
@@ -266,7 +263,6 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
               addTorrentModalOpen={isAddTorrentModalOpen}
               onAddTorrentModalChange={handleAddTorrentModalChange}
               onFilteredDataUpdate={handleFilteredDataUpdate}
-              onFilterChange={setFilters}
             />
           </div>
         </div>

@@ -24,7 +24,6 @@ interface TorrentTableResponsiveProps {
     tags?: string[],
     useSubcategories?: boolean
   ) => void
-  onFilterChange?: (filters: TorrentFilters) => void
 }
 
 export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {

@@ -20,9 +20,9 @@ import {
   SPEED_COLUMNS,
   STRING_OPERATIONS
 } from "@/lib/column-constants"
-import type { Torrent, CrossInstanceTorrent } from "@/types"
+import type { Torrent } from "@/types"
 
-const COLUMN_TO_QB_FIELD: Partial<Record<keyof (Torrent & CrossInstanceTorrent), string>> = {
+const COLUMN_TO_QB_FIELD: Partial<Record<keyof Torrent, string>> = {
   name: "Name",
   size: "Size",
   total_size: "TotalSize",
@@ -62,7 +62,6 @@ const COLUMN_TO_QB_FIELD: Partial<Record<keyof (Torrent & CrossInstanceTorrent),
   reannounce: "Reannounce",
   private: "Private",
   priority: "Priority",
-  instanceName: "InstanceName", // Cross-seed filtering instance column
 }
 
 const OPERATION_TO_EXPR: Record<FilterOperation, string> = {

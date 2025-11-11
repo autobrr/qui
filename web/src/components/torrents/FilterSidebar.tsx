@@ -42,7 +42,6 @@ import {
   Download,
   Edit,
   FolderPlus,
-  GitBranch,
   Info,
   MoveRight,
   PlayCircle,
@@ -156,7 +155,6 @@ const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon }> 
   { value: "moving", label: "Moving", icon: MoveRight },
   { value: "unregistered", label: "Unregistered torrents", icon: XCircle },
   { value: "tracker_down", label: "Tracker Down", icon: AlertCircle },
-  { value: "cross-seeds", label: "Cross Seeds", icon: GitBranch },
 ]
 
 interface TrackerIconImageProps {
@@ -271,15 +269,11 @@ const FilterSidebarComponent = ({
   const [loadingTrackerURLs, setLoadingTrackerURLs] = useState(false)
 
   const visibleTorrentStates = useMemo(() => {
-    let states = supportsTrackerHealth ? TORRENT_STATES : TORRENT_STATES.filter(state => state.value !== "unregistered" && state.value !== "tracker_down")
-    
-    // Only show cross-seeds when there's an active cross-seed filter
-    if (!selectedFilters.expr) {
-      states = states.filter(state => state.value !== "cross-seeds")
+    if (supportsTrackerHealth) {
+      return TORRENT_STATES
     }
-    
-    return states
-  }, [supportsTrackerHealth, selectedFilters.expr])
+    return TORRENT_STATES.filter(state => state.value !== "unregistered" && state.value !== "tracker_down")
+  }, [supportsTrackerHealth])
 
   // Get selected torrents from context (not used for tracker editing, but keeping for future use)
   // const { selectedHashes } = useTorrentSelection()
@@ -648,31 +642,12 @@ const FilterSidebarComponent = ({
   const excludeTrackerSet = useMemo(() => new Set(selectedFilters.excludeTrackers), [selectedFilters.excludeTrackers])
 
   const getStatusState = useCallback((status: string): TriState => {
-    // Special handling for cross-seeds status
-    if (status === "cross-seeds") {
-      return selectedFilters.expr ? "include" : "neutral"
-    }
-    
     if (includeStatusSet.has(status)) return "include"
     if (excludeStatusSet.has(status)) return "exclude"
     return "neutral"
-  }, [includeStatusSet, excludeStatusSet, selectedFilters.expr])
+  }, [includeStatusSet, excludeStatusSet])
 
   const setStatusState = useCallback((status: string, state: TriState) => {
-    // Special handling for cross-seeds status
-    if (status === "cross-seeds") {
-      if (state === "neutral") {
-        // Clear the cross-seed filter when unchecked
-        applyFilterChange({
-          ...selectedFilters,
-          expr: undefined,
-        })
-      }
-      // Don't allow manually checking cross-seeds (it should only be set via context menu)
-      // But do allow unchecking by returning after handling the neutral state
-      return
-    }
-    
     let nextIncluded = selectedFilters.status
     let nextExcluded = selectedFilters.excludeStatus
 
@@ -1202,7 +1177,6 @@ const FilterSidebarComponent = ({
       excludeTags: [],
       trackers: [],
       excludeTrackers: [],
-      expr: undefined, // Clear custom expression filters
     })
     // Optionally reset accordion state to defaults
     // setExpandedItems(['status', 'categories', 'tags'])
@@ -1236,13 +1210,6 @@ const FilterSidebarComponent = ({
       ...selectedFilters,
       tags: [],
       excludeTags: [],
-    })
-  }
-
-  const clearCustomFilter = () => {
-    applyFilterChange({
-      ...selectedFilters,
-      expr: undefined,
     })
   }
 
@@ -1298,8 +1265,7 @@ const FilterSidebarComponent = ({
     selectedFilters.tags.length > 0 ||
     selectedFilters.excludeTags.length > 0 ||
     selectedFilters.trackers.length > 0 ||
-    selectedFilters.excludeTrackers.length > 0 ||
-    Boolean(selectedFilters.expr)
+    selectedFilters.excludeTrackers.length > 0
 
   // Simple slide animation - sidebar slides in/out from the left
   return (
@@ -1365,32 +1331,6 @@ const FilterSidebarComponent = ({
             onValueChange={setExpandedItems}
             className="space-y-2"
           >
-            {/* Custom Filter */}
-            {selectedFilters.expr && (
-              <AccordionItem value="custom" className="border rounded-lg">
-                <AccordionTrigger className="px-3 py-2 hover:no-underline">
-                  <div className="flex items-center justify-between w-full">
-                    <div className="flex items-center gap-2">
-                      <GitBranch className="h-4 w-4" />
-                      <span className="text-sm font-medium">Custom Filter</span>
-                    </div>
-                    <FilterBadge
-                      count={1}
-                      onClick={clearCustomFilter}
-                    />
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent className="px-3 pb-2">
-                  <div className="text-xs text-muted-foreground font-mono bg-muted/50 p-2 rounded break-all">
-                    {selectedFilters.expr}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-2">
-                    Active custom expression filter (e.g., cross-seed results)
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            )}
-            
             {/* Status Filter */}
             <AccordionItem value="status" className="border rounded-lg">
               <AccordionTrigger className="px-3 py-2 hover:no-underline">
@@ -1408,31 +1348,26 @@ const FilterSidebarComponent = ({
                 <div className="flex flex-col">
                   {visibleTorrentStates.map((state) => {
                     const statusState = getStatusState(state.value)
-                    const isCrossSeed = state.value === "cross-seeds"
-                    
-                    const statusItem = (
+                    return (
                       <label
                         key={state.value}
                       className={cn(
-                        "flex items-center gap-2 px-2 py-1.5 rounded",
-                        isCrossSeed && statusState === "neutral" ? "cursor-default" : "cursor-pointer",
+                        "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
                         statusState === "exclude"
                           ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                          : isCrossSeed && statusState === "neutral" ? "" : "hover:bg-muted"
+                          : "hover:bg-muted"
                       )}
-                      onPointerDown={isCrossSeed && statusState === "neutral" ? undefined : (event) => handleStatusPointerDown(event, state.value)}
-                      onPointerLeave={isCrossSeed && statusState === "neutral" ? undefined : handlePointerLeave}
+                      onPointerDown={(event) => handleStatusPointerDown(event, state.value)}
+                      onPointerLeave={handlePointerLeave}
                     >
                         <Checkbox
                           checked={getCheckboxVisualState(statusState)}
-                          onCheckedChange={isCrossSeed && statusState === "neutral" ? undefined : () => handleStatusCheckboxChange(state.value)}
-                          disabled={isCrossSeed && statusState === "neutral"}
+                          onCheckedChange={() => handleStatusCheckboxChange(state.value)}
                         />
                         <span
                           className={cn(
                             "text-sm flex-1 flex items-center gap-2",
-                            statusState === "exclude" ? "text-destructive" : undefined,
-                            isCrossSeed && statusState === "neutral" ? "text-muted-foreground" : undefined
+                            statusState === "exclude" ? "text-destructive" : undefined
                           )}
                         >
                           <state.icon className="h-4 w-4" />
@@ -1444,25 +1379,10 @@ const FilterSidebarComponent = ({
                             statusState === "exclude" ? "text-destructive" : "text-muted-foreground"
                           )}
                         >
-                          {isCrossSeed ? (statusState === "include" ? getDisplayCount("filtered") : "") : getDisplayCount(`status:${state.value}`)}
+                          {getDisplayCount(`status:${state.value}`)}
                         </span>
                       </label>
                     )
-                    
-                    if (isCrossSeed) {
-                      return (
-                        <Tooltip key={state.value}>
-                          <TooltipTrigger asChild>
-                            {statusItem}
-                          </TooltipTrigger>
-                          <TooltipContent side="right" className="max-w-[250px]">
-                            Cross-seed filter is active. Uncheck to clear the filter.
-                          </TooltipContent>
-                        </Tooltip>
-                      )
-                    }
-                    
-                    return statusItem
                   })}
                 </div>
               </AccordionContent>

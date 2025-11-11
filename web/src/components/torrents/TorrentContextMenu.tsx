@@ -15,11 +15,10 @@ import {
 } from "@/components/ui/context-menu"
 import type { TorrentAction } from "@/hooks/useTorrentActions"
 import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
-import { searchCrossSeedMatches, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
 import { getLinuxIsoName, getLinuxSavePath, useIncognitoMode } from "@/lib/incognito"
 import { getTorrentDisplayHash } from "@/lib/torrent-utils"
 import { copyTextToClipboard } from "@/lib/utils"
-import type { Category, Instance, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
+import type { Category, InstanceCapabilities, Torrent } from "@/types"
 import {
   CheckCircle,
   Copy,
@@ -27,7 +26,6 @@ import {
   FastForward,
   FolderOpen,
   Gauge,
-  GitBranch,
   Pause,
   Play,
   Radio,
@@ -39,7 +37,7 @@ import {
   Terminal,
   Trash2
 } from "lucide-react"
-import { memo, useCallback, useMemo, useState } from "react"
+import { memo, useCallback, useMemo } from "react"
 import { toast } from "sonner"
 import { useQuery, useMutation } from "@tanstack/react-query"
 import { api } from "@/lib/api"
@@ -81,12 +79,11 @@ interface TorrentContextMenuProps {
   canCrossSeedSearch?: boolean
   onCrossSeedSearch?: (torrent: Torrent) => void
   isCrossSeedSearching?: boolean
-  onFilterChange?: (filters: TorrentFilters) => void
 }
 
 export const TorrentContextMenu = memo(function TorrentContextMenu({
   children,
-  instanceId: _instanceId,
+  instanceId,
   torrent,
   isSelected,
   isAllSelected = false,
@@ -115,7 +112,6 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   canCrossSeedSearch = false,
   onCrossSeedSearch,
   isCrossSeedSearching = false,
-  onFilterChange,
 }: TorrentContextMenuProps) {
   const [incognitoMode] = useIncognitoMode()
 
@@ -134,144 +130,6 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   )
 
   const count = isAllSelected ? effectiveSelectionCount : hashes.length
-
-  // State for cross-seed search
-  const [isSearchingCrossSeeds, setIsSearchingCrossSeeds] = useState(false)
-  
-  const handleFilterCrossSeeds = useCallback(async () => {
-    if (!onFilterChange || isSearchingCrossSeeds) {
-      return
-    }
-
-    // Early guard: only allow for single torrent selection
-    if (torrents.length !== 1) {
-      toast.info("Cross-seed filtering only works with a single selected torrent")
-      return
-    }
-
-    setIsSearchingCrossSeeds(true)
-    toast.info("Identifying cross-seeded torrents...")
-
-    try {
-      // Get the selected torrent
-      const selectedTorrent = torrents[0]
-      
-      // Fetch all instances
-      const allInstancesData = await api.getInstances()
-      
-      // Fetch current torrent files for the selected torrent
-      const torrentFilesData = await api.getTorrentFiles(_instanceId, selectedTorrent.hash)
-      
-      // Collect all cross-seed matches across all instances
-      const allMatches: CrossSeedTorrent[] = []
-      
-      if (allInstancesData && Array.isArray(allInstancesData)) {
-        // Timeout wrapper for individual instance searches
-        const searchWithTimeout = async (instance: Instance, timeoutMs: number = 15000) => {
-          let timerHandle: any
-          const timeoutPromise = new Promise<CrossSeedTorrent[]>((_, reject) => {
-            timerHandle = setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms`)), timeoutMs)
-          })
-          
-          const searchPromise = searchCrossSeedMatches(
-            selectedTorrent,
-            instance,
-            _instanceId,
-            torrentFilesData || [],
-            selectedTorrent.infohash_v1,
-            selectedTorrent.infohash_v2
-          )
-          
-          try {
-            return await Promise.race([searchPromise, timeoutPromise])
-          } catch (error) {
-            if (error instanceof Error && error.message.includes('Timeout')) {
-              console.warn(`Cross-seed search timed out for instance ${instance.name} after ${timeoutMs}ms`)
-              toast.warning(`Search timed out for instance "${instance.name}"`, {
-                description: "Continuing with other instances...",
-                duration: 3000
-              })
-            } else {
-              console.warn(`Failed to search cross-seeds on instance ${instance.name}:`, error)
-            }
-            return []
-          } finally {
-            if (timerHandle) {
-              clearTimeout(timerHandle)
-            }
-          }
-        }
-
-        // Create search promises with timeout handling
-        const searchPromises = allInstancesData.map(instance => searchWithTimeout(instance))
-        
-        // Use Promise.allSettled to get partial results even if some instances fail/timeout
-        const searchResults = await Promise.allSettled(searchPromises)
-        
-        // Process results and collect successful matches
-        let successfulSearches = 0
-        let timedOutSearches = 0
-        let failedSearches = 0
-        
-        searchResults.forEach((result) => {
-          if (result.status === 'fulfilled') {
-            allMatches.push(...result.value)
-            successfulSearches++
-          } else {
-            if (result.reason?.message?.includes('Timeout')) {
-              timedOutSearches++
-            } else {
-              failedSearches++
-            }
-          }
-        })
-
-        // Show summary toast if there were any issues
-        if (timedOutSearches > 0 || failedSearches > 0) {
-          toast.info(`Search completed with partial results`, {
-            description: `${successfulSearches}/${allInstancesData.length} instances searched successfully. ${timedOutSearches} timed out, ${failedSearches} failed.`,
-            duration: 5000
-          })
-        }
-      }
-      
-      if (allMatches.length > 0) {
-        // Create expression from cross-seed matches using proper CEL/expr syntax
-        const hashConditions = allMatches.map(match => `Hash == "${match.hash}"`)
-        
-        // Also include the original torrent's hash to show it in the filtered results
-        hashConditions.push(`Hash == "${selectedTorrent.hash}"`)
-        
-        // Remove duplicates (in case the original torrent is already in the matches)
-        const uniqueConditions = [...new Set(hashConditions)]
-        const hashExpression = uniqueConditions.join(' || ')
-
-        // Create new filters with expression - clear all other filters to ensure clean filtering
-        const newFilters: TorrentFilters = {
-          status: [],
-          excludeStatus: [],
-          categories: [],
-          excludeCategories: [],
-          tags: [],
-          excludeTags: [],
-          trackers: [],
-          excludeTrackers: [],
-          expr: hashExpression
-        }
-
-        // Apply the filter immediately - the delay was unnecessary
-        onFilterChange(newFilters)
-        toast.success(`Found ${allMatches.length} cross-seeded torrents (showing ${uniqueConditions.length} total)`)
-      } else {
-        toast.info("No cross-seeded torrents found")
-      }
-    } catch (error) {
-      console.error('Failed to identify cross-seeded torrents:', error)
-      toast.error("Failed to identify cross-seeded torrents")
-    } finally {
-      setIsSearchingCrossSeeds(false)
-    }
-  }, [onFilterChange, torrents, isSearchingCrossSeeds, _instanceId])
 
   const copyToClipboard = useCallback(async (text: string, type: "name" | "hash" | "full path", itemCount: number) => {
     try {
@@ -383,21 +241,6 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
         <ContextMenuItem onClick={() => onTorrentSelect?.(torrent)}>
           View Details
         </ContextMenuItem>
-        {onFilterChange && (
-          <ContextMenuItem
-            onClick={handleFilterCrossSeeds}
-            disabled={isPending || isSearchingCrossSeeds || count > 1}
-            title={count > 1 ? "Cross-seed filtering only works with a single selected torrent" : undefined}
-          >
-            <GitBranch className="mr-2 h-4 w-4" />
-            {count > 1 ? (
-              <span className="text-muted-foreground">Filter Cross-Seeds (single selection only)</span>
-            ) : (
-              <>Filter Cross-Seeds</>
-            )}
-            {isSearchingCrossSeeds && <span className="ml-1 text-xs text-muted-foreground">...</span>}
-          </ContextMenuItem>
-        )}
         <ContextMenuSeparator />
         <ContextMenuItem
           onClick={() => onAction(TORRENT_ACTIONS.RESUME, hashes)}
@@ -564,7 +407,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           </ContextMenuItem>
         )}
         <ContextMenuSeparator />
-        <ExternalProgramsSubmenu instanceId={_instanceId} hashes={hashes} />
+        <ExternalProgramsSubmenu instanceId={instanceId} hashes={hashes} />
         {supportsTorrentExport && (
           <ContextMenuItem
             onClick={handleExport}
