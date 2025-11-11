@@ -240,6 +240,7 @@ export interface TorrentFilters {
 export interface TorrentResponse {
   torrents: Torrent[]
   crossInstanceTorrents?: CrossInstanceTorrent[]
+  cross_instance_torrents?: CrossInstanceTorrent[]  // Backend uses snake_case
   total: number
   stats?: TorrentStats
   counts?: TorrentCounts

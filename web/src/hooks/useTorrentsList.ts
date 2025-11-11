@@ -122,7 +122,9 @@ export function useTorrentsList(
     }
 
     // Handle both regular torrents and cross-instance torrents
-    const torrentsData = data.isCrossInstance ? data.crossInstanceTorrents : data.torrents
+    const torrentsData = data.isCrossInstance 
+      ? (data.crossInstanceTorrents || data.cross_instance_torrents)
+      : data.torrents
     
     if (!torrentsData) {
       setIsLoadingMore(false)
