@@ -204,6 +204,12 @@ type searchRunState struct {
 	opts  SearchRunOptions
 	queue []qbt.Torrent
 	index int
+	// skipCache stores cooldown evaluation results keyed by torrent hash so we
+	// don't hammer the database twice when calculating totals and iterating.
+	skipCache map[string]bool
+	// duplicateHashes keeps track of deduplicated torrent hash sets keyed by the
+	// representative hash so cooldowns can be propagated to other copies.
+	duplicateHashes map[string][]string
 
 	currentCandidate *SearchCandidateStatus
 	recentResults    []models.CrossSeedSearchResult
@@ -2769,9 +2775,9 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 // This significantly reduces API calls and processing time when an instance contains multiple
 // cross-seeds of the same content from different trackers, while enforcing strict matching so
 // that season packs never collapse individual-episode queue entries.
-func (s *Service) deduplicateSourceTorrents(torrents []qbt.Torrent) []qbt.Torrent {
+func (s *Service) deduplicateSourceTorrents(torrents []qbt.Torrent) ([]qbt.Torrent, map[string][]string) {
 	if len(torrents) <= 1 {
-		return torrents
+		return torrents, map[string][]string{}
 	}
 
 	// Parse all torrents and track their releases
@@ -2875,7 +2881,45 @@ func (s *Service) deduplicateSourceTorrents(torrents []qbt.Torrent) []qbt.Torren
 		Int("uniqueContentGroups", len(groups)).
 		Msg("[CROSSSEED-DEDUP] Source torrent deduplication completed")
 
-	return deduplicated
+	duplicateMap := make(map[string][]string, len(groups))
+	for _, group := range groups {
+		if len(group.duplicates) == 0 {
+			continue
+		}
+		duplicateMap[group.oldest.Hash] = append([]string(nil), group.duplicates...)
+	}
+
+	return deduplicated, duplicateMap
+}
+
+func (s *Service) propagateDuplicateSearchHistory(ctx context.Context, state *searchRunState, representativeHash string, processedAt time.Time) {
+	if s.automationStore == nil || state == nil {
+		return
+	}
+	if len(state.duplicateHashes) == 0 {
+		return
+	}
+
+	duplicates := state.duplicateHashes[representativeHash]
+	if len(duplicates) == 0 {
+		return
+	}
+
+	for _, dupHash := range duplicates {
+		if strings.TrimSpace(dupHash) == "" {
+			continue
+		}
+		if err := s.automationStore.UpsertSearchHistory(ctx, state.opts.InstanceID, dupHash, processedAt); err != nil {
+			log.Debug().
+				Err(err).
+				Str("hash", dupHash).
+				Msg("failed to propagate search history to duplicate torrent")
+			continue
+		}
+		if state.skipCache != nil {
+			state.skipCache[strings.ToLower(strings.TrimSpace(dupHash))] = true
+		}
+	}
 }
 
 func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState) error {
@@ -2893,12 +2937,27 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 
 	// Deduplicate source torrents to avoid searching the same content multiple times
 	// when cross-seeds exist in the source instance
-	deduplicated := s.deduplicateSourceTorrents(filtered)
+	deduplicated, duplicates := s.deduplicateSourceTorrents(filtered)
 
 	state.queue = deduplicated
 	state.index = 0
+	state.skipCache = make(map[string]bool, len(deduplicated))
+	state.duplicateHashes = duplicates
+
+	totalEligible := 0
+	for i := range deduplicated {
+		torrent := &deduplicated[i]
+		skip, err := s.shouldSkipCandidate(ctx, state, torrent)
+		if err != nil {
+			return fmt.Errorf("evaluate search candidate %s: %w", torrent.Hash, err)
+		}
+		if !skip {
+			totalEligible++
+		}
+	}
+
 	s.searchMu.Lock()
-	state.run.TotalTorrents = len(deduplicated)
+	state.run.TotalTorrents = totalEligible
 	s.searchMu.Unlock()
 	s.persistSearchRun(state)
 
@@ -2929,14 +2988,31 @@ func (s *Service) shouldSkipCandidate(ctx context.Context, state *searchRunState
 	if torrent == nil {
 		return true, nil
 	}
+
+	cacheKey := strings.ToLower(strings.TrimSpace(torrent.Hash))
+	if cacheKey != "" && state.skipCache != nil {
+		if cached, ok := state.skipCache[cacheKey]; ok {
+			return cached, nil
+		}
+	}
+
 	if torrent.Hash == "" {
+		if cacheKey != "" && state.skipCache != nil {
+			state.skipCache[cacheKey] = true
+		}
 		return true, nil
 	}
 	if torrent.Progress < 1.0 {
+		if cacheKey != "" && state.skipCache != nil {
+			state.skipCache[cacheKey] = true
+		}
 		return true, nil
 	}
 
 	if s.automationStore == nil {
+		if cacheKey != "" && state.skipCache != nil {
+			state.skipCache[cacheKey] = false
+		}
 		return false, nil
 	}
 
@@ -2945,15 +3021,25 @@ func (s *Service) shouldSkipCandidate(ctx context.Context, state *searchRunState
 		return false, err
 	}
 	if !found {
+		if cacheKey != "" && state.skipCache != nil {
+			state.skipCache[cacheKey] = false
+		}
 		return false, nil
 	}
 
 	cooldown := time.Duration(state.opts.CooldownMinutes) * time.Minute
 	if cooldown <= 0 {
+		if cacheKey != "" && state.skipCache != nil {
+			state.skipCache[cacheKey] = false
+		}
 		return false, nil
 	}
 
-	return time.Since(last) < cooldown, nil
+	skip := time.Since(last) < cooldown
+	if cacheKey != "" && state.skipCache != nil {
+		state.skipCache[cacheKey] = skip
+	}
+	return skip, nil
 }
 
 func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunState, torrent *qbt.Torrent) error {
@@ -2966,6 +3052,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		if err := s.automationStore.UpsertSearchHistory(ctx, state.opts.InstanceID, torrent.Hash, processedAt); err != nil {
 			log.Debug().Err(err).Msg("failed to update search history")
 		}
+		s.propagateDuplicateSearchHistory(ctx, state, torrent.Hash, processedAt)
 	}
 
 	// Use async filtering for better performance - capability filtering returns immediately

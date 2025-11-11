@@ -23,8 +23,9 @@ func TestService_deduplicateSourceTorrents_PreservesEpisodesAlongsideSeasonPacks
 		AddedOn: 1,
 	}
 
-	deduped := svc.deduplicateSourceTorrents([]qbt.Torrent{seasonPack, episode})
+	deduped, duplicates := svc.deduplicateSourceTorrents([]qbt.Torrent{seasonPack, episode})
 	require.Len(t, deduped, 2, "season pack should not eliminate individual episodes during deduplication")
+	require.Empty(t, duplicates)
 
 	kept := make(map[string]struct{})
 	for _, torrent := range deduped {
@@ -47,7 +48,9 @@ func TestService_deduplicateSourceTorrents_PreservesEpisodesAlongsideSeasonPacks
 		},
 	}
 
-	dedupedEpisodes := svc.deduplicateSourceTorrents(duplicateEpisodes)
+	dedupedEpisodes, duplicateMap := svc.deduplicateSourceTorrents(duplicateEpisodes)
 	require.Len(t, dedupedEpisodes, 1, "exact episode duplicates should still collapse to the oldest torrent")
 	require.Equal(t, "hash-older-episode", dedupedEpisodes[0].Hash)
+	require.Contains(t, duplicateMap, "hash-older-episode")
+	require.ElementsMatch(t, []string{"hash-newer-episode"}, duplicateMap["hash-older-episode"])
 }
