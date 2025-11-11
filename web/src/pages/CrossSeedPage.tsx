@@ -936,12 +936,12 @@ export function CrossSeedPage() {
               {estimatedCompletionInfo && (
                 <div className="flex items-center gap-4">
                   <span className="text-muted-foreground">Est. completion:</span>
-                  <div className="flex flex-col">
-                    <span className="font-medium">{formatDateValue(estimatedCompletionInfo.eta)}</span>
-                    <span className="text-[10px] text-muted-foreground">
+                  <span className="font-medium">
+                    {formatDateValue(estimatedCompletionInfo.eta)}
+                    <span className="text-[10px] text-muted-foreground font-normal ml-2">
                       ≈ {estimatedCompletionInfo.remaining} torrents remaining @ {estimatedCompletionInfo.interval}s intervals
                     </span>
-                  </div>
+                  </span>
                 </div>
               )}
             </div>
