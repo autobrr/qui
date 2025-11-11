@@ -86,10 +86,12 @@ type Service struct {
 }
 
 const (
-	searchResultCacheTTL         = 5 * time.Minute
-	indexerDomainCacheTTL        = 1 * time.Minute
-	contentFilteringWaitTimeout  = 5 * time.Second
-	contentFilteringPollInterval = 150 * time.Millisecond
+	searchResultCacheTTL                = 5 * time.Minute
+	indexerDomainCacheTTL               = 1 * time.Minute
+	contentFilteringWaitTimeout         = 5 * time.Second
+	contentFilteringPollInterval        = 150 * time.Millisecond
+	selectedIndexerContentSkipReason    = "selected indexers were filtered out"
+	selectedIndexerCapabilitySkipReason = "selected indexers do not support required caps"
 )
 
 // initializeDomainMappings returns a hardcoded mapping of tracker domains to indexer domains.
@@ -2139,9 +2141,35 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		}, nil
 	}
 
+	candidateIndexerIDs := append([]int(nil), filteredIndexerIDs...)
+	if len(opts.IndexerIDs) > 0 {
+		selectedIndexerIDs, _ := filterIndexersBySelection(candidateIndexerIDs, opts.IndexerIDs)
+		if len(selectedIndexerIDs) == 0 {
+			log.Debug().
+				Str("torrentName", sourceTorrent.Name).
+				Ints("candidateIndexers", candidateIndexerIDs).
+				Ints("requestedIndexers", opts.IndexerIDs).
+				Msg("[CROSSSEED-SEARCH] Requested indexers removed after filtering, skipping search")
+			return &TorrentSearchResponse{
+				SourceTorrent: sourceInfo,
+				Results:       []TorrentSearchResult{},
+			}, nil
+		}
+		if len(selectedIndexerIDs) != len(candidateIndexerIDs) {
+			log.Debug().
+				Str("torrentName", sourceTorrent.Name).
+				Ints("candidateIndexers", candidateIndexerIDs).
+				Ints("requestedIndexers", opts.IndexerIDs).
+				Ints("selectedIndexers", selectedIndexerIDs).
+				Msg("[CROSSSEED-SEARCH] Applied requested indexer selection after filtering")
+		}
+		filteredIndexerIDs = selectedIndexerIDs
+	}
+
 	log.Debug().
 		Str("torrentName", sourceTorrent.Name).
-		Ints("originalIndexers", opts.IndexerIDs).
+		Ints("requestedIndexers", opts.IndexerIDs).
+		Ints("candidateIndexers", candidateIndexerIDs).
 		Ints("filteredIndexers", filteredIndexerIDs).
 		Msg("[CROSSSEED-SEARCH] Applied indexer filtering")
 
@@ -2798,7 +2826,7 @@ func (s *Service) deduplicateSourceTorrents(torrents []qbt.Torrent) []qbt.Torren
 		deduplicated = append(deduplicated, *group.oldest)
 		if len(group.duplicates) > 0 {
 			totalDuplicates += len(group.duplicates)
-			log.Debug().
+			log.Trace().
 				Str("representative", group.oldest.Name).
 				Str("representativeHash", group.oldest.Hash).
 				Int64("addedOn", group.oldest.AddedOn).
@@ -2808,7 +2836,7 @@ func (s *Service) deduplicateSourceTorrents(torrents []qbt.Torrent) []qbt.Torren
 		}
 	}
 
-	log.Info().
+	log.Trace().
 		Int("originalCount", len(torrents)).
 		Int("deduplicatedCount", len(deduplicated)).
 		Int("duplicatesRemoved", totalDuplicates).
@@ -3050,8 +3078,9 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 }
 
 func (s *Service) resolveAllowedIndexerIDs(ctx context.Context, torrentHash string, filteringState *AsyncIndexerFilteringState, fallback []int) ([]int, string) {
+	requested := append([]int(nil), fallback...)
 	if filteringState == nil {
-		return fallback, ""
+		return requested, ""
 	}
 
 	if filteringState.CapabilitiesCompleted && !filteringState.ContentCompleted {
@@ -3067,24 +3096,55 @@ func (s *Service) resolveAllowedIndexerIDs(ctx context.Context, torrentHash stri
 	}
 
 	if filteringState.ContentCompleted {
-		if len(filteringState.FilteredIndexers) > 0 {
-			return filteringState.FilteredIndexers, ""
+		allowed, filteredOut := filterIndexersBySelection(filteringState.FilteredIndexers, requested)
+		if len(allowed) > 0 {
+			return allowed, ""
+		}
+		if filteredOut {
+			return nil, selectedIndexerContentSkipReason
 		}
 		return nil, s.describeFilteringSkipReason(filteringState)
 	}
 
 	if filteringState.CapabilitiesCompleted {
-		if len(filteringState.CapabilityIndexers) > 0 {
-			return filteringState.CapabilityIndexers, ""
+		allowed, filteredOut := filterIndexersBySelection(filteringState.CapabilityIndexers, requested)
+		if len(allowed) > 0 {
+			return allowed, ""
+		}
+		if filteredOut {
+			return nil, selectedIndexerCapabilitySkipReason
 		}
 		return nil, "no indexers support required caps"
 	}
 
-	if len(fallback) > 0 {
-		return fallback, ""
+	if len(requested) > 0 {
+		return requested, ""
 	}
 
-	return fallback, ""
+	return requested, ""
+}
+
+func filterIndexersBySelection(candidates []int, selection []int) ([]int, bool) {
+	if len(candidates) == 0 {
+		return nil, false
+	}
+	if len(selection) == 0 {
+		return append([]int(nil), candidates...), false
+	}
+	allowed := make(map[int]struct{}, len(selection))
+	for _, id := range selection {
+		allowed[id] = struct{}{}
+	}
+	filtered := make([]int, 0, len(candidates))
+	for _, id := range candidates {
+		if _, ok := allowed[id]; ok {
+			filtered = append(filtered, id)
+		}
+	}
+	if len(filtered) == 0 {
+		return nil, true
+	}
+	return filtered, false
 }
 
 func (s *Service) waitForContentFilteringCompletion(ctx context.Context, torrentHash string, state *AsyncIndexerFilteringState) (bool, time.Duration, bool) {
