@@ -977,9 +977,6 @@ export function CrossSeedPage() {
           </Collapsible>
         </CardContent>
         <CardFooter className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-muted-foreground">
-            Next run: {searchStatus?.nextRunAt ? formatDateValue(searchStatus.nextRunAt) : "—"}
-          </p>
           <div className="flex items-center gap-2">
             <Button
               onClick={handleStartSearchRun}
