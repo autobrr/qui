@@ -394,6 +394,11 @@ func (s *Server) Handler() (*chi.Mux, error) {
 				})
 			})
 
+			// Global torrent operations (cross-instance)
+			r.Route("/torrents", func(r chi.Router) {
+				r.Get("/cross-instance", torrentsHandler.ListCrossInstanceTorrents)
+			})
+
 		})
 	})
 

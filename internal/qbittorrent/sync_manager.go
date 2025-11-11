@@ -4,6 +4,7 @@
 package qbittorrent
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -637,6 +638,162 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 	})
 
 	return views, nil
+}
+
+// GetCrossInstanceTorrentsWithFilters gets torrents matching filters from all instances
+func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, limit, offset int, sort, order, search string, filters FilterOptions) (*TorrentResponse, error) {
+	// Get all instances
+	instances, err := sm.clientPool.instanceStore.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get instances: %w", err)
+	}
+
+	// Sort instances by ID for deterministic processing order
+	slices.SortFunc(instances, func(a, b *models.Instance) int {
+		return a.ID - b.ID
+	})
+
+	var allTorrents []CrossInstanceTorrentView
+	var totalCount int
+	var partialResults bool
+
+	// Iterate through all instances and collect matching torrents
+	for _, instance := range instances {
+		// Check for context cancellation before each network call
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
+		instanceResponse, err := sm.GetTorrentsWithFilters(ctx, instance.ID, 0, 0, "", "", search, filters)
+		if err != nil {
+			log.Warn().
+				Int("instanceID", instance.ID).
+				Str("instanceName", instance.Name).
+				Err(err).
+				Msg("Failed to get torrents from instance for cross-instance filtering")
+			partialResults = true
+			continue
+		}
+
+		// Check for context cancellation after potentially blocking call
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
+		// Convert TorrentView to CrossInstanceTorrentView
+		for _, torrentView := range instanceResponse.Torrents {
+			crossInstanceTorrent := CrossInstanceTorrentView{
+				TorrentView:  torrentView,
+				InstanceID:   instance.ID,
+				InstanceName: instance.Name,
+			}
+			allTorrents = append(allTorrents, crossInstanceTorrent)
+		}
+		totalCount += len(instanceResponse.Torrents)
+	}
+
+	// Apply sorting if specified - always use deterministic secondary sort
+	if sort != "" {
+		switch sort {
+		case "name":
+			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
+				result := strings.Compare(a.Name, b.Name)
+				if result == 0 {
+					// Secondary sort by hash for deterministic ordering
+					result = strings.Compare(a.Hash, b.Hash)
+				}
+				if order == "desc" {
+					result = -result
+				}
+				return result
+			})
+		case "size":
+			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
+				result := cmp.Compare(a.Size, b.Size)
+				if result == 0 {
+					// Secondary sort by name for deterministic ordering
+					result = strings.Compare(a.Name, b.Name)
+				}
+				if order == "desc" {
+					result = -result
+				}
+				return result
+			})
+		case "progress":
+			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
+				result := cmp.Compare(a.Progress, b.Progress)
+				if result == 0 {
+					// Secondary sort by name for deterministic ordering
+					result = strings.Compare(a.Name, b.Name)
+				}
+				if order == "desc" {
+					result = -result
+				}
+				return result
+			})
+		case "instance":
+			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
+				result := strings.Compare(a.InstanceName, b.InstanceName)
+				if result == 0 {
+					// Secondary sort by name for deterministic ordering
+					result = strings.Compare(a.Name, b.Name)
+				}
+				if order == "desc" {
+					result = -result
+				}
+				return result
+			})
+		}
+	} else {
+		// Default sort by name if no sort specified for consistent ordering
+		slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
+			result := strings.Compare(a.Name, b.Name)
+			if result == 0 {
+				result = strings.Compare(a.Hash, b.Hash)
+			}
+			return result
+		})
+	}
+
+	// Apply pagination
+	// Clamp offset to valid range [0, len(allTorrents)]
+	start := offset
+	if start < 0 {
+		start = 0
+	}
+	if start > len(allTorrents) {
+		start = len(allTorrents)
+	}
+
+	// Handle limit: non-positive means "no limit"
+	var end int
+	if limit <= 0 {
+		end = len(allTorrents)
+	} else {
+		end = start + limit
+		if end > len(allTorrents) {
+			end = len(allTorrents)
+		}
+	}
+
+	// Ensure start <= end before slicing
+	if start > end {
+		start = end
+	}
+
+	paginatedTorrents := allTorrents[start:end]
+	hasMore := end < len(allTorrents)
+
+	response := &TorrentResponse{
+		CrossInstanceTorrents:  paginatedTorrents,
+		Total:                  totalCount,
+		HasMore:                hasMore,
+		TrackerHealthSupported: false, // Cross-instance doesn't support tracker health
+		IsCrossInstance:        true,
+		PartialResults:         partialResults,
+	}
+
+	return response, nil
 }
 
 // GetQBittorrentSyncManager returns the underlying qBittorrent sync manager for an instance
@@ -2643,9 +2800,9 @@ func (sm *SyncManager) sortTorrentsByPriority(torrents []qbt.Torrent, desc bool)
 			return -1
 		}
 		if desc {
-			return int(a.Priority - b.Priority)
+			return cmp.Compare(a.Priority, b.Priority)
 		}
-		return int(b.Priority - a.Priority)
+		return cmp.Compare(b.Priority, a.Priority)
 	})
 }
 
