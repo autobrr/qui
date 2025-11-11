@@ -204,11 +204,13 @@ func (t *Tx) Commit() error {
 	if err == nil {
 		// Commit succeeded - promote statements to cache
 		t.promoteStatementsToCache()
+
+		// Release mutex after commit completes (for write transactions)
+		if t.unlockFn != nil {
+			t.unlockOnce.Do(t.unlockFn)
+		}
 	}
-	// Release mutex after commit completes (for write transactions)
-	if t.unlockFn != nil {
-		t.unlockOnce.Do(t.unlockFn)
-	}
+
 	return err
 }
 
