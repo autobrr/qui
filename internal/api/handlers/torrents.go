@@ -30,16 +30,6 @@ type TorrentsHandler struct {
 	syncManager *qbittorrent.SyncManager
 }
 
-// normalizeSort maps various sort field names to canonical forms
-func normalizeSort(s string) string {
-	switch strings.ToLower(s) {
-	case "addedon", "added_on":
-		return "added_on"
-	default:
-		return s
-	}
-}
-
 // truncateExpr truncates long filter expressions for cleaner logging
 func truncateExpr(expr string, maxLen int) string {
 	if len(expr) <= maxLen {
@@ -80,7 +70,7 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
 	limit := 300 // Default pagination size
 	page := 0
-	sort := "addedOn"
+	sort := "added_on"
 	order := "desc"
 	search := ""
 	sessionID := r.Header.Get("X-Session-ID") // Optional session tracking
@@ -98,9 +88,7 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s := r.URL.Query().Get("sort"); s != "" {
-		sort = normalizeSort(s)
-	} else {
-		sort = normalizeSort(sort) // Normalize the default too
+		sort = s
 	}
 
 	if o := r.URL.Query().Get("order"); o != "" {
@@ -1598,7 +1586,7 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 	// Parse query parameters
 	limit := 300 // Default pagination size
 	page := 0
-	sort := "addedOn"
+	sort := "added_on"
 	order := "desc"
 	search := ""
 
@@ -1615,9 +1603,7 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 	}
 
 	if s := r.URL.Query().Get("sort"); s != "" {
-		sort = normalizeSort(s)
-	} else {
-		sort = normalizeSort(sort) // Normalize the default too
+		sort = s
 	}
 
 	if o := r.URL.Query().Get("order"); o != "" {

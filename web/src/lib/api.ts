@@ -15,6 +15,7 @@ import type {
   CrossSeedApplyResponse,
   CrossSeedAutomationSettings,
   CrossSeedAutomationStatus,
+  CrossInstanceTorrent,
   CrossSeedInstanceResult,
   CrossSeedRun,
   CrossSeedTorrentInfo,
@@ -373,9 +374,68 @@ class ApiClient {
     if (params.search) searchParams.set("search", params.search)
     if (params.filters) searchParams.set("filters", JSON.stringify(params.filters))
 
-    return this.request<TorrentResponse>(
+    type RawCrossInstanceTorrent = Omit<CrossInstanceTorrent, "instanceId" | "instanceName"> & {
+      instanceId?: number
+      instanceName?: string
+      instance_id?: number
+      instance_name?: string
+    }
+
+    const normalizeCrossInstanceTorrents = (
+      torrents?: RawCrossInstanceTorrent[] | null
+    ): CrossInstanceTorrent[] | undefined => {
+      if (!torrents) {
+        return undefined
+      }
+
+      let needsNormalization = false
+
+      for (const torrent of torrents) {
+        if (torrent.instanceId === undefined || torrent.instanceName === undefined) {
+          needsNormalization = true
+          break
+        }
+      }
+
+      if (!needsNormalization) {
+        return torrents as CrossInstanceTorrent[]
+      }
+
+      const normalizedTorrents: CrossInstanceTorrent[] = []
+
+      torrents.forEach(torrent => {
+        const instanceId = torrent.instanceId ?? torrent.instance_id
+        const instanceName = torrent.instanceName ?? torrent.instance_name
+
+        if (instanceId === undefined || instanceName === undefined) {
+          console.error("Missing instance fields in cross-instance torrent:", torrent)
+          return
+        }
+
+        normalizedTorrents.push({
+          ...torrent,
+          instanceId,
+          instanceName,
+        })
+      })
+
+      return normalizedTorrents
+    }
+
+    const response = await this.request<TorrentResponse>(
       `/torrents/cross-instance?${searchParams}`
     )
+
+    const normalizedCrossInstanceTorrents = normalizeCrossInstanceTorrents(
+      (response.crossInstanceTorrents ?? response.cross_instance_torrents) as RawCrossInstanceTorrent[] | undefined
+    )
+
+    if (normalizedCrossInstanceTorrents) {
+      response.crossInstanceTorrents = normalizedCrossInstanceTorrents
+      response.cross_instance_torrents = normalizedCrossInstanceTorrents
+    }
+
+    return response
   }
 
   async addTorrent(

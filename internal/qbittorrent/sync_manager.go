@@ -731,6 +731,18 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 				}
 				return result
 			})
+		case "added_on":
+			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
+				result := cmp.Compare(a.AddedOn, b.AddedOn)
+				if result == 0 {
+					// Secondary sort by hash for deterministic ordering
+					result = strings.Compare(a.Hash, b.Hash)
+				}
+				if order == "desc" {
+					result = -result
+				}
+				return result
+			})
 		case "instance":
 			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
 				result := strings.Compare(a.InstanceName, b.InstanceName)
