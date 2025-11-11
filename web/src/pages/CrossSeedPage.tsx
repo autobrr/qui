@@ -34,6 +34,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import {
   AlertTriangle,
+  ChevronDown,
   Info,
   Loader2,
   Play,
@@ -105,6 +106,8 @@ export function CrossSeedPage() {
   const [showSearchTags, setShowSearchTags] = useState(false)
   const [showAutomationInstances, setShowAutomationInstances] = useState(false)
   const [rssRunsOpen, setRssRunsOpen] = useState(false)
+  const [rssAutomationOpen, setRssAutomationOpen] = useState(false)
+  const [seededSearchOpen, setSeededSearchOpen] = useState(false)
   const formatDateValue = useCallback((value?: string | Date | null) => {
     if (!value) {
       return "—"
@@ -411,12 +414,19 @@ export function CrossSeedPage() {
         <p className="text-sm text-muted-foreground">Identify compatible torrents and automate cross-seeding across your instances.</p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>RSS Automation</CardTitle>
-          <CardDescription>Poll tracker RSS feeds on a fixed interval and add matching cross-seeds automatically.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <Collapsible open={rssAutomationOpen} onOpenChange={setRssAutomationOpen}>
+        <Card className={!rssAutomationOpen ? "hover:bg-muted/50 transition-colors" : ""}>
+          <CollapsibleTrigger className="block w-full text-left cursor-pointer px-6">
+            <div className="flex items-center justify-between gap-4 py-1.5">
+              <div className="flex-1 space-y-1.5">
+                <CardTitle>RSS Automation</CardTitle>
+                <CardDescription>Poll tracker RSS feeds on a fixed interval and add matching cross-seeds automatically.</CardDescription>
+              </div>
+              <ChevronDown className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${rssAutomationOpen ? "rotate-180" : ""}`} />
+            </div>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent className="space-y-4">
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
@@ -702,14 +712,23 @@ export function CrossSeedPage() {
             </Button>
           </div>
         </CardFooter>
-      </Card>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Seeded Torrent Search</CardTitle>
-          <CardDescription>Walk the torrents you already seed on the selected instance, collapse identical content down to the oldest copy, and query Torznab feeds once per unique release while skipping trackers you already have it from.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <Collapsible open={seededSearchOpen} onOpenChange={setSeededSearchOpen}>
+        <Card className={!seededSearchOpen ? "hover:bg-muted/50 transition-colors" : ""}>
+          <CollapsibleTrigger className="block w-full text-left cursor-pointer px-6">
+            <div className="flex items-center justify-between gap-4 py-1.5">
+              <div className="flex-1 space-y-1.5">
+                <CardTitle>Seeded Torrent Search</CardTitle>
+                <CardDescription>Walk the torrents you already seed on the selected instance, collapse identical content down to the oldest copy, and query Torznab feeds once per unique release while skipping trackers you already have it from.</CardDescription>
+              </div>
+              <ChevronDown className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${seededSearchOpen ? "rotate-180" : ""}`} />
+            </div>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent className="space-y-4">
           <Alert className="border-destructive/30 bg-destructive/10 text-destructive">
             <AlertTriangle className="h-4 w-4 !text-destructive" />
             <AlertTitle>Run sparingly</AlertTitle>
@@ -931,8 +950,8 @@ export function CrossSeedPage() {
           )}
         </div>
 
-          <Collapsible open={searchResultsOpen} onOpenChange={setSearchResultsOpen} className="border rounded-md">
-            <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium">
+          <Collapsible open={searchResultsOpen} onOpenChange={setSearchResultsOpen} className="border rounded-md mb-4">
+            <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium hover:cursor-pointer">
               <span>Recent search additions</span>
               <Badge variant="outline">{recentAddedResults.length}</Badge>
             </CollapsibleTrigger>
@@ -979,7 +998,10 @@ export function CrossSeedPage() {
             </Button>
           </div>
         </CardFooter>
-      </Card>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
+
       <Card>
         <CardHeader>
           <CardTitle>Global Cross-Seed Settings</CardTitle>
