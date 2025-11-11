@@ -150,6 +150,9 @@ func NewService(
 // ErrAutomationRunning indicates a cross-seed automation run is already in progress.
 var ErrAutomationRunning = errors.New("cross-seed automation already running")
 
+// ErrAutomationCooldownActive indicates the manual run button was pressed before the cooldown expired.
+var ErrAutomationCooldownActive = errors.New("cross-seed automation cooldown active")
+
 // ErrSearchRunActive indicates a search automation run is in progress.
 var ErrSearchRunActive = errors.New("cross-seed search run already running")
 
@@ -344,6 +347,35 @@ func (s *Service) RunAutomation(ctx context.Context, opts AutomationRunOptions) 
 			opts.RequestedBy = "scheduler"
 		} else {
 			opts.RequestedBy = "manual"
+		}
+	}
+
+	if opts.Mode != models.CrossSeedRunModeAuto {
+		intervalMinutes := settings.RunIntervalMinutes
+		if intervalMinutes <= 0 {
+			intervalMinutes = 120
+		}
+		cooldown := max(time.Duration(intervalMinutes)*time.Minute, 30*time.Minute)
+
+		lastRun, err := s.automationStore.GetLatestRun(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("load latest automation run metadata: %w", err)
+		}
+		if lastRun != nil {
+			nextAllowed := lastRun.StartedAt.Add(cooldown)
+			now := time.Now()
+			if now.Before(nextAllowed) {
+				remaining := time.Until(nextAllowed)
+				if remaining < time.Second {
+					remaining = time.Second
+				}
+				remaining = remaining.Round(time.Second)
+				return nil, fmt.Errorf("%w: manual runs limited to one every %d minutes. Try again in %s (after %s)",
+					ErrAutomationCooldownActive,
+					int(cooldown.Minutes()),
+					remaining.String(),
+					nextAllowed.UTC().Format(time.RFC3339))
+			}
 		}
 	}
 

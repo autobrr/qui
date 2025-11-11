@@ -473,6 +473,10 @@ func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.R
 			RespondError(w, http.StatusConflict, "Automation already running")
 			return
 		}
+		if errors.Is(err, crossseed.ErrAutomationCooldownActive) {
+			RespondError(w, http.StatusTooManyRequests, err.Error())
+			return
+		}
 		log.Error().Err(err).Msg("Failed to trigger cross-seed automation run")
 		RespondError(w, http.StatusInternalServerError, "Failed to start automation run")
 		return

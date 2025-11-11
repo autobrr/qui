@@ -94,6 +94,28 @@ function parseList(value: string): string[] {
     .filter(Boolean)
 }
 
+function getDurationParts(ms: number): { hours: number; minutes: number; seconds: number } {
+  if (ms <= 0) {
+    return { hours: 0, minutes: 0, seconds: 0 }
+  }
+  const totalSeconds = Math.ceil(ms / 1000)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  return { hours, minutes, seconds }
+}
+
+function formatDurationShort(ms: number): string {
+  const { hours, minutes, seconds } = getDurationParts(ms)
+  const parts: string[] = []
+  if (hours > 0) {
+    parts.push(`${hours}h`)
+  }
+  parts.push(`${String(minutes).padStart(2, "0")}m`)
+  parts.push(`${String(seconds).padStart(2, "0")}s`)
+  return parts.join(" ")
+}
+
 export function CrossSeedPage() {
   const queryClient = useQueryClient()
   const { formatDate } = useDateTimeFormatters()
@@ -120,8 +142,9 @@ export function CrossSeedPage() {
   const [showSearchTags, setShowSearchTags] = useState(false)
   const [showAutomationInstances, setShowAutomationInstances] = useState(false)
   const [rssRunsOpen, setRssRunsOpen] = useState(false)
-  const [rssAutomationOpen, setRssAutomationOpen] = useState(false)
-  const [seededSearchOpen, setSeededSearchOpen] = useState(false)
+  const [rssAutomationOpen, setRssAutomationOpen] = useState(true)
+  const [seededSearchOpen, setSeededSearchOpen] = useState(true)
+  const [now, setNow] = useState(() => Date.now())
   const formatDateValue = useCallback((value?: string | Date | null) => {
     if (!value) {
       return "—"
@@ -340,6 +363,57 @@ export function CrossSeedPage() {
 
   const automationStatus: CrossSeedAutomationStatus | undefined = status
   const latestRun: CrossSeedRun | null | undefined = automationStatus?.lastRun
+  const automationRunning = automationStatus?.running ?? false
+  const effectiveRunIntervalMinutes = formInitialized
+    ? automationForm.runIntervalMinutes
+    : settings?.runIntervalMinutes ?? DEFAULT_RSS_INTERVAL_MINUTES
+  const enforcedRunIntervalMinutes = Math.max(effectiveRunIntervalMinutes, MIN_RSS_INTERVAL_MINUTES)
+
+  const nextManualRunAt = useMemo(() => {
+    if (!latestRun?.startedAt) {
+      return null
+    }
+    const startedAt = new Date(latestRun.startedAt)
+    if (Number.isNaN(startedAt.getTime())) {
+      return null
+    }
+    const intervalMs = enforcedRunIntervalMinutes * 60 * 1000
+    return new Date(startedAt.getTime() + intervalMs)
+  }, [enforcedRunIntervalMinutes, latestRun?.startedAt])
+
+  const manualCooldownRemainingMs = useMemo(() => {
+    if (!nextManualRunAt) {
+      return 0
+    }
+    const remaining = nextManualRunAt.getTime() - now
+    return remaining > 0 ? remaining : 0
+  }, [nextManualRunAt, now])
+
+  const manualCooldownActive = manualCooldownRemainingMs > 0
+  const manualCooldownDisplay = manualCooldownActive ? formatDurationShort(manualCooldownRemainingMs) : ""
+  const runButtonDisabled = triggerRunMutation.isPending || automationRunning || manualCooldownActive
+  const runButtonDisabledReason = useMemo(() => {
+    if (automationRunning) {
+      return "Automation run is already in progress."
+    }
+    if (manualCooldownActive) {
+      return `Manual runs are limited to every ${enforcedRunIntervalMinutes}-minute interval. Try again in ${manualCooldownDisplay}.`
+    }
+    return undefined
+  }, [automationRunning, enforcedRunIntervalMinutes, manualCooldownActive, manualCooldownDisplay])
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+    if (!manualCooldownActive || !nextManualRunAt) {
+      return
+    }
+    const tick = () => setNow(Date.now())
+    tick()
+    const interval = window.setInterval(tick, 1_000)
+    return () => window.clearInterval(interval)
+  }, [manualCooldownActive, nextManualRunAt])
 
   const searchCategoryOptions = useMemo(() => {
     if (!searchMetadata?.categories) return [] as string[]
@@ -697,8 +771,8 @@ export function CrossSeedPage() {
             )}
           </div>
 
-          <Collapsible open={rssRunsOpen} onOpenChange={setRssRunsOpen} className="rounded-md border">
-            <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium">
+          <Collapsible open={rssRunsOpen} onOpenChange={setRssRunsOpen} className="rounded-md border mb-4">
+            <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium hover:cursor-pointer">
               <span>Recent RSS runs</span>
               <Badge variant="outline">{runs?.length ?? 0}</Badge>
             </CollapsibleTrigger>
@@ -735,31 +809,44 @@ export function CrossSeedPage() {
             <Switch id="automation-dry-run" checked={dryRun} onCheckedChange={value => setDryRun(!!value)} />
             <Label htmlFor="automation-dry-run">Dry run</Label>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() => triggerRunMutation.mutate({ limit: automationForm.maxResultsPerRun, dryRun })}
-              disabled={triggerRunMutation.isPending}
-            >
-              {triggerRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
-              Run now
-            </Button>
-            <Button
-              onClick={handleAutomationSave}
-              disabled={updateSettingsMutation.isPending}
-            >
-              {updateSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save settings
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                // Reset to defaults without triggering reinitialization
-                setAutomationForm(DEFAULT_AUTOMATION_FORM)
-              }}
-            >
-              Reset
-            </Button>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+
+            <div className="flex items-center gap-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    onClick={() => triggerRunMutation.mutate({ limit: automationForm.maxResultsPerRun, dryRun })}
+                    disabled={runButtonDisabled}
+                    className="disabled:cursor-not-allowed disabled:pointer-events-auto"
+                  >
+                    {triggerRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+                    Run now
+                  </Button>
+                </TooltipTrigger>
+                {runButtonDisabledReason && (
+                  <TooltipContent align="end" className="max-w-xs text-xs">
+                    {runButtonDisabledReason}
+                  </TooltipContent>
+                )}
+              </Tooltip>
+              <Button
+                onClick={handleAutomationSave}
+                disabled={updateSettingsMutation.isPending}
+              >
+                {updateSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Save settings
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  // Reset to defaults without triggering reinitialization
+                  setAutomationForm(DEFAULT_AUTOMATION_FORM)
+                }}
+              >
+                Reset
+              </Button>
+            </div>
           </div>
         </CardFooter>
           </CollapsibleContent>
@@ -779,7 +866,7 @@ export function CrossSeedPage() {
           </CollapsibleTrigger>
           <CollapsibleContent>
             <CardContent className="space-y-4">
-          <Alert className="border-destructive/30 bg-destructive/10 text-destructive">
+          <Alert className="border-destructive/20 bg-destructive/10 text-destructive">
             <AlertTriangle className="h-4 w-4 !text-destructive" />
             <AlertTitle>Run sparingly</AlertTitle>
             <AlertDescription>
