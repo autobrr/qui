@@ -210,6 +210,8 @@ type ApplyTorrentSearchRequest struct {
 	UseTag      bool                     `json:"use_tag"`
 	TagName     string                   `json:"tag_name,omitempty"`
 	StartPaused *bool                    `json:"start_paused,omitempty"`
+	// FindIndividualEpisodes ensures manual apply reuses season packs for single episodes when enabled.
+	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
 }
 
 // TorrentSearchAddResult summarises a single add attempt from a search selection.

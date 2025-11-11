@@ -1896,6 +1896,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         useTag: crossSeedUseTag,
         tagName: crossSeedUseTag ? (crossSeedTagName.trim() || "cross-seed") : undefined,
         startPaused: true,
+        findIndividualEpisodes: crossSeedSettings?.findIndividualEpisodes ?? false,
       })
 
       setCrossSeedApplyResult(response)

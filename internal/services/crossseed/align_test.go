@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/moistari/rls"
 	"github.com/stretchr/testify/require"
 )
 
@@ -129,4 +130,30 @@ func TestAdjustPathForRootRename(t *testing.T) {
 		"Other/file.mkv",
 		adjustPathForRootRename("Other/file.mkv", "OldRoot", "NewRoot"),
 	)
+}
+
+func TestShouldRenameTorrentDisplay(t *testing.T) {
+	t.Parallel()
+
+	episode := rls.Release{Series: 1, Episode: 2}
+	seasonPack := rls.Release{Series: 1, Episode: 0}
+	otherPack := rls.Release{Series: 2, Episode: 0}
+
+	require.False(t, shouldRenameTorrentDisplay(episode, seasonPack))
+	require.True(t, shouldRenameTorrentDisplay(seasonPack, episode))
+	require.True(t, shouldRenameTorrentDisplay(seasonPack, otherPack))
+	require.False(t, shouldRenameTorrentDisplay(episode, otherPack))
+}
+
+func TestShouldAlignFilesWithCandidate(t *testing.T) {
+	t.Parallel()
+
+	episode := rls.Release{Series: 1, Episode: 2}
+	seasonPack := rls.Release{Series: 1, Episode: 0}
+	otherEpisode := rls.Release{Series: 1, Episode: 3}
+
+	require.False(t, shouldAlignFilesWithCandidate(episode, seasonPack))
+	require.True(t, shouldAlignFilesWithCandidate(seasonPack, episode))
+	require.True(t, shouldAlignFilesWithCandidate(seasonPack, seasonPack))
+	require.True(t, shouldAlignFilesWithCandidate(episode, otherEpisode))
 }

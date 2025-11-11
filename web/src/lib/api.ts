@@ -763,6 +763,7 @@ class ApiClient {
       useTag: boolean
       tagName?: string
       startPaused?: boolean
+      findIndividualEpisodes?: boolean
     }
   ): Promise<CrossSeedApplyResponse> {
     const body: Record<string, unknown> = {
@@ -786,6 +787,9 @@ class ApiClient {
     }
     if (payload.startPaused !== undefined) {
       body.start_paused = payload.startPaused
+    }
+    if (payload.findIndividualEpisodes !== undefined) {
+      body.find_individual_episodes = payload.findIndividualEpisodes
     }
 
     type RawMatchedTorrent = {

@@ -86,6 +86,10 @@ type Service struct {
 
 	// domainMappings provides static mappings between tracker domains and indexer domains
 	domainMappings map[string][]string
+
+	// test hooks
+	crossSeedInvoker    func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
+	torrentDownloadFunc func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
 }
 
 const (
@@ -839,7 +843,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		return models.CrossSeedFeedItemStatusSkipped, nil, nil
 	}
 
-	torrentBytes, err := s.jackettService.DownloadTorrent(ctx, jackett.TorrentDownloadRequest{
+	torrentBytes, err := s.downloadTorrent(ctx, jackett.TorrentDownloadRequest{
 		IndexerID:   result.IndexerID,
 		DownloadURL: result.DownloadURL,
 		GUID:        result.GUID,
@@ -856,18 +860,19 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 
 	skipIfExists := true
 	req := &CrossSeedRequest{
-		TorrentData:       encodedTorrent,
-		TargetInstanceIDs: append([]int(nil), settings.TargetInstanceIDs...),
-		Tags:              append([]string(nil), settings.Tags...),
-		IgnorePatterns:    append([]string(nil), settings.IgnorePatterns...),
-		SkipIfExists:      &skipIfExists,
+		TorrentData:            encodedTorrent,
+		TargetInstanceIDs:      append([]int(nil), settings.TargetInstanceIDs...),
+		Tags:                   append([]string(nil), settings.Tags...),
+		IgnorePatterns:         append([]string(nil), settings.IgnorePatterns...),
+		SkipIfExists:           &skipIfExists,
+		FindIndividualEpisodes: settings.FindIndividualEpisodes,
 	}
 	if settings.Category != nil {
 		req.Category = *settings.Category
 	}
 	req.StartPaused = &startPaused
 
-	resp, err := s.CrossSeed(ctx, req)
+	resp, err := s.invokeCrossSeed(ctx, req)
 	if err != nil {
 		run.TorrentsFailed++
 		return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("cross-seed request: %w", err)
@@ -1199,6 +1204,23 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	}
 
 	return response, nil
+}
+
+func (s *Service) invokeCrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	if s.crossSeedInvoker != nil {
+		return s.crossSeedInvoker(ctx, req)
+	}
+	return s.CrossSeed(ctx, req)
+}
+
+func (s *Service) downloadTorrent(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error) {
+	if s.jackettService != nil {
+		return s.jackettService.DownloadTorrent(ctx, req)
+	}
+	if s.torrentDownloadFunc != nil {
+		return s.torrentDownloadFunc(ctx, req)
+	}
+	return nil, errors.New("torznab search is not configured")
 }
 
 // processCrossSeedCandidate processes a single candidate for cross-seeding
@@ -1990,17 +2012,12 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	query := strings.TrimSpace(opts.Query)
+	queryRelease := sourceRelease
+	if contentInfo.IsMusic && contentDetectionRelease.Type == rls.Music {
+		// For music, create a proper music release object by parsing the torrent name as music
+		queryRelease = ParseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
+	}
 	if query == "" {
-		// Use the appropriate release object based on content type
-		var queryRelease rls.Release
-		if contentInfo.IsMusic && contentDetectionRelease.Type == rls.Music {
-			// For music, create a proper music release object by parsing the torrent name as music
-			queryRelease = ParseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
-		} else {
-			// For other content types, use the torrent name release
-			queryRelease = sourceRelease
-		}
-
 		// Build a better search query from parsed release info instead of using full filename
 		if queryRelease.Title != "" {
 			if contentInfo.IsMusic {
@@ -2013,15 +2030,6 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 			} else {
 				// For non-music, start with the title
 				query = queryRelease.Title
-			}
-
-			// For TV series, add season/episode info (but not for music)
-			if !contentInfo.IsMusic && queryRelease.Series > 0 {
-				if queryRelease.Episode > 0 {
-					query += fmt.Sprintf(" S%02dE%02d", queryRelease.Series, queryRelease.Episode)
-				} else {
-					query += fmt.Sprintf(" S%02d", queryRelease.Series)
-				}
 			}
 
 			log.Debug().
@@ -2288,6 +2296,8 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		return nil, fmt.Errorf("torznab search failed: %w", err)
 	}
 
+	searchResults := searchResp.Results
+
 	// Load automation settings to get size tolerance percentage
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
@@ -2303,12 +2313,12 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		reason string
 	}
 
-	scored := make([]scoredResult, 0, len(searchResp.Results))
+	scored := make([]scoredResult, 0, len(searchResults))
 	seen := make(map[string]struct{})
 	sizeFilteredCount := 0
 	releaseFilteredCount := 0
 
-	for _, res := range searchResp.Results {
+	for _, res := range searchResults {
 		key := res.GUID
 		if key == "" {
 			key = res.DownloadURL
@@ -2326,8 +2336,16 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 			continue
 		}
 
+		sourceIsPack := sourceRelease.Series > 0 && sourceRelease.Episode == 0
+		sourceIsEpisode := sourceRelease.Series > 0 && sourceRelease.Episode > 0
+		candidateIsPack := candidateRelease.Series > 0 && candidateRelease.Episode == 0
+		candidateIsEpisode := candidateRelease.Series > 0 && candidateRelease.Episode > 0
+
+		ignoreSizeCheck := opts.FindIndividualEpisodes &&
+			((sourceIsPack && candidateIsEpisode) || (sourceIsEpisode && candidateIsPack))
+
 		// Size validation: check if candidate size is within tolerance of source size
-		if !s.isSizeWithinTolerance(sourceTorrent.Size, res.Size, settings.SizeMismatchTolerancePercent) {
+		if !ignoreSizeCheck && !s.isSizeWithinTolerance(sourceTorrent.Size, res.Size, settings.SizeMismatchTolerancePercent) {
 			sizeFilteredCount++
 			log.Debug().
 				Str("sourceTitle", sourceTorrent.Name).
@@ -2335,6 +2353,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 				Int64("sourceSize", sourceTorrent.Size).
 				Int64("candidateSize", res.Size).
 				Float64("tolerancePercent", settings.SizeMismatchTolerancePercent).
+				Bool("ignoredSizeCheck", ignoreSizeCheck).
 				Msg("[CROSSSEED-SEARCH] Candidate filtered out due to size mismatch")
 			continue
 		}
@@ -2352,7 +2371,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	// Log filtering statistics
-	totalResults := len(searchResp.Results)
+	totalResults := len(searchResults)
 	matchedResults := len(scored)
 	log.Debug().
 		Str("torrentName", sourceTorrent.Name).
@@ -2371,10 +2390,9 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		}, nil
 	}
 
-	files, err := s.syncManager.GetTorrentFiles(ctx, instanceID, sourceTorrent.Hash)
-	if err == nil && files != nil {
-		sourceInfo.TotalFiles = len(*files)
-		sourceInfo.FileCount = len(*files)
+	if sourceFiles != nil {
+		sourceInfo.TotalFiles = len(*sourceFiles)
+		sourceInfo.FileCount = len(*sourceFiles)
 	}
 
 	sort.SliceStable(scored, func(i, j int) bool {
@@ -2427,7 +2445,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 
 // ApplyTorrentSearchResults downloads and adds torrents selected from search results for cross-seeding.
 func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int, hash string, req *ApplyTorrentSearchRequest) (*ApplyTorrentSearchResponse, error) {
-	if s.jackettService == nil {
+	if s.jackettService == nil && s.torrentDownloadFunc == nil {
 		return nil, errors.New("torznab search is not configured")
 	}
 
@@ -2492,7 +2510,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 			title = cachedResult.Title
 		}
 
-		torrentBytes, err := s.jackettService.DownloadTorrent(ctx, jackett.TorrentDownloadRequest{
+		torrentBytes, err := s.downloadTorrent(ctx, jackett.TorrentDownloadRequest{
 			IndexerID:   cachedResult.IndexerID,
 			DownloadURL: cachedResult.DownloadURL,
 			GUID:        cachedResult.GUID,
@@ -2513,17 +2531,18 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 		addCrossSeedTag := useTag
 
 		payload := &CrossSeedRequest{
-			TorrentData:       base64.StdEncoding.EncodeToString(torrentBytes),
-			TargetInstanceIDs: []int{instanceID},
-			StartPaused:       &startPausedCopy,
-			AddCrossSeedTag:   &addCrossSeedTag,
+			TorrentData:            base64.StdEncoding.EncodeToString(torrentBytes),
+			TargetInstanceIDs:      []int{instanceID},
+			StartPaused:            &startPausedCopy,
+			AddCrossSeedTag:        &addCrossSeedTag,
+			FindIndividualEpisodes: req.FindIndividualEpisodes,
 		}
 
 		if useTag {
 			payload.Tags = []string{tagName}
 		}
 
-		resp, err := s.CrossSeed(ctx, payload)
+		resp, err := s.invokeCrossSeed(ctx, payload)
 		if err != nil {
 			results = append(results, TorrentSearchAddResult{
 				Title:   title,
@@ -3217,7 +3236,7 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		ProcessedAt:  processedAt,
 	}
 
-	data, err := s.jackettService.DownloadTorrent(ctx, jackett.TorrentDownloadRequest{
+	data, err := s.downloadTorrent(ctx, jackett.TorrentDownloadRequest{
 		IndexerID:   match.IndexerID,
 		DownloadURL: match.DownloadURL,
 		GUID:        match.GUID,
@@ -3245,7 +3264,7 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		cat := *state.opts.CategoryOverride
 		request.Category = cat
 	}
-	resp, err := s.CrossSeed(ctx, request)
+	resp, err := s.invokeCrossSeed(ctx, request)
 	if err != nil {
 		result.Message = fmt.Sprintf("cross-seed failed: %v", err)
 		return result, fmt.Errorf("cross-seed failed: %w", err)

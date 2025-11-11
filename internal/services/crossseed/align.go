@@ -8,6 +8,7 @@ import (
 	"unicode"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/moistari/rls"
 	"github.com/rs/zerolog/log"
 )
 
@@ -31,6 +32,9 @@ func (s *Service) alignCrossSeedContentPaths(
 		return
 	}
 
+	sourceRelease := s.releaseCache.Parse(sourceTorrentName)
+	matchedRelease := s.releaseCache.Parse(matchedTorrent.Name)
+
 	if len(expectedSourceFiles) == 0 || len(candidateFiles) == 0 {
 		return
 	}
@@ -45,7 +49,7 @@ func (s *Service) alignCrossSeedContentPaths(
 
 	trimmedSourceName := strings.TrimSpace(sourceTorrentName)
 	trimmedMatchedName := strings.TrimSpace(matchedTorrent.Name)
-	if trimmedMatchedName != "" && trimmedSourceName != trimmedMatchedName {
+	if shouldRenameTorrentDisplay(sourceRelease, matchedRelease) && trimmedMatchedName != "" && trimmedSourceName != trimmedMatchedName {
 		if err := s.syncManager.RenameTorrent(ctx, instanceID, torrentHash, trimmedMatchedName); err != nil {
 			log.Warn().
 				Err(err).
@@ -59,6 +63,16 @@ func (s *Service) alignCrossSeedContentPaths(
 				Str("newName", trimmedMatchedName).
 				Msg("Renamed cross-seed torrent to match existing torrent name")
 		}
+	}
+
+	if !shouldAlignFilesWithCandidate(sourceRelease, matchedRelease) {
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("torrentHash", torrentHash).
+			Str("sourceName", sourceTorrentName).
+			Str("matchedName", matchedTorrent.Name).
+			Msg("Skipping file alignment for episode matched to season pack")
+		return
 	}
 
 	sourceFiles := expectedSourceFiles
@@ -367,4 +381,21 @@ func adjustPathForRootRename(path, oldRoot, newRoot string) string {
 		return newRoot + "/" + strings.TrimPrefix(path, prefix)
 	}
 	return path
+}
+
+func shouldRenameTorrentDisplay(newRelease, matchedRelease rls.Release) bool {
+	// Keep episode torrents named after the episode even when pointing at season pack files
+	if newRelease.Series > 0 && newRelease.Episode > 0 &&
+		matchedRelease.Series > 0 && matchedRelease.Episode == 0 {
+		return false
+	}
+	return true
+}
+
+func shouldAlignFilesWithCandidate(newRelease, matchedRelease rls.Release) bool {
+	if newRelease.Series > 0 && newRelease.Episode > 0 &&
+		matchedRelease.Series > 0 && matchedRelease.Episode == 0 {
+		return false
+	}
+	return true
 }
