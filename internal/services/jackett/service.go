@@ -193,8 +193,12 @@ func (s *Service) GetIndexerName(ctx context.Context, id int) string {
 
 // Search searches enabled Torznab indexers with intelligent category detection
 func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*SearchResponse, error) {
-	if req.Query == "" {
-		return nil, fmt.Errorf("query is required")
+	// Validate request - require either query or advanced parameters
+	hasAdvancedParams := req.IMDbID != "" || req.TVDbID != "" || req.Artist != "" || req.Album != "" ||
+		req.Year > 0 || req.Season != nil || req.Episode != nil
+
+	if req.Query == "" && !hasAdvancedParams {
+		return nil, fmt.Errorf("query or advanced parameters (imdb_id, tvdb_id, artist, album, year, season, episode) are required")
 	}
 
 	var detectedType contentType
@@ -295,8 +299,12 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 
 // SearchGeneric performs a general Torznab search across specified or all enabled indexers
 func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) (*SearchResponse, error) {
-	if req.Query == "" {
-		return nil, fmt.Errorf("query is required")
+	// Validate request - require either query or advanced parameters
+	hasAdvancedParams := req.IMDbID != "" || req.TVDbID != "" || req.Artist != "" || req.Album != "" ||
+		req.Year > 0 || req.Season != nil || req.Episode != nil
+
+	if req.Query == "" && !hasAdvancedParams {
+		return nil, fmt.Errorf("query or advanced parameters (imdb_id, tvdb_id, artist, album, year, season, episode) are required")
 	}
 
 	var detectedType contentType

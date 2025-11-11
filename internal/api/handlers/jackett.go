@@ -90,9 +90,12 @@ func (h *JackettHandler) CrossSeedSearch(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Validate request
-	if req.Query == "" {
-		RespondError(w, http.StatusBadRequest, "query is required")
+	// Validate request - require either query or advanced parameters
+	hasAdvancedParams := req.IMDbID != "" || req.TVDbID != "" || req.Artist != "" || req.Album != "" ||
+		req.Year > 0 || req.Season != nil || req.Episode != nil
+
+	if req.Query == "" && !hasAdvancedParams {
+		RespondError(w, http.StatusBadRequest, "query or advanced parameters (imdb_id, tvdb_id, artist, album, year, season, episode) are required")
 		return
 	}
 
@@ -130,9 +133,12 @@ func (h *JackettHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate request
-	if req.Query == "" {
-		RespondError(w, http.StatusBadRequest, "query is required")
+	// Validate request - require either query or advanced parameters
+	hasAdvancedParams := req.IMDbID != "" || req.TVDbID != "" || req.Artist != "" || req.Album != "" ||
+		req.Year > 0 || req.Season != nil || req.Episode != nil
+
+	if req.Query == "" && !hasAdvancedParams {
+		RespondError(w, http.StatusBadRequest, "query or advanced parameters (imdb_id, tvdb_id, artist, album, year, season, episode) are required")
 		return
 	}
 

@@ -949,12 +949,15 @@ export interface TorznabIndexerUpdate {
 }
 
 export interface TorznabSearchRequest {
-  query: string
+  query?: string
   categories?: number[]
   imdb_id?: string
   tvdb_id?: string
+  year?: number
   season?: number
   episode?: number
+  artist?: string
+  album?: string
   limit?: number
   offset?: number
   indexer_ids?: number[]

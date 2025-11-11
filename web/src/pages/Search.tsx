@@ -18,9 +18,53 @@ import { useDateTimeFormatters } from '@/hooks/useDateTimeFormatters'
 import { useInstances } from '@/hooks/useInstances'
 import { api } from '@/lib/api'
 import type { TorznabIndexer, TorznabRecentSearch, TorznabSearchRequest, TorznabSearchResponse, TorznabSearchResult } from '@/types'
-import { ArrowDown, ArrowUp, ArrowUpDown, Download, ExternalLink, Plus, RefreshCw, Search as SearchIcon } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Download, ExternalLink, Plus, RefreshCw, Search as SearchIcon, SlidersHorizontal } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
+
+type AdvancedParamsState = {
+  imdbId: string
+  tvdbId: string
+  year: string
+  season: string
+  episode: string
+  artist: string
+  album: string
+  limit: string
+  offset: string
+}
+
+type AdvancedParamConfig = {
+  key: keyof AdvancedParamsState
+  label: string
+  placeholder?: string
+  type: 'text' | 'number'
+  min?: number
+}
+
+const ADVANCED_PARAM_DEFAULTS: AdvancedParamsState = {
+  imdbId: '',
+  tvdbId: '',
+  year: '',
+  season: '',
+  episode: '',
+  artist: '',
+  album: '',
+  limit: '',
+  offset: ''
+}
+
+const ADVANCED_PARAM_CONFIG: AdvancedParamConfig[] = [
+  { key: 'imdbId', label: 'IMDb ID', placeholder: 'tt1234567', type: 'text' },
+  { key: 'tvdbId', label: 'TVDb ID', placeholder: '12345', type: 'text' },
+  { key: 'year', label: 'Year', placeholder: '2024', type: 'number', min: 0 },
+  { key: 'season', label: 'Season', placeholder: '1', type: 'number', min: 0 },
+  { key: 'episode', label: 'Episode', placeholder: '2', type: 'number', min: 0 },
+  { key: 'artist', label: 'Artist', placeholder: 'Nine Inch Nails', type: 'text' },
+  { key: 'album', label: 'Album', placeholder: 'The Fragile', type: 'text' },
+  { key: 'limit', label: 'Limit', placeholder: '100', type: 'number', min: 1 },
+  { key: 'offset', label: 'Offset', placeholder: '0', type: 'number', min: 0 }
+]
 
 export function Search() {
   const [query, setQuery] = useState('')
@@ -43,10 +87,21 @@ export function Search() {
   const [, forceRefreshTick] = useState(0)
   const [recentSearches, setRecentSearches] = useState<TorznabRecentSearch[] | null>(null)
   const [queryFocused, setQueryFocused] = useState(false)
+  const [showAdvancedParams, setShowAdvancedParams] = useState(false)
+  const [advancedParams, setAdvancedParams] = useState<AdvancedParamsState>(() => ({ ...ADVANCED_PARAM_DEFAULTS }))
+  const hasAdvancedParams = useMemo(() => Object.values(advancedParams).some(value => value.trim() !== ''), [advancedParams])
   const queryInputRef = useRef<HTMLInputElement | null>(null)
   const blurTimeoutRef = useRef<number | null>(null)
   const rafIdRef = useRef<number | null>(null)
   const { formatDate } = useDateTimeFormatters()
+
+  const handleAdvancedParamChange = useCallback((key: keyof AdvancedParamsState, value: string) => {
+    setAdvancedParams(prev => ({ ...prev, [key]: value }))
+  }, [])
+
+  const handleResetAdvancedParams = useCallback(() => {
+    setAdvancedParams({ ...ADVANCED_PARAM_DEFAULTS })
+  }, [])
 
   // Cleanup timeouts and RAF on unmount
   useEffect(() => {
@@ -107,8 +162,10 @@ export function Search() {
 
   const validateSearchInputs = useCallback((overrideQuery?: string) => {
     const normalizedQuery = (overrideQuery ?? query).trim()
-    if (!normalizedQuery) {
-      toast.error('Please enter a search query')
+
+    // Allow search with either query or advanced parameters
+    if (!normalizedQuery && !hasAdvancedParams) {
+      toast.error('Please enter a search query or fill in advanced parameters')
       return false
     }
 
@@ -123,7 +180,7 @@ export function Search() {
     }
 
     return true
-  }, [indexers.length, query, selectedIndexers])
+  }, [indexers.length, query, selectedIndexers, hasAdvancedParams])
 
   const refreshRecentSearches = useCallback(async () => {
     try {
@@ -145,6 +202,60 @@ export function Search() {
         const payload: Omit<TorznabSearchRequest, "categories"> = {
           query: searchQuery,
           indexer_ids: Array.from(selectedIndexers),
+        }
+
+        const parseNumberParam = (value: string) => {
+          const trimmed = value.trim()
+          if (!trimmed) {
+            return null
+          }
+          const parsed = Number(trimmed)
+          return Number.isNaN(parsed) ? null : parsed
+        }
+
+        const imdbId = advancedParams.imdbId.trim()
+        if (imdbId) {
+          payload.imdb_id = imdbId
+        }
+
+        const tvdbId = advancedParams.tvdbId.trim()
+        if (tvdbId) {
+          payload.tvdb_id = tvdbId
+        }
+
+        const artist = advancedParams.artist.trim()
+        if (artist) {
+          payload.artist = artist
+        }
+
+        const album = advancedParams.album.trim()
+        if (album) {
+          payload.album = album
+        }
+
+        const yearValue = parseNumberParam(advancedParams.year)
+        if (yearValue !== null) {
+          payload.year = yearValue
+        }
+
+        const seasonValue = parseNumberParam(advancedParams.season)
+        if (seasonValue !== null) {
+          payload.season = seasonValue
+        }
+
+        const episodeValue = parseNumberParam(advancedParams.episode)
+        if (episodeValue !== null) {
+          payload.episode = episodeValue
+        }
+
+        const limitValue = parseNumberParam(advancedParams.limit)
+        if (limitValue !== null && limitValue > 0) {
+          payload.limit = limitValue
+        }
+
+        const offsetValue = parseNumberParam(advancedParams.offset)
+        if (offsetValue !== null && offsetValue >= 0) {
+          payload.offset = offsetValue
         }
 
         if (bypassCache) {
@@ -171,7 +282,7 @@ export function Search() {
         setLoading(false)
       }
     },
-    [api, query, selectedIndexers, refreshRecentSearches]
+    [advancedParams, api, query, selectedIndexers, refreshRecentSearches]
   )
 
   // Build a category ID to name map from all indexers
@@ -459,7 +570,7 @@ export function Search() {
     <div className="container mx-auto p-6">
       <Card>
         <CardHeader>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start justify-between gap-4">
             <div className="flex-1">
               <CardTitle>Search Indexers</CardTitle>
               <CardDescription>
@@ -554,10 +665,64 @@ export function Search() {
                   </div>
                 )}
               </div>
-              <Button type="submit" disabled={loading || !query.trim() || selectedIndexers.size === 0}>
+              <Button type="submit" disabled={loading || (!query.trim() && !hasAdvancedParams) || selectedIndexers.size === 0}>
                 <SearchIcon className="mr-2 h-4 w-4" />
                 {loading ? 'Searching...' : 'Search'}
               </Button>
+            </div>
+
+            {/* Advanced Search Parameters */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant={showAdvancedParams ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setShowAdvancedParams(prev => !prev)}
+                >
+                  <SlidersHorizontal className="mr-2 h-4 w-4" />
+                  Advanced Parameters
+                </Button>
+                {hasAdvancedParams && (
+                  <>
+                    <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">Active</Badge>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground"
+                      onClick={handleResetAdvancedParams}
+                    >
+                      Clear
+                    </Button>
+                  </>
+                )}
+              </div>
+              {showAdvancedParams && (
+                <div className="rounded-lg border bg-muted/40 p-4 space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {ADVANCED_PARAM_CONFIG.map(({ key, label, placeholder, type, min }) => (
+                      <div key={key} className="space-y-1.5">
+                        <Label htmlFor={`advanced-${key}`} className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          {label}
+                        </Label>
+                        <Input
+                          id={`advanced-${key}`}
+                          type={type}
+                          inputMode={type === 'number' ? 'numeric' : undefined}
+                          min={type === 'number' && typeof min !== 'undefined' ? min : undefined}
+                          placeholder={placeholder}
+                          value={advancedParams[key]}
+                          onChange={(e) => handleAdvancedParamChange(key, e.target.value)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Optional (but recommended) Torznab parameters.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
