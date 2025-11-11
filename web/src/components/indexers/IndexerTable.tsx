@@ -21,8 +21,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import type { TorznabIndexer } from '@/types'
-import { ArrowUpDown, Check, Edit2, Filter, RefreshCw, TestTube, Trash2, X } from 'lucide-react'
+import { Check, Edit2, Filter, RefreshCw, TestTube, Trash2, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 type SortField = 'name' | 'backend' | 'priority' | 'status'
@@ -137,8 +143,9 @@ export function IndexerTable({
   }
 
   return (
-    <div className="space-y-4">
-      {/* Filter Controls */}
+    <TooltipProvider delayDuration={150}>
+      <div className="space-y-4">
+        {/* Filter Controls */}
       <div className="flex flex-wrap items-center gap-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -262,71 +269,66 @@ export function IndexerTable({
 
       {/* Table */}
       <div className="rounded-md border">
-        <Table>
+        <Table className="text-center">
           <TableHeader>
             <TableRow>
-              <TableHead>
+              <TableHead className="text-center">
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="-ml-3 h-8 data-[state=open]:bg-accent"
+                  className="h-8 w-full justify-center data-[state=open]:bg-accent"
                   onClick={() => handleSort('name')}
                 >
                   Name
-                  <ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
               </TableHead>
-              <TableHead className="hidden md:table-cell">
+              <TableHead className="hidden md:table-cell text-center">
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="-ml-3 h-8 data-[state=open]:bg-accent"
+                  className="h-8 w-full justify-center data-[state=open]:bg-accent"
                   onClick={() => handleSort('backend')}
                 >
                   Backend
-                  <ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
               </TableHead>
-              <TableHead className="hidden lg:table-cell">URL</TableHead>
-              <TableHead>
+              <TableHead className="text-center">
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="-ml-3 h-8 data-[state=open]:bg-accent"
+                  className="h-8 w-full justify-center data-[state=open]:bg-accent"
                   onClick={() => handleSort('status')}
                 >
                   Status
-                  <ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
               </TableHead>
-              <TableHead>Test Status</TableHead>
-              <TableHead className="hidden xl:table-cell">Capabilities</TableHead>
-              <TableHead className="hidden sm:table-cell">
+              <TableHead className="text-center">Test Status</TableHead>
+              <TableHead className="hidden xl:table-cell text-center">Capabilities</TableHead>
+              <TableHead className="hidden sm:table-cell text-center">
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="-ml-3 h-8 data-[state=open]:bg-accent"
+                  className="h-8 w-full justify-center data-[state=open]:bg-accent"
                   onClick={() => handleSort('priority')}
                 >
                   Priority
-                  <ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
               </TableHead>
-              <TableHead className="hidden sm:table-cell">Timeout</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead className="hidden sm:table-cell text-center">Timeout</TableHead>
+              <TableHead className="text-center">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredAndSortedIndexers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                   No indexers match the current filters
                 </TableCell>
               </TableRow>
             ) : (
               filteredAndSortedIndexers.map((indexer) => (
                 <TableRow key={indexer.id}>
-                  <TableCell className="font-medium">
+                  <TableCell className="font-medium text-center">
                     <div>
                       <div>{indexer.name}</div>
                       <div className="md:hidden text-xs text-muted-foreground mt-1">
@@ -336,15 +338,12 @@ export function IndexerTable({
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="hidden md:table-cell">
+                  <TableCell className="hidden md:table-cell text-center">
                     <Badge variant="outline" className="capitalize">
                       {indexer.backend}
                     </Badge>
                   </TableCell>
-                  <TableCell className="hidden lg:table-cell text-muted-foreground text-sm">
-                    {indexer.base_url}
-                  </TableCell>
-                  <TableCell>
+                  <TableCell className="text-center">
                     {indexer.enabled ? (
                       <Badge variant="default" className="gap-1">
                         <Check className="h-3 w-3" />
@@ -357,7 +356,7 @@ export function IndexerTable({
                       </Badge>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="text-center">
                     {indexer.last_test_status === 'ok' ? (
                       <Badge variant="default" className="gap-1">
                         <Check className="h-3 w-3" />
@@ -374,78 +373,89 @@ export function IndexerTable({
                       </Badge>
                     )}
                   </TableCell>
-                  <TableCell className="hidden xl:table-cell">
+                  <TableCell className="hidden xl:table-cell text-center">
                     {indexer.capabilities && indexer.capabilities.length > 0 ? (
                       <div className="max-w-xs">
-                    {expandedCapabilities.has(indexer.id) ? (
-                      // Expanded view - show all capabilities
-                      <div className="space-y-1">
-                        <div className="flex flex-wrap gap-1">
-                          {indexer.capabilities.map((cap) => (
-                            <Badge
-                              key={cap}
-                              variant="secondary"
-                              className="text-xs"
-                              title={`Capability: ${cap}`}
+                        {expandedCapabilities.has(indexer.id) ? (
+                          <div className="space-y-1">
+                            <div className="flex flex-wrap justify-center gap-1">
+                              {indexer.capabilities.map((cap) => (
+                                <Badge
+                                  key={cap}
+                                  variant="secondary"
+                                  className="text-xs"
+                                  title={`Capability: ${cap}`}
+                                >
+                                  {cap}
+                                </Badge>
+                              ))}
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-5 px-2 text-xs text-muted-foreground hover:text-foreground"
+                              onClick={() => toggleCapabilities(indexer.id)}
+                              title="Collapse capabilities"
                             >
-                              {cap}
-                            </Badge>
-                          ))}
-                        </div>
+                              Collapse
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center gap-1 overflow-hidden">
+                            {indexer.capabilities.slice(0, 2).map((cap) => (
+                              <Badge key={cap} variant="secondary" className="text-xs flex-shrink-0">
+                                {cap}
+                              </Badge>
+                            ))}
+                            {indexer.capabilities.length > 2 && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-xs h-5 px-1.5 flex-shrink-0"
+                                    onClick={() => toggleCapabilities(indexer.id)}
+                                    aria-label={`Click to show all ${indexer.capabilities.length} capabilities`}
+                                  >
+                                    +{indexer.capabilities.length - 2}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <div className="flex max-w-xs flex-wrap justify-center gap-1">
+                                    {indexer.capabilities.map((cap) => (
+                                      <Badge key={cap} variant="secondary" className="text-xs">
+                                        {cap}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="text-xs text-muted-foreground">
+                          No capabilities
+                        </span>
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-5 px-2 text-xs text-muted-foreground hover:text-foreground"
-                          onClick={() => toggleCapabilities(indexer.id)}
-                          title="Collapse capabilities"
+                          className="h-6 px-2 text-xs"
+                          onClick={() => onSyncCaps(indexer.id)}
+                          title="Sync capabilities from backend"
+                          aria-label="Sync capabilities from backend"
                         >
-                          Collapse
+                          Sync
                         </Button>
-                      </div>
-                    ) : (
-                      // Collapsed view - single line with first few caps and +X more
-                      <div className="flex items-center gap-1 overflow-hidden" title={indexer.capabilities.join(', ')}>
-                        {indexer.capabilities.slice(0, 2).map((cap) => (
-                          <Badge key={cap} variant="secondary" className="text-xs flex-shrink-0">
-                            {cap}
-                          </Badge>
-                        ))}
-                        {indexer.capabilities.length > 2 && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-xs h-5 px-1.5 flex-shrink-0"
-                            onClick={() => toggleCapabilities(indexer.id)}
-                            title={`Click to show all ${indexer.capabilities.length} capabilities`}
-                          >
-                            +{indexer.capabilities.length - 2}
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">
-                      No capabilities
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 px-2 text-xs"
-                      onClick={() => onSyncCaps(indexer.id)}
-                      title="Sync capabilities from backend"
-                      aria-label="Sync capabilities from backend"
-                    >
-                      Sync
-                    </Button>
                       </div>
                     )}
                   </TableCell>
-                  <TableCell className="hidden sm:table-cell">{indexer.priority}</TableCell>
-                  <TableCell className="hidden sm:table-cell">{indexer.timeout_seconds}s</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
+                  <TableCell className="hidden sm:table-cell text-center">{indexer.priority}</TableCell>
+                  <TableCell className="hidden sm:table-cell text-center">{indexer.timeout_seconds}s</TableCell>
+                  <TableCell className="text-center">
+                    <div className="flex justify-center gap-1">
                       <Button
                         variant="ghost"
                         size="icon"
@@ -491,5 +501,6 @@ export function IndexerTable({
         </Table>
       </div>
     </div>
+  </TooltipProvider>
   )
 }
