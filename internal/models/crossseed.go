@@ -16,27 +16,33 @@ import (
 )
 
 // CrossSeedAutomationSettings controls automatic cross-seed behaviour.
+// Contains both RSS Automation-specific settings and global cross-seed settings.
 type CrossSeedAutomationSettings struct {
-	Enabled                      bool      `json:"enabled"`
-	RunIntervalMinutes           int       `json:"runIntervalMinutes"`
-	StartPaused                  bool      `json:"startPaused"`
-	Category                     *string   `json:"category,omitempty"`
-	Tags                         []string  `json:"tags"`
-	IgnorePatterns               []string  `json:"ignorePatterns"`
-	TargetInstanceIDs            []int     `json:"targetInstanceIds"`
-	TargetIndexerIDs             []int     `json:"targetIndexerIds"`
-	MaxResultsPerRun             int       `json:"maxResultsPerRun"`
-	FindIndividualEpisodes       bool      `json:"findIndividualEpisodes"`
-	SizeMismatchTolerancePercent float64   `json:"sizeMismatchTolerancePercent"`
-	CreatedAt                    time.Time `json:"createdAt"`
-	UpdatedAt                    time.Time `json:"updatedAt"`
+	// RSS Automation settings
+	Enabled            bool     `json:"enabled"`            // Enable/disable RSS automation
+	RunIntervalMinutes int      `json:"runIntervalMinutes"` // RSS: interval between RSS feed polls (min: 30 minutes, default: 120)
+	StartPaused        bool     `json:"startPaused"`        // RSS: start added torrents paused
+	Category           *string  `json:"category,omitempty"` // RSS: category for added torrents
+	Tags               []string `json:"tags"`               // RSS: tags for added torrents
+	IgnorePatterns     []string `json:"ignorePatterns"`     // RSS: file patterns to ignore
+	TargetInstanceIDs  []int    `json:"targetInstanceIds"`  // RSS: instances to add cross-seeds to
+	TargetIndexerIDs   []int    `json:"targetIndexerIds"`   // RSS: indexers to poll for RSS feeds
+	MaxResultsPerRun   int      `json:"maxResultsPerRun"`   // RSS: max results to process per run (default: 50)
+
+	// Global cross-seed settings (apply to both RSS Automation and Seeded Torrent Search)
+	FindIndividualEpisodes       bool    `json:"findIndividualEpisodes"`       // Match season packs with individual episodes
+	SizeMismatchTolerancePercent float64 `json:"sizeMismatchTolerancePercent"` // Size tolerance for matching (default: 5%)
+
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// DefaultCrossSeedAutomationSettings returns sensible defaults for automation.
+// DefaultCrossSeedAutomationSettings returns sensible defaults for RSS automation.
+// RSS automation is disabled by default with a 2-hour interval and 50 results per run.
 func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 	return &CrossSeedAutomationSettings{
-		Enabled:                      false,
-		RunIntervalMinutes:           120,
+		Enabled:                      false, // RSS automation disabled by default
+		RunIntervalMinutes:           120,   // RSS: default 2 hours between polls
 		StartPaused:                  true,
 		Category:                     nil,
 		Tags:                         []string{},

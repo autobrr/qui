@@ -44,26 +44,35 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
+// RSS Automation settings
 interface AutomationFormState {
   enabled: boolean
-  runIntervalMinutes: number
+  runIntervalMinutes: number  // RSS Automation: interval between RSS feed polls (min: 30 minutes)
   startPaused: boolean
   category: string
   tags: string
   ignorePatterns: string
   targetInstanceIds: number[]
   targetIndexerIds: number[]
-  maxResultsPerRun: number
+  maxResultsPerRun: number  // RSS Automation: max results to process per run
 }
 
+// Global cross-seed settings (apply to both RSS Automation and Seeded Torrent Search)
 interface GlobalCrossSeedSettings {
   findIndividualEpisodes: boolean
   sizeMismatchTolerancePercent: number
 }
 
+// RSS Automation constants
+const MIN_RSS_INTERVAL_MINUTES = 30   // RSS: minimum interval between RSS feed polls
+const DEFAULT_RSS_INTERVAL_MINUTES = 120  // RSS: default interval (2 hours)
+const MIN_SEEDED_SEARCH_INTERVAL_SECONDS = 60  // Seeded Search: minimum interval between torrents
+const MIN_SEEDED_SEARCH_COOLDOWN_MINUTES = 720  // Seeded Search: minimum cooldown (12 hours)
+
+// RSS Automation defaults
 const DEFAULT_AUTOMATION_FORM: AutomationFormState = {
   enabled: false,
-  runIntervalMinutes: 120,
+  runIntervalMinutes: DEFAULT_RSS_INTERVAL_MINUTES,
   startPaused: true,
   category: "",
   tags: "",
@@ -88,17 +97,22 @@ function parseList(value: string): string[] {
 export function CrossSeedPage() {
   const queryClient = useQueryClient()
   const { formatDate } = useDateTimeFormatters()
+
+  // RSS Automation state
   const [automationForm, setAutomationForm] = useState<AutomationFormState>(DEFAULT_AUTOMATION_FORM)
   const [globalSettings, setGlobalSettings] = useState<GlobalCrossSeedSettings>(DEFAULT_GLOBAL_SETTINGS)
   const [formInitialized, setFormInitialized] = useState(false)
   const [globalSettingsInitialized, setGlobalSettingsInitialized] = useState(false)
   const [dryRun, setDryRun] = useState(false)
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
+
+  // Seeded Torrent Search state (separate from RSS Automation)
   const [searchInstanceId, setSearchInstanceId] = useState<number | null>(null)
   const [searchCategories, setSearchCategories] = useState<string[]>([])
   const [searchTags, setSearchTags] = useState<string[]>([])
   const [searchIndexerIds, setSearchIndexerIds] = useState<number[]>([])
-  const [searchIntervalSeconds, setSearchIntervalSeconds] = useState(60)
-  const [searchCooldownMinutes, setSearchCooldownMinutes] = useState(720)
+  const [searchIntervalSeconds, setSearchIntervalSeconds] = useState(MIN_SEEDED_SEARCH_INTERVAL_SECONDS)
+  const [searchCooldownMinutes, setSearchCooldownMinutes] = useState(MIN_SEEDED_SEARCH_COOLDOWN_MINUTES)
   const [searchResultsOpen, setSearchResultsOpen] = useState(false)
   const [showIndexerFilters, setShowIndexerFilters] = useState(false)
   const [showAutomationIndexerFilters, setShowAutomationIndexerFilters] = useState(false)
@@ -299,6 +313,15 @@ export function CrossSeedPage() {
   }
 
   const handleAutomationSave = () => {
+    // Clear previous validation errors
+    setValidationErrors({})
+
+    // Validate RSS run interval
+    if (automationForm.runIntervalMinutes < MIN_RSS_INTERVAL_MINUTES) {
+      setValidationErrors({ runIntervalMinutes: `Must be at least ${MIN_RSS_INTERVAL_MINUTES} minutes` })
+      return
+    }
+
     const payload: CrossSeedAutomationSettings = {
       enabled: automationForm.enabled,
       runIntervalMinutes: automationForm.runIntervalMinutes,
@@ -362,8 +385,25 @@ export function CrossSeedPage() {
   }
 
   const handleStartSearchRun = () => {
+    // Clear previous validation errors
+    setValidationErrors({})
+
     if (!searchInstanceId) {
       toast.error("Select an instance to run against")
+      return
+    }
+
+    // Validate search interval and cooldown
+    const errors: Record<string, string> = {}
+    if (searchIntervalSeconds < MIN_SEEDED_SEARCH_INTERVAL_SECONDS) {
+      errors.searchIntervalSeconds = `Must be at least ${MIN_SEEDED_SEARCH_INTERVAL_SECONDS} seconds`
+    }
+    if (searchCooldownMinutes < MIN_SEEDED_SEARCH_COOLDOWN_MINUTES) {
+      errors.searchCooldownMinutes = `Must be at least ${MIN_SEEDED_SEARCH_COOLDOWN_MINUTES} minutes`
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors)
       return
     }
 
@@ -371,9 +411,9 @@ export function CrossSeedPage() {
       instanceId: searchInstanceId,
       categories: searchCategories,
       tags: searchTags,
-      intervalSeconds: Math.max(60, Number(searchIntervalSeconds) || 60),
+      intervalSeconds: searchIntervalSeconds,
       indexerIds: searchIndexerIds,
-      cooldownMinutes: Math.max(720, Number(searchCooldownMinutes) || 720),
+      cooldownMinutes: searchCooldownMinutes,
     })
   }
 
@@ -457,10 +497,20 @@ export function CrossSeedPage() {
               <Input
                 id="automation-interval"
                 type="number"
-                min={5}
+                min={MIN_RSS_INTERVAL_MINUTES}
                 value={automationForm.runIntervalMinutes}
-                onChange={event => setAutomationForm(prev => ({ ...prev, runIntervalMinutes: Number(event.target.value) }))}
+                onChange={event => {
+                  setAutomationForm(prev => ({ ...prev, runIntervalMinutes: Number(event.target.value) }))
+                  // Clear validation error when user changes the value
+                  if (validationErrors.runIntervalMinutes) {
+                    setValidationErrors(prev => ({ ...prev, runIntervalMinutes: "" }))
+                  }
+                }}
+                className={validationErrors.runIntervalMinutes ? "border-destructive" : ""}
               />
+              {validationErrors.runIntervalMinutes && (
+                <p className="text-sm text-destructive">{validationErrors.runIntervalMinutes}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="automation-max-results">Max RSS results per run</Label>
@@ -765,22 +815,42 @@ export function CrossSeedPage() {
               <Input
                 id="search-interval"
                 type="number"
-                min={60}
+                min={MIN_SEEDED_SEARCH_INTERVAL_SECONDS}
                 value={searchIntervalSeconds}
-                onChange={event => setSearchIntervalSeconds(Math.max(60, Number(event.target.value) || 60))}
+                onChange={event => {
+                  setSearchIntervalSeconds(Number(event.target.value) || MIN_SEEDED_SEARCH_INTERVAL_SECONDS)
+                  // Clear validation error when user changes the value
+                  if (validationErrors.searchIntervalSeconds) {
+                    setValidationErrors(prev => ({ ...prev, searchIntervalSeconds: "" }))
+                  }
+                }}
+                className={validationErrors.searchIntervalSeconds ? "border-destructive" : ""}
               />
-              <p className="text-xs text-muted-foreground">Wait time before scanning the next seeded torrent. Minimum 60 seconds.</p>
+              {validationErrors.searchIntervalSeconds && (
+                <p className="text-sm text-destructive">{validationErrors.searchIntervalSeconds}</p>
+              )}
+              <p className="text-xs text-muted-foreground">Wait time before scanning the next seeded torrent. Minimum {MIN_SEEDED_SEARCH_INTERVAL_SECONDS} seconds.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="search-cooldown">Cooldown (minutes)</Label>
               <Input
                 id="search-cooldown"
                 type="number"
-                min={720}
+                min={MIN_SEEDED_SEARCH_COOLDOWN_MINUTES}
                 value={searchCooldownMinutes}
-                onChange={event => setSearchCooldownMinutes(Math.max(720, Number(event.target.value) || 720))}
+                onChange={event => {
+                  setSearchCooldownMinutes(Number(event.target.value) || MIN_SEEDED_SEARCH_COOLDOWN_MINUTES)
+                  // Clear validation error when user changes the value
+                  if (validationErrors.searchCooldownMinutes) {
+                    setValidationErrors(prev => ({ ...prev, searchCooldownMinutes: "" }))
+                  }
+                }}
+                className={validationErrors.searchCooldownMinutes ? "border-destructive" : ""}
               />
-              <p className="text-xs text-muted-foreground">Skip seeded torrents that were searched more recently than this window. Minimum 720 minutes.</p>
+              {validationErrors.searchCooldownMinutes && (
+                <p className="text-sm text-destructive">{validationErrors.searchCooldownMinutes}</p>
+              )}
+              <p className="text-xs text-muted-foreground">Skip seeded torrents that were searched more recently than this window. Minimum {MIN_SEEDED_SEARCH_COOLDOWN_MINUTES} minutes.</p>
             </div>
           </div>
 

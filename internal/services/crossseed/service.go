@@ -262,11 +262,16 @@ func (s *Service) UpdateAutomationSettings(ctx context.Context, settings *models
 	return updated, nil
 }
 
-// validateAndNormalizeSettings validates and normalizes automation settings
+// validateAndNormalizeSettings validates and normalizes automation settings.
+// These settings apply to RSS Automation only, not Seeded Torrent Search.
 func (s *Service) validateAndNormalizeSettings(settings *models.CrossSeedAutomationSettings) {
+	// RSS Automation: minimum 30 minutes between RSS feed polls, default 120 minutes
 	if settings.RunIntervalMinutes <= 0 {
 		settings.RunIntervalMinutes = 120
+	} else if settings.RunIntervalMinutes < 30 {
+		settings.RunIntervalMinutes = 30
 	}
+	// RSS Automation: maximum number of RSS results to process per run
 	if settings.MaxResultsPerRun <= 0 {
 		settings.MaxResultsPerRun = 50
 	}
@@ -642,7 +647,12 @@ func (s *Service) waitTimer(ctx context.Context, timer *time.Timer, delay time.D
 	}
 }
 
+// computeNextRunDelay calculates the delay until the next RSS automation run.
+// Returns (delay, shouldRunNow) where shouldRunNow=true means run immediately.
+// This is for RSS Automation only, not Seeded Torrent Search.
 func (s *Service) computeNextRunDelay(ctx context.Context, settings *models.CrossSeedAutomationSettings) (time.Duration, bool) {
+	// When RSS automation is disabled, return 5 minutes for internal polling loop
+	// (this value is NOT shown to users - it's just for checking if automation got re-enabled)
 	if settings == nil || !settings.Enabled {
 		return 5 * time.Minute, false
 	}
@@ -651,11 +661,12 @@ func (s *Service) computeNextRunDelay(ctx context.Context, settings *models.Cros
 		return time.Hour, false
 	}
 
+	// RSS Automation: enforce minimum 30 minutes between runs
 	intervalMinutes := settings.RunIntervalMinutes
 	if intervalMinutes <= 0 {
 		intervalMinutes = 120
 	}
-	interval := max(time.Duration(intervalMinutes)*time.Minute, time.Minute)
+	interval := max(time.Duration(intervalMinutes)*time.Minute, 30*time.Minute)
 
 	lastRun, err := s.automationStore.GetLatestRun(ctx)
 	if err != nil {
