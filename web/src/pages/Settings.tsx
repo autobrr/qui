@@ -370,7 +370,7 @@ function ApiKeysManager() {
             {keys.map((key) => (
               <div
                 key={key.id}
-                className="flex items-center justify-between rounded-lg border p-4"
+                className="flex items-center bg-muted/40 justify-between rounded-lg border p-4"
               >
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
@@ -653,7 +653,7 @@ function TorznabSearchCachePanel() {
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           {rows.map(row => (
-            <div key={row.label} className="space-y-1 rounded-lg border p-3">
+            <div key={row.label} className="space-y-1 rounded-lg border p-3 bg-muted/40">
               <p className="text-xs uppercase text-muted-foreground">{row.label}</p>
               <p className="text-lg font-semibold">{row.value}</p>
             </div>
