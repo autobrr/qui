@@ -1234,6 +1234,18 @@ func (f *fakeSyncManager) BulkAction(_ context.Context, _ int, _ []string, _ str
 	return fmt.Errorf("BulkAction not implemented in fakeSyncManager")
 }
 
+func (f *fakeSyncManager) RenameTorrent(_ context.Context, _ int, _, _ string) error {
+	return fmt.Errorf("RenameTorrent not implemented in fakeSyncManager")
+}
+
+func (f *fakeSyncManager) RenameTorrentFile(_ context.Context, _ int, _, _, _ string) error {
+	return fmt.Errorf("RenameTorrentFile not implemented in fakeSyncManager")
+}
+
+func (f *fakeSyncManager) RenameTorrentFolder(_ context.Context, _ int, _, _, _ string) error {
+	return fmt.Errorf("RenameTorrentFolder not implemented in fakeSyncManager")
+}
+
 func (f *fakeSyncManager) GetCachedInstanceTorrents(_ context.Context, instanceID int) ([]internalqb.CrossInstanceTorrentView, error) {
 	return f.torrents[instanceID], nil
 }

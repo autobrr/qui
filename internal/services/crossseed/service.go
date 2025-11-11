@@ -54,6 +54,9 @@ type qbittorrentSync interface {
 	GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error)
 	ExtractDomainFromURL(urlStr string) string
 	GetQBittorrentSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error)
+	RenameTorrent(ctx context.Context, instanceID int, hash, name string) error
+	RenameTorrentFile(ctx context.Context, instanceID int, hash, oldPath, newPath string) error
+	RenameTorrentFolder(ctx context.Context, instanceID int, hash, oldPath, newPath string) error
 }
 
 // Service provides cross-seed functionality
@@ -92,6 +95,8 @@ const (
 	contentFilteringPollInterval        = 150 * time.Millisecond
 	selectedIndexerContentSkipReason    = "selected indexers were filtered out"
 	selectedIndexerCapabilitySkipReason = "selected indexers do not support required caps"
+	crossSeedRenameWaitTimeout          = 15 * time.Second
+	crossSeedRenamePollInterval         = 200 * time.Millisecond
 )
 
 // initializeDomainMappings returns a hardcoded mapping of tracker domains to indexer domains.
@@ -1363,6 +1368,11 @@ func (s *Service) processCrossSeedCandidate(
 		options["tags"] = strings.Join(finalTags, ",")
 	}
 
+	// Respect existing single-file torrents by avoiding automatic subfolders (contentLayout=noSubfolder)
+	if detectCommonRoot(candidateFiles) == "" {
+		options["contentLayout"] = "NoSubfolder"
+	}
+
 	// Add the torrent
 	err = s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options)
 	if err != nil {
@@ -1394,6 +1404,9 @@ func (s *Service) processCrossSeedCandidate(
 	} else {
 		result.Message = fmt.Sprintf("Added torrent paused to %s (match: %s)", props.SavePath, matchType)
 	}
+
+	// Attempt to align the new torrent's naming and file layout with the matched torrent
+	s.alignCrossSeedContentPaths(ctx, candidate.InstanceID, torrentHash, torrentName, matchedTorrent, sourceFiles, candidateFiles)
 
 	// Wait for the torrent to be added and potentially rechecked
 	newTorrent := s.waitForTorrentRecheck(ctx, candidate.InstanceID, torrentHash, &result)
