@@ -8,6 +8,11 @@ import { useMemo } from "react"
 /**
  * Hook to partition items into non-empty and empty based on their counts
  * Used for filtering items in the sidebar based on whether they have associated data
+ *
+ * @param items Array of items to partition
+ * @param hasData Whether data has been received from the server
+ * @param getCountKey Function to derive count key from item (must be memoized with useCallback)
+ * @param getRawCount Function to get raw count for a key (must be memoized with useCallback)
  */
 export function useItemPartition<T>(
   items: T[],
