@@ -29,8 +29,10 @@ import {
 import { useDebounce } from "@/hooks/useDebounce"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useItemPartition } from "@/hooks/useItemPartition"
 import { usePersistedAccordion } from "@/hooks/usePersistedAccordion"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
+import { usePersistedShowEmptyState } from "@/hooks/usePersistedShowEmptyState"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { getLinuxCount, LINUX_CATEGORIES, LINUX_TAGS, LINUX_TRACKERS, useIncognitoMode } from "@/lib/incognito"
 import { cn } from "@/lib/utils"
@@ -43,6 +45,8 @@ import {
   Edit,
   FolderPlus,
   Info,
+  ListChevronsDownUp,
+  ListChevronsUpDown,
   MoveRight,
   PlayCircle,
   Plus,
@@ -197,7 +201,7 @@ const FilterSidebarComponent = ({
   instanceId,
   selectedFilters,
   onFilterChange,
-  torrentCounts = {},
+  torrentCounts,
   categories: propsCategories,
   tags: propsTags,
   useSubcategories = false,
@@ -261,6 +265,9 @@ const FilterSidebarComponent = ({
   const [categorySearch, setCategorySearch] = useState("")
   const [tagSearch, setTagSearch] = useState("")
   const [trackerSearch, setTrackerSearch] = useState("")
+  const [showHiddenStatuses, setShowHiddenStatuses] = usePersistedShowEmptyState("statuses", false)
+  const [showHiddenCategories, setShowHiddenCategories] = usePersistedShowEmptyState("categories", false)
+  const [showHiddenTags, setShowHiddenTags] = usePersistedShowEmptyState("tags", false)
 
   // Tracker dialog states
   const [showEditTrackerDialog, setShowEditTrackerDialog] = useState(false)
@@ -390,6 +397,34 @@ const FilterSidebarComponent = ({
     return propsTags || []
   }, [incognitoMode, propsTags, isLoading, isStaleData])
 
+  // Helper function to check if we have received data from the server
+  const hasReceivedData = useCallback((data: unknown) => {
+    return !incognitoMode && !isLoading && !isStaleData && data !== undefined
+  }, [incognitoMode, isLoading, isStaleData])
+
+  const hasReceivedCategoriesData = hasReceivedData(propsCategories)
+  const hasReceivedTagsData = hasReceivedData(propsTags)
+  const hasReceivedCountsData = hasReceivedData(torrentCounts)
+  const hasReceivedTrackersData = hasReceivedCountsData
+
+  const getRawCount = useCallback((key: string): number => {
+    if (!torrentCounts) {
+      return 0
+    }
+    return torrentCounts[key] || 0
+  }, [torrentCounts])
+
+  const getTagCountKey = useCallback((tag: string) => tag ? `tag:${tag}` : "tag:", [])
+
+  const tagPartition = useItemPartition(
+    tags,
+    hasReceivedTagsData && hasReceivedCountsData,
+    getTagCountKey,
+    getRawCount
+  )
+
+  const hiddenTagCount = tagPartition.empty.length
+
   const realCategoryNames = useMemo(() => new Set(Object.keys(categories)), [categories])
 
   const categoryEntries = useMemo(() => {
@@ -433,7 +468,16 @@ const FilterSidebarComponent = ({
     return synthetic
   }, [categoryEntries, realCategoryNames, subcategoriesEnabled])
 
-  const categoriesForTree = useMemo(() => Object.fromEntries(categoryEntries), [categoryEntries])
+  const getCategoryCountKey = useCallback(([name]: [string, unknown]) => name ? `category:${name}` : "category:", [])
+
+  const categoryPartition = useItemPartition(
+    categoryEntries,
+    hasReceivedCategoriesData && hasReceivedCountsData,
+    getCategoryCountKey,
+    getRawCount
+  )
+
+  const hiddenCategoryCount = categoryPartition.empty.length
 
   const allowSubcategories = subcategoriesEnabled
 
@@ -529,15 +573,6 @@ const FilterSidebarComponent = ({
     selectedIncludeCategories,
   ])
 
-  // Helper function to check if we have received data from the server
-  const hasReceivedData = useCallback((data: Record<string, Category> | string[] | Record<string, number> | undefined) => {
-    return !incognitoMode && !isLoading && !isStaleData && data !== undefined
-  }, [incognitoMode, isLoading, isStaleData])
-
-  const hasReceivedCategoriesData = hasReceivedData(propsCategories)
-  const hasReceivedTagsData = hasReceivedData(propsTags)
-  const hasReceivedTrackersData = hasReceivedData(torrentCounts)
-
   const emptyCategoryNames = useMemo(() => {
     if (!hasReceivedCategoriesData || !hasReceivedTrackersData) {
       return []
@@ -550,6 +585,17 @@ const FilterSidebarComponent = ({
   }, [categories, hasReceivedCategoriesData, hasReceivedTrackersData, torrentCounts])
 
   const hasEmptyCategories = emptyCategoryNames.length > 0
+
+  const getStatusCountKey = useCallback((state: { value: string }) => `status:${state.value}`, [])
+
+  const statusPartition = useItemPartition(
+    visibleTorrentStates,
+    hasReceivedCountsData,
+    getStatusCountKey,
+    getRawCount
+  )
+
+  const hiddenStatusCount = statusPartition.empty.length
 
   // Use fake trackers if in incognito mode or extract from torrentCounts
   // When loading or showing stale data, show empty data to prevent stale data from previous instance
@@ -851,6 +897,36 @@ const FilterSidebarComponent = ({
     return false
   }, [])
 
+  // Compute display sets: include non-empty items plus any actively filtered items (even if count is zero)
+  const tagsForDisplay = useMemo(() => {
+    if (showHiddenTags) return tags
+    const activelyFilteredTags = tags.filter(tag => getTagState(tag) !== "neutral")
+    const combined = new Set([...tagPartition.nonEmpty, ...activelyFilteredTags])
+    return Array.from(combined)
+  }, [showHiddenTags, tags, tagPartition.nonEmpty, getTagState])
+
+  const categoryEntriesForDisplay = useMemo(() => {
+    if (showHiddenCategories) return categoryEntries
+    const activelyFilteredEntries = categoryEntries.filter(([name]) => getCategoryState(name) !== "neutral")
+    const combined = new Map([
+      ...categoryPartition.nonEmpty.map(entry => [entry[0], entry] as const),
+      ...activelyFilteredEntries.map(entry => [entry[0], entry] as const)
+    ])
+    return Array.from(combined.values())
+  }, [showHiddenCategories, categoryEntries, categoryPartition.nonEmpty, getCategoryState])
+
+  const categoriesForTree = useMemo(() => Object.fromEntries(categoryEntriesForDisplay), [categoryEntriesForDisplay])
+
+  const statusOptionsForDisplay = useMemo(() => {
+    if (showHiddenStatuses) return visibleTorrentStates
+    const activelyFilteredStates = visibleTorrentStates.filter(state => getStatusState(state.value) !== "neutral")
+    const combined = new Map([
+      ...statusPartition.nonEmpty.map(state => [state.value, state] as const),
+      ...activelyFilteredStates.map(state => [state.value, state] as const)
+    ])
+    return Array.from(combined.values())
+  }, [showHiddenStatuses, visibleTorrentStates, statusPartition.nonEmpty, getStatusState])
+
   const handleStatusIncludeToggle = useCallback((status: string) => {
     const currentState = getStatusState(status)
 
@@ -1106,26 +1182,48 @@ const FilterSidebarComponent = ({
   // Filtered categories for performance
   const filteredCategories = useMemo(() => {
     if (!debouncedCategorySearch) {
-      return categoryEntries
+      return categoryEntriesForDisplay
     }
 
     const searchLower = debouncedCategorySearch.toLowerCase()
-    return categoryEntries.filter(([name]) =>
+    return categoryEntriesForDisplay.filter(([name]) =>
       name.toLowerCase().includes(searchLower)
     )
-  }, [categoryEntries, debouncedCategorySearch])
+  }, [categoryEntriesForDisplay, debouncedCategorySearch])
+
+  const hiddenCategorySearchMatches = useMemo(() => {
+    if (showHiddenCategories || !debouncedCategorySearch) {
+      return 0
+    }
+
+    const searchLower = debouncedCategorySearch.toLowerCase()
+    return categoryPartition.empty.filter(([name]) =>
+      name.toLowerCase().includes(searchLower)
+    ).length
+  }, [categoryPartition.empty, debouncedCategorySearch, showHiddenCategories])
 
   // Filtered tags for performance
   const filteredTags = useMemo(() => {
     if (!debouncedTagSearch) {
-      return tags
+      return tagsForDisplay
     }
 
     const searchLower = debouncedTagSearch.toLowerCase()
-    return tags.filter(tag =>
+    return tagsForDisplay.filter(tag =>
       tag.toLowerCase().includes(searchLower)
     )
-  }, [tags, debouncedTagSearch])
+  }, [tagsForDisplay, debouncedTagSearch])
+
+  const hiddenTagSearchMatches = useMemo(() => {
+    if (showHiddenTags || !debouncedTagSearch) {
+      return 0
+    }
+
+    const searchLower = debouncedTagSearch.toLowerCase()
+    return tagPartition.empty.filter(tag =>
+      tag.toLowerCase().includes(searchLower)
+    ).length
+  }, [debouncedTagSearch, showHiddenTags, tagPartition.empty])
 
   // Filtered trackers for performance
   const filteredTrackers = useMemo(() => {
@@ -1346,7 +1444,33 @@ const FilterSidebarComponent = ({
               </AccordionTrigger>
               <AccordionContent className="px-3 pb-2">
                 <div className="flex flex-col">
-                  {visibleTorrentStates.map((state) => {
+                  {hiddenStatusCount > 0 && (
+                    <button
+                      type="button"
+                      className="flex items-center gap-1.5 self-start text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded px-2 py-1.5 mb-1 transition-colors"
+                      onClick={() => setShowHiddenStatuses((prev) => !prev)}
+                    >
+                      {showHiddenStatuses ? (
+                        <>
+                          <ListChevronsDownUp className="h-3.5 w-3.5" />
+                          <span>Hide empty</span>
+                        </>
+                      ) : (
+                        <>
+                          <ListChevronsUpDown className="h-3.5 w-3.5" />
+                          <span>Show empty</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+
+                  {statusOptionsForDisplay.length === 0 && hiddenStatusCount > 0 && !showHiddenStatuses && (
+                    <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
+                      All statuses are empty. Click above to show them.
+                    </div>
+                  )}
+
+                  {statusOptionsForDisplay.map((state) => {
                     const statusState = getStatusState(state.value)
                     return (
                       <label
@@ -1403,17 +1527,41 @@ const FilterSidebarComponent = ({
               </AccordionTrigger>
               <AccordionContent className="px-3 pb-2">
                 <div className="flex flex-col gap-0">
-                  {/* Add new category button */}
-                  <button
-                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground py-1.5 px-2 w-full cursor-pointer"
-                    onClick={() => {
-                      setParentCategoryForNew(undefined)
-                      setShowCreateCategoryDialog(true)
-                    }}
-                  >
-                    <Plus className="h-3 w-3" />
-                    Add category
-                  </button>
+                  {/* Add new category button and show/hide empty toggle */}
+                  <div className="flex items-center gap-1.5 py-1.5 px-2 text-xs text-muted-foreground">
+                    <button
+                      className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+                      onClick={() => {
+                        setParentCategoryForNew(undefined)
+                        setShowCreateCategoryDialog(true)
+                      }}
+                    >
+                      <Plus className="h-3 w-3" />
+                      <span>Add category</span>
+                    </button>
+                    {hiddenCategoryCount > 0 && (
+                      <>
+                        <span className="text-muted-foreground/40">•</span>
+                        <button
+                          type="button"
+                          className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+                          onClick={() => setShowHiddenCategories((prev) => !prev)}
+                        >
+                          {showHiddenCategories ? (
+                            <>
+                              <ListChevronsDownUp className="h-3.5 w-3.5" />
+                              <span>Hide empty</span>
+                            </>
+                          ) : (
+                            <>
+                              <ListChevronsUpDown className="h-3.5 w-3.5" />
+                              <span>Show empty</span>
+                            </>
+                          )}
+                        </button>
+                      </>
+                    )}
+                  </div>
 
                   {/* Search input for categories */}
                   <div className="mb-2">
@@ -1427,7 +1575,7 @@ const FilterSidebarComponent = ({
                   </div>
 
                   {/* Uncategorized option */}
-                  {!allowSubcategories && (
+                  {!allowSubcategories && (getRawCount("category:") > 0 || uncategorizedState !== "neutral") && (
                     <label
                       className={cn(
                         "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
@@ -1470,7 +1618,9 @@ const FilterSidebarComponent = ({
                   {/* No results message for categories */}
                   {hasReceivedCategoriesData && debouncedCategorySearch && filteredCategories.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      No categories found matching "{debouncedCategorySearch}"
+                      {!showHiddenCategories && hiddenCategorySearchMatches > 0
+                        ? 'All matching categories are empty. Click above to show them.'
+                        : `No categories found matching "${debouncedCategorySearch}"`}
                     </div>
                   )}
 
@@ -1478,6 +1628,13 @@ const FilterSidebarComponent = ({
                   {hasReceivedCategoriesData && !debouncedCategorySearch && categoryEntries.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
                       No categories available
+                    </div>
+                  )}
+
+                  {/* All categories hidden message */}
+                  {hasReceivedCategoriesData && !debouncedCategorySearch && categoryEntries.length > 0 && filteredCategories.length === 0 && hiddenCategoryCount > 0 && !showHiddenCategories && (
+                    <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
+                      All categories are empty. Click above to show them.
                     </div>
                   )}
 
@@ -1742,14 +1899,38 @@ const FilterSidebarComponent = ({
               </AccordionTrigger>
               <AccordionContent className="px-3 pb-2">
                 <div className="flex flex-col gap-0">
-                  {/* Add new tag button */}
-                  <button
-                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground py-1.5 px-2 w-full cursor-pointer"
-                    onClick={() => setShowCreateTagDialog(true)}
-                  >
-                    <Plus className="h-3 w-3" />
-                    Add tag
-                  </button>
+                  {/* Add new tag button and show/hide empty toggle */}
+                  <div className="flex items-center gap-1.5 py-1.5 px-2 text-xs text-muted-foreground">
+                    <button
+                      className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+                      onClick={() => setShowCreateTagDialog(true)}
+                    >
+                      <Plus className="h-3 w-3" />
+                      <span>Add tag</span>
+                    </button>
+                    {hiddenTagCount > 0 && (
+                      <>
+                        <span className="text-muted-foreground/40">•</span>
+                        <button
+                          type="button"
+                          className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+                          onClick={() => setShowHiddenTags((prev) => !prev)}
+                        >
+                          {showHiddenTags ? (
+                            <>
+                              <ListChevronsDownUp className="h-3.5 w-3.5" />
+                              <span>Hide empty</span>
+                            </>
+                          ) : (
+                            <>
+                              <ListChevronsUpDown className="h-3.5 w-3.5" />
+                              <span>Show empty</span>
+                            </>
+                          )}
+                        </button>
+                      </>
+                    )}
+                  </div>
 
                   {/* Search input for tags */}
                   <div className="mb-2">
@@ -1763,36 +1944,38 @@ const FilterSidebarComponent = ({
                   </div>
 
                   {/* Untagged option */}
-                  <label
-                    className={cn(
-                      "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
-                      untaggedState === "exclude" ? "bg-destructive/10 text-destructive hover:bg-destructive/15" : "hover:bg-muted"
-                    )}
-                    onPointerDown={(event) => handleTagPointerDown(event, "")}
-                    onPointerLeave={handlePointerLeave}
-                  >
-                    <Checkbox
-                      checked={getCheckboxVisualState(untaggedState)}
-                      onCheckedChange={() => handleTagCheckboxChange("")}
-                      className="rounded border-input"
-                    />
-                    <span
+                  {(getRawCount("tag:") > 0 || untaggedState !== "neutral") && (
+                    <label
                       className={cn(
-                        "text-sm flex-1 italic",
-                        untaggedState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                        "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                        untaggedState === "exclude" ? "bg-destructive/10 text-destructive hover:bg-destructive/15" : "hover:bg-muted"
                       )}
+                      onPointerDown={(event) => handleTagPointerDown(event, "")}
+                      onPointerLeave={handlePointerLeave}
                     >
-                      Untagged
-                    </span>
-                    <span
-                      className={cn(
-                        "text-xs",
-                        untaggedState === "exclude" ? "text-destructive" : "text-muted-foreground"
-                      )}
-                    >
-                      {getDisplayCount("tag:")}
-                    </span>
-                  </label>
+                      <Checkbox
+                        checked={getCheckboxVisualState(untaggedState)}
+                        onCheckedChange={() => handleTagCheckboxChange("")}
+                        className="rounded border-input"
+                      />
+                      <span
+                        className={cn(
+                          "text-sm flex-1 italic",
+                          untaggedState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                        )}
+                      >
+                        Untagged
+                      </span>
+                      <span
+                        className={cn(
+                          "text-xs",
+                          untaggedState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                        )}
+                      >
+                        {getDisplayCount("tag:")}
+                      </span>
+                    </label>
+                  )}
 
                   {/* Loading message for tags */}
                   {!hasReceivedTagsData && !incognitoMode && (
@@ -1804,7 +1987,9 @@ const FilterSidebarComponent = ({
                   {/* No results message for tags */}
                   {hasReceivedTagsData && debouncedTagSearch && filteredTags.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      No tags found matching "{debouncedTagSearch}"
+                      {!showHiddenTags && hiddenTagSearchMatches > 0
+                        ? 'All matching tags are empty. Click above to show them.'
+                        : `No tags found matching "${debouncedTagSearch}"`}
                     </div>
                   )}
 
@@ -1812,6 +1997,13 @@ const FilterSidebarComponent = ({
                   {hasReceivedTagsData && !debouncedTagSearch && tags.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
                       No tags available
+                    </div>
+                  )}
+
+                  {/* All tags hidden message */}
+                  {hasReceivedTagsData && !debouncedTagSearch && tags.length > 0 && filteredTags.length === 0 && hiddenTagCount > 0 && !showHiddenTags && (
+                    <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
+                      All tags are empty. Click above to show them.
                     </div>
                   )}
 
