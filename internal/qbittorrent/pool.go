@@ -18,8 +18,9 @@ import (
 )
 
 var (
-	ErrClientNotFound = errors.New("qBittorrent client not found")
-	ErrPoolClosed     = errors.New("client pool is closed")
+	ErrClientNotFound   = errors.New("qBittorrent client not found")
+	ErrPoolClosed       = errors.New("client pool is closed")
+	ErrInstanceDisabled = errors.New("qBittorrent instance is disabled")
 )
 
 // Backoff constants
@@ -181,6 +182,10 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 		return nil, fmt.Errorf("failed to get instance: %w", err)
 	}
 
+	if !instance.IsActive {
+		return nil, ErrInstanceDisabled
+	}
+
 	// Decrypt password
 	password, err := cp.instanceStore.GetDecryptedPassword(instance)
 	if err != nil {
@@ -207,6 +212,7 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 	// Create new client with custom timeout
 	client, err := NewClientWithTimeout(instanceID, instance.Host, instance.Username, password, instance.BasicUsername, basicPassword, instance.TLSSkipVerify, timeout)
 	if err != nil {
+		cp.trackFailure(instanceID, err)
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 

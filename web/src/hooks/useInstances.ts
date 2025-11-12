@@ -75,6 +75,43 @@ export function useInstances() {
     },
   })
 
+  const statusMutation = useMutation<InstanceResponse, Error, { id: number; isActive: boolean }, { previousInstances?: InstanceResponse[] }>({
+    mutationFn: ({ id, isActive }) => api.updateInstanceStatus(id, isActive),
+    onMutate: async ({ id, isActive }) => {
+      await queryClient.cancelQueries({ queryKey: ["instances"] })
+      const previousInstances = queryClient.getQueryData<InstanceResponse[]>(["instances"])
+
+      if (previousInstances) {
+        queryClient.setQueryData<InstanceResponse[]>(["instances"], previousInstances.map(instance =>
+          instance.id === id
+            ? {
+                ...instance,
+                isActive,
+                connected: false,
+                connectionStatus: isActive ? "" : "disabled",
+              }
+            : instance,
+        ))
+      }
+
+      return { previousInstances }
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousInstances) {
+        queryClient.setQueryData(["instances"], context.previousInstances)
+      }
+    },
+    onSuccess: (updatedInstance) => {
+      queryClient.setQueryData<InstanceResponse[]>(["instances"], (instances) => {
+        if (!instances) return [updatedInstance]
+        return instances.map(instance => instance.id === updatedInstance.id ? updatedInstance : instance)
+      })
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["instances"] })
+    },
+  })
+
   const deleteMutation = useMutation({
     mutationFn: ({ id }: { id: number; name: string }) => api.deleteInstance(id),
     onSuccess: () => {
@@ -137,5 +174,7 @@ export function useInstances() {
     reorderInstances: reorderMutation.mutate,
     reorderInstancesAsync: reorderMutation.mutateAsync,
     isReordering: reorderMutation.isPending,
+    setInstanceStatus: statusMutation.mutate,
+    isUpdatingStatus: statusMutation.isPending,
   }
 }

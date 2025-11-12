@@ -41,6 +41,7 @@ import {
   Eye,
   EyeOff,
   MoreVertical,
+  Power,
   RefreshCw,
   Trash2,
   XCircle
@@ -65,14 +66,33 @@ export function InstanceCard({
   disableMoveUp = false,
   disableMoveDown = false,
 }: InstanceCardProps) {
-  const { deleteInstance, testConnection, isDeleting, isTesting } = useInstances()
+  const {
+    deleteInstance,
+    testConnection,
+    setInstanceStatus,
+    isDeleting,
+    isTesting,
+    isUpdatingStatus,
+  } = useInstances()
   const [testResult, setTestResult] = useState<{ success: boolean; message: string | undefined } | null>(null)
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const displayUrl = instance.host
 
+  const statusBadge = !instance.isActive
+    ? { label: "Disabled", variant: "secondary" as const }
+    : instance.connected
+      ? { label: "Connected", variant: "default" as const }
+      : { label: "Disconnected", variant: "destructive" as const }
 
   const handleTest = async () => {
+    if (!instance.isActive) {
+      toast.error("Instance Disabled", {
+        description: "Enable the instance before testing the connection.",
+      })
+      return
+    }
+
     setTestResult(null)
     try {
       const result = await testConnection(instance.id)
@@ -96,6 +116,25 @@ export function InstanceCard({
         description: error instanceof Error ? formatErrorMessage(error.message) : message,
       })
     }
+  }
+
+  const handleToggleStatus = () => {
+    const nextState = !instance.isActive
+    setInstanceStatus({ id: instance.id, isActive: nextState }, {
+      onSuccess: () => {
+        setTestResult(null)
+        toast.success(nextState ? "Instance Enabled" : "Instance Disabled", {
+          description: nextState
+            ? "qui will resume connecting to this qBittorrent instance."
+            : "qui will stop attempting to reach this qBittorrent instance.",
+        })
+      },
+      onError: (error) => {
+        toast.error("Status Update Failed", {
+          description: error instanceof Error ? formatErrorMessage(error.message) : "Failed to update instance status",
+        })
+      },
+    })
   }
 
   const handleDelete = () => {
@@ -125,11 +164,31 @@ export function InstanceCard({
             </CardTitle>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <Badge
-              variant={instance.connected ? "default" : "destructive"}
-            >
-              {instance.connected ? "Connected" : "Disconnected"}
+            <Badge variant={statusBadge.variant}>
+              {statusBadge.label}
             </Badge>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={instance.isActive ? "ghost" : "outline"}
+                  size="icon"
+                  className={cn("h-8 w-8 p-0")}
+                  disabled={isUpdatingStatus}
+                  aria-pressed={instance.isActive}
+                  aria-label={instance.isActive ? "Disable instance" : "Enable instance"}
+                  onClick={(event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    handleToggleStatus()
+                  }}
+                >
+                  <Power className={cn("h-4 w-4", isUpdatingStatus && "animate-pulse", !instance.isActive && "text-destructive")} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {instance.isActive ? "Disable instance" : "Enable instance"}
+              </TooltipContent>
+            </Tooltip>
             {(onMoveUp || onMoveDown) && (
               <div className="flex items-center gap-1">
                 {onMoveUp && (
@@ -191,7 +250,7 @@ export function InstanceCard({
                   <Edit className="mr-2 h-4 w-4" />
                   Edit
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleTest} disabled={isTesting}>
+                <DropdownMenuItem onClick={handleTest} disabled={isTesting || !instance.isActive}>
                   <RefreshCw className="mr-2 h-4 w-4" />
                   Test Connection
                 </DropdownMenuItem>

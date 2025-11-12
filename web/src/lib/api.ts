@@ -172,6 +172,16 @@ class ApiClient {
     })
   }
 
+  async updateInstanceStatus(
+    id: number,
+    isActive: boolean
+  ): Promise<InstanceResponse> {
+    return this.request<InstanceResponse>(`/instances/${id}/status`, {
+      method: "PUT",
+      body: JSON.stringify({ isActive }),
+    })
+  }
+
   async deleteInstance(id: number): Promise<void> {
     return this.request(`/instances/${id}`, { method: "DELETE" })
   }

@@ -439,6 +439,11 @@ func (h *Handler) prepareProxyContext(r *http.Request) (*proxyContext, error) {
 		return nil, err
 	}
 
+	if !instance.IsActive {
+		logger.Warn().Msg("Instance disabled, rejecting proxy request")
+		return nil, qbittorrent.ErrInstanceDisabled
+	}
+
 	instanceURL, err := url.Parse(instance.Host)
 	if err != nil {
 		logger.Error().Err(err).Str("host", instance.Host).Msg("Failed to parse instance host for proxy request")

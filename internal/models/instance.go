@@ -34,6 +34,7 @@ type Instance struct {
 	BasicPasswordEncrypted *string `json:"-"`
 	TLSSkipVerify          bool    `json:"tlsSkipVerify"`
 	SortOrder              int     `json:"sortOrder"`
+	IsActive               bool    `json:"is_active"`
 }
 
 func (i Instance) MarshalJSON() ([]byte, error) {
@@ -67,6 +68,7 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 		}(),
 		TLSSkipVerify: i.TLSSkipVerify,
 		SortOrder:     i.SortOrder,
+		IsActive:      i.IsActive,
 	})
 }
 
@@ -106,6 +108,8 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 	if temp.SortOrder != nil {
 		i.SortOrder = *temp.SortOrder
 	}
+
+	i.IsActive = temp.IsActive
 
 	// Handle password - don't overwrite if redacted
 	if temp.Password != "" && !domain.IsRedactedString(temp.Password) {
@@ -263,6 +267,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	var basicPasswordEncrypted sql.NullString
 	var tlsSkipVerifyResult bool
 	var sortOrder int
+	var isActive bool
 
 	err = tx.QueryRowContext(ctx, `
 		WITH next_sort AS (
@@ -279,7 +284,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 			sort_order
 		)
 		SELECT ?, ?, ?, ?, ?, ?, ?, next_order FROM next_sort
-		RETURNING id, password_encrypted, basic_password_encrypted, tls_skip_verify, sort_order
+		RETURNING id, password_encrypted, basic_password_encrypted, tls_skip_verify, sort_order, is_active
 	`,
 		allIDs[0],
 		allIDs[1],
@@ -294,6 +299,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		&basicPasswordEncrypted,
 		&tlsSkipVerifyResult,
 		&sortOrder,
+		&isActive,
 	)
 
 	if err != nil {
@@ -308,6 +314,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		PasswordEncrypted: passwordEncrypted.String,
 		TLSSkipVerify:     tlsSkipVerifyResult,
 		SortOrder:         sortOrder,
+		IsActive:          isActive,
 	}
 
 	if basicUsername != nil {
@@ -326,7 +333,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 
 func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	query := `
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order 
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active
 		FROM instances_view 
 		WHERE id = ?
 	`
@@ -336,6 +343,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	var basicUsername, basicPasswordEncrypted sql.NullString
 	var tlsSkipVerify bool
 	var sortOrder int
+	var isActive bool
 
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&instanceID,
@@ -347,6 +355,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		&basicPasswordEncrypted,
 		&tlsSkipVerify,
 		&sortOrder,
+		&isActive,
 	)
 
 	if err != nil {
@@ -364,6 +373,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		PasswordEncrypted: passwordEncrypted,
 		TLSSkipVerify:     tlsSkipVerify,
 		SortOrder:         sortOrder,
+		IsActive:          isActive,
 	}
 
 	if basicUsername.Valid {
@@ -378,7 +388,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 
 func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	query := `
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order 
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active
 		FROM instances_view
 		ORDER BY sort_order ASC, name COLLATE NOCASE ASC, id ASC
 	`
@@ -396,6 +406,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 		var basicUsername, basicPasswordEncrypted sql.NullString
 		var tlsSkipVerify bool
 		var sortOrder int
+		var isActive bool
 
 		err := rows.Scan(
 			&id,
@@ -407,6 +418,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 			&basicPasswordEncrypted,
 			&tlsSkipVerify,
 			&sortOrder,
+			&isActive,
 		)
 		if err != nil {
 			return nil, err
@@ -420,6 +432,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 			PasswordEncrypted: passwordEncrypted,
 			TLSSkipVerify:     tlsSkipVerify,
 			SortOrder:         sortOrder,
+			IsActive:          isActive,
 		}
 
 		if basicUsername.Valid {
@@ -517,6 +530,34 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	args = append(args, id)
 
 	result, err := tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+
+	if rows == 0 {
+		return nil, ErrInstanceNotFound
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return s.Get(ctx, id)
+}
+
+func (s *InstanceStore) SetActiveState(ctx context.Context, id int, active bool) (*Instance, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	result, err := tx.ExecContext(ctx, `UPDATE instances SET is_active = ? WHERE id = ?`, active, id)
 	if err != nil {
 		return nil, err
 	}
