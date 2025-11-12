@@ -424,7 +424,6 @@ const FilterSidebarComponent = ({
   )
 
   const hiddenTagCount = tagPartition.empty.length
-  const tagsForDisplay = showHiddenTags ? tags : tagPartition.nonEmpty
 
   const realCategoryNames = useMemo(() => new Set(Object.keys(categories)), [categories])
 
@@ -479,9 +478,6 @@ const FilterSidebarComponent = ({
   )
 
   const hiddenCategoryCount = categoryPartition.empty.length
-  const categoryEntriesForDisplay = showHiddenCategories ? categoryEntries : categoryPartition.nonEmpty
-
-  const categoriesForTree = useMemo(() => Object.fromEntries(categoryEntriesForDisplay), [categoryEntriesForDisplay])
 
   const allowSubcategories = subcategoriesEnabled
 
@@ -600,7 +596,6 @@ const FilterSidebarComponent = ({
   )
 
   const hiddenStatusCount = statusPartition.empty.length
-  const statusOptionsForDisplay = showHiddenStatuses ? visibleTorrentStates : statusPartition.nonEmpty
 
   // Use fake trackers if in incognito mode or extract from torrentCounts
   // When loading or showing stale data, show empty data to prevent stale data from previous instance
@@ -901,6 +896,36 @@ const FilterSidebarComponent = ({
     if (state === "exclude") return "indeterminate"
     return false
   }, [])
+
+  // Compute display sets: include non-empty items plus any actively filtered items (even if count is zero)
+  const tagsForDisplay = useMemo(() => {
+    if (showHiddenTags) return tags
+    const activelyFilteredTags = tags.filter(tag => getTagState(tag) !== "neutral")
+    const combined = new Set([...tagPartition.nonEmpty, ...activelyFilteredTags])
+    return Array.from(combined)
+  }, [showHiddenTags, tags, tagPartition.nonEmpty, getTagState])
+
+  const categoryEntriesForDisplay = useMemo(() => {
+    if (showHiddenCategories) return categoryEntries
+    const activelyFilteredEntries = categoryEntries.filter(([name]) => getCategoryState(name) !== "neutral")
+    const combined = new Map([
+      ...categoryPartition.nonEmpty.map(entry => [entry[0], entry] as const),
+      ...activelyFilteredEntries.map(entry => [entry[0], entry] as const)
+    ])
+    return Array.from(combined.values())
+  }, [showHiddenCategories, categoryEntries, categoryPartition.nonEmpty, getCategoryState])
+
+  const categoriesForTree = useMemo(() => Object.fromEntries(categoryEntriesForDisplay), [categoryEntriesForDisplay])
+
+  const statusOptionsForDisplay = useMemo(() => {
+    if (showHiddenStatuses) return visibleTorrentStates
+    const activelyFilteredStates = visibleTorrentStates.filter(state => getStatusState(state.value) !== "neutral")
+    const combined = new Map([
+      ...statusPartition.nonEmpty.map(state => [state.value, state] as const),
+      ...activelyFilteredStates.map(state => [state.value, state] as const)
+    ])
+    return Array.from(combined.values())
+  }, [showHiddenStatuses, visibleTorrentStates, statusPartition.nonEmpty, getStatusState])
 
   const handleStatusIncludeToggle = useCallback((status: string) => {
     const currentState = getStatusState(status)
