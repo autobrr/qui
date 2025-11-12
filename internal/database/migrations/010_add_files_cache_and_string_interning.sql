@@ -95,7 +95,6 @@ UNION
 SELECT DISTINCT client_name FROM client_api_keys WHERE client_name IS NOT NULL AND client_name != '';
 
 -- Insert placeholder values for empty/NULL strings
-INSERT OR IGNORE INTO string_pool (value) VALUES ('');
 INSERT OR IGNORE INTO string_pool (value) VALUES ('(unknown)');
 INSERT OR IGNORE INTO string_pool (value) VALUES ('(unnamed)');
 
