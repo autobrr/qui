@@ -201,7 +201,7 @@ const FilterSidebarComponent = ({
   instanceId,
   selectedFilters,
   onFilterChange,
-  torrentCounts = {},
+  torrentCounts,
   categories: propsCategories,
   tags: propsTags,
   useSubcategories = false,
