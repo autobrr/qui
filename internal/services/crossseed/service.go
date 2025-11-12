@@ -4381,10 +4381,6 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 
 		// Check each torrent for a match
 		for _, torrent := range torrents {
-			// Skip torrents that are not fully downloaded; they cannot seed yet
-			if torrent.Progress < 1.0 {
-				continue
-			}
 			// Parse the existing torrent's release info
 			existingRelease := s.releaseCache.Parse(torrent.Name)
 
