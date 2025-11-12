@@ -3,10 +3,12 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { Button } from "@/components/ui/button"
 import { useLayoutRoute } from "@/contexts/LayoutRouteContext"
 import { useInstances } from "@/hooks/useInstances"
 import { Torrents } from "@/pages/Torrents"
 import { createFileRoute, Navigate } from "@tanstack/react-router"
+import { Power } from "lucide-react"
 import { useLayoutEffect } from "react"
 import { z } from "zod"
 
@@ -26,6 +28,8 @@ function InstanceTorrents() {
   const { setLayoutRouteState, resetLayoutRouteState } = useLayoutRoute()
   const { instances, isLoading } = useInstances()
   const instanceIdNumber = Number.parseInt(instanceId, 10)
+  const instance = instances?.find(i => i.id === instanceIdNumber)
+  const shouldShowInstanceControls = instance ? instance.isActive : instances === undefined
 
   useLayoutEffect(() => {
     if (!Number.isFinite(instanceIdNumber)) {
@@ -34,14 +38,14 @@ function InstanceTorrents() {
     }
 
     setLayoutRouteState({
-      showInstanceControls: true,
+      showInstanceControls: shouldShowInstanceControls,
       instanceId: instanceIdNumber,
     })
 
     return () => {
       resetLayoutRouteState()
     }
-  }, [instanceIdNumber, resetLayoutRouteState, setLayoutRouteState])
+  }, [instanceIdNumber, resetLayoutRouteState, setLayoutRouteState, shouldShowInstanceControls])
 
   const handleSearchChange = (newSearch: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined }) => {
     navigate({
@@ -54,8 +58,6 @@ function InstanceTorrents() {
     return <div className="p-6">Loading instances...</div>
   }
 
-  const instance = instances?.find(i => i.id === instanceIdNumber)
-
   if (!instance) {
     return (
       <div className="p-6">
@@ -67,12 +69,53 @@ function InstanceTorrents() {
     )
   }
 
+  const instanceDisplayName = instance.name?.trim() || `Instance ${instance.id}`
+
+  if (!instance.isActive) {
+    const handleManageInstances = () => {
+      navigate({ to: "/settings", search: { tab: "instances" as const } })
+    }
+
+    return (
+      <InstanceDisabledNotice
+        instanceName={instanceDisplayName}
+        onManageInstances={handleManageInstances}
+      />
+    )
+  }
+
   return (
     <Torrents
       instanceId={instanceIdNumber}
-      instanceName={instance.name}
+      instanceName={instanceDisplayName}
       search={search}
       onSearchChange={handleSearchChange}
     />
+  )
+}
+
+interface InstanceDisabledNoticeProps {
+  instanceName: string
+  onManageInstances: () => void
+}
+
+function InstanceDisabledNotice({ instanceName, onManageInstances }: InstanceDisabledNoticeProps) {
+  return (
+    <div className="flex h-full items-center justify-center px-4 py-12">
+      <div className="max-w-xl text-center space-y-4">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+          <Power className="h-7 w-7 text-muted-foreground" aria-hidden="true" />
+        </div>
+        <div className="space-y-2">
+          <h1 className="text-2xl font-semibold">Instance disabled</h1>
+          <p className="text-muted-foreground">
+            {instanceName} is currently disabled. Enable it from Settings &gt; Instances to resume torrent management.
+          </p>
+        </div>
+        <Button onClick={onManageInstances} size="sm">
+          Manage Instances
+        </Button>
+      </div>
+    </div>
   )
 }

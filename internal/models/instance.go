@@ -34,7 +34,7 @@ type Instance struct {
 	BasicPasswordEncrypted *string `json:"-"`
 	TLSSkipVerify          bool    `json:"tlsSkipVerify"`
 	SortOrder              int     `json:"sortOrder"`
-	IsActive               bool    `json:"is_active"`
+	IsActive               bool    `json:"isActive"`
 }
 
 func (i Instance) MarshalJSON() ([]byte, error) {
@@ -48,7 +48,7 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 		BasicUsername   *string    `json:"basic_username,omitempty"`
 		BasicPassword   string     `json:"basic_password,omitempty"`
 		TLSSkipVerify   bool       `json:"tlsSkipVerify"`
-		IsActive        bool       `json:"is_active"`
+		IsActive        bool       `json:"isActive"`
 		LastConnectedAt *time.Time `json:"last_connected_at,omitempty"`
 		CreatedAt       time.Time  `json:"created_at"`
 		UpdatedAt       time.Time  `json:"updated_at"`
@@ -83,7 +83,7 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 		BasicUsername   *string    `json:"basic_username,omitempty"`
 		BasicPassword   string     `json:"basic_password,omitempty"`
 		TLSSkipVerify   *bool      `json:"tlsSkipVerify,omitempty"`
-		IsActive        bool       `json:"is_active"`
+		IsActive        bool       `json:"isActive"`
 		LastConnectedAt *time.Time `json:"last_connected_at,omitempty"`
 		CreatedAt       time.Time  `json:"created_at"`
 		UpdatedAt       time.Time  `json:"updated_at"`
@@ -591,7 +591,7 @@ func (s *InstanceStore) SetActiveState(ctx context.Context, id int, active bool)
 	}
 	defer tx.Rollback()
 
-	result, err := tx.ExecContext(ctx, `UPDATE instances SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, active, id)
+	result, err := tx.ExecContext(ctx, `UPDATE instances SET is_active = ? WHERE id = ?`, active, id)
 	if err != nil {
 		return nil, err
 	}

@@ -29,6 +29,7 @@ import {
 import { useDebounce } from "@/hooks/useDebounce"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useInstances } from "@/hooks/useInstances"
 import { useItemPartition } from "@/hooks/useItemPartition"
 import { usePersistedAccordion } from "@/hooks/usePersistedAccordion"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
@@ -210,18 +211,36 @@ const FilterSidebarComponent = ({
   isLoading = false,
   isMobile = false,
 }: FilterSidebarProps) => {
+  const { instances } = useInstances()
+  const instanceMeta = instances?.find(instance => instance.id === instanceId)
+  const isInstanceActive = instanceMeta?.isActive ?? true
+
   // Use incognito mode hook
   const [incognitoMode] = useIncognitoMode()
   const { data: trackerIcons } = useTrackerIcons()
-  const { data: capabilities } = useInstanceCapabilities(instanceId)
+  const { data: capabilities } = useInstanceCapabilities(
+    isInstanceActive ? instanceId : null,
+    { enabled: isInstanceActive }
+  )
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
   const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? true
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
-  const { preferences } = useInstancePreferences(instanceId)
+  const { preferences } = useInstancePreferences(
+    isInstanceActive ? instanceId : undefined,
+    { enabled: isInstanceActive }
+  )
   const preferenceUseSubcategories = preferences?.use_subcategories
   const subcategoriesEnabled = Boolean(
     supportsSubcategories && (preferenceUseSubcategories ?? useSubcategories ?? false)
   )
+
+  if (!isInstanceActive) {
+    return (
+      <div className={cn("flex h-full items-center justify-center text-center text-sm text-muted-foreground px-4", className)}>
+        This instance is disabled. Enable it from Settings → Instances to use filters.
+      </div>
+    )
+  }
 
   // Use compact view state hook
   const { viewMode, cycleViewMode } = usePersistedCompactViewState("compact")

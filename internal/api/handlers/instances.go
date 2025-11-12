@@ -50,6 +50,9 @@ func (h *InstancesHandler) GetInstanceCapabilities(w http.ResponseWriter, r *htt
 	if err != nil {
 		client, err = h.clientPool.GetClientWithTimeout(ctx, instanceID, 15*time.Second)
 		if err != nil {
+			if respondIfInstanceDisabled(w, err, instanceID, "instances:getCapabilities") {
+				return
+			}
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client for capabilities")
 			RespondError(w, http.StatusServiceUnavailable, "Failed to load instance capabilities")
 			return
