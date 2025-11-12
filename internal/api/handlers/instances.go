@@ -492,6 +492,8 @@ func (h *InstancesHandler) UpdateInstanceStatus(w http.ResponseWriter, r *http.R
 	if !req.IsActive {
 		h.clientPool.RemoveClient(instanceID)
 	} else {
+		// Clear backoff state and errors when re-enabling instance
+		h.clientPool.ResetFailureTracking(instanceID)
 		go h.testConnectionAsync(instanceID)
 	}
 

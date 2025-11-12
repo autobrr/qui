@@ -297,7 +297,7 @@ func (cp *ClientPool) performHealthChecks() {
 				// Do not recreate client if unhealthy; just log and return
 			} else {
 				// Health check succeeded, reset failure tracking
-				cp.resetFailureTracking(instanceID)
+				cp.ResetFailureTracking(instanceID)
 			}
 		}(client, instanceID)
 	}
@@ -394,8 +394,8 @@ func (cp *ClientPool) calculateBackoff(attempts int, initialDuration, maxDuratio
 	return backoff
 }
 
-// resetFailureTracking clears failure tracking for successful connections
-func (cp *ClientPool) resetFailureTracking(instanceID int) {
+// ResetFailureTracking clears failure tracking for successful connections or explicit user actions
+func (cp *ClientPool) ResetFailureTracking(instanceID int) {
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
 	cp.resetFailureTrackingLocked(instanceID)
