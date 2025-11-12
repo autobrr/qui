@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { api } from "@/lib/api"
 import type { AppPreferences } from "@/types"
@@ -15,13 +15,13 @@ type UseInstancePreferencesOptions = {
 export function useInstancePreferences(instanceId: number | undefined, options: UseInstancePreferencesOptions = {}) {
   const queryClient = useQueryClient()
   const shouldEnable = options.enabled ?? true
-  const effectiveInstanceId = shouldEnable ? instanceId : undefined
-  const queryKey = ["instance-preferences", effectiveInstanceId] as const
+  const queryEnabled = shouldEnable && typeof instanceId === "number"
+  const queryKey = ["instance-preferences", instanceId ?? null, shouldEnable] as const
 
   const { data: preferences, isLoading, error } = useQuery({
     queryKey,
-    queryFn: () => effectiveInstanceId ? api.getInstancePreferences(effectiveInstanceId) : null,
-    enabled: !!effectiveInstanceId,
+    queryFn: () => api.getInstancePreferences(instanceId!),
+    enabled: queryEnabled,
     staleTime: 5000, // 5 seconds
     refetchInterval: 60000, // Refetch every minute
     placeholderData: (previousData) => previousData,
@@ -29,11 +29,11 @@ export function useInstancePreferences(instanceId: number | undefined, options: 
 
   const updateMutation = useMutation({
     mutationFn: (updatedPreferences: Partial<AppPreferences>) => {
-      if (!effectiveInstanceId) throw new Error("No instance ID")
-      return api.updateInstancePreferences(effectiveInstanceId, updatedPreferences)
+      if (instanceId === undefined) throw new Error("No instance ID")
+      return api.updateInstancePreferences(instanceId, updatedPreferences)
     },
     onMutate: async (newPreferences) => {
-      if (!effectiveInstanceId) {
+      if (instanceId === undefined) {
         return { previousPreferences: undefined }
       }
       // Cancel outgoing refetches
