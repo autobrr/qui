@@ -261,6 +261,23 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		return nil, fmt.Errorf("failed to intern strings: %w", err)
 	}
 
+	// Ensure required fields (name, host, username) have valid IDs
+	// If username is empty (localhost bypass), get ID of empty string from string_pool
+	nameID := allIDs[0].Int64
+	hostID := allIDs[1].Int64
+
+	var usernameID int64
+	if allIDs[2].Valid {
+		usernameID = allIDs[2].Int64
+	} else {
+		// Username was empty - query for empty string ID from string_pool (for localhost bypass)
+		// The empty string is inserted during migration
+		err := tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ''").Scan(&usernameID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get empty username ID: %w (database migration may be incomplete)", err)
+		}
+	}
+
 	// Insert instance with the interned IDs
 	var instanceID int
 	var passwordEncrypted sql.NullString
@@ -286,9 +303,9 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		SELECT ?, ?, ?, ?, ?, ?, ?, next_order FROM next_sort
 		RETURNING id, password_encrypted, basic_password_encrypted, tls_skip_verify, sort_order, is_active
 	`,
-		allIDs[0],
-		allIDs[1],
-		allIDs[2],
+		nameID,
+		hostID,
+		usernameID,
 		encryptedPassword,
 		allIDs[3],
 		encryptedBasicPassword,
@@ -479,9 +496,26 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		return nil, fmt.Errorf("failed to intern strings: %w", err)
 	}
 
+	// Ensure required fields (name, host, username) have valid IDs
+	// If username is empty (localhost bypass), get ID of empty string from string_pool
+	nameID := allIDs[0].Int64
+	hostID := allIDs[1].Int64
+
+	var usernameID int64
+	if allIDs[2].Valid {
+		usernameID = allIDs[2].Int64
+	} else {
+		// Username was empty - query for empty string ID from string_pool (for localhost bypass)
+		// The empty string is inserted during migration
+		err := tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ''").Scan(&usernameID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get empty username ID: %w (database migration may be incomplete)", err)
+		}
+	}
+
 	// Build UPDATE query
 	query := "UPDATE instances SET name_id = ?, host_id = ?, username_id = ?"
-	args := []any{allIDs[0], allIDs[1], allIDs[2]}
+	args := []any{nameID, hostID, usernameID}
 
 	// Handle basic_username update
 	if basicUsername != nil {
