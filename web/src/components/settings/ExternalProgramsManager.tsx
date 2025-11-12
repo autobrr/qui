@@ -152,7 +152,7 @@ export function ExternalProgramsManager() {
                     </div>
                     <CardDescription className="text-xs">
                       Created {formatDate(new Date(program.created_at))}
-                      {program.updated_at !== program.created_at && 
+                      {program.updated_at !== program.created_at &&
                         ` • Updated ${formatDate(new Date(program.updated_at))}`}
                     </CardDescription>
                   </div>
@@ -330,6 +330,10 @@ function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProp
             <li><code className="bg-muted px-1 rounded">{"{state}"}</code> - Torrent state</li>
             <li><code className="bg-muted px-1 rounded">{"{size}"}</code> - Size in bytes</li>
             <li><code className="bg-muted px-1 rounded">{"{progress}"}</code> - Progress (0-1)</li>
+            <li><code className="bg-muted px-1 rounded">{"{instance_name}"}</code> - Instance name</li>
+            <li><code className="bg-muted px-1 rounded">{"{instance_id}"}</code> - Instance ID</li>
+            <li><code className="bg-muted px-1 rounded">{"{instance_qbit_url}"}</code> - qBittorrent URL</li>
+            <li><code className="bg-muted px-1 rounded">{"{instance_external_ipv4}"}</code> - External IPv4 address</li>
           </ul>
         </div>
       </div>
@@ -388,7 +392,7 @@ function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProp
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Path mappings convert remote paths to local mount points. Useful when running external programs on a local qui server while qBittorrent is remote. 
+          Path mappings convert remote paths to local mount points. Useful when running external programs on a local qui server while qBittorrent is remote.
           Paths are matched by longest prefix first. Use the same path separator style as the remote qBittorrent instance (/ for Linux, \ for Windows).
         </p>
       </div>

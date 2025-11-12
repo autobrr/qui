@@ -42,6 +42,10 @@ Arguments are parsed with shell-style quoting and each placeholder is replaced w
 | `{state}` | qBittorrent torrent state string. |
 | `{size}` | Size in bytes. |
 | `{progress}` | Progress value between 0 and 1 rounded to two decimal places. |
+| `{instance_name}` | Name of the qBittorrent instance. |
+| `{instance_id}` | ID of the qBittorrent instance. |
+| `{instance_qbit_url}` | qBittorrent instance URL (host). |
+| `{instance_external_ipv4}` | External IPv4 address reported by qBittorrent (may be empty if not available). |
 
 Example arguments:
 
