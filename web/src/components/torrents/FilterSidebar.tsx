@@ -414,10 +414,12 @@ const FilterSidebarComponent = ({
     return torrentCounts[key] || 0
   }, [torrentCounts])
 
+  const getTagCountKey = useCallback((tag: string) => tag ? `tag:${tag}` : "tag:", [])
+
   const tagPartition = useItemPartition(
     tags,
     hasReceivedTagsData && hasReceivedCountsData,
-    (tag) => tag ? `tag:${tag}` : "tag:",
+    getTagCountKey,
     getRawCount
   )
 
@@ -467,10 +469,12 @@ const FilterSidebarComponent = ({
     return synthetic
   }, [categoryEntries, realCategoryNames, subcategoriesEnabled])
 
+  const getCategoryCountKey = useCallback(([name]: [string, unknown]) => name ? `category:${name}` : "category:", [])
+
   const categoryPartition = useItemPartition(
     categoryEntries,
     hasReceivedCategoriesData && hasReceivedCountsData,
-    ([name]) => name ? `category:${name}` : "category:",
+    getCategoryCountKey,
     getRawCount
   )
 
@@ -586,10 +590,12 @@ const FilterSidebarComponent = ({
 
   const hasEmptyCategories = emptyCategoryNames.length > 0
 
+  const getStatusCountKey = useCallback((state: { value: string }) => `status:${state.value}`, [])
+
   const statusPartition = useItemPartition(
     visibleTorrentStates,
     hasReceivedCountsData,
-    (state) => `status:${state.value}`,
+    getStatusCountKey,
     getRawCount
   )
 
