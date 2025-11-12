@@ -73,6 +73,7 @@ export function InstanceCard({
     isDeleting,
     isTesting,
     isUpdatingStatus,
+    updatingStatusId,
   } = useInstances()
   const [testResult, setTestResult] = useState<{ success: boolean; message: string | undefined } | null>(null)
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
@@ -173,7 +174,7 @@ export function InstanceCard({
                   variant={instance.isActive ? "ghost" : "outline"}
                   size="icon"
                   className={cn("h-8 w-8 p-0")}
-                  disabled={isUpdatingStatus}
+                  disabled={isUpdatingStatus && updatingStatusId === instance.id}
                   aria-pressed={instance.isActive}
                   aria-label={instance.isActive ? "Disable instance" : "Enable instance"}
                   onClick={(event) => {
@@ -182,7 +183,7 @@ export function InstanceCard({
                     handleToggleStatus()
                   }}
                 >
-                  <Power className={cn("h-4 w-4", isUpdatingStatus && "animate-pulse", !instance.isActive && "text-destructive")} />
+                  <Power className={cn("h-4 w-4", isUpdatingStatus && updatingStatusId === instance.id && "animate-pulse", !instance.isActive && "text-destructive")} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>

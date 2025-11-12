@@ -2,11 +2,6 @@
 ALTER TABLE instances
 ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1;
 
--- Ensure all existing rows are marked active to preserve current behaviour
-UPDATE instances
-SET is_active = 1
-WHERE is_active IS NULL;
-
 -- Recreate the instances_view so it exposes the activation flag
 DROP VIEW IF EXISTS instances_view;
 CREATE VIEW instances_view AS

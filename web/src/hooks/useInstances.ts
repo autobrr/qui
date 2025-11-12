@@ -159,6 +159,10 @@ export function useInstances() {
     },
   })
 
+  const updatingStatusId = statusMutation.isPending
+    ? statusMutation.variables?.id ?? null
+    : null
+
   return {
     instances: instances as InstanceResponse[] | undefined,
     isLoading,
@@ -176,5 +180,6 @@ export function useInstances() {
     isReordering: reorderMutation.isPending,
     setInstanceStatus: statusMutation.mutate,
     isUpdatingStatus: statusMutation.isPending,
+    updatingStatusId,
   }
 }

@@ -557,7 +557,7 @@ func (s *InstanceStore) SetActiveState(ctx context.Context, id int, active bool)
 	}
 	defer tx.Rollback()
 
-	result, err := tx.ExecContext(ctx, `UPDATE instances SET is_active = ? WHERE id = ?`, active, id)
+	result, err := tx.ExecContext(ctx, `UPDATE instances SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, active, id)
 	if err != nil {
 		return nil, err
 	}
