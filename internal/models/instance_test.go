@@ -290,7 +290,8 @@ func TestInstanceStoreWithEmptyUsername(t *testing.T) {
 			sp_basic_username.value AS basic_username,
 			i.basic_password_encrypted,
 			i.tls_skip_verify,
-			i.sort_order
+			i.sort_order,
+			i.is_active
 		FROM instances i
 		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
 		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
