@@ -417,7 +417,7 @@ export function Header({
                     <div className="space-y-2 text-xs">
                       <p className="font-semibold">Smart Search Features:</p>
                       <ul className="space-y-1 ml-2">
-                        <li>• <strong>Glob patterns:</strong> *.mkv, *1080p*, S??E??</li>
+                        <li>• <strong>Glob patterns:</strong> *.mkv, *1080p*, *S??E??*</li>
                         <li>• <strong>Fuzzy matching:</strong> "breaking bad" finds "Breaking.Bad"</li>
                         <li>• Handles dots, underscores, and brackets</li>
                         <li>• Searches name, category, and tags</li>

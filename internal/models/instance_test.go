@@ -213,6 +213,100 @@ func TestInstanceStoreWithHost(t *testing.T) {
 	assert.True(t, updated.TLSSkipVerify)
 }
 
+func TestInstanceStoreWithEmptyUsername(t *testing.T) {
+	ctx := t.Context()
+
+	// Create in-memory database for testing
+	sqlDB, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err, "Failed to open test database")
+	defer sqlDB.Close()
+
+	// Create test encryption key
+	encryptionKey := make([]byte, 32)
+	for i := range encryptionKey {
+		encryptionKey[i] = byte(i)
+	}
+
+	// Wrap with mock that implements Querier
+	db := newMockQuerier(sqlDB)
+
+	// Create instance store
+	store, err := NewInstanceStore(db, encryptionKey)
+	require.NoError(t, err, "Failed to create instance store")
+
+	// Create string_pool table
+	_, err = db.ExecContext(ctx, `
+		CREATE TABLE string_pool (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			value TEXT NOT NULL UNIQUE
+		)
+	`)
+	require.NoError(t, err, "Failed to create string_pool table")
+
+	// Insert empty string into string_pool (as migration does)
+	_, err = db.ExecContext(ctx, `INSERT INTO string_pool (value) VALUES ('')`)
+	require.NoError(t, err, "Failed to insert empty string")
+
+	// Create new schema
+	_, err = db.ExecContext(ctx, `
+		CREATE TABLE instances (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name_id INTEGER NOT NULL,
+			host_id INTEGER NOT NULL,
+			username_id INTEGER NOT NULL,
+			password_encrypted TEXT NOT NULL,
+			basic_username_id INTEGER,
+			basic_password_encrypted TEXT,
+			tls_skip_verify BOOLEAN NOT NULL DEFAULT 0,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			is_active BOOLEAN DEFAULT 1,
+			last_connected_at TIMESTAMP,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (name_id) REFERENCES string_pool(id),
+			FOREIGN KEY (host_id) REFERENCES string_pool(id),
+			FOREIGN KEY (username_id) REFERENCES string_pool(id),
+			FOREIGN KEY (basic_username_id) REFERENCES string_pool(id)
+		);
+
+		CREATE VIEW instances_view AS
+		SELECT
+			i.id,
+			sp_name.value AS name,
+			sp_host.value AS host,
+			sp_username.value AS username,
+			i.password_encrypted,
+			sp_basic_username.value AS basic_username,
+			i.basic_password_encrypted,
+			i.tls_skip_verify,
+			i.sort_order
+		FROM instances i
+		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
+		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
+		INNER JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;
+	`)
+	require.NoError(t, err, "Failed to create test table")
+
+	// Test creating an instance with empty username (localhost bypass)
+	instance, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "", "testpass", nil, nil, false)
+	require.NoError(t, err, "Failed to create instance with empty username")
+	assert.Equal(t, "", instance.Username, "username should be empty")
+	assert.Equal(t, "http://localhost:8080", instance.Host, "host should match")
+
+	// Test retrieving the instance
+	retrieved, err := store.Get(ctx, instance.ID)
+	require.NoError(t, err, "Failed to get instance")
+	assert.Equal(t, "", retrieved.Username, "retrieved username should be empty")
+	assert.Equal(t, "http://localhost:8080", retrieved.Host, "retrieved host should match")
+
+	// Test updating the instance with empty username
+	updated, err := store.Update(ctx, instance.ID, "Updated Instance", "http://localhost:9091", "", "", nil, nil, nil)
+	require.NoError(t, err, "Failed to update instance with empty username")
+	assert.Equal(t, "", updated.Username, "updated username should be empty")
+	assert.Equal(t, "http://localhost:9091", updated.Host, "updated host should match")
+}
+
 func TestInstanceStoreUpdateOrder(t *testing.T) {
 	ctx := t.Context()
 
