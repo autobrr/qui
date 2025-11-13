@@ -385,6 +385,9 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if err := h.syncManager.AddTorrent(ctx, instanceID, fileContent, options); err != nil {
+				if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
+					return
+				}
 				log.Error().Err(err).Int("instanceID", instanceID).Int("fileIndex", i).Msg("Failed to add torrent file")
 				failedCount++
 				lastError = err
@@ -395,6 +398,9 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	} else if len(urls) > 0 {
 		// Add from URLs
 		if err := h.syncManager.AddTorrentFromURLs(ctx, instanceID, urls, options); err != nil {
+			if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
+				return
+			}
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to add torrent from URLs")
 			RespondError(w, http.StatusInternalServerError, "Failed to add torrent")
 			return
