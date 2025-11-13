@@ -288,16 +288,18 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   // Rename file state
   const [showRenameFileDialog, setShowRenameFileDialog] = useState(false)
+  const [renameFilePath, setRenameFilePath] = useState<string | null>(null)
 
   // Rename file mutation
   const renameFileMutation = useMutation({
-    mutationFn: async ({ oldPath, newName }: { oldPath: string; newName: string }) => {
+    mutationFn: async ({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
       if (!torrent) throw new Error("No torrent selected")
-      await api.renameTorrentFile(instanceId, torrent.hash, oldPath, newName)
+      await api.renameTorrentFile(instanceId, torrent.hash, oldPath, newPath)
     },
     onSuccess: () => {
       toast.success("File renamed successfully")
       setShowRenameFileDialog(false)
+      setRenameFilePath(null)
       queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, torrent?.hash] })
     },
     onError: (error) => {
@@ -311,9 +313,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   // Rename folder mutation
   const renameFolderMutation = useMutation({
-    mutationFn: async ({ oldPath, newName }: { oldPath: string; newName: string }) => {
+    mutationFn: async ({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
       if (!torrent) throw new Error("No torrent selected")
-      await api.renameTorrentFolder(instanceId, torrent.hash, oldPath, newName)
+      await api.renameTorrentFolder(instanceId, torrent.hash, oldPath, newPath)
     },
     onSuccess: () => {
       toast.success("Folder renamed successfully")
@@ -360,14 +362,26 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     }
   }, [peersToAdd, addPeersMutation])
 
+  const handleRenameFileDialogOpenChange = useCallback((open: boolean) => {
+    setShowRenameFileDialog(open)
+    if (!open) {
+      setRenameFilePath(null)
+    }
+  }, [])
+
+  const handleRenameFileClick = useCallback((filePath: string) => {
+    setRenameFilePath(filePath)
+    setShowRenameFileDialog(true)
+  }, [])
+
   // Handle rename file
-  const handleRenameFileConfirm = useCallback(({ oldPath, newName }: { oldPath: string; newName: string }) => {
-    renameFileMutation.mutate({ oldPath, newName })
+  const handleRenameFileConfirm = useCallback(({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
+    renameFileMutation.mutate({ oldPath, newPath })
   }, [renameFileMutation])
 
   // Handle rename folder
-  const handleRenameFolderConfirm = useCallback(({ oldPath, newName }: { oldPath: string; newName: string }) => {
-    renameFolderMutation.mutate({ oldPath, newName })
+  const handleRenameFolderConfirm = useCallback(({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
+    renameFolderMutation.mutate({ oldPath, newPath })
   }, [renameFolderMutation])
 
   // Extract all unique folder paths (including subfolders) from file paths
@@ -1153,7 +1167,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                     variant="ghost"
                                     size="icon"
                                     className="h-8 w-8"
-                                    onClick={() => setShowRenameFileDialog(true)}
+                                    onClick={() => handleRenameFileClick(file.name)}
                                     disabled={renameFileMutation.isPending}
                                     title="Rename file"
                                   >
@@ -1288,11 +1302,12 @@ tracker.example.com:8080
       {/* Rename File Dialog */}
       <RenameTorrentFileDialog
         open={showRenameFileDialog}
-        onOpenChange={setShowRenameFileDialog}
+        onOpenChange={handleRenameFileDialogOpenChange}
         files={files || []}
         isLoading={loadingFiles}
         onConfirm={handleRenameFileConfirm}
         isPending={renameFileMutation.isPending}
+        initialPath={renameFilePath ?? undefined}
       />
 
       {/* Rename Folder Dialog */}
