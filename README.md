@@ -575,7 +575,7 @@ Or:
 - [Github Sponsors](https://github.com/s0up4200)
 - [buymeacoffee](https://buymeacoffee.com/s0up4200)
 - BTC: `bc1qfe093kmhvsa436v4ksz0udfcggg3vtnm2tjgem`
-- ETC: `0xD8f517c395a68FEa8d19832398d4dA7b45cbc38F`
+- ETH: `0xD8f517c395a68FEa8d19832398d4dA7b45cbc38F`
 - LTC: `ltc1q86nx64mu2j22psj378amm58ghvy4c9dw80z88h`
 
 ### zze0s
