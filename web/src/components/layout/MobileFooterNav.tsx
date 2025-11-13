@@ -171,6 +171,7 @@ export function MobileFooterNav() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
+                type="button"
                 className={cn(
                   "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
                   isOnInstancePage? "text-primary": "text-muted-foreground hover:text-foreground"
@@ -181,14 +182,12 @@ export function MobileFooterNav() {
                     "h-5 w-5",
                     isOnInstancePage && "text-primary"
                   )} />
-                  {activeInstances.length > 0 && (
-                    <Badge
-                      className="absolute -top-1 -right-2 h-4 w-4 p-0 flex items-center justify-center text-[9px]"
-                      variant="default"
-                    >
-                      {activeInstances.length}
-                    </Badge>
-                  )}
+                  <Badge
+                    className="absolute -top-1 -right-2 h-4 w-4 p-0 flex items-center justify-center text-[9px]"
+                    variant="default"
+                  >
+                    {activeInstances.length}
+                  </Badge>
                 </div>
                 <span
                   className="block max-w-[7.5rem] truncate text-center"
