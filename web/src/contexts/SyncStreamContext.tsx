@@ -11,6 +11,7 @@ const RETRY_BASE_DELAY_MS = 4000
 const RETRY_MAX_DELAY_MS = 30000
 const MAX_RETRY_ATTEMPTS = 6
 const HANDOFF_GRACE_PERIOD_MS = 1200
+const ENTRY_TEARDOWN_DELAY_MS = 200
 
 export interface StreamParams {
   instanceId: number
@@ -52,18 +53,25 @@ interface StreamEntry {
   lastMeta?: TorrentStreamMeta
   handoffTimer?: number
   handoffPending?: boolean
+  teardownTimer?: number
 }
 
 interface StreamConnection {
   source?: EventSource
   handlers?: {
-    payload: (event: MessageEvent) => void
+    payload: (event: MessageEvent | Event) => void
     networkError: (event: Event) => void
   }
   signature?: string
   retryAttempt: number
   retryTimer?: number
   nextRetryAt?: number
+}
+
+interface PendingConnectionUpdate {
+  timer?: number
+  preserveState?: boolean
+  resetRetry?: boolean
 }
 
 const SyncStreamContext = createContext<SyncStreamContextValue | null>(null)
@@ -81,6 +89,18 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
   const stateSubscribersRef = useRef<Record<string, Set<(state: StreamState) => void>>>({})
   const connectionRef = useRef<StreamConnection>({ retryAttempt: 0 })
   const scheduleReconnectRef = useRef<() => void>(() => {})
+  const pendingConnectionUpdateRef = useRef<PendingConnectionUpdate | null>(null)
+  const clearEntryTeardown = useCallback((entry: StreamEntry) => {
+    if (entry.teardownTimer === undefined) {
+      return
+    }
+    if (typeof window !== "undefined") {
+      window.clearTimeout(entry.teardownTimer)
+    } else {
+      clearTimeout(entry.teardownTimer)
+    }
+    entry.teardownTimer = undefined
+  }, [])
 
   const getSnapshot = useCallback(
     (key: string): StreamState => {
@@ -198,7 +218,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       if (handlers) {
         source.removeEventListener("init", handlers.payload)
         source.removeEventListener("update", handlers.payload)
-        source.removeEventListener("error", handlers.payload)
+        source.removeEventListener("stream-error", handlers.payload)
       }
 
       source.onopen = null
@@ -306,9 +326,17 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       const url = api.getTorrentsStreamBatchUrl(normalized)
       closeConnection({ preserveRetry: true })
 
-      const payloadHandler = (event: MessageEvent) => {
+      const payloadHandler = (event: MessageEvent | Event) => {
         try {
-          const payload = JSON.parse(event.data) as TorrentStreamPayload
+          if (!("data" in event)) {
+            return
+          }
+          const rawData = typeof event.data === "string" ? event.data.trim() : ""
+          if (rawData.length === 0) {
+            return
+          }
+
+          const payload = JSON.parse(rawData) as TorrentStreamPayload
           const streamKey = payload.meta?.streamKey
           if (!streamKey) {
             return
@@ -321,7 +349,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
 
           entry.lastMeta = payload.meta
 
-          if (payload.type === "error" && payload.error) {
+          if (payload.type === "stream-error" && payload.error) {
             entry.error = payload.error
             entry.connected = false
           } else {
@@ -355,7 +383,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       const source = new EventSource(url, { withCredentials: true })
       source.addEventListener("init", payloadHandler)
       source.addEventListener("update", payloadHandler)
-      source.addEventListener("error", payloadHandler)
+      source.addEventListener("stream-error", payloadHandler)
       source.onopen = () => {
         clearConnectionRetryState()
         connection.retryAttempt = 0
@@ -396,6 +424,37 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       openConnection(entries, options)
     },
     [clearConnectionRetryState, closeConnection, notifyAllStateSubscribers, openConnection]
+  )
+
+  const queueConnectionUpdate = useCallback(
+    (options: { preserveState?: boolean; resetRetry?: boolean } = {}) => {
+      const pending: PendingConnectionUpdate =
+        pendingConnectionUpdateRef.current ?? {
+          timer: undefined,
+          preserveState: undefined,
+          resetRetry: undefined,
+        }
+      pending.preserveState = pending.preserveState || options.preserveState
+      pending.resetRetry = pending.resetRetry || options.resetRetry
+
+      if (pending.timer === undefined) {
+        const schedule =
+          typeof window !== "undefined"
+            ? window.setTimeout
+            : (setTimeout as unknown as (handler: () => void, timeout: number) => number)
+        pending.timer = schedule(() => {
+          const { preserveState, resetRetry } = pendingConnectionUpdateRef.current ?? {}
+          pendingConnectionUpdateRef.current = null
+          ensureConnection({
+            preserveState,
+            resetRetry,
+          })
+        }, 0)
+      }
+
+      pendingConnectionUpdateRef.current = pending
+    },
+    [ensureConnection]
   )
 
   const scheduleReconnect = useCallback(() => {
@@ -446,18 +505,41 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           error: null,
         }
         streamsRef.current[key] = entry
-        ensureConnection({ preserveState: true })
+        queueConnectionUpdate({ preserveState: true })
       } else if (!isSameParams(entry.params, params)) {
         entry.params = params
         entry.error = null
-        ensureConnection({ preserveState: true, resetRetry: true })
+        queueConnectionUpdate({ preserveState: true, resetRetry: true })
       } else {
-        ensureConnection({ preserveState: true })
+        queueConnectionUpdate({ preserveState: true })
       }
 
+      clearEntryTeardown(entry)
       return entry
     },
-    [ensureConnection]
+    [clearEntryTeardown, queueConnectionUpdate]
+  )
+
+  const scheduleEntryRemoval = useCallback(
+    (entry: StreamEntry) => {
+      clearEntryTeardown(entry)
+      const schedule =
+        typeof window !== "undefined"
+          ? window.setTimeout
+          : (setTimeout as unknown as (handler: () => void, timeout: number) => number)
+
+      const timer = schedule(() => {
+        entry.teardownTimer = undefined
+        delete streamsRef.current[entry.key]
+        clearHandoffState(entry)
+        entry.connected = false
+        entry.error = null
+        notifyStateSubscribers(entry.key)
+        queueConnectionUpdate({ preserveState: true })
+      }, ENTRY_TEARDOWN_DELAY_MS)
+      entry.teardownTimer = timer
+    },
+    [clearEntryTeardown, clearHandoffState, notifyStateSubscribers, queueConnectionUpdate]
   )
 
   const connect = useCallback(
@@ -473,18 +555,13 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       return () => {
         entry.listeners.delete(listener)
         if (entry.listeners.size === 0) {
-          delete streamsRef.current[entry.key]
-          clearHandoffState(entry)
-          entry.connected = false
-          entry.error = null
-          notifyStateSubscribers(entry.key)
-          ensureConnection({ preserveState: true })
+          scheduleEntryRemoval(entry)
         } else {
           notifyStateSubscribers(entry.key)
         }
       }
     },
-    [clearHandoffState, ensureConnection, ensureStream, notifyStateSubscribers]
+    [ensureStream, notifyStateSubscribers, scheduleEntryRemoval]
   )
 
   const getState = useCallback(
@@ -521,14 +598,39 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
   )
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    const handleBeforeUnload = () => {
+      closeConnection()
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload)
     return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload)
+    }
+  }, [closeConnection])
+
+  useEffect(() => {
+    return () => {
+      const pending = pendingConnectionUpdateRef.current
+      if (pending?.timer !== undefined) {
+        if (typeof window !== "undefined") {
+          window.clearTimeout(pending.timer)
+        } else {
+          clearTimeout(pending.timer)
+        }
+      }
+      pendingConnectionUpdateRef.current = null
       closeConnection()
       Object.values(streamsRef.current).forEach(entry => {
+        clearEntryTeardown(entry)
         clearHandoffState(entry)
       })
       streamsRef.current = {}
     }
-  }, [clearHandoffState, closeConnection])
+  }, [clearEntryTeardown, clearHandoffState, closeConnection])
 
   return <SyncStreamContext.Provider value={contextValue}>{children}</SyncStreamContext.Provider>
 }

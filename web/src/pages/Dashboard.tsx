@@ -147,6 +147,7 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
         key: string
         disconnect: () => void
         unsubscribe: () => void
+        cancelRef: { current: boolean }
       }
     >()
   )
@@ -273,19 +274,24 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
       activeInstanceIds.add(instance.id)
 
       const existing = streamConnectionsRef.current.get(instance.id)
-      if (existing && existing.key === streamKey) {
+      if (existing && existing.key === streamKey && !existing.cancelRef.current) {
         return
       }
 
-      existing?.disconnect()
-      existing?.unsubscribe()
+      if (existing) {
+        existing.cancelRef.current = true
+        existing.disconnect()
+        existing.unsubscribe()
+      }
+
+      const cancelRef = { current: false }
 
       const disconnect = syncStream.connect(params, (payload: TorrentStreamPayload) => {
-        if (!payload) {
+        if (cancelRef.current || !payload) {
           return
         }
 
-        if (payload.type === "error") {
+        if (payload.type === "stream-error") {
           applyInstanceData(instance.id, current => {
             return {
               data: {
@@ -332,6 +338,10 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
       })
 
       const unsubscribe = syncStream.subscribe(streamKey, snapshot => {
+        if (cancelRef.current) {
+          return
+        }
+
         applyInstanceData(instance.id, current => {
           const next: InstanceStreamData = {
             ...current,
@@ -368,11 +378,12 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
         })
       }
 
-      streamConnectionsRef.current.set(instance.id, { key: streamKey, disconnect, unsubscribe })
+      streamConnectionsRef.current.set(instance.id, { key: streamKey, disconnect, unsubscribe, cancelRef })
     })
 
     streamConnectionsRef.current.forEach((entry, instanceId) => {
       if (!activeInstanceIds.has(instanceId)) {
+        entry.cancelRef.current = true
         entry.disconnect()
         entry.unsubscribe()
         streamConnectionsRef.current.delete(instanceId)
@@ -383,6 +394,7 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
   useEffect(() => {
     return () => {
       streamConnectionsRef.current.forEach(entry => {
+        entry.cancelRef.current = true
         entry.disconnect()
         entry.unsubscribe()
       })

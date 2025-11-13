@@ -28,7 +28,7 @@ const (
 	maxLimit             = 2000
 	streamEventInit      = "init"
 	streamEventUpdate    = "update"
-	streamEventError     = "error"
+	streamEventError     = "stream-error"
 	streamEventHeartbeat = "heartbeat"
 	defaultSyncInterval  = 2 * time.Second
 	maxSyncInterval      = 30 * time.Second

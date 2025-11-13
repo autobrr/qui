@@ -264,7 +264,7 @@ export interface TorrentStreamMeta {
 }
 
 export interface TorrentStreamPayload {
-  type: "init" | "update" | "error"
+  type: "init" | "update" | "stream-error"
   data?: TorrentResponse
   meta?: TorrentStreamMeta
   error?: string
