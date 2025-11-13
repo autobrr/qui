@@ -291,16 +291,15 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const [renameFilePath, setRenameFilePath] = useState<string | null>(null)
 
   // Rename file mutation
-  const renameFileMutation = useMutation({
-    mutationFn: async ({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
-      if (!torrent) throw new Error("No torrent selected")
-      await api.renameTorrentFile(instanceId, torrent.hash, oldPath, newPath)
+  const renameFileMutation = useMutation<void, unknown, { hash: string; oldPath: string; newPath: string }>({
+    mutationFn: async ({ hash, oldPath, newPath }) => {
+      await api.renameTorrentFile(instanceId, hash, oldPath, newPath)
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       toast.success("File renamed successfully")
       setShowRenameFileDialog(false)
       setRenameFilePath(null)
-      queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, torrent?.hash] })
+      queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "Failed to rename file"
@@ -312,15 +311,14 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const [showRenameFolderDialog, setShowRenameFolderDialog] = useState(false)
 
   // Rename folder mutation
-  const renameFolderMutation = useMutation({
-    mutationFn: async ({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
-      if (!torrent) throw new Error("No torrent selected")
-      await api.renameTorrentFolder(instanceId, torrent.hash, oldPath, newPath)
+  const renameFolderMutation = useMutation<void, unknown, { hash: string; oldPath: string; newPath: string }>({
+    mutationFn: async ({ hash, oldPath, newPath }) => {
+      await api.renameTorrentFolder(instanceId, hash, oldPath, newPath)
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       toast.success("Folder renamed successfully")
       setShowRenameFolderDialog(false)
-      queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, torrent?.hash] })
+      queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "Failed to rename folder"
@@ -376,13 +374,15 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   // Handle rename file
   const handleRenameFileConfirm = useCallback(({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
-    renameFileMutation.mutate({ oldPath, newPath })
-  }, [renameFileMutation])
+    if (!torrent) return
+    renameFileMutation.mutate({ hash: torrent.hash, oldPath, newPath })
+  }, [renameFileMutation, torrent])
 
   // Handle rename folder
   const handleRenameFolderConfirm = useCallback(({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
-    renameFolderMutation.mutate({ oldPath, newPath })
-  }, [renameFolderMutation])
+    if (!torrent) return
+    renameFolderMutation.mutate({ hash: torrent.hash, oldPath, newPath })
+  }, [renameFolderMutation, torrent])
 
   // Extract all unique folder paths (including subfolders) from file paths
   const folders = useMemo(() => {
