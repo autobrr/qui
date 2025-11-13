@@ -114,9 +114,8 @@ export function MobileFooterNav() {
     return instances.filter(instance => instance.isActive)
   }, [instances])
   const isOnInstancePage = location.pathname.startsWith("/instances/")
-  const hasActiveInstances = activeInstances.length > 0
   const hasMultipleActiveInstances = activeInstances.length > 1
-  const singleActiveInstance = hasActiveInstances ? activeInstances[0] : null
+  const singleActiveInstance = activeInstances.length === 1 ? activeInstances[0] : null
   const currentInstanceId = isOnInstancePage? location.pathname.split("/")[2]: null
   const currentInstance = instances?.find(i => i.id.toString() === currentInstanceId)
   const currentInstanceLabel = currentInstance && currentInstance.isActive ? currentInstance.name : null
@@ -227,7 +226,7 @@ export function MobileFooterNav() {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : hasActiveInstances && singleActiveInstance ? (
+        ) : singleActiveInstance ? (
           <Link
             to="/instances/$instanceId"
             params={{ instanceId: singleActiveInstance.id.toString() }}
