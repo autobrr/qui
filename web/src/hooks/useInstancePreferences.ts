@@ -16,7 +16,7 @@ export function useInstancePreferences(instanceId: number | undefined, options: 
   const queryClient = useQueryClient()
   const shouldEnable = options.enabled ?? true
   const queryEnabled = shouldEnable && typeof instanceId === "number"
-  const queryKey = ["instance-preferences", instanceId ?? null, shouldEnable] as const
+  const queryKey = ["instance-preferences", instanceId ?? null] as const
 
   const { data: preferences, isLoading, error } = useQuery({
     queryKey,

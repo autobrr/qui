@@ -94,7 +94,7 @@ export function MobileFooterNav() {
   const [showThemeDialog, setShowThemeDialog] = useState(false)
   const appVersion = getAppVersion()
 
-  const { data: instances } = useQuery({
+  const { data: instances, isPending: isLoadingInstances } = useQuery({
     queryKey: ["instances"],
     queryFn: () => api.getInstances(),
   })
@@ -249,6 +249,15 @@ export function MobileFooterNav() {
               {singleActiveInstance.name}
             </span>
           </Link>
+        ) : isLoadingInstances ? (
+          <button
+            className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium min-w-0 flex-1 text-muted-foreground"
+            type="button"
+            disabled
+          >
+            <HardDrive className="h-5 w-5 animate-pulse" />
+            <span className="block max-w-[7.5rem] truncate text-center text-xs">Loading...</span>
+          </button>
         ) : (
           <button
             className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium min-w-0 flex-1 text-muted-foreground"

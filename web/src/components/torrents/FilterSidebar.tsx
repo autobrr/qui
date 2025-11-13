@@ -234,14 +234,6 @@ const FilterSidebarComponent = ({
     supportsSubcategories && (preferenceUseSubcategories ?? useSubcategories ?? false)
   )
 
-  if (!isInstanceActive) {
-    return (
-      <div className={cn("flex h-full items-center justify-center text-center text-sm text-muted-foreground px-4", className)}>
-        This instance is disabled. Enable it from Settings → Instances to use filters.
-      </div>
-    )
-  }
-
   // Use compact view state hook
   const { viewMode, cycleViewMode } = usePersistedCompactViewState("compact")
 
@@ -1383,6 +1375,14 @@ const FilterSidebarComponent = ({
     selectedFilters.excludeTags.length > 0 ||
     selectedFilters.trackers.length > 0 ||
     selectedFilters.excludeTrackers.length > 0
+
+  if (!isInstanceActive) {
+    return (
+      <div className={cn("flex h-full items-center justify-center text-center text-sm text-muted-foreground px-4", className)}>
+        This instance is disabled. Enable it from Settings → Instances to use filters.
+      </div>
+    )
+  }
 
   // Simple slide animation - sidebar slides in/out from the left
   return (
