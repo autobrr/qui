@@ -219,14 +219,14 @@ const FilterSidebarComponent = ({
   const [incognitoMode] = useIncognitoMode()
   const { data: trackerIcons } = useTrackerIcons()
   const { data: capabilities } = useInstanceCapabilities(
-    isInstanceActive ? instanceId : null,
+    instanceId,
     { enabled: isInstanceActive }
   )
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
   const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? true
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
   const { preferences } = useInstancePreferences(
-    isInstanceActive ? instanceId : undefined,
+    instanceId,
     { enabled: isInstanceActive }
   )
   const preferenceUseSubcategories = preferences?.use_subcategories
