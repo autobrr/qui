@@ -45,6 +45,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, Link, Loader2, Plus, Upload, X } from "lucide-react"
 import parseTorrent from "parse-torrent"
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useDropzone } from "react-dropzone"
 
 // Extract info hash from magnet link
 function extractHashFromMagnet(magnetUrl: string): string | null {
@@ -585,6 +586,26 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     },
   })
 
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    const existingFiles = form.getFieldValue("torrentFiles") || []
+    const allFiles = [...existingFiles, ...acceptedFiles]
+    form.setFieldValue("torrentFiles", allFiles.length > 0 ? allFiles : null)
+
+    // Check for duplicates when files are dropped
+    if (allFiles.length > 0) {
+      checkForDuplicates(allFiles, "")
+    }
+  }, [form, checkForDuplicates])
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'application/x-bittorrent': ['.torrent']
+    },
+    multiple: true,
+    noClick: false,
+  })
+
   const handleRemoveDuplicateSelections = useCallback(() => {
     if (duplicateFileKeys.length === 0 && duplicateUrlKeys.length === 0) {
       return
@@ -801,31 +822,29 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                     {(field) => (
                       <div className="space-y-2">
                         <Label htmlFor="torrentFiles">Torrent Files</Label>
-                        <Input
-                          ref={fileInputRef}
-                          id="torrentFiles"
-                          type="file"
-                          accept=".torrent"
-                          multiple
-                          className="sr-only"
-                          onChange={(e) => {
-                            const files = e.target.files ? Array.from(e.target.files) : null
-                            field.handleChange(files)
-                            // Check for duplicates when files are selected
-                            if (files) {
-                              checkForDuplicates(files, "")
-                            }
-                          }}
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="w-full"
+                        <div
+                          {...getRootProps({
+                            className: cn(
+                              "mt-2 border border-dashed rounded-md p-6 cursor-pointer transition-colors backdrop-blur-md",
+                              "data-[drag-active]:border-primary data-[drag-active]:bg-background/10",
+                              "border-border hover:border-primary/30 hover:bg-accent/30"
+                            )
+                          })}
+                          data-drag-active={isDragActive ? "" : undefined}
                         >
-                          <Upload className="mr-2 h-4 w-4" />
-                          Browse for Torrent Files
-                        </Button>
+                          <input {...getInputProps({ id: "torrentFiles" })} />
+                          <div className="flex flex-col items-center justify-center text-center space-y-2 h-22">
+                            <Upload className="h-8 w-8 text-muted-foreground" />
+                            {isDragActive ? (
+                              <p className="text-sm font-medium">Drop the torrent files here...</p>
+                            ) : (
+                              <>
+                                <p className="text-sm font-medium">Drag & drop torrent files here</p>
+                                <p className="text-xs text-muted-foreground">or click to browse</p>
+                              </>
+                            )}
+                          </div>
+                        </div>
                         {field.state.value && field.state.value.length > 0 && (
                           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                             <span>
