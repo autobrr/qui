@@ -28,13 +28,15 @@ import (
 
 type ExternalProgramsHandler struct {
 	externalProgramStore *models.ExternalProgramStore
+	instanceStore        *models.InstanceStore
 	clientPool           *qbittorrent.ClientPool
 	config               *domain.Config
 }
 
-func NewExternalProgramsHandler(store *models.ExternalProgramStore, pool *qbittorrent.ClientPool, cfg *domain.Config) *ExternalProgramsHandler {
+func NewExternalProgramsHandler(store *models.ExternalProgramStore, instanceStore *models.InstanceStore, pool *qbittorrent.ClientPool, cfg *domain.Config) *ExternalProgramsHandler {
 	return &ExternalProgramsHandler{
 		externalProgramStore: store,
+		instanceStore:        instanceStore,
 		clientPool:           pool,
 		config:               cfg,
 	}
@@ -233,12 +235,31 @@ func (h *ExternalProgramsHandler) ExecuteExternalProgram(w http.ResponseWriter, 
 		return
 	}
 
+	// Get instance information
+	instance, err := h.instanceStore.Get(ctx, req.InstanceID)
+	if err != nil {
+		if err == models.ErrInstanceNotFound {
+			http.Error(w, "Instance not found", http.StatusNotFound)
+			return
+		}
+		log.Error().Err(err).Int("instanceId", req.InstanceID).Msg("Failed to get instance")
+		http.Error(w, "Failed to get instance", http.StatusInternalServerError)
+		return
+	}
+
 	// Get client for the instance
 	client, err := h.clientPool.GetClient(ctx, req.InstanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceId", req.InstanceID).Msg("Failed to get client for instance")
 		http.Error(w, fmt.Sprintf("Failed to get client for instance: %v", err), http.StatusInternalServerError)
 		return
+	}
+
+	// Get server state for external IPv4 address
+	serverState := client.GetCachedServerState()
+	var externalIPv4 string
+	if serverState != nil {
+		externalIPv4 = serverState.LastExternalAddressV4
 	}
 
 	// Fetch all torrents once (O(m) instead of O(n·m) where n=hashes, m=torrents)
@@ -258,7 +279,7 @@ func (h *ExternalProgramsHandler) ExecuteExternalProgram(w http.ResponseWriter, 
 	// Execute for each torrent hash
 	results := make([]map[string]any, 0, len(req.Hashes))
 	for _, hash := range req.Hashes {
-		result := h.executeForHash(ctx, program, hash, torrentIndex)
+		result := h.executeForHash(ctx, program, hash, torrentIndex, instance, externalIPv4)
 		results = append(results, result)
 	}
 
@@ -269,7 +290,7 @@ func (h *ExternalProgramsHandler) ExecuteExternalProgram(w http.ResponseWriter, 
 }
 
 // executeForHash executes the external program for a single torrent hash
-func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *models.ExternalProgram, hash string, torrentIndex map[string]*qbt.Torrent) map[string]any {
+func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *models.ExternalProgram, hash string, torrentIndex map[string]*qbt.Torrent, instance *models.Instance, externalIPv4 string) map[string]any {
 	result := map[string]any{
 		"hash":    hash,
 		"success": false,
@@ -288,15 +309,19 @@ func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *m
 	contentPath := applyPathMappings(torrent.ContentPath, program.PathMappings)
 
 	torrentData := map[string]string{
-		"hash":         torrent.Hash,
-		"name":         torrent.Name,
-		"save_path":    savePath,
-		"category":     torrent.Category,
-		"tags":         torrent.Tags,
-		"state":        string(torrent.State),
-		"size":         fmt.Sprintf("%d", torrent.Size),
-		"progress":     fmt.Sprintf("%.2f", torrent.Progress),
-		"content_path": contentPath,
+		"hash":                   torrent.Hash,
+		"name":                   torrent.Name,
+		"save_path":              savePath,
+		"category":               torrent.Category,
+		"tags":                   torrent.Tags,
+		"state":                  string(torrent.State),
+		"size":                   fmt.Sprintf("%d", torrent.Size),
+		"progress":               fmt.Sprintf("%.2f", torrent.Progress),
+		"content_path":           contentPath,
+		"instance_name":          instance.Name,
+		"instance_id":            fmt.Sprintf("%d", instance.ID),
+		"instance_qbit_url":      instance.Host,
+		"instance_external_ipv4": externalIPv4,
 	}
 
 	// Build command arguments by substituting variables
