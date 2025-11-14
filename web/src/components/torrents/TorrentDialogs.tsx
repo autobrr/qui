@@ -29,10 +29,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import type { Torrent } from "@/types"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import { Loader2, Plus, X } from "lucide-react"
 import type { ChangeEvent, KeyboardEvent } from "react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useVirtualizer } from "@tanstack/react-virtual"
 
 interface SetTagsDialogProps {
   open: boolean
@@ -733,8 +733,9 @@ interface RenameTorrentFileDialogProps {
   onOpenChange: (open: boolean) => void
   files?: { name: string }[]
   isLoading?: boolean
-  onConfirm: (payload: { oldPath: string; newName: string }) => void | Promise<void>
+  onConfirm: (payload: { oldPath: string; newPath: string }) => void | Promise<void>
   isPending?: boolean
+  initialPath?: string
 }
 
 export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
@@ -744,6 +745,7 @@ export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
   isLoading = false,
   onConfirm,
   isPending = false,
+  initialPath,
 }: RenameTorrentFileDialogProps) {
   const [selectedPath, setSelectedPath] = useState("")
   const [newName, setNewName] = useState("")
@@ -763,44 +765,73 @@ export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
     })
   }, [sortedFiles])
 
-  useEffect(() => {
-    if (open && !wasOpen.current) {
-      const defaultPath = sortedFiles[0]?.name ?? ""
-      setSelectedPath(defaultPath)
-      if (defaultPath) {
-        const segments = defaultPath.split("/")
-        setNewName(segments[segments.length - 1] || defaultPath)
-      } else {
-        setNewName("")
-      }
-    }
-    if (!open) {
-      setSelectedPath("")
+  const selectPath = useCallback((path: string) => {
+    setSelectedPath(path)
+    if (path) {
+      const segments = path.split("/")
+      setNewName(segments[segments.length - 1] || path)
+    } else {
       setNewName("")
     }
+  }, [setNewName, setSelectedPath])
+
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      const fallbackPath = sortedFiles[0]?.name ?? ""
+      const hasInitialPath = initialPath && sortedFiles.some(file => file.name === initialPath)
+      const defaultPath = (hasInitialPath ? initialPath! : fallbackPath) || ""
+      selectPath(defaultPath)
+    }
+    if (!open && wasOpen.current) {
+      selectPath("")
+    }
     wasOpen.current = open
-  }, [open, sortedFiles])
+  }, [open, sortedFiles, initialPath, selectPath])
+
+  const lastInitialPath = useRef<string | undefined>(undefined)
+
+  useEffect(() => {
+    // Keep the selected file in sync when a new initialPath is provided while the dialog stays open
+    // (e.g., user clicks a different pencil icon without closing the modal).
+    if (!open) {
+      lastInitialPath.current = undefined
+      return
+    }
+    if (!initialPath) return
+    if (initialPath === lastInitialPath.current) return
+    lastInitialPath.current = initialPath
+    const exists = sortedFiles.some(file => file.name === initialPath)
+    if (!exists) return
+    selectPath(initialPath)
+  }, [initialPath, open, sortedFiles, selectPath])
+
+  const buildNewPath = useCallback((path: string, nextName: string) => {
+    if (!path) return nextName
+    const lastSlash = path.lastIndexOf("/")
+    if (lastSlash === -1) return nextName
+    if (lastSlash === 0) return `/${nextName}`
+    const parent = path.slice(0, lastSlash)
+    return parent ? `${parent}/${nextName}` : nextName
+  }, [])
 
   const handleConfirm = useCallback(() => {
     if (!selectedPath) return
     const trimmedName = newName.trim()
     if (!trimmedName) return
-    onConfirm({ oldPath: selectedPath, newName: trimmedName })
-  }, [newName, onConfirm, selectedPath])
+    const newPath = buildNewPath(selectedPath, trimmedName)
+    onConfirm({ oldPath: selectedPath, newPath })
+  }, [buildNewPath, newName, onConfirm, selectedPath])
 
   const handlePathChange = useCallback((value: string) => {
-    setSelectedPath(value)
-    const segments = value.split("/")
-    setNewName(segments[segments.length - 1] || value)
-  }, [])
+    selectPath(value)
+  }, [selectPath])
 
   const handleClose = useCallback((nextOpen: boolean) => {
     if (!nextOpen) {
-      setSelectedPath("")
-      setNewName("")
+      selectPath("")
     }
     onOpenChange(nextOpen)
-  }, [onOpenChange])
+  }, [onOpenChange, selectPath])
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -880,7 +911,7 @@ interface RenameTorrentFolderDialogProps {
   onOpenChange: (open: boolean) => void
   folders?: { name: string }[]
   isLoading?: boolean
-  onConfirm: (payload: { oldPath: string; newName: string }) => void | Promise<void>
+  onConfirm: (payload: { oldPath: string; newPath: string }) => void | Promise<void>
   isPending?: boolean
 }
 
@@ -929,12 +960,22 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
     wasOpen.current = open
   }, [open, sortedFolders])
 
+  const buildNewPath = useCallback((path: string, nextName: string) => {
+    if (!path) return nextName
+    const lastSlash = path.lastIndexOf("/")
+    if (lastSlash === -1) return nextName
+    if (lastSlash === 0) return `/${nextName}`
+    const parent = path.slice(0, lastSlash)
+    return parent ? `${parent}/${nextName}` : nextName
+  }, [])
+
   const handleConfirm = useCallback(() => {
     if (!selectedPath) return
     const trimmedName = newName.trim()
     if (!trimmedName) return
-    onConfirm({ oldPath: selectedPath, newName: trimmedName })
-  }, [newName, onConfirm, selectedPath])
+    const newPath = buildNewPath(selectedPath, trimmedName)
+    onConfirm({ oldPath: selectedPath, newPath })
+  }, [buildNewPath, newName, onConfirm, selectedPath])
 
   const handlePathChange = useCallback((value: string) => {
     setSelectedPath(value)

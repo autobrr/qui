@@ -1868,25 +1868,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     await handleRenameTorrent(hash, name)
   }, [handleRenameTorrent, contextHashes])
 
-  const handleRenameFileWrapper = useCallback(async ({ oldPath, newName }: { oldPath: string; newName: string }) => {
+  const handleRenameFileWrapper = useCallback(async ({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
     const hash = contextHashes[0]
     if (!hash) return
-    if (!oldPath) return
-    const segments = oldPath.split("/")
-    segments[segments.length - 1] = newName
-    const newPath = segments.join("/")
+    if (!oldPath || !newPath) return
     await handleRenameFile(hash, oldPath, newPath)
   }, [handleRenameFile, contextHashes])
 
-  const handleRenameFolderWrapper = useCallback(async ({ oldPath, newName }: { oldPath: string; newName: string }) => {
+  const handleRenameFolderWrapper = useCallback(async ({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
     const hash = contextHashes[0]
     if (!hash) return
-    if (!oldPath) return
-    const segments = oldPath.split("/")
-    segments[segments.length - 1] = newName
-    const newPath = segments.join("/")
+    if (!oldPath || !newPath) return
     await handleRenameFolder(hash, oldPath, newPath)
-  }, [contextHashes, handleRenameFolder])
+  }, [handleRenameFolder, contextHashes])
 
   const handleRemoveTagsWrapper = useCallback((tags: string[]) => {
     handleRemoveTags(

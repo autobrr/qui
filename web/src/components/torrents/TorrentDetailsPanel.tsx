@@ -29,9 +29,10 @@ import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/util
 import type { SortedPeersResponse, Torrent, TorrentFile, TorrentPeer } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import "flag-icons/css/flag-icons.min.css"
-import { Ban, Copy, Loader2, UserPlus } from "lucide-react"
+import { Ban, Copy, FolderPen, Loader2, Pencil, UserPlus } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
+import { RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
 
 interface TorrentDetailsPanelProps {
   instanceId: number;
@@ -285,6 +286,46 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     },
   })
 
+  // Rename file state
+  const [showRenameFileDialog, setShowRenameFileDialog] = useState(false)
+  const [renameFilePath, setRenameFilePath] = useState<string | null>(null)
+
+  // Rename file mutation
+  const renameFileMutation = useMutation<void, unknown, { hash: string; oldPath: string; newPath: string }>({
+    mutationFn: async ({ hash, oldPath, newPath }) => {
+      await api.renameTorrentFile(instanceId, hash, oldPath, newPath)
+    },
+    onSuccess: (_data, variables) => {
+      toast.success("File renamed successfully")
+      setShowRenameFileDialog(false)
+      setRenameFilePath(null)
+      queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "Failed to rename file"
+      toast.error(message)
+    },
+  })
+
+  // Rename folder state
+  const [showRenameFolderDialog, setShowRenameFolderDialog] = useState(false)
+
+  // Rename folder mutation
+  const renameFolderMutation = useMutation<void, unknown, { hash: string; oldPath: string; newPath: string }>({
+    mutationFn: async ({ hash, oldPath, newPath }) => {
+      await api.renameTorrentFolder(instanceId, hash, oldPath, newPath)
+    },
+    onSuccess: (_data, variables) => {
+      toast.success("Folder renamed successfully")
+      setShowRenameFolderDialog(false)
+      queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "Failed to rename folder"
+      toast.error(message)
+    },
+  })
+
   // Handle copy peer IP:port
   const handleCopyPeer = useCallback(async (peer: TorrentPeer) => {
     const peerAddress = `${peer.ip}:${peer.port}`
@@ -318,6 +359,51 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       addPeersMutation.mutate(peers)
     }
   }, [peersToAdd, addPeersMutation])
+
+  const handleRenameFileDialogOpenChange = useCallback((open: boolean) => {
+    setShowRenameFileDialog(open)
+    if (!open) {
+      setRenameFilePath(null)
+    }
+  }, [])
+
+  const handleRenameFileClick = useCallback((filePath: string) => {
+    setRenameFilePath(filePath)
+    setShowRenameFileDialog(true)
+  }, [])
+
+  // Handle rename file
+  const handleRenameFileConfirm = useCallback(({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
+    if (!torrent) return
+    renameFileMutation.mutate({ hash: torrent.hash, oldPath, newPath })
+  }, [renameFileMutation, torrent])
+
+  // Handle rename folder
+  const handleRenameFolderConfirm = useCallback(({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
+    if (!torrent) return
+    renameFolderMutation.mutate({ hash: torrent.hash, oldPath, newPath })
+  }, [renameFolderMutation, torrent])
+
+  // Extract all unique folder paths (including subfolders) from file paths
+  const folders = useMemo(() => {
+    const folderSet = new Set<string>()
+    if (files) {
+      files.forEach(file => {
+        const parts = file.name.split('/')
+        if (parts.length <= 1) return
+
+        // Build all folder paths progressively
+        let current = ''
+        for (let i = 0; i < parts.length - 1; i++) {
+          current = current ? `${current}/${parts[i]}` : parts[i]
+          folderSet.add(current)
+        }
+      })
+    }
+    return Array.from(folderSet)
+      .sort((a, b) => a.localeCompare(b))
+      .map(name => ({ name }))
+  }, [files])
 
   if (!torrent) return null
 
@@ -1000,30 +1086,41 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             : `${files.length} file${files.length !== 1 ? "s" : ""}`}
                         </span>
                       </div>
-                      {supportsFilePriority ? (
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleSelectAllFiles}
-                            disabled={!canSelectAll || setFilePriorityMutation.isPending}
-                          >
-                            Select All
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={handleDeselectAllFiles}
-                            disabled={!canDeselectAll || setFilePriorityMutation.isPending}
-                          >
-                            Deselect All
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="text-xs text-muted-foreground max-w-sm">
-                          Selective downloads require a qBittorrent instance with Web API 2.0.0 or newer.
-                        </div>
-                      )}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowRenameFolderDialog(true)}
+                          disabled={renameFolderMutation.isPending || !files || files.length === 0}
+                        >
+                          <FolderPen className="h-4 w-4 mr-2" />
+                          Rename Folder
+                        </Button>
+                        {supportsFilePriority ? (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handleSelectAllFiles}
+                              disabled={!canSelectAll || setFilePriorityMutation.isPending}
+                            >
+                              Select All
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleDeselectAllFiles}
+                              disabled={!canDeselectAll || setFilePriorityMutation.isPending}
+                            >
+                              Deselect All
+                            </Button>
+                          </>
+                        ) : (
+                          <div className="text-xs text-muted-foreground max-w-sm">
+                            Selective downloads require a qBittorrent instance with Web API 2.0.0 or newer.
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div className="space-y-2">
                       {files.map((file) => {
@@ -1066,6 +1163,16 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={() => handleRenameFileClick(file.name)}
+                                    disabled={renameFileMutation.isPending}
+                                    title="Rename file"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
                                   {isSkipped && supportsFilePriority && (
                                     <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
                                       Skipped
@@ -1191,6 +1298,27 @@ tracker.example.com:8080
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Rename File Dialog */}
+      <RenameTorrentFileDialog
+        open={showRenameFileDialog}
+        onOpenChange={handleRenameFileDialogOpenChange}
+        files={files || []}
+        isLoading={loadingFiles}
+        onConfirm={handleRenameFileConfirm}
+        isPending={renameFileMutation.isPending}
+        initialPath={renameFilePath ?? undefined}
+      />
+
+      {/* Rename Folder Dialog */}
+      <RenameTorrentFolderDialog
+        open={showRenameFolderDialog}
+        onOpenChange={setShowRenameFolderDialog}
+        folders={folders}
+        isLoading={loadingFiles}
+        onConfirm={handleRenameFolderConfirm}
+        isPending={renameFolderMutation.isPending}
+      />
     </div>
   )
 });
