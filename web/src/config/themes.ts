@@ -10,6 +10,7 @@ export interface Theme {
   name: string;
   isPremium?: boolean;
   description?: string;
+  variations?: string[];
   cssVars: {
     light: Record<string, string>;
     dark: Record<string, string>;

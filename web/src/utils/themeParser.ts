@@ -7,10 +7,12 @@ export interface ThemeMetadata {
   name: string;
   description?: string;
   isPremium?: boolean;
+  variations?: string;
 }
 
 export interface ParsedTheme {
   metadata: ThemeMetadata;
+  variations?: string[];
   cssVars: {
     light: Record<string, string>;
     dark: Record<string, string>;
@@ -34,8 +36,15 @@ export function parseThemeCSS(cssContent: string): ParsedTheme | null {
       return null;
     }
 
+    // Parse variations if included
+    let variations: string[] | undefined;
+    if (metadata.variations) {
+      variations = parseVariations(metadata.variations, lightVars, darkVars, metadata.name);
+    }
+
     return {
       metadata,
+      variations,
       cssVars: {
         light: lightVars,
         dark: darkVars,
@@ -53,6 +62,7 @@ export function parseThemeCSS(cssContent: string): ParsedTheme | null {
  * /* @name: Theme Name
  *  * @description: Theme description
  *  * @premium: true/false
+ *  * @variations: orange, blue, green (optional)
  *  */
 function extractMetadata(cssContent: string): ThemeMetadata {
   const metadata: ThemeMetadata = {
@@ -60,15 +70,42 @@ function extractMetadata(cssContent: string): ThemeMetadata {
   };
 
   // Match metadata comment block
-  const metadataMatch = cssContent.match(/\/\*\s*@name:\s*(.+?)\s*\n\s*\*\s*@description:\s*(.+?)\s*\n\s*\*\s*@premium:\s*(true|false)\s*\*\//);
+  const metadataMatch = cssContent.match(/\/\*\s*@name:\s*(.+?)\s*\n\s*\*\s*@description:\s*(.+?)\s*\n\s*\*\s*@premium:\s*(true|false)(?:\s*\n\s*\*\s*@variations:\s*(.+?))?\s*\*\//);
 
   if (metadataMatch) {
     metadata.name = metadataMatch[1].trim();
     metadata.description = metadataMatch[2].trim();
     metadata.isPremium = metadataMatch[3] === "true";
+    if (metadataMatch[4]) {
+      metadata.variations = metadataMatch[4].trim();
+    }
   }
 
   return metadata;
+}
+
+function parseVariations(
+  variationsStr: string,
+  lightVars: Record<string, string>,
+  darkVars: Record<string, string>,
+  themeName: string
+): string[] | undefined {
+  const variations = variationsStr.split(",").map(v => v.trim());
+
+  // Check variation variables exist
+  for (const variation of variations) {
+    const varName = `--variation-${variation}`;
+
+    if (!lightVars[varName]) {
+      console.warn(`Theme "${themeName}": Missing light mode CSS variable ${varName}`);
+    }
+
+    if (!darkVars[varName]) {
+      console.warn(`Theme "${themeName}": Missing dark mode CSS variable ${varName}`);
+    }
+  }
+
+  return variations.length > 0 ? variations : undefined;
 }
 
 /**
