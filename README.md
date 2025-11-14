@@ -90,7 +90,12 @@ Whatbox installer
 ```bash
 wget -O installer.sh https://get.autobrr.com/qui/whatbox && chmod +x installer.sh && ./installer.sh
 ```
+### Homebrew
 
+```bash
+brew tap autobrr/qui https://github.com/autobrr/qui
+brew install --cask qui
+```
 
 ### First Setup
 
