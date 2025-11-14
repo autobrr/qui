@@ -36,6 +36,7 @@ type automationSettingsRequest struct {
 	MaxResultsPerRun             int      `json:"maxResultsPerRun"`
 	FindIndividualEpisodes       bool     `json:"findIndividualEpisodes"`
 	SizeMismatchTolerancePercent float64  `json:"sizeMismatchTolerancePercent"`
+	UseCategoryFromIndexer       bool     `json:"useCategoryFromIndexer"`
 }
 
 type automationRunRequest struct {
@@ -371,6 +372,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		MaxResultsPerRun:             req.MaxResultsPerRun,
 		FindIndividualEpisodes:       req.FindIndividualEpisodes,
 		SizeMismatchTolerancePercent: req.SizeMismatchTolerancePercent,
+		UseCategoryFromIndexer:       req.UseCategoryFromIndexer,
 	}
 
 	updated, err := h.service.UpdateAutomationSettings(r.Context(), settings)

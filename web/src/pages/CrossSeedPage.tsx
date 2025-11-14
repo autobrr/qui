@@ -61,6 +61,7 @@ interface AutomationFormState {
 interface GlobalCrossSeedSettings {
   findIndividualEpisodes: boolean
   sizeMismatchTolerancePercent: number
+  useCategoryFromIndexer: boolean
 }
 
 // RSS Automation constants
@@ -85,6 +86,7 @@ const DEFAULT_AUTOMATION_FORM: AutomationFormState = {
 const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   findIndividualEpisodes: false,
   sizeMismatchTolerancePercent: 5.0,
+  useCategoryFromIndexer: false,
 }
 
 function parseList(value: string): string[] {
@@ -242,6 +244,7 @@ export function CrossSeedPage() {
       setGlobalSettings({
         findIndividualEpisodes: settings.findIndividualEpisodes,
         sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent ?? 5.0,
+        useCategoryFromIndexer: settings.useCategoryFromIndexer ?? false,
       })
       setGlobalSettingsInitialized(true)
     }
@@ -331,6 +334,7 @@ export function CrossSeedPage() {
       // Only update the global settings
       findIndividualEpisodes: globalSettings.findIndividualEpisodes,
       sizeMismatchTolerancePercent: globalSettings.sizeMismatchTolerancePercent,
+      useCategoryFromIndexer: globalSettings.useCategoryFromIndexer,
     }
     updateGlobalSettingsMutation.mutate(payload)
   }
@@ -357,6 +361,7 @@ export function CrossSeedPage() {
       maxResultsPerRun: automationForm.maxResultsPerRun,
       findIndividualEpisodes: globalSettings.findIndividualEpisodes,
       sizeMismatchTolerancePercent: globalSettings.sizeMismatchTolerancePercent,
+      useCategoryFromIndexer: globalSettings.useCategoryFromIndexer,
     }
     updateSettingsMutation.mutate(payload)
   }
@@ -1208,6 +1213,19 @@ export function CrossSeedPage() {
             />
             <p className="text-xs text-muted-foreground">
               Filters out search results with sizes differing by more than this percentage. Set to 0 for exact size matching.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="global-use-category-from-indexer" className="flex items-center gap-2">
+              <Switch
+                id="global-use-category-from-indexer"
+                checked={globalSettings.useCategoryFromIndexer}
+                onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, useCategoryFromIndexer: !!value }))}
+              />
+              Use indexer name as category
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              When enabled, cross-seeded torrents will automatically use the indexer name as their qBittorrent category.
             </p>
           </div>
       </CardContent>

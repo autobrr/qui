@@ -1382,10 +1382,15 @@ func (s *Service) processCrossSeedCandidate(
 	// Skip hash checking since we're pointing to existing files
 	options["skip_checking"] = "true"
 
-	// Use category from request or matched torrent
+	// Use category from request or matched torrent, or indexer name based on global settings
 	category := req.Category
 	if category == "" {
-		category = matchedTorrent.Category
+		// Check global settings for useCategoryFromIndexer
+		if settings, err := s.GetAutomationSettings(ctx); err == nil && settings.UseCategoryFromIndexer && req.IndexerName != "" {
+			category = req.IndexerName
+		} else {
+			category = matchedTorrent.Category
+		}
 	}
 	if category != "" {
 		options["category"] = category
@@ -2584,6 +2589,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 			TargetInstanceIDs:      []int{instanceID},
 			StartPaused:            &startPausedCopy,
 			AddCrossSeedTag:        &addCrossSeedTag,
+			IndexerName:            indexerName,
 			FindIndividualEpisodes: req.FindIndividualEpisodes,
 		}
 

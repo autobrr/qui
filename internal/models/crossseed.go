@@ -32,6 +32,7 @@ type CrossSeedAutomationSettings struct {
 	// Global cross-seed settings (apply to both RSS Automation and Seeded Torrent Search)
 	FindIndividualEpisodes       bool    `json:"findIndividualEpisodes"`       // Match season packs with individual episodes
 	SizeMismatchTolerancePercent float64 `json:"sizeMismatchTolerancePercent"` // Size tolerance for matching (default: 5%)
+	UseCategoryFromIndexer       bool    `json:"useCategoryFromIndexer"`       // Use indexer name as category for cross-seeds
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -52,6 +53,7 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		MaxResultsPerRun:             50,
 		FindIndividualEpisodes:       false, // Default to false - only find season packs when searching with season packs
 		SizeMismatchTolerancePercent: 5.0,   // Allow 5% size difference by default
+		UseCategoryFromIndexer:       false, // Default to false - don't override categories by default
 		CreatedAt:                    time.Now().UTC(),
 		UpdatedAt:                    time.Now().UTC(),
 	}
@@ -192,7 +194,8 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	query := `
 		SELECT enabled, run_interval_minutes, start_paused, category,
 		       tags, ignore_patterns, target_instance_ids, target_indexer_ids,
-		       max_results_per_run, find_individual_episodes, size_mismatch_tolerance_percent, created_at, updated_at
+		       max_results_per_run, find_individual_episodes, size_mismatch_tolerance_percent,
+		       use_category_from_indexer, created_at, updated_at
 		FROM cross_seed_settings
 		WHERE id = 1
 	`
@@ -216,6 +219,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&settings.MaxResultsPerRun,
 		&settings.FindIndividualEpisodes,
 		&settings.SizeMismatchTolerancePercent,
+		&settings.UseCategoryFromIndexer,
 		&createdAt,
 		&updatedAt,
 	)
@@ -280,9 +284,10 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		INSERT INTO cross_seed_settings (
 			id, enabled, run_interval_minutes, start_paused, category,
 			tags, ignore_patterns, target_instance_ids, target_indexer_ids,
-			max_results_per_run, find_individual_episodes, size_mismatch_tolerance_percent
+			max_results_per_run, find_individual_episodes, size_mismatch_tolerance_percent,
+			use_category_from_indexer
 		) VALUES (
-			1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -295,7 +300,8 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			target_indexer_ids = excluded.target_indexer_ids,
 			max_results_per_run = excluded.max_results_per_run,
 			find_individual_episodes = excluded.find_individual_episodes,
-			size_mismatch_tolerance_percent = excluded.size_mismatch_tolerance_percent
+			size_mismatch_tolerance_percent = excluded.size_mismatch_tolerance_percent,
+			use_category_from_indexer = excluded.use_category_from_indexer
 	`
 
 	_, err = s.db.ExecContext(ctx, query,
@@ -310,6 +316,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		settings.MaxResultsPerRun,
 		settings.FindIndividualEpisodes,
 		settings.SizeMismatchTolerancePercent,
+		settings.UseCategoryFromIndexer,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("upsert settings: %w", err)

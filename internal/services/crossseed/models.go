@@ -29,6 +29,8 @@ type CrossSeedRequest struct {
 	// AddCrossSeedTag controls whether the service should automatically tag added torrents as cross-seeds.
 	// Defaults to true when omitted.
 	AddCrossSeedTag *bool `json:"add_cross_seed_tag,omitempty"`
+	// IndexerName specifies the name of the indexer for this torrent (used with useCategoryFromIndexer setting)
+	IndexerName string `json:"indexer_name,omitempty"`
 	// FindIndividualEpisodes controls whether to find individual episodes when searching with season packs
 	// If false (default), season packs will only match with other season packs
 	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
