@@ -6,6 +6,24 @@ A fast, modern web interface for qBittorrent. Supports managing multiple qBittor
   <img src=".github/assets/qui.png" alt="qui" width="100%" />
 </div>
 
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [API](#api)
+- [Metrics](#metrics)
+- [External Programs](#external-programs)
+- [Tracker Icons](#tracker-icons)
+- [Reverse Proxy for External Applications](#reverse-proxy-for-external-applications)
+- [Docker](#docker)
+- [Base URL Configuration](#base-url-configuration)
+- [qBittorrent Version Compatibility](#qbittorrent-version-compatibility)
+- [Community](#community)
+- [Support Development](#support-development)
+- [Contributing](#contributing)
+- [License](#license)
+
 ## Features
 
 - **Single Binary**: No dependencies, just download and run
@@ -557,9 +575,48 @@ qui automatically detects the features available on each qBittorrent instance an
 
 ## Community
 
-Join our friendly and welcoming community on [Discord](https://discord.autobrr.com/qui)! Connect with fellow autobrr users, get advice, and share your experiences. 
-Whether you're seeking help, wanting to contribute, or just looking to discuss your ideas, our community is a hub of discussion and support. 
+Join our friendly and welcoming community on [Discord](https://discord.autobrr.com/qui)! Connect with fellow autobrr users, get advice, and share your experiences.
+Whether you're seeking help, wanting to contribute, or just looking to discuss your ideas, our community is a hub of discussion and support.
 We're all here to help each other out, so don't hesitate to jump in!
+
+## Support Development
+
+qui is developed and maintained by volunteers. Your support helps us continue improving the project.
+
+### License Key
+
+Pay what you want (minimum $9.99) to unlock premium themes:
+- Visit [Polar.sh](https://buy.polar.sh/polar_cl_yyXJesVM9pFVfAPIplspbfCukgVgXzXjXIc2N0I8WcL) or Settings → Themes in your qui instance
+- License is lifetime
+- Direct support to the project
+
+### GitHub Sponsors & Personal Support
+
+- **s0up4200** - [GitHub Sponsors](https://github.com/s0up4200) | [Buy Me a Coffee](https://buymeacoffee.com/s0up4200)
+- **zze0s** - [GitHub Sponsors](https://github.com/zze0s)
+
+### Cryptocurrency
+
+#### Bitcoin (BTC)
+- s0up4200: `bc1qfe093kmhvsa436v4ksz0udfcggg3vtnm2tjgem`
+- zze0s: `bc1q2nvdd83hrzelqn4vyjm8tvjwmsuuxsdlg4ws7x`
+
+#### Ethereum (ETH)
+- s0up4200: `0xD8f517c395a68FEa8d19832398d4dA7b45cbc38F`
+- zze0s: `0xBF7d749574aabF17fC35b27232892d3F0ff4D423`
+
+#### Litecoin (LTC)
+- s0up4200: `ltc1q86nx64mu2j22psj378amm58ghvy4c9dw80z88h`
+- zze0s: `ltc1qza9ffjr5y43uk8nj9ndjx9hkj0ph3rhur6wudn`
+
+#### Monero (XMR)
+- zze0s: `44AvbWXzFN3bnv2oj92AmEaR26PQf5Ys4W155zw3frvEJf2s4g325bk4tRBgH7umSVMhk88vkU3gw9cDvuCSHgpRPsuWVJp`
+
+---
+
+All methods unlock premium themes — use whichever works best for you. For other currencies or payment methods, [reach out on Discord](https://discord.autobrr.com/qui).
+
+Thank you for your support ❤️
 
 ## Contributing
 
