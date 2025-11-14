@@ -1540,7 +1540,7 @@ func (s *Service) processCrossSeedCandidate(
 	// Execute external program if configured (async, non-blocking)
 	s.executeExternalProgram(ctx, candidate.InstanceID, torrentHash)
 
-	log.Info().
+	log.Debug().
 		Int("instanceID", candidate.InstanceID).
 		Str("instanceName", candidate.InstanceName).
 		Str("torrentHash", torrentHash).
@@ -4547,7 +4547,7 @@ func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, to
 		success := s.executeExternalProgramSimple(ctx, program, *targetTorrent)
 
 		if success {
-			log.Info().
+			log.Debug().
 				Int("instanceId", instanceID).
 				Str("torrentHash", torrentHash).
 				Int("programId", programID).
@@ -4609,7 +4609,7 @@ func (s *Service) executeExternalProgramSimple(ctx context.Context, program *mod
 	}
 
 	// Log the command
-	log.Info().
+	log.Debug().
 		Str("program", program.Name).
 		Str("hash", torrent.Hash).
 		Str("command", fmt.Sprintf("%v", cmd.Args)).
