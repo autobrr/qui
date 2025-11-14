@@ -1179,6 +1179,7 @@ export interface CrossSeedAutomationSettings {
   findIndividualEpisodes: boolean
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
+  runExternalProgramId?: number | null
   createdAt?: string
   updatedAt?: string
 }

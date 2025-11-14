@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"os/exec"
+	"runtime"
 	"slices"
 	"sort"
 	"strconv"
@@ -75,6 +77,9 @@ type Service struct {
 	automationStore *models.CrossSeedStore
 	jackettService  *jackett.Service
 
+	// External program execution
+	externalProgramStore *models.ExternalProgramStore
+
 	automationMu     sync.Mutex
 	automationCancel context.CancelFunc
 	automationWake   chan struct{}
@@ -123,6 +128,7 @@ func NewService(
 	filesManager *filesmanager.Service,
 	automationStore *models.CrossSeedStore,
 	jackettService *jackett.Service,
+	externalProgramStore *models.ExternalProgramStore,
 ) *Service {
 	searchCache := ttlcache.New(ttlcache.Options[string, []TorrentSearchResult]{}.
 		SetDefaultTTL(searchResultCacheTTL))
@@ -133,17 +139,18 @@ func NewService(
 		SetDefaultTTL(indexerDomainCacheTTL))
 
 	return &Service{
-		instanceStore:       instanceStore,
-		syncManager:         syncManager,
-		filesManager:        filesManager,
-		releaseCache:        NewReleaseCache(),
-		searchResultCache:   searchCache,
-		asyncFilteringCache: asyncFilteringCache,
-		indexerDomainCache:  indexerDomainCache,
-		automationStore:     automationStore,
-		jackettService:      jackettService,
-		automationWake:      make(chan struct{}, 1),
-		domainMappings:      initializeDomainMappings(),
+		instanceStore:        instanceStore,
+		syncManager:          syncManager,
+		filesManager:         filesManager,
+		releaseCache:         NewReleaseCache(),
+		searchResultCache:    searchCache,
+		asyncFilteringCache:  asyncFilteringCache,
+		indexerDomainCache:   indexerDomainCache,
+		automationStore:      automationStore,
+		jackettService:       jackettService,
+		externalProgramStore: externalProgramStore,
+		automationWake:       make(chan struct{}, 1),
+		domainMappings:       initializeDomainMappings(),
 	}
 }
 
@@ -1526,6 +1533,9 @@ func (s *Service) processCrossSeedCandidate(
 		Progress: matchedTorrent.Progress,
 		Size:     matchedTorrent.Size,
 	}
+
+	// Execute external program if configured (async, non-blocking)
+	s.executeExternalProgram(ctx, candidate.InstanceID, torrentHash)
 
 	log.Info().
 		Int("instanceID", candidate.InstanceID).
@@ -4457,4 +4467,289 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		Matches:        matches,
 		Recommendation: recommendation,
 	}, nil
+}
+
+// executeExternalProgram runs the configured external program for a successfully injected torrent
+func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, torrentHash string) {
+	if s.externalProgramStore == nil {
+		return
+	}
+
+	// Get current settings to check if external program is configured
+	settings, err := s.GetAutomationSettings(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get automation settings for external program execution")
+		return
+	}
+
+	if settings.RunExternalProgramID == nil {
+		return // No external program configured
+	}
+
+	programID := *settings.RunExternalProgramID
+
+	// Get the external program configuration
+	program, err := s.externalProgramStore.GetByID(ctx, programID)
+	if err != nil {
+		if err == models.ErrExternalProgramNotFound {
+			log.Warn().Int("programId", programID).Msg("Configured external program not found")
+			return
+		}
+		log.Error().Err(err).Int("programId", programID).Msg("Failed to get external program configuration")
+		return
+	}
+
+	if !program.Enabled {
+		log.Debug().Int("programId", programID).Str("programName", program.Name).Msg("External program is disabled, skipping execution")
+		return
+	}
+
+	// Execute in a separate goroutine to avoid blocking the cross-seed operation
+	go func() {
+		log.Debug().
+			Int("instanceId", instanceID).
+			Str("torrentHash", torrentHash).
+			Int("programId", programID).
+			Str("programName", program.Name).
+			Msg("Executing external program for cross-seed injection")
+
+		// Get torrent info from qBittorrent using sync manager
+		torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
+		if err != nil {
+			log.Error().Err(err).Str("torrentHash", torrentHash).Msg("Failed to get torrents for external program execution")
+			return
+		}
+
+		// Find the specific torrent
+		var targetTorrent *qbt.Torrent
+		for i := range torrents {
+			if strings.EqualFold(torrents[i].Hash, torrentHash) {
+				targetTorrent = &torrents[i]
+				break
+			}
+		}
+
+		if targetTorrent == nil {
+			log.Error().Str("torrentHash", torrentHash).Msg("Torrent not found for external program execution")
+			return
+		}
+
+		// Execute the external program using the same logic as the handler
+		s.executeExternalProgramForTorrent(ctx, program, targetTorrent)
+	}()
+}
+
+// executeExternalProgramForTorrent executes an external program for a specific torrent
+// This mirrors the logic from internal/api/handlers/external_programs.go
+func (s *Service) executeExternalProgramForTorrent(ctx context.Context, program *models.ExternalProgram, torrent *qbt.Torrent) {
+	// Apply path mappings to convert remote paths to local paths
+	savePath := applyPathMappings(torrent.SavePath, program.PathMappings)
+	contentPath := applyPathMappings(torrent.ContentPath, program.PathMappings)
+
+	torrentData := map[string]string{
+		"hash":         torrent.Hash,
+		"name":         torrent.Name,
+		"save_path":    savePath,
+		"category":     torrent.Category,
+		"tags":         torrent.Tags,
+		"state":        string(torrent.State),
+		"size":         fmt.Sprintf("%d", torrent.Size),
+		"progress":     fmt.Sprintf("%.2f", torrent.Progress),
+		"content_path": contentPath,
+	}
+
+	// Build command arguments by substituting variables
+	args := s.buildArguments(program.ArgsTemplate, torrentData)
+
+	// Build the command
+	var cmd *exec.Cmd
+
+	// Build command based on platform and use_terminal setting
+	if program.UseTerminal {
+		// Launch in a terminal window
+		if runtime.GOOS == "windows" {
+			cmdArgs := []string{"/c", "start", "", "cmd", "/k", program.Path}
+			cmdArgs = append(cmdArgs, args...)
+			cmd = exec.Command("cmd.exe", cmdArgs...)
+		} else {
+			// Unix/Linux: Build command string and spawn in a terminal
+			allArgs := append([]string{program.Path}, args...)
+			cmd = s.createTerminalCommand(allArgs)
+		}
+	} else {
+		// Launch directly without terminal (for GUI apps or background processes)
+		if runtime.GOOS == "windows" {
+			cmdArgs := []string{"/c", "start", "", "/b", program.Path}
+			cmdArgs = append(cmdArgs, args...)
+			cmd = exec.Command("cmd.exe", cmdArgs...)
+		} else {
+			// Unix/Linux: Direct execution
+			if len(args) > 0 {
+				cmd = exec.Command(program.Path, args...)
+			} else {
+				cmd = exec.Command(program.Path)
+			}
+		}
+	}
+
+	// Log the full command being executed for debugging
+	log.Debug().
+		Str("program", program.Name).
+		Str("path", program.Path).
+		Strs("args", args).
+		Str("hash", torrent.Hash).
+		Str("full_command", fmt.Sprintf("%v", cmd.Args)).
+		Msg("Executing external program for cross-seed")
+
+	// Execute the command in a goroutine
+	go func() {
+		var execErr error
+
+		if runtime.GOOS == "windows" {
+			execErr = cmd.Run()
+			if execErr != nil {
+				log.Debug().
+					Err(execErr).
+					Str("program", program.Name).
+					Str("hash", torrent.Hash).
+					Str("command", fmt.Sprintf("%v", cmd.Args)).
+					Msg("cmd.exe exited with error (may be normal for 'start' command)")
+			}
+		} else {
+			execErr = cmd.Start()
+			if execErr != nil {
+				log.Error().
+					Err(execErr).
+					Str("program", program.Name).
+					Str("hash", torrent.Hash).
+					Str("command", fmt.Sprintf("%v", cmd.Args)).
+					Msg("External program failed to start")
+				return
+			}
+
+			waitErr := cmd.Wait()
+			if waitErr != nil {
+				log.Debug().
+					Err(waitErr).
+					Str("program", program.Name).
+					Str("hash", torrent.Hash).
+					Str("command", fmt.Sprintf("%v", cmd.Args)).
+					Msg("Terminal emulator exited with error (may be normal)")
+			}
+		}
+	}()
+
+	// Log successful launch
+	if program.UseTerminal {
+		log.Info().
+			Str("program", program.Name).
+			Str("hash", torrent.Hash).
+			Str("command", fmt.Sprintf("%v", cmd.Args)).
+			Msg("External program terminal launched")
+	} else {
+		log.Info().
+			Str("program", program.Name).
+			Str("hash", torrent.Hash).
+			Str("command", fmt.Sprintf("%v", cmd.Args)).
+			Msg("External program launched")
+	}
+}
+
+// Helper functions for external program execution
+
+// applyPathMappings applies path mappings to convert remote paths to local paths
+func applyPathMappings(remotePath string, mappings []models.PathMapping) string {
+	if remotePath == "" {
+		return ""
+	}
+
+	for _, mapping := range mappings {
+		if strings.HasPrefix(remotePath, mapping.From) {
+			return strings.Replace(remotePath, mapping.From, mapping.To, 1)
+		}
+	}
+	return remotePath
+}
+
+// buildArguments substitutes variables in the args template with torrent data
+func (s *Service) buildArguments(template string, torrentData map[string]string) []string {
+	if template == "" {
+		return []string{}
+	}
+
+	// Split template into arguments (respecting quoted strings)
+	args := splitArgs(template)
+
+	// Substitute variables in each argument
+	for i := range args {
+		for key, value := range torrentData {
+			placeholder := "{" + key + "}"
+			args[i] = strings.ReplaceAll(args[i], placeholder, value)
+		}
+	}
+
+	return args
+}
+
+// splitArgs splits a string into arguments, respecting quoted strings
+func splitArgs(input string) []string {
+	var args []string
+	var current string
+	var inQuotes bool
+	var quoteChar rune
+
+	for i, char := range input {
+		switch {
+		case !inQuotes && (char == '"' || char == '\''):
+			inQuotes = true
+			quoteChar = char
+		case inQuotes && char == quoteChar:
+			// Check if this is an escaped quote
+			if i > 0 && rune(input[i-1]) == '\\' {
+				current += string(char)
+			} else {
+				inQuotes = false
+			}
+		case !inQuotes && char == ' ':
+			if current != "" {
+				args = append(args, current)
+				current = ""
+			}
+		default:
+			current += string(char)
+		}
+	}
+
+	if current != "" {
+		args = append(args, current)
+	}
+
+	return args
+}
+
+// createTerminalCommand creates a command to run in a terminal on Unix systems
+func (s *Service) createTerminalCommand(args []string) *exec.Cmd {
+	// Try to find an available terminal emulator
+	terminals := []string{"gnome-terminal", "xterm", "konsole", "terminator"}
+
+	for _, terminal := range terminals {
+		if _, err := exec.LookPath(terminal); err == nil {
+			switch terminal {
+			case "gnome-terminal":
+				return exec.Command("gnome-terminal", append([]string{"--"}, args...)...)
+			case "xterm":
+				return exec.Command("xterm", append([]string{"-e"}, args...)...)
+			case "konsole":
+				return exec.Command("konsole", append([]string{"-e"}, args...)...)
+			case "terminator":
+				return exec.Command("terminator", append([]string{"-x"}, args...)...)
+			}
+		}
+	}
+
+	// Fallback to direct execution if no terminal found
+	if len(args) > 0 {
+		return exec.Command(args[0], args[1:]...)
+	}
+	return exec.Command("sh")
 }
