@@ -1792,9 +1792,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       setCrossSeedSearchResponse(null)
       setCrossSeedHasSearched(false)
 
-      // Check if there are any rate-limited indexers that might affect the search
-      // This information will be shown in the UI to help users understand potential issues
-      
       // Analyze the torrent to get search metadata (for indexer filtering)
       // Don't set loading state - this is just metadata gathering, not searching
       void api
