@@ -103,6 +103,7 @@ type Tx struct {
 	ctx       context.Context // context from BeginTx, used for commit/rollback
 	isWriteTx bool            // true if this is a write transaction that needs serialized commit
 	unlockFn  func()          // function to unlock writerMu when transaction completes (write tx only)
+	unlockOnce sync.Once      // ensures unlock happens only once
 
 	// Track statements prepared during this transaction for promotion to DB cache after commit
 	txStmts map[string]struct{} // query -> struct{} (used as set to track which queries to cache)
@@ -200,17 +201,17 @@ func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sq
 // Also promotes any transaction-prepared statements to the DB cache for future use.
 func (t *Tx) Commit() error {
 	err := t.tx.Commit()
-	// Release mutex after commit completes (for write transactions)
-	if t.unlockFn != nil {
-		t.unlockFn()
-		t.unlockFn = nil // Prevent double-unlock
+	if err == nil {
+		// Commit succeeded - promote statements to cache
+		t.promoteStatementsToCache()
+
+		// Release mutex after commit completes (for write transactions)
+		if t.unlockFn != nil {
+			t.unlockOnce.Do(t.unlockFn)
+		}
 	}
-	if err != nil {
-		return err
-	}
-	// Promote only on successful commit
-	t.promoteStatementsToCache()
-	return nil
+
+	return err
 }
 
 // Rollback rolls back the transaction and releases the writer mutex if this is a write transaction.
@@ -219,8 +220,7 @@ func (t *Tx) Rollback() error {
 	err := t.tx.Rollback()
 	// Release mutex after rollback completes (for write transactions)
 	if t.unlockFn != nil {
-		t.unlockFn()
-		t.unlockFn = nil // Prevent double-unlock
+		t.unlockOnce.Do(t.unlockFn)
 	}
 	// Do NOT promote on rollback
 	return err
