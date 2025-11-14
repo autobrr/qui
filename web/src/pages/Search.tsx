@@ -17,6 +17,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useDateTimeFormatters } from '@/hooks/useDateTimeFormatters'
 import { useInstances } from '@/hooks/useInstances'
 import { api } from '@/lib/api'
+import { getCategoriesForSearchType, getSearchTypeLabel, inferSearchTypeFromCategories, SEARCH_TYPE_OPTIONS, type SearchType } from '@/lib/search-derived-params'
+import { extractImdbId, extractTvdbId } from '@/lib/search-id-parsing'
 import type { TorznabIndexer, TorznabRecentSearch, TorznabSearchRequest, TorznabSearchResponse, TorznabSearchResult } from '@/types'
 import { ArrowDown, ArrowUp, ArrowUpDown, Download, ExternalLink, Plus, RefreshCw, Search as SearchIcon, SlidersHorizontal } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -54,6 +56,16 @@ const ADVANCED_PARAM_DEFAULTS: AdvancedParamsState = {
   offset: ''
 }
 
+const SEARCH_PLACEHOLDERS: Record<SearchType, string> = {
+  auto: 'Try: "Sample Movie 2024", "tt1234567", "tvdb 123456", or "Example Artist – Example Album"',
+  movies: 'e.g., "Sample Movie 2024", "Another Film 1999", "tt1234567"',
+  tv: 'e.g., "Sample Show S01E01", "tvdb 123456", "Fictional Series S02"',
+  music: 'e.g., "Example Artist – Example Album", "Sample Band – Debut EP"',
+  books: 'e.g., "Example Book Title", "Fictional Series Book 1"',
+  apps: 'e.g., "Sample OS ISO", "Example App 2025"',
+  xxx: 'Enter a specific adult release name'
+}
+
 const ADVANCED_PARAM_CONFIG: AdvancedParamConfig[] = [
   { key: 'imdbId', label: 'IMDb ID', placeholder: 'tt1234567', type: 'text' },
   { key: 'tvdbId', label: 'TVDb ID', placeholder: '12345', type: 'text' },
@@ -73,6 +85,7 @@ export function Search() {
   const [total, setTotal] = useState(0)
   const [indexers, setIndexers] = useState<TorznabIndexer[]>([])
   const [selectedIndexers, setSelectedIndexers] = useState<Set<number>>(new Set())
+  const [searchType, setSearchType] = useState<SearchType>('auto')
   const [loadingIndexers, setLoadingIndexers] = useState(true)
   const { instances, isLoading: loadingInstances } = useInstances()
   const [selectedInstanceId, setSelectedInstanceId] = useState<number | null>(null)
@@ -89,6 +102,7 @@ export function Search() {
   const [queryFocused, setQueryFocused] = useState(false)
   const [showAdvancedParams, setShowAdvancedParams] = useState(false)
   const [advancedParams, setAdvancedParams] = useState<AdvancedParamsState>(() => ({ ...ADVANCED_PARAM_DEFAULTS }))
+  const searchPlaceholder = useMemo(() => SEARCH_PLACEHOLDERS[searchType], [searchType])
   const hasAdvancedParams = useMemo(() => Object.values(advancedParams).some(value => value.trim() !== ''), [advancedParams])
   const queryInputRef = useRef<HTMLInputElement | null>(null)
   const blurTimeoutRef = useRef<number | null>(null)
@@ -193,15 +207,27 @@ export function Search() {
   }, [api])
 
   const runSearch = useCallback(
-    async ({ bypassCache = false, queryOverride }: { bypassCache?: boolean; queryOverride?: string } = {}) => {
+    async ({
+      bypassCache = false,
+      queryOverride,
+      searchTypeOverride
+    }: { bypassCache?: boolean; queryOverride?: string; searchTypeOverride?: SearchType } = {}) => {
       const searchQuery = (queryOverride ?? query).trim()
+      const targetSearchType = searchTypeOverride ?? searchType
+      const detectedImdbId = extractImdbId(searchQuery)
+      const detectedTvdbId = extractTvdbId(searchQuery)
       setLoading(true)
       setCacheMetadata(null)
 
       try {
-        const payload: Omit<TorznabSearchRequest, "categories"> = {
+        const payload: TorznabSearchRequest = {
           query: searchQuery,
           indexer_ids: Array.from(selectedIndexers),
+        }
+
+        const derivedCategories = getCategoriesForSearchType(targetSearchType)
+        if (derivedCategories && derivedCategories.length > 0) {
+          payload.categories = derivedCategories
         }
 
         const parseNumberParam = (value: string) => {
@@ -213,14 +239,16 @@ export function Search() {
           return Number.isNaN(parsed) ? null : parsed
         }
 
-        const imdbId = advancedParams.imdbId.trim()
-        if (imdbId) {
-          payload.imdb_id = imdbId
+        const manualImdbId = advancedParams.imdbId.trim()
+        const imdbIdToUse = manualImdbId || detectedImdbId || ''
+        if (imdbIdToUse) {
+          payload.imdb_id = imdbIdToUse
         }
 
-        const tvdbId = advancedParams.tvdbId.trim()
-        if (tvdbId) {
-          payload.tvdb_id = tvdbId
+        const manualTvdbId = advancedParams.tvdbId.trim()
+        const tvdbIdToUse = manualTvdbId || detectedTvdbId || ''
+        if (tvdbIdToUse) {
+          payload.tvdb_id = tvdbIdToUse
         }
 
         const artist = advancedParams.artist.trim()
@@ -282,7 +310,7 @@ export function Search() {
         setLoading(false)
       }
     },
-    [advancedParams, api, query, selectedIndexers, refreshRecentSearches]
+    [advancedParams, api, query, selectedIndexers, refreshRecentSearches, searchType]
   )
 
   // Build a category ID to name map from all indexers
@@ -523,19 +551,21 @@ export function Search() {
 
   const shouldShowSuggestions = queryFocused && suggestionMatches.length > 0
 
-  const handleSuggestionClick = useCallback((value: string) => {
-    setQuery(value)
+  const handleSuggestionClick = useCallback((search: TorznabRecentSearch) => {
+    setQuery(search.query)
+    const derivedType = inferSearchTypeFromCategories(search.categories) ?? 'auto'
+    setSearchType(derivedType)
     const rafId = requestAnimationFrame(() => {
       queryInputRef.current?.focus()
     })
     rafIdRef.current = rafId
-    const normalized = value.trim()
+    const normalized = search.query.trim()
     if (!validateSearchInputs(normalized)) {
       cancelAnimationFrame(rafId)
       rafIdRef.current = null
       return
     }
-    void runSearch({ queryOverride: normalized })
+    void runSearch({ queryOverride: normalized, searchTypeOverride: derivedType })
   }, [runSearch, validateSearchInputs])
 
   const handleDownload = (result: TorznabSearchResult) => {
@@ -574,7 +604,7 @@ export function Search() {
             <div className="flex-1">
               <CardTitle>Search Indexers</CardTitle>
               <CardDescription>
-                Search across all enabled indexers. Categories are automatically detected based on your query.
+                Search across all enabled indexers. Pick a query type or leave Auto to have categories detected automatically.
               </CardDescription>
             </div>
             <div className="flex items-center gap-2 shrink-0">
@@ -613,7 +643,22 @@ export function Search() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSearch} className="space-y-4">
-            <div className="flex gap-2">
+            <div className="flex items-center gap-1">
+              <div className="flex-shrink-0 min-w-[120px] max-w-[180px]">
+                <Label htmlFor="search-type" className="sr-only">Search type</Label>
+                <Select value={searchType} onValueChange={(value) => setSearchType(value as SearchType)}>
+                  <SelectTrigger id="search-type" className="w-full">
+                    <SelectValue placeholder="Auto detect" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SEARCH_TYPE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="flex-1 relative">
                 <Label htmlFor="query" className="sr-only">Search Query</Label>
                 <Input
@@ -641,27 +686,31 @@ export function Search() {
                       blurTimeoutRef.current = null
                     }, 100)
                   }}
-                  placeholder="Enter search query (e.g., 'Ubuntu', 'Breaking Bad S01E01', 'Interstellar 2014')"
+                  placeholder={searchPlaceholder}
                   disabled={loading}
                 />
                 {shouldShowSuggestions && (
                   <div className="absolute left-0 right-0 z-20 mt-1 rounded-md border bg-popover shadow-lg">
-                    {suggestionMatches.map((search) => (
-                      <button
-                        type="button"
-                        key={search.cacheKey}
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-muted focus-visible:outline-none"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => handleSuggestionClick(search.query)}
-                      >
-                        <div className="font-medium text-foreground">
-                          {search.query}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {search.totalResults} results · {formatCacheTimestamp(search.lastUsedAt ?? search.cachedAt)}
-                        </div>
-                      </button>
-                    ))}
+                    {suggestionMatches.map((search) => {
+                      const suggestionType = inferSearchTypeFromCategories(search.categories)
+                      const suggestionTypeLabel = getSearchTypeLabel(suggestionType ?? 'auto')
+                      return (
+                        <button
+                          type="button"
+                          key={search.cacheKey}
+                          className="w-full px-3 py-2 text-left text-sm hover:bg-muted focus-visible:outline-none"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => handleSuggestionClick(search)}
+                        >
+                          <div className="font-medium text-foreground">
+                            {search.query}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {suggestionTypeLabel} · {search.totalResults} results · {formatCacheTimestamp(search.lastUsedAt ?? search.cachedAt)}
+                          </div>
+                        </button>
+                      )
+                    })}
                   </div>
                 )}
               </div>
@@ -875,7 +924,7 @@ export function Search() {
                               type="button"
                               key={`${search.cacheKey}-${search.cachedAt}`}
                               className="rounded-md border px-3 py-2 text-left transition hover:border-primary hover:bg-muted/40 focus-visible:outline-none"
-                              onClick={() => handleSuggestionClick(search.query)}
+                          onClick={() => handleSuggestionClick(search)}
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <p className="font-medium text-foreground text-sm">{search.query || "Untitled search"}</p>
