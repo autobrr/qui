@@ -282,6 +282,19 @@ const CrossSeedDialogComponent = ({
           ) : error ? (
             <div className="space-y-2 rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
               <p className="break-words text-xs">{error}</p>
+              {(error.includes('rate limit') || error.includes('429') || error.includes('too many requests') || 
+                error.includes('cooldown') || error.includes('rate-limited')) ? (
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <p><strong>Why this happens:</strong> Trackers limit request frequency to prevent abuse and bans.</p>
+                  <p><strong>What you can do:</strong></p>
+                  <ul className="list-disc list-inside space-y-0.5 ml-2">
+                    <li>Wait 30-60 minutes before trying again</li>
+                    <li>Try searching with fewer indexers selected</li>
+                    <li>Use the RSS automation feature for ongoing cross-seeding</li>
+                    <li>Check the indexers page to see which ones are rate-limited</li>
+                  </ul>
+                </div>
+              ) : null}
               <div className="flex gap-2">
                 <Button size="sm" onClick={onRetry} className="h-7">
                   Retry

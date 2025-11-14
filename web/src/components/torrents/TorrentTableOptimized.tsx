@@ -1652,10 +1652,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     []
   )
 
-  const resetCrossSeedState = useCallback(() => {
+  const resetCrossSeedState = useCallback((preserveError = false) => {
     setCrossSeedTorrent(null)
     setCrossSeedSearchResponse(null)
-    setCrossSeedSearchError(null)
+    if (!preserveError) {
+      setCrossSeedSearchError(null)
+    }
     setCrossSeedSearchLoading(false)
     setCrossSeedSelectedKeys(new Set())
     setCrossSeedUseTag(true)
@@ -1711,6 +1713,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       setCrossSeedApplyResult(null)
       setCrossSeedHasSearched(true)
 
+      // Start search with better error context for rate limiting
       void api
         .searchCrossSeedTorrent(instanceId, torrent.hash, {
           findIndividualEpisodes: crossSeedSettings?.findIndividualEpisodes ?? false,
@@ -1731,9 +1734,18 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           }
         })
         .catch((error: unknown) => {
-          const message = error instanceof Error ? error.message : "Failed to search for cross-seeds"
+          let message = error instanceof Error ? error.message : "Failed to search for cross-seeds"
+          
+          // Enhance rate limit error messages with more specific context
+          if (message.includes('429') || message.includes('rate limit') || message.includes('too many requests') || 
+              message.includes('rate-limited') || message.includes('cooldown')) {
+            message = `Rate limit active: ${message}. This protects against tracker bans. Some indexers are temporarily unavailable.`
+          }
+          
           setCrossSeedSearchError(message)
-          toast.error(message)
+          toast.error(message, {
+            duration: message.includes('rate limit') || message.includes('cooldown') ? 10000 : 5000
+          })
         })
         .finally(() => {
           setCrossSeedSearchLoading(false)
@@ -1780,6 +1792,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       setCrossSeedSearchResponse(null)
       setCrossSeedHasSearched(false)
 
+      // Check if there are any rate-limited indexers that might affect the search
+      // This information will be shown in the UI to help users understand potential issues
+      
       // Analyze the torrent to get search metadata (for indexer filtering)
       // Don't set loading state - this is just metadata gathering, not searching
       void api
@@ -1792,9 +1807,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           })
         })
         .catch((error: unknown) => {
-          const message = error instanceof Error ? error.message : "Failed to analyze torrent"
+          let message = error instanceof Error ? error.message : "Failed to analyze torrent"
+          
+          // Enhance rate limit error messages for analysis too
+          if (message.includes('429') || message.includes('rate limit') || message.includes('too many requests')) {
+            message = `Rate limit encountered during analysis: ${message}. Some indexers may be temporarily unavailable. This is normal and protects against being banned. Try again in 30-60 minutes.`
+          }
+          
           setCrossSeedSearchError(message)
-          toast.error(message)
+          toast.error(message, {
+            duration: message.includes('rate limit') ? 10000 : 5000
+          })
         })
     },
     [api, hasEnabledCrossSeedIndexers, instanceId]
@@ -1852,8 +1875,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   const closeCrossSeedDialog = useCallback(() => {
     setCrossSeedDialogOpen(false)
-    resetCrossSeedState()
-  }, [resetCrossSeedState])
+    // Preserve rate limit and other critical errors when closing
+    const shouldPreserveError = Boolean(crossSeedSearchError && 
+      (crossSeedSearchError.includes('429') || 
+       crossSeedSearchError.includes('rate limit') || 
+       crossSeedSearchError.includes('too many requests')))
+    resetCrossSeedState(shouldPreserveError)
+  }, [resetCrossSeedState, crossSeedSearchError])
 
   const handleCrossSeedDialogOpenChange = useCallback((open: boolean) => {
     if (!open) {
