@@ -9,11 +9,13 @@ import {
   getCurrentTheme,
   setTheme,
   setThemeMode,
+  setThemeVariation,
   getThemeColors,
+  getStoredVariation,
   type ThemeMode
 } from "@/utils/theme";
 import { themes, isThemePremium } from "@/config/themes";
-import { Sun, Moon, Monitor, Check, Palette } from "lucide-react";
+import { Sun, Moon, Monitor, Check, Palette, CornerDownRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
@@ -58,6 +60,7 @@ export const ThemeToggle: React.FC = () => {
   const { currentMode, currentTheme } = useThemeChange();
   const [isTransitioning, setIsTransitioning] = useState(false);
   const { hasPremiumAccess } = useHasPremiumAccess();
+  const [open, setOpen] = useState(false);
 
   const handleModeSelect = useCallback(async (mode: ThemeMode) => {
     setIsTransitioning(true);
@@ -83,8 +86,26 @@ export const ThemeToggle: React.FC = () => {
     toast.success(`Switched to ${theme?.name || themeId} theme`);
   }, [hasPremiumAccess]);
 
+  const handleVariationSelect = useCallback(async (themeId: string, variationId: string) => {
+    const isPremium = isThemePremium(themeId);
+    if (isPremium && !hasPremiumAccess) {
+      toast.error("This is a premium theme. Please purchase a license to use it.");
+      return;
+    }
+
+    setIsTransitioning(true);
+    await setTheme(themeId);
+    await setThemeVariation(variationId);
+    setTimeout(() => setIsTransitioning(false), 400);
+
+    const theme = themes.find(t => t.id === themeId);
+    toast.success(`Switched to ${theme?.name || themeId} theme (${variationId})`);
+
+    setOpen(false);
+  }, [hasPremiumAccess]);
+
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
@@ -148,6 +169,8 @@ export const ThemeToggle: React.FC = () => {
           .map((theme) => {
             const isPremium = isThemePremium(theme.id);
             const isLocked = isPremium && !hasPremiumAccess;
+            const colors = getThemeColors(theme);
+            const currentVariation = getStoredVariation(theme.id) || theme.variations?.[0];
 
             return (
               <DropdownMenuItem
@@ -159,25 +182,59 @@ export const ThemeToggle: React.FC = () => {
                 )}
                 disabled={isLocked}
               >
-                <div className="flex items-center gap-2 flex-1">
-                  <div
-                    className="h-4 w-4 rounded-full ring-1 ring-black/10 dark:ring-white/10 transition-all duration-300 ease-out"
-                    style={{
-                      backgroundColor: getThemeColors(theme, '--primary'),
-                      backgroundImage: "none",
-                      background: getThemeColors(theme, '--primary') + " !important",
-                    }}
-                  />
-                  <div className="flex items-center justify-between gap-1.5 flex-1">
-                    <span>{theme.name}</span>
-                    {isPremium && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium">
-                        Premium
-                      </span>
-                    )}
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 flex-1">
+                    <div
+                      className="h-4 w-4 rounded-full ring-1 ring-black/10 dark:ring-white/10 transition-all duration-300 ease-out"
+                      style={{
+                        backgroundColor: colors.primary,
+                        backgroundImage: "none",
+                        background: colors.primary + " !important",
+                      }}
+                    />
+                    <div className="flex items-center justify-between gap-1.5 flex-1">
+                      <span>{theme.name}</span>
+                      {isPremium && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium">
+                          Premium
+                        </span>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Variation pills */}
+                  {colors.variations && colors.variations.length > 0 && (
+                    <div className="flex items-center gap-1.5 pl-1.5">
+                      <CornerDownRight className="h-3 w-3 text-muted-foreground" />
+                      <div className="flex gap-1 mt-1.5">
+                        {colors.variations.map((variation) => {
+                          const isSelected = currentVariation === variation.id;
+                          return (
+                            <div
+                              key={variation.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleVariationSelect(theme.id, variation.id);
+                              }}
+                              className={cn(
+                                "w-4 h-4 rounded-full transition-all cursor-pointer",
+                                isSelected
+                                  ? "ring-2 ring-black dark:ring-white"
+                                  : "ring-1 ring-black/10 dark:ring-white/10"
+                              )}
+                              style={{
+                                backgroundColor: variation.color,
+                                backgroundImage: "none",
+                                background: variation.color + " !important",
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                {currentTheme.id === theme.id && <Check className="h-4 w-4" />}
+                {currentTheme.id === theme.id && <Check className="h-4 w-4 self-center" />}
               </DropdownMenuItem>
             );
           })}

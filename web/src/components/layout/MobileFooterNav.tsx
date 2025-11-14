@@ -30,7 +30,9 @@ import {
   getCurrentThemeMode,
   setTheme,
   setThemeMode,
+  setThemeVariation,
   getThemeColors,
+  getStoredVariation,
   type ThemeMode
 } from "@/utils/theme"
 import { useQuery } from "@tanstack/react-query"
@@ -38,6 +40,7 @@ import { Link, useLocation } from "@tanstack/react-router"
 import {
   Archive,
   Check,
+  CornerDownRight,
   Copyright,
   Download,
   Github,
@@ -123,6 +126,19 @@ export function MobileFooterNav() {
     await setTheme(themeId)
     const theme = themes.find(t => t.id === themeId)
     toast.success(`Switched to ${theme?.name || themeId} theme`)
+  }, [hasPremiumAccess])
+
+  const handleVariationSelect = useCallback(async (themeId: string, variationId: string) => {
+    const isPremium = isThemePremium(themeId)
+    if (isPremium && !hasPremiumAccess) {
+      toast.error("This is a premium theme. Please purchase a license to use it.")
+      return
+    }
+
+    await setTheme(themeId)
+    await setThemeVariation(variationId)
+    const theme = themes.find(t => t.id === themeId)
+    toast.success(`Switched to ${theme?.name || themeId} theme (${variationId})`)
   }, [hasPremiumAccess])
 
   if (isSelectionMode) {
@@ -404,6 +420,8 @@ export function MobileFooterNav() {
                   .map((theme) => {
                     const isPremium = isThemePremium(theme.id)
                     const isLocked = isPremium && !hasPremiumAccess
+                    const colors = getThemeColors(theme)
+                    const currentVariation = getStoredVariation(theme.id) || theme.variations?.[0]
 
                     return (
                       <button
@@ -421,23 +439,60 @@ export function MobileFooterNav() {
                           isLocked && "opacity-60 cursor-not-allowed"
                         )}
                       >
-                        <div
-                          className="h-4 w-4 rounded-full ring-1 ring-black/10 dark:ring-white/10 flex-shrink-0"
-                          style={{
-                            backgroundColor: getThemeColors(theme, '--primary'),
-                            backgroundImage: "none",
-                            background: getThemeColors(theme, '--primary') + " !important",
-                          }}
-                        />
-                        <div className="flex items-center justify-between gap-2 flex-1 min-w-0">
-                          <span className="truncate">{theme.name}</span>
-                          {isPremium && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium flex-shrink-0">
-                              Premium
-                            </span>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className="h-4 w-4 rounded-full ring-1 ring-black/10 dark:ring-white/10 flex-shrink-0"
+                              style={{
+                                backgroundColor: colors.primary,
+                                backgroundImage: "none",
+                                background: colors.primary + " !important",
+                              }}
+                            />
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              <span className="truncate">{theme.name}</span>
+                              {isPremium && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium flex-shrink-0">
+                                  Premium
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Variation pills */}
+                          {colors.variations && colors.variations.length > 0 && (
+                            <div className="flex items-center gap-2 pl-1.5 mt-2">
+                              <CornerDownRight className="h-4 w-4 text-muted-foreground" />
+                              <div className="flex gap-2">
+                                {colors.variations.map((variation) => {
+                                  const isSelected = currentVariation === variation.id
+                                  return (
+                                    <div
+                                      key={variation.id}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleVariationSelect(theme.id, variation.id)
+                                        setShowThemeDialog(false)
+                                      }}
+                                      className={cn(
+                                        "w-8 h-8 rounded-full transition-all cursor-pointer",
+                                        isSelected
+                                          ? "ring-2 ring-black dark:ring-white"
+                                          : "ring-1 ring-black/10 dark:ring-white/10"
+                                      )}
+                                      style={{
+                                        backgroundColor: variation.color,
+                                        backgroundImage: "none",
+                                        background: variation.color + " !important",
+                                      }}
+                                    />
+                                  )
+                                })}
+                              </div>
+                            </div>
                           )}
                         </div>
-                        {currentTheme.id === theme.id && <Check className="h-4 w-4 flex-shrink-0" />}
+                        {currentTheme.id === theme.id && <Check className="h-4 w-4 flex-shrink-0 self-center" />}
                       </button>
                     )
                   })}
