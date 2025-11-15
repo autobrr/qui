@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -857,6 +858,7 @@ func intPtr(i int) *int {
 
 // Mock store for testing
 type mockTorznabIndexerStore struct {
+	mu                 sync.Mutex
 	indexers           []*models.TorznabIndexer
 	capabilities       map[int][]string // indexerID -> capabilities
 	panicOnListEnabled bool
@@ -867,6 +869,9 @@ type mockTorznabIndexerStore struct {
 }
 
 func (m *mockTorznabIndexerStore) Get(ctx context.Context, id int) (*models.TorznabIndexer, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.getCalls = append(m.getCalls, id)
 	for _, idx := range m.indexers {
 		if idx.ID == id {
@@ -877,10 +882,16 @@ func (m *mockTorznabIndexerStore) Get(ctx context.Context, id int) (*models.Torz
 }
 
 func (m *mockTorznabIndexerStore) List(ctx context.Context) ([]*models.TorznabIndexer, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	return m.indexers, nil
 }
 
 func (m *mockTorznabIndexerStore) ListEnabled(ctx context.Context) ([]*models.TorznabIndexer, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.listEnabledCalls++
 	if m.panicOnListEnabled {
 		panic("ListEnabled called unexpectedly")
@@ -895,6 +906,9 @@ func (m *mockTorznabIndexerStore) ListEnabled(ctx context.Context) ([]*models.To
 }
 
 func (m *mockTorznabIndexerStore) GetDecryptedAPIKey(indexer *models.TorznabIndexer) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	if indexer != nil {
 		m.apiKeyCalls = append(m.apiKeyCalls, indexer.ID)
 		if err, ok := m.apiKeyErrors[indexer.ID]; ok {
@@ -905,6 +919,9 @@ func (m *mockTorznabIndexerStore) GetDecryptedAPIKey(indexer *models.TorznabInde
 }
 
 func (m *mockTorznabIndexerStore) GetCapabilities(ctx context.Context, indexerID int) ([]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	if m.capabilities != nil {
 		if caps, exists := m.capabilities[indexerID]; exists {
 			return caps, nil
