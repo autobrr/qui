@@ -558,7 +558,12 @@ func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request
 			RespondError(w, http.StatusBadRequest, "No Torznab indexers configured. Add at least one enabled indexer before running seeded torrent search.")
 			return
 		}
-		RespondError(w, http.StatusBadRequest, err.Error())
+		status := http.StatusInternalServerError
+		if shouldReturnBadRequest(err) {
+			status = http.StatusBadRequest
+		}
+		log.Error().Err(err).Msg("Failed to start search run")
+		RespondError(w, status, err.Error())
 		return
 	}
 
