@@ -167,6 +167,9 @@ var ErrAutomationCooldownActive = errors.New("cross-seed automation cooldown act
 // ErrSearchRunActive indicates a search automation run is in progress.
 var ErrSearchRunActive = errors.New("cross-seed search run already running")
 
+// ErrNoIndexersConfigured indicates no Torznab indexers are available.
+var ErrNoIndexersConfigured = errors.New("no torznab indexers configured")
+
 // ErrInvalidWebhookRequest indicates a webhook check payload failed validation.
 var ErrInvalidWebhookRequest = errors.New("invalid webhook request")
 
@@ -229,6 +232,20 @@ type searchRunState struct {
 	recentResults    []models.CrossSeedSearchResult
 	nextWake         time.Time
 	lastError        error
+}
+
+func (s *Service) ensureIndexersConfigured(ctx context.Context) error {
+	if s.jackettService == nil {
+		return fmt.Errorf("jackett service not configured")
+	}
+	indexers, err := s.jackettService.GetEnabledIndexersInfo(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load enabled torznab indexers: %w", err)
+	}
+	if len(indexers) == 0 {
+		return ErrNoIndexersConfigured
+	}
+	return nil
 }
 
 // AutomationStatus summarises scheduler state for the API.
@@ -352,6 +369,10 @@ func (s *Service) RunAutomation(ctx context.Context, opts AutomationRunOptions) 
 		settings = models.DefaultCrossSeedAutomationSettings()
 	}
 
+	if err := s.ensureIndexersConfigured(ctx); err != nil {
+		return nil, err
+	}
+
 	// Default requested by / mode values
 	if opts.Mode == "" {
 		opts.Mode = models.CrossSeedRunModeManual
@@ -469,6 +490,10 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 	}
 
 	if err := s.validateSearchRunOptions(ctx, &opts); err != nil {
+		return nil, err
+	}
+
+	if err := s.ensureIndexersConfigured(ctx); err != nil {
 		return nil, err
 	}
 
@@ -626,6 +651,9 @@ func (s *Service) automationLoop(ctx context.Context) {
 					case <-time.After(150 * time.Millisecond):
 						// Continue after delay
 					}
+				} else if errors.Is(err, ErrNoIndexersConfigured) {
+					log.Info().Msg("Skipping cross-seed automation run: no Torznab indexers configured")
+					s.waitTimer(ctx, timer, 5*time.Minute)
 				} else {
 					log.Warn().Err(err).Msg("Cross-seed automation run failed")
 				}

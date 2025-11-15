@@ -188,6 +188,26 @@ export function CrossSeedPage() {
     queryFn: () => api.listTorznabIndexers(),
   })
 
+  const hasEnabledIndexers = useMemo(
+    () => (indexers ?? []).some(indexer => indexer.enabled),
+    [indexers]
+  )
+
+  const notifyMissingIndexers = useCallback((context: string) => {
+    toast.error("No Torznab indexers configured", {
+      description: `${context} Add at least one enabled indexer in Settings → Indexers.`,
+    })
+  }, [])
+
+  const handleIndexerError = useCallback((error: Error, context: string) => {
+    const normalized = error.message?.toLowerCase?.() ?? ""
+    if (normalized.includes("torznab indexers")) {
+      notifyMissingIndexers(context)
+      return true
+    }
+    return false
+  }, [notifyMissingIndexers])
+
   const { data: externalPrograms } = useQuery({
     queryKey: ["external-programs"],
     queryFn: () => api.listExternalPrograms(),
@@ -284,6 +304,9 @@ export function CrossSeedPage() {
       refetchSearchStatus()
     },
     onError: (error: Error) => {
+      if (handleIndexerError(error, "Seeded Torrent Search cannot run without Torznab indexers.")) {
+        return
+      }
       toast.error(error.message)
     },
   })
@@ -320,6 +343,9 @@ export function CrossSeedPage() {
       refetchRuns()
     },
     onError: (error: Error) => {
+      if (handleIndexerError(error, "RSS automation runs require at least one Torznab indexer.")) {
+        return
+      }
       toast.error(error.message)
     },
   })
@@ -406,8 +432,11 @@ export function CrossSeedPage() {
 
   const manualCooldownActive = manualCooldownRemainingMs > 0
   const manualCooldownDisplay = manualCooldownActive ? formatDurationShort(manualCooldownRemainingMs) : ""
-  const runButtonDisabled = triggerRunMutation.isPending || automationRunning || manualCooldownActive
+  const runButtonDisabled = triggerRunMutation.isPending || automationRunning || manualCooldownActive || !hasEnabledIndexers
   const runButtonDisabledReason = useMemo(() => {
+    if (!hasEnabledIndexers) {
+      return "Configure at least one Torznab indexer before running RSS automation."
+    }
     if (automationRunning) {
       return "Automation run is already in progress."
     }
@@ -415,7 +444,23 @@ export function CrossSeedPage() {
       return `Manual runs are limited to every ${enforcedRunIntervalMinutes}-minute interval. Try again in ${manualCooldownDisplay}.`
     }
     return undefined
-  }, [automationRunning, enforcedRunIntervalMinutes, manualCooldownActive, manualCooldownDisplay])
+  }, [automationRunning, enforcedRunIntervalMinutes, hasEnabledIndexers, manualCooldownActive, manualCooldownDisplay])
+
+  const searchRunning = searchStatus?.running ?? false
+  const activeSearchRun = searchStatus?.run
+  const recentSearchResults = searchStatus?.recentResults ?? []
+  const recentAddedResults = useMemo(
+    () => recentSearchResults.filter(result => result.added),
+    [recentSearchResults]
+  )
+
+  const startSearchRunDisabled = !searchInstanceId || startSearchRunMutation.isPending || searchRunning || !hasEnabledIndexers
+  const startSearchRunDisabledReason = useMemo(() => {
+    if (!hasEnabledIndexers) {
+      return "Configure at least one Torznab indexer before running Seeded Torrent Search."
+    }
+    return undefined
+  }, [hasEnabledIndexers])
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -477,6 +522,11 @@ export function CrossSeedPage() {
     // Clear previous validation errors
     setValidationErrors({})
 
+    if (!hasEnabledIndexers) {
+      notifyMissingIndexers("Seeded Torrent Search requires at least one Torznab indexer.")
+      return
+    }
+
     if (!searchInstanceId) {
       toast.error("Select an instance to run against")
       return
@@ -511,14 +561,6 @@ export function CrossSeedPage() {
     return `${latestRun.status.toUpperCase()} • Added ${latestRun.torrentsAdded} / Failed ${latestRun.torrentsFailed} • ${formatDateValue(latestRun.startedAt)}`
   }, [latestRun, formatDateValue])
 
-  const searchRunning = searchStatus?.running ?? false
-  const activeSearchRun = searchStatus?.run
-  const recentSearchResults = searchStatus?.recentResults ?? []
-  const recentAddedResults = useMemo(
-    () => recentSearchResults.filter(result => result.added),
-    [recentSearchResults]
-  )
-
   const estimatedCompletionInfo = useMemo(() => {
     if (!activeSearchRun) {
       return null
@@ -543,6 +585,22 @@ export function CrossSeedPage() {
         <p className="text-sm text-muted-foreground">Identify compatible torrents and automate cross-seeding across your instances.</p>
       </div>
 
+      {!hasEnabledIndexers && (
+        <Alert className="border-border rounded-xl bg-card">
+          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+          <AlertTitle>Torznab indexers required</AlertTitle>
+          <AlertDescription className="space-y-1">
+            <p>Automation runs and Seeded Torrent Search need at least one enabled Torznab indexer.</p>
+            <p>
+              <Link to="/settings" search={{ tab: "indexers" }} className="font-medium text-primary underline-offset-4 hover:underline">
+                Manage indexers in Settings
+              </Link>{" "}
+              to add or enable one.
+            </p>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Collapsible open={rssAutomationOpen} onOpenChange={setRssAutomationOpen}>
         <Card className={!rssAutomationOpen ? "hover:bg-muted/50 transition-colors" : ""}>
           <CollapsibleTrigger className="block w-full text-left cursor-pointer px-6">
@@ -563,7 +621,13 @@ export function CrossSeedPage() {
                 <Switch
                   id="automation-enabled"
                   checked={automationForm.enabled}
-                  onCheckedChange={value => setAutomationForm(prev => ({ ...prev, enabled: !!value }))}
+                  onCheckedChange={value => {
+                    if (value && !hasEnabledIndexers) {
+                      notifyMissingIndexers("Enable RSS automation only after configuring Torznab indexers.")
+                      return
+                    }
+                    setAutomationForm(prev => ({ ...prev, enabled: !!value }))
+                  }}
                 />
                 Enable RSS automation
               </Label>
@@ -831,7 +895,13 @@ export function CrossSeedPage() {
                 <TooltipTrigger asChild>
                   <Button
                     variant="outline"
-                    onClick={() => triggerRunMutation.mutate({ limit: automationForm.maxResultsPerRun, dryRun })}
+                    onClick={() => {
+                      if (!hasEnabledIndexers) {
+                        notifyMissingIndexers("RSS automation runs require at least one Torznab indexer.")
+                        return
+                      }
+                      triggerRunMutation.mutate({ limit: automationForm.maxResultsPerRun, dryRun })
+                    }}
                     disabled={runButtonDisabled}
                     className="disabled:cursor-not-allowed disabled:pointer-events-auto"
                   >
@@ -888,7 +958,7 @@ export function CrossSeedPage() {
               This deep scan touches every torrent you seed and can stress trackers despite the built-in cooldowns. Prefer autobrr announces or RSS automation for routine coverage and reserve manual search runs for occasional catch-up passes.
             </AlertDescription>
           </Alert>
-          <div className="space-y-2">
+          <div className="space-y-2 pt-2">
             <Label>Source instance</Label>
             <Select
               value={searchInstanceId ? String(searchInstanceId) : ""}
@@ -1150,13 +1220,23 @@ export function CrossSeedPage() {
         </CardContent>
         <CardFooter className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
-            <Button
-              onClick={handleStartSearchRun}
-              disabled={!searchInstanceId || startSearchRunMutation.isPending || searchRunning}
-            >
-              {startSearchRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Rocket className="mr-2 h-4 w-4" />}
-              Start run
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  onClick={handleStartSearchRun}
+                  disabled={startSearchRunDisabled}
+                  className="disabled:cursor-not-allowed disabled:pointer-events-auto"
+                >
+                  {startSearchRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Rocket className="mr-2 h-4 w-4" />}
+                  Start run
+                </Button>
+              </TooltipTrigger>
+              {startSearchRunDisabledReason && (
+                <TooltipContent align="start" className="max-w-xs text-xs">
+                  {startSearchRunDisabledReason}
+                </TooltipContent>
+              )}
+            </Tooltip>
             <Button
               variant="outline"
               onClick={() => cancelSearchRunMutation.mutate()}

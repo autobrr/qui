@@ -516,6 +516,10 @@ func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.R
 			RespondError(w, http.StatusTooManyRequests, err.Error())
 			return
 		}
+		if errors.Is(err, crossseed.ErrNoIndexersConfigured) {
+			RespondError(w, http.StatusBadRequest, "No Torznab indexers configured. Add at least one enabled indexer before running automation.")
+			return
+		}
 		log.Error().Err(err).Msg("Failed to trigger cross-seed automation run")
 		RespondError(w, http.StatusInternalServerError, "Failed to start automation run")
 		return
@@ -548,6 +552,10 @@ func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		if errors.Is(err, crossseed.ErrSearchRunActive) {
 			RespondError(w, http.StatusConflict, "Search run already active")
+			return
+		}
+		if errors.Is(err, crossseed.ErrNoIndexersConfigured) {
+			RespondError(w, http.StatusBadRequest, "No Torznab indexers configured. Add at least one enabled indexer before running seeded torrent search.")
 			return
 		}
 		RespondError(w, http.StatusBadRequest, err.Error())
