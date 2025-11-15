@@ -22,7 +22,10 @@ func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManag
 			// Check for API key first
 			apiKey := r.Header.Get("X-API-Key")
 			if apiKey == "" {
-				apiKey = r.URL.Query().Get("apikey") // autobrr doesnt support headers in webhook actions
+				path := r.URL.Path
+				if strings.HasPrefix(path, "/api/cross-seed/webhook/") || path == "/api/cross-seed/apply" {
+					apiKey = r.URL.Query().Get("apikey") // autobrr doesnt support headers in webhook actions
+				}
 			}
 			if apiKey != "" {
 				// Validate API key

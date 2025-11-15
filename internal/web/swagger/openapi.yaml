@@ -617,14 +617,14 @@ paths:
         '500':
           description: Failed to persist the new instance order
 
-  /api/instances/{instanceId}:
+  /api/instances/{instanceID}:
     put:
       tags:
         - Instances
       summary: Update instance
       description: Update instance configuration
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       requestBody:
         required: true
         content:
@@ -664,35 +664,35 @@ paths:
       summary: Delete instance
       description: Remove a qBittorrent instance
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       responses:
         '204':
           description: Instance deleted
         '404':
           description: Instance not found
 
-  /api/instances/{instanceId}/test:
+  /api/instances/{instanceID}/test:
     post:
       tags:
         - Instances
       summary: Test connection
       description: Test connection to a qBittorrent instance
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       responses:
         '200':
           description: Connection successful
         '503':
           description: Connection failed
 
-  /api/instances/{instanceId}/app-info:
+  /api/instances/{instanceID}/app-info:
     get:
       tags:
         - Instances
       summary: Get qBittorrent application info
       description: Get qBittorrent version and build information for an instance
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       responses:
         '200':
           description: qBittorrent application information
@@ -705,14 +705,14 @@ paths:
         '500':
           description: Failed to get qBittorrent application info
 
-  /api/instances/{instanceId}/capabilities:
+  /api/instances/{instanceID}/capabilities:
     get:
       tags:
         - Instances
       summary: Get instance capabilities
       description: Retrieve lightweight capability metadata for a qBittorrent instance.
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       responses:
         '200':
           description: Instance capabilities
@@ -725,14 +725,14 @@ paths:
         '503':
           description: Instance unavailable
 
-  /api/instances/{instanceId}/cross-seed/status:
+  /api/instances/{instanceID}/cross-seed/status:
     get:
       tags:
         - Cross-Seed
       summary: Get cross-seed status for instance
       description: Get cross-seed statistics and status for a specific qBittorrent instance
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       responses:
         '200':
           description: Cross-seed status for the instance
@@ -759,14 +759,14 @@ paths:
         '500':
           description: Failed to get cross-seed status
 
-  /api/instances/{instanceId}/torrents:
+  /api/instances/{instanceID}/torrents:
     get:
       tags:
         - Torrents
       summary: List torrents
       description: Get paginated list of torrents
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
         - name: page
           in: query
           schema:
@@ -822,7 +822,7 @@ paths:
       summary: Add torrent
       description: Add a new torrent via file upload or magnet link
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       requestBody:
         required: true
         content:
@@ -852,14 +852,14 @@ paths:
           description: Torrent added successfully
 
 
-  /api/instances/{instanceId}/torrents/check-duplicates:
+  /api/instances/{instanceID}/torrents/check-duplicates:
     post:
       tags:
         - Torrents
       summary: Check for duplicate torrents
       description: Determine whether any of the provided hashes already exist on the qBittorrent instance. Supports infohash v1 or v2 values.
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       requestBody:
         required: true
         content:
@@ -892,14 +892,14 @@ paths:
           description: Failed to check duplicates
 
 
-  /api/instances/{instanceId}/torrents/bulk-action:
+  /api/instances/{instanceID}/torrents/bulk-action:
     post:
       tags:
         - Torrents
       summary: Bulk torrent action
       description: Perform bulk actions on multiple torrents
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       requestBody:
         required: true
         content:
@@ -1020,14 +1020,14 @@ paths:
           description: Action performed successfully
 
 
-  /api/instances/{instanceId}/torrents/{hash}/export:
+  /api/instances/{instanceID}/torrents/{hash}/export:
     get:
       tags:
         - Torrent Details
       summary: Export torrent file
       description: Download the .torrent file for a specific torrent
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
       responses:
         '200':
@@ -1042,14 +1042,14 @@ paths:
         '500':
           description: Failed to export torrent
 
-  /api/instances/{instanceId}/torrents/{hash}/properties:
+  /api/instances/{instanceID}/torrents/{hash}/properties:
     get:
       tags:
         - Torrent Details
       summary: Get torrent properties
       description: Get detailed properties of a torrent
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
       responses:
         '200':
@@ -1059,14 +1059,14 @@ paths:
               schema:
                 $ref: '#/components/schemas/TorrentProperties'
 
-  /api/instances/{instanceId}/torrents/{hash}/trackers:
+  /api/instances/{instanceID}/torrents/{hash}/trackers:
     get:
       tags:
         - Torrent Details
       summary: Get torrent trackers
       description: Get list of trackers for a torrent
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
       responses:
         '200':
@@ -1083,7 +1083,7 @@ paths:
       summary: Edit torrent tracker
       description: Edit a tracker URL for a torrent
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
       requestBody:
         required: true
@@ -1114,7 +1114,7 @@ paths:
       summary: Add torrent trackers
       description: Add new trackers to a torrent
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
       requestBody:
         required: true
@@ -1141,7 +1141,7 @@ paths:
       summary: Remove torrent trackers
       description: Remove trackers from a torrent
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
       requestBody:
         required: true
@@ -1163,14 +1163,14 @@ paths:
         '500':
           description: Failed to remove trackers
 
-  /api/instances/{instanceId}/torrents/{hash}/files:
+  /api/instances/{instanceID}/torrents/{hash}/files:
     get:
       tags:
         - Torrent Details
       summary: Get torrent files
       description: Get list of files in a torrent
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
       responses:
         '200':
@@ -1187,7 +1187,7 @@ paths:
       summary: Update torrent file priorities
       description: Adjust the download priority (including do-not-download) for one or more files in a torrent.
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
       requestBody:
         required: true
@@ -1221,14 +1221,14 @@ paths:
         '500':
           description: Failed to update file priorities
 
-  /api/instances/{instanceId}/torrents/{hash}/rename:
+  /api/instances/{instanceID}/torrents/{hash}/rename:
     put:
       tags:
         - Torrent Details
       summary: Rename torrent
       description: Update the display name for a torrent
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
       requestBody:
         required: true
@@ -1250,14 +1250,14 @@ paths:
         '500':
           description: Failed to rename torrent
 
-  /api/instances/{instanceId}/torrents/{hash}/rename-file:
+  /api/instances/{instanceID}/torrents/{hash}/rename-file:
     put:
       tags:
         - Torrent Details
       summary: Rename torrent file
       description: Rename a specific file within a torrent
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
       requestBody:
         required: true
@@ -1283,14 +1283,14 @@ paths:
         '500':
           description: Failed to rename torrent file
 
-  /api/instances/{instanceId}/torrents/{hash}/rename-folder:
+  /api/instances/{instanceID}/torrents/{hash}/rename-folder:
     put:
       tags:
         - Torrent Details
       summary: Rename torrent folder
       description: Rename a folder within a torrent
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
       requestBody:
         required: true
@@ -1316,14 +1316,14 @@ paths:
         '500':
           description: Failed to rename torrent folder
 
-  /api/instances/{instanceId}/torrents/{hash}/peers:
+  /api/instances/{instanceID}/torrents/{hash}/peers:
     get:
       tags:
         - Torrent Details
       summary: Get torrent peers
       description: Get list of peers for a torrent
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
       responses:
         '200':
@@ -1360,14 +1360,14 @@ paths:
                     relevance:
                       type: number
 
-  /api/instances/{instanceId}/torrents/add-peers:
+  /api/instances/{instanceID}/torrents/add-peers:
     post:
       tags:
         - Torrents
       summary: Add peers to torrents
       description: Add peers to one or more torrents
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       requestBody:
         required: true
         content:
@@ -1392,14 +1392,14 @@ paths:
         '200':
           description: Peers added successfully
 
-  /api/instances/{instanceId}/torrents/ban-peers:
+  /api/instances/{instanceID}/torrents/ban-peers:
     post:
       tags:
         - Torrents
       summary: Ban peers permanently
       description: Ban peers from connecting to the client
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       requestBody:
         required: true
         content:
@@ -1418,14 +1418,14 @@ paths:
         '200':
           description: Peers banned successfully
 
-  /api/instances/{instanceId}/torrent-creator:
+  /api/instances/{instanceID}/torrent-creator:
     post:
       tags:
         - Torrents
       summary: Create torrent
       description: Create a new torrent file from a source path. Requires qBittorrent v5.0.0 or later.
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       requestBody:
         required: true
         content:
@@ -1497,14 +1497,14 @@ paths:
         '409':
           description: Too many active torrent creation tasks
 
-  /api/instances/{instanceId}/torrent-creator/status:
+  /api/instances/{instanceID}/torrent-creator/status:
     get:
       tags:
         - Torrents
       summary: Get torrent creation status
       description: Get status of torrent creation tasks. Query parameter taskID can be used to filter by specific task.
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
         - name: taskID
           in: query
           schema:
@@ -1549,14 +1549,14 @@ paths:
         '404':
           description: Torrent creation task not found
 
-  /api/instances/{instanceId}/torrent-creator/count:
+  /api/instances/{instanceID}/torrent-creator/count:
     get:
       tags:
         - Torrents
       summary: Get active torrent creation task count
       description: Get the number of active (running or queued) torrent creation tasks.
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       responses:
         '200':
           description: Active torrent creation task count
@@ -1571,14 +1571,14 @@ paths:
         '400':
           description: Invalid instance ID
 
-  /api/instances/{instanceId}/torrent-creator/{taskID}:
+  /api/instances/{instanceID}/torrent-creator/{taskID}:
     delete:
       tags:
         - Torrents
       summary: Delete torrent creation task
       description: Delete a torrent creation task
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
         - name: taskID
           in: path
           required: true
@@ -1593,14 +1593,14 @@ paths:
         '404':
           description: Torrent creation task not found
 
-  /api/instances/{instanceId}/torrent-creator/{taskID}/file:
+  /api/instances/{instanceID}/torrent-creator/{taskID}/file:
     get:
       tags:
         - Torrents
       summary: Download created torrent file
       description: Download the torrent file for a completed torrent creation task
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
         - name: taskID
           in: path
           required: true
@@ -1622,14 +1622,14 @@ paths:
         '409':
           description: Torrent creation is still in progress or failed
 
-  /api/instances/{instanceId}/categories:
+  /api/instances/{instanceID}/categories:
     get:
       tags:
         - Categories
       summary: List categories
       description: Get all categories
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       responses:
         '200':
           description: List of categories
@@ -1645,7 +1645,7 @@ paths:
       summary: Create category
       description: Create a new category
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       requestBody:
         required: true
         content:
@@ -1668,7 +1668,7 @@ paths:
       summary: Edit category
       description: Edit an existing category
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       requestBody:
         required: true
         content:
@@ -1691,7 +1691,7 @@ paths:
       summary: Delete categories
       description: Delete one or more categories
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       requestBody:
         required: true
         content:
@@ -1709,14 +1709,14 @@ paths:
         '200':
           description: Categories deleted
 
-  /api/instances/{instanceId}/tags:
+  /api/instances/{instanceID}/tags:
     get:
       tags:
         - Tags
       summary: List tags
       description: Get all tags
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       responses:
         '200':
           description: List of tags
@@ -1732,7 +1732,7 @@ paths:
       summary: Create tags
       description: Create new tags
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       requestBody:
         required: true
         content:
@@ -1755,7 +1755,7 @@ paths:
       summary: Delete tags
       description: Delete one or more tags
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       requestBody:
         required: true
         content:
@@ -1773,14 +1773,14 @@ paths:
         '200':
           description: Tags deleted
 
-  /api/instances/{instanceId}/trackers:
+  /api/instances/{instanceID}/trackers:
     get:
       tags:
         - Trackers
       summary: List active trackers
       description: Get active tracker domains and representative tracker URLs for an instance
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       responses:
         '200':
           description: Active tracker domains mapped to a tracker URL
@@ -1795,14 +1795,14 @@ paths:
         '500':
           description: Failed to get active trackers
 
-  /api/instances/{instanceId}/preferences:
+  /api/instances/{instanceID}/preferences:
     get:
       tags:
         - Instances
       summary: Get instance preferences
       description: Get qBittorrent instance preferences/settings
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       responses:
         '200':
           description: Instance preferences
@@ -1817,7 +1817,7 @@ paths:
       summary: Update instance preferences
       description: Update qBittorrent instance preferences/settings
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       requestBody:
         required: true
         content:
@@ -1829,14 +1829,14 @@ paths:
         '200':
           description: Preferences updated successfully
 
-  /api/instances/{instanceId}/alternative-speed-limits:
+  /api/instances/{instanceID}/alternative-speed-limits:
     get:
       tags:
         - Instances
       summary: Get alternative speed limits status
       description: Get current status of alternative speed limits (turtle mode)
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       responses:
         '200':
           description: Alternative speed limits status
@@ -1849,14 +1849,14 @@ paths:
                     type: boolean
                     description: Whether alternative speed limits are currently enabled
 
-  /api/instances/{instanceId}/alternative-speed-limits/toggle:
+  /api/instances/{instanceID}/alternative-speed-limits/toggle:
     post:
       tags:
         - Instances
       summary: Toggle alternative speed limits
       description: Toggle alternative speed limits (turtle mode) on/off
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       responses:
         '200':
           description: Alternative speed limits toggled successfully
@@ -2392,6 +2392,13 @@ paths:
         - Cross-Seed
       summary: Check if a release can be cross-seeded (autobrr webhook)
       description: Accepts release metadata from autobrr and checks if matching torrents exist on the specified instance. Returns 200 OK when matches are found and 404 Not Found when no matches exist. This endpoint is designed for autobrr filter external webhooks where the instanceId must match the target instance in the autobrr filter action.
+      parameters:
+        - name: apikey
+          in: query
+          required: false
+          schema:
+            type: string
+          description: API key (prefer X-API-Key header; query supported for autobrr webhook).
       requestBody:
         required: true
         content:
@@ -2479,6 +2486,13 @@ paths:
         - Cross-Seed
       summary: Add a cross-seed torrent provided by autobrr
       description: Accepts a torrent file from autobrr, matches it against the specified instance, and adds it with alignment if a match is found.
+      parameters:
+        - name: apikey
+          in: query
+          required: false
+          schema:
+            type: string
+          description: API key (prefer X-API-Key header; query supported for autobrr).
       requestBody:
         required: true
         content:
@@ -2527,14 +2541,14 @@ paths:
         '500':
           description: Failed to process autobrr apply request
 
-  /api/cross-seed/torrents/{instanceId}/{hash}/analyze:
+  /api/cross-seed/torrents/{instanceID}/{hash}/analyze:
     get:
       tags:
         - Cross-Seed
       summary: Analyze torrent for cross-seed search
       description: Analyzes a torrent and returns information needed for cross-seed searching
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
       responses:
         '200':
@@ -2557,14 +2571,14 @@ paths:
         '500':
           description: Failed to analyze torrent
 
-  /api/cross-seed/torrents/{instanceId}/{hash}/async-status:
+  /api/cross-seed/torrents/{instanceID}/{hash}/async-status:
     get:
       tags:
         - Cross-Seed
       summary: Get async filtering status
       description: Returns the current async filtering progress for a torrent, including whether content filtering has completed
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
       responses:
         '200':
@@ -2578,14 +2592,14 @@ paths:
         '500':
           description: Failed to get filtering status
 
-  /api/cross-seed/torrents/{instanceId}/{hash}/search:
+  /api/cross-seed/torrents/{instanceID}/{hash}/search:
     post:
       tags:
         - Cross-Seed
       summary: Search cross-seed candidates for a torrent
       description: Query configured Torznab indexers for releases matching an existing torrent
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
       requestBody:
         required: false
@@ -2605,14 +2619,14 @@ paths:
         '500':
           description: Failed to search indexers
 
-  /api/cross-seed/torrents/{instanceId}/{hash}/apply:
+  /api/cross-seed/torrents/{instanceID}/{hash}/apply:
     post:
       tags:
         - Cross-Seed
       summary: Add torrents found via cross-seed search
       description: Downloads selected results and queues them for cross-seeding on the specified instance
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
       requestBody:
         required: true
@@ -2648,14 +2662,14 @@ paths:
         '204':
           description: No update available - current version is latest
 
-  /api/instances/{instanceId}/backups/runs/{runId}/restore/preview:
+  /api/instances/{instanceID}/backups/runs/{runId}/restore/preview:
     post:
       tags:
         - Backups
       summary: Preview restore plan
       description: Build a restore plan for the specified backup run without applying any changes.
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
         - name: runId
           in: path
           required: true
@@ -2706,14 +2720,14 @@ paths:
         '500':
           description: Failed to build restore plan
 
-  /api/instances/{instanceId}/backups/runs/{runId}/restore:
+  /api/instances/{instanceID}/backups/runs/{runId}/restore:
     post:
       tags:
         - Backups
       summary: Execute restore
       description: Execute the restore plan for the specified backup run.
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
         - name: runId
           in: path
           required: true
@@ -2827,8 +2841,8 @@ components:
       description: Session cookie authentication
 
   parameters:
-    instanceId:
-      name: instanceId
+    instanceID:
+      name: instanceID
       in: path
       required: true
       schema:
