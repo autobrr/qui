@@ -445,20 +445,23 @@ const FilterSidebarComponent = ({
       merged.set(name, category)
     }
 
-    const counts = torrentCounts ?? {}
-    for (const key of Object.keys(counts)) {
-      if (!key.startsWith("category:")) {
-        continue
+    // Don't add synthetic categories from torrentCounts when in incognito mode
+    if (!incognitoMode) {
+      const counts = torrentCounts ?? {}
+      for (const key of Object.keys(counts)) {
+        if (!key.startsWith("category:")) {
+          continue
+        }
+        const categoryName = key.slice("category:".length)
+        if (!categoryName || merged.has(categoryName)) {
+          continue
+        }
+        merged.set(categoryName, { name: categoryName, savePath: "" })
       }
-      const categoryName = key.slice("category:".length)
-      if (!categoryName || merged.has(categoryName)) {
-        continue
-      }
-      merged.set(categoryName, { name: categoryName, savePath: "" })
     }
 
     return Array.from(merged.entries()).sort((a, b) => a[0].localeCompare(b[0]))
-  }, [categories, torrentCounts, subcategoriesEnabled])
+  }, [categories, torrentCounts, subcategoriesEnabled, incognitoMode])
 
   const syntheticCategorySet = useMemo(() => {
     if (!subcategoriesEnabled) {
