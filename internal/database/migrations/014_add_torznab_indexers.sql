@@ -196,9 +196,14 @@ CREATE TABLE IF NOT EXISTS cross_seed_settings (
     max_results_per_run INTEGER NOT NULL DEFAULT 50,
     find_individual_episodes BOOLEAN NOT NULL DEFAULT 0,
     size_mismatch_tolerance_percent REAL NOT NULL DEFAULT 5.0,
+    use_category_from_indexer BOOLEAN NOT NULL DEFAULT 0,
+    run_external_program_id INTEGER,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_cross_seed_settings_external_program
+    ON cross_seed_settings(run_external_program_id);
 
 CREATE TRIGGER IF NOT EXISTS cross_seed_settings_updated_at
 AFTER UPDATE ON cross_seed_settings
