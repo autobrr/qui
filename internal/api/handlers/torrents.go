@@ -118,6 +118,9 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	// The sync manager will handle stale-while-revalidate internally
 	response, err := h.syncManager.GetTorrentsWithFilters(r.Context(), instanceID, limit, offset, sort, order, search, filters)
 	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "torrents:list") {
+			return
+		}
 		// Record error for user visibility
 		errorStore := h.syncManager.GetErrorStore()
 		if recordErr := errorStore.RecordError(r.Context(), instanceID, err); recordErr != nil {
@@ -382,6 +385,9 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if err := h.syncManager.AddTorrent(ctx, instanceID, fileContent, options); err != nil {
+				if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
+					return
+				}
 				log.Error().Err(err).Int("instanceID", instanceID).Int("fileIndex", i).Msg("Failed to add torrent file")
 				failedCount++
 				lastError = err
@@ -392,6 +398,9 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	} else if len(urls) > 0 {
 		// Add from URLs
 		if err := h.syncManager.AddTorrentFromURLs(ctx, instanceID, urls, options); err != nil {
+			if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
+				return
+			}
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to add torrent from URLs")
 			RespondError(w, http.StatusInternalServerError, "Failed to add torrent")
 			return
@@ -502,6 +511,9 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		// Use a very large limit to get all torrents (backend will handle this properly)
 		response, err := h.syncManager.GetTorrentsWithFilters(r.Context(), instanceID, 100000, 0, "added_on", "desc", req.Search, *req.Filters)
 		if err != nil {
+			if respondIfInstanceDisabled(w, err, instanceID, "torrents:selectAll") {
+				return
+			}
 			// Record error for user visibility
 			errorStore := h.syncManager.GetErrorStore()
 			if recordErr := errorStore.RecordError(r.Context(), instanceID, err); recordErr != nil {
@@ -625,6 +637,9 @@ func (h *TorrentsHandler) GetCategories(w http.ResponseWriter, r *http.Request) 
 	// Get categories
 	categories, err := h.syncManager.GetCategories(r.Context(), instanceID)
 	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getCategories") {
+			return
+		}
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get categories")
 		RespondError(w, http.StatusInternalServerError, "Failed to get categories")
 		return
@@ -746,6 +761,9 @@ func (h *TorrentsHandler) GetTags(w http.ResponseWriter, r *http.Request) {
 	// Get tags
 	tags, err := h.syncManager.GetTags(r.Context(), instanceID)
 	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getTags") {
+			return
+		}
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get tags")
 		RespondError(w, http.StatusInternalServerError, "Failed to get tags")
 		return

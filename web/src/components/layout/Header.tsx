@@ -73,12 +73,17 @@ export function Header({
   const [searchValue, setSearchValue] = useState<string>(routeSearch?.q || "")
   const debouncedSearch = useDebounce(searchValue, 500)
   const { instances } = useInstances()
+  const activeInstances = useMemo(
+    () => (instances ?? []).filter(instance => instance.isActive),
+    [instances]
+  )
 
 
   const instanceName = useMemo(() => {
     if (!isInstanceRoute || !instances || selectedInstanceId === null) return null
     return instances.find(i => i.id === selectedInstanceId)?.name ?? null
   }, [isInstanceRoute, instances, selectedInstanceId])
+  const hasMultipleActiveInstances = activeInstances.length > 1
 
   // Keep local state in sync with URL when navigating between instances/routes
   useEffect(() => {
@@ -164,7 +169,7 @@ export function Header({
     <header className="sticky top-0 z-50 hidden md:flex flex-wrap lg:flex-nowrap items-start lg:items-center justify-between sm:border-b bg-background pl-2 pr-4 md:pl-4 md:pr-4 lg:pl-0 lg:static py-2 lg:py-0 lg:h-16">
       <div className="hidden md:flex items-center gap-2 mr-2 h-12 lg:h-auto order-1 lg:order-none">
         {children}
-        {instanceName && instances && instances.length > 1 ? (
+        {instanceName && hasMultipleActiveInstances ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -194,28 +199,32 @@ export function Header({
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <div className="max-h-64 overflow-y-auto space-y-1">
-                {instances.map((instance) => (
-                  <DropdownMenuItem key={instance.id} asChild>
-                    <Link
-                      to="/instances/$instanceId"
-                      params={{ instanceId: instance.id.toString() }}
-                      className={cn(
-                        "flex items-center gap-2 cursor-pointer rounded-sm px-2 py-1.5 text-sm focus-visible:outline-none",
-                        instance.id === selectedInstanceId? "bg-accent text-accent-foreground font-medium": "hover:bg-accent/80 data-[highlighted]:bg-accent/80 text-foreground"
-                      )}
-                    >
-                      <HardDrive className="h-4 w-4 flex-shrink-0" />
-                      <span className="flex-1 truncate">{instance.name}</span>
-                      <span
+                {activeInstances.length > 0 ? (
+                  activeInstances.map((instance) => (
+                    <DropdownMenuItem key={instance.id} asChild>
+                      <Link
+                        to="/instances/$instanceId"
+                        params={{ instanceId: instance.id.toString() }}
                         className={cn(
-                          "h-2 w-2 rounded-full flex-shrink-0",
-                          instance.connected ? "bg-green-500" : "bg-red-500"
+                          "flex items-center gap-2 cursor-pointer rounded-sm px-2 py-1.5 text-sm focus-visible:outline-none",
+                          instance.id === selectedInstanceId? "bg-accent text-accent-foreground font-medium": "hover:bg-accent/80 data-[highlighted]:bg-accent/80 text-foreground"
                         )}
-                        aria-label={instance.connected ? "Connected" : "Disconnected"}
-                      />
-                    </Link>
-                  </DropdownMenuItem>
-                ))}
+                      >
+                        <HardDrive className="h-4 w-4 flex-shrink-0" />
+                        <span className="flex-1 truncate">{instance.name}</span>
+                        <span
+                          className={cn(
+                            "h-2 w-2 rounded-full flex-shrink-0",
+                            instance.connected ? "bg-green-500" : "bg-red-500"
+                          )}
+                          aria-label={instance.connected ? "Connected" : "Disconnected"}
+                        />
+                      </Link>
+                    </DropdownMenuItem>
+                  ))
+                ) : (
+                  <p className="px-2 py-1.5 text-xs text-muted-foreground">No active instances</p>
+                )}
               </div>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -489,9 +498,9 @@ export function Header({
                   Instances
                 </Link>
               </DropdownMenuItem>
-              {instances && instances.length > 0 && (
+              {activeInstances.length > 0 && (
                 <>
-                  {instances.map((instance) => (
+                  {activeInstances.map((instance) => (
                     <DropdownMenuItem key={instance.id} asChild>
                       <Link
                         to="/instances/$instanceId"

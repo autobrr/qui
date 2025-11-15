@@ -151,8 +151,26 @@ func (h *AuthHandler) warmSession(ctx context.Context) {
 		return
 	}
 
-	// Warm instance connections concurrently
+	var activeInstances []*models.Instance
 	for _, instance := range instances {
+		if !instance.IsActive {
+			log.Debug().
+				Int("instance_id", instance.ID).
+				Str("instance_name", instance.Name).
+				Msg("Skipping session warmup for disabled instance")
+			continue
+		}
+		activeInstances = append(activeInstances, instance)
+	}
+
+	if len(activeInstances) == 0 {
+		log.Debug().Msg("Skipping session warmup: no active instances")
+		return
+	}
+
+	// Warm instance connections concurrently
+	for _, instance := range activeInstances {
+		inst := instance
 		go func(inst *models.Instance) {
 			// Derive context from parent to respect cancellation
 			warmCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
@@ -172,13 +190,11 @@ func (h *AuthHandler) warmSession(ctx context.Context) {
 				Int("instance_id", inst.ID).
 				Str("instance_name", inst.Name).
 				Msg("Successfully warmed instance connection")
-		}(instance)
+		}(inst)
 	}
 
-	// Prefetch torrent data for the first instance
-	if len(instances) == 0 {
-		return
-	}
+	// Prefetch torrent data for the first active instance
+	targetInstance := activeInstances[0]
 
 	go func() {
 		warmCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -186,7 +202,7 @@ func (h *AuthHandler) warmSession(ctx context.Context) {
 
 		_, err := h.syncManager.GetTorrentsWithFilters(
 			warmCtx,
-			instances[0].ID,
+			targetInstance.ID,
 			1,
 			0,
 			"added_on",
@@ -196,14 +212,14 @@ func (h *AuthHandler) warmSession(ctx context.Context) {
 		)
 		if err != nil {
 			log.Error().
-				Int("instance_id", instances[0].ID).
+				Int("instance_id", targetInstance.ID).
 				Err(err).
 				Msg("Failed to prefetch torrents during session warming")
 			return
 		}
 
 		log.Debug().
-			Int("instance_id", instances[0].ID).
+			Int("instance_id", targetInstance.ID).
 			Msg("Successfully prefetched torrents during session warming")
 	}()
 }

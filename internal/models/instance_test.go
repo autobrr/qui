@@ -183,7 +183,8 @@ func TestInstanceStoreWithHost(t *testing.T) {
 			sp_basic_username.value AS basic_username,
 			i.basic_password_encrypted,
 			i.tls_skip_verify,
-			i.sort_order
+			i.sort_order,
+			i.is_active
 		FROM instances i
 		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
 		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
@@ -204,6 +205,7 @@ func TestInstanceStoreWithHost(t *testing.T) {
 	require.NoError(t, err, "Failed to get instance")
 	assert.Equal(t, "http://localhost:8080", retrieved.Host, "retrieved host should match")
 	assert.False(t, retrieved.TLSSkipVerify)
+	assert.True(t, retrieved.IsActive)
 
 	// Test updating the instance
 	newTLSSetting := true
@@ -211,6 +213,15 @@ func TestInstanceStoreWithHost(t *testing.T) {
 	require.NoError(t, err, "Failed to update instance")
 	assert.Equal(t, "https://example.com:8443/qbittorrent", updated.Host, "updated host should match")
 	assert.True(t, updated.TLSSkipVerify)
+
+	// Test toggling activation flag
+	disabled, err := store.SetActiveState(ctx, instance.ID, false)
+	require.NoError(t, err, "Failed to disable instance")
+	assert.False(t, disabled.IsActive)
+
+	enabled, err := store.SetActiveState(ctx, instance.ID, true)
+	require.NoError(t, err, "Failed to re-enable instance")
+	assert.True(t, enabled.IsActive)
 }
 
 func TestInstanceStoreWithEmptyUsername(t *testing.T) {
@@ -279,7 +290,8 @@ func TestInstanceStoreWithEmptyUsername(t *testing.T) {
 			sp_basic_username.value AS basic_username,
 			i.basic_password_encrypted,
 			i.tls_skip_verify,
-			i.sort_order
+			i.sort_order,
+			i.is_active
 		FROM instances i
 		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
 		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
@@ -363,7 +375,8 @@ func TestInstanceStoreUpdateOrder(t *testing.T) {
 			sp_basic_username.value AS basic_username,
 			i.basic_password_encrypted,
 			i.tls_skip_verify,
-			i.sort_order
+			i.sort_order,
+			i.is_active
 		FROM instances i
 		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
 		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id

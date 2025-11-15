@@ -671,6 +671,38 @@ paths:
         '404':
           description: Instance not found
 
+  /api/instances/{instanceId}/status:
+    put:
+      tags:
+        - Instances
+      summary: Update instance status
+      description: Enable or disable automatic polling for the specified instance
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - isActive
+              properties:
+                isActive:
+                  type: boolean
+                  description: Set to false to pause all automatic connections to the upstream qBittorrent instance.
+      responses:
+        '200':
+          description: Instance status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Instance'
+        '404':
+          description: Instance not found
+        '500':
+          description: Failed to update instance status
+
   /api/instances/{instanceId}/test:
     post:
       tags:
@@ -2346,7 +2378,7 @@ components:
           description: Always masked with asterisks in responses. Only used for input.
           readOnly: true
           nullable: true
-        is_active:
+        isActive:
           type: boolean
         last_connected_at:
           type: string

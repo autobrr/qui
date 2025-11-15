@@ -162,10 +162,18 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 		instanceIDStr := instance.IDString()
 		instanceName := instance.Name
 
-		_, err := c.clientPool.GetClient(ctx, instance.ID)
 		connected := 0.0
-		if err == nil && c.clientPool.IsHealthy(instance.ID) {
-			connected = 1.0
+		var err error
+		if instance.IsActive {
+			_, err = c.clientPool.GetClient(ctx, instance.ID)
+			if err == nil && c.clientPool.IsHealthy(instance.ID) {
+				connected = 1.0
+			}
+		} else {
+			log.Debug().
+				Int("instanceID", instance.ID).
+				Str("instanceName", instanceName).
+				Msg("Skipping metrics connection attempt for disabled instance")
 		}
 
 		ch <- prometheus.MustNewConstMetric(
@@ -175,6 +183,10 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 			instanceIDStr,
 			instanceName,
 		)
+
+		if !instance.IsActive {
+			continue
+		}
 
 		if connected == 0 {
 			log.Debug().

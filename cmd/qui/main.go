@@ -517,6 +517,14 @@ func (app *Application) runServer() {
 
 		// Connect to instances in parallel with separate timeouts
 		for _, instance := range instances {
+			if !instance.IsActive {
+				log.Debug().
+					Int("instanceID", instance.ID).
+					Str("instanceName", instance.Name).
+					Msg("Skipping startup connection for disabled instance")
+				continue
+			}
+
 			go func(instanceID int) {
 				// Use separate context for each connection attempt with longer timeout
 				connCtx, connCancel := context.WithTimeout(context.Background(), 60*time.Second)

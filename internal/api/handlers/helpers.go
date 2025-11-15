@@ -5,9 +5,12 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/rs/zerolog/log"
+
+	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // ErrorResponse represents an API error response
@@ -32,4 +35,17 @@ func RespondError(w http.ResponseWriter, status int, message string) {
 	RespondJSON(w, status, ErrorResponse{
 		Error: message,
 	})
+}
+
+func respondIfInstanceDisabled(w http.ResponseWriter, err error, instanceID int, context string) bool {
+	if errors.Is(err, internalqbittorrent.ErrInstanceDisabled) {
+		log.Trace().
+			Int("instanceID", instanceID).
+			Str("context", context).
+			Msg("Ignoring request for disabled instance")
+		RespondError(w, http.StatusConflict, "Instance is disabled")
+		return true
+	}
+
+	return false
 }

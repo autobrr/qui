@@ -96,7 +96,7 @@ func setupTestPool(t *testing.T) *ClientPool {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				// Reset failure tracking
-				pool.resetFailureTracking(instanceID)
+				pool.ResetFailureTracking(instanceID)
 
 				// Should not be in backoff initially
 				assert.False(t, pool.isInBackoff(instanceID), "Instance should not be in backoff initially")
@@ -173,7 +173,7 @@ func TestClientPool_ResetFailureTracking(t *testing.T) {
 	assert.True(t, pool.isInBackoff(instanceID), "Instance should be in backoff after failures")
 
 	// Reset failure tracking
-	pool.resetFailureTracking(instanceID)
+	pool.ResetFailureTracking(instanceID)
 
 	// Should no longer be in backoff
 	assert.False(t, pool.isInBackoff(instanceID), "Instance should not be in backoff after reset")

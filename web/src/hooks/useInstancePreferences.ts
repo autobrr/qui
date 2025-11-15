@@ -3,42 +3,51 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+
 import { api } from "@/lib/api"
 import type { AppPreferences } from "@/types"
 
-export function useInstancePreferences(instanceId: number | undefined) {
+type UseInstancePreferencesOptions = {
+  enabled?: boolean
+}
+
+export function useInstancePreferences(instanceId: number | undefined, options: UseInstancePreferencesOptions = {}) {
   const queryClient = useQueryClient()
+  const shouldEnable = options.enabled ?? true
+  const queryEnabled = shouldEnable && typeof instanceId === "number"
+  const queryKey = ["instance-preferences", instanceId] as const
 
   const { data: preferences, isLoading, error } = useQuery({
-    queryKey: ["instance-preferences", instanceId],
-    queryFn: () => instanceId ? api.getInstancePreferences(instanceId) : null,
-    enabled: !!instanceId,
+    queryKey,
+    queryFn: () => api.getInstancePreferences(instanceId!),
+    enabled: queryEnabled,
     staleTime: 5000, // 5 seconds
     refetchInterval: 60000, // Refetch every minute
     placeholderData: (previousData) => previousData,
   })
 
   const updateMutation = useMutation({
-    mutationFn: (preferences: Partial<AppPreferences>) => {
-      if (!instanceId) throw new Error("No instance ID")
-      return api.updateInstancePreferences(instanceId, preferences)
+    mutationFn: (updatedPreferences: Partial<AppPreferences>) => {
+      if (instanceId === undefined) throw new Error("No instance ID")
+      return api.updateInstancePreferences(instanceId, updatedPreferences)
     },
     onMutate: async (newPreferences) => {
+      if (instanceId === undefined) {
+        return { previousPreferences: undefined }
+      }
       // Cancel outgoing refetches
       await queryClient.cancelQueries({
-        queryKey: ["instance-preferences", instanceId],
+        queryKey,
       })
 
       // Snapshot previous value
-      const previousPreferences = queryClient.getQueryData<AppPreferences>(
-        ["instance-preferences", instanceId]
-      )
+      const previousPreferences = queryClient.getQueryData<AppPreferences>(queryKey)
 
       // Optimistically update
       if (previousPreferences) {
         queryClient.setQueryData(
-          ["instance-preferences", instanceId],
+          queryKey,
           { ...previousPreferences, ...newPreferences }
         )
       }
@@ -49,7 +58,7 @@ export function useInstancePreferences(instanceId: number | undefined) {
       // Rollback on error
       if (context?.previousPreferences) {
         queryClient.setQueryData(
-          ["instance-preferences", instanceId],
+          queryKey,
           context.previousPreferences
         )
       }
@@ -57,7 +66,7 @@ export function useInstancePreferences(instanceId: number | undefined) {
     onSuccess: () => {
       // Invalidate and refetch
       queryClient.invalidateQueries({
-        queryKey: ["instance-preferences", instanceId],
+        queryKey,
       })
     },
   })
