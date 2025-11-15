@@ -4,23 +4,27 @@
  */
 
 import { AddTorrentDialog, type AddTorrentDropPayload } from '@/components/torrents/AddTorrentDialog'
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDateTimeFormatters } from '@/hooks/useDateTimeFormatters'
 import { useInstances } from '@/hooks/useInstances'
 import { api } from '@/lib/api'
 import { getCategoriesForSearchType, getSearchTypeLabel, inferSearchTypeFromCategories, SEARCH_TYPE_OPTIONS, type SearchType } from '@/lib/search-derived-params'
 import { extractImdbId, extractTvdbId } from '@/lib/search-id-parsing'
+import { cn } from '@/lib/utils'
 import type { TorznabIndexer, TorznabRecentSearch, TorznabSearchRequest, TorznabSearchResponse, TorznabSearchResult } from '@/types'
-import { ArrowDown, ArrowUp, ArrowUpDown, Download, ExternalLink, Plus, RefreshCw, Search as SearchIcon, SlidersHorizontal } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronDown, Download, ExternalLink, Plus, RefreshCw, Search as SearchIcon, SlidersHorizontal } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -78,6 +82,8 @@ const ADVANCED_PARAM_CONFIG: AdvancedParamConfig[] = [
   { key: 'offset', label: 'Offset', placeholder: '0', type: 'number', min: 0 }
 ]
 
+const LAST_USED_INSTANCE_KEY = 'qui:search:lastInstanceId'
+
 export function Search() {
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
@@ -85,10 +91,12 @@ export function Search() {
   const [total, setTotal] = useState(0)
   const [indexers, setIndexers] = useState<TorznabIndexer[]>([])
   const [selectedIndexers, setSelectedIndexers] = useState<Set<number>>(new Set())
+  const [indexerSheetOpen, setIndexerSheetOpen] = useState(false)
   const [searchType, setSearchType] = useState<SearchType>('auto')
   const [loadingIndexers, setLoadingIndexers] = useState(true)
   const { instances, isLoading: loadingInstances } = useInstances()
   const [selectedInstanceId, setSelectedInstanceId] = useState<number | null>(null)
+  const [instanceMenuOpen, setInstanceMenuOpen] = useState(false)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [addDialogPayload, setAddDialogPayload] = useState<AddTorrentDropPayload | null>(null)
   const [resultsFilter, setResultsFilter] = useState('')
@@ -102,12 +110,28 @@ export function Search() {
   const [queryFocused, setQueryFocused] = useState(false)
   const [showAdvancedParams, setShowAdvancedParams] = useState(false)
   const [advancedParams, setAdvancedParams] = useState<AdvancedParamsState>(() => ({ ...ADVANCED_PARAM_DEFAULTS }))
+  const [selectedResultGuid, setSelectedResultGuid] = useState<string | null>(null)
   const searchPlaceholder = useMemo(() => SEARCH_PLACEHOLDERS[searchType], [searchType])
   const hasAdvancedParams = useMemo(() => Object.values(advancedParams).some(value => value.trim() !== ''), [advancedParams])
   const queryInputRef = useRef<HTMLInputElement | null>(null)
   const blurTimeoutRef = useRef<number | null>(null)
   const rafIdRef = useRef<number | null>(null)
   const { formatDate } = useDateTimeFormatters()
+  const persistSelectedInstanceId = useCallback((instanceId: number | null) => {
+    setSelectedInstanceId(instanceId)
+    if (typeof window === 'undefined') {
+      return
+    }
+    try {
+      if (instanceId === null) {
+        window.sessionStorage.removeItem(LAST_USED_INSTANCE_KEY)
+      } else {
+        window.sessionStorage.setItem(LAST_USED_INSTANCE_KEY, String(instanceId))
+      }
+    } catch (error) {
+      console.error('Failed to persist instance selection', error)
+    }
+  }, [])
 
   const handleAdvancedParamChange = useCallback((key: keyof AdvancedParamsState, value: string) => {
     setAdvancedParams(prev => ({ ...prev, [key]: value }))
@@ -139,6 +163,19 @@ export function Search() {
     }
     return formatDate(parsed)
   }, [formatDate])
+  const hasInstances = (instances?.length ?? 0) > 0
+  const targetInstance = useMemo(() => {
+    if (!instances || selectedInstanceId === null) {
+      return null
+    }
+    return instances.find(instance => instance.id === selectedInstanceId) ?? null
+  }, [instances, selectedInstanceId])
+  const totalIndexers = indexers.length
+  const indexerSummaryText = totalIndexers === 0
+    ? 'No enabled indexers'
+    : selectedIndexers.size === totalIndexers
+      ? `All enabled (${totalIndexers})`
+      : `${selectedIndexers.size} of ${totalIndexers} selected`
 
   const REFRESH_COOLDOWN_MS = 30_000
   const refreshCooldownRemaining = Math.max(0, refreshCooldownUntil - Date.now())
@@ -218,6 +255,7 @@ export function Search() {
       const detectedTvdbId = extractTvdbId(searchQuery)
       setLoading(true)
       setCacheMetadata(null)
+      setSelectedResultGuid(null)
 
       try {
         const payload: TorznabSearchRequest = {
@@ -336,22 +374,23 @@ export function Search() {
     return map
   }, [indexers])
 
-  // Group indexers by backend
-  const indexersByBackend = useMemo(() => {
-    const groups: Record<string, TorznabIndexer[]> = {
-      prowlarr: [],
-      jackett: [],
-      native: []
-    }
-
-    indexers.forEach(indexer => {
-      const backend = indexer.backend || 'jackett'
-      if (groups[backend]) {
-        groups[backend].push(indexer)
+  useEffect(() => {
+    setSelectedIndexers(prev => {
+      if (indexers.length === 0) {
+        return new Set()
       }
+      const validIds = new Set(indexers.map(idx => idx.id))
+      let changed = false
+      const next = new Set<number>()
+      prev.forEach(id => {
+        if (validIds.has(id)) {
+          next.add(id)
+        } else {
+          changed = true
+        }
+      })
+      return changed ? next : prev
     })
-
-    return groups
   }, [indexers])
 
   useEffect(() => {
@@ -377,29 +416,63 @@ export function Search() {
   }, [refreshRecentSearches])
 
   useEffect(() => {
-    if (!instances || instances.length === 0) {
-      setSelectedInstanceId(null)
+    if (loadingInstances) {
       return
     }
 
-    setSelectedInstanceId((prev) => {
-      if (prev && instances.some(instance => instance.id === prev)) {
-        return prev
-      }
+    const availableInstances = instances ?? []
 
-      const preferred = instances.find(instance => instance.connected)?.id ?? instances[0]?.id ?? null
-      return preferred
-    })
-  }, [instances])
+    if (availableInstances.length === 0) {
+      if (selectedInstanceId !== null) {
+        persistSelectedInstanceId(null)
+      }
+      return
+    }
+
+    if (selectedInstanceId !== null && availableInstances.some(instance => instance.id === selectedInstanceId)) {
+      return
+    }
+
+    let nextInstanceId: number | null = null
+
+    if (availableInstances.length === 1) {
+      nextInstanceId = availableInstances[0].id
+    } else if (typeof window !== 'undefined') {
+      try {
+        const storedValue = window.sessionStorage.getItem(LAST_USED_INSTANCE_KEY)
+        if (storedValue) {
+          const parsed = parseInt(storedValue, 10)
+          if (!Number.isNaN(parsed) && availableInstances.some(instance => instance.id === parsed)) {
+            nextInstanceId = parsed
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load instance selection', error)
+      }
+    }
+
+    if (nextInstanceId !== null) {
+      persistSelectedInstanceId(nextInstanceId)
+    } else if (selectedInstanceId !== null) {
+      persistSelectedInstanceId(null)
+    }
+  }, [instances, loadingInstances, persistSelectedInstanceId, selectedInstanceId])
+
+  const handleInstanceSelection = useCallback((instanceId: number | null) => {
+    persistSelectedInstanceId(instanceId)
+    setInstanceMenuOpen(false)
+  }, [persistSelectedInstanceId, setInstanceMenuOpen])
 
   const toggleIndexer = (id: number) => {
-    const newSelected = new Set(selectedIndexers)
-    if (newSelected.has(id)) {
-      newSelected.delete(id)
-    } else {
-      newSelected.add(id)
-    }
-    setSelectedIndexers(newSelected)
+    setSelectedIndexers(prev => {
+      const newSelected = new Set(prev)
+      if (newSelected.has(id)) {
+        newSelected.delete(id)
+      } else {
+        newSelected.add(id)
+      }
+      return newSelected
+    })
   }
 
   const handleSelectAll = () => {
@@ -534,6 +607,23 @@ export function Search() {
     return sorted
   }, [results, resultsFilter, sortColumn, sortOrder, categoryMap])
 
+  const selectedResult = useMemo(() => {
+    if (!selectedResultGuid) {
+      return null
+    }
+    return results.find(result => result.guid === selectedResultGuid) ?? null
+  }, [results, selectedResultGuid])
+
+  useEffect(() => {
+    if (!selectedResultGuid) {
+      return
+    }
+    const stillVisible = filteredAndSortedResults.some(result => result.guid === selectedResultGuid)
+    if (!stillVisible) {
+      setSelectedResultGuid(null)
+    }
+  }, [filteredAndSortedResults, selectedResultGuid])
+
   const suggestionMatches = useMemo(() => {
     const searches = recentSearches ?? []
     if (searches.length === 0) {
@@ -572,9 +662,16 @@ export function Search() {
     window.open(result.download_url, '_blank')
   }
 
-  const handleAddTorrent = (result: TorznabSearchResult) => {
-    if (!selectedInstanceId) {
-      toast.error('Select an instance to add torrents')
+  const handleAddTorrent = useCallback((result: TorznabSearchResult, overrideInstanceId?: number) => {
+    const targetId = overrideInstanceId ?? selectedInstanceId
+
+    if (!targetId) {
+      if (!hasInstances) {
+        toast.error('Add a download instance under Settings -> Instances')
+      } else {
+        toast.error('Choose an instance to add torrents')
+        setInstanceMenuOpen(true)
+      }
       return
     }
 
@@ -583,8 +680,36 @@ export function Search() {
       return
     }
 
+    persistSelectedInstanceId(targetId)
     setAddDialogPayload({ type: 'url', urls: [result.download_url] })
     setAddDialogOpen(true)
+  }, [hasInstances, persistSelectedInstanceId, selectedInstanceId, setInstanceMenuOpen])
+
+  const handleViewDetails = (result: TorznabSearchResult) => {
+    if (!result.info_url) {
+      toast.error('No additional info available for this result')
+      return
+    }
+    try {
+      const url = new URL(result.info_url)
+      if (!['http:', 'https:'].includes(url.protocol)) {
+        toast.error('Invalid URL protocol')
+        return
+      }
+    } catch {
+      toast.error('Invalid URL format')
+      return
+    }
+
+    window.open(result.info_url, '_blank')
+  }
+
+  const toggleResultSelection = (result: TorznabSearchResult) => {
+    setSelectedResultGuid(prev => prev === result.guid ? null : result.guid)
+  }
+
+  const handleClearSelection = () => {
+    setSelectedResultGuid(null)
   }
 
   const handleDialogOpenChange = (open: boolean) => {
@@ -594,56 +719,185 @@ export function Search() {
     }
   }
 
-  const canAddTorrent = !!selectedInstanceId
+  const addButtonTitle = targetInstance
+    ? `Add to ${targetInstance.name}`
+    : hasInstances
+      ? 'Choose an instance to add torrents'
+      : 'Add a download instance under Settings -> Instances'
+  const primaryAddButtonLabel = targetInstance ? `Add to ${targetInstance.name}` : 'Add to instance'
+  const instancesAvailable = hasInstances
 
   return (
-    <div className="container mx-auto p-6">
-      <Card>
-        <CardHeader>
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex-1">
-              <CardTitle>Search Indexers</CardTitle>
-              <CardDescription>
-                Search across all enabled indexers. Pick a query type or leave Auto to have categories detected automatically.
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Badge
-                      variant={cacheMetadata?.hit ? 'secondary' : 'outline'}
-                      className={!cacheMetadata ? 'invisible' : ''}
-                    >
-                      {cacheMetadata?.hit ? 'Cache hit' : 'Live fetch'}
-                    </Badge>
-                  </TooltipTrigger>
-                  {cacheMetadata && (
-                    <TooltipContent>
-                      <p className="text-xs">
-                        Cached {formatCacheTimestamp(cacheMetadata.cachedAt)} · Expires {formatCacheTimestamp(cacheMetadata.expiresAt)}
-                      </p>
-                    </TooltipContent>
+    <TooltipProvider>
+      <div className="space-y-6 p-4 lg:p-6">
+        <div className="flex-1 space-y-2">
+          <h1 className="text-2xl font-semibold">Search Indexers</h1>
+          <p className="text-sm text-muted-foreground">
+            Search across all enabled indexers. Pick a query type or leave Auto to have categories detected automatically.
+          </p>
+        </div>
+
+        <div className="rounded-lg border bg-muted/40 px-4 py-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Sheet open={indexerSheetOpen} onOpenChange={setIndexerSheetOpen}>
+              <SheetTrigger asChild>
+                <Button type="button" variant="outline" size="sm" className="flex items-center gap-2">
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  <span className="text-sm">Indexers: {indexerSummaryText}</span>
+                </Button>
+              </SheetTrigger>
+
+              <SheetContent side="right" className="flex h-full max-w-xl flex-col p-0">
+                <SheetHeader>
+                  <SheetTitle>Indexer selection</SheetTitle>
+                  <SheetDescription>Pick which indexers to include in searches.</SheetDescription>
+                </SheetHeader>
+
+                <div className="flex flex-1 flex-col gap-4 overflow-hidden px-4 pb-4">
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={handleSelectAll}>
+                      Select all
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleDeselectAll}>
+                      Clear selection
+                    </Button>
+                  </div>
+
+                  <ScrollArea className="flex-1 rounded-lg border">
+                    <div className="h-full space-y-2 p-3">
+                      {indexers.map(indexer => {
+                        const parentCategories = indexer.categories
+                          ?.filter(cat => cat.category_id % 1000 === 0)
+                          .map(cat => cat.category_name) || []
+                        const hasCategories = parentCategories.length > 0
+                        const isSelected = selectedIndexers.has(indexer.id)
+
+                        return (
+                          <label
+                            key={indexer.id}
+                            htmlFor={`indexer-${indexer.id}`}
+                            className={`flex w-full items-start gap-3 rounded-md border p-3 transition-colors cursor-pointer ${
+                              isSelected
+                                ? 'bg-muted/40 border-muted-foreground/20'
+                                : 'hover:bg-muted/20'
+                            }`}
+                          >
+                            <Checkbox
+                              id={`indexer-${indexer.id}`}
+                              checked={isSelected}
+                              onCheckedChange={() => toggleIndexer(indexer.id)}
+                              className="mt-0.5 shrink-0"
+                            />
+                            <div className="min-w-0 flex-1 space-y-1.5">
+                              <div className="flex items-center gap-2 text-sm font-medium leading-none">
+                                <span className="truncate">{indexer.name}</span>
+                                <Badge variant="secondary" className="text-[10px] font-normal capitalize">
+                                  {formatBackend(indexer.backend)}
+                                </Badge>
+                              </div>
+                              {hasCategories ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {parentCategories.map((catName, idx) => (
+                                    <Badge key={idx} variant="outline" className="text-[10px] font-normal">
+                                      {catName}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-muted-foreground">No categories</p>
+                              )}
+                            </div>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </ScrollArea>
+                </div>
+
+                <SheetFooter className="border-t bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    {selectedIndexers.size} of {indexers.length} enabled indexers selected
+                  </p>
+                  <SheetClose asChild>
+                    <Button type="button" size="sm">
+                      Done
+                    </Button>
+                  </SheetClose>
+                </SheetFooter>
+              </SheetContent>
+            </Sheet>
+
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <DropdownMenu open={instanceMenuOpen} onOpenChange={setInstanceMenuOpen}>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={loadingInstances || !instancesAvailable}
+                    className="flex items-center gap-2"
+                  >
+                    <span className="text-sm">
+                      {targetInstance
+                        ? `Target: ${targetInstance.name}${!targetInstance.connected ? ' (offline)' : ''}`
+                        : instancesAvailable
+                          ? 'Choose target instance'
+                          : 'No instances'}
+                    </span>
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64">
+                  {instancesAvailable ? (
+                    <>
+                      {instances?.map(instance => (
+                        <DropdownMenuItem
+                          key={instance.id}
+                          onSelect={(event) => {
+                            event.preventDefault()
+                            handleInstanceSelection(instance.id)
+                          }}
+                        >
+                          <Check
+                            className={`h-4 w-4 text-muted-foreground ${targetInstance?.id === instance.id ? 'opacity-100' : 'opacity-0'}`}
+                          />
+                          <div className="flex flex-col">
+                            <span className="font-medium">{instance.name}</span>
+                            {!instance.connected && (
+                              <span className="text-xs text-muted-foreground">Offline</span>
+                            )}
+                          </div>
+                        </DropdownMenuItem>
+                      ))}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onSelect={(event) => {
+                          event.preventDefault()
+                          handleInstanceSelection(null)
+                        }}
+                        disabled={!targetInstance}
+                      >
+                        Clear selection
+                      </DropdownMenuItem>
+                    </>
+                  ) : (
+                    <DropdownMenuItem disabled>No instances configured</DropdownMenuItem>
                   )}
-                </Tooltip>
-              </TooltipProvider>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className={`h-7 w-7 opacity-40 transition-opacity hover:opacity-100 ${!showRefreshButton ? 'invisible' : ''}`}
-                onClick={() => setRefreshConfirmOpen(true)}
-                disabled={!canForceRefresh}
-                title={refreshCooldownRemaining > 0 ? `Ready in ${Math.ceil(refreshCooldownRemaining / 1000)}s` : 'Refresh from indexers'}
-              >
-                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-              </Button>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              {!instancesAvailable && !loadingInstances && (
+                <p className="text-xs text-muted-foreground">
+                  Add a download instance under Settings {'>'} Instances.
+                </p>
+              )}
             </div>
           </div>
-        </CardHeader>
-        <CardContent>
+        </div>
+
+        <Card>
+          <CardContent>
           <form onSubmit={handleSearch} className="space-y-4">
-            <div className="flex items-center gap-1">
+            <div className="flex flex-wrap items-center gap-2">
               <div className="flex-shrink-0 min-w-[120px] max-w-[180px]">
                 <Label htmlFor="search-type" className="sr-only">Search type</Label>
                 <Select value={searchType} onValueChange={(value) => setSearchType(value as SearchType)}>
@@ -658,6 +912,37 @@ export function Search() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant={showAdvancedParams ? 'default' : 'outline'}
+                  size="default"
+                  className={cn(
+                    '!border !px-4 !py-2.5 h-9',
+                    showAdvancedParams
+                      ? 'border-primary bg-primary text-primary-foreground shadow-xs hover:bg-primary/90'
+                      : 'border-input dark:border-input'
+                  )}
+                  onClick={() => setShowAdvancedParams(prev => !prev)}
+                >
+                  <SlidersHorizontal className="mr-2 h-4 w-4" />
+                  Advanced
+                </Button>
+                {hasAdvancedParams && (
+                  <>
+                    <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">Active</Badge>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground"
+                      onClick={handleResetAdvancedParams}
+                    >
+                      Clear
+                    </Button>
+                  </>
+                )}
               </div>
               <div className="flex-1 relative">
                 <Label htmlFor="query" className="sr-only">Search Query</Label>
@@ -690,7 +975,7 @@ export function Search() {
                   disabled={loading}
                 />
                 {shouldShowSuggestions && (
-                  <div className="absolute left-0 right-0 z-20 mt-1 rounded-md border bg-popover shadow-lg">
+                  <div className="absolute left-0 right-0 z-50 mt-1 rounded-md border bg-popover shadow-lg">
                     {suggestionMatches.map((search) => {
                       const suggestionType = inferSearchTypeFromCategories(search.categories)
                       const suggestionTypeLabel = getSearchTypeLabel(suggestionType ?? 'auto')
@@ -714,248 +999,57 @@ export function Search() {
                   </div>
                 )}
               </div>
-              <Button type="submit" disabled={loading || (!query.trim() && !hasAdvancedParams) || selectedIndexers.size === 0}>
+              <Button
+                type="submit"
+                disabled={loading || (!query.trim() && !hasAdvancedParams) || selectedIndexers.size === 0}
+                className="flex-shrink-0"
+              >
                 <SearchIcon className="mr-2 h-4 w-4" />
                 {loading ? 'Searching...' : 'Search'}
               </Button>
             </div>
 
             {/* Advanced Search Parameters */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant={showAdvancedParams ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setShowAdvancedParams(prev => !prev)}
-                >
-                  <SlidersHorizontal className="mr-2 h-4 w-4" />
-                  Advanced Parameters
-                </Button>
-                {hasAdvancedParams && (
-                  <>
-                    <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">Active</Badge>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="text-muted-foreground"
-                      onClick={handleResetAdvancedParams}
-                    >
-                      Clear
-                    </Button>
-                  </>
-                )}
-              </div>
-              {showAdvancedParams && (
-                <div className="rounded-lg border bg-muted/40 p-4 space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {ADVANCED_PARAM_CONFIG.map(({ key, label, placeholder, type, min }) => (
-                      <div key={key} className="space-y-1.5">
-                        <Label htmlFor={`advanced-${key}`} className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          {label}
-                        </Label>
-                        <Input
-                          id={`advanced-${key}`}
-                          type={type}
-                          inputMode={type === 'number' ? 'numeric' : undefined}
-                          min={type === 'number' && typeof min !== 'undefined' ? min : undefined}
-                          placeholder={placeholder}
-                          value={advancedParams[key]}
-                          onChange={(e) => handleAdvancedParamChange(key, e.target.value)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Optional (but recommended) Torznab parameters.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="instance-select" className="text-sm font-medium">Add torrents to</Label>
-              <Select
-                value={selectedInstanceId !== null && selectedInstanceId !== undefined ? String(selectedInstanceId) : ""}
-                onValueChange={(value) => {
-                  const parsed = parseInt(value, 10)
-                  setSelectedInstanceId(Number.isNaN(parsed) ? null : parsed)
-                }}
-                disabled={loadingInstances || !instances || instances.length === 0}
-              >
-                <SelectTrigger id="instance-select" className="w-full md:w-80">
-                  <SelectValue placeholder={loadingInstances ? 'Loading instances...' : 'No instances available'} />
-                </SelectTrigger>
-                <SelectContent>
-                  {instances?.map((instance) => (
-                    <SelectItem key={instance.id} value={String(instance.id)}>
-                      {instance.name}{instance.connected ? '' : ' (offline)'}
-                    </SelectItem>
+            {showAdvancedParams && (
+              <div className="rounded-lg border bg-muted/40 p-4 space-y-4">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {ADVANCED_PARAM_CONFIG.map(({ key, label, placeholder, type, min }) => (
+                    <div key={key} className="space-y-1.5">
+                      <Label htmlFor={`advanced-${key}`} className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        {label}
+                      </Label>
+                      <Input
+                        id={`advanced-${key}`}
+                        type={type}
+                        inputMode={type === 'number' ? 'numeric' : undefined}
+                        min={type === 'number' && typeof min !== 'undefined' ? min : undefined}
+                        placeholder={placeholder}
+                        value={advancedParams[key]}
+                        onChange={(e) => handleAdvancedParamChange(key, e.target.value)}
+                      />
+                    </div>
                   ))}
-                </SelectContent>
-              </Select>
-              {!loadingInstances && (!instances || instances.length === 0) && (
-                <p className="text-xs text-muted-foreground">Add a download instance under Settings -&gt; Instances to enable quick adding.</p>
-              )}
-            </div>
-
-            {/* Indexer Selection */}
-            {!loadingIndexers && indexers.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium">Indexers ({selectedIndexers.size} of {indexers.length} selected)</Label>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleSelectAll}
-                    >
-                      Select All
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleDeselectAll}
-                    >
-                      Deselect All
-                    </Button>
-                  </div>
                 </div>
-                <Accordion type="multiple" className="border rounded-lg">
-                  {(['prowlarr', 'jackett', 'native'] as const).map((backend) => {
-                    const backendIndexers = indexersByBackend[backend] || []
-                    if (backendIndexers.length === 0) return null
-
-                    const selectedCount = backendIndexers.filter(idx => selectedIndexers.has(idx.id)).length
-
-                    return (
-                      <AccordionItem key={backend} value={backend} className="border-0 last:border-b-0">
-                        <AccordionTrigger className="hover:no-underline py-3 px-4 bg-muted/50 hover:bg-muted">
-                          <div className="flex items-center gap-2 flex-1">
-                            <span className="text-sm font-medium">{formatBackend(backend)}</span>
-                            <Badge variant="secondary" className="text-[10px] font-normal">
-                              {selectedCount}/{backendIndexers.length}
-                            </Badge>
-                          </div>
-                        </AccordionTrigger>
-                        <AccordionContent className="px-4 pb-3 pt-1">
-                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                            {backendIndexers.map((indexer) => {
-                              // Only show parent categories (category_id is multiple of 1000 in Torznab spec)
-                              const parentCategories = indexer.categories
-                                ?.filter(cat => cat.category_id % 1000 === 0)
-                                .map(cat => cat.category_name) || []
-
-                              const hasCategories = parentCategories.length > 0
-                              const isSelected = selectedIndexers.has(indexer.id)
-
-                              return (
-                                <label
-                                  key={indexer.id}
-                                  htmlFor={`indexer-${indexer.id}`}
-                                  className={`flex items-start gap-3 rounded-md border p-3 transition-colors cursor-pointer ${
-                                    isSelected
-                                      ? 'bg-muted/40 border-muted-foreground/20'
-                                      : 'hover:bg-muted/20'
-                                  }`}
-                                >
-                                  <Checkbox
-                                    id={`indexer-${indexer.id}`}
-                                    checked={isSelected}
-                                    onCheckedChange={() => toggleIndexer(indexer.id)}
-                                    className="mt-0.5 shrink-0"
-                                  />
-                                  <div className="flex-1 min-w-0 space-y-1.5">
-                                    <div className="text-sm font-medium leading-none">
-                                      {indexer.name}
-                                    </div>
-                                    {hasCategories ? (
-                                      <div className="flex flex-wrap gap-1">
-                                        {parentCategories.map((catName, idx) => (
-                                          <Badge key={idx} variant="secondary" className="text-[10px] font-normal">
-                                            {catName}
-                                          </Badge>
-                                        ))}
-                                      </div>
-                                    ) : (
-                                      <p className="text-xs text-muted-foreground">No categories</p>
-                                    )}
-                                  </div>
-                                </label>
-                              )
-                            })}
-                          </div>
-                        </AccordionContent>
-                      </AccordionItem>
-                    )
-                  })}
-                </Accordion>
+                <p className="text-xs text-muted-foreground">
+                  Optional (but recommended) Torznab parameters.
+                </p>
               </div>
             )}
-
             {!loadingIndexers && indexers.length === 0 && (
               <div className="text-sm text-muted-foreground">
                 No enabled indexers available. Please add and enable indexers in the <a href="/settings?tab=indexers" className="text-primary hover:underline">Indexers page</a>.
               </div>
             )}
 
-            {(recentSearches?.length ?? 0) > 0 && (
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Recent searches</Label>
-                <Accordion type="single" collapsible className="border rounded-lg">
-                  <AccordionItem value="recent-searches" className="border-0">
-                    <AccordionTrigger className="hover:no-underline py-3 px-4 bg-muted/50 hover:bg-muted">
-                      <div className="flex items-center gap-2 flex-1">
-                        <span className="text-sm font-medium">History</span>
-                        <Badge variant="secondary" className="text-[10px] font-normal">
-                          {recentSearches?.length ?? 0}
-                        </Badge>
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent className="px-4 pb-3 pt-1">
-                      <div className="flex flex-col gap-2">
-                        {(recentSearches ?? []).map(search => {
-                          const indexerSummary = search.indexerIds.length > 0 ? `${search.indexerIds.length} indexers` : "All indexers"
-                          return (
-                            <button
-                              type="button"
-                              key={`${search.cacheKey}-${search.cachedAt}`}
-                              className="rounded-md border px-3 py-2 text-left transition hover:border-primary hover:bg-muted/40 focus-visible:outline-none"
-                          onClick={() => handleSuggestionClick(search)}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="font-medium text-foreground text-sm">{search.query || "Untitled search"}</p>
-                                <span className="text-xs text-muted-foreground shrink-0">{formatCacheTimestamp(search.lastUsedAt ?? search.cachedAt)}</span>
-                              </div>
-                              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
-                                  {search.scope === "cross_seed" ? "Cross-seed" : "General"}
-                                </Badge>
-                                <span>{indexerSummary}</span>
-                                <span>{search.totalResults} results</span>
-                                {search.hitCount > 0 && <span>{search.hitCount} hits</span>}
-                              </div>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </AccordionContent>
-                  </AccordionItem>
-                </Accordion>
-              </div>
-            )}
           </form>
 
           {results.length > 0 && (
             <div className="mt-6">
-              <div className="mb-4 flex items-center gap-4">
-                <div className="text-sm text-muted-foreground">
-                  Showing {filteredAndSortedResults.length} of {total} results
-                </div>
-                <div className="flex-1 max-w-sm">
+              <div className="mb-2 text-xs text-muted-foreground">
+                Showing {filteredAndSortedResults.length} of {total} results
+              </div>
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <div className="min-w-[200px] flex-1">
                   <Input
                     type="text"
                     placeholder="Filter results..."
@@ -964,157 +1058,315 @@ export function Search() {
                     className="h-9"
                   />
                 </div>
+                    {selectedResult && (
+                  <>
+                    <div className="hidden sm:flex flex-wrap items-center gap-2">
+                      <div className="inline-flex items-stretch rounded-md overflow-hidden">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => handleAddTorrent(selectedResult)}
+                          disabled={!instancesAvailable}
+                          title={addButtonTitle}
+                          className="rounded-none border-none"
+                        >
+                          <Plus className="h-4 w-4" />
+                          <span className="hidden lg:inline ml-2">{primaryAddButtonLabel}</span>
+                        </Button>
+                        <div className="w-px bg-primary-foreground/20" />
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="rounded-none border-none px-2"
+                              disabled={!instancesAvailable}
+                            >
+                              <ChevronDown className="h-4 w-4" />
+                              <span className="sr-only">Pick instance</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-56">
+                            {instances?.map(instance => (
+                              <DropdownMenuItem
+                                key={instance.id}
+                                onSelect={(event) => {
+                                  event.preventDefault()
+                                  handleAddTorrent(selectedResult, instance.id)
+                                }}
+                              >
+                                Add to {instance.name}{!instance.connected ? ' (offline)' : ''}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDownload(selectedResult)}
+                        disabled={!selectedResult.download_url}
+                        title="Download"
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleViewDetails(selectedResult)}
+                        disabled={!selectedResult.info_url}
+                        title={selectedResult.info_url ? 'View details' : 'No info URL available'}
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleClearSelection}
+                      >
+                        Clear selection
+                      </Button>
+                    </div>
+                    <div className="sm:hidden">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button type="button" size="sm" variant="outline">
+                            Actions
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onSelect={(event) => {
+                              event.preventDefault()
+                              handleAddTorrent(selectedResult)
+                            }}
+                            disabled={!instancesAvailable}
+                          >
+                            <Plus className="mr-2 h-4 w-4" /> {primaryAddButtonLabel}
+                          </DropdownMenuItem>
+                          {instancesAvailable && (
+                            <DropdownMenuSub>
+                              <DropdownMenuSubTrigger>
+                                Quick add to...
+                              </DropdownMenuSubTrigger>
+                              <DropdownMenuSubContent>
+                                {instances?.map(instance => (
+                                  <DropdownMenuItem
+                                    key={instance.id}
+                                    onSelect={(event) => {
+                                      event.preventDefault()
+                                      handleAddTorrent(selectedResult, instance.id)
+                                    }}
+                                  >
+                                    Add to {instance.name}{!instance.connected ? ' (offline)' : ''}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+                          )}
+                          <DropdownMenuItem
+                            onSelect={(event) => {
+                              event.preventDefault()
+                              handleDownload(selectedResult)
+                            }}
+                          >
+                            <Download className="mr-2 h-4 w-4" /> Download
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onSelect={(event) => {
+                              event.preventDefault()
+                              if (selectedResult.info_url) {
+                                handleViewDetails(selectedResult)
+                              }
+                            }}
+                            disabled={!selectedResult.info_url}
+                          >
+                            <ExternalLink className="mr-2 h-4 w-4" /> View details
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onSelect={(event) => {
+                              event.preventDefault()
+                              handleClearSelection()
+                            }}
+                          >
+                            Clear selection
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </>
+                )}
+                <div className="flex items-center gap-2 shrink-0 ml-auto">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge
+                        variant={cacheMetadata?.hit ? 'secondary' : 'outline'}
+                        className={!cacheMetadata ? 'invisible' : ''}
+                      >
+                        {cacheMetadata?.hit ? 'Cache hit' : 'Live fetch'}
+                      </Badge>
+                    </TooltipTrigger>
+                    {cacheMetadata && (
+                      <TooltipContent>
+                        <p className="text-xs">
+                          Cached {formatCacheTimestamp(cacheMetadata.cachedAt)} · Expires {formatCacheTimestamp(cacheMetadata.expiresAt)}
+                        </p>
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className={`h-7 w-7 opacity-40 transition-opacity hover:opacity-100 ${!showRefreshButton ? 'invisible' : ''}`}
+                    onClick={() => setRefreshConfirmOpen(true)}
+                    disabled={!canForceRefresh}
+                    title={refreshCooldownRemaining > 0 ? `Ready in ${Math.ceil(refreshCooldownRemaining / 1000)}s` : 'Refresh from indexers'}
+                  >
+                    <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+                  </Button>
+                </div>
               </div>
               <div className="max-h-[600px] overflow-auto border rounded-md">
-                <table className="w-full caption-bottom text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap cursor-pointer select-none sticky top-0 z-10 bg-card" onClick={() => handleSort('title')}>
+                <Table>
+                  <TableHeader className="sticky top-0 z-20 bg-card">
+                    <TableRow className="bg-card hover:bg-card">
+                      <TableHead className="cursor-pointer select-none" onClick={() => handleSort('title')}>
                         <div className="flex items-center gap-1">
                           Title
                           {getSortIcon('title')}
                         </div>
-                      </th>
-                      <th className="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap cursor-pointer select-none sticky top-0 z-10 bg-card" onClick={() => handleSort('indexer')}>
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none" onClick={() => handleSort('indexer')}>
                         <div className="flex items-center gap-1">
                           Indexer
                           {getSortIcon('indexer')}
                         </div>
-                      </th>
-                      <th className="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap cursor-pointer select-none sticky top-0 z-10 bg-card" onClick={() => handleSort('size')}>
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none" onClick={() => handleSort('size')}>
                         <div className="flex items-center gap-1">
                           Size
                           {getSortIcon('size')}
                         </div>
-                      </th>
-                      <th className="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap cursor-pointer select-none sticky top-0 z-10 bg-card" onClick={() => handleSort('seeders')}>
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none" onClick={() => handleSort('seeders')}>
                         <div className="flex items-center gap-1">
                           Seeders
                           {getSortIcon('seeders')}
                         </div>
-                      </th>
-                      <th className="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap cursor-pointer select-none sticky top-0 z-10 bg-card" onClick={() => handleSort('category')}>
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none" onClick={() => handleSort('category')}>
                         <div className="flex items-center gap-1">
                           Category
                           {getSortIcon('category')}
                         </div>
-                      </th>
-                      <th className="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap cursor-pointer select-none sticky top-0 z-10 bg-card" onClick={() => handleSort('source')}>
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none" onClick={() => handleSort('source')}>
                         <div className="flex items-center gap-1">
                           Source
                           {getSortIcon('source')}
                         </div>
-                      </th>
-                      <th className="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap cursor-pointer select-none sticky top-0 z-10 bg-card" onClick={() => handleSort('collection')}>
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none" onClick={() => handleSort('collection')}>
                         <div className="flex items-center gap-1">
                           Collection
                           {getSortIcon('collection')}
                         </div>
-                      </th>
-                      <th className="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap cursor-pointer select-none sticky top-0 z-10 bg-card" onClick={() => handleSort('group')}>
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none" onClick={() => handleSort('group')}>
                         <div className="flex items-center gap-1">
                           Group
                           {getSortIcon('group')}
                         </div>
-                      </th>
-                      <th className="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap sticky top-0 z-10 bg-card">Freeleech</th>
-                      <th className="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap cursor-pointer select-none sticky top-0 z-10 bg-card" onClick={() => handleSort('published')}>
+                      </TableHead>
+                      <TableHead>Freeleech</TableHead>
+                      <TableHead className="cursor-pointer select-none" onClick={() => handleSort('published')}>
                         <div className="flex items-center gap-1">
                           Published
                           {getSortIcon('published')}
                         </div>
-                      </th>
-                      <th className="text-foreground h-10 px-2 text-center align-middle font-medium whitespace-nowrap sticky top-0 z-10 bg-card">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredAndSortedResults.map((result) => (
-                    <tr key={result.guid} className="hover:bg-muted/50 border-b transition-colors">
-                      <td className="p-2 align-middle whitespace-nowrap font-medium max-w-md">
-                        <div className="truncate" title={result.title}>
-                          {result.title}
-                        </div>
-                      </td>
-                      <td className="p-2 align-middle whitespace-nowrap">{result.indexer}</td>
-                      <td className="p-2 align-middle whitespace-nowrap">{formatSize(result.size)}</td>
-                      <td className="p-2 align-middle whitespace-nowrap">
-                        <Badge variant={result.seeders > 0 ? 'default' : 'secondary'}>
-                          {result.seeders}
-                        </Badge>
-                      </td>
-                      <td className="p-2 align-middle whitespace-nowrap text-sm text-muted-foreground">
-                        {categoryMap.get(result.category_id) || result.category_name || `Category ${result.category_id}`}
-                      </td>
-                      <td className="p-2 align-middle whitespace-nowrap text-sm">
-                        {result.source ? (
-                          <Badge variant="outline">{result.source}</Badge>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </td>
-                      <td className="p-2 align-middle whitespace-nowrap text-sm">
-                        {result.collection ? (
-                          <Badge variant="outline">{result.collection}</Badge>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </td>
-                      <td className="p-2 align-middle whitespace-nowrap text-sm">
-                        {result.group ? (
-                          <Badge variant="outline">{result.group}</Badge>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </td>
-                      <td className="p-2 align-middle whitespace-nowrap">
-                        {result.download_volume_factor === 0 && (
-                          <Badge variant="default">Free</Badge>
-                        )}
-                        {result.download_volume_factor > 0 && result.download_volume_factor < 1 && (
-                          <Badge variant="secondary">{result.download_volume_factor * 100}%</Badge>
-                        )}
-                      </td>
-                      <td className="p-2 align-middle whitespace-nowrap text-sm text-muted-foreground">
-                        {formatCacheTimestamp(result.publish_date)}
-                      </td>
-                      <td className="p-2 align-middle whitespace-nowrap text-right">
-                        <div className="flex justify-end gap-2">
-                          {result.info_url && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => window.open(result.info_url, '_blank')}
-                            title="View details"
-                            aria-label="View details"
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleAddTorrent(result)}
-                          title={canAddTorrent ? 'Add to instance' : 'Select an instance to add torrents'}
-                          aria-label={canAddTorrent ? "Add to instance" : "Select an instance to add torrents"}
-                          disabled={!canAddTorrent}
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredAndSortedResults.map((result) => {
+                      const isSelected = selectedResultGuid === result.guid
+                      return (
+                        <TableRow
+                          key={result.guid}
+                          className={cn(
+                            'cursor-pointer transition-colors',
+                            isSelected
+                              ? 'bg-accent text-accent-foreground hover:bg-accent/90'
+                              : 'hover:bg-muted/60 odd:bg-background/70 even:bg-card/90 dark:odd:bg-background/30 dark:even:bg-card/80'
+                          )}
+                          role="button"
+                          tabIndex={0}
+                          aria-selected={isSelected}
+                          onClick={() => toggleResultSelection(result)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              toggleResultSelection(result)
+                            }
+                          }}
                         >
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDownload(result)}
-                          title="Download"
-                          aria-label="Download"
-                          >
-                            <Download className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  </tbody>
-                </table>
+                          <TableCell className={cn('font-medium max-w-md', isSelected && 'text-accent-foreground')}>
+                            <div className="truncate" title={result.title}>
+                              {result.title}
+                            </div>
+                          </TableCell>
+                          <TableCell className={cn(isSelected && 'text-accent-foreground')}>{result.indexer}</TableCell>
+                          <TableCell className={cn(isSelected && 'text-accent-foreground')}>{formatSize(result.size)}</TableCell>
+                          <TableCell className={cn(isSelected && 'text-accent-foreground')}>
+                            <Badge variant={result.seeders > 0 ? 'default' : 'secondary'}>
+                              {result.seeders}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className={cn('text-sm text-muted-foreground', isSelected && 'text-accent-foreground')}>
+                            {categoryMap.get(result.category_id) || result.category_name || `Category ${result.category_id}`}
+                          </TableCell>
+                          <TableCell className={cn('text-sm', isSelected && 'text-accent-foreground')}>
+                            {result.source ? (
+                              <Badge variant="outline">{result.source}</Badge>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className={cn('text-sm', isSelected && 'text-accent-foreground')}>
+                            {result.collection ? (
+                              <Badge variant="outline">{result.collection}</Badge>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className={cn('text-sm', isSelected && 'text-accent-foreground')}>
+                            {result.group ? (
+                              <Badge variant="outline">{result.group}</Badge>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className={cn(isSelected && 'text-accent-foreground')}>
+                            {result.download_volume_factor === 0 && (
+                              <Badge variant="default">Free</Badge>
+                            )}
+                            {result.download_volume_factor > 0 && result.download_volume_factor < 1 && (
+                              <Badge variant="secondary">{result.download_volume_factor * 100}%</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className={cn('text-sm text-muted-foreground', isSelected && 'text-accent-foreground')}>
+                            {formatCacheTimestamp(result.publish_date)}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
               </div>
             </div>
           )}
@@ -1125,7 +1377,7 @@ export function Search() {
             </div>
           )}
 
-          {!loading && !query && (
+          {!loading && !query && results.length == 0 && (
             <div className="mt-6 text-center text-muted-foreground">
               Enter a search query to get started
             </div>
@@ -1134,13 +1386,13 @@ export function Search() {
       </Card>
 
       {selectedInstanceId && (
-      <AddTorrentDialog
-        instanceId={selectedInstanceId}
-        open={addDialogOpen}
-        onOpenChange={handleDialogOpenChange}
-        dropPayload={addDialogPayload}
-        onDropPayloadConsumed={() => setAddDialogPayload(null)}
-      />
+        <AddTorrentDialog
+          instanceId={selectedInstanceId}
+          open={addDialogOpen}
+          onOpenChange={handleDialogOpenChange}
+          dropPayload={addDialogPayload}
+          onDropPayloadConsumed={() => setAddDialogPayload(null)}
+        />
       )}
 
       <AlertDialog open={refreshConfirmOpen} onOpenChange={setRefreshConfirmOpen}>
@@ -1162,6 +1414,7 @@ export function Search() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+      </div>
+    </TooltipProvider>
   )
 }
