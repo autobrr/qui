@@ -86,6 +86,12 @@ func TestDecodeTorrentData(t *testing.T) {
 			wantData: testData,
 		},
 		{
+			name:     "standard base64 with whitespace",
+			input:    "  " + base64.StdEncoding.EncodeToString(testData) + "\n\t",
+			wantErr:  false,
+			wantData: testData,
+		},
+		{
 			name:     "url-safe base64",
 			input:    base64.URLEncoding.EncodeToString(testData),
 			wantErr:  false,

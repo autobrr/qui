@@ -554,18 +554,18 @@ In **Settings → Actions** (or from the filter’s Actions tab), create a new a
 
 ```json
 {
-  "torrentData": "{{ .TorrentDataRawBytes | b64enc }}",
+  "torrentData": "{{ .TorrentDataRawBytes | toString | b64enc }}",
   "instanceId": 1
 }
 ```
 
-`torrentData` is base64-encoded torrent bytes; in autobrr you can use the `TorrentDataRawBytes` macro together with the `b64enc` sprig helper as shown above. `instanceId` must match the target qBittorrent instance ID in qui (the same one you used for the webhook check).
+`torrentData` is base64-encoded torrent bytes; in autobrr you can use the `TorrentDataRawBytes` macro together with `toString` and the `b64enc` sprig helper as shown above (the extra `toString` converts the byte slice into the string type sprig expects). `instanceId` must match the target qBittorrent instance ID in qui (the same one you used for the webhook check).
 
 Optionally, you can include additional fields supported by qui’s `AutobrrApplyRequest`:
 
 ```json
 {
-  "torrentData": "{{ .TorrentDataRawBytes | b64enc }}",
+  "torrentData": "{{ .TorrentDataRawBytes | toString | b64enc }}",
   "instanceId": 1,
   "addCrossSeedTag": true,
   "skipIfExists": true

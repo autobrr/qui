@@ -1581,20 +1581,36 @@ func (s *Service) processCrossSeedCandidate(
 
 // decodeTorrentData decodes base64-encoded torrent data
 func (s *Service) decodeTorrentData(data string) ([]byte, error) {
-	// Try standard base64
-	decoded, err := base64.StdEncoding.DecodeString(data)
-	if err != nil {
-		// Try URL-safe base64
-		decoded, err = base64.URLEncoding.DecodeString(data)
-		if err != nil {
-			// Try raw base64 (no padding)
-			decoded, err = base64.RawStdEncoding.DecodeString(data)
-			if err != nil {
-				return nil, fmt.Errorf("failed to decode base64: %w", err)
-			}
-		}
+	data = strings.TrimSpace(data)
+	if data == "" {
+		return []byte{}, nil
 	}
-	return decoded, nil
+
+	return decodeBase64Variants(data)
+}
+
+func decodeBase64Variants(data string) ([]byte, error) {
+	encodings := []*base64.Encoding{
+		base64.StdEncoding,
+		base64.URLEncoding,
+		base64.RawStdEncoding,
+		base64.RawURLEncoding,
+	}
+
+	var lastErr error
+	for _, enc := range encodings {
+		decoded, err := enc.DecodeString(data)
+		if err == nil {
+			return decoded, nil
+		}
+		lastErr = err
+	}
+
+	if lastErr == nil {
+		lastErr = errors.New("unable to decode with any base64 encoding")
+	}
+
+	return nil, fmt.Errorf("failed to decode base64: %w", lastErr)
 }
 
 // determineSavePath determines the appropriate save path for cross-seeding

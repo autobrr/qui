@@ -2491,7 +2491,7 @@ paths:
               properties:
                 torrentData:
                   type: string
-                  description: Base64-encoded torrent file provided by autobrr
+                  description: Base64-encoded torrent file provided by autobrr (for example, using the TorrentDataRawBytes macro piped through toString|b64enc or toJson)
                 instanceId:
                   type: integer
                   description: Target instance ID where the torrent should be added
