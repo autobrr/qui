@@ -3,10 +3,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useQuery } from "@tanstack/react-query"
-import { useMemo } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useEffect, useMemo } from "react"
 
 import { api } from "@/lib/api"
+import type { QBittorrentAppInfo } from "@/types"
 
 export interface QBittorrentVersionInfo {
   appVersion: string
@@ -45,6 +46,11 @@ export interface QBittorrentFieldVisibility {
   isUnknown: boolean
   isLoading: boolean
   isError: boolean
+}
+
+export interface UseQBittorrentAppInfoOptions {
+  initialData?: QBittorrentAppInfo | null
+  fetchIfMissing?: boolean
 }
 
 function parseLibtorrentMajor(version: string | undefined): number | undefined {
@@ -109,14 +115,48 @@ export function getFieldVisibility(
 /**
  * Hook to fetch qBittorrent application version and build information
  */
-export function useQBittorrentAppInfo(instanceId: number | undefined) {
+export function useQBittorrentAppInfo(
+  instanceId: number | undefined,
+  options: UseQBittorrentAppInfoOptions = {}
+) {
+  return useQBittorrentAppInfoImpl(instanceId, options)
+}
+
+function useQBittorrentAppInfoImpl(
+  instanceId: number | undefined,
+  options: UseQBittorrentAppInfoOptions
+) {
+  const queryClient = useQueryClient()
+  const queryKey = useMemo(
+    () => ["qbittorrent-app-info", instanceId] as const,
+    [instanceId]
+  )
+  const cachedData = instanceId
+    ? queryClient.getQueryData<QBittorrentAppInfo | undefined>(queryKey)
+    : undefined
+  const providedInitial = options.initialData ?? undefined
+  const initialData = providedInitial ?? cachedData
+  const hasInitialData = initialData !== undefined && initialData !== null
+  const shouldFetch =
+    !!instanceId && (options.fetchIfMissing ?? true) && !hasInitialData
+
   const query = useQuery({
-    queryKey: ["qbittorrent-app-info", instanceId],
+    queryKey,
     queryFn: () => api.getQBittorrentAppInfo(instanceId!),
-    enabled: !!instanceId,
+    enabled: shouldFetch,
+    initialData: hasInitialData ? (initialData as QBittorrentAppInfo) : undefined,
+    initialDataUpdatedAt: hasInitialData ? Date.now() : undefined,
     staleTime: 5 * 60 * 1000, // 5 minutes - app info doesn't change often
     refetchOnWindowFocus: false,
   })
+
+  useEffect(() => {
+    if (!instanceId || !options.initialData) {
+      return
+    }
+
+    queryClient.setQueryData(queryKey, options.initialData)
+  }, [instanceId, options.initialData, queryClient, queryKey])
 
   const versionInfo = useMemo<QBittorrentVersionInfo>(() => {
     const appVersion = query.data?.version || ""

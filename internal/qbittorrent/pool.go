@@ -62,6 +62,7 @@ type ClientPool struct {
 	stopHealth        chan struct{}
 	failureTracker    map[int]*failureInfo
 	decryptionTracker map[int]*decryptionErrorInfo
+	syncEventSink     SyncEventSink
 }
 
 // NewClientPool creates a new client pool
@@ -86,6 +87,18 @@ func NewClientPool(instanceStore *models.InstanceStore, errorStore *models.Insta
 	go cp.healthCheckLoop()
 
 	return cp, nil
+}
+
+// SetSyncEventSink configures the sink that should receive sync notifications
+// from every client managed by this pool. Existing clients are updated
+// immediately.
+func (cp *ClientPool) SetSyncEventSink(sink SyncEventSink) {
+	cp.mu.Lock()
+	cp.syncEventSink = sink
+	for _, client := range cp.clients {
+		client.SetSyncEventSink(sink)
+	}
+	cp.mu.Unlock()
 }
 
 // getInstanceLock gets or creates a per-instance creation lock
@@ -212,6 +225,9 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 
 	// Store in pool (need write lock for this)
 	cp.mu.Lock()
+	if cp.syncEventSink != nil {
+		client.SetSyncEventSink(cp.syncEventSink)
+	}
 	cp.clients[instanceID] = client
 	// Reset failure tracking on successful connection
 	cp.resetFailureTrackingLocked(instanceID)
