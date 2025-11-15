@@ -257,6 +257,9 @@ type WebhookCheckRequest struct {
 	InstanceID int `json:"instanceId"`
 	// Size is the total torrent size in bytes (optional - enables size validation if provided)
 	Size uint64 `json:"size,omitempty"`
+	// FindIndividualEpisodes overrides the default behavior when matching season packs vs episodes.
+	// When omitted, qui uses the automation setting; when set, this explicitly forces the behavior.
+	FindIndividualEpisodes *bool `json:"findIndividualEpisodes,omitempty"`
 }
 
 // WebhookCheckMatch represents a matched torrent in an instance
@@ -274,4 +277,18 @@ type WebhookCheckResponse struct {
 	CanCrossSeed   bool                `json:"canCrossSeed"`
 	Matches        []WebhookCheckMatch `json:"matches"`
 	Recommendation string              `json:"recommendation"` // "download" or "skip"
+}
+
+// AutobrrApplyRequest represents autobrr pushing a torrent directly to qui for application.
+type AutobrrApplyRequest struct {
+	TorrentData     string   `json:"torrentData"`
+	InstanceID      int      `json:"instanceId"`
+	Category        string   `json:"category,omitempty"`
+	Tags            []string `json:"tags,omitempty"`
+	IgnorePatterns  []string `json:"ignorePatterns,omitempty"`
+	StartPaused     *bool    `json:"startPaused,omitempty"`
+	AddCrossSeedTag *bool    `json:"addCrossSeedTag,omitempty"`
+	SkipIfExists    *bool    `json:"skipIfExists,omitempty"`
+	// FindIndividualEpisodes overrides the automation-level episode matching behavior when set.
+	FindIndividualEpisodes *bool `json:"findIndividualEpisodes,omitempty"`
 }
