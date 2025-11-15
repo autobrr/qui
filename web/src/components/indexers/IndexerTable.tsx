@@ -41,7 +41,7 @@ interface IndexerTableProps {
   onDelete: (id: number) => void
   onTest: (id: number) => void
   onSyncCaps: (id: number) => void
-  onTestAll: () => void
+  onTestAll: (visibleIndexers: TorznabIndexer[]) => void
 }
 
 export function IndexerTable({
@@ -240,8 +240,8 @@ export function IndexerTable({
           variant="outline"
           size="sm"
           className="h-8"
-          onClick={onTestAll}
-          disabled={loading || indexers.length === 0}
+          onClick={() => onTestAll(filteredAndSortedIndexers)}
+          disabled={loading || filteredAndSortedIndexers.length === 0}
         >
           <RefreshCw className="mr-2 h-4 w-4" />
           Test All

@@ -120,8 +120,8 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
     }
   }
 
-  const handleTestAll = async () => {
-    if (indexers.length === 0) {
+  const handleTestAll = async (indexersToTest: TorznabIndexer[]) => {
+    if (indexersToTest.length === 0) {
       toast.info("No indexers to test")
       return
     }
@@ -130,9 +130,9 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
     let failCount = 0
     const results: { name: string; success: boolean; error?: string }[] = []
 
-    toast.info(`Testing ${indexers.length} indexers...`)
+    toast.info(`Testing ${indexersToTest.length} indexers...`)
 
-    for (const indexer of indexers) {
+    for (const indexer of indexersToTest) {
       try {
         await api.testTorznabIndexer(indexer.id)
         successCount++
