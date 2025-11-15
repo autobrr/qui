@@ -20,7 +20,10 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-var ErrTorznabIndexerNotFound = errors.New("torznab indexer not found")
+var (
+	ErrTorznabIndexerNotFound   = errors.New("torznab indexer not found")
+	ErrTorznabIndexerIDRequired = errors.New("indexer_id is required for prowlarr backends")
+)
 
 // TorznabBackend represents the backend implementation used to access a Torznab indexer.
 type TorznabBackend string
@@ -247,7 +250,7 @@ func (s *TorznabIndexerStore) CreateWithIndexerID(ctx context.Context, name, bas
 		return nil, fmt.Errorf("unsupported torznab backend: %s", backend)
 	}
 	if backend == TorznabBackendProwlarr && strings.TrimSpace(indexerID) == "" {
-		return nil, errors.New("indexer_id is required for prowlarr backends")
+		return nil, ErrTorznabIndexerIDRequired
 	}
 
 	// Encrypt API key
@@ -613,7 +616,7 @@ func (s *TorznabIndexerStore) Update(ctx context.Context, id int, params Torznab
 	}
 
 	if existing.Backend == TorznabBackendProwlarr && strings.TrimSpace(existing.IndexerID) == "" {
-		return nil, errors.New("indexer_id is required for prowlarr backends")
+		return nil, ErrTorznabIndexerIDRequired
 	}
 
 	// Handle API key update
