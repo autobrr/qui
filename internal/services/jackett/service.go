@@ -2472,11 +2472,7 @@ func (s *Service) GetEnabledIndexersInfo(ctx context.Context) (map[int]EnabledIn
 		}
 
 		// Get Prowlarr domains and update the map
-		prowlarrDomains, err := s.getProwlarrTrackerDomains(ctx, prowlarrIndexers)
-		if err != nil {
-			log.Warn().Err(err).Msg("Failed to get Prowlarr tracker domains, falling back to BaseURL")
-		}
-
+		prowlarrDomains := s.getProwlarrTrackerDomains(ctx, prowlarrIndexers)
 		for _, indexer := range prowlarrIndexers {
 			if info, exists := indexerMap[indexer.ID]; exists {
 				domain := prowlarrDomains[indexer.ID]
@@ -2544,10 +2540,7 @@ func (s *Service) GetEnabledTrackerDomains(ctx context.Context) ([]string, error
 
 	// Handle Prowlarr indexers (need to query Prowlarr API for actual tracker domains)
 	if len(prowlarrIndexers) > 0 {
-		prowlarrDomains, err := s.getProwlarrTrackerDomains(ctx, prowlarrIndexers)
-		if err != nil {
-			log.Warn().Err(err).Msg("Failed to get Prowlarr tracker domains, falling back to BaseURL")
-		}
+		prowlarrDomains := s.getProwlarrTrackerDomains(ctx, prowlarrIndexers)
 
 		for _, indexer := range prowlarrIndexers {
 			domain := prowlarrDomains[indexer.ID]
@@ -2724,10 +2717,10 @@ func (s *Service) getProwlarrIndexerDomain(ctx context.Context, indexer *models.
 }
 
 // getProwlarrTrackerDomains queries Prowlarr API to get actual tracker domains for the given indexers
-func (s *Service) getProwlarrTrackerDomains(ctx context.Context, prowlarrIndexers []*models.TorznabIndexer) (map[int]string, error) {
+func (s *Service) getProwlarrTrackerDomains(ctx context.Context, prowlarrIndexers []*models.TorznabIndexer) map[int]string {
 	result := make(map[int]string, len(prowlarrIndexers))
 	if len(prowlarrIndexers) == 0 {
-		return result, nil
+		return result
 	}
 
 	// Group indexers by Prowlarr instance (BaseURL + API key combination)
@@ -2801,5 +2794,5 @@ func (s *Service) getProwlarrTrackerDomains(ctx context.Context, prowlarrIndexer
 		}
 	}
 
-	return result, nil
+	return result
 }
