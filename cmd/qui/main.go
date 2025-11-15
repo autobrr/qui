@@ -523,7 +523,7 @@ func (app *Application) runServer() {
 
 	// Initialize cross-seed automation store and service
 	crossSeedStore := models.NewCrossSeedStore(db)
-	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService)
+	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore, clientPool)
 
 	automationCtx, automationCancel := context.WithCancel(context.Background())
 	crossSeedService.StartAutomation(automationCtx)

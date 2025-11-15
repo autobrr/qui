@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"os/exec"
+	"runtime"
 	"slices"
 	"sort"
 	"strconv"
@@ -76,6 +78,10 @@ type Service struct {
 	automationSettingsLoader func(context.Context) (*models.CrossSeedAutomationSettings, error)
 	jackettService           *jackett.Service
 
+	// External program execution
+	externalProgramStore *models.ExternalProgramStore
+	clientPool           *qbittorrent.ClientPool
+
 	automationMu     sync.Mutex
 	automationCancel context.CancelFunc
 	automationWake   chan struct{}
@@ -124,6 +130,8 @@ func NewService(
 	filesManager *filesmanager.Service,
 	automationStore *models.CrossSeedStore,
 	jackettService *jackett.Service,
+	externalProgramStore *models.ExternalProgramStore,
+	clientPool *qbittorrent.ClientPool,
 ) *Service {
 	searchCache := ttlcache.New(ttlcache.Options[string, []TorrentSearchResult]{}.
 		SetDefaultTTL(searchResultCacheTTL))
@@ -134,17 +142,19 @@ func NewService(
 		SetDefaultTTL(indexerDomainCacheTTL))
 
 	return &Service{
-		instanceStore:       instanceStore,
-		syncManager:         syncManager,
-		filesManager:        filesManager,
-		releaseCache:        NewReleaseCache(),
-		searchResultCache:   searchCache,
-		asyncFilteringCache: asyncFilteringCache,
-		indexerDomainCache:  indexerDomainCache,
-		automationStore:     automationStore,
-		jackettService:      jackettService,
-		automationWake:      make(chan struct{}, 1),
-		domainMappings:      initializeDomainMappings(),
+		instanceStore:        instanceStore,
+		syncManager:          syncManager,
+		filesManager:         filesManager,
+		releaseCache:         NewReleaseCache(),
+		searchResultCache:    searchCache,
+		asyncFilteringCache:  asyncFilteringCache,
+		indexerDomainCache:   indexerDomainCache,
+		automationStore:      automationStore,
+		jackettService:       jackettService,
+		externalProgramStore: externalProgramStore,
+		clientPool:           clientPool,
+		automationWake:       make(chan struct{}, 1),
+		domainMappings:       initializeDomainMappings(),
 	}
 }
 
@@ -1425,10 +1435,15 @@ func (s *Service) processCrossSeedCandidate(
 	// Skip hash checking since we're pointing to existing files
 	options["skip_checking"] = "true"
 
-	// Use category from request or matched torrent
+	// Use category from request or matched torrent, or indexer name based on global settings
 	category := req.Category
 	if category == "" {
-		category = matchedTorrent.Category
+		// Check global settings for useCategoryFromIndexer
+		if settings, err := s.GetAutomationSettings(ctx); err == nil && settings.UseCategoryFromIndexer && req.IndexerName != "" {
+			category = req.IndexerName
+		} else {
+			category = matchedTorrent.Category
+		}
 	}
 	if category != "" {
 		options["category"] = category
@@ -1565,7 +1580,10 @@ func (s *Service) processCrossSeedCandidate(
 		Size:     matchedTorrent.Size,
 	}
 
-	log.Info().
+	// Execute external program if configured (async, non-blocking)
+	s.executeExternalProgram(ctx, candidate.InstanceID, torrentHash)
+
+	log.Debug().
 		Int("instanceID", candidate.InstanceID).
 		Str("instanceName", candidate.InstanceName).
 		Str("torrentHash", torrentHash).
@@ -2401,7 +2419,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	searchResp, err := s.jackettService.Search(ctx, searchReq)
 	if err != nil {
-		return nil, fmt.Errorf("torznab search failed: %w", err)
+		return nil, wrapCrossSeedSearchError(err)
 	}
 
 	searchResults := searchResp.Results
@@ -2643,6 +2661,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 			TargetInstanceIDs:      []int{instanceID},
 			StartPaused:            &startPausedCopy,
 			AddCrossSeedTag:        &addCrossSeedTag,
+			IndexerName:            indexerName,
 			FindIndividualEpisodes: req.FindIndividualEpisodes,
 		}
 
@@ -4507,4 +4526,205 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		Matches:        matches,
 		Recommendation: recommendation,
 	}, nil
+}
+
+// executeExternalProgram runs the configured external program for a successfully injected torrent
+func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, torrentHash string) {
+	if s.externalProgramStore == nil {
+		return
+	}
+
+	// Get current settings to check if external program is configured
+	settings, err := s.GetAutomationSettings(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get automation settings for external program execution")
+		return
+	}
+
+	if settings.RunExternalProgramID == nil {
+		return // No external program configured
+	}
+
+	programID := *settings.RunExternalProgramID
+
+	// Get the external program configuration
+	program, err := s.externalProgramStore.GetByID(ctx, programID)
+	if err != nil {
+		if err == models.ErrExternalProgramNotFound {
+			log.Warn().Int("programId", programID).Msg("Configured external program not found")
+			return
+		}
+		log.Error().Err(err).Int("programId", programID).Msg("Failed to get external program configuration")
+		return
+	}
+
+	if !program.Enabled {
+		log.Debug().Int("programId", programID).Str("programName", program.Name).Msg("External program is disabled, skipping execution")
+		return
+	}
+
+	// Execute in a separate goroutine to avoid blocking the cross-seed operation
+	go func() {
+		log.Debug().
+			Int("instanceId", instanceID).
+			Str("torrentHash", torrentHash).
+			Int("programId", programID).
+			Str("programName", program.Name).
+			Msg("Executing external program for cross-seed injection")
+
+		// Get qBittorrent client and torrent data
+		client, err := s.clientPool.GetClient(context.Background(), instanceID)
+		if err != nil {
+			log.Error().Err(err).Int("instanceId", instanceID).Msg("Failed to get qBittorrent client for external program execution")
+			return
+		}
+
+		torrents, err := client.GetTorrents(qbt.TorrentFilterOptions{})
+		if err != nil {
+			log.Error().Err(err).Str("torrentHash", torrentHash).Msg("Failed to get torrents for external program execution")
+			return
+		}
+
+		// Find the target torrent
+		var targetTorrent *qbt.Torrent
+		for i := range torrents {
+			if strings.EqualFold(torrents[i].Hash, torrentHash) {
+				targetTorrent = &torrents[i]
+				break
+			}
+		}
+
+		if targetTorrent == nil {
+			log.Error().Str("torrentHash", torrentHash).Msg("Torrent not found for external program execution")
+			return
+		}
+
+		// Execute the external program - simplified version of handler logic
+		success := s.executeExternalProgramSimple(ctx, program, *targetTorrent)
+
+		if success {
+			log.Debug().
+				Int("instanceId", instanceID).
+				Str("torrentHash", torrentHash).
+				Int("programId", programID).
+				Str("programName", program.Name).
+				Msg("External program executed successfully for cross-seed injection")
+		} else {
+			log.Error().
+				Int("instanceId", instanceID).
+				Str("torrentHash", torrentHash).
+				Int("programId", programID).
+				Str("programName", program.Name).
+				Msg("External program execution failed for cross-seed injection")
+		}
+	}()
+}
+
+// executeExternalProgramSimple runs an external program for a torrent using simplified logic
+func (s *Service) executeExternalProgramSimple(ctx context.Context, program *models.ExternalProgram, torrent qbt.Torrent) bool {
+	// Build torrent data map for variable substitution
+	torrentData := map[string]string{
+		"hash":         torrent.Hash,
+		"name":         torrent.Name,
+		"save_path":    s.applyPathMappings(torrent.SavePath, program.PathMappings),
+		"category":     torrent.Category,
+		"tags":         torrent.Tags,
+		"state":        string(torrent.State),
+		"size":         fmt.Sprintf("%d", torrent.Size),
+		"progress":     fmt.Sprintf("%.2f", torrent.Progress),
+		"content_path": s.applyPathMappings(torrent.ContentPath, program.PathMappings),
+	}
+
+	// Build command arguments
+	args := s.buildArgsSimple(program.ArgsTemplate, torrentData)
+
+	// Build command
+	var cmd *exec.Cmd
+	if program.UseTerminal {
+		if runtime.GOOS == "windows" {
+			cmdArgs := []string{"/c", "start", "", "cmd", "/k", program.Path}
+			cmdArgs = append(cmdArgs, args...)
+			cmd = exec.Command("cmd.exe", cmdArgs...)
+		} else {
+			// Simple Unix terminal execution
+			allArgs := append([]string{program.Path}, args...)
+			cmd = exec.Command("xterm", append([]string{"-e"}, allArgs...)...)
+		}
+	} else {
+		if runtime.GOOS == "windows" {
+			cmdArgs := []string{"/c", "start", "", "/b", program.Path}
+			cmdArgs = append(cmdArgs, args...)
+			cmd = exec.Command("cmd.exe", cmdArgs...)
+		} else {
+			if len(args) > 0 {
+				cmd = exec.Command(program.Path, args...)
+			} else {
+				cmd = exec.Command(program.Path)
+			}
+		}
+	}
+
+	// Log the command
+	log.Debug().
+		Str("program", program.Name).
+		Str("hash", torrent.Hash).
+		Str("command", fmt.Sprintf("%v", cmd.Args)).
+		Msg("External program launched")
+
+	// Execute in background
+	go func() {
+		if runtime.GOOS == "windows" {
+			cmd.Run()
+		} else {
+			if err := cmd.Start(); err != nil {
+				log.Error().Err(err).Str("program", program.Name).Msg("Failed to start external program")
+				return
+			}
+			cmd.Wait()
+		}
+	}()
+
+	return true
+}
+
+// Helper functions for external program execution
+func (s *Service) applyPathMappings(remotePath string, mappings []models.PathMapping) string {
+	if remotePath == "" {
+		return ""
+	}
+	for _, mapping := range mappings {
+		if strings.HasPrefix(remotePath, mapping.From) {
+			return strings.Replace(remotePath, mapping.From, mapping.To, 1)
+		}
+	}
+	return remotePath
+}
+
+func (s *Service) buildArgsSimple(template string, torrentData map[string]string) []string {
+	if template == "" {
+		return []string{}
+	}
+
+	// Simple argument splitting and substitution
+	args := strings.Fields(template)
+	for i := range args {
+		for key, value := range torrentData {
+			placeholder := "{" + key + "}"
+			args[i] = strings.ReplaceAll(args[i], placeholder, value)
+		}
+	}
+	return args
+}
+
+func wrapCrossSeedSearchError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "rate-limited") || strings.Contains(msg, "cooldown") {
+		return fmt.Errorf("cross-seed search temporarily unavailable: %w. This is normal protection against tracker bans. Try again in 30-60 minutes or use fewer indexers", err)
+	}
+
+	return fmt.Errorf("torznab search failed: %w", err)
 }

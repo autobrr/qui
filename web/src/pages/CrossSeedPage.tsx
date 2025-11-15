@@ -61,6 +61,8 @@ interface AutomationFormState {
 interface GlobalCrossSeedSettings {
   findIndividualEpisodes: boolean
   sizeMismatchTolerancePercent: number
+  useCategoryFromIndexer: boolean
+  runExternalProgramId?: number | null
 }
 
 // RSS Automation constants
@@ -85,6 +87,8 @@ const DEFAULT_AUTOMATION_FORM: AutomationFormState = {
 const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   findIndividualEpisodes: false,
   sizeMismatchTolerancePercent: 5.0,
+  useCategoryFromIndexer: false,
+  runExternalProgramId: null,
 }
 
 function parseList(value: string): string[] {
@@ -184,6 +188,11 @@ export function CrossSeedPage() {
     queryFn: () => api.listTorznabIndexers(),
   })
 
+  const { data: externalPrograms } = useQuery({
+    queryKey: ["external-programs"],
+    queryFn: () => api.listExternalPrograms(),
+  })
+
   const { data: searchStatus, refetch: refetchSearchStatus } = useQuery({
     queryKey: ["cross-seed", "search-status"],
     queryFn: () => api.getCrossSeedSearchStatus(),
@@ -242,6 +251,8 @@ export function CrossSeedPage() {
       setGlobalSettings({
         findIndividualEpisodes: settings.findIndividualEpisodes,
         sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent ?? 5.0,
+        useCategoryFromIndexer: settings.useCategoryFromIndexer ?? false,
+        runExternalProgramId: settings.runExternalProgramId ?? null,
       })
       setGlobalSettingsInitialized(true)
     }
@@ -331,6 +342,8 @@ export function CrossSeedPage() {
       // Only update the global settings
       findIndividualEpisodes: globalSettings.findIndividualEpisodes,
       sizeMismatchTolerancePercent: globalSettings.sizeMismatchTolerancePercent,
+      useCategoryFromIndexer: globalSettings.useCategoryFromIndexer,
+      runExternalProgramId: globalSettings.runExternalProgramId,
     }
     updateGlobalSettingsMutation.mutate(payload)
   }
@@ -357,6 +370,8 @@ export function CrossSeedPage() {
       maxResultsPerRun: automationForm.maxResultsPerRun,
       findIndividualEpisodes: globalSettings.findIndividualEpisodes,
       sizeMismatchTolerancePercent: globalSettings.sizeMismatchTolerancePercent,
+      useCategoryFromIndexer: globalSettings.useCategoryFromIndexer,
+      runExternalProgramId: globalSettings.runExternalProgramId,
     }
     updateSettingsMutation.mutate(payload)
   }
@@ -1208,6 +1223,52 @@ export function CrossSeedPage() {
             />
             <p className="text-xs text-muted-foreground">
               Filters out search results with sizes differing by more than this percentage. Set to 0 for exact size matching.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="global-use-category-from-indexer" className="flex items-center gap-2">
+              <Switch
+                id="global-use-category-from-indexer"
+                checked={globalSettings.useCategoryFromIndexer}
+                onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, useCategoryFromIndexer: !!value }))}
+              />
+              Use indexer name as category
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              When enabled, cross-seeded torrents will automatically use the indexer name as their qBittorrent category.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="global-external-program">Run external program after injection</Label>
+            <Select
+              value={globalSettings.runExternalProgramId ? String(globalSettings.runExternalProgramId) : "none"}
+              onValueChange={(value) => setGlobalSettings(prev => ({ 
+                ...prev, 
+                runExternalProgramId: value === "none" ? null : Number(value) 
+              }))}
+              disabled={!externalPrograms?.length}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={
+                  !externalPrograms?.length 
+                    ? "No external programs available" 
+                    : "Select external program (optional)"
+                } />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                {externalPrograms?.filter(program => program.enabled).map(program => (
+                  <SelectItem key={program.id} value={String(program.id)}>
+                    {program.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Optionally run an external program after successfully injecting a cross-seed torrent. Only enabled programs are shown.
+              {!externalPrograms?.length && (
+                <> <Link to="/settings" search={{ tab: "external-programs" }} className="text-blue-600 hover:underline">Configure external programs</Link> to use this feature.</>
+              )}
             </p>
           </div>
       </CardContent>

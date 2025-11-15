@@ -1040,14 +1040,47 @@ func (s *Service) MapCategoriesToIndexerCapabilities(ctx context.Context, indexe
 
 // searchMultipleIndexers searches multiple indexers in parallel and aggregates results
 func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, error) {
+	// Filter out rate-limited indexers before starting the search
+	availableIndexers := make([]*models.TorznabIndexer, 0, len(indexers))
+	cooldownIndexers := s.rateLimiter.GetCooldownIndexers()
+
+	for _, indexer := range indexers {
+		if resumeAt, inCooldown := cooldownIndexers[indexer.ID]; inCooldown {
+			log.Warn().
+				Int("indexer_id", indexer.ID).
+				Str("indexer", indexer.Name).
+				Time("resume_at", resumeAt).
+				Msg("Skipping rate-limited indexer for search")
+			continue
+		}
+		availableIndexers = append(availableIndexers, indexer)
+	}
+
+	// Log how many indexers were filtered out
+	if len(availableIndexers) != len(indexers) {
+		log.Info().
+			Int("total_indexers", len(indexers)).
+			Int("available_indexers", len(availableIndexers)).
+			Int("rate_limited_indexers", len(indexers)-len(availableIndexers)).
+			Msg("Filtered out rate-limited indexers from search")
+	}
+
+	// If no indexers are available, return early with informative error
+	if len(availableIndexers) == 0 {
+		if len(cooldownIndexers) > 0 {
+			return nil, fmt.Errorf("all indexers are currently rate-limited. %d indexer(s) in cooldown", len(cooldownIndexers))
+		}
+		return nil, fmt.Errorf("no indexers available for search")
+	}
+
 	type indexerResult struct {
 		results []Result
 		err     error
 	}
 
-	resultsChan := make(chan indexerResult, len(indexers))
+	resultsChan := make(chan indexerResult, len(availableIndexers))
 
-	for _, indexer := range indexers {
+	for _, indexer := range availableIndexers {
 		go func(idx *models.TorznabIndexer) {
 			defer func() {
 				if r := recover(); r != nil {
@@ -1192,7 +1225,16 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 					Int("indexer_id", idx.ID).
 					Str("indexer", idx.Name).
 					Msg("Failed to search indexer")
-				resultsChan <- indexerResult{nil, err}
+
+				// Enhance rate limit error messages with indexer context
+				if strings.Contains(strings.ToLower(err.Error()), "429") ||
+					strings.Contains(strings.ToLower(err.Error()), "rate limit") ||
+					strings.Contains(strings.ToLower(err.Error()), "too many requests") {
+					enhancedErr := fmt.Errorf("prowlarr search failed: prowlarr returned status 429 for indexer %s (ID: %d). Rate limiting is active for this indexer", idx.Name, idx.ID)
+					resultsChan <- indexerResult{nil, enhancedErr}
+				} else {
+					resultsChan <- indexerResult{nil, err}
+				}
 				return
 			}
 
@@ -1216,7 +1258,7 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 		lastErr    error
 	)
 
-	for range indexers {
+	for range availableIndexers {
 		result := <-resultsChan
 		if result.err != nil {
 			failures++
@@ -1226,8 +1268,8 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 		allResults = append(allResults, result.results...)
 	}
 
-	if failures == len(indexers) {
-		return nil, fmt.Errorf("all %d indexers failed (last error: %w)", len(indexers), lastErr)
+	if len(availableIndexers) > 0 && failures == len(availableIndexers) {
+		return nil, fmt.Errorf("all %d indexers failed (last error: %w)", len(availableIndexers), lastErr)
 	}
 	if failures > 0 {
 		log.Warn().
@@ -1679,10 +1721,19 @@ func (s *Service) handleRateLimit(ctx context.Context, idx *models.TorznabIndexe
 	resumeAt := time.Now().Add(cooldown)
 	s.rateLimiter.SetCooldown(idx.ID, resumeAt)
 
-	message := fmt.Sprintf("Rate limit triggered for %s, pausing until %s", idx.Name, resumeAt.Format(time.RFC3339))
+	message := fmt.Sprintf("Rate limit triggered for %s, pausing until %s (cooldown: %v)",
+		idx.Name, resumeAt.Format(time.RFC3339), cooldown)
 	if err := s.indexerStore.RecordError(ctx, idx.ID, message, "rate_limit"); err != nil {
 		log.Debug().Err(err).Int("indexer_id", idx.ID).Msg("Failed to record rate-limit error")
 	}
+
+	log.Warn().
+		Int("indexer_id", idx.ID).
+		Str("indexer", idx.Name).
+		Dur("cooldown", cooldown).
+		Time("resume_at", resumeAt).
+		Err(cause).
+		Msg("Rate limit applied to indexer")
 
 	s.adaptRequestLimits(ctx, idx)
 }

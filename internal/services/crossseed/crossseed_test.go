@@ -7,9 +7,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/anacrolix/torrent/bencode"
@@ -1452,5 +1454,32 @@ func TestWebhookCheckResponse_Structure(t *testing.T) {
 				assert.Greater(t, match.InstanceID, 0)
 			}
 		})
+	}
+}
+
+func TestWrapCrossSeedSearchErrorRateLimited(t *testing.T) {
+	err := errors.New("torznab request rate-limited by tracker")
+	wrapped := wrapCrossSeedSearchError(err)
+
+	if wrapped == nil {
+		t.Fatalf("expected wrapped error")
+	}
+	if !strings.Contains(wrapped.Error(), "temporarily unavailable") {
+		t.Fatalf("expected friendly rate limit explanation, got %q", wrapped.Error())
+	}
+	if !strings.Contains(wrapped.Error(), err.Error()) {
+		t.Fatalf("expected original error message to be included")
+	}
+}
+
+func TestWrapCrossSeedSearchErrorGeneric(t *testing.T) {
+	err := errors.New("unexpected search failure")
+	wrapped := wrapCrossSeedSearchError(err)
+
+	if wrapped == nil {
+		t.Fatalf("expected wrapped error")
+	}
+	if !strings.Contains(wrapped.Error(), "torznab search failed") {
+		t.Fatalf("expected generic torznab failure prefix, got %q", wrapped.Error())
 	}
 }

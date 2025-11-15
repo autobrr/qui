@@ -94,6 +94,34 @@ func (r *RateLimiter) ClearCooldown(indexerID int) {
 	state.cooldownUntil = time.Time{}
 }
 
+// IsInCooldown checks if an indexer is currently in cooldown without blocking
+func (r *RateLimiter) IsInCooldown(indexerID int) (bool, time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	state := r.getStateLocked(indexerID)
+	now := time.Now()
+	if !state.cooldownUntil.IsZero() && state.cooldownUntil.After(now) {
+		return true, state.cooldownUntil
+	}
+	return false, time.Time{}
+}
+
+// GetCooldownIndexers returns a list of indexer IDs that are currently in cooldown
+func (r *RateLimiter) GetCooldownIndexers() map[int]time.Time {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	cooldowns := make(map[int]time.Time)
+	now := time.Now()
+	for indexerID, state := range r.states {
+		if !state.cooldownUntil.IsZero() && state.cooldownUntil.After(now) {
+			cooldowns[indexerID] = state.cooldownUntil
+		}
+	}
+	return cooldowns
+}
+
 func (r *RateLimiter) computeWaitLocked(indexer *models.TorznabIndexer, now time.Time) time.Duration {
 	state := r.getStateLocked(indexer.ID)
 	r.pruneLocked(state, now)
