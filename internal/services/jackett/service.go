@@ -2475,24 +2475,16 @@ func (s *Service) GetEnabledIndexersInfo(ctx context.Context) (map[int]EnabledIn
 		prowlarrDomains, err := s.getProwlarrTrackerDomains(ctx, prowlarrIndexers)
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to get Prowlarr tracker domains, falling back to BaseURL")
-			// Fallback to BaseURL for Prowlarr indexers
-			for _, indexer := range prowlarrIndexers {
-				if info, exists := indexerMap[indexer.ID]; exists {
-					domain := ""
-					if indexer.BaseURL != "" {
-						domain = extractDomainFromURL(indexer.BaseURL)
-					}
-					info.Domain = domain
-					indexerMap[indexer.ID] = info
+		}
+
+		for _, indexer := range prowlarrIndexers {
+			if info, exists := indexerMap[indexer.ID]; exists {
+				domain := prowlarrDomains[indexer.ID]
+				if domain == "" && indexer.BaseURL != "" {
+					domain = extractDomainFromURL(indexer.BaseURL)
 				}
-			}
-		} else {
-			// Update with actual Prowlarr domains
-			for i, indexer := range prowlarrIndexers {
-				if info, exists := indexerMap[indexer.ID]; exists && i < len(prowlarrDomains) {
-					info.Domain = prowlarrDomains[i]
-					indexerMap[indexer.ID] = info
-				}
+				info.Domain = domain
+				indexerMap[indexer.ID] = info
 			}
 		}
 	}
@@ -2555,22 +2547,16 @@ func (s *Service) GetEnabledTrackerDomains(ctx context.Context) ([]string, error
 		prowlarrDomains, err := s.getProwlarrTrackerDomains(ctx, prowlarrIndexers)
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to get Prowlarr tracker domains, falling back to BaseURL")
-			// Fallback to BaseURL for Prowlarr indexers
-			for _, indexer := range prowlarrIndexers {
-				if indexer.BaseURL != "" {
-					domain := extractDomainFromURL(indexer.BaseURL)
-					if domain != "" && !domainMap[domain] {
-						domainMap[domain] = true
-						domains = append(domains, domain)
-					}
-				}
+		}
+
+		for _, indexer := range prowlarrIndexers {
+			domain := prowlarrDomains[indexer.ID]
+			if domain == "" && indexer.BaseURL != "" {
+				domain = extractDomainFromURL(indexer.BaseURL)
 			}
-		} else {
-			for _, domain := range prowlarrDomains {
-				if domain != "" && !domainMap[domain] {
-					domainMap[domain] = true
-					domains = append(domains, domain)
-				}
+			if domain != "" && !domainMap[domain] {
+				domainMap[domain] = true
+				domains = append(domains, domain)
 			}
 		}
 	}
@@ -2738,19 +2724,18 @@ func (s *Service) getProwlarrIndexerDomain(ctx context.Context, indexer *models.
 }
 
 // getProwlarrTrackerDomains queries Prowlarr API to get actual tracker domains for the given indexers
-func (s *Service) getProwlarrTrackerDomains(ctx context.Context, prowlarrIndexers []*models.TorznabIndexer) ([]string, error) {
+func (s *Service) getProwlarrTrackerDomains(ctx context.Context, prowlarrIndexers []*models.TorznabIndexer) (map[int]string, error) {
+	result := make(map[int]string, len(prowlarrIndexers))
 	if len(prowlarrIndexers) == 0 {
-		return nil, nil
+		return result, nil
 	}
 
 	// Group indexers by Prowlarr instance (BaseURL + API key combination)
 	prowlarrGroups := make(map[string][]*models.TorznabIndexer)
 	for _, indexer := range prowlarrIndexers {
-		key := indexer.BaseURL // Use BaseURL as the key since it represents the Prowlarr instance
+		key := strings.TrimSpace(indexer.BaseURL)
 		prowlarrGroups[key] = append(prowlarrGroups[key], indexer)
 	}
-
-	var allDomains []string
 
 	// Query each Prowlarr instance
 	for baseURL, indexers := range prowlarrGroups {
@@ -2766,27 +2751,55 @@ func (s *Service) getProwlarrTrackerDomains(ctx context.Context, prowlarrIndexer
 		}
 
 		// Create Prowlarr client for this instance
-		client := NewClient(baseURL, apiKey, models.TorznabBackendProwlarr, 30)
+		timeout := indexers[0].TimeoutSeconds
+		if timeout <= 0 {
+			timeout = 30
+		}
+		client := NewClient(baseURL, apiKey, models.TorznabBackendProwlarr, timeout)
 		if client.prowlarr == nil {
 			log.Warn().Str("baseURL", baseURL).Msg("Failed to create Prowlarr client")
 			continue
 		}
 
-		// Get tracker domains from this Prowlarr instance
-		domains, err := client.prowlarr.GetTrackerDomains(ctx)
-		if err != nil {
-			log.Warn().Err(err).Str("baseURL", baseURL).Msg("Failed to get tracker domains from Prowlarr")
-			continue
+		// Resolve domains for each indexer tied to this Prowlarr instance
+		for _, indexer := range indexers {
+			identifier := strings.TrimSpace(indexer.IndexerID)
+			if identifier == "" {
+				log.Debug().Int("indexer_id", indexer.ID).Str("name", indexer.Name).Msg("Missing Prowlarr indexer identifier for domain mapping")
+				continue
+			}
+
+			prowID, err := strconv.Atoi(identifier)
+			if err != nil {
+				log.Debug().
+					Str("identifier", identifier).
+					Int("indexer_id", indexer.ID).
+					Msg("Invalid numeric identifier for Prowlarr indexer; falling back to BaseURL")
+				if domain := extractDomainFromURL(indexer.BaseURL); domain != "" {
+					result[indexer.ID] = domain
+				}
+				continue
+			}
+
+			detail, err := client.prowlarr.GetIndexer(ctx, prowID)
+			if err != nil {
+				log.Debug().
+					Err(err).
+					Int("indexer_id", indexer.ID).
+					Str("prowlarr_instance", baseURL).
+					Msg("Failed to get Prowlarr indexer details for domain mapping")
+				continue
+			}
+
+			domain := prowlarr.ExtractDomainFromIndexerFields(detail.Fields)
+			if domain == "" {
+				domain = extractDomainFromURL(indexer.BaseURL)
+			}
+			if domain != "" {
+				result[indexer.ID] = domain
+			}
 		}
-
-		log.Debug().
-			Strs("domains", domains).
-			Int("domainCount", len(domains)).
-			Str("prowlarrInstance", baseURL).
-			Msg("Retrieved tracker domains from Prowlarr")
-
-		allDomains = append(allDomains, domains...)
 	}
 
-	return allDomains, nil
+	return result, nil
 }
