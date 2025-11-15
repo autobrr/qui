@@ -1268,8 +1268,8 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 		allResults = append(allResults, result.results...)
 	}
 
-	if failures == len(indexers) {
-		return nil, fmt.Errorf("all %d indexers failed (last error: %w)", len(indexers), lastErr)
+	if len(availableIndexers) > 0 && failures == len(availableIndexers) {
+		return nil, fmt.Errorf("all %d indexers failed (last error: %w)", len(availableIndexers), lastErr)
 	}
 	if failures > 0 {
 		log.Warn().

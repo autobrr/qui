@@ -5,7 +5,9 @@ package jackett
 
 import (
 	"context"
+	"errors"
 	"maps"
+	"net/url"
 	"slices"
 	"strings"
 	"testing"
@@ -860,6 +862,8 @@ type mockTorznabIndexerStore struct {
 	panicOnListEnabled bool
 	listEnabledCalls   int
 	getCalls           []int
+	apiKeyErrors       map[int]error
+	apiKeyCalls        []int
 }
 
 func (m *mockTorznabIndexerStore) Get(ctx context.Context, id int) (*models.TorznabIndexer, error) {
@@ -891,6 +895,12 @@ func (m *mockTorznabIndexerStore) ListEnabled(ctx context.Context) ([]*models.To
 }
 
 func (m *mockTorznabIndexerStore) GetDecryptedAPIKey(indexer *models.TorznabIndexer) (string, error) {
+	if indexer != nil {
+		m.apiKeyCalls = append(m.apiKeyCalls, indexer.ID)
+		if err, ok := m.apiKeyErrors[indexer.ID]; ok {
+			return "", err
+		}
+	}
 	return "mock-api-key", nil
 }
 
@@ -927,6 +937,57 @@ func (m *mockTorznabIndexerStore) CountRequests(ctx context.Context, indexerID i
 
 func (m *mockTorznabIndexerStore) UpdateRequestLimits(ctx context.Context, indexerID int, hourly, daily *int) error {
 	return nil
+}
+
+func TestSearchMultipleIndexersSkipsRateLimitedIndexers(t *testing.T) {
+	store := &mockTorznabIndexerStore{
+		indexers: []*models.TorznabIndexer{
+			{ID: 1, Name: "Limited", Backend: models.TorznabBackendJackett, BaseURL: "http://127.0.0.1", Enabled: true, IndexerID: "limited"},
+			{ID: 2, Name: "Active", Backend: models.TorznabBackendJackett, BaseURL: "http://127.0.0.1", Enabled: true, IndexerID: "active"},
+		},
+		apiKeyErrors: map[int]error{
+			2: errors.New("expected failure"),
+		},
+	}
+
+	service := NewService(store)
+	service.rateLimiter = NewRateLimiter(time.Millisecond)
+	service.rateLimiter.SetCooldown(1, time.Now().Add(time.Minute))
+
+	_, err := service.searchMultipleIndexers(context.Background(), store.indexers, url.Values{"q": {"test"}}, nil)
+	if err == nil {
+		t.Fatalf("expected error when all available indexers fail")
+	}
+	if !strings.Contains(err.Error(), "all 1 indexers failed") {
+		t.Fatalf("expected aggregated failure error, got %v", err)
+	}
+
+	if len(store.apiKeyCalls) != 1 || store.apiKeyCalls[0] != 2 {
+		t.Fatalf("expected only active indexer to be queried, apiKeyCalls=%v", store.apiKeyCalls)
+	}
+}
+
+func TestSearchMultipleIndexersAllRateLimited(t *testing.T) {
+	store := &mockTorznabIndexerStore{
+		indexers: []*models.TorznabIndexer{
+			{ID: 1, Name: "Limited A", Backend: models.TorznabBackendJackett, BaseURL: "http://127.0.0.1", Enabled: true, IndexerID: "a"},
+			{ID: 2, Name: "Limited B", Backend: models.TorznabBackendJackett, BaseURL: "http://127.0.0.1", Enabled: true, IndexerID: "b"},
+		},
+	}
+
+	service := NewService(store)
+	service.rateLimiter = NewRateLimiter(time.Millisecond)
+	service.rateLimiter.SetCooldown(1, time.Now().Add(time.Minute))
+	service.rateLimiter.SetCooldown(2, time.Now().Add(2 * time.Minute))
+
+	_, err := service.searchMultipleIndexers(context.Background(), store.indexers, url.Values{"q": {"test"}}, nil)
+	if err == nil || !strings.Contains(err.Error(), "all indexers are currently rate-limited") {
+		t.Fatalf("expected all rate-limited error, got %v", err)
+	}
+
+	if len(store.apiKeyCalls) != 0 {
+		t.Fatalf("expected no API key calls when all indexers are skipped, apiKeyCalls=%v", store.apiKeyCalls)
+	}
 }
 
 func TestProwlarrYearParameterWorkaround(t *testing.T) {

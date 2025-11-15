@@ -2419,11 +2419,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	searchResp, err := s.jackettService.Search(ctx, searchReq)
 	if err != nil {
-		// Check if this is a rate limit error and provide better context
-		if strings.Contains(err.Error(), "rate-limited") || strings.Contains(err.Error(), "cooldown") {
-			return nil, fmt.Errorf("cross-seed search temporarily unavailable: %w. This is normal protection against tracker bans. Try again in 30-60 minutes or use fewer indexers", err)
-		}
-		return nil, fmt.Errorf("torznab search failed: %w", err)
+		return nil, wrapCrossSeedSearchError(err)
 	}
 
 	searchResults := searchResp.Results
@@ -4718,4 +4714,17 @@ func (s *Service) buildArgsSimple(template string, torrentData map[string]string
 		}
 	}
 	return args
+}
+
+func wrapCrossSeedSearchError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "rate-limited") || strings.Contains(msg, "cooldown") {
+		return fmt.Errorf("cross-seed search temporarily unavailable: %w. This is normal protection against tracker bans. Try again in 30-60 minutes or use fewer indexers", err)
+	}
+
+	return fmt.Errorf("torznab search failed: %w", err)
 }
