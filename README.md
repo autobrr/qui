@@ -545,10 +545,12 @@ In **Settings → Actions** (or from the filter’s Actions tab), create a new a
 
 - **Action Type:** `Webhook`
 - **Name:** `qui cross-seed` (or any name you prefer)
-- **Endpoint:**
+- **Endpoint:**  
+  For autobrr, use a query parameter because webhook actions cannot set custom headers:
   ```text
   http://localhost:7476/api/cross-seed/apply?apikey=YOUR_QUI_API_KEY
   ```
+  For other clients, prefer the `X-API-Key` header instead of the query parameter.
 
 **Payload (JSON):**
 

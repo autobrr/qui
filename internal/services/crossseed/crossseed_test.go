@@ -61,7 +61,9 @@ func createTestTorrent(t *testing.T, name string, files []string, pieceLength in
 		info.Name = name
 	}
 
-	mi.InfoBytes, _ = bencode.Marshal(info)
+	infoBytes, err := bencode.Marshal(info)
+	require.NoError(t, err)
+	mi.InfoBytes = infoBytes
 
 	var buf bytes.Buffer
 	require.NoError(t, mi.Write(&buf))
@@ -636,59 +638,50 @@ func TestHashDetection(t *testing.T) {
 	}
 }
 
-// TestBase64EdgeCases tests edge cases in base64 handling
+// TestBase64EdgeCases tests that decodeTorrentData can handle various data shapes and encodings.
 func TestBase64EdgeCases(t *testing.T) {
+	s := &Service{}
+
 	tests := []struct {
-		name    string
-		input   []byte
-		wantErr bool
+		name  string
+		input []byte
 	}{
 		{
-			name:    "normal data",
-			input:   []byte("test data"),
-			wantErr: false,
+			name:  "normal data",
+			input: []byte("test data"),
 		},
 		{
-			name:    "binary data",
-			input:   []byte{0x00, 0x01, 0x02, 0xFF, 0xFE},
-			wantErr: false,
+			name:  "binary data",
+			input: []byte{0x00, 0x01, 0x02, 0xFF, 0xFE},
 		},
 		{
-			name:    "empty",
-			input:   []byte{},
-			wantErr: false,
+			name:  "empty",
+			input: []byte{},
 		},
 		{
-			name:    "large data",
-			input:   make([]byte, 1024*1024), // 1MB
-			wantErr: false,
+			name:  "large data",
+			input: make([]byte, 1024*1024), // 1MB
 		},
+	}
+
+	encodings := []struct {
+		name string
+		enc  *base64.Encoding
+	}{
+		{"std", base64.StdEncoding},
+		{"url", base64.URLEncoding},
+		{"raw std", base64.RawStdEncoding},
+		{"raw url", base64.RawURLEncoding},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Test all encoding formats
-			formats := []struct {
-				name string
-				enc  *base64.Encoding
-			}{
-				{"std", base64.StdEncoding},
-				{"url", base64.URLEncoding},
-				{"raw std", base64.RawStdEncoding},
-				{"raw url", base64.RawURLEncoding},
-			}
-
-			for _, fmt := range formats {
-				t.Run(fmt.name, func(t *testing.T) {
-					encoded := fmt.enc.EncodeToString(tt.input)
-					decoded, err := base64.StdEncoding.DecodeString(encoded)
-
-					if !tt.wantErr {
-						// Some formats may fail with strict decoder, that's OK
-						if err == nil {
-							assert.Equal(t, tt.input, decoded)
-						}
-					}
+			for _, e := range encodings {
+				t.Run(e.name, func(t *testing.T) {
+					encoded := e.enc.EncodeToString(tt.input)
+					decoded, err := s.decodeTorrentData(encoded)
+					require.NoError(t, err)
+					assert.Equal(t, tt.input, decoded)
 				})
 			}
 		})

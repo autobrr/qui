@@ -2085,17 +2085,17 @@ paths:
               schema:
                 type: object
                 properties:
-                  crossInstanceTorrents:
+                  cross_instance_torrents:
                     type: array
                     items:
                       allOf:
                         - $ref: '#/components/schemas/Torrent'
                         - type: object
                           properties:
-                            instanceId:
+                            instance_id:
                               type: integer
                               description: ID of the instance this torrent belongs to
-                            instanceName:
+                            instance_name:
                               type: string
                               description: Name of the instance this torrent belongs to
                   total:
@@ -3263,7 +3263,7 @@ components:
       properties:
         instance_id:
           type: integer
-        instanceName:
+        instance_name:
           type: string
         success:
           type: boolean
@@ -3276,7 +3276,7 @@ components:
     CrossSeedRunResult:
       type: object
       properties:
-        instance_id:
+        instanceId:
           type: integer
         instanceName:
           type: string
@@ -3307,7 +3307,7 @@ components:
         status:
           type: string
           enum: [pending, running, success, partial, failed]
-        started_at:
+        startedAt:
           type: string
           format: date-time
         completedAt:
@@ -3396,7 +3396,7 @@ components:
         instance_id:
           type: integer
           nullable: true
-        instanceName:
+        instance_name:
           type: string
           nullable: true
         hash:
@@ -3414,46 +3414,46 @@ components:
           type: number
           format: float
           nullable: true
-        totalFiles:
+        total_files:
           type: integer
           nullable: true
-        matchingFiles:
+        matching_files:
           type: integer
           nullable: true
-        fileCount:
+        file_count:
           type: integer
           nullable: true
-        contentType:
+        content_type:
           type: string
           nullable: true
-        searchType:
+        search_type:
           type: string
           nullable: true
-        searchCategories:
+        search_categories:
           type: array
           items:
             type: integer
-        requiredCaps:
+        required_caps:
           type: array
           items:
             type: string
-        availableIndexers:
+        available_indexers:
           type: array
           items:
             type: integer
-        filteredIndexers:
+        filtered_indexers:
           type: array
           items:
             type: integer
-        excludedIndexers:
+        excluded_indexers:
           type: object
           additionalProperties:
             type: string
-        contentMatches:
+        content_matches:
           type: array
           items:
             type: string
-        contentFilteringCompleted:
+        content_filtering_completed:
           type: boolean
           nullable: true
 
@@ -3491,7 +3491,7 @@ components:
         limit:
           type: integer
           minimum: 1
-        indexerIds:
+        indexer_ids:
           type: array
           items:
             type: integer
@@ -3501,13 +3501,13 @@ components:
       properties:
         indexer:
           type: string
-        indexerId:
+        indexer_id:
           type: integer
         title:
           type: string
-        downloadUrl:
+        download_url:
           type: string
-        infoUrl:
+        info_url:
           type: string
           nullable: true
         size:
@@ -3516,29 +3516,29 @@ components:
           type: integer
         leechers:
           type: integer
-        categoryId:
+        category_id:
           type: integer
-        categoryName:
+        category_name:
           type: string
-        publishDate:
+        publish_date:
           type: string
           format: date-time
-        downloadVolumeFactor:
+        download_volume_factor:
           type: number
-        uploadVolumeFactor:
+        upload_volume_factor:
           type: number
         guid:
           type: string
-        imdbId:
+        imdb_id:
           type: string
           nullable: true
-        tvdbId:
+        tvdb_id:
           type: string
           nullable: true
-        matchReason:
+        match_reason:
           type: string
           nullable: true
-        matchScore:
+        match_score:
           type: number
 
     CrossSeedResponse:
@@ -3557,7 +3557,7 @@ components:
     CrossSeedTorrentSearchResponse:
       type: object
       properties:
-        sourceTorrent:
+        source_torrent:
           $ref: '#/components/schemas/CrossSeedTorrentInfo'
         results:
           type: array
@@ -3567,16 +3567,16 @@ components:
     CrossSeedApplySelection:
       type: object
       required:
-        - indexerId
+        - indexer_id
         - indexer
-        - downloadUrl
+        - download_url
         - title
       properties:
-        indexerId:
+        indexer_id:
           type: integer
         indexer:
           type: string
-        downloadUrl:
+        download_url:
           type: string
         title:
           type: string
@@ -3588,18 +3588,18 @@ components:
       type: object
       required:
         - selections
-        - useTag
+        - use_tag
       properties:
         selections:
           type: array
           items:
             $ref: '#/components/schemas/CrossSeedApplySelection'
-        useTag:
+        use_tag:
           type: boolean
-        tagName:
+        tag_name:
           type: string
           nullable: true
-        startPaused:
+        start_paused:
           type: boolean
           nullable: true
 
@@ -3610,12 +3610,12 @@ components:
           type: string
         indexer:
           type: string
-        torrentName:
+        torrent_name:
           type: string
           nullable: true
         success:
           type: boolean
-        instanceResults:
+        instance_results:
           type: array
           items:
             $ref: '#/components/schemas/CrossSeedInstanceResult'
