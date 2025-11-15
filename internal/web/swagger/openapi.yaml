@@ -2414,6 +2414,9 @@ paths:
                   type: integer
                   format: uint64
                   description: Total torrent size in bytes (optional - enables size validation when provided)
+                findIndividualEpisodes:
+                  type: boolean
+                  description: Optional override for matching season packs vs episodes. Defaults to the Cross-Seed automation setting when omitted.
       responses:
         '200':
           description: Webhook check completed successfully with one or more matches
@@ -2469,6 +2472,60 @@ paths:
           description: Invalid request body
         '500':
           description: Failed to check webhook
+
+  /api/cross-seed/apply:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Add a cross-seed torrent provided by autobrr
+      description: Accepts a torrent file from autobrr, matches it against the specified instance, and adds it with alignment if a match is found.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - torrentData
+                - instanceId
+              properties:
+                torrentData:
+                  type: string
+                  description: Base64-encoded torrent file provided by autobrr
+                instanceId:
+                  type: integer
+                  description: Target instance ID where the torrent should be added
+                  example: 1
+                category:
+                  type: string
+                  description: Category to apply when adding the torrent
+                tags:
+                  type: array
+                  items:
+                    type: string
+                ignorePatterns:
+                  type: array
+                  items:
+                    type: string
+                startPaused:
+                  type: boolean
+                addCrossSeedTag:
+                  type: boolean
+                skipIfExists:
+                  type: boolean
+                findIndividualEpisodes:
+                  type: boolean
+      responses:
+        '200':
+          description: Torrent processed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedResponse'
+        '400':
+          description: Invalid request or no matching torrents found
+        '500':
+          description: Failed to process autobrr apply request
 
   /api/cross-seed/torrents/{instanceId}/{hash}/analyze:
     get:
@@ -3469,6 +3526,19 @@ components:
           nullable: true
         matchScore:
           type: number
+
+    CrossSeedResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrossSeedInstanceResult'
+        torrentInfo:
+          $ref: '#/components/schemas/CrossSeedTorrentInfo'
+          nullable: true
 
     CrossSeedTorrentSearchResponse:
       type: object

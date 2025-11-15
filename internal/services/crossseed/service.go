@@ -72,8 +72,9 @@ type Service struct {
 	asyncFilteringCache *ttlcache.Cache[string, *AsyncIndexerFilteringState]
 	indexerDomainCache  *ttlcache.Cache[string, string]
 
-	automationStore *models.CrossSeedStore
-	jackettService  *jackett.Service
+	automationStore          *models.CrossSeedStore
+	automationSettingsLoader func(context.Context) (*models.CrossSeedAutomationSettings, error)
+	jackettService           *jackett.Service
 
 	automationMu     sync.Mutex
 	automationCancel context.CancelFunc
@@ -230,6 +231,9 @@ type AutomationStatus struct {
 
 // GetAutomationSettings returns the persisted automation configuration.
 func (s *Service) GetAutomationSettings(ctx context.Context) (*models.CrossSeedAutomationSettings, error) {
+	if s.automationSettingsLoader != nil {
+		return s.automationSettingsLoader(ctx)
+	}
 	if s.automationStore == nil {
 		return models.DefaultCrossSeedAutomationSettings(), nil
 	}
@@ -1253,6 +1257,45 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	}
 
 	return response, nil
+}
+
+// AutobrrApply adds a torrent provided by autobrr to the specified instance using cross-seed logic.
+func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*CrossSeedResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("request is required")
+	}
+	if strings.TrimSpace(req.TorrentData) == "" {
+		return nil, fmt.Errorf("torrentData is required")
+	}
+	if req.InstanceID <= 0 {
+		return nil, fmt.Errorf("instanceId must be a positive integer")
+	}
+
+	findIndividualEpisodes := false
+	if req.FindIndividualEpisodes != nil {
+		findIndividualEpisodes = *req.FindIndividualEpisodes
+	} else {
+		settings, err := s.GetAutomationSettings(ctx)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to load automation settings for autobrr apply, defaulting to disabled episode matching")
+		} else if settings != nil {
+			findIndividualEpisodes = settings.FindIndividualEpisodes
+		}
+	}
+
+	crossReq := &CrossSeedRequest{
+		TorrentData:            req.TorrentData,
+		TargetInstanceIDs:      []int{req.InstanceID},
+		Category:               req.Category,
+		Tags:                   req.Tags,
+		IgnorePatterns:         req.IgnorePatterns,
+		StartPaused:            req.StartPaused,
+		AddCrossSeedTag:        req.AddCrossSeedTag,
+		SkipIfExists:           req.SkipIfExists,
+		FindIndividualEpisodes: findIndividualEpisodes,
+	}
+
+	return s.invokeCrossSeed(ctx, crossReq)
 }
 
 func (s *Service) invokeCrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
@@ -3246,7 +3289,7 @@ func (s *Service) resolveAllowedIndexerIDs(ctx context.Context, torrentHash stri
 	}
 
 	if filteringState.CapabilitiesCompleted && !filteringState.ContentCompleted {
-		completed, waited, timedOut := s.waitForContentFilteringCompletion(ctx, torrentHash, filteringState)
+		completed, waited, timedOut := s.waitForContentFilteringCompletion(ctx, filteringState)
 		if waited > 0 {
 			log.Debug().
 				Str("torrentHash", torrentHash).
@@ -3309,7 +3352,7 @@ func filterIndexersBySelection(candidates []int, selection []int) ([]int, bool) 
 	return filtered, false
 }
 
-func (s *Service) waitForContentFilteringCompletion(ctx context.Context, torrentHash string, state *AsyncIndexerFilteringState) (bool, time.Duration, bool) {
+func (s *Service) waitForContentFilteringCompletion(ctx context.Context, state *AsyncIndexerFilteringState) (bool, time.Duration, bool) {
 	if state == nil {
 		return false, 0, false
 	}
@@ -4341,15 +4384,19 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	// Parse the incoming release using rls - this extracts all metadata from the torrent name
 	incomingRelease := s.releaseCache.Parse(req.TorrentName)
 
-	// Get automation settings for sizeMismatchTolerancePercent
-	// Note: We always use strict matching (findIndividualEpisodes=false) for webhook checks
-	// because season packs and individual episodes have incompatible file structures.
+	// Get automation settings for sizeMismatchTolerancePercent and default matching behavior.
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to load automation settings for webhook check, using defaults")
 		settings = &models.CrossSeedAutomationSettings{
 			SizeMismatchTolerancePercent: 5.0,
+			FindIndividualEpisodes:       false,
 		}
+	}
+
+	findIndividualEpisodes := settings != nil && settings.FindIndividualEpisodes
+	if req.FindIndividualEpisodes != nil {
+		findIndividualEpisodes = *req.FindIndividualEpisodes
 	}
 
 	// Get the target instance
@@ -4384,11 +4431,8 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 			// Parse the existing torrent's release info
 			existingRelease := s.releaseCache.Parse(torrent.Name)
 
-			// Check if releases match using strict matching (always false for findIndividualEpisodes)
-			// We use strict matching for cross-seed validation because season packs and individual
-			// episodes have different file structures and cannot be cross-seeded, even if the
-			// content is related. qBittorrent would have to recheck/redownload everything.
-			if !s.releasesMatch(incomingRelease, existingRelease, false) {
+			// Check if releases match using the configured strict or episode-aware matching.
+			if !s.releasesMatch(incomingRelease, existingRelease, findIndividualEpisodes) {
 				continue
 			}
 

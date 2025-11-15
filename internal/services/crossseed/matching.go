@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -65,6 +66,11 @@ func makeReleaseKey(r rls.Release) releaseKey {
 
 	// Content without clear identifying metadata - use zero value.
 	return releaseKey{}
+}
+
+// String serializes the releaseKey into a stable string for caching purposes.
+func (k releaseKey) String() string {
+	return fmt.Sprintf("%d|%d|%d|%d|%d", k.series, k.episode, k.year, k.month, k.day)
 }
 
 // releasesMatch checks if two releases are related using fuzzy matching.

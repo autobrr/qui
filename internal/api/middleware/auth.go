@@ -9,9 +9,10 @@ import (
 	"strings"
 
 	"github.com/alexedwards/scs/v2"
+	"github.com/rs/zerolog/log"
+
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/domain"
-	"github.com/rs/zerolog/log"
 )
 
 // IsAuthenticated middleware checks if the user is authenticated
@@ -19,7 +20,11 @@ func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManag
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Check for API key first
-			if apiKey := r.Header.Get("X-API-Key"); apiKey != "" {
+			apiKey := r.Header.Get("X-API-Key")
+			if apiKey == "" {
+				apiKey = r.URL.Query().Get("apikey") // autobrr doesnt support headers in webhook actions
+			}
+			if apiKey != "" {
 				// Validate API key
 				apiKeyModel, err := authService.ValidateAPIKey(r.Context(), apiKey)
 				if err != nil {

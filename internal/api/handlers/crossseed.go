@@ -65,6 +65,7 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 	r.Get("/instances/{instanceID}/cross-seed/status", h.GetCrossSeedStatus)
 
 	r.Route("/cross-seed", func(r chi.Router) {
+		r.Post("/apply", h.AutobrrApply)
 		r.Route("/torrents", func(r chi.Router) {
 			r.Get("/{instanceID}/{hash}/analyze", h.AnalyzeTorrentForSearch)
 			r.Get("/{instanceID}/{hash}/async-status", h.GetAsyncFilteringStatus)
@@ -228,6 +229,40 @@ func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.R
 			Int("instanceID", instanceID).
 			Str("hash", hash).
 			Msg("Failed to search cross-seed matches")
+		RespondError(w, status, err.Error())
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, response)
+}
+
+// AutobrrApply godoc
+// @Summary Add a cross-seed torrent provided by autobrr
+// @Description Accepts a torrent file from autobrr, matches it against the specified instance, and adds it with alignment if a match is found.
+// @Tags cross-seed
+// @Accept json
+// @Produce json
+// @Param request body crossseed.AutobrrApplyRequest true "Autobrr apply request"
+// @Success 200 {object} crossseed.CrossSeedResponse
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/apply [post]
+func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) {
+	var req crossseed.AutobrrApplyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode autobrr apply request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	response, err := h.service.AutobrrApply(r.Context(), &req)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if shouldReturnBadRequest(err) {
+			status = http.StatusBadRequest
+		}
+		log.Error().Err(err).Msg("Failed to apply autobrr torrent")
 		RespondError(w, status, err.Error())
 		return
 	}

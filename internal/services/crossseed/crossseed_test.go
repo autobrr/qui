@@ -1029,6 +1029,37 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 		wantMatchType      string
 	}{
 		{
+			name: "season pack does not match single episode without override",
+			request: &WebhookCheckRequest{
+				InstanceID:  instance.ID,
+				TorrentName: "Cool.Show.S02E05.MULTi.1080p.WEB.x264-GRP",
+			},
+			existingTorrents: []qbt.Torrent{
+				{Hash: "pack", Name: "Cool.Show.S02.MULTi.1080p.WEB.x264-GRP"},
+			},
+			wantCanCrossSeed:   false,
+			wantMatchCount:     0,
+			wantRecommendation: "skip",
+		},
+		{
+			name: "season pack matches single episode when override enabled",
+			request: &WebhookCheckRequest{
+				InstanceID:  instance.ID,
+				TorrentName: "Cool.Show.S02E05.MULTi.1080p.WEB.x264-GRP",
+				FindIndividualEpisodes: func() *bool {
+					v := true
+					return &v
+				}(),
+			},
+			existingTorrents: []qbt.Torrent{
+				{Hash: "pack", Name: "Cool.Show.S02.MULTi.1080p.WEB.x264-GRP"},
+			},
+			wantCanCrossSeed:   true,
+			wantMatchCount:     1,
+			wantRecommendation: "download",
+			wantMatchType:      "metadata",
+		},
+		{
 			name: "movie match - identical release",
 			request: &WebhookCheckRequest{
 				InstanceID:  instance.ID,
