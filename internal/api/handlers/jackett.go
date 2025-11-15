@@ -4,12 +4,14 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
@@ -21,6 +23,8 @@ import (
 const (
 	defaultRecentSearchLimit = 10
 	maxRecentSearchLimit     = 50
+
+	testStatusUpdateTimeout = 5 * time.Second
 )
 
 // JackettHandler handles Jackett/Torznab API endpoints
@@ -577,8 +581,8 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 	// Update test status in database
 	if err != nil {
 		errorMsg := err.Error()
-		if updateErr := h.indexerStore.UpdateTestStatus(r.Context(), id, "error", &errorMsg); updateErr != nil {
-			log.Error().Err(updateErr).Int("indexer_id", id).Msg("Failed to update test status")
+		if updateErr := h.updateTestStatusWithTimeout(id, "error", &errorMsg); updateErr != nil {
+			h.logTestStatusUpdateError(updateErr, id, "error")
 		}
 
 		log.Error().Err(err).Int("indexer_id", id).Msg("Failed to test indexer connection")
@@ -587,11 +591,30 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Test succeeded - update status
-	if updateErr := h.indexerStore.UpdateTestStatus(r.Context(), id, "ok", nil); updateErr != nil {
-		log.Error().Err(updateErr).Int("indexer_id", id).Msg("Failed to update test status")
+	if updateErr := h.updateTestStatusWithTimeout(id, "ok", nil); updateErr != nil {
+		h.logTestStatusUpdateError(updateErr, id, "ok")
 	}
 
 	RespondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *JackettHandler) updateTestStatusWithTimeout(id int, status string, errorMsg *string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), testStatusUpdateTimeout)
+	defer cancel()
+	return h.indexerStore.UpdateTestStatus(ctx, id, status, errorMsg)
+}
+
+func (h *JackettHandler) logTestStatusUpdateError(err error, id int, status string) {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		log.Debug().
+			Err(err).
+			Int("indexer_id", id).
+			Str("status", status).
+			Msg("Test status update canceled/timed out")
+		return
+	}
+
+	log.Error().Err(err).Int("indexer_id", id).Msg("Failed to update test status")
 }
 
 // SyncIndexerCaps godoc
