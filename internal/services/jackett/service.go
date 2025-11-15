@@ -99,8 +99,6 @@ type searchCacheKeyPayload struct {
 	Episode     *int        `json:"episode,omitempty"`
 	Artist      string      `json:"artist,omitempty"`
 	Album       string      `json:"album,omitempty"`
-	Limit       int         `json:"limit"`
-	Offset      int         `json:"offset"`
 	SearchMode  string      `json:"search_mode,omitempty"`
 	ContentType contentType `json:"content_type"`
 }
@@ -267,31 +265,23 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 		return nil, err
 	}
 
-	// Convert results
-	searchResults := s.convertResults(allResults)
-
-	// Apply limit and offset
-	total := len(searchResults)
-	if req.Offset > 0 {
-		if req.Offset >= len(searchResults) {
-			searchResults = []SearchResult{}
-		} else {
-			searchResults = searchResults[req.Offset:]
-		}
-	}
-	if req.Limit > 0 && len(searchResults) > req.Limit {
-		searchResults = searchResults[:req.Limit]
-	}
+	// Convert results and apply pagination
+	allConverted := s.convertResults(allResults)
+	pageResults, total := paginateSearchResults(allConverted, req.Offset, req.Limit)
 
 	response := &SearchResponse{
-		Results: searchResults,
+		Results: pageResults,
+		Total:   total,
+	}
+	fullSearchResponse := &SearchResponse{
+		Results: allConverted,
 		Total:   total,
 	}
 
 	if cacheEnabled && cacheSig != nil && cacheReadAllowed {
 		now := time.Now().UTC()
 		s.annotateSearchResponse(response, scope, false, now, now.Add(s.searchCacheTTL), nil)
-		s.persistSearchCacheEntry(ctx, scope, cacheSig, req, indexerIDs, response, now)
+		s.persistSearchCacheEntry(ctx, scope, cacheSig, req, indexerIDs, fullSearchResponse, now)
 	}
 
 	return response, nil
@@ -392,30 +382,22 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 		return nil, err
 	}
 
-	// Convert and sort results
-	searchResults := s.convertResults(allResults)
-
-	total := len(searchResults)
-	if req.Offset > 0 {
-		if req.Offset >= len(searchResults) {
-			searchResults = []SearchResult{}
-		} else {
-			searchResults = searchResults[req.Offset:]
-		}
-	}
-	if req.Limit > 0 && len(searchResults) > req.Limit {
-		searchResults = searchResults[:req.Limit]
-	}
+	allConverted := s.convertResults(allResults)
+	pageResults, total := paginateSearchResults(allConverted, req.Offset, req.Limit)
 
 	response := &SearchResponse{
-		Results: searchResults,
+		Results: pageResults,
+		Total:   total,
+	}
+	fullGenericResponse := &SearchResponse{
+		Results: allConverted,
 		Total:   total,
 	}
 
 	if cacheEnabled && cacheSig != nil && cacheReadAllowed {
 		now := time.Now().UTC()
 		s.annotateSearchResponse(response, scope, false, now, now.Add(s.searchCacheTTL), nil)
-		s.persistSearchCacheEntry(ctx, scope, cacheSig, req, indexerIDs, response, now)
+		s.persistSearchCacheEntry(ctx, scope, cacheSig, req, indexerIDs, fullGenericResponse, now)
 	}
 
 	return response, nil
@@ -582,8 +564,6 @@ func (s *Service) buildSearchCacheSignature(scope string, req *TorznabSearchRequ
 		Episode:     req.Episode,
 		Artist:      strings.TrimSpace(req.Artist),
 		Album:       strings.TrimSpace(req.Album),
-		Limit:       req.Limit,
-		Offset:      req.Offset,
 		SearchMode:  searchMode,
 		ContentType: detectedType,
 	}
@@ -618,6 +598,10 @@ func (s *Service) tryServeSearchCache(ctx context.Context, sig *searchCacheSigna
 			log.Warn().Err(err).Msg("Failed to decode cached torznab search response")
 			return nil, false
 		}
+
+		pageResults, total := paginateSearchResults(response.Results, req.Offset, req.Limit)
+		response.Results = pageResults
+		response.Total = total
 
 		s.annotateSearchResponse(&response, entry.Scope, true, entry.CachedAt, entry.ExpiresAt, &entry.LastUsedAt)
 		return &response, true
@@ -680,8 +664,9 @@ func (s *Service) tryServeSearchCacheSuperset(ctx context.Context, sig *searchCa
 	}
 
 	filtered := filterResultsByIndexerIDs(response.Results, requestedIDs)
-	response.Results = filtered
-	response.Total = len(filtered)
+	pageResults, total := paginateSearchResults(filtered, req.Offset, req.Limit)
+	response.Results = pageResults
+	response.Total = total
 
 	s.annotateSearchResponse(&response, scope, true, bestEntry.CachedAt, bestEntry.ExpiresAt, &bestEntry.LastUsedAt)
 	go s.searchCache.Touch(context.Background(), bestEntry.ID)
@@ -1978,6 +1963,21 @@ func (s *Service) convertResults(results []Result) []SearchResult {
 	})
 
 	return searchResults
+}
+
+func paginateSearchResults(results []SearchResult, offset, limit int) ([]SearchResult, int) {
+	total := len(results)
+	if offset > 0 {
+		if offset >= len(results) {
+			results = []SearchResult{}
+		} else {
+			results = results[offset:]
+		}
+	}
+	if limit > 0 && len(results) > limit {
+		results = results[:limit]
+	}
+	return results, total
 }
 
 // parseCategoryID attempts to extract the category ID from category string
