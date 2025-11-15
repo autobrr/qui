@@ -140,7 +140,7 @@ export function ExternalProgramsManager() {
       {programs && programs.length > 0 && (
         <div className="grid gap-4">
           {programs.map((program) => (
-            <Card key={program.id}>
+            <Card className="bg-muted/40" key={program.id}>
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
                   <div className="space-y-1 flex-1">

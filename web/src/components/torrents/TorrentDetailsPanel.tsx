@@ -20,16 +20,18 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePersistedTabState } from "@/hooks/usePersistedTabState"
 import { api } from "@/lib/api"
-import { getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxSavePath, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
+import { useCrossSeedMatches } from "@/lib/cross-seed-utils"
+import { getLinuxCategory, getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxSavePath, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
+import { getStateLabel } from "@/lib/torrent-state-utils"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
 import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
 import type { SortedPeersResponse, Torrent, TorrentFile, TorrentPeer } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import "flag-icons/css/flag-icons.min.css"
-import { Ban, Copy, Loader2, UserPlus } from "lucide-react"
+import { Ban, Copy, Loader2, Trash2, UserPlus } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
@@ -38,7 +40,7 @@ interface TorrentDetailsPanelProps {
   torrent: Torrent | null;
 }
 
-const TAB_VALUES = ["general", "trackers", "peers", "content"] as const
+const TAB_VALUES = ["general", "trackers", "peers", "content", "crossseed"] as const
 type TabValue = typeof TAB_VALUES[number]
 const DEFAULT_TAB: TabValue = "general"
 const TAB_STORAGE_KEY = "torrent-details-last-tab"
@@ -46,6 +48,8 @@ const TAB_STORAGE_KEY = "torrent-details-last-tab"
 function isTabValue(value: string): value is TabValue {
   return TAB_VALUES.includes(value as TabValue)
 }
+
+
 
 function getTrackerStatusBadge(status: number) {
   switch (status) {
@@ -81,6 +85,11 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const incognitoHash = incognitoMode && torrent?.hash ? getLinuxHash(torrent.hash) : undefined
   const [pendingFileIndices, setPendingFileIndices] = useState<Set<number>>(() => new Set())
   const supportsFilePriority = capabilities?.supportsFilePriority ?? false
+  const [selectedCrossSeedTorrents, setSelectedCrossSeedTorrents] = useState<Set<string>>(() => new Set())
+  const [showDeleteCrossSeedDialog, setShowDeleteCrossSeedDialog] = useState(false)
+  const [deleteCrossSeedFiles, setDeleteCrossSeedFiles] = useState(false)
+  const [showDeleteCurrentDialog, setShowDeleteCurrentDialog] = useState(false)
+  const [deleteCurrentFiles, setDeleteCurrentFiles] = useState(false)
   const copyToClipboard = useCallback(async (text: string, type: string) => {
     try {
       await copyTextToClipboard(text)
@@ -97,13 +106,19 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     return () => clearTimeout(timer)
   }, [torrent?.hash])
 
+  // Clear cross-seed selection when torrent changes
+  useEffect(() => {
+    setSelectedCrossSeedTorrents(new Set())
+  }, [torrent?.hash])
+
   const handleTabChange = useCallback((value: string) => {
     const nextTab = isTabValue(value) ? value : DEFAULT_TAB
     setActiveTab(nextTab)
   }, [setActiveTab])
 
   const isContentTabActive = activeTab === "content"
-
+  const isCrossSeedTabActive = activeTab === "crossseed"
+  
   // Fetch torrent properties
   const { data: properties, isLoading: loadingProperties } = useQuery({
     queryKey: ["torrent-properties", instanceId, torrent?.hash],
@@ -114,6 +129,40 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   })
 
   const { infohashV1: resolvedInfohashV1, infohashV2: resolvedInfohashV2 } = resolveTorrentHashes(properties as { hash?: string; infohash_v1?: string; infohash_v2?: string } | undefined, torrent ?? undefined)
+
+
+
+  // Use the cross-seed hook to find matching torrents
+  const { matchingTorrents, isLoadingMatches } = useCrossSeedMatches(instanceId, torrent, isCrossSeedTabActive)
+
+  // Create a stable key string for detecting changes in matching torrents
+  const matchingTorrentsKeys = useMemo(() => {
+    return matchingTorrents.map(t => `${t.instanceId}-${t.hash}`).sort().join(',')
+  }, [matchingTorrents])
+
+  // Prune stale selections when matching torrents change
+  useEffect(() => {
+    const validKeysArray = matchingTorrentsKeys.split(',').filter(k => k)
+    
+    setSelectedCrossSeedTorrents(prev => {
+      if (validKeysArray.length === 0 && prev.size === 0) {
+        // Already empty, no change needed
+        return prev
+      }
+      
+      if (validKeysArray.length === 0) {
+        // No matches, clear all selections
+        return new Set()
+      }
+      
+      // Remove selections for torrents that no longer exist in matches
+      const validKeys = new Set(validKeysArray)
+      const updated = new Set(Array.from(prev).filter(key => validKeys.has(key)))
+      
+      // Only update if something changed to avoid infinite loops
+      return updated.size !== prev.size ? updated : prev
+    })
+  }, [matchingTorrentsKeys])
 
   // Fetch torrent trackers
   const { data: trackers, isLoading: loadingTrackers } = useQuery({
@@ -319,6 +368,91 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     }
   }, [peersToAdd, addPeersMutation])
 
+  // Handle cross-seed torrent selection
+  const handleToggleCrossSeedSelection = useCallback((key: string) => {
+    setSelectedCrossSeedTorrents(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }, [])
+
+  const handleSelectAllCrossSeed = useCallback(() => {
+    const allKeys = matchingTorrents.map(m => `${m.instanceId}-${m.hash}`)
+    setSelectedCrossSeedTorrents(new Set(allKeys))
+  }, [matchingTorrents])
+
+  const handleDeselectAllCrossSeed = useCallback(() => {
+    setSelectedCrossSeedTorrents(new Set())
+  }, [])
+
+  // Handle cross-seed deletion
+  const handleDeleteCrossSeed = useCallback(async () => {
+    const torrentsToDelete = matchingTorrents.filter(m => 
+      selectedCrossSeedTorrents.has(`${m.instanceId}-${m.hash}`)
+    )
+
+    if (torrentsToDelete.length === 0) return
+
+    try {
+      // Group by instance for efficient bulk deletion
+      const byInstance = new Map<number, string[]>()
+      for (const t of torrentsToDelete) {
+        const hashes = byInstance.get(t.instanceId) || []
+        hashes.push(t.hash)
+        byInstance.set(t.instanceId, hashes)
+      }
+
+      // Delete from each instance
+      await Promise.all(
+        Array.from(byInstance.entries()).map(([instId, hashes]) =>
+          api.bulkAction(instId, {
+            hashes,
+            action: "delete",
+            deleteFiles: deleteCrossSeedFiles
+          })
+        )
+      )
+
+      toast.success(`Deleted ${torrentsToDelete.length} torrent${torrentsToDelete.length > 1 ? 's' : ''}`)
+      
+      // Refresh all instances
+      for (const instId of byInstance.keys()) {
+        queryClient.invalidateQueries({ queryKey: ["torrents", instId] })
+      }
+
+      setSelectedCrossSeedTorrents(new Set())
+      setShowDeleteCrossSeedDialog(false)
+    } catch (error) {
+      toast.error(`Failed to delete: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }, [selectedCrossSeedTorrents, matchingTorrents, deleteCrossSeedFiles, queryClient])
+
+  const handleDeleteCurrent = useCallback(async () => {
+    if (!torrent) return
+
+    try {
+      await api.bulkAction(instanceId, {
+        hashes: [torrent.hash],
+        action: "delete",
+        deleteFiles: deleteCurrentFiles
+      })
+
+      toast.success(`Deleted torrent: ${torrent.name}`)
+      queryClient.invalidateQueries({ queryKey: ["torrents", instanceId] })
+      setShowDeleteCurrentDialog(false)
+      
+      // Close the details panel by clearing selection (parent component should handle this)
+      // The user will be returned to the torrent list
+    } catch (error) {
+      toast.error(`Failed to delete: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }, [torrent, instanceId, deleteCurrentFiles, queryClient])
+
   if (!torrent) return null
 
   const displayCreatedBy = incognitoMode && properties?.created_by ? getLinuxCreatedBy(torrent.hash) : properties?.created_by
@@ -394,6 +528,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
             className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
           >
             Content
+          </TabsTrigger>
+          <TabsTrigger
+            value="crossseed"
+            className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
+          >
+            Cross-Seed
           </TabsTrigger>
         </TabsList>
 
@@ -1099,6 +1239,224 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
               </div>
             </ScrollArea>
           </TabsContent>
+
+          <TabsContent value="crossseed" className="m-0 h-full">
+            <ScrollArea className="h-full">
+              <div className="p-4 sm:p-6">
+                {isLoadingMatches ? (
+                  <div className="flex items-center justify-center p-8">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  </div>
+                ) : matchingTorrents.length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-3">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cross-Seed Matches</h3>
+                          {isLoadingMatches && (
+                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {selectedCrossSeedTorrents.size > 0
+                            ? `${selectedCrossSeedTorrents.size} of ${matchingTorrents.length} selected`
+                            : isLoadingMatches
+                            ? `${matchingTorrents.length} matching torrent${matchingTorrents.length !== 1 ? 's' : ''} found, checking more instances...`
+                            : `${matchingTorrents.length} matching torrent${matchingTorrents.length !== 1 ? 's' : ''} found across all instances`}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {selectedCrossSeedTorrents.size > 0 ? (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleDeselectAllCrossSeed}
+                            >
+                              Deselect All
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => setShowDeleteCrossSeedDialog(true)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete Matches ({selectedCrossSeedTorrents.size})
+                            </Button>
+                          </>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleSelectAllCrossSeed}
+                          >
+                            Select All
+                          </Button>
+                        )}
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => setShowDeleteCurrentDialog(true)}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete This Torrent
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {matchingTorrents.map((match) => {
+                        const displayName = incognitoMode ? getLinuxFileName(match.hash, 0) : match.name
+                        const progressPercent = match.progress * 100
+                        const isComplete = progressPercent === 100
+                        const torrentKey = `${match.instanceId}-${match.hash}`
+                        const isSelected = selectedCrossSeedTorrents.has(torrentKey)
+                        
+                        // Extract tracker hostname
+                        let trackerHostname = match.tracker
+                        if (match.tracker) {
+                          try {
+                            trackerHostname = new URL(match.tracker).hostname
+                          } catch {
+                            // Keep original if parsing fails
+                          }
+                        }
+                        
+                        // Get enriched status (tracker-aware)
+                        const trackerHealth = match.tracker_health ?? null
+                        let statusLabel = getStateLabel(match.state)
+                        let statusVariant: "default" | "secondary" | "destructive" | "outline" = "outline"
+                        let statusClass = ""
+                        
+                        // Check tracker health first (if supported)
+                        if (trackerHealth === "unregistered") {
+                          statusLabel = "Unregistered"
+                          statusVariant = "outline"
+                          statusClass = "text-destructive border-destructive/40 bg-destructive/10"
+                        } else if (trackerHealth === "tracker_down") {
+                          statusLabel = "Tracker Down"
+                          statusVariant = "outline"
+                          statusClass = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
+                        } else {
+                          // Normal state-based styling
+                          if (match.state === "downloading" || match.state === "uploading") {
+                            statusVariant = "default"
+                          } else if (
+                            match.state === "stalledDL" ||
+                            match.state === "stalledUP" ||
+                            match.state === "pausedDL" ||
+                            match.state === "pausedUP" ||
+                            match.state === "queuedDL" ||
+                            match.state === "queuedUP"
+                          ) {
+                            statusVariant = "secondary"
+                          } else if (match.state === "error" || match.state === "missingFiles") {
+                            statusVariant = "destructive"
+                          }
+                        }
+                        
+                        // Match type display
+                        const matchType = match.matchType as 'infohash' | 'content_path' | 'save_path' | 'name'
+                        const matchLabel = matchType === 'infohash' ? 'Info Hash' 
+                          : matchType === 'content_path' ? 'Content Path'
+                          : matchType === 'save_path' ? 'Save Path'
+                          : 'Name'
+                        const matchDescription = matchType === 'infohash' ? 'Exact same torrent (same info hash)'
+                          : matchType === 'content_path' ? 'Same content location on disk'
+                          : matchType === 'save_path' ? 'Same save directory and filename'
+                          : 'Same torrent name'
+                        
+                        return (
+                          <div key={torrentKey} className="rounded-lg border bg-card p-4 space-y-3">
+                            <div className="space-y-2">
+                              <div className="flex items-start gap-3">
+                                <Checkbox
+                                  checked={isSelected}
+                                  onCheckedChange={() => handleToggleCrossSeedSelection(torrentKey)}
+                                  className="mt-0.5 shrink-0"
+                                  aria-label={`Select ${displayName}`}
+                                />
+                                <div className="flex-1 min-w-0 space-y-1">
+                                  <p className="text-sm font-medium break-words" title={displayName}>{displayName}</p>
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                                    <span className="shrink-0">Instance: {match.instanceName}</span>
+                                    <span className="shrink-0">•</span>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="cursor-help underline decoration-dotted shrink-0">
+                                          Match: {matchLabel}
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>{matchDescription}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                    {trackerHostname && (
+                                      <>
+                                        <span className="shrink-0">•</span>
+                                        <span className="break-all">Tracker: {incognitoMode ? getLinuxTracker(`${match.hash}-0`) : trackerHostname}</span>
+                                      </>
+                                    )}
+                                    {match.category && (
+                                      <>
+                                        <span className="shrink-0">•</span>
+                                        <span className="break-all">Category: {incognitoMode ? getLinuxCategory(match.hash) : match.category}</span>
+                                      </>
+                                    )}
+                                    {match.tags && (
+                                      <>
+                                        <span className="shrink-0">•</span>
+                                        <span className="break-all">Tags: {incognitoMode ? getLinuxTags(match.hash) : match.tags}</span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex flex-col gap-1.5 shrink-0">
+                                  <Badge variant={statusVariant} className={cn("text-xs whitespace-nowrap", statusClass)}>
+                                    {statusLabel}
+                                  </Badge>
+                                  <Badge variant="outline" className="text-xs whitespace-nowrap">
+                                    {formatBytes(match.size)}
+                                  </Badge>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <Progress value={progressPercent} className="flex-1 h-1.5" />
+                                <span className={cn("text-xs font-medium", isComplete ? "text-green-500" : "text-muted-foreground")}>
+                                  {Math.round(progressPercent)}%
+                                </span>
+                              </div>
+                              {(match.upspeed > 0 || match.dlspeed > 0) && (
+                                <div className="flex gap-4 text-xs text-muted-foreground">
+                                  {match.dlspeed > 0 && (
+                                    <span>↓ {formatSpeedWithUnit(match.dlspeed, speedUnit)}</span>
+                                  )}
+                                  {match.upspeed > 0 && (
+                                    <span>↑ {formatSpeedWithUnit(match.upspeed, speedUnit)}</span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    {isLoadingMatches && (
+                      <div className="flex items-center justify-center gap-2 p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        <span>
+                          Checking more instances...
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
+                    No matching torrents found on other instances
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+          </TabsContent>
         </div>
       </Tabs>
 
@@ -1187,6 +1545,104 @@ tracker.example.com:8080
             >
               {banPeerMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Ban Peer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Cross-Seed Torrents Dialog */}
+      <Dialog open={showDeleteCrossSeedDialog} onOpenChange={setShowDeleteCrossSeedDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Selected Torrents</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {selectedCrossSeedTorrents.size} torrent{selectedCrossSeedTorrents.size !== 1 ? 's' : ''}?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="delete-files"
+                checked={deleteCrossSeedFiles}
+                onCheckedChange={(checked) => setDeleteCrossSeedFiles(checked === true)}
+              />
+              <Label
+                htmlFor="delete-files"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Also delete files from disk
+              </Label>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {deleteCrossSeedFiles ? (
+                <p className="text-destructive">⚠️ This will permanently delete the torrent files from disk!</p>
+              ) : (
+                <p>Torrents will be removed but files will remain on disk.</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteCrossSeedDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteCrossSeed}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete {selectedCrossSeedTorrents.size} Torrent{selectedCrossSeedTorrents.size !== 1 ? 's' : ''}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Current Torrent Dialog */}
+      <Dialog open={showDeleteCurrentDialog} onOpenChange={setShowDeleteCurrentDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete This Torrent</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{incognitoMode ? getLinuxFileName(torrent?.hash ?? "", 0) : torrent?.name}"?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="delete-current-files"
+                checked={deleteCurrentFiles}
+                onCheckedChange={(checked) => setDeleteCurrentFiles(checked === true)}
+              />
+              <Label
+                htmlFor="delete-current-files"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Also delete files from disk
+              </Label>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {deleteCurrentFiles ? (
+                <p className="text-destructive">⚠️ This will permanently delete the torrent files from disk!</p>
+              ) : (
+                <p>Torrent will be removed but files will remain on disk.</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteCurrentDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteCurrent}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete Torrent
             </Button>
           </DialogFooter>
         </DialogContent>

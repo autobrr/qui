@@ -450,6 +450,11 @@ func normalizePath(p string) string {
 
 	if resolved, err := filepath.EvalSymlinks(cleaned); err == nil {
 		cleaned = resolved
+	} else {
+		dir := filepath.Dir(cleaned)
+		if dirResolved, dirErr := filepath.EvalSymlinks(dir); dirErr == nil {
+			cleaned = filepath.Join(dirResolved, filepath.Base(cleaned))
+		}
 	}
 
 	return normalizePathCase(cleaned)

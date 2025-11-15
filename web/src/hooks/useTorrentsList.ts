@@ -47,10 +47,26 @@ export function useTorrentsList(
     setLastProcessedPage(-1)
   }, [instanceId, filterKey, searchKey, sort, order])
 
+  // Detect if this is cross-seed filtering based on expression content
+  const isCrossSeedFiltering = useMemo(() => {
+    return filters?.expr?.includes('Hash ==') && filters?.expr?.includes('||')
+  }, [filters?.expr])
+
   // Query for torrents - backend handles stale-while-revalidate
   const { data, isLoading, isFetching, isPlaceholderData } = useQuery<TorrentResponse>({
-    queryKey: ["torrents-list", instanceId, currentPage, filters, search, sort, order],
+    queryKey: ["torrents-list", instanceId, currentPage, filters, search, sort, order, isCrossSeedFiltering],
     queryFn: () => {
+      if (isCrossSeedFiltering) {
+        return api.getCrossInstanceTorrents({
+          page: currentPage,
+          limit: pageSize,
+          sort,
+          order,
+          search,
+          filters,
+        })
+      }
+      
       return api.getTorrents(instanceId, {
         page: currentPage,
         limit: pageSize,
@@ -66,7 +82,8 @@ export function useTorrentsList(
     // Reuse the previous page's data while the next page is loading so the UI doesn't flash empty state
     placeholderData: currentPage > 0 ? ((previousData) => previousData) : undefined,
     // Only poll the first page to get fresh data - don't poll pagination pages
-    refetchInterval: currentPage === 0 ? 3000 : false,
+    // Reduce polling frequency for cross-instance calls since they're more expensive
+    refetchInterval: currentPage === 0 ? (isCrossSeedFiltering ? 10000 : 3000) : false,
     refetchIntervalInBackground: false, // Don't poll when tab is not active
     enabled,
   })
@@ -104,7 +121,12 @@ export function useTorrentsList(
       return
     }
 
-    if (!data.torrents) {
+    // Handle both regular torrents and cross-instance torrents
+    const torrentsData = data.isCrossInstance 
+      ? (data.crossInstanceTorrents || data.cross_instance_torrents)
+      : data.torrents
+    
+    if (!torrentsData) {
       setIsLoadingMore(false)
       return
     }
@@ -116,7 +138,7 @@ export function useTorrentsList(
     // For first page or true data updates (optimistic updates from mutations)
     if (currentPage === 0 || (isDataUpdate && currentPage === 0)) {
       // First page OR data update (optimistic updates): replace all
-      setAllTorrents(data.torrents)
+      setAllTorrents(torrentsData)
       // Use backend's HasMore field for accurate pagination
       setHasLoadedAll(!data.hasMore)
 
@@ -130,7 +152,7 @@ export function useTorrentsList(
 
       // Append to existing for pagination
       setAllTorrents(prev => {
-        const updatedTorrents = [...prev, ...data.torrents]
+        const updatedTorrents = [...prev, ...torrentsData]
         return updatedTorrents
       })
 
@@ -222,6 +244,9 @@ export function useTorrentsList(
     isLoadingMore,
     hasLoadedAll,
     loadMore,
+    // Cross-instance information
+    isCrossInstance: data?.isCrossInstance ?? false,
+    isCrossSeedFiltering,
     // Metadata about data freshness
     isFreshData: !isCachedData || !isStaleData,
     isCachedData,
