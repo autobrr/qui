@@ -320,11 +320,16 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		runExternalProgramID = *settings.RunExternalProgramID
 	}
 
+	var category interface{}
+	if settings.Category != nil {
+		category = *settings.Category
+	}
+
 	_, err = s.db.ExecContext(ctx, query,
 		settings.Enabled,
 		settings.RunIntervalMinutes,
 		settings.StartPaused,
-		settings.Category,
+		category,
 		tagsJSON,
 		ignoreJSON,
 		instanceJSON,

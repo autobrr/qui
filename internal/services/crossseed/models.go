@@ -4,6 +4,8 @@
 package crossseed
 
 import (
+	"sync"
+
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/services/jackett"
@@ -233,6 +235,7 @@ type ApplyTorrentSearchResponse struct {
 
 // AsyncIndexerFilteringState represents the state of async indexer filtering operations
 type AsyncIndexerFilteringState struct {
+	sync.RWMutex          `json:"-"`
 	CapabilitiesCompleted bool           `json:"capabilities_completed"`
 	ContentCompleted      bool           `json:"content_completed"`
 	CapabilityIndexers    []int          `json:"capability_indexers,omitempty"`
@@ -240,6 +243,44 @@ type AsyncIndexerFilteringState struct {
 	ExcludedIndexers      map[int]string `json:"excluded_indexers,omitempty"`
 	ContentMatches        []string       `json:"content_matches,omitempty"`
 	Error                 string         `json:"error,omitempty"`
+}
+
+// cloneLocked assumes the caller has already acquired at least a read lock.
+func (s *AsyncIndexerFilteringState) cloneLocked() *AsyncIndexerFilteringState {
+	if s == nil {
+		return nil
+	}
+	clone := &AsyncIndexerFilteringState{
+		CapabilitiesCompleted: s.CapabilitiesCompleted,
+		ContentCompleted:      s.ContentCompleted,
+		Error:                 s.Error,
+	}
+	if len(s.CapabilityIndexers) > 0 {
+		clone.CapabilityIndexers = append([]int(nil), s.CapabilityIndexers...)
+	}
+	if len(s.FilteredIndexers) > 0 {
+		clone.FilteredIndexers = append([]int(nil), s.FilteredIndexers...)
+	}
+	if len(s.ContentMatches) > 0 {
+		clone.ContentMatches = append([]string(nil), s.ContentMatches...)
+	}
+	if len(s.ExcludedIndexers) > 0 {
+		clone.ExcludedIndexers = make(map[int]string, len(s.ExcludedIndexers))
+		for id, reason := range s.ExcludedIndexers {
+			clone.ExcludedIndexers[id] = reason
+		}
+	}
+	return clone
+}
+
+// Clone creates a snapshot copy of the filtering state using a read lock.
+func (s *AsyncIndexerFilteringState) Clone() *AsyncIndexerFilteringState {
+	if s == nil {
+		return nil
+	}
+	s.RLock()
+	defer s.RUnlock()
+	return s.cloneLocked()
 }
 
 // AsyncTorrentAnalysis represents the result of async torrent analysis with filtering state

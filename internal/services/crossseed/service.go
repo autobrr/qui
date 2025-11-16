@@ -1534,7 +1534,7 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	if len(req.Tags) == 0 && matchedTorrent.Tags != "" {
-		for tag := range strings.SplitSeq(matchedTorrent.Tags, ",") {
+		for _, tag := range strings.Split(matchedTorrent.Tags, ",") {
 			addTag(tag)
 		}
 	}
@@ -1927,30 +1927,36 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 			capabilityIndexers = allIndexers
 		}
 
-		filteringState.CapabilityIndexers = capabilityIndexers
+		filteringState.Lock()
+		filteringState.CapabilityIndexers = append([]int(nil), capabilityIndexers...)
 		filteringState.CapabilitiesCompleted = true
+		filteringState.Unlock()
 		torrentInfo.AvailableIndexers = capabilityIndexers
 
-		// Store initial state in cache immediately for UI polling
 		if s.asyncFilteringCache != nil {
 			cacheKey := asyncFilteringCacheKey(instanceID, hash)
+			skipCacheStore := false
 
-			// Check if content filtering has already completed to avoid overwriting
-			if existing, found := s.asyncFilteringCache.Get(cacheKey); found && existing.ContentCompleted {
-				log.Debug().
-					Str("torrentHash", hash).
-					Int("instanceID", instanceID).
-					Str("cacheKey", cacheKey).
-					Bool("existingContentCompleted", existing.ContentCompleted).
-					Int("existingFilteredCount", len(existing.FilteredIndexers)).
-					Msg("[CROSSSEED-ASYNC] Skipping initial cache storage - content filtering already completed")
-			} else {
-				// Create a copy of the initial state
+			if existing, found := s.asyncFilteringCache.Get(cacheKey); found {
+				existingSnapshot := existing.Clone()
+				if existingSnapshot != nil && existingSnapshot.ContentCompleted {
+					log.Debug().
+						Str("torrentHash", hash).
+						Int("instanceID", instanceID).
+						Str("cacheKey", cacheKey).
+						Bool("existingContentCompleted", existingSnapshot.ContentCompleted).
+						Int("existingFilteredCount", len(existingSnapshot.FilteredIndexers)).
+						Msg("[CROSSSEED-ASYNC] Skipping initial cache storage - content filtering already completed")
+					skipCacheStore = true
+				}
+			}
+
+			if !skipCacheStore {
 				cachedState := &AsyncIndexerFilteringState{
 					CapabilitiesCompleted: true,
 					ContentCompleted:      false,
 					CapabilityIndexers:    append([]int(nil), capabilityIndexers...),
-					FilteredIndexers:      append([]int(nil), capabilityIndexers...), // Initially same as capability indexers
+					FilteredIndexers:      append([]int(nil), capabilityIndexers...),
 					ExcludedIndexers:      make(map[int]string),
 					ContentMatches:        make([]string, 0),
 				}
@@ -1974,7 +1980,6 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 			Int("capabilityIndexersCount", len(capabilityIndexers)).
 			Msg("[CROSSSEED-ASYNC] Capability filtering completed synchronously")
 
-		// Phase 2: Content filtering (slow, potentially async)
 		log.Debug().
 			Str("torrentHash", hash).
 			Int("instanceID", instanceID).
@@ -1989,29 +1994,31 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 					Int("instanceID", instanceID).
 					Int("capabilityIndexersCount", len(capabilityIndexers)).
 					Msg("[CROSSSEED-ASYNC] Starting background content filtering")
-				// Start content filtering in background
 				go s.performAsyncContentFiltering(context.Background(), instanceID, hash, capabilityIndexers, indexerInfo, filteringState)
 			} else {
-				// No indexers left after capability filtering
+				filteringState.Lock()
 				filteringState.FilteredIndexers = []int{}
 				filteringState.ContentCompleted = true
+				filteringState.Unlock()
 				log.Debug().
 					Str("torrentHash", hash).
 					Int("instanceID", instanceID).
 					Msg("[CROSSSEED-ASYNC] No indexers remain after capability filtering, skipping content filtering")
 			}
 		} else {
-			// Content filtering disabled, mark as completed
-			filteringState.FilteredIndexers = capabilityIndexers
+			filteringState.Lock()
+			filteringState.FilteredIndexers = append([]int(nil), capabilityIndexers...)
 			filteringState.ContentCompleted = true
+			filteringState.Unlock()
 			torrentInfo.FilteredIndexers = capabilityIndexers
 		}
 	} else {
-		// No indexers available or jackett service unavailable
+		filteringState.Lock()
 		filteringState.CapabilityIndexers = []int{}
 		filteringState.FilteredIndexers = []int{}
 		filteringState.CapabilitiesCompleted = true
 		filteringState.ContentCompleted = true
+		filteringState.Unlock()
 	}
 
 	return result, nil
@@ -2028,47 +2035,47 @@ func (s *Service) performAsyncContentFiltering(ctx context.Context, instanceID i
 
 	filteredIndexers, excludedIndexers, contentMatches, err := s.filterIndexersByExistingContent(ctx, instanceID, hash, indexerIDs, indexerInfo)
 
-	// Use atomic-like updates to avoid race conditions
-	// Note: In a production system, you might want to use sync.Mutex for more complex state updates
-
+	state.Lock()
+	var snapshot *AsyncIndexerFilteringState
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to filter indexers by existing content during async filtering")
 		state.Error = fmt.Sprintf("Content filtering failed: %v", err)
-		state.FilteredIndexers = indexerIDs // Fall back to capability-filtered list
+		state.FilteredIndexers = append([]int(nil), indexerIDs...)
 		state.ExcludedIndexers = nil
 		state.ContentMatches = nil
 	} else {
-		state.FilteredIndexers = filteredIndexers
-		state.ExcludedIndexers = excludedIndexers
-		state.ContentMatches = contentMatches
+		state.Error = ""
+		state.FilteredIndexers = append([]int(nil), filteredIndexers...)
+		if len(excludedIndexers) > 0 {
+			state.ExcludedIndexers = make(map[int]string, len(excludedIndexers))
+			maps.Copy(state.ExcludedIndexers, excludedIndexers)
+		} else {
+			state.ExcludedIndexers = nil
+		}
+		state.ContentMatches = append([]string(nil), contentMatches...)
 	}
 
 	// Mark content filtering as completed (this should be the last operation)
 	state.ContentCompleted = true
+	snapshot = state.cloneLocked()
+	state.Unlock()
 
 	log.Debug().
 		Str("torrentHash", hash).
 		Int("instanceID", instanceID).
 		Int("originalIndexerCount", len(indexerIDs)).
-		Int("filteredIndexerCount", len(state.FilteredIndexers)).
-		Int("excludedIndexerCount", len(state.ExcludedIndexers)).
-		Bool("contentCompleted", state.ContentCompleted).
+		Int("filteredIndexerCount", len(snapshot.FilteredIndexers)).
+		Int("excludedIndexerCount", len(snapshot.ExcludedIndexers)).
+		Bool("contentCompleted", snapshot.ContentCompleted).
 		Msg("[CROSSSEED-ASYNC] Content filtering completed successfully")
 
 	// Store the completed state in cache for UI polling
 	if s.asyncFilteringCache != nil {
 		cacheKey := asyncFilteringCacheKey(instanceID, hash)
-		// Create a copy of the state to avoid race conditions
-		cachedState := &AsyncIndexerFilteringState{
-			CapabilitiesCompleted: state.CapabilitiesCompleted,
-			ContentCompleted:      state.ContentCompleted,
-			CapabilityIndexers:    append([]int(nil), state.CapabilityIndexers...),
-			FilteredIndexers:      append([]int(nil), state.FilteredIndexers...),
-			ExcludedIndexers:      make(map[int]string),
-			ContentMatches:        append([]string(nil), state.ContentMatches...),
+		cachedState := snapshot.Clone()
+		if cachedState == nil {
+			cachedState = &AsyncIndexerFilteringState{}
 		}
-		// Copy excluded indexers map
-		maps.Copy(cachedState.ExcludedIndexers, state.ExcludedIndexers)
 
 		log.Debug().
 			Str("torrentHash", hash).
@@ -2091,9 +2098,9 @@ func (s *Service) performAsyncContentFiltering(ctx context.Context, instanceID i
 		Str("torrentHash", hash).
 		Int("instanceID", instanceID).
 		Int("inputIndexersCount", len(indexerIDs)).
-		Int("filteredIndexersCount", len(state.FilteredIndexers)).
-		Int("excludedIndexersCount", len(state.ExcludedIndexers)).
-		Int("contentMatchesCount", len(state.ContentMatches)).
+		Int("filteredIndexersCount", len(snapshot.FilteredIndexers)).
+		Int("excludedIndexersCount", len(snapshot.ExcludedIndexers)).
+		Int("contentMatchesCount", len(snapshot.ContentMatches)).
 		Msg("[CROSSSEED-ASYNC] Background content filtering completed")
 }
 
@@ -2104,37 +2111,40 @@ func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, h
 	// Check if we have cached async state with completed content filtering
 	if s.asyncFilteringCache != nil {
 		cacheKey := asyncFilteringCacheKey(instanceID, hash)
-		if cached, found := s.asyncFilteringCache.Get(cacheKey); found && cached.ContentCompleted {
-			// We have completed filtering results, use those instead of running new analysis
-			asyncResult, err := s.AnalyzeTorrentForSearchAsync(ctx, instanceID, hash, false) // Don't restart content filtering
-			if err != nil {
-				// Fall back to cached state if torrent analysis fails
-				log.Warn().Err(err).Msg("Failed to get torrent info, using cached filtering state only")
-				return &TorrentInfo{
-					AvailableIndexers:         cached.CapabilityIndexers,
-					FilteredIndexers:          cached.FilteredIndexers,
-					ExcludedIndexers:          cached.ExcludedIndexers,
-					ContentMatches:            cached.ContentMatches,
-					ContentFilteringCompleted: cached.ContentCompleted,
-				}, nil
+		if cached, found := s.asyncFilteringCache.Get(cacheKey); found {
+			cachedSnapshot := cached.Clone()
+			if cachedSnapshot != nil && cachedSnapshot.ContentCompleted {
+				// We have completed filtering results, use those instead of running new analysis
+				asyncResult, err := s.AnalyzeTorrentForSearchAsync(ctx, instanceID, hash, false) // Don't restart content filtering
+				if err != nil {
+					// Fall back to cached state if torrent analysis fails
+					log.Warn().Err(err).Msg("Failed to get torrent info, using cached filtering state only")
+					return &TorrentInfo{
+						AvailableIndexers:         cachedSnapshot.CapabilityIndexers,
+						FilteredIndexers:          cachedSnapshot.FilteredIndexers,
+						ExcludedIndexers:          cachedSnapshot.ExcludedIndexers,
+						ContentMatches:            cachedSnapshot.ContentMatches,
+						ContentFilteringCompleted: cachedSnapshot.ContentCompleted,
+					}, nil
+				}
+
+				torrentInfo := asyncResult.TorrentInfo
+				// Use the completed filtering results from cache
+				torrentInfo.AvailableIndexers = cachedSnapshot.CapabilityIndexers
+				torrentInfo.FilteredIndexers = cachedSnapshot.FilteredIndexers
+				torrentInfo.ExcludedIndexers = cachedSnapshot.ExcludedIndexers
+				torrentInfo.ContentMatches = cachedSnapshot.ContentMatches
+				torrentInfo.ContentFilteringCompleted = cachedSnapshot.ContentCompleted
+
+				log.Debug().
+					Str("torrentHash", hash).
+					Int("instanceID", instanceID).
+					Bool("contentCompleted", cachedSnapshot.ContentCompleted).
+					Int("filteredIndexersCount", len(cachedSnapshot.FilteredIndexers)).
+					Msg("[CROSSSEED-ANALYZE] Using cached content filtering results")
+
+				return torrentInfo, nil
 			}
-
-			torrentInfo := asyncResult.TorrentInfo
-			// Use the completed filtering results from cache
-			torrentInfo.AvailableIndexers = cached.CapabilityIndexers
-			torrentInfo.FilteredIndexers = cached.FilteredIndexers
-			torrentInfo.ExcludedIndexers = cached.ExcludedIndexers
-			torrentInfo.ContentMatches = cached.ContentMatches
-			torrentInfo.ContentFilteringCompleted = cached.ContentCompleted
-
-			log.Debug().
-				Str("torrentHash", hash).
-				Int("instanceID", instanceID).
-				Bool("contentCompleted", cached.ContentCompleted).
-				Int("filteredIndexersCount", len(cached.FilteredIndexers)).
-				Msg("[CROSSSEED-ANALYZE] Using cached content filtering results")
-
-			return torrentInfo, nil
 		}
 	}
 
@@ -2149,19 +2159,20 @@ func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, h
 	torrentInfo := asyncResult.TorrentInfo
 
 	// Use capability-filtered indexers as the primary result
-	if asyncResult.FilteringState.CapabilitiesCompleted {
-		torrentInfo.AvailableIndexers = asyncResult.FilteringState.CapabilityIndexers
+	stateSnapshot := asyncResult.FilteringState.Clone()
+	if stateSnapshot != nil && stateSnapshot.CapabilitiesCompleted {
+		torrentInfo.AvailableIndexers = stateSnapshot.CapabilityIndexers
 		// For immediate response, use capability indexers as filtered indexers
 		// The UI can poll for refined results if needed
-		torrentInfo.FilteredIndexers = asyncResult.FilteringState.CapabilityIndexers
-		torrentInfo.ContentFilteringCompleted = asyncResult.FilteringState.ContentCompleted
+		torrentInfo.FilteredIndexers = stateSnapshot.CapabilityIndexers
+		torrentInfo.ContentFilteringCompleted = stateSnapshot.ContentCompleted
 
 		log.Debug().
 			Str("torrentHash", hash).
 			Int("instanceID", instanceID).
-			Bool("capabilitiesCompleted", asyncResult.FilteringState.CapabilitiesCompleted).
-			Bool("contentCompleted", asyncResult.FilteringState.ContentCompleted).
-			Int("capabilityIndexersCount", len(asyncResult.FilteringState.CapabilityIndexers)).
+			Bool("capabilitiesCompleted", stateSnapshot.CapabilitiesCompleted).
+			Bool("contentCompleted", stateSnapshot.ContentCompleted).
+			Int("capabilityIndexersCount", len(stateSnapshot.CapabilityIndexers)).
 			Msg("[CROSSSEED-ANALYZE] Returning immediate capability-filtered results")
 	} else {
 		log.Warn().
@@ -2301,36 +2312,39 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	// Check for cached content-filtered results first
 	if s.asyncFilteringCache != nil {
 		if cached, found := s.asyncFilteringCache.Get(cacheKey); found {
-			log.Debug().
-				Str("torrentHash", hash).
-				Int("instanceID", instanceID).
-				Bool("contentCompleted", cached.ContentCompleted).
-				Int("filteredIndexersCount", len(cached.FilteredIndexers)).
-				Int("capabilityIndexersCount", len(cached.CapabilityIndexers)).
-				Int("excludedCount", len(cached.ExcludedIndexers)).
-				Ints("providedIndexers", opts.IndexerIDs).
-				Msg("[CROSSSEED-SEARCH] Found cached filtering state")
-
-			if cached.ContentCompleted && len(cached.FilteredIndexers) > 0 {
-				// Content filtering is complete, use the refined results
-				filteredIndexerIDs = cached.FilteredIndexers
+			cachedSnapshot := cached.Clone()
+			if cachedSnapshot != nil {
 				log.Debug().
 					Str("torrentHash", hash).
 					Int("instanceID", instanceID).
-					Ints("cachedFilteredIndexers", filteredIndexerIDs).
+					Bool("contentCompleted", cachedSnapshot.ContentCompleted).
+					Int("filteredIndexersCount", len(cachedSnapshot.FilteredIndexers)).
+					Int("capabilityIndexersCount", len(cachedSnapshot.CapabilityIndexers)).
+					Int("excludedCount", len(cachedSnapshot.ExcludedIndexers)).
 					Ints("providedIndexers", opts.IndexerIDs).
-					Bool("contentCompleted", cached.ContentCompleted).
-					Int("excludedCount", len(cached.ExcludedIndexers)).
-					Msg("[CROSSSEED-SEARCH] Using cached content-filtered indexers")
-			} else if len(cached.CapabilityIndexers) > 0 {
-				// Content filtering not complete, but use capability results
-				filteredIndexerIDs = cached.CapabilityIndexers
-				log.Debug().
-					Str("torrentHash", hash).
-					Int("instanceID", instanceID).
-					Ints("cachedCapabilityIndexers", filteredIndexerIDs).
-					Bool("contentCompleted", cached.ContentCompleted).
-					Msg("[CROSSSEED-SEARCH] Using cached capability-filtered indexers")
+					Msg("[CROSSSEED-SEARCH] Found cached filtering state")
+
+				if cachedSnapshot.ContentCompleted && len(cachedSnapshot.FilteredIndexers) > 0 {
+					// Content filtering is complete, use the refined results
+					filteredIndexerIDs = append([]int(nil), cachedSnapshot.FilteredIndexers...)
+					log.Debug().
+						Str("torrentHash", hash).
+						Int("instanceID", instanceID).
+						Ints("cachedFilteredIndexers", filteredIndexerIDs).
+						Ints("providedIndexers", opts.IndexerIDs).
+						Bool("contentCompleted", cachedSnapshot.ContentCompleted).
+						Int("excludedCount", len(cachedSnapshot.ExcludedIndexers)).
+						Msg("[CROSSSEED-SEARCH] Using cached content-filtered indexers")
+				} else if len(cachedSnapshot.CapabilityIndexers) > 0 {
+					// Content filtering not complete, but use capability results
+					filteredIndexerIDs = append([]int(nil), cachedSnapshot.CapabilityIndexers...)
+					log.Debug().
+						Str("torrentHash", hash).
+						Int("instanceID", instanceID).
+						Ints("cachedCapabilityIndexers", filteredIndexerIDs).
+						Bool("contentCompleted", cachedSnapshot.ContentCompleted).
+						Msg("[CROSSSEED-SEARCH] Using cached capability-filtered indexers")
+				}
 			}
 		} else {
 			log.Debug().
@@ -2355,8 +2369,8 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 			filteredIndexerIDs = opts.IndexerIDs
 		} else {
 			// Use capability-filtered indexers immediately for search
-			if asyncAnalysis.FilteringState.CapabilitiesCompleted {
-				filteredIndexerIDs = asyncAnalysis.FilteringState.CapabilityIndexers
+			if stateSnapshot := asyncAnalysis.FilteringState.Clone(); stateSnapshot != nil && stateSnapshot.CapabilitiesCompleted {
+				filteredIndexerIDs = append([]int(nil), stateSnapshot.CapabilityIndexers...)
 				sourceInfo = *asyncAnalysis.TorrentInfo
 
 				log.Debug().
@@ -2364,7 +2378,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 					Int("instanceID", instanceID).
 					Ints("originalIndexers", opts.IndexerIDs).
 					Ints("capabilityFilteredIndexers", filteredIndexerIDs).
-					Bool("contentFilteringInProgress", !asyncAnalysis.FilteringState.ContentCompleted).
+					Bool("contentFilteringInProgress", !stateSnapshot.ContentCompleted).
 					Msg("[CROSSSEED-SEARCH] Using capability-filtered indexers for immediate search")
 			} else {
 				log.Warn().
@@ -3323,12 +3337,18 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	allowedIndexerIDs, skipReason := s.resolveAllowedIndexerIDs(ctx, torrent.Hash, filteringState, state.opts.IndexerIDs)
 
 	if len(allowedIndexerIDs) > 0 {
+		contentFilteringCompleted := false
+		if filteringState != nil {
+			if snapshot := filteringState.Clone(); snapshot != nil {
+				contentFilteringCompleted = snapshot.ContentCompleted
+			}
+		}
 		log.Debug().
 			Str("torrentHash", torrent.Hash).
 			Int("instanceID", state.opts.InstanceID).
 			Ints("originalIndexers", state.opts.IndexerIDs).
 			Ints("selectedIndexers", allowedIndexerIDs).
-			Bool("contentFilteringCompleted", filteringState != nil && filteringState.ContentCompleted).
+			Bool("contentFilteringCompleted", contentFilteringCompleted).
 			Msg("[CROSSSEED-SEARCH-AUTO] Using resolved indexer set for automation search")
 	}
 
@@ -3447,7 +3467,12 @@ func (s *Service) resolveAllowedIndexerIDs(ctx context.Context, torrentHash stri
 		return requested, ""
 	}
 
-	if filteringState.CapabilitiesCompleted && !filteringState.ContentCompleted {
+	snapshot := filteringState.Clone()
+	if snapshot == nil {
+		return requested, ""
+	}
+
+	if snapshot.CapabilitiesCompleted && !snapshot.ContentCompleted {
 		completed, waited, timedOut := s.waitForContentFilteringCompletion(ctx, filteringState)
 		if waited > 0 {
 			log.Debug().
@@ -3457,10 +3482,14 @@ func (s *Service) resolveAllowedIndexerIDs(ctx context.Context, torrentHash stri
 				Bool("timedOut", timedOut).
 				Msg("[CROSSSEED-SEARCH-AUTO] Waited for content filtering during seeded search")
 		}
+		snapshot = filteringState.Clone()
+		if snapshot == nil {
+			return requested, ""
+		}
 	}
 
-	if filteringState.ContentCompleted {
-		allowed, filteredOut := filterIndexersBySelection(filteringState.FilteredIndexers, requested)
+	if snapshot.ContentCompleted {
+		allowed, filteredOut := filterIndexersBySelection(snapshot.FilteredIndexers, requested)
 		if len(allowed) > 0 {
 			return allowed, ""
 		}
@@ -3470,8 +3499,8 @@ func (s *Service) resolveAllowedIndexerIDs(ctx context.Context, torrentHash stri
 		return nil, s.describeFilteringSkipReason(filteringState)
 	}
 
-	if filteringState.CapabilitiesCompleted {
-		allowed, filteredOut := filterIndexersBySelection(filteringState.CapabilityIndexers, requested)
+	if snapshot.CapabilitiesCompleted {
+		allowed, filteredOut := filterIndexersBySelection(snapshot.CapabilityIndexers, requested)
 		if len(allowed) > 0 {
 			return allowed, ""
 		}
@@ -3515,7 +3544,10 @@ func (s *Service) waitForContentFilteringCompletion(ctx context.Context, state *
 	if state == nil {
 		return false, 0, false
 	}
-	if state.ContentCompleted {
+	state.RLock()
+	completed := state.ContentCompleted
+	state.RUnlock()
+	if completed {
 		return true, 0, false
 	}
 
@@ -3527,18 +3559,27 @@ func (s *Service) waitForContentFilteringCompletion(ctx context.Context, state *
 	defer ticker.Stop()
 
 	for {
-		if state.ContentCompleted {
+		state.RLock()
+		completed := state.ContentCompleted
+		state.RUnlock()
+		if completed {
 			return true, time.Since(start), false
 		}
 
 		select {
 		case <-ticker.C:
-			if state.ContentCompleted {
+			state.RLock()
+			completed := state.ContentCompleted
+			state.RUnlock()
+			if completed {
 				return true, time.Since(start), false
 			}
 		case <-waitCtx.Done():
 			err := waitCtx.Err()
-			return state.ContentCompleted, time.Since(start), errors.Is(err, context.DeadlineExceeded)
+			state.RLock()
+			finalState := state.ContentCompleted
+			state.RUnlock()
+			return finalState, time.Since(start), errors.Is(err, context.DeadlineExceeded)
 		}
 	}
 }
@@ -3547,13 +3588,17 @@ func (s *Service) describeFilteringSkipReason(state *AsyncIndexerFilteringState)
 	if state == nil {
 		return "no indexers available"
 	}
-	if len(state.ExcludedIndexers) > 0 {
-		return fmt.Sprintf("skipped: already seeded from %d tracker(s)", len(state.ExcludedIndexers))
+	snapshot := state.Clone()
+	if snapshot == nil {
+		return "no indexers available"
 	}
-	if state.Error != "" {
-		return fmt.Sprintf("content filtering failed: %s", state.Error)
+	if len(snapshot.ExcludedIndexers) > 0 {
+		return fmt.Sprintf("skipped: already seeded from %d tracker(s)", len(snapshot.ExcludedIndexers))
 	}
-	if state.CapabilitiesCompleted && len(state.CapabilityIndexers) == 0 {
+	if snapshot.Error != "" {
+		return fmt.Sprintf("content filtering failed: %s", snapshot.Error)
+	}
+	if snapshot.CapabilitiesCompleted && len(snapshot.CapabilityIndexers) == 0 {
 		return "no indexers support required caps"
 	}
 	return "no eligible indexers after filtering"
@@ -3623,20 +3668,23 @@ func (s *Service) filterIndexerIDsForTorrentAsync(ctx context.Context, instanceI
 
 	// Check if we already have completed content filtering to avoid overwriting
 	if s.asyncFilteringCache != nil {
-		if existing, found := s.asyncFilteringCache.Get(cacheKey); found && existing.ContentCompleted {
-			log.Warn().
-				Str("torrentHash", hash).
-				Int("instanceID", instanceID).
-				Str("cacheKey", cacheKey).
-				Bool("existingContentCompleted", existing.ContentCompleted).
-				Int("existingFilteredCount", len(existing.FilteredIndexers)).
-				Msg("[CROSSSEED-ASYNC] WARNING: Avoiding overwrite of completed content filtering")
+		if existing, found := s.asyncFilteringCache.Get(cacheKey); found {
+			existingSnapshot := existing.Clone()
+			if existingSnapshot != nil && existingSnapshot.ContentCompleted {
+				log.Warn().
+					Str("torrentHash", hash).
+					Int("instanceID", instanceID).
+					Str("cacheKey", cacheKey).
+					Bool("existingContentCompleted", existingSnapshot.ContentCompleted).
+					Int("existingFilteredCount", len(existingSnapshot.FilteredIndexers)).
+					Msg("[CROSSSEED-ASYNC] WARNING: Avoiding overwrite of completed content filtering")
 
-			// Return existing completed state instead of creating new filtering
-			return &AsyncTorrentAnalysis{
-				FilteringState: existing,
-				TorrentInfo:    nil, // We don't have the original TorrentInfo, but it's not needed for search
-			}, nil
+				// Return existing completed state instead of creating new filtering
+				return &AsyncTorrentAnalysis{
+					FilteringState: existingSnapshot,
+					TorrentInfo:    nil, // We don't have the original TorrentInfo, but it's not needed for search
+				}, nil
+			}
 		}
 	}
 
@@ -3666,13 +3714,16 @@ func (s *Service) GetAsyncFilteringStatus(ctx context.Context, instanceID int, h
 	if s.asyncFilteringCache != nil {
 		cacheKey := asyncFilteringCacheKey(instanceID, hash)
 		if cached, found := s.asyncFilteringCache.Get(cacheKey); found {
-			log.Debug().
-				Str("torrentHash", hash).
-				Int("instanceID", instanceID).
-				Bool("capabilitiesCompleted", cached.CapabilitiesCompleted).
-				Bool("contentCompleted", cached.ContentCompleted).
-				Msg("[CROSSSEED-ASYNC] Retrieved cached filtering status")
-			return cached, nil
+			cachedSnapshot := cached.Clone()
+			if cachedSnapshot != nil {
+				log.Debug().
+					Str("torrentHash", hash).
+					Int("instanceID", instanceID).
+					Bool("capabilitiesCompleted", cachedSnapshot.CapabilitiesCompleted).
+					Bool("contentCompleted", cachedSnapshot.ContentCompleted).
+					Msg("[CROSSSEED-ASYNC] Retrieved cached filtering status")
+				return cachedSnapshot, nil
+			}
 		}
 	}
 
@@ -3683,12 +3734,14 @@ func (s *Service) GetAsyncFilteringStatus(ctx context.Context, instanceID int, h
 		return nil, err
 	}
 
-	log.Debug().
-		Str("torrentHash", hash).
-		Int("instanceID", instanceID).
-		Bool("capabilitiesCompleted", asyncResult.FilteringState.CapabilitiesCompleted).
-		Bool("contentCompleted", asyncResult.FilteringState.ContentCompleted).
-		Msg("[CROSSSEED-ASYNC] Generated new filtering status (no cache)")
+	if snapshot := asyncResult.FilteringState.Clone(); snapshot != nil {
+		log.Debug().
+			Str("torrentHash", hash).
+			Int("instanceID", instanceID).
+			Bool("capabilitiesCompleted", snapshot.CapabilitiesCompleted).
+			Bool("contentCompleted", snapshot.ContentCompleted).
+			Msg("[CROSSSEED-ASYNC] Generated new filtering status (no cache)")
+	}
 
 	return asyncResult.FilteringState, nil
 }

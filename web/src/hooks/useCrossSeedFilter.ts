@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react"
+import { useCallback, useRef, useState } from "react"
 import { toast } from "sonner"
 
 import { api } from "@/lib/api"
@@ -12,6 +12,7 @@ interface UseCrossSeedFilterOptions {
 
 export function useCrossSeedFilter({ instanceId, onFilterChange }: UseCrossSeedFilterOptions) {
   const [isFilteringCrossSeeds, setIsFilteringCrossSeeds] = useState(false)
+  const isFilteringRef = useRef(false)
 
   const filterCrossSeeds = useCallback(async (torrents: Torrent[]) => {
     if (!onFilterChange) {
@@ -19,7 +20,7 @@ export function useCrossSeedFilter({ instanceId, onFilterChange }: UseCrossSeedF
       return
     }
 
-    if (isFilteringCrossSeeds) {
+    if (isFilteringRef.current) {
       return
     }
 
@@ -29,6 +30,7 @@ export function useCrossSeedFilter({ instanceId, onFilterChange }: UseCrossSeedF
     }
 
     const selectedTorrent = torrents[0]
+    isFilteringRef.current = true
     setIsFilteringCrossSeeds(true)
     toast.info("Identifying cross-seeded torrents...")
 
@@ -122,9 +124,10 @@ export function useCrossSeedFilter({ instanceId, onFilterChange }: UseCrossSeedF
       console.error("Failed to identify cross-seeded torrents:", error)
       toast.error("Failed to identify cross-seeded torrents")
     } finally {
+      isFilteringRef.current = false
       setIsFilteringCrossSeeds(false)
     }
-  }, [instanceId, isFilteringCrossSeeds, onFilterChange])
+  }, [instanceId, onFilterChange])
 
   return { isFilteringCrossSeeds, filterCrossSeeds }
 }

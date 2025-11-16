@@ -78,14 +78,16 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
     setSelectedIndexers(newSelected)
   }
 
-  const handleImport = async () => {
-    setLoading(true)
-    let createdCount = 0
-    let updatedCount = 0
-    let errorCount = 0
-    const errors: string[] = []
+	const handleImport = async () => {
+		setLoading(true)
+		let createdCount = 0
+		let updatedCount = 0
+		let errorCount = 0
+		const errors: string[] = []
 
-    const normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, '') || baseUrl
+		const trimmedBaseUrl = baseUrl.trim()
+		const withoutTrailingSlashes = trimmedBaseUrl.replace(/\/+$/, '')
+		const normalizedBaseUrl = withoutTrailingSlashes || trimmedBaseUrl || 'http://localhost:9117'
 
     for (const indexer of discoveredIndexers) {
       if (!selectedIndexers.has(indexer.id)) continue
