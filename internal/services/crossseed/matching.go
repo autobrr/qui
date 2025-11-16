@@ -221,6 +221,14 @@ func (s *Service) releasesMatch(source, candidate rls.Release, findIndividualEpi
 		}
 	}
 
+	// Certain variant tags (IMAX, HYBRID, etc.) must match even if RLS places
+	// them in different fields. This ensures we only cross-seed truly identical
+	// video masters.
+	if !strictVariantOverrides.variantsCompatible(source, candidate) ||
+		!strictVariantOverrides.variantsCompatible(candidate, source) {
+		return false
+	}
+
 	return true
 }
 
