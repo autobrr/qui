@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { SearchResultCard } from '@/components/search/SearchResultCard'
 import { AddTorrentDialog, type AddTorrentDropPayload } from '@/components/torrents/AddTorrentDialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
@@ -85,6 +86,7 @@ const ADVANCED_PARAM_CONFIG: AdvancedParamConfig[] = [
 const LAST_USED_INSTANCE_KEY = 'qui:search:lastInstanceId'
 
 export function Search() {
+  const SUGGESTION_BLUR_DELAY_MS = 100
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<TorznabSearchResult[]>([])
@@ -738,22 +740,22 @@ export function Search() {
         </div>
 
         <div className="rounded-lg border bg-muted/40 px-4 py-2">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <Sheet open={indexerSheetOpen} onOpenChange={setIndexerSheetOpen}>
               <SheetTrigger asChild>
-                <Button type="button" variant="outline" size="sm" className="flex items-center gap-2">
+                <Button type="button" variant="outline" size="sm" className="flex w-full items-center justify-center gap-2 sm:w-auto sm:justify-start">
                   <SlidersHorizontal className="h-3.5 w-3.5" />
                   <span className="text-sm">Indexers: {indexerSummaryText}</span>
                 </Button>
               </SheetTrigger>
 
-              <SheetContent side="right" className="flex h-full max-w-xl flex-col p-0">
+              <SheetContent side="right" className="flex h-full max-h-[100dvh] max-w-xl flex-col overflow-hidden p-0">
                 <SheetHeader>
                   <SheetTitle>Indexer selection</SheetTitle>
                   <SheetDescription>Pick which indexers to include in searches.</SheetDescription>
                 </SheetHeader>
 
-                <div className="flex flex-1 flex-col gap-4 overflow-hidden px-4 pb-4">
+                <div className="flex flex-1 min-h-0 flex-col gap-4 overflow-hidden px-4 pb-4">
                   <div className="flex flex-wrap gap-2">
                     <Button type="button" variant="outline" size="sm" onClick={handleSelectAll}>
                       Select all
@@ -763,55 +765,57 @@ export function Search() {
                     </Button>
                   </div>
 
-                  <ScrollArea className="flex-1 rounded-lg border">
-                    <div className="h-full space-y-2 p-3">
-                      {indexers.map(indexer => {
-                        const parentCategories = indexer.categories
-                          ?.filter(cat => cat.category_id % 1000 === 0)
-                          .map(cat => cat.category_name) || []
-                        const hasCategories = parentCategories.length > 0
-                        const isSelected = selectedIndexers.has(indexer.id)
+                  <div className="flex-1 min-h-0">
+                    <ScrollArea className="h-full rounded-lg border">
+                      <div className="space-y-2 p-3">
+                        {indexers.map(indexer => {
+                          const parentCategories = indexer.categories
+                            ?.filter(cat => cat.category_id % 1000 === 0)
+                            .map(cat => cat.category_name) || []
+                          const hasCategories = parentCategories.length > 0
+                          const isSelected = selectedIndexers.has(indexer.id)
 
-                        return (
-                          <label
-                            key={indexer.id}
-                            htmlFor={`indexer-${indexer.id}`}
-                            className={`flex w-full items-start gap-3 rounded-md border p-3 transition-colors cursor-pointer ${
-                              isSelected
-                                ? 'bg-muted/40 border-muted-foreground/20'
-                                : 'hover:bg-muted/20'
-                            }`}
-                          >
-                            <Checkbox
-                              id={`indexer-${indexer.id}`}
-                              checked={isSelected}
-                              onCheckedChange={() => toggleIndexer(indexer.id)}
-                              className="mt-0.5 shrink-0"
-                            />
-                            <div className="min-w-0 flex-1 space-y-1.5">
-                              <div className="flex items-center gap-2 text-sm font-medium leading-none">
-                                <span className="truncate">{indexer.name}</span>
-                                <Badge variant="secondary" className="text-[10px] font-normal capitalize">
-                                  {formatBackend(indexer.backend)}
-                                </Badge>
-                              </div>
-                              {hasCategories ? (
-                                <div className="flex flex-wrap gap-1">
-                                  {parentCategories.map((catName, idx) => (
-                                    <Badge key={idx} variant="outline" className="text-[10px] font-normal">
-                                      {catName}
-                                    </Badge>
-                                  ))}
+                          return (
+                            <label
+                              key={indexer.id}
+                              htmlFor={`indexer-${indexer.id}`}
+                              className={`flex w-full items-start gap-3 rounded-md border p-3 transition-colors cursor-pointer ${
+                                isSelected
+                                  ? 'bg-muted/40 border-muted-foreground/20'
+                                  : 'hover:bg-muted/20'
+                              }`}
+                            >
+                              <Checkbox
+                                id={`indexer-${indexer.id}`}
+                                checked={isSelected}
+                                onCheckedChange={() => toggleIndexer(indexer.id)}
+                                className="mt-0.5 shrink-0"
+                              />
+                              <div className="min-w-0 flex-1 space-y-1.5">
+                                <div className="flex items-center gap-2 text-sm font-medium leading-none">
+                                  <span className="truncate">{indexer.name}</span>
+                                  <Badge variant="secondary" className="text-[10px] font-normal capitalize">
+                                    {formatBackend(indexer.backend)}
+                                  </Badge>
                                 </div>
-                              ) : (
-                                <p className="text-xs text-muted-foreground">No categories</p>
-                              )}
-                            </div>
-                          </label>
-                        )
-                      })}
-                    </div>
-                  </ScrollArea>
+                                {hasCategories ? (
+                                  <div className="flex flex-wrap gap-1">
+                                    {parentCategories.map((catName, idx) => (
+                                      <Badge key={idx} variant="outline" className="text-[10px] font-normal">
+                                        {catName}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-muted-foreground">No categories</p>
+                                )}
+                              </div>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </ScrollArea>
+                  </div>
                 </div>
 
                 <SheetFooter className="border-t bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -827,7 +831,7 @@ export function Search() {
               </SheetContent>
             </Sheet>
 
-            <div className="ml-auto flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
               <DropdownMenu open={instanceMenuOpen} onOpenChange={setInstanceMenuOpen}>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -835,7 +839,7 @@ export function Search() {
                     variant="outline"
                     size="sm"
                     disabled={loadingInstances || !instancesAvailable}
-                    className="flex items-center gap-2"
+                    className="flex w-full items-center justify-center gap-2 sm:w-auto sm:justify-start"
                   >
                     <span className="text-sm">
                       {targetInstance
@@ -897,116 +901,121 @@ export function Search() {
         <Card>
           <CardContent>
           <form onSubmit={handleSearch} className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex-shrink-0 min-w-[120px] max-w-[180px]">
-                <Label htmlFor="search-type" className="sr-only">Search type</Label>
-                <Select value={searchType} onValueChange={(value) => setSearchType(value as SearchType)}>
-                  <SelectTrigger id="search-type" className="w-full">
-                    <SelectValue placeholder="Auto detect" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SEARCH_TYPE_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  variant={showAdvancedParams ? 'default' : 'outline'}
-                  size="default"
-                  className={cn(
-                    '!border !px-4 !py-2.5 h-9',
-                    showAdvancedParams
-                      ? 'border-primary bg-primary text-primary-foreground shadow-xs hover:bg-primary/90'
-                      : 'border-input dark:border-input'
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+              <div className="flex items-center gap-2">
+                <div className="flex-shrink-0 min-w-[120px] max-w-[180px]">
+                  <Label htmlFor="search-type" className="sr-only">Search type</Label>
+                  <Select value={searchType} onValueChange={(value) => setSearchType(value as SearchType)}>
+                    <SelectTrigger id="search-type" className="w-full">
+                      <SelectValue placeholder="Auto detect" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SEARCH_TYPE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-shrink-0 items-center gap-2">
+                  <Button
+                    type="button"
+                    variant={showAdvancedParams ? 'default' : 'outline'}
+                    size="default"
+                    className={cn(
+                      '!border !px-4 !py-2.5 h-9',
+                      showAdvancedParams
+                        ? 'border-primary bg-primary text-primary-foreground shadow-xs hover:bg-primary/90'
+                        : 'border-input dark:border-input'
+                    )}
+                    onClick={() => setShowAdvancedParams(prev => !prev)}
+                  >
+                    <SlidersHorizontal className="mr-2 h-4 w-4" />
+                    Advanced
+                  </Button>
+                  {hasAdvancedParams && (
+                    <>
+                      <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">Active</Badge>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-muted-foreground"
+                        onClick={handleResetAdvancedParams}
+                      >
+                        Clear
+                      </Button>
+                    </>
                   )}
-                  onClick={() => setShowAdvancedParams(prev => !prev)}
+                </div>
+              </div>
+              <div className="flex flex-1 items-center gap-2 min-w-0">
+                <div className="flex-1 relative min-w-0">
+                  <Label htmlFor="query" className="sr-only">Search Query</Label>
+                  <Input
+                    ref={queryInputRef}
+                    id="query"
+                    type="text"
+                    autoComplete="off"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onFocus={() => {
+                      // Clear any pending blur timeout
+                      if (blurTimeoutRef.current !== null) {
+                        window.clearTimeout(blurTimeoutRef.current)
+                        blurTimeoutRef.current = null
+                      }
+                      setQueryFocused(true)
+                    }}
+                    onBlur={() => {
+                      // Clear any existing timeout
+                      if (blurTimeoutRef.current !== null) {
+                        window.clearTimeout(blurTimeoutRef.current)
+                      }
+                      // Delay blur to allow suggestion clicks before SUGGESTION_BLUR_DELAY_MS expires
+                      blurTimeoutRef.current = window.setTimeout(() => {
+                        setQueryFocused(false)
+                        blurTimeoutRef.current = null
+                      }, SUGGESTION_BLUR_DELAY_MS)
+                    }}
+                    placeholder={searchPlaceholder}
+                    disabled={loading}
+                  />
+                  {shouldShowSuggestions && (
+                    <div className="absolute left-0 right-0 z-50 mt-1 rounded-md border bg-popover shadow-lg">
+                      {suggestionMatches.map((search) => {
+                        const suggestionType = inferSearchTypeFromCategories(search.categories)
+                        const suggestionTypeLabel = getSearchTypeLabel(suggestionType ?? 'auto')
+                        return (
+                          <button
+                            type="button"
+                            key={search.cacheKey}
+                            className="w-full px-3 py-2 text-left text-sm hover:bg-muted focus-visible:outline-none"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => handleSuggestionClick(search)}
+                          >
+                            <div className="font-medium text-foreground">
+                              {search.query}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {suggestionTypeLabel} · {search.totalResults} results · {formatCacheTimestamp(search.lastUsedAt ?? search.cachedAt)}
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+                <Button
+                  type="submit"
+                  disabled={loading || (!query.trim() && !hasAdvancedParams) || selectedIndexers.size === 0}
+                  className="flex-shrink-0"
                 >
-                  <SlidersHorizontal className="mr-2 h-4 w-4" />
-                  Advanced
+                  <SearchIcon className="mr-2 h-4 w-4" />
+                  {loading ? 'Searching...' : 'Search'}
                 </Button>
-                {hasAdvancedParams && (
-                  <>
-                    <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">Active</Badge>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="text-muted-foreground"
-                      onClick={handleResetAdvancedParams}
-                    >
-                      Clear
-                    </Button>
-                  </>
-                )}
               </div>
-              <div className="flex-1 relative">
-                <Label htmlFor="query" className="sr-only">Search Query</Label>
-                <Input
-                  ref={queryInputRef}
-                  id="query"
-                  type="text"
-                  autoComplete="off"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onFocus={() => {
-                    // Clear any pending blur timeout
-                    if (blurTimeoutRef.current !== null) {
-                      window.clearTimeout(blurTimeoutRef.current)
-                      blurTimeoutRef.current = null
-                    }
-                    setQueryFocused(true)
-                  }}
-                  onBlur={() => {
-                    // Clear any existing timeout
-                    if (blurTimeoutRef.current !== null) {
-                      window.clearTimeout(blurTimeoutRef.current)
-                    }
-                    blurTimeoutRef.current = window.setTimeout(() => {
-                      setQueryFocused(false)
-                      blurTimeoutRef.current = null
-                    }, 100)
-                  }}
-                  placeholder={searchPlaceholder}
-                  disabled={loading}
-                />
-                {shouldShowSuggestions && (
-                  <div className="absolute left-0 right-0 z-50 mt-1 rounded-md border bg-popover shadow-lg">
-                    {suggestionMatches.map((search) => {
-                      const suggestionType = inferSearchTypeFromCategories(search.categories)
-                      const suggestionTypeLabel = getSearchTypeLabel(suggestionType ?? 'auto')
-                      return (
-                        <button
-                          type="button"
-                          key={search.cacheKey}
-                          className="w-full px-3 py-2 text-left text-sm hover:bg-muted focus-visible:outline-none"
-                          onMouseDown={(event) => event.preventDefault()}
-                          onClick={() => handleSuggestionClick(search)}
-                        >
-                          <div className="font-medium text-foreground">
-                            {search.query}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {suggestionTypeLabel} · {search.totalResults} results · {formatCacheTimestamp(search.lastUsedAt ?? search.cachedAt)}
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-              <Button
-                type="submit"
-                disabled={loading || (!query.trim() && !hasAdvancedParams) || selectedIndexers.size === 0}
-                className="flex-shrink-0"
-              >
-                <SearchIcon className="mr-2 h-4 w-4" />
-                {loading ? 'Searching...' : 'Search'}
-              </Button>
             </div>
 
             {/* Advanced Search Parameters */}
@@ -1048,8 +1057,8 @@ export function Search() {
               <div className="mb-2 text-xs text-muted-foreground">
                 Showing {filteredAndSortedResults.length} of {total} results
               </div>
-              <div className="mb-4 flex flex-wrap items-center gap-2">
-                <div className="min-w-[200px] flex-1">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+                <div className="w-full sm:min-w-[200px] sm:flex-1 min-w-0">
                   <Input
                     type="text"
                     placeholder="Filter results..."
@@ -1058,7 +1067,7 @@ export function Search() {
                     className="h-9"
                   />
                 </div>
-                    {selectedResult && (
+                {selectedResult && (
                   <>
                     <div className="hidden sm:flex flex-wrap items-center gap-2">
                       <div className="inline-flex items-stretch rounded-md overflow-hidden">
@@ -1133,7 +1142,7 @@ export function Search() {
                     <div className="sm:hidden">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button type="button" size="sm" variant="outline">
+                          <Button type="button" size="sm" variant="outline" className="w-full">
                             Actions
                           </Button>
                         </DropdownMenuTrigger>
@@ -1200,7 +1209,7 @@ export function Search() {
                     </div>
                   </>
                 )}
-                <div className="flex items-center gap-2 shrink-0 ml-auto">
+                <div className="flex items-center gap-2 shrink-0 sm:ml-auto">
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Badge
@@ -1231,7 +1240,29 @@ export function Search() {
                   </Button>
                 </div>
               </div>
-              <div className="max-h-[600px] overflow-auto border rounded-md">
+              {/* Mobile: Card-based view */}
+              <div className="sm:hidden space-y-2 max-h-[600px] overflow-auto">
+                {filteredAndSortedResults.map((result) => (
+                  <SearchResultCard
+                    key={result.guid}
+                    result={result}
+                    isSelected={selectedResultGuid === result.guid}
+                    onSelect={() => toggleResultSelection(result)}
+                    onAddTorrent={(overrideInstanceId) => handleAddTorrent(result, overrideInstanceId)}
+                    onDownload={() => handleDownload(result)}
+                    onViewDetails={() => handleViewDetails(result)}
+                    categoryName={categoryMap.get(result.category_id) || result.category_name || `Category ${result.category_id}`}
+                    formatSize={formatSize}
+                    formatDate={formatCacheTimestamp}
+                    instances={instances}
+                    hasInstances={hasInstances}
+                    targetInstanceName={targetInstance?.name}
+                  />
+                ))}
+              </div>
+
+              {/* Desktop: Full table view */}
+              <div className="hidden sm:block max-h-[600px] overflow-auto border rounded-md">
                 <Table>
                   <TableHeader className="sticky top-0 z-20 bg-card">
                     <TableRow className="bg-card hover:bg-card">
