@@ -63,7 +63,7 @@ func NewCrossSeedHandler(service *crossseed.Service) *CrossSeedHandler {
 
 // Routes registers the cross-seed routes
 func (h *CrossSeedHandler) Routes(r chi.Router) {
-	// Register instance-scoped route at top level ## placeholder based on docs ##
+	// Register instance-scoped route at top level
 	r.Get("/instances/{instanceID}/cross-seed/status", h.GetCrossSeedStatus)
 
 	r.Route("/cross-seed", func(r chi.Router) {
@@ -119,10 +119,7 @@ func (h *CrossSeedHandler) AnalyzeTorrentForSearch(w http.ResponseWriter, r *htt
 
 	torrentInfo, err := h.service.AnalyzeTorrentForSearch(r.Context(), instanceID, hash)
 	if err != nil {
-		status := http.StatusInternalServerError
-		if shouldReturnBadRequest(err) {
-			status = http.StatusBadRequest
-		}
+		status := mapCrossSeedErrorStatus(err)
 		log.Error().
 			Err(err).
 			Int("instanceID", instanceID).
@@ -163,10 +160,7 @@ func (h *CrossSeedHandler) GetAsyncFilteringStatus(w http.ResponseWriter, r *htt
 
 	filteringState, err := h.service.GetAsyncFilteringStatus(r.Context(), instanceID, hash)
 	if err != nil {
-		status := http.StatusInternalServerError
-		if shouldReturnBadRequest(err) {
-			status = http.StatusBadRequest
-		}
+		status := mapCrossSeedErrorStatus(err)
 		log.Error().
 			Err(err).
 			Int("instanceID", instanceID).
@@ -222,10 +216,7 @@ func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.R
 
 	response, err := h.service.SearchTorrentMatches(r.Context(), instanceID, hash, opts)
 	if err != nil {
-		status := http.StatusInternalServerError
-		if shouldReturnBadRequest(err) {
-			status = http.StatusBadRequest
-		}
+		status := mapCrossSeedErrorStatus(err)
 		log.Error().
 			Err(err).
 			Int("instanceID", instanceID).
@@ -260,10 +251,7 @@ func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) 
 
 	response, err := h.service.AutobrrApply(r.Context(), &req)
 	if err != nil {
-		status := http.StatusInternalServerError
-		if shouldReturnBadRequest(err) {
-			status = http.StatusBadRequest
-		}
+		status := mapCrossSeedErrorStatus(err)
 		log.Error().Err(err).Msg("Failed to apply autobrr torrent")
 		RespondError(w, status, err.Error())
 		return
@@ -318,10 +306,7 @@ func (h *CrossSeedHandler) ApplyTorrentSearchResults(w http.ResponseWriter, r *h
 
 	response, err := h.service.ApplyTorrentSearchResults(r.Context(), instanceID, hash, &req)
 	if err != nil {
-		status := http.StatusInternalServerError
-		if shouldReturnBadRequest(err) {
-			status = http.StatusBadRequest
-		}
+		status := mapCrossSeedErrorStatus(err)
 		log.Error().
 			Err(err).
 			Int("instanceID", instanceID).
@@ -334,15 +319,17 @@ func (h *CrossSeedHandler) ApplyTorrentSearchResults(w http.ResponseWriter, r *h
 	RespondJSON(w, http.StatusOK, response)
 }
 
-func shouldReturnBadRequest(err error) bool {
-	if err == nil {
-		return false
+func mapCrossSeedErrorStatus(err error) int {
+	switch {
+	case err == nil:
+		return http.StatusOK
+	case errors.Is(err, crossseed.ErrInvalidRequest),
+		errors.Is(err, crossseed.ErrTorrentNotFound),
+		errors.Is(err, crossseed.ErrTorrentNotComplete):
+		return http.StatusBadRequest
+	default:
+		return http.StatusInternalServerError
 	}
-
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "not found") ||
-		strings.Contains(msg, "not fully downloaded") ||
-		strings.Contains(msg, "invalid")
 }
 
 // GetAutomationSettings returns scheduler configuration.
@@ -528,7 +515,19 @@ func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.R
 	RespondJSON(w, http.StatusAccepted, run)
 }
 
-// StartSearchRun starts a scoped search automation run.
+// StartSearchRun godoc
+// @Summary Start cross-seed search run
+// @Description Launches an on-demand cross-seed library search for a specific instance with optional category, tag, and indexer filters.
+// @Tags cross-seed
+// @Accept json
+// @Produce json
+// @Param request body searchRunRequest true "Search run options"
+// @Success 202 {object} models.CrossSeedSearchRun
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 409 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/search/run [post]
 func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request) {
 	var req searchRunRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -558,10 +557,7 @@ func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request
 			RespondError(w, http.StatusBadRequest, "No Torznab indexers configured. Add at least one enabled indexer before running seeded torrent search.")
 			return
 		}
-		status := http.StatusInternalServerError
-		if shouldReturnBadRequest(err) {
-			status = http.StatusBadRequest
-		}
+		status := mapCrossSeedErrorStatus(err)
 		log.Error().Err(err).Msg("Failed to start search run")
 		RespondError(w, status, err.Error())
 		return
@@ -570,13 +566,28 @@ func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request
 	RespondJSON(w, http.StatusAccepted, run)
 }
 
-// CancelSearchRun stops the active search run if present.
+// CancelSearchRun godoc
+// @Summary Cancel cross-seed search run
+// @Description Stops the currently running cross-seed library search, if any.
+// @Tags cross-seed
+// @Success 204
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/search/run/cancel [post]
 func (h *CrossSeedHandler) CancelSearchRun(w http.ResponseWriter, r *http.Request) {
 	h.service.CancelSearchRun()
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// GetSearchRunStatus returns current search automation status.
+// GetSearchRunStatus godoc
+// @Summary Get cross-seed search run status
+// @Description Returns the state of the active or most recent cross-seed library search run.
+// @Tags cross-seed
+// @Produce json
+// @Success 200 {object} crossseed.SearchRunStatus
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/search/status [get]
 func (h *CrossSeedHandler) GetSearchRunStatus(w http.ResponseWriter, r *http.Request) {
 	status, err := h.service.GetSearchRunStatus(r.Context())
 	if err != nil {
@@ -586,7 +597,19 @@ func (h *CrossSeedHandler) GetSearchRunStatus(w http.ResponseWriter, r *http.Req
 	RespondJSON(w, http.StatusOK, status)
 }
 
-// ListSearchRunHistory returns stored search run history for an instance.
+// ListSearchRunHistory godoc
+// @Summary List cross-seed search run history
+// @Description Lists historical cross-seed search runs for a specific instance.
+// @Tags cross-seed
+// @Produce json
+// @Param instanceId query int true "Instance ID"
+// @Param limit query int false "Page size (max 200)"
+// @Param offset query int false "Result offset"
+// @Success 200 {array} models.CrossSeedSearchRun
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/search/runs [get]
 func (h *CrossSeedHandler) ListSearchRunHistory(w http.ResponseWriter, r *http.Request) {
 	instanceStr := r.URL.Query().Get("instanceId")
 	if strings.TrimSpace(instanceStr) == "" {

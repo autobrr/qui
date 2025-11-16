@@ -176,6 +176,15 @@ var ErrInvalidWebhookRequest = errors.New("invalid webhook request")
 // ErrWebhookInstanceNotFound indicates the requested instance does not exist.
 var ErrWebhookInstanceNotFound = errors.New("cross-seed instance not found")
 
+// ErrInvalidRequest indicates a generic cross-seed request validation error.
+var ErrInvalidRequest = errors.New("cross-seed invalid request")
+
+// ErrTorrentNotFound indicates the requested torrent could not be located in qBittorrent.
+var ErrTorrentNotFound = errors.New("cross-seed torrent not found")
+
+// ErrTorrentNotComplete indicates the torrent is not 100% complete and cannot be used for cross-seeding yet.
+var ErrTorrentNotComplete = errors.New("cross-seed torrent not fully downloaded")
+
 // AutomationRunOptions configures a manual automation run.
 type AutomationRunOptions struct {
 	RequestedBy string
@@ -667,10 +676,10 @@ func (s *Service) automationLoop(ctx context.Context) {
 
 func (s *Service) validateSearchRunOptions(ctx context.Context, opts *SearchRunOptions) error {
 	if opts == nil {
-		return fmt.Errorf("options cannot be nil")
+		return fmt.Errorf("%w: options cannot be nil", ErrInvalidRequest)
 	}
 	if opts.InstanceID <= 0 {
-		return fmt.Errorf("instance id must be positive")
+		return fmt.Errorf("%w: instance id must be positive", ErrInvalidRequest)
 	}
 	if opts.IntervalSeconds < 60 {
 		opts.IntervalSeconds = 60
@@ -690,7 +699,7 @@ func (s *Service) validateSearchRunOptions(ctx context.Context, opts *SearchRunO
 		return fmt.Errorf("load instance: %w", err)
 	}
 	if instance == nil {
-		return fmt.Errorf("instance %d not found", opts.InstanceID)
+		return fmt.Errorf("%w: instance %d not found", ErrInvalidRequest, opts.InstanceID)
 	}
 
 	return nil
@@ -1300,13 +1309,13 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 // AutobrrApply adds a torrent provided by autobrr to the specified instance using cross-seed logic.
 func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*CrossSeedResponse, error) {
 	if req == nil {
-		return nil, fmt.Errorf("request is required")
+		return nil, fmt.Errorf("%w: request is required", ErrInvalidRequest)
 	}
 	if strings.TrimSpace(req.TorrentData) == "" {
-		return nil, fmt.Errorf("torrentData is required")
+		return nil, fmt.Errorf("%w: torrentData is required", ErrInvalidRequest)
 	}
 	if req.InstanceID <= 0 {
-		return nil, fmt.Errorf("instanceId must be a positive integer")
+		return nil, fmt.Errorf("%w: instanceId must be a positive integer", ErrInvalidRequest)
 	}
 
 	findIndividualEpisodes := false
@@ -1600,6 +1609,9 @@ func matchTypePriority(matchType string) int {
 	case "size":
 		return 1
 	default:
+		// Unknown/unsupported match types (e.g. "release-match", "partial-contains")
+		// intentionally receive priority 0 so callers treat them as unusable unless
+		// explicitly handled above. Add new match types here when they become valid.
 		return 0
 	}
 }
@@ -1631,12 +1643,14 @@ func (s *Service) findBestCandidateMatch(
 
 		candidateRelease := s.releaseCache.Parse(torrent.Name)
 		candidateMatchType := s.getMatchType(sourceRelease, candidateRelease, sourceFiles, files, ignorePatterns)
-		if candidateMatchType == "" || candidateMatchType == "partial-contains" {
+		if candidateMatchType == "" {
 			continue
 		}
 
 		score := matchTypePriority(candidateMatchType)
 		if score == 0 {
+			// Layout checks can still return named match types (e.g. "partial-contains")
+			// that we never want to use for apply, so priority 0 acts as a hard reject.
 			continue
 		}
 
@@ -1748,10 +1762,10 @@ func (s *Service) determineSavePath(newTorrentName string, matchedTorrent *qbt.T
 // This allows the UI to update immediately with capability results while waiting for content filtering.
 func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID int, hash string, enableContentFiltering bool) (*AsyncTorrentAnalysis, error) {
 	if instanceID <= 0 {
-		return nil, fmt.Errorf("invalid instance id: %d", instanceID)
+		return nil, fmt.Errorf("%w: invalid instance id %d", ErrInvalidRequest, instanceID)
 	}
 	if strings.TrimSpace(hash) == "" {
-		return nil, fmt.Errorf("torrent hash is required")
+		return nil, fmt.Errorf("%w: torrent hash is required", ErrInvalidRequest)
 	}
 
 	instance, err := s.instanceStore.Get(ctx, instanceID)
@@ -1759,7 +1773,7 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 		return nil, fmt.Errorf("load instance: %w", err)
 	}
 	if instance == nil {
-		return nil, fmt.Errorf("instance %d not found", instanceID)
+		return nil, fmt.Errorf("%w: instance %d not found", ErrInvalidRequest, instanceID)
 	}
 
 	sourceTorrent, err := s.getTorrentByHash(ctx, instanceID, hash)
@@ -1767,7 +1781,7 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 		return nil, err
 	}
 	if sourceTorrent.Progress < 1.0 {
-		return nil, fmt.Errorf("torrent %s is not fully downloaded (progress %.2f)", sourceTorrent.Name, sourceTorrent.Progress)
+		return nil, fmt.Errorf("%w: torrent %s is not fully downloaded (progress %.2f)", ErrTorrentNotComplete, sourceTorrent.Name, sourceTorrent.Progress)
 	}
 
 	// Pre-fetch all indexer info (names and domains) for performance
@@ -2121,10 +2135,10 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	if instanceID <= 0 {
-		return nil, fmt.Errorf("invalid instance id: %d", instanceID)
+		return nil, fmt.Errorf("%w: invalid instance id %d", ErrInvalidRequest, instanceID)
 	}
 	if strings.TrimSpace(hash) == "" {
-		return nil, fmt.Errorf("torrent hash is required")
+		return nil, fmt.Errorf("%w: torrent hash is required", ErrInvalidRequest)
 	}
 
 	instance, err := s.instanceStore.Get(ctx, instanceID)
@@ -2132,7 +2146,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		return nil, fmt.Errorf("load instance: %w", err)
 	}
 	if instance == nil {
-		return nil, fmt.Errorf("instance %d not found", instanceID)
+		return nil, fmt.Errorf("%w: instance %d not found", ErrInvalidRequest, instanceID)
 	}
 
 	sourceTorrent, err := s.getTorrentByHash(ctx, instanceID, hash)
@@ -2140,7 +2154,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		return nil, err
 	}
 	if sourceTorrent.Progress < 1.0 {
-		return nil, fmt.Errorf("torrent %s is not fully downloaded (progress %.2f)", sourceTorrent.Name, sourceTorrent.Progress)
+		return nil, fmt.Errorf("%w: torrent %s is not fully downloaded (progress %.2f)", ErrTorrentNotComplete, sourceTorrent.Name, sourceTorrent.Progress)
 	}
 
 	// Get files to find the largest file for better content type detection
@@ -2631,7 +2645,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 	}
 
 	if req == nil || len(req.Selections) == 0 {
-		return nil, fmt.Errorf("no selections provided")
+		return nil, fmt.Errorf("%w: no selections provided", ErrInvalidRequest)
 	}
 
 	if _, err := s.getTorrentByHash(ctx, instanceID, hash); err != nil {
@@ -2640,7 +2654,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 
 	cachedSelections := s.getCachedSearchResults(instanceID, hash)
 	if len(cachedSelections) == 0 {
-		return nil, fmt.Errorf("no cached cross-seed search results found for torrent %s; please run a search before applying selections", hash)
+		return nil, fmt.Errorf("%w: no cached cross-seed search results found for torrent %s; please run a search before applying selections", ErrInvalidRequest, hash)
 	}
 
 	startPaused := true
@@ -2850,7 +2864,7 @@ func (s *Service) getTorrentByHash(ctx context.Context, instanceID int, hash str
 		}
 	}
 
-	return nil, fmt.Errorf("torrent %s not found in instance %d", hash, instanceID)
+	return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
 }
 
 func (s *Service) searchRunLoop(ctx context.Context, state *searchRunState) {
@@ -3584,10 +3598,10 @@ func (s *Service) filterIndexerIDsForTorrentAsync(ctx context.Context, instanceI
 // This can be used by the UI to poll for updates after capability filtering is complete.
 func (s *Service) GetAsyncFilteringStatus(ctx context.Context, instanceID int, hash string) (*AsyncIndexerFilteringState, error) {
 	if instanceID <= 0 {
-		return nil, fmt.Errorf("invalid instance id: %d", instanceID)
+		return nil, fmt.Errorf("%w: invalid instance id %d", ErrInvalidRequest, instanceID)
 	}
 	if strings.TrimSpace(hash) == "" {
-		return nil, fmt.Errorf("torrent hash is required")
+		return nil, fmt.Errorf("%w: torrent hash is required", ErrInvalidRequest)
 	}
 
 	// Try to get cached state first

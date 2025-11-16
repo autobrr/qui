@@ -17,55 +17,41 @@ func TestVariantOverridesReleaseVariants(t *testing.T) {
 	}
 
 	variants := strictVariantOverrides.releaseVariants(release)
-	if _, ok := variants["IMAX"]; !ok {
-		t.Fatalf("expected IMAX variant to be detected: %#v", variants)
-	}
-	if _, ok := variants["HYBRID"]; !ok {
-		t.Fatalf("expected HYBRID variant to be detected: %#v", variants)
-	}
+	_, hasIMAX := variants["IMAX"]
+	require.True(t, hasIMAX, "expected IMAX variant to be detected: %#v", variants)
+	_, hasHYBRID := variants["HYBRID"]
+	require.True(t, hasHYBRID, "expected HYBRID variant to be detected: %#v", variants)
 
 	multiVariant := rls.Release{
 		Collection: "IMAX",
 		Other:      []string{"HYBRiD"},
 	}
 	multiVariants := strictVariantOverrides.releaseVariants(multiVariant)
-	if len(multiVariants) != 2 {
-		t.Fatalf("expected both IMAX and HYBRID variants, got %#v", multiVariants)
-	}
-	if _, ok := multiVariants["IMAX"]; !ok {
-		t.Fatalf("expected IMAX variant to be detected for multiVariant: %#v", multiVariants)
-	}
-	if _, ok := multiVariants["HYBRID"]; !ok {
-		t.Fatalf("expected HYBRID variant to be detected for multiVariant: %#v", multiVariants)
-	}
+	require.Len(t, multiVariants, 2, "expected both IMAX and HYBRID variants")
+	_, hasIMAX = multiVariants["IMAX"]
+	require.True(t, hasIMAX, "expected IMAX variant to be detected for multiVariant: %#v", multiVariants)
+	_, hasHYBRID = multiVariants["HYBRID"]
+	require.True(t, hasHYBRID, "expected HYBRID variant to be detected for multiVariant: %#v", multiVariants)
 
 	compositeVariant := rls.Release{
 		Other: []string{"IMAX.HYBRiD.REMUX"},
 	}
 	compositeVariants := strictVariantOverrides.releaseVariants(compositeVariant)
-	if len(compositeVariants) != 1 {
-		t.Fatalf("expected only HYBRID variant from composite entry, got %#v", compositeVariants)
-	}
-	if _, ok := compositeVariants["HYBRID"]; !ok {
-		t.Fatalf("expected HYBRID token to be extracted from composite entry: %#v", compositeVariants)
-	}
+	require.Len(t, compositeVariants, 1, "expected only HYBRID variant from composite entry")
+	_, hasHYBRID = compositeVariants["HYBRID"]
+	require.True(t, hasHYBRID, "expected HYBRID token to be extracted from composite entry: %#v", compositeVariants)
 
 	tokenEdge := rls.Release{
 		Other: []string{"IMAX..HYBRID", ""},
 	}
 	tokenEdgeVariants := strictVariantOverrides.releaseVariants(tokenEdge)
-	if len(tokenEdgeVariants) != 1 {
-		t.Fatalf("expected only valid HYBRID token from edge case, got %#v", tokenEdgeVariants)
-	}
-	if _, ok := tokenEdgeVariants["HYBRID"]; !ok {
-		t.Fatalf("expected HYBRID token to survive edge tokenization: %#v", tokenEdgeVariants)
-	}
+	require.Len(t, tokenEdgeVariants, 1, "expected only valid HYBRID token from edge case")
+	_, hasHYBRID = tokenEdgeVariants["HYBRID"]
+	require.True(t, hasHYBRID, "expected HYBRID token to survive edge tokenization: %#v", tokenEdgeVariants)
 
 	plain := rls.Release{Collection: "", Other: []string{"READNFO"}}
 	plainVariants := strictVariantOverrides.releaseVariants(plain)
-	if len(plainVariants) != 0 {
-		t.Fatalf("expected no variants, got %#v", plainVariants)
-	}
+	require.Empty(t, plainVariants, "expected no variants")
 }
 
 func TestReleasesMatch_StrictVariantsMustMatch(t *testing.T) {
