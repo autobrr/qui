@@ -1272,7 +1272,7 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 	// Only return error if ALL non-timeout indexers failed
 	nonTimeoutIndexers := len(availableIndexers) - timeouts
 	if nonTimeoutIndexers > 0 && failures == nonTimeoutIndexers {
-		return nil, fmt.Errorf("all %d non-timeout indexers failed (last error: %w)", nonTimeoutIndexers, lastErr)
+		return nil, fmt.Errorf("all %d indexers failed (last error: %w)", nonTimeoutIndexers, lastErr)
 	}
 
 	// Log detailed statistics
