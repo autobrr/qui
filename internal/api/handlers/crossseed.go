@@ -52,6 +52,9 @@ type searchRunRequest struct {
 	IntervalSeconds int      `json:"intervalSeconds"`
 	IndexerIDs      []int    `json:"indexerIds"`
 	CooldownMinutes int      `json:"cooldownMinutes"`
+
+	// TODO: Surface remaining crossseed.SearchRunOptions fields (e.g. FindIndividualEpisodes,
+	// StartPaused, and category/tag overrides) when the API needs to expose them per run.
 }
 
 // NewCrossSeedHandler creates a new cross-seed handler
@@ -325,7 +328,8 @@ func mapCrossSeedErrorStatus(err error) int {
 		return http.StatusOK
 	case errors.Is(err, crossseed.ErrInvalidRequest),
 		errors.Is(err, crossseed.ErrTorrentNotFound),
-		errors.Is(err, crossseed.ErrTorrentNotComplete):
+		errors.Is(err, crossseed.ErrTorrentNotComplete),
+		errors.Is(err, crossseed.ErrNoIndexersConfigured):
 		return http.StatusBadRequest
 	default:
 		return http.StatusInternalServerError
@@ -596,7 +600,8 @@ func (h *CrossSeedHandler) CancelSearchRun(w http.ResponseWriter, r *http.Reques
 func (h *CrossSeedHandler) GetSearchRunStatus(w http.ResponseWriter, r *http.Request) {
 	status, err := h.service.GetSearchRunStatus(r.Context())
 	if err != nil {
-		RespondError(w, http.StatusInternalServerError, err.Error())
+		log.Error().Err(err).Msg("Failed to get cross-seed search run status")
+		RespondError(w, http.StatusInternalServerError, "Failed to get search run status")
 		return
 	}
 	RespondJSON(w, http.StatusOK, status)
@@ -642,7 +647,13 @@ func (h *CrossSeedHandler) ListSearchRunHistory(w http.ResponseWriter, r *http.R
 
 	runs, err := h.service.ListSearchRuns(r.Context(), instanceID, limit, offset)
 	if err != nil {
-		RespondError(w, http.StatusInternalServerError, err.Error())
+		log.Error().
+			Err(err).
+			Int("instanceID", instanceID).
+			Int("limit", limit).
+			Int("offset", offset).
+			Msg("Failed to list cross-seed search runs")
+		RespondError(w, http.StatusInternalServerError, "Failed to list search runs")
 		return
 	}
 
@@ -707,7 +718,7 @@ func (h *CrossSeedHandler) WebhookCheck(w http.ResponseWriter, r *http.Request) 
 			return
 		default:
 			log.Error().Err(err).Msg("Failed to check webhook")
-			RespondError(w, http.StatusInternalServerError, err.Error())
+			RespondError(w, http.StatusInternalServerError, "Failed to check webhook")
 			return
 		}
 	}
