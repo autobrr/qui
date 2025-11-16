@@ -92,9 +92,6 @@ import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } fro
 import { cn } from "@/lib/utils"
 import type {
   Category,
-  CrossSeedApplyResponse,
-  CrossSeedTorrentSearchResponse,
-  CrossSeedTorrentSearchSelection,
   ServerState,
   Torrent,
   TorrentCounts,
@@ -123,9 +120,7 @@ import {
   X
 } from "lucide-react"
 import { createPortal } from "react-dom"
-import { toast } from "sonner"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
-import { CrossSeedDialog } from "./CrossSeedDialog"
 import { DeleteFilesPreference } from "./DeleteFilesPreference"
 import { DraggableTableHeader } from "./DraggableTableHeader"
 import { SelectAllHotkey } from "./SelectAllHotkey"
@@ -619,6 +614,9 @@ interface TorrentTableOptimizedProps {
   ) => void
   onResetSelection?: (handler?: () => void) => void
   onFilterChange?: (filters: TorrentFilters) => void
+  canCrossSeedSearch?: boolean
+  onCrossSeedSearch?: (torrent: Torrent) => void
+  isCrossSeedSearching?: boolean
 }
 
 export const TorrentTableOptimized = memo(function TorrentTableOptimized({
@@ -632,6 +630,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   onSelectionChange,
   onResetSelection,
   onFilterChange,
+  canCrossSeedSearch,
+  onCrossSeedSearch,
+  isCrossSeedSearching,
 }: TorrentTableOptimizedProps) {
   // State management
   // Move default values outside the component for stable references
@@ -645,40 +646,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const [isAllSelected, setIsAllSelected] = useState(false)
   const [excludedFromSelectAll, setExcludedFromSelectAll] = useState<Set<string>>(new Set())
   const [dropPayload, setDropPayload] = useState<AddTorrentDropPayload | null>(null)
-  const [crossSeedDialogOpen, setCrossSeedDialogOpen] = useState(false)
-  const [crossSeedTorrent, setCrossSeedTorrent] = useState<Torrent | null>(null)
-  const [crossSeedSearchResponse, setCrossSeedSearchResponse] = useState<CrossSeedTorrentSearchResponse | null>(null)
-  const [crossSeedSearchLoading, setCrossSeedSearchLoading] = useState(false)
-  const [crossSeedSearchError, setCrossSeedSearchError] = useState<string | null>(null)
-  const [crossSeedSelectedKeys, setCrossSeedSelectedKeys] = useState<Set<string>>(new Set())
-  const [crossSeedUseTag, setCrossSeedUseTag] = useState(true)
-  const [crossSeedTagName, setCrossSeedTagName] = useState("cross-seed")
-  const [crossSeedSubmitting, setCrossSeedSubmitting] = useState(false)
-  const [crossSeedApplyResult, setCrossSeedApplyResult] = useState<CrossSeedApplyResponse | null>(null)
-  const [crossSeedIndexerMode, setCrossSeedIndexerMode] = useState<"all" | "custom">("all")
-  const [crossSeedIndexerSelection, setCrossSeedIndexerSelection] = useState<number[]>([])
-  const [crossSeedHasSearched, setCrossSeedHasSearched] = useState(false)
-  const [crossSeedRefreshCooldownUntil, setCrossSeedRefreshCooldownUntil] = useState(0)
-  const [, forceCrossSeedCooldownTick] = useState(0)
-  const CROSS_SEED_REFRESH_COOLDOWN_MS = 30_000
-
-  useEffect(() => {
-    if (!crossSeedRefreshCooldownUntil) {
-      return
-    }
-
-    const id = window.setInterval(() => {
-      if (Date.now() >= crossSeedRefreshCooldownUntil) {
-        setCrossSeedRefreshCooldownUntil(0)
-        forceCrossSeedCooldownTick(tick => tick + 1)
-        window.clearInterval(id)
-      } else {
-        forceCrossSeedCooldownTick(tick => tick + 1)
-      }
-    }, 1_000)
-
-    return () => window.clearInterval(id)
-  }, [crossSeedRefreshCooldownUntil, forceCrossSeedCooldownTick])
 
   // Filter lifecycle state machine to replace fragile timing-based coordination
   type FilterLifecycleState = 'idle' | 'clearing-all' | 'clearing-columns-only' | 'cleared'
@@ -710,114 +677,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     return latest
   }, [trackerIconsQuery.data])
 
-  const { data: torznabIndexers } = useQuery({
-    queryKey: ["torznab", "indexers"],
-    queryFn: () => api.listTorznabIndexers(),
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const enabledTorznabIndexers = useMemo(
-    () => (torznabIndexers ?? []).filter(indexer => indexer.enabled),
-    [torznabIndexers]
-  )
-
-  const sortedEnabledIndexers = useMemo(() => {
-    if (enabledTorznabIndexers.length === 0) {
-      return [] as typeof enabledTorznabIndexers
-    }
-
-    return [...enabledTorznabIndexers].sort((a, b) => {
-      if (b.priority !== a.priority) {
-        return b.priority - a.priority
-      }
-      return a.name.localeCompare(b.name)
-    })
-  }, [enabledTorznabIndexers])
-
-  // Store the last known source torrent to maintain filtering during search
-  const [lastSourceTorrent, setLastSourceTorrent] = useState<CrossSeedTorrentSearchResponse["sourceTorrent"] | null>(null)
-
-  // Update the last source torrent when we get a new response
-  useEffect(() => {
-    if (crossSeedSearchResponse?.sourceTorrent) {
-      setLastSourceTorrent(crossSeedSearchResponse.sourceTorrent)
-    }
-  }, [crossSeedSearchResponse?.sourceTorrent])
-
-  const crossSeedIndexerOptions = useMemo(() => {
-    // Use current response's source torrent, or fall back to the last known one
-    const sourceTorrent = crossSeedSearchResponse?.sourceTorrent ?? lastSourceTorrent
-    if (!sourceTorrent) {
-      return sortedEnabledIndexers.map(indexer => ({ id: indexer.id, name: indexer.name }))
-    }
-
-    // If we have pre-filtered indexers from the backend, use appropriate set based on search state
-    if (sourceTorrent.availableIndexers && sourceTorrent.filteredIndexers) {
-      // If search has been performed, show the final filtered results (capability + content filtering)
-      // If no search yet, show the initially available indexers (capability filtering only)
-      const targetIndexerIds = crossSeedHasSearched 
-        ? sourceTorrent.filteredIndexers 
-        : sourceTorrent.availableIndexers
-      
-      const filteredIndexerIds = new Set(targetIndexerIds)
-      const filteredIndexers = sortedEnabledIndexers.filter(indexer => 
-        filteredIndexerIds.has(indexer.id)
-      )
-      return filteredIndexers.map(indexer => ({ id: indexer.id, name: indexer.name }))
-    }
-
-    // Legacy fallback: if we have filtered indexers but no available indexers (old response format)
-    if (sourceTorrent.filteredIndexers && sourceTorrent.filteredIndexers.length > 0) {
-      const filteredIndexerIds = new Set(sourceTorrent.filteredIndexers)
-      const filteredIndexers = sortedEnabledIndexers.filter(indexer => 
-        filteredIndexerIds.has(indexer.id)
-      )
-      return filteredIndexers.map(indexer => ({ id: indexer.id, name: indexer.name }))
-    }
-
-    // Fallback to the old capability/category filtering logic if no pre-filtering data
-    // Filter indexers based on required capabilities and categories
-    const requiredCaps = sourceTorrent.requiredCaps ?? []
-    const requiredCategories = sourceTorrent.searchCategories ?? []
-
-    const filteredIndexers = sortedEnabledIndexers.filter(indexer => {
-      // If no required caps/categories, include all indexers
-      if (requiredCaps.length === 0 && requiredCategories.length === 0) {
-        return true
-      }
-
-      // Check if indexer has all required capabilities
-      const indexerCaps = indexer.capabilities ?? []
-      const hasRequiredCaps = requiredCaps.length === 0 ||
-        requiredCaps.every(cap => indexerCaps.includes(cap))
-
-      // Check if indexer supports at least one of the required categories
-      const indexerCategoryIds = (indexer.categories ?? []).map(cat => cat.category_id)
-      const hasRequiredCategories = requiredCategories.length === 0 ||
-        requiredCategories.some(catId => indexerCategoryIds.includes(catId))
-
-      return hasRequiredCaps && hasRequiredCategories
-    })
-
-    return filteredIndexers.map(indexer => ({ id: indexer.id, name: indexer.name }))
-  }, [sortedEnabledIndexers, crossSeedSearchResponse, lastSourceTorrent, crossSeedHasSearched])
-
-  const crossSeedIndexerNameMap = useMemo(() => {
-    const map: Record<number, string> = {}
-    for (const indexer of sortedEnabledIndexers) {
-      map[indexer.id] = indexer.name
-    }
-    return map
-  }, [sortedEnabledIndexers])
-
-  const { data: crossSeedSettings } = useQuery({
-    queryKey: ["cross-seed", "settings"],
-    queryFn: () => api.getCrossSeedSettings(),
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const hasEnabledCrossSeedIndexers = sortedEnabledIndexers.length > 0
-
   // Detect platform for keyboard shortcuts
   const isMac = useMemo(() => {
     return typeof window !== "undefined" && /Mac|iPhone|iPad|iPod/.test(window.navigator.userAgent)
@@ -847,8 +706,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const lastSelectedIndexRef = useRef<number | null>(null)
 
   // Cross-seed async filtering polling
-  const crossSeedPollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const crossSeedPollingInFlightRef = useRef<boolean>(false)
 
   const handleCompactCheckboxPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     shiftPressedRef.current = event.shiftKey
@@ -1646,316 +1503,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   }, [isAllSelected, stats?.totalSize, excludedFromSelectAll, sortedTorrents, selectedTorrents])
   const selectedFormattedSize = useMemo(() => formatBytes(selectedTotalSize), [selectedTotalSize])
   const queryClient = useQueryClient()
-  const getCrossSeedResultKey = useCallback(
-    (result: CrossSeedTorrentSearchResponse["results"][number], index: number) =>
-      result.guid || result.downloadUrl || `${result.indexer}-${index}`,
-    []
-  )
-
-  const resetCrossSeedState = useCallback((preserveError = false) => {
-    setCrossSeedTorrent(null)
-    setCrossSeedSearchResponse(null)
-    if (!preserveError) {
-      setCrossSeedSearchError(null)
-    }
-    setCrossSeedSearchLoading(false)
-    setCrossSeedSelectedKeys(new Set())
-    setCrossSeedUseTag(true)
-    setCrossSeedTagName("cross-seed")
-    setCrossSeedSubmitting(false)
-    setCrossSeedApplyResult(null)
-    setCrossSeedIndexerMode("all")
-    setCrossSeedIndexerSelection([])
-    setLastSourceTorrent(null)
-    setCrossSeedHasSearched(false)
-  }, [])
-
-  const toggleCrossSeedIndexer = useCallback((indexerId: number) => {
-    setCrossSeedIndexerSelection(prev => {
-      if (prev.includes(indexerId)) {
-        return prev.filter(id => id !== indexerId)
-      }
-      return [...prev, indexerId]
-    })
-  }, [])
-
-  const selectAllCrossSeedIndexers = useCallback(() => {
-    setCrossSeedIndexerSelection(crossSeedIndexerOptions.map(option => option.id))
-  }, [crossSeedIndexerOptions])
-
-  const clearCrossSeedIndexerSelection = useCallback(() => {
-    setCrossSeedIndexerSelection([])
-  }, [])
-
-  const handleCrossSeedIndexerModeChange = useCallback((mode: "all" | "custom") => {
-    setCrossSeedIndexerMode(mode)
-    if (mode === "all") {
-      setCrossSeedIndexerSelection([])
-    }
-  }, [])
-
-  const runCrossSeedSearch = useCallback(
-    (torrent: Torrent, indexerOverride?: number[] | null, options?: { bypassCache?: boolean }) => {
-      if (!torrent) {
-        return
-      }
-
-      let resolvedIndexerIds: number[] | undefined
-      if (indexerOverride !== undefined) {
-        resolvedIndexerIds = indexerOverride ?? undefined
-      } else if (crossSeedIndexerMode === "custom" && crossSeedIndexerSelection.length > 0) {
-        resolvedIndexerIds = crossSeedIndexerSelection
-      }
-
-      setCrossSeedSearchLoading(true)
-      setCrossSeedSearchError(null)
-      setCrossSeedSearchResponse(null)
-      setCrossSeedApplyResult(null)
-      setCrossSeedHasSearched(true)
-
-      // Start search with better error context for rate limiting
-      void api
-        .searchCrossSeedTorrent(instanceId, torrent.hash, {
-          findIndividualEpisodes: crossSeedSettings?.findIndividualEpisodes ?? false,
-          indexerIds: resolvedIndexerIds && resolvedIndexerIds.length > 0 ? resolvedIndexerIds : undefined,
-          cacheMode: options?.bypassCache ? "bypass" : undefined,
-        })
-        .then(response => {
-          setCrossSeedSearchResponse(response)
-
-          const defaultSelection = new Set<string>()
-          response.results.forEach((result, index) => {
-            defaultSelection.add(getCrossSeedResultKey(result, index))
-          })
-          setCrossSeedSelectedKeys(defaultSelection)
-
-          if (response.results.length === 0) {
-            toast.info("No cross-seed matches found")
-          }
-        })
-        .catch((error: unknown) => {
-          let message = error instanceof Error ? error.message : "Failed to search for cross-seeds"
-          
-          // Enhance rate limit error messages with more specific context
-          if (message.includes('429') || message.includes('rate limit') || message.includes('too many requests') || 
-              message.includes('rate-limited') || message.includes('cooldown')) {
-            message = `Rate limit active: ${message}. This protects against tracker bans. Some indexers are temporarily unavailable.`
-          }
-          
-          setCrossSeedSearchError(message)
-          toast.error(message, {
-            duration: message.includes('rate limit') || message.includes('cooldown') ? 10000 : 5000
-          })
-        })
-        .finally(() => {
-          setCrossSeedSearchLoading(false)
-        })
-    },
-    [
-      api,
-      crossSeedIndexerMode,
-      crossSeedIndexerSelection,
-      crossSeedSettings?.findIndividualEpisodes,
-      getCrossSeedResultKey,
-      instanceId,
-    ]
-  )
-
-  const handleCrossSeedForceRefresh = useCallback(() => {
-    if (!crossSeedTorrent) {
-      return
-    }
-    setCrossSeedRefreshCooldownUntil(Date.now() + CROSS_SEED_REFRESH_COOLDOWN_MS)
-    runCrossSeedSearch(crossSeedTorrent, undefined, { bypassCache: true })
-  }, [CROSS_SEED_REFRESH_COOLDOWN_MS, crossSeedTorrent, runCrossSeedSearch])
-
-  const handleCrossSeedSearch = useCallback(
-    (torrent: Torrent) => {
-      if (!hasEnabledCrossSeedIndexers) {
-        toast.error("Configure at least one Torznab indexer to search for cross-seeds")
-        return
-      }
-
-      if (typeof torrent.progress === "number" && torrent.progress < 1) {
-        toast.info("Only completed torrents can be cross-seeded")
-        return
-      }
-
-      setCrossSeedTorrent(torrent)
-      setCrossSeedDialogOpen(true)
-      setCrossSeedSelectedKeys(new Set())
-      setCrossSeedUseTag(true)
-      setCrossSeedTagName("cross-seed")
-      setCrossSeedIndexerMode("all")
-      setCrossSeedIndexerSelection([])
-      setCrossSeedSearchError(null)
-      setCrossSeedSearchResponse(null)
-      setCrossSeedHasSearched(false)
-
-      // Analyze the torrent to get search metadata (for indexer filtering)
-      // Don't set loading state - this is just metadata gathering, not searching
-      void api
-        .analyzeTorrentForCrossSeedSearch(instanceId, torrent.hash)
-        .then(torrentInfo => {
-          // Update the search response with the source torrent metadata only
-          setCrossSeedSearchResponse({
-            sourceTorrent: torrentInfo,
-            results: [],
-          })
-        })
-        .catch((error: unknown) => {
-          let message = error instanceof Error ? error.message : "Failed to analyze torrent"
-          
-          // Enhance rate limit error messages for analysis too
-          if (message.includes('429') || message.includes('rate limit') || message.includes('too many requests')) {
-            message = `Rate limit encountered during analysis: ${message}. Some indexers may be temporarily unavailable. This is normal and protects against being banned. Try again in 30-60 minutes.`
-          }
-          
-          setCrossSeedSearchError(message)
-          toast.error(message, {
-            duration: message.includes('rate limit') ? 10000 : 5000
-          })
-        })
-    },
-    [api, hasEnabledCrossSeedIndexers, instanceId]
-  )
-
-  const handleRetryCrossSeedSearch = useCallback(() => {
-    if (crossSeedTorrent) {
-      runCrossSeedSearch(crossSeedTorrent)
-    }
-  }, [crossSeedTorrent, runCrossSeedSearch])
-
-  const handleCrossSeedScopeSearch = useCallback(() => {
-    if (!crossSeedTorrent) {
-      return
-    }
-
-    if (crossSeedIndexerMode === "custom" && crossSeedIndexerSelection.length === 0) {
-      toast.warning("Select at least one tracker to run a custom search")
-      return
-    }
-
-    runCrossSeedSearch(crossSeedTorrent)
-  }, [crossSeedIndexerMode, crossSeedIndexerSelection.length, crossSeedTorrent, runCrossSeedSearch])
-
-  const toggleCrossSeedSelection = useCallback(
-    (result: CrossSeedTorrentSearchResponse["results"][number], index: number) => {
-      setCrossSeedSelectedKeys(prev => {
-        const next = new Set(prev)
-        const key = getCrossSeedResultKey(result, index)
-        if (next.has(key)) {
-          next.delete(key)
-        } else {
-          next.add(key)
-        }
-        return next
-      })
-    },
-    [getCrossSeedResultKey]
-  )
-
-  const selectAllCrossSeedResults = useCallback(() => {
-    if (!crossSeedSearchResponse) {
-      return
-    }
-    const next = new Set<string>()
-    crossSeedSearchResponse.results.forEach((result, index) => {
-      next.add(getCrossSeedResultKey(result, index))
-    })
-    setCrossSeedSelectedKeys(next)
-  }, [crossSeedSearchResponse, getCrossSeedResultKey])
-
-  const clearCrossSeedSelection = useCallback(() => {
-    setCrossSeedSelectedKeys(new Set())
-  }, [])
-
-  const closeCrossSeedDialog = useCallback(() => {
-    setCrossSeedDialogOpen(false)
-    // Preserve rate limit and other critical errors when closing
-    const shouldPreserveError = Boolean(crossSeedSearchError && 
-      (crossSeedSearchError.includes('429') || 
-       crossSeedSearchError.includes('rate limit') || 
-       crossSeedSearchError.includes('too many requests')))
-    resetCrossSeedState(shouldPreserveError)
-  }, [resetCrossSeedState, crossSeedSearchError])
-
-  const handleCrossSeedDialogOpenChange = useCallback((open: boolean) => {
-    if (!open) {
-      closeCrossSeedDialog()
-    } else {
-      setCrossSeedDialogOpen(true)
-    }
-  }, [closeCrossSeedDialog])
-
-  const handleApplyCrossSeed = useCallback(async () => {
-    if (!crossSeedTorrent || !crossSeedSearchResponse) {
-      return
-    }
-
-    const selections: CrossSeedTorrentSearchSelection[] = []
-    crossSeedSearchResponse.results.forEach((result, index) => {
-      const key = getCrossSeedResultKey(result, index)
-      if (crossSeedSelectedKeys.has(key)) {
-        selections.push({
-          indexerId: result.indexerId,
-          indexer: result.indexer,
-          downloadUrl: result.downloadUrl,
-          title: result.title,
-          guid: result.guid,
-        })
-      }
-    })
-
-    if (selections.length === 0) {
-      toast.warning("Select at least one result to add")
-      return
-    }
-
-    try {
-      setCrossSeedSubmitting(true)
-      setCrossSeedApplyResult(null)
-
-      const response = await api.applyCrossSeedSearchResults(instanceId, crossSeedTorrent.hash, {
-        selections,
-        useTag: crossSeedUseTag,
-        tagName: crossSeedUseTag ? (crossSeedTagName.trim() || "cross-seed") : undefined,
-        startPaused: true,
-        findIndividualEpisodes: crossSeedSettings?.findIndividualEpisodes ?? false,
-      })
-
-      setCrossSeedApplyResult(response)
-
-      toast.success(`Submitted ${selections.length} cross-seed${selections.length > 1 ? "s" : ""}`)
-      queryClient.invalidateQueries({ queryKey: ["torrents-list", instanceId], exact: false })
-      queryClient.invalidateQueries({ queryKey: ["torrent-counts", instanceId], exact: false })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to add cross-seeds"
-      toast.error(message)
-    } finally {
-      setCrossSeedSubmitting(false)
-    }
-  }, [
-    api,
-    crossSeedSearchResponse,
-    crossSeedSelectedKeys,
-    crossSeedTagName,
-    crossSeedTorrent,
-    crossSeedUseTag,
-    getCrossSeedResultKey,
-    instanceId,
-    queryClient,
-  ])
-
-  // Memoize cross-seed results to prevent creating new array reference on every render
-  const crossSeedResults = useMemo(() => crossSeedSearchResponse?.results ?? [], [crossSeedSearchResponse?.results])
-  const crossSeedSourceTorrent = crossSeedSearchResponse?.sourceTorrent
-  const crossSeedSelectionCount = crossSeedSelectedKeys.size
-  const crossSeedRefreshRemaining = Math.max(0, crossSeedRefreshCooldownUntil - Date.now())
-  const crossSeedRefreshLabel =
-    crossSeedRefreshRemaining > 0 ? `Ready in ${Math.ceil(crossSeedRefreshRemaining / 1000)}s` : undefined
-  const canForceCrossSeedRefresh =
-    !!crossSeedTorrent && !crossSeedSearchLoading && crossSeedRefreshRemaining <= 0
 
   const [altSpeedOverride, setAltSpeedOverride] = useState<boolean | null>(null)
   const serverAltSpeedEnabled = effectiveServerState?.use_alt_speed_limits
@@ -1988,88 +1535,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   }, [serverAltSpeedEnabled, altSpeedOverride])
 
   // Poll for async cross-seed filtering status updates
-  useEffect(() => {
-    const sourceTorrent = crossSeedSearchResponse?.sourceTorrent
-    
-    // Only start polling if:
-    // 1. We have a source torrent from analysis
-    // 2. Content filtering is not yet completed
-    // 3. Dialog is open
-    // 4. Not already polling
-    if (!sourceTorrent || 
-        sourceTorrent.contentFilteringCompleted || 
-        !crossSeedDialogOpen || 
-        crossSeedPollingRef.current) {
-      return
-    }
-
-    const pollForUpdates = async () => {
-      // Skip if already running to prevent overlapping calls
-      if (crossSeedPollingInFlightRef.current) {
-        return
-      }
-
-      crossSeedPollingInFlightRef.current = true
-      try {
-        if (!sourceTorrent.hash) {
-          console.warn("Source torrent hash is undefined, stopping polling")
-          if (crossSeedPollingRef.current) {
-            clearInterval(crossSeedPollingRef.current)
-            crossSeedPollingRef.current = null
-          }
-          return
-        }
-
-        const status = await api.getAsyncFilteringStatus(instanceId, sourceTorrent.hash)
-        
-        // If content filtering is now completed, get the updated analysis
-        if (status.contentCompleted) {
-          const updatedAnalysis = await api.analyzeTorrentForCrossSeedSearch(instanceId, sourceTorrent.hash)
-          
-          setCrossSeedSearchResponse(prev => prev ? {
-            ...prev,
-            sourceTorrent: updatedAnalysis
-          } : null)
-          
-          // Stop polling
-          if (crossSeedPollingRef.current) {
-            clearInterval(crossSeedPollingRef.current)
-            crossSeedPollingRef.current = null
-          }
-        }
-      } catch (error) {
-        console.warn("Failed to poll async filtering status:", error)
-        // Stop polling on error
-        if (crossSeedPollingRef.current) {
-          clearInterval(crossSeedPollingRef.current)
-          crossSeedPollingRef.current = null
-        }
-      } finally {
-        crossSeedPollingInFlightRef.current = false
-      }
-    }
-
-    // Start polling every 0.5 seconds so UI updates quickly once filtering finishes
-    crossSeedPollingRef.current = setInterval(pollForUpdates, 500)
-
-    // Cleanup function
-    return () => {
-      if (crossSeedPollingRef.current) {
-        clearInterval(crossSeedPollingRef.current)
-        crossSeedPollingRef.current = null
-      }
-      crossSeedPollingInFlightRef.current = false
-    }
-  }, [api, instanceId, crossSeedSearchResponse, crossSeedDialogOpen])
-
-  // Clean up polling when dialog closes
-  useEffect(() => {
-    if (!crossSeedDialogOpen && crossSeedPollingRef.current) {
-      clearInterval(crossSeedPollingRef.current)
-      crossSeedPollingRef.current = null
-      crossSeedPollingInFlightRef.current = false
-    }
-  }, [crossSeedDialogOpen])
+  
 
   const handleToggleAltSpeedLimits = useCallback(async () => {
     if (isTogglingAltSpeed) {
@@ -2977,9 +2443,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       isExporting={isExportingTorrent}
                       capabilities={capabilities}
                       useSubcategories={allowSubcategories}
-                      canCrossSeedSearch={hasEnabledCrossSeedIndexers}
-                      onCrossSeedSearch={handleCrossSeedSearch}
-                      isCrossSeedSearching={crossSeedSearchLoading || crossSeedSubmitting}
+                      canCrossSeedSearch={canCrossSeedSearch}
+                      onCrossSeedSearch={onCrossSeedSearch}
+                      isCrossSeedSearching={isCrossSeedSearching}
                       onFilterChange={onFilterChange}
                     >
                       <CompactRow
@@ -3076,9 +2542,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                     isExporting={isExportingTorrent}
                     capabilities={capabilities}
                     useSubcategories={allowSubcategories}
-                    canCrossSeedSearch={hasEnabledCrossSeedIndexers}
-                    onCrossSeedSearch={handleCrossSeedSearch}
-                    isCrossSeedSearching={crossSeedSearchLoading || crossSeedSubmitting}
+                    canCrossSeedSearch={canCrossSeedSearch}
+                    onCrossSeedSearch={onCrossSeedSearch}
+                    isCrossSeedSearching={isCrossSeedSearching}
                     onFilterChange={onFilterChange}
                   >
                     <div
@@ -3331,45 +2797,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           </div>
         </div>
       </div>
-
-      <CrossSeedDialog
-        open={crossSeedDialogOpen}
-        onOpenChange={handleCrossSeedDialogOpenChange}
-        torrent={crossSeedTorrent}
-        sourceTorrent={crossSeedSourceTorrent}
-        results={crossSeedResults}
-        selectedKeys={crossSeedSelectedKeys}
-        selectionCount={crossSeedSelectionCount}
-        isLoading={crossSeedSearchLoading}
-        isSubmitting={crossSeedSubmitting}
-        error={crossSeedSearchError}
-        applyResult={crossSeedApplyResult}
-        indexerOptions={crossSeedIndexerOptions}
-        indexerMode={crossSeedIndexerMode}
-        selectedIndexerIds={crossSeedIndexerSelection}
-        indexerNameMap={crossSeedIndexerNameMap}
-        onIndexerModeChange={handleCrossSeedIndexerModeChange}
-        onToggleIndexer={toggleCrossSeedIndexer}
-        onSelectAllIndexers={selectAllCrossSeedIndexers}
-        onClearIndexerSelection={clearCrossSeedIndexerSelection}
-        onScopeSearch={handleCrossSeedScopeSearch}
-        getResultKey={getCrossSeedResultKey}
-        onToggleSelection={toggleCrossSeedSelection}
-        onSelectAll={selectAllCrossSeedResults}
-        onClearSelection={clearCrossSeedSelection}
-        onRetry={handleRetryCrossSeedSearch}
-        onClose={closeCrossSeedDialog}
-        onApply={handleApplyCrossSeed}
-        useTag={crossSeedUseTag}
-        onUseTagChange={setCrossSeedUseTag}
-        tagName={crossSeedTagName}
-        onTagNameChange={setCrossSeedTagName}
-        hasSearched={crossSeedHasSearched}
-        cacheMetadata={crossSeedSearchResponse?.cache ?? null}
-        onForceRefresh={canForceCrossSeedRefresh ? handleCrossSeedForceRefresh : undefined}
-        canForceRefresh={canForceCrossSeedRefresh}
-        refreshCooldownLabel={crossSeedRefreshLabel}
-      />
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>

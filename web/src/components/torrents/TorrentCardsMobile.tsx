@@ -66,6 +66,7 @@ import {
   Plus,
   Radio,
   Search,
+  GitBranch,
   Settings2,
   Sprout,
   Tag,
@@ -82,6 +83,7 @@ import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata.ts"
 import { usePersistedCompactViewState, type ViewMode } from "@/hooks/usePersistedCompactViewState"
+import { useCrossSeedFilter } from "@/hooks/useCrossSeedFilter"
 import { api } from "@/lib/api"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
@@ -314,6 +316,10 @@ interface TorrentCardsMobileProps {
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
   onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[]) => void
+  onFilterChange?: (filters: TorrentFilters) => void
+  canCrossSeedSearch?: boolean
+  onCrossSeedSearch?: (torrent: Torrent) => void
+  isCrossSeedSearching?: boolean
 }
 
 function formatEta(seconds: number): string {
@@ -902,6 +908,10 @@ export function TorrentCardsMobile({
   addTorrentModalOpen,
   onAddTorrentModalChange,
   onFilteredDataUpdate,
+  onFilterChange,
+  canCrossSeedSearch,
+  onCrossSeedSearch,
+  isCrossSeedSearching,
 }: TorrentCardsMobileProps) {
   // State
   const [sortState, setSortState] = useState<MobileSortState>(() => {
@@ -1601,6 +1611,13 @@ export function TorrentCardsMobile({
     }
   }, [torrents, selectedHashes, isAllSelected, excludedFromSelectAll])
 
+  const { isFilteringCrossSeeds, filterCrossSeeds } = useCrossSeedFilter({
+    instanceId,
+    onFilterChange,
+  })
+
+  const singleSelectedTorrent = getSelectedTorrents[0] ?? null
+
   const handleClearSearch = useCallback(() => {
     setGlobalFilter("")
 
@@ -1901,6 +1918,37 @@ export function TorrentCardsMobile({
               <Radio className="mr-2 h-4 w-4"/>
               Reannounce
             </Button>
+            {onFilterChange && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  filterCrossSeeds(getSelectedTorrents)
+                  setShowActionsSheet(false)
+                }}
+                disabled={isFilteringCrossSeeds || getSelectedTorrents.length !== 1}
+                className="justify-start"
+              >
+                <GitBranch className="mr-2 h-4 w-4" />
+                Filter Cross-Seeds
+              </Button>
+            )}
+            {canCrossSeedSearch && onCrossSeedSearch && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (!singleSelectedTorrent) {
+                    return
+                  }
+                  onCrossSeedSearch(singleSelectedTorrent)
+                  setShowActionsSheet(false)
+                }}
+                disabled={!singleSelectedTorrent || isCrossSeedSearching}
+                className="justify-start"
+              >
+                <Search className="mr-2 h-4 w-4" />
+                Search Cross-Seeds
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={() => handleBulkAction(TORRENT_ACTIONS.INCREASE_PRIORITY)}
