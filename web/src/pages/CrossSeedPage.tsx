@@ -51,7 +51,6 @@ interface AutomationFormState {
   startPaused: boolean
   category: string
   tags: string
-  ignorePatterns: string
   targetInstanceIds: number[]
   targetIndexerIds: number[]
   maxResultsPerRun: number  // RSS Automation: max results to process per run
@@ -63,6 +62,7 @@ interface GlobalCrossSeedSettings {
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
   runExternalProgramId?: number | null
+  ignorePatterns: string
 }
 
 // RSS Automation constants
@@ -78,7 +78,6 @@ const DEFAULT_AUTOMATION_FORM: AutomationFormState = {
   startPaused: true,
   category: "",
   tags: "",
-  ignorePatterns: "",
   targetInstanceIds: [],
   targetIndexerIds: [],
   maxResultsPerRun: 50,
@@ -89,6 +88,7 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   sizeMismatchTolerancePercent: 5.0,
   useCategoryFromIndexer: false,
   runExternalProgramId: null,
+  ignorePatterns: "",
 }
 
 function parseList(value: string): string[] {
@@ -96,6 +96,23 @@ function parseList(value: string): string[] {
     .split(/[\n,]/)
     .map(item => item.trim())
     .filter(Boolean)
+}
+
+function normalizeIgnorePatterns(patterns: string): string[] {
+  return parseList(patterns.replace(/\r/g, ""))
+}
+
+function validateIgnorePatterns(raw: string): string {
+  const text = raw.replace(/\r/g, "")
+  const parts = text.split(/\n|,/)
+  for (const part of parts) {
+    const pattern = part.trim()
+    if (!pattern) continue
+    if (pattern.length > 256) {
+      return "Ignore patterns must be shorter than 256 characters"
+    }
+  }
+  return ""
 }
 
 function getDurationParts(ms: number): { hours: number; minutes: number; seconds: number } {
@@ -257,7 +274,6 @@ export function CrossSeedPage() {
         startPaused: settings.startPaused,
         category: settings.category ?? "",
         tags: settings.tags.join(", "),
-        ignorePatterns: settings.ignorePatterns.join("\n"),
         targetInstanceIds: settings.targetInstanceIds,
         targetIndexerIds: settings.targetIndexerIds,
         maxResultsPerRun: settings.maxResultsPerRun,
@@ -273,10 +289,28 @@ export function CrossSeedPage() {
         sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent ?? 5.0,
         useCategoryFromIndexer: settings.useCategoryFromIndexer ?? false,
         runExternalProgramId: settings.runExternalProgramId ?? null,
+        ignorePatterns: Array.isArray(settings.ignorePatterns)
+          ? settings.ignorePatterns.join("\n")
+          : "",
       })
       setGlobalSettingsInitialized(true)
     }
   }, [settings, globalSettingsInitialized])
+
+  const ignorePatternError = useMemo(
+    () => validateIgnorePatterns(globalSettings.ignorePatterns),
+    [globalSettings.ignorePatterns]
+  )
+
+  useEffect(() => {
+    setValidationErrors(prev => {
+      const current = prev.ignorePatterns ?? ""
+      if (current === ignorePatternError) {
+        return prev
+      }
+      return { ...prev, ignorePatterns: ignorePatternError }
+    })
+  }, [ignorePatternError])
 
   useEffect(() => {
     if (!searchInstanceId && instances && instances.length > 0) {
@@ -351,9 +385,18 @@ export function CrossSeedPage() {
   })
 
   const handleGlobalSettingsSave = () => {
+    if (ignorePatternError) {
+      setValidationErrors(prev => ({ ...prev, ignorePatterns: ignorePatternError }))
+      return
+    }
+    if (validationErrors.ignorePatterns) {
+      setValidationErrors(prev => ({ ...prev, ignorePatterns: "" }))
+    }
     // Get current settings to merge with global changes
     if (!settings) return
-    
+
+    const normalizedIgnorePatterns = normalizeIgnorePatterns(globalSettings.ignorePatterns)
+
     const payload: CrossSeedAutomationSettings = {
       // Use current automation form values if they've been modified, otherwise use saved settings
       enabled: formInitialized ? automationForm.enabled : settings.enabled,
@@ -361,7 +404,7 @@ export function CrossSeedPage() {
       startPaused: formInitialized ? automationForm.startPaused : settings.startPaused,
       category: formInitialized ? (automationForm.category.trim() || null) : settings.category,
       tags: formInitialized ? parseList(automationForm.tags) : settings.tags,
-      ignorePatterns: formInitialized ? parseList(automationForm.ignorePatterns.replace(/\r/g, "")) : settings.ignorePatterns,
+      ignorePatterns: normalizedIgnorePatterns,
       targetInstanceIds: formInitialized ? automationForm.targetInstanceIds : settings.targetInstanceIds,
       targetIndexerIds: formInitialized ? automationForm.targetIndexerIds : settings.targetIndexerIds,
       maxResultsPerRun: formInitialized ? automationForm.maxResultsPerRun : settings.maxResultsPerRun,
@@ -375,8 +418,8 @@ export function CrossSeedPage() {
   }
 
   const handleAutomationSave = () => {
-    // Clear previous validation errors
-    setValidationErrors({})
+    // Clear previous validation errors except ignorePatterns if present
+    setValidationErrors(prev => ({ ...prev, runIntervalMinutes: "" }))
 
     // Validate RSS run interval
     if (automationForm.runIntervalMinutes < MIN_RSS_INTERVAL_MINUTES) {
@@ -384,13 +427,23 @@ export function CrossSeedPage() {
       return
     }
 
+    if (ignorePatternError) {
+      setValidationErrors(prev => ({ ...prev, ignorePatterns: ignorePatternError }))
+      return
+    }
+    if (validationErrors.ignorePatterns) {
+      setValidationErrors(prev => ({ ...prev, ignorePatterns: "" }))
+    }
+
+    const normalizedIgnorePatterns = normalizeIgnorePatterns(globalSettings.ignorePatterns)
+
     const payload: CrossSeedAutomationSettings = {
       enabled: automationForm.enabled,
       runIntervalMinutes: automationForm.runIntervalMinutes,
       startPaused: automationForm.startPaused,
       category: automationForm.category.trim() || null,
       tags: parseList(automationForm.tags),
-      ignorePatterns: parseList(automationForm.ignorePatterns.replace(/\r/g, "")),
+      ignorePatterns: normalizedIgnorePatterns,
       targetInstanceIds: automationForm.targetInstanceIds,
       targetIndexerIds: automationForm.targetIndexerIds,
       maxResultsPerRun: automationForm.maxResultsPerRun,
@@ -734,17 +787,6 @@ export function CrossSeedPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="automation-ignore">Ignore patterns</Label>
-            <Textarea
-              id="automation-ignore"
-              placeholder="*.nfo\n*.txt"
-              rows={3}
-              value={automationForm.ignorePatterns}
-              onChange={event => setAutomationForm(prev => ({ ...prev, ignorePatterns: event.target.value }))}
-            />
-          </div>
-
-          <div className="space-y-2">
             <div className="flex items-center justify-between">
               <div>
                 <Label>Target instances</Label>
@@ -917,7 +959,7 @@ export function CrossSeedPage() {
               </Tooltip>
               <Button
                 onClick={handleAutomationSave}
-                disabled={updateSettingsMutation.isPending}
+                disabled={updateSettingsMutation.isPending || Boolean(ignorePatternError)}
               >
                 {updateSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save settings
@@ -1306,6 +1348,44 @@ export function CrossSeedPage() {
             </p>
           </div>
           <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="global-ignore-patterns">Ignore patterns</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label="How ignore patterns work"
+                  >
+                    <Info className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs text-xs">
+                  Provide glob-style patterns (e.g., <code>*.nfo</code>, <code>*sample*</code>, <code>extras/*</code>) to skip matching files when cross-seeding. Separate entries with commas or new lines. Ignoring common sidecar files can increase match potential.
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <Textarea
+              id="global-ignore-patterns"
+              placeholder={"*.nfo, *.txt\nor one per line"}
+              rows={3}
+              value={globalSettings.ignorePatterns}
+              onChange={event => {
+                const value = event.target.value
+                setGlobalSettings(prev => ({ ...prev, ignorePatterns: value }))
+                const error = validateIgnorePatterns(value)
+                setValidationErrors(prev => ({ ...prev, ignorePatterns: error }))
+              }}
+              className={validationErrors.ignorePatterns ? "border-destructive" : ""}
+            />
+            <p className="text-xs text-muted-foreground">
+              Applies to RSS automation, webhook apply requests, and seeded torrent search additions. Patterns can be separated by commas or newlines.
+            </p>
+            {validationErrors.ignorePatterns && (
+              <p className="text-sm text-destructive">{validationErrors.ignorePatterns}</p>
+            )}
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="global-use-category-from-indexer" className="flex items-center gap-2">
               <Switch
                 id="global-use-category-from-indexer"
@@ -1352,14 +1432,14 @@ export function CrossSeedPage() {
             </p>
           </div>
       </CardContent>
-      <CardFooter className="flex items-center gap-3">
-        <Button
-          onClick={handleGlobalSettingsSave}
-          disabled={updateGlobalSettingsMutation.isPending}
-          >
-            {updateGlobalSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Save settings
-          </Button>
+        <CardFooter className="flex items-center gap-3">
+          <Button
+            onClick={handleGlobalSettingsSave}
+            disabled={updateGlobalSettingsMutation.isPending || Boolean(ignorePatternError)}
+            >
+              {updateGlobalSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save settings
+            </Button>
         </CardFooter>
       </Card>
 

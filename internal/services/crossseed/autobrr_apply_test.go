@@ -16,7 +16,10 @@ func TestAutobrrApplyDefaultsToAutomationSetting(t *testing.T) {
 
 	service := &Service{
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
-			return &models.CrossSeedAutomationSettings{FindIndividualEpisodes: true}, nil
+			return &models.CrossSeedAutomationSettings{
+				FindIndividualEpisodes: true,
+				IgnorePatterns:         []string{"*.nfo"},
+			}, nil
 		},
 	}
 
@@ -35,6 +38,7 @@ func TestAutobrrApplyDefaultsToAutomationSetting(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, captured)
 	require.True(t, captured.FindIndividualEpisodes)
+	require.Equal(t, []string{"*.nfo"}, captured.IgnorePatterns)
 }
 
 func TestAutobrrApplyHonorsRequestOverride(t *testing.T) {
@@ -59,10 +63,12 @@ func TestAutobrrApplyHonorsRequestOverride(t *testing.T) {
 		TorrentData:            "ZGF0YQ==",
 		InstanceID:             1,
 		FindIndividualEpisodes: &override,
+		IgnorePatterns:         []string{"*.txt"},
 	}
 
 	_, err := service.AutobrrApply(ctx, req)
 	require.NoError(t, err)
 	require.NotNil(t, captured)
 	require.False(t, captured.FindIndividualEpisodes)
+	require.Equal(t, []string{"*.txt"}, captured.IgnorePatterns)
 }

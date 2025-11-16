@@ -116,6 +116,11 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 		releaseCache:        NewReleaseCache(),
 		searchResultCache:   ttlcache.New(ttlcache.Options[string, []TorrentSearchResult]{}),
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil },
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{
+				IgnorePatterns: []string{"*.nfo"},
+			}, nil
+		},
 	}
 
 	cached := TorrentSearchResult{
@@ -162,6 +167,7 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, captured)
 	require.True(t, captured.FindIndividualEpisodes, "apply requests must propagate episode flag")
+	require.Equal(t, []string{"*.nfo"}, captured.IgnorePatterns)
 }
 
 type episodeInstanceStore struct {

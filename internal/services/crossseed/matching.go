@@ -247,7 +247,7 @@ func joinNormalizedSlice(slice []string) string {
 }
 
 // getMatchTypeFromTitle checks if a candidate torrent has files matching what we want based on parsed title.
-func (s *Service) getMatchTypeFromTitle(targetRelease, candidateRelease rls.Release, candidateFiles qbt.TorrentFiles, ignorePatterns []string) string {
+func (s *Service) getMatchTypeFromTitle(targetName, candidateName string, targetRelease, candidateRelease rls.Release, candidateFiles qbt.TorrentFiles, ignorePatterns []string) string {
 	// Build candidate release keys from actual files with enrichment.
 	candidateReleases := make(map[releaseKey]int64)
 	for _, cf := range candidateFiles {
@@ -292,6 +292,48 @@ func (s *Service) getMatchTypeFromTitle(targetRelease, candidateRelease rls.Rele
 	} else {
 		// Non-episodic content - check if any candidate files match.
 		if len(candidateReleases) > 0 {
+			return "partial-in-pack"
+		}
+	}
+
+	// Fallback: rls couldn't derive usable release keys from the files, but the titles match and
+	// the episode number encoded in the raw torrent names also matches (e.g. anime releases where
+	// rls fails to parse " - 1150 " as an episode).
+	if len(candidateReleases) == 0 {
+		targetTitle := strings.ToLower(strings.TrimSpace(targetRelease.Title))
+		candidateTitle := strings.ToLower(strings.TrimSpace(candidateRelease.Title))
+		if targetTitle != "" && targetTitle == candidateTitle {
+			// Extract simple episode number from torrent names of the form "... - 1150 (...)".
+			extractEpisode := func(name string) string {
+				nameLower := strings.ToLower(name)
+				// Look for " - <digits> " pattern.
+				for i := 0; i+4 < len(nameLower); i++ {
+					if nameLower[i] == ' ' && nameLower[i+1] == '-' && nameLower[i+2] == ' ' {
+						j := i + 3
+						start := j
+						for j < len(nameLower) && nameLower[j] >= '0' && nameLower[j] <= '9' {
+							j++
+						}
+						if j > start && j < len(nameLower) && nameLower[j] == ' ' {
+							return nameLower[start:j]
+						}
+						break
+					}
+				}
+				return ""
+			}
+
+			targetEp := extractEpisode(targetName)
+			candidateEp := extractEpisode(candidateName)
+
+			if targetEp == "" || candidateEp == "" || targetEp != candidateEp {
+				return ""
+			}
+
+			log.Debug().
+				Str("title", targetRelease.Title).
+				Str("episode", targetEp).
+				Msg("Falling back to title+episode candidate match")
 			return "partial-in-pack"
 		}
 	}
@@ -394,6 +436,45 @@ func (s *Service) getMatchType(sourceRelease, candidateRelease rls.Release, sour
 	// Size match for same content with different structure.
 	if totalSourceSize > 0 && totalSourceSize == totalCandidateSize && len(sourceMap) > 0 {
 		return "size"
+	}
+
+	// If rls couldn't derive usable release keys but both torrents have at least one non-ignored
+	// file, fall back to comparing the largest file by base name and size. This is designed for
+	// single-episode torrents (common in anime) where the main .mkv matches but sidecars differ.
+	if len(sourceReleaseKeys) == 0 && len(candidateReleaseKeys) == 0 &&
+		len(sourceMap) > 0 && len(candidateMap) > 0 {
+		var (
+			srcPath  string
+			srcSize  int64
+			candPath string
+			candSize int64
+		)
+
+		for path, size := range sourceMap {
+			if size > srcSize {
+				srcSize = size
+				srcPath = path
+			}
+		}
+		for path, size := range candidateMap {
+			if size > candSize {
+				candSize = size
+				candPath = path
+			}
+		}
+
+		if srcSize > 0 && srcSize == candSize {
+			srcBase := strings.ToLower(strings.TrimSuffix(filepath.Base(srcPath), filepath.Ext(srcPath)))
+			candBase := strings.ToLower(strings.TrimSuffix(filepath.Base(candPath), filepath.Ext(candPath)))
+			if srcBase != "" && srcBase == candBase {
+				log.Debug().
+					Str("sourceFile", srcPath).
+					Str("candidateFile", candPath).
+					Int64("fileSize", srcSize).
+					Msg("Falling back to filename+size match for cross-seed")
+				return "size"
+			}
+		}
 	}
 
 	return ""

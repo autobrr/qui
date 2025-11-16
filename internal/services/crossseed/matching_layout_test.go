@@ -117,3 +117,39 @@ func (c *candidateSelectionSyncManager) RenameTorrentFile(context.Context, int, 
 func (c *candidateSelectionSyncManager) RenameTorrentFolder(context.Context, int, string, string, string) error {
 	return fmt.Errorf("not implemented")
 }
+
+func TestGetMatchTypeFromTitle_FallbackWhenReleaseKeysMissing(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{releaseCache: releases.NewDefaultParser()}
+	targetName := "[TestGroup] Example Show - 1150 (1080p) [ABCDEF01]"
+	candidateName := "[TestGroup] Example Show - 1150 (1080p) [ABCDEF01]"
+	targetRelease := rls.Release{Title: "Example Show"}
+	candidateRelease := rls.Release{Title: "Example Show"}
+
+	// Use a filename that won't produce any usable release keys when parsed.
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "testgroup_example_show_episode1150.bin", Size: 1024},
+	}
+
+	match := svc.getMatchTypeFromTitle(targetName, candidateName, targetRelease, candidateRelease, candidateFiles, nil)
+	require.Equal(t, "partial-in-pack", match, "fallback should treat matching titles as candidates when parsing fails")
+}
+
+func TestGetMatchType_FileNameFallback(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{releaseCache: releases.NewDefaultParser()}
+	sourceRelease := rls.Release{Title: "Example Show"}
+	candidateRelease := rls.Release{Title: "Example Show"}
+
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "[TestGroup] Example Show - 1150 (1080p) [ABCDEF01].mkv", Size: 1 << 30},
+	}
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "[TestGroup] Example Show - 1150 (1080p) [ABCDEF01]/[TestGroup] Example Show - 1150 (1080p) [ABCDEF01].mkv", Size: 1 << 30},
+	}
+
+	match := svc.getMatchType(sourceRelease, candidateRelease, sourceFiles, candidateFiles, nil)
+	require.Equal(t, "size", match, "single-file torrents with matching base names should fallback to size match")
+}

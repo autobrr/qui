@@ -206,6 +206,7 @@ type SearchRunOptions struct {
 	StartPaused            bool
 	CategoryOverride       *string
 	TagsOverride           []string
+	IgnorePatterns         []string
 }
 
 // SearchRunStatus summarises the current state of the active search run.
@@ -516,6 +517,9 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		}
 		if len(opts.TagsOverride) == 0 && len(settings.Tags) > 0 {
 			opts.TagsOverride = append([]string(nil), settings.Tags...)
+		}
+		if len(settings.IgnorePatterns) > 0 {
+			opts.IgnorePatterns = append([]string(nil), settings.IgnorePatterns...)
 		}
 		opts.StartPaused = settings.StartPaused
 		if !settings.FindIndividualEpisodes {
@@ -1159,7 +1163,7 @@ func (s *Service) FindCandidates(ctx context.Context, req *FindCandidatesRequest
 
 			// Now check if this torrent actually has the files we need
 			// This handles: single episode in season pack, season pack containing episodes, etc.
-			matchType := s.getMatchTypeFromTitle(targetRelease, candidateRelease, candidateFiles, req.IgnorePatterns)
+			matchType := s.getMatchTypeFromTitle(req.TorrentName, torrent.Name, targetRelease, candidateRelease, candidateFiles, req.IgnorePatterns)
 			if matchType != "" {
 				matchedTorrents = append(matchedTorrents, torrent)
 				matchTypeCounts[matchType]++
@@ -1318,16 +1322,22 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		return nil, fmt.Errorf("%w: instanceId must be a positive integer", ErrInvalidRequest)
 	}
 
+	settings, settingsErr := s.GetAutomationSettings(ctx)
+	if settingsErr != nil {
+		log.Warn().Err(settingsErr).Msg("Failed to load automation settings for autobrr apply defaults")
+		settings = nil
+	}
+
 	findIndividualEpisodes := false
 	if req.FindIndividualEpisodes != nil {
 		findIndividualEpisodes = *req.FindIndividualEpisodes
-	} else {
-		settings, err := s.GetAutomationSettings(ctx)
-		if err != nil {
-			log.Warn().Err(err).Msg("Failed to load automation settings for autobrr apply, defaulting to disabled episode matching")
-		} else if settings != nil {
-			findIndividualEpisodes = settings.FindIndividualEpisodes
-		}
+	} else if settings != nil {
+		findIndividualEpisodes = settings.FindIndividualEpisodes
+	}
+
+	ignorePatterns := req.IgnorePatterns
+	if len(ignorePatterns) == 0 && settings != nil {
+		ignorePatterns = append([]string(nil), settings.IgnorePatterns...)
 	}
 
 	crossReq := &CrossSeedRequest{
@@ -1335,14 +1345,35 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		TargetInstanceIDs:      []int{req.InstanceID},
 		Category:               req.Category,
 		Tags:                   req.Tags,
-		IgnorePatterns:         req.IgnorePatterns,
+		IgnorePatterns:         ignorePatterns,
 		StartPaused:            req.StartPaused,
 		AddCrossSeedTag:        req.AddCrossSeedTag,
 		SkipIfExists:           req.SkipIfExists,
 		FindIndividualEpisodes: findIndividualEpisodes,
 	}
 
-	return s.invokeCrossSeed(ctx, crossReq)
+	resp, err := s.invokeCrossSeed(ctx, crossReq)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Debug().
+		Int("instanceID", req.InstanceID).
+		Bool("success", resp.Success).
+		Int("resultCount", len(resp.Results)).
+		Msg("AutobrrApply completed cross-seed request")
+
+	for _, r := range resp.Results {
+		log.Debug().
+			Int("instanceID", r.InstanceID).
+			Str("instanceName", r.InstanceName).
+			Bool("success", r.Success).
+			Str("status", r.Status).
+			Str("message", r.Message).
+			Msg("AutobrrApply instance result")
+	}
+
+	return resp, nil
 }
 
 func (s *Service) invokeCrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
@@ -1399,6 +1430,15 @@ func (s *Service) processCrossSeedCandidate(
 				Progress: existing.Progress,
 				Size:     existing.Size,
 			}
+
+			log.Debug().
+				Int("instanceID", candidate.InstanceID).
+				Str("instanceName", candidate.InstanceName).
+				Str("torrentHash", torrentHash).
+				Str("existingHash", existing.Hash).
+				Str("existingName", existing.Name).
+				Msg("Cross-seed apply skipped: torrent already exists in instance")
+
 			return result
 		}
 	}
@@ -1407,6 +1447,13 @@ func (s *Service) processCrossSeedCandidate(
 	if matchedTorrent == nil {
 		result.Status = "no_match"
 		result.Message = "No matching torrents found with required files"
+
+		log.Debug().
+			Int("instanceID", candidate.InstanceID).
+			Str("instanceName", candidate.InstanceName).
+			Str("torrentHash", torrentHash).
+			Msg("Cross-seed apply skipped: no best candidate match after file-level validation")
+
 		return result
 	}
 
@@ -2657,6 +2704,11 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 		return nil, fmt.Errorf("%w: no cached cross-seed search results found for torrent %s; please run a search before applying selections", ErrInvalidRequest, hash)
 	}
 
+	settings, err := s.GetAutomationSettings(ctx)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to load cross-seed settings for manual apply, using defaults")
+	}
+
 	startPaused := true
 	if req.StartPaused != nil {
 		startPaused = *req.StartPaused
@@ -2732,6 +2784,9 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 			AddCrossSeedTag:        &addCrossSeedTag,
 			IndexerName:            indexerName,
 			FindIndividualEpisodes: req.FindIndividualEpisodes,
+		}
+		if settings != nil && len(settings.IgnorePatterns) > 0 {
+			payload.IgnorePatterns = append([]string(nil), settings.IgnorePatterns...)
 		}
 
 		if useTag {
@@ -3536,6 +3591,9 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		Category:               "",
 		FindIndividualEpisodes: state.opts.FindIndividualEpisodes,
 		SkipIfExists:           &skipIfExists,
+	}
+	if len(state.opts.IgnorePatterns) > 0 {
+		request.IgnorePatterns = append([]string(nil), state.opts.IgnorePatterns...)
 	}
 	if state.opts.CategoryOverride != nil && strings.TrimSpace(*state.opts.CategoryOverride) != "" {
 		cat := *state.opts.CategoryOverride
