@@ -1220,7 +1220,11 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 				if strings.Contains(strings.ToLower(err.Error()), "429") ||
 					strings.Contains(strings.ToLower(err.Error()), "rate limit") ||
 					strings.Contains(strings.ToLower(err.Error()), "too many requests") {
-					enhancedErr := fmt.Errorf("prowlarr search failed: prowlarr returned status 429 for indexer %s (ID: %d). Rate limiting is active for this indexer", idx.Name, idx.ID)
+					backendLabel := strings.TrimSpace(string(idx.Backend))
+					if backendLabel == "" {
+						backendLabel = "indexer"
+					}
+					enhancedErr := fmt.Errorf("%s search failed: backend returned status 429 for indexer %s (ID: %d). Rate limiting is active for this indexer", backendLabel, idx.Name, idx.ID)
 					resultsChan <- indexerResult{nil, enhancedErr}
 				} else {
 					resultsChan <- indexerResult{nil, err}
@@ -2015,10 +2019,57 @@ func (s *Service) parseCategoryID(category string) int {
 	return 0
 }
 
+var (
+	tvdbIdentifierPattern = regexp.MustCompile(`(?i)(?:tvdb|thetvdb|tvdb:)[^\d]*([0-9]+)`)
+	tvdbAttributeKeys     = []string{"tvdb", "tvdbid", "tvdb_id"}
+	tvdbDigitsOnlyPattern = regexp.MustCompile(`\A[0-9]+\z`)
+)
+
+func parseTVDbNumericIDFromString(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+
+	if tvdbDigitsOnlyPattern.MatchString(value) {
+		return value
+	}
+
+	if matches := tvdbIdentifierPattern.FindStringSubmatch(value); len(matches) == 2 {
+		if tvdbDigitsOnlyPattern.MatchString(matches[1]) {
+			return matches[1]
+		}
+	}
+
+	return ""
+}
+
 // parseTVDbID extracts TVDb ID from result if available
 func (s *Service) parseTVDbID(r Result) string {
-	// TVDb ID might be in various places depending on indexer
-	// This is a placeholder - would need to check actual Jackett response structure
+	if id := parseTVDbNumericIDFromString(r.GUID); id != "" {
+		return id
+	}
+
+	if id := extractTVDbIDFromAttributes(r.Attributes); id != "" {
+		return id
+	}
+
+	return ""
+}
+
+func extractTVDbIDFromAttributes(attrs map[string]string) string {
+	if len(attrs) == 0 {
+		return ""
+	}
+
+	for _, key := range tvdbAttributeKeys {
+		if value, ok := attrs[key]; ok {
+			if id := parseTVDbNumericIDFromString(value); id != "" {
+				return id
+			}
+		}
+	}
+
 	return ""
 }
 

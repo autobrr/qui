@@ -13,9 +13,10 @@ import (
 	"strings"
 	"time"
 
+	gojackett "github.com/kylesanderson/go-jackett"
+
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/prowlarr"
-	gojackett "github.com/kylesanderson/go-jackett"
 )
 
 // Client wraps the Torznab backend client implementation
@@ -93,6 +94,8 @@ type Result struct {
 	DownloadVolumeFactor float64
 	UploadVolumeFactor   float64
 	Imdb                 string
+	// Attributes stores every Torznab attribute with lowercase keys from RSS item attr entries (see convertRssToResults normalization).
+	Attributes map[string]string
 }
 
 // SearchAll searches across all indexers when supported by the backend
@@ -374,9 +377,15 @@ func (c *Client) convertRssToResults(rss gojackett.Rss) []Result {
 			result.Category = item.Category[0]
 		}
 
-		// Parse torznab attributes
+		// Parse torznab attributes into a lookup map
+		attrMap := make(map[string]string, len(item.Attr))
 		for _, attr := range item.Attr {
-			switch attr.Name {
+			name := strings.ToLower(strings.TrimSpace(attr.Name))
+			if name == "" {
+				continue
+			}
+			attrMap[name] = attr.Value
+			switch name {
 			case "seeders":
 				if v, err := strconv.Atoi(attr.Value); err == nil {
 					result.Seeders = v
@@ -397,6 +406,7 @@ func (c *Client) convertRssToResults(rss gojackett.Rss) []Result {
 				result.Imdb = attr.Value
 			}
 		}
+		result.Attributes = attrMap
 
 		results = append(results, result)
 	}
