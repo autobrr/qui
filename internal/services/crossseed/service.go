@@ -4572,6 +4572,12 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 				}
 			}
 
+			// TODO: Consider adding a configuration flag to control whether webhook-based
+			// cross-seed checks require fully completed torrents or can also treat
+			// in-progress downloads as matches. This would likely be exposed via the
+			// "Global Cross-Seed Settings" block in CrossSeedPage.tsx so users can tune
+			// webhook behavior for their setup.
+
 			matches = append(matches, WebhookCheckMatch{
 				InstanceID:   instance.ID,
 				InstanceName: instance.Name,
