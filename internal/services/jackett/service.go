@@ -1245,31 +1245,44 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 		}(indexer)
 	}
 
-	// Collect all results
+	// Collect all results with timeout tracking
 	var (
 		allResults []Result
 		failures   int
+		timeouts   int
+		successes  int
 		lastErr    error
 	)
 
 	for range availableIndexers {
 		result := <-resultsChan
 		if result.err != nil {
-			failures++
-			lastErr = result.err
+			if isTimeoutError(result.err) {
+				timeouts++
+			} else {
+				failures++
+				lastErr = result.err
+			}
 			continue
 		}
+		successes++
 		allResults = append(allResults, result.results...)
 	}
 
-	if len(availableIndexers) > 0 && failures == len(availableIndexers) {
-		return nil, fmt.Errorf("all %d indexers failed (last error: %w)", len(availableIndexers), lastErr)
+	// Only return error if ALL non-timeout indexers failed
+	nonTimeoutIndexers := len(availableIndexers) - timeouts
+	if nonTimeoutIndexers > 0 && failures == nonTimeoutIndexers {
+		return nil, fmt.Errorf("all %d non-timeout indexers failed (last error: %w)", nonTimeoutIndexers, lastErr)
 	}
-	if failures > 0 {
+
+	// Log detailed statistics
+	if failures > 0 || timeouts > 0 {
 		log.Warn().
-			Int("indexers_requested", len(indexers)).
 			Int("indexers_failed", failures).
-			Msg("one or more indexers failed during torznab search")
+			Int("indexers_requested", len(indexers)).
+			Int("indexers_successful", successes).
+			Int("indexers_timed_out", timeouts).
+			Msg("Some indexers failed or timed out during torznab search")
 	}
 
 	return allResults, nil
@@ -1693,6 +1706,16 @@ func detectRateLimit(err error) (time.Duration, bool) {
 		return dur, true
 	}
 	return defaultRateLimitCooldown, true
+}
+
+func isTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "context deadline exceeded") ||
+		strings.Contains(msg, "timeout") ||
+		strings.Contains(msg, "deadline exceeded")
 }
 
 func extractRetryAfter(msg string) time.Duration {
