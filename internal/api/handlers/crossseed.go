@@ -401,8 +401,13 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 
 	updated, err := h.service.UpdateAutomationSettings(r.Context(), settings)
 	if err != nil {
+		status := mapCrossSeedErrorStatus(err)
 		log.Error().Err(err).Msg("Failed to update cross-seed automation settings")
-		RespondError(w, http.StatusInternalServerError, "Failed to update automation settings")
+		if status == http.StatusBadRequest {
+			RespondError(w, status, err.Error())
+		} else {
+			RespondError(w, status, "Failed to update automation settings")
+		}
 		return
 	}
 
