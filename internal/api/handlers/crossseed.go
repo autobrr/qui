@@ -540,7 +540,7 @@ func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if req.InstanceID <= 0 {
-		RespondError(w, http.StatusBadRequest, "instanceId is required")
+		RespondError(w, http.StatusBadRequest, "instanceId must be a positive integer")
 		return
 	}
 
@@ -664,8 +664,8 @@ func (h *CrossSeedHandler) ListSearchRunHistory(w http.ResponseWriter, r *http.R
 func (h *CrossSeedHandler) GetCrossSeedStatus(w http.ResponseWriter, r *http.Request) {
 	instanceIDStr := chi.URLParam(r, "instanceID")
 	instanceID, err := strconv.Atoi(instanceIDStr)
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	if err != nil || instanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
 		return
 	}
 
