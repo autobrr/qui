@@ -87,7 +87,7 @@ func isArchiveFilename(nameLower string) bool {
 		}
 	}
 
-	ext := strings.ToLower(filepath.Ext(nameLower))
+	ext := filepath.Ext(nameLower)
 	if _, ok := archiveExtensions[ext]; ok {
 		return true
 	}
