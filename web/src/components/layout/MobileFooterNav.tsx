@@ -39,14 +39,15 @@ import {
   Check,
   Copyright,
   Download,
-  Github,
   GitBranch,
+  Github,
   HardDrive,
   Home,
   LogOut,
   Monitor,
   Moon,
   Palette,
+  Search as SearchIcon,
   Server,
   Settings,
   Sun
@@ -273,6 +274,37 @@ export function MobileFooterNav() {
             )}
             <DropdownMenuItem asChild>
               <Link
+                to="/search"
+                className="flex items-center gap-2"
+              >
+                <SearchIcon className="h-4 w-4" />
+                Search
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link
+                to="/cross-seed"
+                params={{}}
+                className="flex items-center gap-2"
+              >
+                <GitBranch className="h-4 w-4" />
+                Cross-Seed
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link
+                to="/backups"
+                className="flex items-center gap-2"
+              >
+                <Archive className="h-4 w-4" />
+                Instance Backups
+              </Link>
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
+            <DropdownMenuItem asChild>
+              <Link
                 to="/settings"
                 className="flex items-center gap-2"
               >
@@ -290,29 +322,6 @@ export function MobileFooterNav() {
                 Manage Instances
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link
-                to="/backups"
-                className="flex items-center gap-2"
-              >
-                <Archive className="h-4 w-4" />
-                Instance Backups
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link
-                to="/cross-seed"
-                params={{}}
-                className="flex items-center gap-2"
-              >
-                <GitBranch className="h-4 w-4" />
-                Cross-Seed
-              </Link>
-            </DropdownMenuItem>
-
-            <DropdownMenuSeparator />
-
-            {/* Theme menu item - opens dialog */}
             <DropdownMenuItem onClick={() => setShowThemeDialog(true)}>
               <Palette className="h-4 w-4" />
               Appearance
