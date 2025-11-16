@@ -129,7 +129,7 @@ func TestGetMatchTypeFromTitle_FallbackWhenReleaseKeysMissing(t *testing.T) {
 
 	// Use a filename that won't produce any usable release keys when parsed.
 	candidateFiles := qbt.TorrentFiles{
-		{Name: "testgroup_example_show_episode1150.bin", Size: 1024},
+		{Name: "random_data_file.bin", Size: 1024},
 	}
 
 	match := svc.getMatchTypeFromTitle(targetName, candidateName, targetRelease, candidateRelease, candidateFiles, nil)
