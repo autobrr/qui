@@ -544,7 +544,7 @@ export function Search() {
       filtered = results.filter(result =>
         result.title.toLowerCase().includes(filter) ||
         result.indexer.toLowerCase().includes(filter) ||
-        (categoryMap.get(result.category_id) || result.category_name || '').toLowerCase().includes(filter) ||
+        (categoryMap.get(result.categoryId) || result.categoryName || '').toLowerCase().includes(filter) ||
         (result.source || '').toLowerCase().includes(filter) ||
         (result.collection || '').toLowerCase().includes(filter) ||
         (result.group || '').toLowerCase().includes(filter)
@@ -578,12 +578,12 @@ export function Search() {
           bVal = b.seeders
           break
         case 'category':
-          aVal = (categoryMap.get(a.category_id) || a.category_name || '').toLowerCase()
-          bVal = (categoryMap.get(b.category_id) || b.category_name || '').toLowerCase()
+          aVal = (categoryMap.get(a.categoryId) || a.categoryName || '').toLowerCase()
+          bVal = (categoryMap.get(b.categoryId) || b.categoryName || '').toLowerCase()
           break
         case 'published':
-          aVal = new Date(a.publish_date).getTime()
-          bVal = new Date(b.publish_date).getTime()
+          aVal = new Date(a.publishDate).getTime()
+          bVal = new Date(b.publishDate).getTime()
           break
         case 'source':
           aVal = (a.source || '').toLowerCase()
@@ -661,7 +661,7 @@ export function Search() {
   }, [runSearch, validateSearchInputs])
 
   const handleDownload = (result: TorznabSearchResult) => {
-    window.open(result.download_url, '_blank')
+    window.open(result.downloadUrl, '_blank')
   }
 
   const handleAddTorrent = useCallback((result: TorznabSearchResult, overrideInstanceId?: number) => {
@@ -677,23 +677,23 @@ export function Search() {
       return
     }
 
-    if (!result.download_url) {
+    if (!result.downloadUrl) {
       toast.error('No download URL available for this result')
       return
     }
 
     persistSelectedInstanceId(targetId)
-    setAddDialogPayload({ type: 'url', urls: [result.download_url] })
+    setAddDialogPayload({ type: 'url', urls: [result.downloadUrl] })
     setAddDialogOpen(true)
   }, [hasInstances, persistSelectedInstanceId, selectedInstanceId, setInstanceMenuOpen])
 
   const handleViewDetails = (result: TorznabSearchResult) => {
-    if (!result.info_url) {
+    if (!result.infoUrl) {
       toast.error('No additional info available for this result')
       return
     }
     try {
-      const url = new URL(result.info_url)
+      const url = new URL(result.infoUrl)
       if (!['http:', 'https:'].includes(url.protocol)) {
         toast.error('Invalid URL protocol')
         return
@@ -703,7 +703,7 @@ export function Search() {
       return
     }
 
-    window.open(result.info_url, '_blank')
+    window.open(result.infoUrl, '_blank')
   }
 
   const toggleResultSelection = (result: TorznabSearchResult) => {
@@ -1115,7 +1115,7 @@ export function Search() {
                         variant="outline"
                         size="sm"
                         onClick={() => handleDownload(selectedResult)}
-                        disabled={!selectedResult.download_url}
+                        disabled={!selectedResult.downloadUrl}
                         title="Download"
                       >
                         <Download className="h-4 w-4" />
@@ -1125,8 +1125,8 @@ export function Search() {
                         variant="outline"
                         size="sm"
                         onClick={() => handleViewDetails(selectedResult)}
-                        disabled={!selectedResult.info_url}
-                        title={selectedResult.info_url ? 'View details' : 'No info URL available'}
+                        disabled={!selectedResult.infoUrl}
+                        title={selectedResult.infoUrl ? 'View details' : 'No info URL available'}
                       >
                         <ExternalLink className="h-4 w-4" />
                       </Button>
@@ -1187,11 +1187,11 @@ export function Search() {
                           <DropdownMenuItem
                             onSelect={(event) => {
                               event.preventDefault()
-                              if (selectedResult.info_url) {
+                              if (selectedResult.infoUrl) {
                                 handleViewDetails(selectedResult)
                               }
                             }}
-                            disabled={!selectedResult.info_url}
+                            disabled={!selectedResult.infoUrl}
                           >
                             <ExternalLink className="mr-2 h-4 w-4" /> View details
                           </DropdownMenuItem>
@@ -1251,7 +1251,7 @@ export function Search() {
                     onAddTorrent={(overrideInstanceId) => handleAddTorrent(result, overrideInstanceId)}
                     onDownload={() => handleDownload(result)}
                     onViewDetails={() => handleViewDetails(result)}
-                    categoryName={categoryMap.get(result.category_id) || result.category_name || `Category ${result.category_id}`}
+                    categoryName={categoryMap.get(result.categoryId) || result.categoryName || `Category ${result.categoryId}`}
                     formatSize={formatSize}
                     formatDate={formatCacheTimestamp}
                     instances={instances}
@@ -1359,7 +1359,7 @@ export function Search() {
                             </Badge>
                           </TableCell>
                           <TableCell className={cn('text-sm text-muted-foreground', isSelected && 'text-accent-foreground')}>
-                            {categoryMap.get(result.category_id) || result.category_name || `Category ${result.category_id}`}
+                            {categoryMap.get(result.categoryId) || result.categoryName || `Category ${result.categoryId}`}
                           </TableCell>
                           <TableCell className={cn('text-sm', isSelected && 'text-accent-foreground')}>
                             {result.source ? (
@@ -1383,15 +1383,15 @@ export function Search() {
                             )}
                           </TableCell>
                           <TableCell className={cn(isSelected && 'text-accent-foreground')}>
-                            {result.download_volume_factor === 0 && (
+                            {result.downloadVolumeFactor === 0 && (
                               <Badge variant="default">Free</Badge>
                             )}
-                            {result.download_volume_factor > 0 && result.download_volume_factor < 1 && (
-                              <Badge variant="secondary">{result.download_volume_factor * 100}%</Badge>
+                            {result.downloadVolumeFactor > 0 && result.downloadVolumeFactor < 1 && (
+                              <Badge variant="secondary">{result.downloadVolumeFactor * 100}%</Badge>
                             )}
                           </TableCell>
                           <TableCell className={cn('text-sm text-muted-foreground', isSelected && 'text-accent-foreground')}>
-                            {formatCacheTimestamp(result.publish_date)}
+                            {formatCacheTimestamp(result.publishDate)}
                           </TableCell>
                         </TableRow>
                       )

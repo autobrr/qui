@@ -1006,19 +1006,19 @@ export interface TorznabRecentSearch {
 export interface TorznabSearchResult {
   indexer: string
   title: string
-  download_url: string
-  info_url?: string
+  downloadUrl: string
+  infoUrl?: string
   size: number
   seeders: number
   leechers: number
-  category_id: number
-  category_name: string
-  publish_date: string
-  download_volume_factor: number
-  upload_volume_factor: number
+  categoryId: number
+  categoryName: string
+  publishDate: string
+  downloadVolumeFactor: number
+  uploadVolumeFactor: number
   guid: string
-  imdb_id?: string
-  tvdb_id?: string
+  imdbId?: string
+  tvdbId?: string
   source?: string
   collection?: string
   group?: string

@@ -115,7 +115,7 @@ export function SearchResultCard({
                   event.preventDefault()
                   onDownload()
                 }}
-                disabled={!result.download_url}
+                disabled={!result.downloadUrl}
               >
                 <Download className="mr-2 h-4 w-4" /> Download
               </DropdownMenuItem>
@@ -124,7 +124,7 @@ export function SearchResultCard({
                   event.preventDefault()
                   onViewDetails()
                 }}
-                disabled={!result.info_url}
+                disabled={!result.infoUrl}
               >
                 <ExternalLink className="mr-2 h-4 w-4" /> View details
               </DropdownMenuItem>
@@ -169,17 +169,17 @@ export function SearchResultCard({
               {result.group}
             </Badge>
           )}
-          {result.download_volume_factor === 0 && (
+          {result.downloadVolumeFactor === 0 && (
             <Badge variant="default" className="text-[10px]">Free</Badge>
           )}
-          {result.download_volume_factor > 0 && result.download_volume_factor < 1 && (
-            <Badge variant="secondary" className="text-[10px]">{result.download_volume_factor * 100}%</Badge>
+          {result.downloadVolumeFactor > 0 && result.downloadVolumeFactor < 1 && (
+            <Badge variant="secondary" className="text-[10px]">{result.downloadVolumeFactor * 100}%</Badge>
           )}
         </div>
 
         {/* Published Date */}
         <div className="text-xs text-muted-foreground">
-          Published {formatDate(result.publish_date)}
+          Published {formatDate(result.publishDate)}
         </div>
       </div>
     </Card>

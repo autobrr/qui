@@ -18,12 +18,18 @@ export function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
 }
 
+/**
+ * Format a relative time string (e.g., "2h ago", "in 5m").
+ * @param value - Date, ISO string, or timestamp in seconds (number)
+ * @returns Formatted relative time string or "—" for invalid input
+ */
 export function formatRelativeTime(value?: string | number | Date | null): string {
   if (value === undefined || value === null) {
     return "—"
   }
 
-  const date = value instanceof Date ? value : new Date(value)
+  const date =
+    value instanceof Date ? value : new Date(typeof value === "number" ? value * 1000 : value)
   if (Number.isNaN(date.getTime())) {
     return "—"
   }

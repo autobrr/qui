@@ -669,7 +669,12 @@ func (s *Service) tryServeSearchCacheSuperset(ctx context.Context, sig *searchCa
 	response.Total = total
 
 	s.annotateSearchResponse(&response, scope, true, bestEntry.CachedAt, bestEntry.ExpiresAt, &bestEntry.LastUsedAt)
-	go s.searchCache.Touch(context.Background(), bestEntry.ID)
+	// Touch cache asynchronously with independent timeout to allow completion even if parent request is cancelled
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		s.searchCache.Touch(ctx, bestEntry.ID)
+	}()
 	return &response, true
 }
 
