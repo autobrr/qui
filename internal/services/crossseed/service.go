@@ -1394,44 +1394,10 @@ func (s *Service) processCrossSeedCandidate(
 		}
 	}
 
-	// Find the best matching torrent (100% complete)
-	var matchedTorrent *qbt.Torrent
-	for _, t := range candidate.Torrents {
-		if t.Progress >= 1.0 {
-			matchedTorrent = &t
-			break
-		}
-	}
-
+	matchedTorrent, candidateFiles, matchType := s.findBestCandidateMatch(ctx, candidate, sourceRelease, sourceFiles, req.IgnorePatterns)
 	if matchedTorrent == nil {
 		result.Status = "no_match"
-		result.Message = "No 100% complete matching torrent found"
-		return result
-	}
-
-	candidateFilesPtr, err := s.syncManager.GetTorrentFiles(ctx, candidate.InstanceID, matchedTorrent.Hash)
-	if err != nil || candidateFilesPtr == nil || len(*candidateFilesPtr) == 0 {
-		result.Status = "no_match"
-		if err != nil {
-			result.Message = fmt.Sprintf("Failed to load candidate files: %v", err)
-		} else {
-			result.Message = "Candidate torrent has no file metadata available"
-		}
-		return result
-	}
-	candidateFiles := *candidateFilesPtr
-
-	candidateRelease := s.releaseCache.Parse(matchedTorrent.Name)
-	matchType := s.getMatchType(sourceRelease, candidateRelease, sourceFiles, candidateFiles, req.IgnorePatterns)
-	if matchType == "" {
-		result.Status = "no_match"
-		result.Message = "Candidate torrent does not contain the required files"
-		return result
-	}
-	if matchType == "partial-contains" {
-		// Candidate provides only a subset of the desired season pack.
-		result.Status = "no_match"
-		result.Message = "Candidate torrent only contains a subset of the season pack files"
+		result.Message = "No matching torrents found with required files"
 		return result
 	}
 
@@ -1623,6 +1589,67 @@ func (s *Service) processCrossSeedCandidate(
 		Msg("Successfully added cross-seed torrent")
 
 	return result
+}
+
+func matchTypePriority(matchType string) int {
+	switch matchType {
+	case "exact":
+		return 3
+	case "partial-in-pack":
+		return 2
+	case "size":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func (s *Service) findBestCandidateMatch(
+	ctx context.Context,
+	candidate CrossSeedCandidate,
+	sourceRelease rls.Release,
+	sourceFiles qbt.TorrentFiles,
+	ignorePatterns []string,
+) (*qbt.Torrent, qbt.TorrentFiles, string) {
+	var (
+		matchedTorrent *qbt.Torrent
+		candidateFiles qbt.TorrentFiles
+		matchType      string
+		bestScore      int
+	)
+
+	for _, torrent := range candidate.Torrents {
+		if torrent.Progress < 1.0 {
+			continue
+		}
+
+		candidateFilesPtr, err := s.syncManager.GetTorrentFiles(ctx, candidate.InstanceID, torrent.Hash)
+		if err != nil || candidateFilesPtr == nil || len(*candidateFilesPtr) == 0 {
+			continue
+		}
+		files := *candidateFilesPtr
+
+		candidateRelease := s.releaseCache.Parse(torrent.Name)
+		candidateMatchType := s.getMatchType(sourceRelease, candidateRelease, sourceFiles, files, ignorePatterns)
+		if candidateMatchType == "" || candidateMatchType == "partial-contains" {
+			continue
+		}
+
+		score := matchTypePriority(candidateMatchType)
+		if score == 0 {
+			continue
+		}
+
+		if matchedTorrent == nil || score > bestScore {
+			copyTorrent := torrent
+			matchedTorrent = &copyTorrent
+			candidateFiles = files
+			matchType = candidateMatchType
+			bestScore = score
+		}
+	}
+
+	return matchedTorrent, candidateFiles, matchType
 }
 
 // decodeTorrentData decodes base64-encoded torrent data

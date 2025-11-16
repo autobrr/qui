@@ -303,6 +303,12 @@ func (s *Service) getMatchTypeFromTitle(targetRelease, candidateRelease rls.Rele
 // Returns "exact" for perfect match, "partial" for season pack partial matches,
 // "size" for total size match, or "" for no match.
 func (s *Service) getMatchType(sourceRelease, candidateRelease rls.Release, sourceFiles, candidateFiles qbt.TorrentFiles, ignorePatterns []string) string {
+	sourceLayout := classifyTorrentLayout(sourceFiles, ignorePatterns)
+	candidateLayout := classifyTorrentLayout(candidateFiles, ignorePatterns)
+	if sourceLayout != LayoutUnknown && candidateLayout != LayoutUnknown && sourceLayout != candidateLayout {
+		return ""
+	}
+
 	// Build map of source files (name -> size) and (releaseKey -> size).
 	sourceMap := make(map[string]int64)
 	sourceReleaseKeys := make(map[releaseKey]int64)
