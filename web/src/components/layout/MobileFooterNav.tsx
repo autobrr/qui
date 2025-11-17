@@ -137,17 +137,18 @@ export function MobileFooterNav() {
     toast.success(`Switched to ${theme?.name || themeId} theme`)
   }, [hasPremiumAccess])
 
-  const handleVariationSelect = useCallback(async (themeId: string, variationId: string) => {
+  const handleVariationSelect = useCallback(async (themeId: string, variationId: string): Promise<boolean> => {
     const isPremium = isThemePremium(themeId)
     if (isPremium && !hasPremiumAccess) {
       toast.error("This is a premium theme. Please purchase a license to use it.")
-      return
+      return false
     }
 
     await setTheme(themeId)
     await setThemeVariation(variationId)
     const theme = themes.find(t => t.id === themeId)
     toast.success(`Switched to ${theme?.name || themeId} theme (${variationId})`)
+    return true
   }, [hasPremiumAccess])
 
   if (isSelectionMode) {
@@ -532,10 +533,12 @@ export function MobileFooterNav() {
                                   return (
                                     <div
                                       key={variation.id}
-                                      onClick={(e) => {
+                                      onClick={async (e) => {
                                         e.stopPropagation()
-                                        handleVariationSelect(theme.id, variation.id)
-                                        setShowThemeDialog(false)
+                                        const success = await handleVariationSelect(theme.id, variation.id)
+                                        if (success) {
+                                          setShowThemeDialog(false)
+                                        }
                                       }}
                                       className={cn(
                                         "w-8 h-8 rounded-full transition-all cursor-pointer",
