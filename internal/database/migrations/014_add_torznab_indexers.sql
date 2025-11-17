@@ -97,6 +97,29 @@ CREATE INDEX IF NOT EXISTS idx_torznab_errors_indexer ON torznab_indexer_errors(
 CREATE INDEX IF NOT EXISTS idx_torznab_errors_occurred ON torznab_indexer_errors(occurred_at DESC);
 CREATE INDEX IF NOT EXISTS idx_torznab_errors_unresolved ON torznab_indexer_errors(indexer_id, resolved_at) WHERE resolved_at IS NULL;
 
+-- Persist rate-limit cooldown windows for Torznab indexers so restarts keep
+-- the waiting period and avoid repeated tracker bans.
+CREATE TABLE IF NOT EXISTS torznab_indexer_cooldowns (
+    indexer_id INTEGER PRIMARY KEY REFERENCES torznab_indexers(id) ON DELETE CASCADE,
+    resume_at TIMESTAMP NOT NULL,
+    cooldown_seconds INTEGER NOT NULL,
+    reason TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_torznab_cooldowns_resume
+    ON torznab_indexer_cooldowns(resume_at);
+
+CREATE TRIGGER IF NOT EXISTS trg_torznab_cooldowns_updated_at
+AFTER UPDATE ON torznab_indexer_cooldowns
+FOR EACH ROW
+BEGIN
+    UPDATE torznab_indexer_cooldowns
+    SET updated_at = CURRENT_TIMESTAMP
+    WHERE indexer_id = NEW.indexer_id;
+END;
+
 CREATE TABLE IF NOT EXISTS torznab_indexer_latency (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     indexer_id INTEGER NOT NULL REFERENCES torznab_indexers(id) ON DELETE CASCADE,
