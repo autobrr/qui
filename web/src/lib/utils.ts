@@ -18,6 +18,38 @@ export function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
 }
 
+/**
+ * Format a relative time string (e.g., "2h ago", "in 5m").
+ * @param value - Date, ISO string, or timestamp in seconds (number)
+ * @returns Formatted relative time string or "—" for invalid input
+ */
+export function formatRelativeTime(value?: string | number | Date | null): string {
+  if (value === undefined || value === null) {
+    return "—"
+  }
+
+  const date =
+    value instanceof Date ? value : new Date(typeof value === "number" ? value * 1000 : value)
+  if (Number.isNaN(date.getTime())) {
+    return "—"
+  }
+
+  const diffMs = date.getTime() - Date.now()
+  const absDiff = Math.abs(diffMs)
+
+  const units = [
+    { label: "d", ms: 86_400_000 },
+    { label: "h", ms: 3_600_000 },
+    { label: "m", ms: 60_000 },
+    { label: "s", ms: 1_000 },
+  ]
+
+  const unit = units.find(u => absDiff >= u.ms) ?? units[units.length - 1]
+  const valueAbs = Math.max(1, Math.round(absDiff / unit.ms))
+
+  return diffMs < 0 ? `${valueAbs}${unit.label} ago` : `in ${valueAbs}${unit.label}`
+}
+
 const SECOND_FACTOR = 1000
 
 function pad2(value: number): string {
