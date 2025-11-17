@@ -3695,10 +3695,48 @@ func (s *Service) filterIndexerIDsForTorrentAsync(ctx context.Context, instanceI
 					Int("existingFilteredCount", len(existingSnapshot.FilteredIndexers)).
 					Msg("[CROSSSEED-ASYNC] WARNING: Avoiding overwrite of completed content filtering")
 
+				var torrentInfo *TorrentInfo
+				asyncAnalysis, err := s.AnalyzeTorrentForSearchAsync(ctx, instanceID, hash, false)
+				if err != nil {
+					log.Warn().
+						Err(err).
+						Str("torrentHash", hash).
+						Int("instanceID", instanceID).
+						Msg("[CROSSSEED-ASYNC] Failed to rebuild torrent info from cache, falling back to minimal info")
+					torrentInfo = &TorrentInfo{
+						InstanceID: instanceID,
+						Hash:       hash,
+					}
+				} else if asyncAnalysis != nil && asyncAnalysis.TorrentInfo != nil {
+					torrentInfo = asyncAnalysis.TorrentInfo
+				}
+
+				if torrentInfo != nil {
+					// Ensure runtime fields reflect the cached completed state
+					torrentInfo.AvailableIndexers = append([]int(nil), existingSnapshot.CapabilityIndexers...)
+					torrentInfo.FilteredIndexers = append([]int(nil), existingSnapshot.FilteredIndexers...)
+					if len(existingSnapshot.ExcludedIndexers) > 0 {
+						torrentInfo.ExcludedIndexers = make(map[int]string, len(existingSnapshot.ExcludedIndexers))
+						for id, reason := range existingSnapshot.ExcludedIndexers {
+							torrentInfo.ExcludedIndexers[id] = reason
+						}
+					} else {
+						torrentInfo.ExcludedIndexers = nil
+					}
+					torrentInfo.ContentMatches = append([]string(nil), existingSnapshot.ContentMatches...)
+					torrentInfo.ContentFilteringCompleted = existingSnapshot.ContentCompleted
+				} else {
+					// Absolute fallback so callers never see a nil TorrentInfo
+					torrentInfo = &TorrentInfo{
+						InstanceID: instanceID,
+						Hash:       hash,
+					}
+				}
+
 				// Return existing completed state instead of creating new filtering
 				return &AsyncTorrentAnalysis{
 					FilteringState: existingSnapshot,
-					TorrentInfo:    nil, // We don't have the original TorrentInfo, but it's not needed for search
+					TorrentInfo:    torrentInfo,
 				}, nil
 			}
 		}
