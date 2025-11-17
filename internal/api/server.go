@@ -114,15 +114,24 @@ func NewServer(deps *Dependencies) *Server {
 }
 
 func (s *Server) ListenAndServe() error {
-	return s.Open()
+	return s.open(nil)
+}
+
+// ListenAndServeReady behaves like ListenAndServe but signals once the listener is active.
+func (s *Server) ListenAndServeReady(ready chan<- struct{}) error {
+	return s.open(ready)
 }
 
 func (s *Server) Open() error {
+	return s.open(nil)
+}
+
+func (s *Server) open(ready chan<- struct{}) error {
 	addr := fmt.Sprintf("%s:%d", s.config.Config.Host, s.config.Config.Port)
 
 	var lastErr error
 	for _, proto := range []string{"tcp", "tcp4", "tcp6"} {
-		err := s.tryToServe(addr, proto)
+		err := s.tryToServe(addr, proto, ready)
 		if err == nil {
 			return nil
 		}
@@ -138,7 +147,7 @@ func (s *Server) Open() error {
 	return lastErr
 }
 
-func (s *Server) tryToServe(addr, protocol string) error {
+func (s *Server) tryToServe(addr, protocol string, ready chan<- struct{}) error {
 	listener, err := net.Listen(protocol, addr)
 	if err != nil {
 		return err
@@ -165,6 +174,13 @@ func (s *Server) tryToServe(addr, protocol string) error {
 	}
 
 	s.server.Handler = handler
+
+	if ready != nil {
+		select {
+		case ready <- struct{}{}:
+		default:
+		}
+	}
 
 	return s.server.Serve(listener)
 }

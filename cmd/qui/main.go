@@ -526,7 +526,6 @@ func (app *Application) runServer() {
 	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore, clientPool)
 
 	automationCtx, automationCancel := context.WithCancel(context.Background())
-	crossSeedService.StartAutomation(automationCtx)
 	defer func() {
 		automationCancel()
 		crossSeedService.StopAutomation()
@@ -607,11 +606,19 @@ func (app *Application) runServer() {
 	})
 
 	errorChannel := make(chan error)
+	serverReady := make(chan struct{}, 1)
 	go func() {
-		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := httpServer.ListenAndServeReady(serverReady); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errorChannel <- err
 		}
 	}()
+
+	select {
+	case <-serverReady:
+		crossSeedService.StartAutomation(automationCtx)
+	case err := <-errorChannel:
+		log.Fatal().Err(err).Msg("failed to start HTTP server")
+	}
 
 	if cfg.Config.MetricsEnabled {
 		metricsManager := metrics.NewMetricsManager(syncManager, clientPool)
