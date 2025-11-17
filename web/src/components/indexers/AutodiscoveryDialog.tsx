@@ -30,18 +30,33 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
   const [step, setStep] = useState<'input' | 'select'>('input')
   const [loading, setLoading] = useState(false)
   const [baseUrl, setBaseUrl] = useState('http://localhost:9117')
+  const [baseUrlError, setBaseUrlError] = useState<string | null>(null)
   const [apiKey, setApiKey] = useState('')
   const [discoveredIndexers, setDiscoveredIndexers] = useState<JackettIndexer[]>([])
   const [selectedIndexers, setSelectedIndexers] = useState<Set<string>>(new Set())
   const [existingIndexersMap, setExistingIndexersMap] = useState<Map<string, TorznabIndexer>>(new Map())
 
+  const normalizeBaseUrl = (value: string) => {
+    const trimmed = value.trim()
+    const withoutTrailingSlashes = trimmed.replace(/\/+$/, '')
+    return withoutTrailingSlashes || trimmed
+  }
+
   const handleDiscover = async (e: React.FormEvent) => {
     e.preventDefault()
+    const normalizedBaseUrl = normalizeBaseUrl(baseUrl)
+    if (!normalizedBaseUrl) {
+      setBaseUrlError('Indexer URL is required')
+      toast.error('Indexer URL is required')
+      return
+    }
+
+    setBaseUrlError(null)
     setLoading(true)
 
     try {
       const [response, existing] = await Promise.all([
-        api.discoverJackettIndexers(baseUrl, apiKey),
+        api.discoverJackettIndexers(normalizedBaseUrl, apiKey),
         api.listTorznabIndexers()
       ])
       
@@ -79,15 +94,20 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
   }
 
 	const handleImport = async () => {
+		const normalizedBaseUrl = normalizeBaseUrl(baseUrl)
+		if (!normalizedBaseUrl) {
+			setBaseUrlError('Indexer URL is required')
+			toast.error('Provide an indexer URL before importing')
+			setStep('input')
+			return
+		}
+
+		setBaseUrlError(null)
 		setLoading(true)
 		let createdCount = 0
 		let updatedCount = 0
 		let errorCount = 0
 		const errors: string[] = []
-
-		const trimmedBaseUrl = baseUrl.trim()
-		const withoutTrailingSlashes = trimmedBaseUrl.replace(/\/+$/, '')
-		const normalizedBaseUrl = withoutTrailingSlashes || trimmedBaseUrl || 'http://localhost:9117'
 
     for (const indexer of discoveredIndexers) {
       if (!selectedIndexers.has(indexer.id)) continue
@@ -166,6 +186,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
   const handleClose = () => {
     setStep('input')
     setBaseUrl('http://localhost:9117')
+    setBaseUrlError(null)
     setApiKey('')
     setDiscoveredIndexers([])
     setSelectedIndexers(new Set())
@@ -193,10 +214,22 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
                   id="torznabUrl"
                   type="url"
                   value={baseUrl}
-                  onChange={(e) => setBaseUrl(e.target.value)}
+                  onChange={(e) => {
+                    setBaseUrl(e.target.value)
+                    if (baseUrlError) {
+                      setBaseUrlError(null)
+                    }
+                  }}
                   placeholder="http://localhost:9117"
+                  className={baseUrlError ? 'border-destructive focus-visible:ring-destructive' : undefined}
+                  aria-invalid={baseUrlError ? 'true' : 'false'}
                   required
                 />
+                {baseUrlError && (
+                  <p className="text-xs text-destructive">
+                    {baseUrlError}
+                  </p>
+                )}
                 <p className="text-xs text-muted-foreground">
                   Jackett defaults to http://localhost:9117, Prowlarr to http://localhost:9696.
                 </p>
