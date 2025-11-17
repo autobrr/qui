@@ -108,6 +108,7 @@ const (
 	selectedIndexerCapabilitySkipReason = "selected indexers do not support required caps"
 	crossSeedRenameWaitTimeout          = 15 * time.Second
 	crossSeedRenamePollInterval         = 200 * time.Millisecond
+	automationSettingsQueryTimeout      = 5 * time.Second
 )
 
 // initializeDomainMappings returns a hardcoded mapping of tracker domains to indexer domains.
@@ -268,6 +269,15 @@ type AutomationStatus struct {
 
 // GetAutomationSettings returns the persisted automation configuration.
 func (s *Service) GetAutomationSettings(ctx context.Context) (*models.CrossSeedAutomationSettings, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	} else {
+		ctx = context.WithoutCancel(ctx)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, automationSettingsQueryTimeout)
+	defer cancel()
+
 	if s.automationSettingsLoader != nil {
 		return s.automationSettingsLoader(ctx)
 	}
