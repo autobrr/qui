@@ -1361,13 +1361,13 @@ export function CrossSeedPage() {
                   </button>
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs text-xs">
-                  Provide glob-style patterns (e.g., <code>*.nfo</code>, <code>*sample*</code>, <code>extras/*</code>) to skip matching files when cross-seeding. Separate entries with commas or new lines. Ignoring common sidecar files can increase match potential.
+                  Plain strings act as suffix matches (e.g., <code>.nfo</code> ignores any path ending in <code>.nfo</code>). Globs treat <code>/</code> as a folder separator, so <code>*.nfo</code> only matches files in the top-level folder. To ignore sample folders use <code>*/sample/*</code>. Separate entries with commas or new lines.
                 </TooltipContent>
               </Tooltip>
             </div>
             <Textarea
               id="global-ignore-patterns"
-              placeholder={"*.nfo, *.txt\nor one per line"}
+              placeholder={".nfo, .srr, */sample/*\nor one per line"}
               rows={3}
               value={globalSettings.ignorePatterns}
               onChange={event => {
@@ -1379,7 +1379,7 @@ export function CrossSeedPage() {
               className={validationErrors.ignorePatterns ? "border-destructive" : ""}
             />
             <p className="text-xs text-muted-foreground">
-              Applies to RSS automation, webhook apply requests, and seeded torrent search additions. Patterns can be separated by commas or newlines.
+              Applies to RSS automation, autobrr apply requests, and seeded torrent search additions. Plain suffixes (e.g., <code>.nfo</code>) match in any subfolder; glob patterns do not cross <code>/</code>, so use folder-aware globs like <code>*/sample/*</code> for nested paths.
             </p>
             {validationErrors.ignorePatterns && (
               <p className="text-sm text-destructive">{validationErrors.ignorePatterns}</p>

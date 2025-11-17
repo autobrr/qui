@@ -587,7 +587,10 @@ Episode-aware matching (season pack ↔ single episode) is controlled by the **F
 Cross-seed matching behavior is controlled by settings in qui's Cross-Seed page:
 
 **Global Settings:**
-- **Size mismatch tolerance** - Maximum size difference percentage (default: 5%)
+- **Size mismatch tolerance** - Maximum size difference percentage (default: 5%).
+- **Ignore patterns** - File patterns used to skip sidecar and sample files when comparing torrents. Plain strings match any path ending in the given text (for example, `.nfo` or `.srr` will ignore files whose path ends with those extensions). Glob patterns treat `/` as a folder separator, so `*.nfo` only matches top-level files; to ignore sample folders in any release, use `*/sample/*`.
+
+Ignore patterns apply to RSS automation, `/cross-seed/webhook/check`, `/cross-seed/apply` (Autobrr Apply), and seeded torrent search additions.
 
 These settings affect both the webhook endpoint and qui's other cross-seed features.
 
