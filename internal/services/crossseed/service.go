@@ -4698,6 +4698,25 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		findIndividualEpisodes = *req.FindIndividualEpisodes
 	}
 
+	// Describe the parsed content type for easier debugging and tuning.
+	contentInfo := DetermineContentType(incomingRelease)
+
+	log.Debug().
+		Str("source", "cross-seed.webhook").
+		Int("instanceId", req.InstanceID).
+		Str("torrentName", req.TorrentName).
+		Uint64("size", req.Size).
+		Str("contentType", contentInfo.ContentType).
+		Bool("findIndividualEpisodes", findIndividualEpisodes).
+		Str("title", incomingRelease.Title).
+		Int("series", incomingRelease.Series).
+		Int("episode", incomingRelease.Episode).
+		Int("year", incomingRelease.Year).
+		Str("group", incomingRelease.Group).
+		Str("resolution", incomingRelease.Resolution).
+		Str("sourceRelease", incomingRelease.Source).
+		Msg("Webhook check: parsed incoming release")
+
 	// Get the target instance
 	instance, err := s.instanceStore.Get(ctx, req.InstanceID)
 	if err != nil {
@@ -4724,6 +4743,13 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		for i, tv := range torrentsView {
 			torrents[i] = tv.Torrent
 		}
+
+		log.Debug().
+			Str("source", "cross-seed.webhook").
+			Int("instanceId", instance.ID).
+			Str("instanceName", instance.Name).
+			Int("torrentCount", len(torrents)).
+			Msg("Webhook check: scanning instance torrents for metadata matches")
 
 		// Check each torrent for a match
 		for _, torrent := range torrents {
@@ -4767,6 +4793,22 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 				}
 			}
 
+			matchScore, matchReasons := evaluateReleaseMatch(incomingRelease, existingRelease)
+
+			log.Debug().
+				Str("source", "cross-seed.webhook").
+				Int("instanceId", instance.ID).
+				Str("instanceName", instance.Name).
+				Str("incomingName", req.TorrentName).
+				Str("incomingTitle", incomingRelease.Title).
+				Str("existingName", torrent.Name).
+				Str("existingTitle", existingRelease.Title).
+				Str("matchType", matchType).
+				Float64("sizeDiff", sizeDiff).
+				Float64("matchScore", matchScore).
+				Str("matchReasons", matchReasons).
+				Msg("Webhook cross-seed: matched existing torrent")
+
 			// TODO: Consider adding a configuration flag to control whether webhook-based
 			// cross-seed checks require fully completed torrents or can also treat
 			// in-progress downloads as matches. This would likely be exposed via the
@@ -4790,6 +4832,15 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	if canCrossSeed {
 		recommendation = "download"
 	}
+
+	log.Debug().
+		Str("source", "cross-seed.webhook").
+		Int("instanceId", req.InstanceID).
+		Str("torrentName", req.TorrentName).
+		Int("matchCount", len(matches)).
+		Bool("canCrossSeed", canCrossSeed).
+		Str("recommendation", recommendation).
+		Msg("Webhook check completed")
 
 	return &WebhookCheckResponse{
 		CanCrossSeed:   canCrossSeed,
