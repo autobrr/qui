@@ -1048,7 +1048,7 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 
 	// Log how many indexers were filtered out
 	if len(availableIndexers) != len(indexers) {
-		log.Info().
+		log.Debug().
 			Int("total_indexers", len(indexers)).
 			Int("available_indexers", len(availableIndexers)).
 			Int("rate_limited_indexers", len(indexers)-len(availableIndexers)).
@@ -1385,7 +1385,7 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 	// Filter mapped categories through indexer's supported categories
 	filtered, ok := filterCategoriesForIndexer(idx.Categories, mappedCategories)
 	if !ok {
-		log.Info().
+		log.Debug().
 			Int("indexer_id", idx.ID).
 			Str("indexer", idx.Name).
 			Ints("requested_categories", requested).
