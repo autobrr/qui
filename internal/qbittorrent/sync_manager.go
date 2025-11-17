@@ -1311,8 +1311,16 @@ type InstanceSpeeds struct {
 	Upload   int64 `json:"upload"`
 }
 
-// ExtractDomainFromURL extracts the domain from a BitTorrent tracker URL with caching
-// Where scheme is typically: http, https, udp, ws, or wss
+// ExtractDomainFromURL extracts the domain from a BitTorrent tracker URL with caching.
+// Handles multiple formats:
+//   - Standard URLs with schemes (http, https, udp, ws, wss)
+//   - Scheme-less URLs (tracker.example.com/announce)
+//   - IPv6 literals with or without brackets
+//
+// Fallback strategy: url.Parse → prepend "//" and retry → manual host extraction → port stripping
+//
+// Known limitation: IPv6 addresses with ports but without brackets (e.g., 2001:db8::1:8080)
+// may be parsed incorrectly. Standard format is [2001:db8::1]:8080.
 func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 	urlStr = strings.TrimSpace(urlStr)
 	if urlStr == "" {
@@ -1327,13 +1335,14 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 	const unknown = "Unknown"
 	domain := unknown
 
+	// Strategy 1: Standard URL parsing with scheme
 	if u, err := url.Parse(urlStr); err == nil {
 		if hostname := u.Hostname(); hostname != "" {
 			domain = hostname
 		}
 	}
 
-	// Handle scheme-less trackers like "tracker.example.com/announce"
+	// Strategy 2: Handle scheme-less trackers like "tracker.example.com/announce"
 	if domain == unknown && !strings.Contains(urlStr, "://") {
 		if u, err := url.Parse("//" + urlStr); err == nil {
 			if hostname := u.Hostname(); hostname != "" {
@@ -1342,7 +1351,8 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 		}
 	}
 
-	// Final fallback: treat the first segment before a path/query as the domain
+	// Strategy 3: Manual extraction as final fallback
+	// Extract the first segment before a path/query as the domain
 	if domain == unknown {
 		candidate := urlStr
 		if idx := strings.IndexAny(candidate, "/?#"); idx != -1 {
@@ -1352,6 +1362,7 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 		candidate = strings.TrimSpace(candidate)
 
 		if candidate != "" {
+			// Try to split host:port using net.SplitHostPort
 			if host, _, err := net.SplitHostPort(candidate); err == nil {
 				domain = host
 			} else {
@@ -1359,6 +1370,7 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 				if ip := net.ParseIP(candidate); ip != nil && strings.Contains(candidate, ":") {
 					domain = candidate
 				} else {
+					// Strip port from IPv4/hostname (e.g., "tracker.com:8080" → "tracker.com")
 					if idx := strings.Index(candidate, ":"); idx != -1 {
 						candidate = candidate[:idx]
 					}
@@ -2918,22 +2930,12 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 		return compare(i, j)
 	})
 
-	for i := 0; i < len(torrents); i++ {
-		if indices[i] != i {
-			temp := torrents[i]
-			j := i
-			for {
-				k := indices[j]
-				indices[j] = j
-				if k == i {
-					torrents[j] = temp
-					break
-				}
-				torrents[j] = torrents[k]
-				j = k
-			}
-		}
+	// Apply the sorted order to the torrents slice
+	sorted := make([]qbt.Torrent, len(torrents))
+	for i, srcIdx := range indices {
+		sorted[i] = torrents[srcIdx]
 	}
+	copy(torrents, sorted)
 }
 
 // sortTorrentsByNameCaseInsensitive enforces a case-insensitive ordering for torrent names.
