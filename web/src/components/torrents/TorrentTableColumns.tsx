@@ -237,11 +237,12 @@ const getStatusIcon = (state: string, trackerHealth?: string | null, supportsTra
     case "stalledUP":
     case "stalled_uploading":
       return Upload
-    case "pausedDL":
     case "pausedUP":
+    case "stoppedUP":
+      return CheckCircle2
+    case "pausedDL":
     case "stopped":
     case "stoppedDL":
-    case "stoppedUP":
     case "inactive":
       return StopCircle
     case "checkingDL":
