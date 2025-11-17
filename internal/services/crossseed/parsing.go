@@ -309,9 +309,18 @@ func ParseTorrentMetadata(torrentBytes []byte) (name string, hash string, files 
 // BuildTorrentFilesFromInfo creates qBittorrent-compatible file list from torrent info
 func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentFiles {
 	var files qbt.TorrentFiles
+	pieceLength := info.PieceLength
+	if pieceLength <= 0 {
+		pieceLength = 1
+	}
 
 	if len(info.Files) == 0 {
 		// Single file torrent
+		pieceStart := 0
+		pieceEnd := 0
+		if info.Length > 0 {
+			pieceEnd = int((info.Length - 1) / pieceLength)
+		}
 		files = make(qbt.TorrentFiles, 1)
 		files[0] = struct {
 			Availability float32 `json:"availability"`
@@ -327,7 +336,7 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentF
 			Index:        0,
 			IsSeed:       true,
 			Name:         rootName,
-			PieceRange:   []int{0, 0},
+			PieceRange:   []int{pieceStart, pieceEnd},
 			Priority:     0,
 			Progress:     1,
 			Size:         info.Length,
@@ -336,6 +345,7 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentF
 	}
 
 	files = make(qbt.TorrentFiles, len(info.Files))
+	var offset int64
 	for i, f := range info.Files {
 		displayPath := f.DisplayPath(&info)
 		name := rootName
@@ -345,8 +355,15 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentF
 			name = displayPath
 		}
 
-		pieceStart := f.BeginPieceIndex(info.PieceLength)
-		pieceEnd := f.EndPieceIndex(info.PieceLength)
+		pieceStart := 0
+		pieceEnd := 0
+		if f.Length > 0 {
+			pieceStart = int(offset / pieceLength)
+			pieceEnd = int((offset + f.Length - 1) / pieceLength)
+		} else {
+			pieceStart = int(offset / pieceLength)
+			pieceEnd = pieceStart
+		}
 
 		files[i] = struct {
 			Availability float32 `json:"availability"`
@@ -367,6 +384,8 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentF
 			Progress:     1,
 			Size:         f.Length,
 		}
+
+		offset += f.Length
 	}
 
 	return files
