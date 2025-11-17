@@ -136,6 +136,58 @@ func TestGetMatchTypeFromTitle_FallbackWhenReleaseKeysMissing(t *testing.T) {
 	require.Equal(t, "partial-in-pack", match, "fallback should treat matching titles as candidates when parsing fails")
 }
 
+func TestGetMatchTypeFromTitle_NonEpisodicRequiresMatchingReleaseKey(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{releaseCache: nil}
+
+	// Non-episodic content with different years should not match purely because
+	// candidate files have some parsed metadata.
+	targetName := "Movie.2020.1080p.BluRay.x264-GROUP"
+	targetRelease := rls.Release{
+		Title: "Movie 2020",
+		Year:  2020,
+	}
+
+	candidateName := "Completely.Different.Movie.2012.1080p.BluRay.x264-OTHER"
+	candidateRelease := rls.Release{
+		Title: "Different Movie 2012",
+		Year:  2012,
+	}
+
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "Different.Movie.2012.1080p.BluRay.x264-OTHER.mkv", Size: 4 << 30},
+	}
+
+	match := svc.getMatchTypeFromTitle(targetName, candidateName, targetRelease, candidateRelease, candidateFiles, nil)
+	require.Empty(t, match, "non-episodic candidates with mismatched release keys should not match")
+}
+
+func TestGetMatchTypeFromTitle_NonEpisodicWithMatchingReleaseKey(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{releaseCache: nil}
+
+	targetName := "Movie.2020.1080p.BluRay.x264-GROUP"
+	targetRelease := rls.Release{
+		Title: "Movie 2020",
+		Year:  2020,
+	}
+
+	candidateName := "Another.Movie.2020.1080p.BluRay.x264-OTHER"
+	candidateRelease := rls.Release{
+		Title: "Another Movie 2020",
+		Year:  2020,
+	}
+
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "Another.Movie.2020.1080p.BluRay.x264-OTHER.mkv", Size: 4 << 30},
+	}
+
+	match := svc.getMatchTypeFromTitle(targetName, candidateName, targetRelease, candidateRelease, candidateFiles, nil)
+	require.Equal(t, "partial-in-pack", match, "non-episodic candidates with matching release keys should match")
+}
+
 func TestGetMatchType_FileNameFallback(t *testing.T) {
 	t.Parallel()
 

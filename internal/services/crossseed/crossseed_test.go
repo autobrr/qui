@@ -1157,6 +1157,29 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			wantRecommendation: "download",
 			wantMatchType:      "exact",
 		},
+		{
+			name: "music release does not match unrelated torrents (regression from logs)",
+			request: &WebhookCheckRequest{
+				InstanceID:  instance.ID,
+				TorrentName: "Fictional Artist - B - Hidden Tracks [2020] [WEB 320]",
+				Size:        123456789,
+			},
+			existingTorrents: []qbt.Torrent{
+				{
+					Hash: "fangbone",
+					Name: "Galactic Tales!",
+					Size: 234567890,
+				},
+				{
+					Hash: "kiyosaki",
+					Name: "Author X - Imaginary Book (Narrated by Jane Doe)[2012]",
+					Size: 345678901,
+				},
+			},
+			wantCanCrossSeed:   false,
+			wantMatchCount:     0,
+			wantRecommendation: "skip",
+		},
 	}
 
 	for _, tt := range tests {
@@ -1168,7 +1191,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			}
 			svc := &Service{
 				instanceStore: store,
-				syncManager:   newFakeSyncManager(instance, tt.existingTorrents),
+				syncManager:   newFakeSyncManager(instance, tt.existingTorrents, nil),
 				releaseCache:  NewReleaseCache(),
 			}
 
@@ -1205,6 +1228,54 @@ func TestCheckWebhook_InstanceNotFound(t *testing.T) {
 	assert.ErrorIs(t, err, ErrWebhookInstanceNotFound)
 }
 
+func TestFindCandidates_NonTVDoesNotMatchUnrelatedTorrents(t *testing.T) {
+	instance := &models.Instance{
+		ID:   1,
+		Name: "main",
+	}
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:     "fangbone",
+			Name:     "Galactic Tales!",
+			Progress: 1.0,
+		},
+		{
+			Hash:     "kiyosaki",
+			Name:     "Author X - Imaginary Book (Narrated by Jane Doe)[2012]",
+			Progress: 1.0,
+		},
+	}
+
+	files := map[string]qbt.TorrentFiles{
+		"fangbone": {
+			{Name: "Galactic Tales!.mkv", Size: 2 << 30},
+		},
+		"kiyosaki": {
+			{Name: "Author X - B - Imaginary Book (Narrated by Jane Doe)[2012].m4b", Size: 1 << 30},
+		},
+	}
+
+	store := &fakeInstanceStore{
+		instances: map[int]*models.Instance{
+			instance.ID: instance,
+		},
+	}
+
+	svc := &Service{
+		instanceStore: store,
+		syncManager:   newFakeSyncManager(instance, torrents, files),
+		releaseCache:  NewReleaseCache(),
+	}
+
+	resp, err := svc.FindCandidates(context.Background(), &FindCandidatesRequest{
+		TorrentName:       "Fictional Artist - B -Hidden Tracks [2020] [WEB 320]",
+		TargetInstanceIDs: []int{instance.ID},
+	})
+	require.NoError(t, err)
+	require.Empty(t, resp.Candidates, "unrelated non-TV torrents should not be treated as matches")
+}
+
 type fakeInstanceStore struct {
 	instances map[int]*models.Instance
 }
@@ -1225,10 +1296,12 @@ func (f *fakeInstanceStore) List(_ context.Context) ([]*models.Instance, error) 
 }
 
 type fakeSyncManager struct {
-	torrents map[int][]internalqb.CrossInstanceTorrentView
+	cached map[int][]internalqb.CrossInstanceTorrentView
+	all    map[int][]qbt.Torrent
+	files  map[string]qbt.TorrentFiles
 }
 
-func newFakeSyncManager(instance *models.Instance, torrents []qbt.Torrent) *fakeSyncManager {
+func newFakeSyncManager(instance *models.Instance, torrents []qbt.Torrent, files map[string]qbt.TorrentFiles) *fakeSyncManager {
 	views := make([]internalqb.CrossInstanceTorrentView, len(torrents))
 	for i, tor := range torrents {
 		views[i] = internalqb.CrossInstanceTorrentView{
@@ -1239,19 +1312,39 @@ func newFakeSyncManager(instance *models.Instance, torrents []qbt.Torrent) *fake
 			InstanceName: instance.Name,
 		}
 	}
+	cached := map[int][]internalqb.CrossInstanceTorrentView{
+		instance.ID: views,
+	}
+	all := map[int][]qbt.Torrent{}
+	if torrents != nil {
+		all[instance.ID] = torrents
+	}
+
 	return &fakeSyncManager{
-		torrents: map[int][]internalqb.CrossInstanceTorrentView{
-			instance.ID: views,
-		},
+		cached: cached,
+		all:    all,
+		files:  files,
 	}
 }
 
-func (f *fakeSyncManager) GetAllTorrents(_ context.Context, _ int) ([]qbt.Torrent, error) {
-	return nil, fmt.Errorf("GetAllTorrents not implemented in fakeSyncManager")
+func (f *fakeSyncManager) GetAllTorrents(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+	if torrents, ok := f.all[instanceID]; ok {
+		return torrents, nil
+	}
+	return nil, fmt.Errorf("instance %d not found", instanceID)
 }
 
-func (f *fakeSyncManager) GetTorrentFiles(_ context.Context, _ int, _ string) (*qbt.TorrentFiles, error) {
-	return nil, fmt.Errorf("GetTorrentFiles not implemented in fakeSyncManager")
+func (f *fakeSyncManager) GetTorrentFiles(_ context.Context, _ int, hash string) (*qbt.TorrentFiles, error) {
+	if len(f.files) == 0 {
+		return nil, fmt.Errorf("files not configured")
+	}
+	files, ok := f.files[hash]
+	if !ok {
+		return nil, fmt.Errorf("files not found for hash %s", hash)
+	}
+	copyFiles := make(qbt.TorrentFiles, len(files))
+	copy(copyFiles, files)
+	return &copyFiles, nil
 }
 
 func (f *fakeSyncManager) GetTorrentProperties(_ context.Context, _ int, _ string) (*qbt.TorrentProperties, error) {
@@ -1279,7 +1372,10 @@ func (f *fakeSyncManager) RenameTorrentFolder(_ context.Context, _ int, _, _, _ 
 }
 
 func (f *fakeSyncManager) GetCachedInstanceTorrents(_ context.Context, instanceID int) ([]internalqb.CrossInstanceTorrentView, error) {
-	return f.torrents[instanceID], nil
+	if cached, ok := f.cached[instanceID]; ok {
+		return cached, nil
+	}
+	return nil, fmt.Errorf("cached torrents not found for instance %d", instanceID)
 }
 
 func (f *fakeSyncManager) ExtractDomainFromURL(string) string {

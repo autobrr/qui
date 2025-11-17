@@ -84,15 +84,34 @@ func (s *Service) releasesMatch(source, candidate rls.Release, findIndividualEpi
 		return false
 	}
 
-	// Check if titles are similar (exact match or one contains the other).
-	if sourceTitleLower != candidateTitleLower &&
-		!strings.Contains(sourceTitleLower, candidateTitleLower) &&
-		!strings.Contains(candidateTitleLower, sourceTitleLower) {
-		return false
+	isTV := source.Series > 0 || candidate.Series > 0
+
+	if isTV {
+		// For TV, allow a bit of fuzziness in the title (e.g. different punctuation)
+		// while still requiring the titles to be closely related.
+		if sourceTitleLower != candidateTitleLower &&
+			!strings.Contains(sourceTitleLower, candidateTitleLower) &&
+			!strings.Contains(candidateTitleLower, sourceTitleLower) {
+			return false
+		}
+	} else {
+		// For non-TV content (movies, music, audiobooks, etc.), require exact title
+		// match after normalization. This avoids very loose substring matches across
+		// unrelated content types.
+		if sourceTitleLower != candidateTitleLower {
+			return false
+		}
 	}
 
 	// Year should match if both are present.
 	if source.Year > 0 && candidate.Year > 0 && source.Year != candidate.Year {
+		return false
+	}
+
+	// For non-TV content where rls has inferred a concrete content type (movie, music,
+	// audiobook, etc.), require the types to match. This prevents, for example,
+	// music releases from matching audiobooks with similar titles.
+	if !isTV && source.Type != 0 && candidate.Type != 0 && source.Type != candidate.Type {
 		return false
 	}
 
@@ -290,9 +309,21 @@ func (s *Service) getMatchTypeFromTitle(targetName, candidateName string, target
 			return "partial-in-pack"
 		}
 	} else {
-		// Non-episodic content - check if any candidate files match.
+		// Non-episodic content - require at least one candidate file whose release
+		// key matches the target's release key. This prevents unrelated torrents
+		// with generic filenames from matching purely because rls could parse
+		// something from their names.
 		if len(candidateReleases) > 0 {
-			return "partial-in-pack"
+			targetKey := makeReleaseKey(targetRelease)
+			if targetKey == (releaseKey{}) {
+				// No usable metadata from the target; be conservative and avoid
+				// treating non-episodic candidates as matches in this pre-filter.
+				return ""
+			}
+
+			if _, exists := candidateReleases[targetKey]; exists {
+				return "partial-in-pack"
+			}
 		}
 	}
 
