@@ -1427,7 +1427,7 @@ export function CrossSeedPage() {
             <p className="text-xs text-muted-foreground">
               Optionally run an external program after successfully injecting a cross-seed torrent. Only enabled programs are shown.
               {!externalPrograms?.length && (
-                <> <Link to="/settings" search={{ tab: "external-programs" }} className="text-blue-600 hover:underline">Configure external programs</Link> to use this feature.</>
+                <> <Link to="/settings" search={{ tab: "external-programs" }} className="font-medium text-primary underline-offset-4 hover:underline">Configure external programs</Link> to use this feature.</>
               )}
             </p>
           </div>
