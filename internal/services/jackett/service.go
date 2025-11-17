@@ -58,8 +58,10 @@ type Service struct {
 	searchCacheTTL         time.Duration
 	searchCacheEnabled     bool
 
-	searchCacheCleanupMu   sync.Mutex
-	nextSearchCacheCleanup time.Time
+	searchCacheCleanupMu    sync.Mutex
+	nextSearchCacheCleanup  time.Time
+	torrentCacheCleanupMu   sync.Mutex
+	nextTorrentCacheCleanup time.Time
 }
 
 // ErrMissingIndexerIdentifier signals that the Torznab backend requires an indexer ID to fetch caps.
@@ -72,7 +74,8 @@ const (
 	storeOperationTimeout    = 5 * time.Second
 	minSearchCacheTTL        = defaultSearchCacheTTL
 
-	searchCacheCleanupInterval = 6 * time.Hour
+	searchCacheCleanupInterval  = 6 * time.Hour
+	torrentCacheCleanupInterval = 6 * time.Hour
 
 	searchCacheScopeCrossSeed = "cross_seed"
 	searchCacheScopeGeneral   = "general"
@@ -556,6 +559,7 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 		if err := s.torrentCache.Store(ctx, entry); err != nil {
 			log.Debug().Err(err).Msg("failed to cache torznab torrent payload")
 		}
+		s.maybeScheduleTorrentCacheCleanup()
 	}
 
 	return data, nil
@@ -889,6 +893,31 @@ func (s *Service) maybeScheduleSearchCacheCleanup() {
 			log.Debug().Err(err).Msg("Failed to cleanup torznab search cache")
 		} else if deleted > 0 {
 			log.Debug().Int64("deleted", deleted).Msg("Cleaned up expired torznab search cache entries")
+		}
+	}()
+}
+
+func (s *Service) maybeScheduleTorrentCacheCleanup() {
+	if s == nil || s.torrentCache == nil {
+		return
+	}
+
+	s.torrentCacheCleanupMu.Lock()
+	if time.Now().Before(s.nextTorrentCacheCleanup) {
+		s.torrentCacheCleanupMu.Unlock()
+		return
+	}
+	s.nextTorrentCacheCleanup = time.Now().Add(torrentCacheCleanupInterval)
+	s.torrentCacheCleanupMu.Unlock()
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if deleted, err := s.torrentCache.Cleanup(ctx, defaultTorrentCacheTTL); err != nil {
+			log.Debug().Err(err).Msg("Failed to cleanup torznab torrent cache")
+		} else if deleted > 0 {
+			log.Debug().Int64("deleted", deleted).Msg("Cleaned up torznab torrent cache entries")
 		}
 	}()
 }
