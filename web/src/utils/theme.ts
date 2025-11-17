@@ -367,7 +367,6 @@ export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: st
     // Fall back to default theme if not accessible
     const defaultTheme = getDefaultTheme();
     const currentMode = mode || getCurrentThemeMode();
-    const defaultVariation = getThemeVariation(defaultTheme.id);
 
     setStoredThemeId(defaultTheme.id);
     if (mode) {
@@ -377,11 +376,14 @@ export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: st
       setStoredVariation(defaultTheme.id, variation);
     }
 
+    // Get variation after storage update
+    const effectiveVariation = getThemeVariation(defaultTheme.id);
+
     const isDark = currentMode === THEME_DARK ||
       (currentMode === THEME_AUTO && getSystemPreference().matches);
 
     await applyTheme(defaultTheme, isDark, true);
-    dispatchThemeChange(currentMode, defaultTheme, false, defaultVariation);
+    dispatchThemeChange(currentMode, defaultTheme, false, effectiveVariation);
     return;
   }
 
