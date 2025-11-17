@@ -1313,15 +1313,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   })
 
   // Fix virtualization when column filters are cleared in cross-seed mode
+  // Only run when lifecycle is idle to avoid racing with filter lifecycle handler
   useEffect(() => {
-    if (isCrossSeedFiltering && columnFilters.length === 0) {
+    if (filterLifecycleState === 'idle' && isCrossSeedFiltering && columnFilters.length === 0) {
       // Reset loadedRows to ensure all rows are visible when filters are cleared
       const targetRows = Math.min(100, sortedTorrents.length)
-      if (loadedRows < targetRows) {
-        setLoadedRows(targetRows)
-      }
+      // Use functional update to ensure idempotent, non-racing updates
+      setLoadedRows(prev => Math.max(prev, targetRows))
     }
-  }, [isCrossSeedFiltering, columnFilters.length, loadedRows, sortedTorrents.length])
+  }, [filterLifecycleState, isCrossSeedFiltering, columnFilters.length, sortedTorrents.length])
 
   const resolveSortColumnId = useCallback((field: string): string => {
     const columns = table.getAllLeafColumns()
