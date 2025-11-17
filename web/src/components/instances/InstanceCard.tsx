@@ -156,7 +156,7 @@ export function InstanceCard({
   }
 
   return (
-    <Card>
+    <Card className="bg-muted/40">
       <div>
         <CardHeader className="flex flex-row items-center justify-between pr-2 space-y-0">
           <div className="flex-1 min-w-0 overflow-hidden">

@@ -32,7 +32,9 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/filesmanager"
+	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/update"
@@ -491,6 +493,44 @@ func (app *Application) runServer() {
 	// Initialize files manager for caching torrent file information
 	filesManagerService := filesmanager.NewService(db) // implements qbittorrent.FilesManager
 	syncManager.SetFilesManager(filesManagerService)
+
+	// Initialize Torznab indexer store
+	torznabIndexerStore, err := models.NewTorznabIndexerStore(db, cfg.GetEncryptionKey())
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize torznab indexer store")
+	}
+
+	// Initialize Torznab torrent cache, search cache and Jackett/Torznab service
+	torznabTorrentCache := models.NewTorznabTorrentCacheStore(db)
+	torznabSearchCache := models.NewTorznabSearchCacheStore(db)
+	cacheTTL := jackett.DefaultSearchCacheTTL
+	if cacheSettings, err := torznabSearchCache.GetSettings(context.Background()); err != nil {
+		log.Warn().Err(err).Msg("Using default torznab search cache TTL (failed to load settings)")
+	} else if cacheSettings != nil && cacheSettings.TTLMinutes > 0 {
+		cacheTTL = time.Duration(cacheSettings.TTLMinutes) * time.Minute
+		if cacheTTL < jackett.MinSearchCacheTTL {
+			cacheTTL = jackett.MinSearchCacheTTL
+		}
+	}
+	jackettService := jackett.NewService(
+		torznabIndexerStore,
+		jackett.WithTorrentCache(torznabTorrentCache),
+		jackett.WithSearchCache(torznabSearchCache, jackett.SearchCacheConfig{
+			TTL: cacheTTL,
+		}),
+	)
+	log.Info().Msg("Torznab/Jackett service initialized")
+
+	// Initialize cross-seed automation store and service
+	crossSeedStore := models.NewCrossSeedStore(db)
+	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore, clientPool)
+
+	automationCtx, automationCancel := context.WithCancel(context.Background())
+	defer func() {
+		automationCancel()
+		crossSeedService.StopAutomation()
+	}()
+
 	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, backups.Config{DataDir: cfg.GetDataDir()})
 	backupService.Start(context.Background())
@@ -567,14 +607,26 @@ func (app *Application) runServer() {
 		UpdateService:        updateService,
 		TrackerIconService:   trackerIconService,
 		BackupService:        backupService,
+		FilesManager:         filesManagerService,
+		CrossSeedService:     crossSeedService,
+		JackettService:       jackettService,
+		TorznabIndexerStore:  torznabIndexerStore,
 	})
 
 	errorChannel := make(chan error)
+	serverReady := make(chan struct{}, 1)
 	go func() {
-		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := httpServer.ListenAndServeReady(serverReady); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errorChannel <- err
 		}
 	}()
+
+	select {
+	case <-serverReady:
+		crossSeedService.StartAutomation(automationCtx)
+	case err := <-errorChannel:
+		log.Fatal().Err(err).Msg("failed to start HTTP server")
+	}
 
 	if cfg.Config.MetricsEnabled {
 		metricsManager := metrics.NewMetricsManager(syncManager, clientPool)

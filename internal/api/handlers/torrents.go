@@ -30,6 +30,14 @@ type TorrentsHandler struct {
 	syncManager *qbittorrent.SyncManager
 }
 
+// truncateExpr truncates long filter expressions for cleaner logging
+func truncateExpr(expr string, maxLen int) string {
+	if len(expr) <= maxLen {
+		return expr
+	}
+	return expr[:maxLen-3] + "..."
+}
+
 const addTorrentMaxFormMemory int64 = 256 << 20 // 256 MiB cap for multi-file uploads
 
 // SortedPeer represents a peer with its key for sorting
@@ -62,7 +70,7 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
 	limit := 300 // Default pagination size
 	page := 0
-	sort := "addedOn"
+	sort := "added_on"
 	order := "desc"
 	search := ""
 	sessionID := r.Header.Get("X-Session-ID") // Optional session tracking
@@ -100,16 +108,31 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Debug logging
-	log.Debug().
+	// Debug logging with truncated expression to prevent log bloat
+	logEvent := log.Debug().
+		Int("instanceID", instanceID).
 		Str("sort", sort).
 		Str("order", order).
 		Int("page", page).
 		Int("limit", limit).
 		Str("search", search).
-		Interface("filters", filters).
-		Str("sessionID", sessionID).
-		Msg("Torrent list request parameters")
+		Str("sessionID", sessionID)
+
+	// Log filters but truncate long expressions
+	if filters.Expr != "" {
+		logEvent = logEvent.Str("expr", truncateExpr(filters.Expr, 150))
+	}
+	if len(filters.Status) > 0 {
+		logEvent = logEvent.Strs("status", filters.Status)
+	}
+	if len(filters.Categories) > 0 {
+		logEvent = logEvent.Strs("categories", filters.Categories)
+	}
+	if len(filters.Tags) > 0 {
+		logEvent = logEvent.Strs("tags", filters.Tags)
+	}
+
+	logEvent.Msg("Torrent list request parameters")
 
 	// Calculate offset from page
 	offset := page * limit
@@ -1574,4 +1597,89 @@ func (h *TorrentsHandler) DeleteTorrentCreationTask(w http.ResponseWriter, r *ht
 	}
 
 	RespondJSON(w, http.StatusOK, map[string]string{"message": "Torrent creation task deleted successfully"})
+}
+
+// ListCrossInstanceTorrents returns torrents from all instances matching the filter expression
+func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *http.Request) {
+	// Parse query parameters
+	limit := 300 // Default pagination size
+	page := 0
+	sort := "added_on"
+	order := "desc"
+	search := ""
+
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 2000 {
+			limit = parsed
+		}
+	}
+
+	if p := r.URL.Query().Get("page"); p != "" {
+		if parsed, err := strconv.Atoi(p); err == nil && parsed >= 0 {
+			page = parsed
+		}
+	}
+
+	if s := r.URL.Query().Get("sort"); s != "" {
+		sort = s
+	}
+
+	if o := r.URL.Query().Get("order"); o != "" {
+		order = o
+	}
+
+	if q := r.URL.Query().Get("search"); q != "" {
+		search = q
+	}
+
+	// Parse filters - expr field is required for cross-instance filtering
+	var filters qbittorrent.FilterOptions
+	if f := r.URL.Query().Get("filters"); f != "" {
+		if err := json.Unmarshal([]byte(f), &filters); err != nil {
+			log.Warn().Err(err).Msg("Failed to parse filters, ignoring")
+		}
+	}
+
+	if filters.Expr == "" {
+		RespondError(w, http.StatusBadRequest, "Expression filter is required for cross-instance filtering")
+		return
+	}
+
+	// Debug logging with truncated expression to prevent log bloat
+	logEvent := log.Debug().
+		Str("sort", sort).
+		Str("order", order).
+		Int("page", page).
+		Int("limit", limit).
+		Str("search", search)
+
+	// Log filters but truncate long expressions
+	if filters.Expr != "" {
+		logEvent = logEvent.Str("expr", truncateExpr(filters.Expr, 150))
+	}
+	if len(filters.Status) > 0 {
+		logEvent = logEvent.Strs("status", filters.Status)
+	}
+	if len(filters.Categories) > 0 {
+		logEvent = logEvent.Strs("categories", filters.Categories)
+	}
+	if len(filters.Tags) > 0 {
+		logEvent = logEvent.Strs("tags", filters.Tags)
+	}
+
+	logEvent.Msg("Cross-instance torrent list request parameters")
+
+	// Calculate offset from page
+	offset := page * limit
+
+	// Get torrents from all instances with the filter expression
+	response, err := h.syncManager.GetCrossInstanceTorrentsWithFilters(r.Context(), limit, offset, sort, order, search, filters)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get cross-instance torrents")
+		RespondError(w, http.StatusInternalServerError, "Failed to get cross-instance torrents")
+		return
+	}
+
+	w.Header().Set("X-Data-Source", "fresh")
+	RespondJSON(w, http.StatusOK, response)
 }

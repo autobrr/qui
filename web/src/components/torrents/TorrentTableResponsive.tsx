@@ -6,6 +6,7 @@
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import type { Torrent, TorrentFilters } from "@/types"
 import { useEffect, useState } from "react"
+import { useCrossSeedSearch } from "@/hooks/useCrossSeedSearch"
 import { TorrentCardsMobile } from "./TorrentCardsMobile"
 import { TorrentTableOptimized } from "./TorrentTableOptimized"
 
@@ -24,11 +25,13 @@ interface TorrentTableResponsiveProps {
     tags?: string[],
     useSubcategories?: boolean
   ) => void
+  onFilterChange?: (filters: TorrentFilters) => void
 }
 
 export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768)
   const { updateSelection, setFiltersAndInstance, setResetHandler } = useTorrentSelection()
+  const crossSeed = useCrossSeedSearch(props.instanceId)
 
   // Update context with current filters and instance
   useEffect(() => {
@@ -72,13 +75,29 @@ export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
   const memoizedProps = props // If props are stable, this is fine; otherwise use useMemo
 
   if (isMobile) {
-    return <TorrentCardsMobile {...memoizedProps} />
+    return (
+      <>
+        <TorrentCardsMobile
+          {...memoizedProps}
+          canCrossSeedSearch={crossSeed.canCrossSeedSearch}
+          onCrossSeedSearch={crossSeed.openCrossSeedSearch}
+          isCrossSeedSearching={crossSeed.isCrossSeedSearching}
+        />
+        {crossSeed.crossSeedDialog}
+      </>
+    )
   }
   return (
-    <TorrentTableOptimized
-      {...memoizedProps}
-      onSelectionChange={updateSelection}
-      onResetSelection={setResetHandler}
-    />
+    <>
+      <TorrentTableOptimized
+        {...memoizedProps}
+        onSelectionChange={updateSelection}
+        onResetSelection={setResetHandler}
+        canCrossSeedSearch={crossSeed.canCrossSeedSearch}
+        onCrossSeedSearch={crossSeed.openCrossSeedSearch}
+        isCrossSeedSearching={crossSeed.isCrossSeedSearching}
+      />
+      {crossSeed.crossSeedDialog}
+    </>
   )
 }

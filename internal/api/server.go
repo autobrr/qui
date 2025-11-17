@@ -27,6 +27,9 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/proxy"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/filesmanager"
+	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/update"
@@ -52,6 +55,10 @@ type Server struct {
 	updateService        *update.Service
 	trackerIconService   *trackericons.Service
 	backupService        *backups.Service
+	filesManager         *filesmanager.Service
+	crossSeedService     *crossseed.Service
+	jackettService       *jackett.Service
+	torznabIndexerStore  *models.TorznabIndexerStore
 }
 
 type Dependencies struct {
@@ -69,6 +76,10 @@ type Dependencies struct {
 	UpdateService        *update.Service
 	TrackerIconService   *trackericons.Service
 	BackupService        *backups.Service
+	FilesManager         *filesmanager.Service
+	CrossSeedService     *crossseed.Service
+	JackettService       *jackett.Service
+	TorznabIndexerStore  *models.TorznabIndexerStore
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -93,21 +104,34 @@ func NewServer(deps *Dependencies) *Server {
 		updateService:        deps.UpdateService,
 		trackerIconService:   deps.TrackerIconService,
 		backupService:        deps.BackupService,
+		filesManager:         deps.FilesManager,
+		crossSeedService:     deps.CrossSeedService,
+		jackettService:       deps.JackettService,
+		torznabIndexerStore:  deps.TorznabIndexerStore,
 	}
 
 	return &s
 }
 
 func (s *Server) ListenAndServe() error {
-	return s.Open()
+	return s.open(nil)
+}
+
+// ListenAndServeReady behaves like ListenAndServe but signals once the listener is active.
+func (s *Server) ListenAndServeReady(ready chan<- struct{}) error {
+	return s.open(ready)
 }
 
 func (s *Server) Open() error {
+	return s.open(nil)
+}
+
+func (s *Server) open(ready chan<- struct{}) error {
 	addr := fmt.Sprintf("%s:%d", s.config.Config.Host, s.config.Config.Port)
 
 	var lastErr error
 	for _, proto := range []string{"tcp", "tcp4", "tcp6"} {
-		err := s.tryToServe(addr, proto)
+		err := s.tryToServe(addr, proto, ready)
 		if err == nil {
 			return nil
 		}
@@ -123,7 +147,7 @@ func (s *Server) Open() error {
 	return lastErr
 }
 
-func (s *Server) tryToServe(addr, protocol string) error {
+func (s *Server) tryToServe(addr, protocol string, ready chan<- struct{}) error {
 	listener, err := net.Listen(protocol, addr)
 	if err != nil {
 		return err
@@ -150,6 +174,13 @@ func (s *Server) tryToServe(addr, protocol string) error {
 	}
 
 	s.server.Handler = handler
+
+	if ready != nil {
+		select {
+		case ready <- struct{}{}:
+		default:
+		}
+	}
 
 	return s.server.Serve(listener)
 }
@@ -211,6 +242,13 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	trackerIconHandler := handlers.NewTrackerIconHandler(s.trackerIconService)
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.config.Config.BaseURL)
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
+	crossSeedHandler := handlers.NewCrossSeedHandler(s.crossSeedService)
+
+	// Torznab/Jackett handler
+	var jackettHandler *handlers.JackettHandler
+	if s.jackettService != nil && s.torznabIndexerStore != nil {
+		jackettHandler = handlers.NewJackettHandler(s.jackettService, s.torznabIndexerStore)
+	}
 
 	// API routes
 	apiRouter := chi.NewRouter()
@@ -249,6 +287,14 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Put("/auth/change-password", authHandler.ChangePassword)
 
 			r.Route("/license", licenseHandler.Routes)
+
+			// Cross-seed routes
+			crossSeedHandler.Routes(r)
+
+			// Jackett routes (if configured)
+			if jackettHandler != nil {
+				jackettHandler.Routes(r)
+			}
 
 			// API key management
 			r.Route("/api-keys", func(r chi.Router) {
@@ -363,6 +409,11 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						r.Delete("/runs/{runID}", backupsHandler.DeleteRun)
 					})
 				})
+			})
+
+			// Global torrent operations (cross-instance)
+			r.Route("/torrents", func(r chi.Router) {
+				r.Get("/cross-instance", torrentsHandler.ListCrossInstanceTorrents)
 			})
 
 		})
