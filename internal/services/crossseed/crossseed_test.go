@@ -762,7 +762,7 @@ func TestGroupExtraction(t *testing.T) {
 		wantGroup string
 	}{
 		{"standard group", "Movie.2020.1080p.BluRay.x264-GROUP", "GROUP"},
-		{"brackets", "Movie.2020.1080p.[GROUP]", "GROUP"},
+		{"brackets", "Movie.2020.1080p.[GROUP]", ""},
 		{"no group", "Movie.2020.1080p.BluRay.x264", ""},
 		{"underscore", "Show_S01E05_1080p-GROUP", "GROUP"},
 		{"multiple dashes", "Movie-2020-1080p-x264-GROUPName", "GROUPName"},
@@ -771,8 +771,7 @@ func TestGroupExtraction(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			release := cache.Parse(tt.release)
-			// Group extraction may vary by parser
-			_ = release.Group // Just ensure it's accessible
+			assert.Equalf(t, tt.wantGroup, release.Group, "group mismatch for release %q", tt.release)
 		})
 	}
 }
@@ -796,7 +795,7 @@ func TestQualityDetection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			release := cache.Parse(tt.release)
-			_ = release.Resolution // Ensure accessible
+			assert.Equalf(t, tt.wantResolution, release.Resolution, "resolution mismatch for release %q", tt.release)
 		})
 	}
 }
@@ -812,15 +811,15 @@ func TestSourceDetection(t *testing.T) {
 	}{
 		{"BluRay", "Movie.2020.1080p.BluRay.x264", "BluRay"},
 		{"WEB-DL", "Show.S01E05.1080p.WEB-DL.x264", "WEB-DL"},
-		{"WEBRip", "Movie.2020.720p.WEBRip.x264", "WEBRip"},
+		{"WEBRip", "Movie.2020.720p.WEBRip.x264", "WEBRiP"},
 		{"HDTV", "Show.S01E05.720p.HDTV.x264", "HDTV"},
-		{"DVD", "Movie.2000.480p.DVDRip", "DVDRip"},
+		{"DVD", "Movie.2000.480p.DVDRip", "DVDRiP"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			release := cache.Parse(tt.release)
-			_ = release.Source // Ensure accessible
+			assert.Equalf(t, tt.wantSource, release.Source, "source mismatch for release %q", tt.release)
 		})
 	}
 }
@@ -832,19 +831,18 @@ func TestCodecDetection(t *testing.T) {
 	tests := []struct {
 		name      string
 		release   string
-		wantCodec string
+		wantCodec []string
 	}{
-		{"x264", "Movie.2020.1080p.x264", "x264"},
-		{"x265/HEVC", "Movie.2020.1080p.x265", "x265"},
-		{"H.264", "Movie.2020.1080p.H264", "H264"},
-		{"H.265", "Movie.2020.2160p.H265", "H265"},
-		{"XviD", "Movie.2000.XviD", "XviD"},
+		{"x264", "Movie.2020.1080p.x264", []string{"x264"}},
+		{"x265/HEVC", "Movie.2020.1080p.x265", []string{"x265"}},
+		{"H.264", "Movie.2020.1080p.H264", []string{"H.264"}},
+		{"H.265", "Movie.2020.2160p.H265", []string{"H.265"}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			release := cache.Parse(tt.release)
-			_ = release.Codec // Ensure accessible
+			assert.Equalf(t, tt.wantCodec, release.Codec, "codec mismatch for release %q", tt.release)
 		})
 	}
 }
@@ -893,8 +891,7 @@ func TestYearExtraction(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			release := cache.Parse(tt.release)
-			// Year detection may vary
-			_ = release.Year
+			assert.Equalf(t, tt.wantYear, release.Year, "year mismatch for release %q", tt.release)
 		})
 	}
 }
