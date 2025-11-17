@@ -395,7 +395,8 @@ export const createColumns = (
   trackerIcons?: Record<string, string>,
   formatTimestamp?: (timestamp: number) => string,
   instancePreferences?: AppPreferences | null,
-  supportsTrackerHealth: boolean = true
+  supportsTrackerHealth: boolean = true,
+  showInstanceColumn: boolean = false
 ): ColumnDef<Torrent>[] => [
   {
     id: "select",
@@ -547,6 +548,22 @@ export const createColumns = (
     },
     size: 200,
   },
+  ...(showInstanceColumn ? [{
+    id: "instance",
+    accessorKey: "instanceName",
+    header: "Instance",
+    cell: ({ row }: { row: any }) => {
+      const instanceName = row.original.instanceName || ""
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm font-medium" title={instanceName}>
+          <Badge variant="outline" className="text-xs">
+            {instanceName}
+          </Badge>
+        </div>
+      )
+    },
+    size: calculateMinWidth("Instance"),
+  }] : []),
   {
     accessorKey: "size",
     header: "Size",
@@ -714,6 +731,18 @@ export const createColumns = (
           {displayRatio}
         </span>
       )
+    },
+    sortingFn: (rowA, rowB) => {
+      const ratioA = incognitoMode ? getLinuxRatio(rowA.original.hash) : rowA.original.ratio
+      const ratioB = incognitoMode ? getLinuxRatio(rowB.original.hash) : rowB.original.ratio
+      
+      // Handle infinity values: -1 should be treated as the highest value
+      if (ratioA === -1 && ratioB === -1) return 0
+      if (ratioA === -1) return 1  // ratioA is infinity, so it's greater
+      if (ratioB === -1) return -1 // ratioB is infinity, so it's greater
+      
+      // Normal numeric comparison
+      return ratioA - ratioB
     },
     size: 90,
   },
