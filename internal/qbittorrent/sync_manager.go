@@ -2852,7 +2852,7 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 				key.normalized = lowerCandidate
 			}
 
-			domain := strings.ToLower(sm.extractDomainFromURL(candidate))
+			domain := strings.ToLower(sm.ExtractDomainFromURL(candidate))
 			if domain == "" || domain == "unknown" {
 				return
 			}
