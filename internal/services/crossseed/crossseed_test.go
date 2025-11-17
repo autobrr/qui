@@ -897,6 +897,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 		wantMatchCount     int
 		wantRecommendation string
 		wantMatchType      string
+		expectPending      bool
 	}{
 		{
 			name: "season pack does not match single episode without override",
@@ -905,7 +906,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 				TorrentName: "Cool.Show.S02E05.MULTi.1080p.WEB.x264-GRP",
 			},
 			existingTorrents: []qbt.Torrent{
-				{Hash: "pack", Name: "Cool.Show.S02.MULTi.1080p.WEB.x264-GRP"},
+				{Hash: "pack", Name: "Cool.Show.S02.MULTi.1080p.WEB.x264-GRP", Progress: 1.0},
 			},
 			wantCanCrossSeed:   false,
 			wantMatchCount:     0,
@@ -922,7 +923,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 				}(),
 			},
 			existingTorrents: []qbt.Torrent{
-				{Hash: "pack", Name: "Cool.Show.S02.MULTi.1080p.WEB.x264-GRP"},
+				{Hash: "pack", Name: "Cool.Show.S02.MULTi.1080p.WEB.x264-GRP", Progress: 1.0},
 			},
 			wantCanCrossSeed:   true,
 			wantMatchCount:     1,
@@ -938,9 +939,10 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			},
 			existingTorrents: []qbt.Torrent{
 				{
-					Hash: "abc123def456",
-					Name: "That.Movie.2025.1080p.BluRay.x264-GROUP",
-					Size: 8589934592,
+					Hash:     "abc123def456",
+					Name:     "That.Movie.2025.1080p.BluRay.x264-GROUP",
+					Size:     8589934592,
+					Progress: 1.0,
 				},
 			},
 			wantCanCrossSeed:   true,
@@ -956,15 +958,37 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			},
 			existingTorrents: []qbt.Torrent{
 				{
-					Hash: "xyz789abc123",
-					Name: "Another.Movie.2025.1080p.BluRay.x264-GRP",
-					Size: 9000000000,
+					Hash:     "xyz789abc123",
+					Name:     "Another.Movie.2025.1080p.BluRay.x264-GRP",
+					Size:     9000000000,
+					Progress: 1.0,
 				},
 			},
 			wantCanCrossSeed:   true,
 			wantMatchCount:     1,
 			wantRecommendation: "download",
 			wantMatchType:      "metadata",
+		},
+		{
+			name: "pending match when torrent still downloading",
+			request: &WebhookCheckRequest{
+				InstanceID:  instance.ID,
+				TorrentName: "Pending.Movie.2025.1080p.BluRay.x264-GRP",
+				Size:        8589934592,
+			},
+			existingTorrents: []qbt.Torrent{
+				{
+					Hash:     "pending",
+					Name:     "Pending.Movie.2025.1080p.BluRay.x264-GRP",
+					Size:     8589934592,
+					Progress: 0.5,
+				},
+			},
+			wantCanCrossSeed:   false,
+			wantMatchCount:     1,
+			wantRecommendation: "download",
+			wantMatchType:      "exact",
+			expectPending:      true,
 		},
 		{
 			name: "size mismatch rejects match",
@@ -975,9 +999,10 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			},
 			existingTorrents: []qbt.Torrent{
 				{
-					Hash: "size-mismatch",
-					Name: "Size.Test.2025.1080p.BluRay.x264-GRP",
-					Size: 6500000000,
+					Hash:     "size-mismatch",
+					Name:     "Size.Test.2025.1080p.BluRay.x264-GRP",
+					Size:     6500000000,
+					Progress: 1.0,
 				},
 			},
 			wantCanCrossSeed:   false,
@@ -993,9 +1018,10 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			},
 			existingTorrents: []qbt.Torrent{
 				{
-					Hash: "old-group",
-					Name: "Group.Change.2025.1080p.BluRay.x264-OLD",
-					Size: 1073741824,
+					Hash:     "old-group",
+					Name:     "Group.Change.2025.1080p.BluRay.x264-OLD",
+					Size:     1073741824,
+					Progress: 1.0,
 				},
 			},
 			wantCanCrossSeed:   false,
@@ -1011,14 +1037,16 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			},
 			existingTorrents: []qbt.Torrent{
 				{
-					Hash: "match1",
-					Name: "Popular.Movie.2025.1080p.BluRay.x264-GROUP3",
-					Size: 8589934592,
+					Hash:     "match1",
+					Name:     "Popular.Movie.2025.1080p.BluRay.x264-GROUP3",
+					Size:     8589934592,
+					Progress: 1.0,
 				},
 				{
-					Hash: "match2",
-					Name: "Popular.Movie.2025.1080p.BluRay.x264-GROUP3",
-					Size: 8589934592,
+					Hash:     "match2",
+					Name:     "Popular.Movie.2025.1080p.BluRay.x264-GROUP3",
+					Size:     8589934592,
+					Progress: 1.0,
 				},
 			},
 			wantCanCrossSeed:   true,
@@ -1035,14 +1063,16 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			},
 			existingTorrents: []qbt.Torrent{
 				{
-					Hash: "fangbone",
-					Name: "Galactic Tales!",
-					Size: 234567890,
+					Hash:     "fangbone",
+					Name:     "Galactic Tales!",
+					Size:     234567890,
+					Progress: 1.0,
 				},
 				{
-					Hash: "kiyosaki",
-					Name: "Author X - Imaginary Book (Narrated by Jane Doe)[2012]",
-					Size: 345678901,
+					Hash:     "kiyosaki",
+					Name:     "Author X - Imaginary Book (Narrated by Jane Doe)[2012]",
+					Size:     345678901,
+					Progress: 1.0,
 				},
 			},
 			wantCanCrossSeed:   false,
@@ -1077,6 +1107,11 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 					matchTypes = append(matchTypes, match.MatchType)
 				}
 				assert.Contains(t, matchTypes, tt.wantMatchType)
+			}
+			if tt.expectPending && tt.wantMatchCount > 0 {
+				for _, match := range resp.Matches {
+					assert.Less(t, match.Progress, 1.0)
+				}
 			}
 		})
 	}

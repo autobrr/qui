@@ -312,6 +312,7 @@ type WebhookCheckMatch struct {
 	TorrentName  string  `json:"torrentName"`
 	MatchType    string  `json:"matchType"` // "metadata", "exact", "size"
 	SizeDiff     float64 `json:"sizeDiff,omitempty"`
+	Progress     float64 `json:"progress,omitempty"`
 }
 
 // WebhookCheckResponse represents the response to a webhook check request

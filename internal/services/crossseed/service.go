@@ -4765,7 +4765,11 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	}
 	instances := []*models.Instance{instance}
 
-	var matches []WebhookCheckMatch
+	var (
+		matches          []WebhookCheckMatch
+		hasCompleteMatch bool
+		hasPendingMatch  bool
+	)
 
 	// Search each instance for matching torrents
 	for _, instance := range instances {
@@ -4860,14 +4864,21 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 				TorrentName:  torrent.Name,
 				MatchType:    matchType,
 				SizeDiff:     sizeDiff,
+				Progress:     torrent.Progress,
 			})
+
+			if torrent.Progress >= 1.0 {
+				hasCompleteMatch = true
+			} else {
+				hasPendingMatch = true
+			}
 		}
 	}
 
 	// Build response
-	canCrossSeed := len(matches) > 0
+	canCrossSeed := hasCompleteMatch
 	recommendation := "skip"
-	if canCrossSeed {
+	if hasCompleteMatch || hasPendingMatch {
 		recommendation = "download"
 	}
 
