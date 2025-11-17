@@ -25,6 +25,7 @@ import { getCategoriesForSearchType, getSearchTypeLabel, inferSearchTypeFromCate
 import { extractImdbId, extractTvdbId } from '@/lib/search-id-parsing'
 import { cn } from '@/lib/utils'
 import type { TorznabIndexer, TorznabRecentSearch, TorznabSearchRequest, TorznabSearchResponse, TorznabSearchResult } from '@/types'
+import { Link } from '@tanstack/react-router'
 import { ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronDown, Download, ExternalLink, Plus, RefreshCw, Search as SearchIcon, SlidersHorizontal } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -1046,7 +1047,11 @@ export function Search() {
             )}
             {!loadingIndexers && indexers.length === 0 && (
               <div className="text-sm text-muted-foreground">
-                No enabled indexers available. Please add and enable indexers in the <a href="/settings?tab=indexers" className="text-primary hover:underline">Indexers page</a>.
+                No enabled indexers available. Please add and enable indexers in the{" "}
+                <Link to="/settings" search={{ tab: "indexers" }} className="font-medium text-primary underline-offset-4 hover:underline">
+                  Indexers page
+                </Link>
+                .
               </div>
             )}
 
