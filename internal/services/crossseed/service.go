@@ -980,6 +980,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		Tags:                   append([]string(nil), settings.Tags...),
 		IgnorePatterns:         append([]string(nil), settings.IgnorePatterns...),
 		SkipIfExists:           &skipIfExists,
+		IndexerName:            sourceIndexer,
 		FindIndividualEpisodes: settings.FindIndividualEpisodes,
 	}
 	if settings.Category != nil {
@@ -3683,6 +3684,7 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		StartPaused:            &startPaused,
 		Tags:                   append([]string(nil), state.opts.TagsOverride...),
 		Category:               "",
+		IndexerName:            match.Indexer,
 		FindIndividualEpisodes: state.opts.FindIndividualEpisodes,
 		SkipIfExists:           &skipIfExists,
 	}
