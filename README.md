@@ -489,7 +489,7 @@ This reverse proxy will work with any application that supports qBittorrent's We
 
 qui includes intelligent cross-seeding capabilities that help you automatically find and add matching torrents across different trackers. This allows you to maximize your ratio by seeding the same content to multiple trackers.
 
-### Prerequisities
+### Prerequisites
 
 You need to use Prowlarr or Jackett. You can easily add your indexers in Settings via a "1-click-sync" feature..
 
