@@ -310,25 +310,21 @@ func TestCrossSeed_TorrentCreationAndParsing(t *testing.T) {
 		name        string
 		torrentName string
 		files       []string
-		wantErr     bool
 	}{
 		{
 			name:        "single file movie",
 			torrentName: "Movie.2020.1080p.BluRay.x264-GROUP",
 			files:       []string{"movie.mkv"},
-			wantErr:     false,
 		},
 		{
 			name:        "episode with subs",
 			torrentName: "Show.S01E05.1080p.WEB-DL",
 			files:       []string{"show.mkv", "show.srt"},
-			wantErr:     false,
 		},
 		{
 			name:        "season pack",
 			torrentName: "Show.S01.1080p.BluRay.x264-GROUP",
 			files:       []string{"e01.mkv", "e02.mkv", "e03.mkv"},
-			wantErr:     false,
 		},
 	}
 
@@ -476,91 +472,6 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 	}
 }
 
-// TestAutoTMMLogic tests automatic torrent management state matching
-func TestAutoTMMLogic(t *testing.T) {
-	tests := []struct {
-		name            string
-		matchedAutoTMM  bool
-		expectedAutoTMM bool
-	}{
-		{
-			name:            "matched torrent has AutoTMM enabled",
-			matchedAutoTMM:  true,
-			expectedAutoTMM: true,
-		},
-		{
-			name:            "matched torrent has AutoTMM disabled",
-			matchedAutoTMM:  false,
-			expectedAutoTMM: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Test the logic for preserving AutoTMM state
-			useAutoTMM := tt.matchedAutoTMM
-			assert.Equal(t, tt.expectedAutoTMM, useAutoTMM)
-		})
-	}
-}
-
-// TestTorrentStates tests various torrent state recognition
-func TestTorrentStates(t *testing.T) {
-	tests := []struct {
-		name       string
-		state      qbt.TorrentState
-		isChecking bool
-	}{
-		{"checking download", qbt.TorrentStateCheckingDl, true},
-		{"checking upload", qbt.TorrentStateCheckingUp, true},
-		{"checking resume data", qbt.TorrentStateCheckingResumeData, true},
-		{"allocating", qbt.TorrentStateAllocating, true},
-		{"downloading", qbt.TorrentStateDownloading, false},
-		{"uploading", qbt.TorrentStateUploading, false},
-		{"paused download", qbt.TorrentStatePausedDl, false},
-		{"paused upload", qbt.TorrentStatePausedUp, false},
-		{"stalled upload", qbt.TorrentStateStalledUp, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			isChecking := tt.state == qbt.TorrentStateCheckingDl ||
-				tt.state == qbt.TorrentStateCheckingUp ||
-				tt.state == qbt.TorrentStateCheckingResumeData ||
-				tt.state == qbt.TorrentStateAllocating
-
-			assert.Equal(t, tt.isChecking, isChecking, "State %s checking detection", tt.state)
-		})
-	}
-}
-
-// TestProgressThresholds tests progress percentage logic
-func TestProgressThresholds(t *testing.T) {
-	tests := []struct {
-		name       string
-		progress   float64
-		is100      bool
-		shouldAuto bool
-	}{
-		{"exactly 100%", 1.0, true, true},
-		{"99.9% (close enough)", 0.999, true, true},
-		{"99.8% (not close)", 0.998, false, false},
-		{"50% incomplete", 0.5, false, false},
-		{"0% new torrent", 0.0, false, false},
-		{"100.1% (over)", 1.001, true, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			is100 := tt.progress >= 0.999
-			assert.Equal(t, tt.is100, is100)
-
-			shouldAutoResume := is100
-			assert.Equal(t, tt.shouldAuto, shouldAutoResume)
-		})
-	}
-}
-
 // TestSeasonPackDetection tests season vs episode detection logic
 func TestSeasonPackDetection(t *testing.T) {
 	cache := NewReleaseCache()
@@ -620,55 +531,6 @@ func TestSeasonPackDetection(t *testing.T) {
 			if tt.isEpisode {
 				assert.Equal(t, tt.episode, release.Episode, "Episode number")
 			}
-		})
-	}
-}
-
-// TestHashDetection tests info hash matching logic
-func TestHashDetection(t *testing.T) {
-	testHash := "abcdef1234567890abcdef1234567890abcdef12"
-
-	tests := []struct {
-		name       string
-		torrentV1  string
-		torrentV2  string
-		searchHash string
-		matches    bool
-	}{
-		{
-			name:       "v1 hash match",
-			torrentV1:  testHash,
-			torrentV2:  "",
-			searchHash: testHash,
-			matches:    true,
-		},
-		{
-			name:       "v2 hash match",
-			torrentV1:  "different-hash",
-			torrentV2:  testHash,
-			searchHash: testHash,
-			matches:    true,
-		},
-		{
-			name:       "main hash match",
-			torrentV1:  "",
-			torrentV2:  "",
-			searchHash: testHash,
-			matches:    false, // Neither v1 nor v2 set
-		},
-		{
-			name:       "no match",
-			torrentV1:  "hash1",
-			torrentV2:  "hash2",
-			searchHash: testHash,
-			matches:    false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			matches := tt.torrentV1 == tt.searchHash || tt.torrentV2 == tt.searchHash
-			assert.Equal(t, tt.matches, matches)
 		})
 	}
 }
@@ -854,14 +716,13 @@ func TestSpecialCharacterHandling(t *testing.T) {
 	tests := []struct {
 		name    string
 		release string
-		wantErr bool
 	}{
-		{"ampersand", "Show.&.Title.S01E05", false},
-		{"apostrophe", "Show's.Title.S01E05", false},
-		{"parentheses", "Show.(US).S01E05", false},
-		{"dots", "Show...S01E05", false},
-		{"underscore", "Show_Title_S01E05", false},
-		{"mixed", "Show's.Title.(2024).S01E05", false},
+		{"ampersand", "Show.&.Title.S01E05"},
+		{"apostrophe", "Show's.Title.S01E05"},
+		{"parentheses", "Show.(US).S01E05"},
+		{"dots", "Show...S01E05"},
+		{"underscore", "Show_Title_S01E05"},
+		{"mixed", "Show's.Title.(2024).S01E05"},
 	}
 
 	for _, tt := range tests {
@@ -892,28 +753,6 @@ func TestYearExtraction(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			release := cache.Parse(tt.release)
 			assert.Equalf(t, tt.wantYear, release.Year, "year mismatch for release %q", tt.release)
-		})
-	}
-}
-
-// TestPathSanitization tests path handling edge cases
-func TestPathSanitization(t *testing.T) {
-	tests := []struct {
-		name     string
-		path     string
-		expected string
-	}{
-		{"normal path", "/data/torrents", "/data/torrents"},
-		{"trailing slash", "/data/torrents/", "/data/torrents/"},
-		{"windows path", "C:\\Torrents", "C:\\Torrents"},
-		{"relative path", "./torrents", "./torrents"},
-		{"nested path", "/data/media/shows/Show/Season 01", "/data/media/shows/Show/Season 01"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Just ensure paths are handled without panic
-			assert.Equal(t, tt.expected, tt.path)
 		})
 	}
 }
@@ -1495,88 +1334,6 @@ func TestWebhookCheckRequest_Validation(t *testing.T) {
 				assert.Contains(t, err.Error(), tt.errMsg)
 			} else {
 				require.NoError(t, err)
-			}
-		})
-	}
-}
-
-// TestWebhookCheckResponse_Structure tests response structure
-func TestWebhookCheckResponse_Structure(t *testing.T) {
-	tests := []struct {
-		name     string
-		response *WebhookCheckResponse
-	}{
-		{
-			name: "no matches",
-			response: &WebhookCheckResponse{
-				CanCrossSeed:   false,
-				Matches:        []WebhookCheckMatch{},
-				Recommendation: "skip",
-			},
-		},
-		{
-			name: "single match",
-			response: &WebhookCheckResponse{
-				CanCrossSeed: true,
-				Matches: []WebhookCheckMatch{
-					{
-						InstanceID:   1,
-						InstanceName: "Main qBittorrent",
-						TorrentHash:  "abc123",
-						TorrentName:  "Movie.2025.1080p.BluRay.x264-GROUP1",
-						MatchType:    "exact",
-						SizeDiff:     0.5,
-					},
-				},
-				Recommendation: "download",
-			},
-		},
-		{
-			name: "multiple matches",
-			response: &WebhookCheckResponse{
-				CanCrossSeed: true,
-				Matches: []WebhookCheckMatch{
-					{
-						InstanceID:   1,
-						InstanceName: "Instance 1",
-						TorrentHash:  "abc123",
-						TorrentName:  "Movie.2025.1080p.BluRay.x264-GROUP1",
-						MatchType:    "exact",
-						SizeDiff:     0.2,
-					},
-					{
-						InstanceID:   2,
-						InstanceName: "Instance 2",
-						TorrentHash:  "def456",
-						TorrentName:  "Movie.2025.1080p.BluRay.x264-GROUP2",
-						MatchType:    "size",
-						SizeDiff:     2.5,
-					},
-				},
-				Recommendation: "download",
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Validate response structure
-			if tt.response.CanCrossSeed {
-				assert.Equal(t, "download", tt.response.Recommendation)
-				assert.NotEmpty(t, tt.response.Matches)
-			} else {
-				assert.Equal(t, "skip", tt.response.Recommendation)
-				assert.Empty(t, tt.response.Matches)
-			}
-
-			// Validate match types
-			for _, match := range tt.response.Matches {
-				validTypes := []string{"metadata", "exact", "size"}
-				assert.Contains(t, validTypes, match.MatchType)
-				assert.NotEmpty(t, match.InstanceName)
-				assert.NotEmpty(t, match.TorrentHash)
-				assert.NotEmpty(t, match.TorrentName)
-				assert.Greater(t, match.InstanceID, 0)
 			}
 		})
 	}
