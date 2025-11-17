@@ -233,7 +233,7 @@ CREATE TRIGGER IF NOT EXISTS cross_seed_settings_updated_at
 AFTER UPDATE ON cross_seed_settings
 FOR EACH ROW
 BEGIN
-    UPDATE cross_seed_settings SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+    UPDATE cross_seed_settings SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
 END;
 
 CREATE TABLE IF NOT EXISTS cross_seed_runs (
@@ -279,7 +279,7 @@ FOR EACH ROW
 BEGIN
     UPDATE cross_seed_feed_items
     SET last_seen_at = CURRENT_TIMESTAMP
-    WHERE guid = OLD.guid AND indexer_id = OLD.indexer_id;
+    WHERE guid = NEW.guid AND indexer_id = NEW.indexer_id;
 END;
 
 CREATE TABLE IF NOT EXISTS cross_seed_search_runs (
