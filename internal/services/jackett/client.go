@@ -19,6 +19,8 @@ import (
 	"github.com/autobrr/qui/pkg/prowlarr"
 )
 
+const maxTorrentDownloadBytes int64 = 16 << 20 // 16 MiB safety limit for torrent blobs
+
 // Client wraps the Torznab backend client implementation
 type Client struct {
 	backend    models.TorznabBackend
@@ -334,9 +336,13 @@ func (c *Client) Download(ctx context.Context, downloadURL string) ([]byte, erro
 		return nil, fmt.Errorf("torrent download returned status %d", resp.StatusCode)
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	limitedReader := io.LimitReader(resp.Body, maxTorrentDownloadBytes+1)
+	data, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, fmt.Errorf("read torrent body: %w", err)
+	}
+	if int64(len(data)) > maxTorrentDownloadBytes {
+		return nil, fmt.Errorf("torrent download exceeded %d bytes limit", maxTorrentDownloadBytes)
 	}
 
 	return data, nil
