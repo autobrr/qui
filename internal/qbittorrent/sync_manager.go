@@ -4,6 +4,7 @@
 package qbittorrent
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -59,19 +60,29 @@ type TorrentView struct {
 	TrackerHealth TrackerHealth `json:"tracker_health,omitempty"`
 }
 
+// CrossInstanceTorrentView extends TorrentView with cross-instance metadata.
+type CrossInstanceTorrentView struct {
+	TorrentView
+	InstanceID   int    `json:"instance_id"`
+	InstanceName string `json:"instance_name"`
+}
+
 type TorrentResponse struct {
-	Torrents               []TorrentView           `json:"torrents"`
-	Total                  int                     `json:"total"`
-	Stats                  *TorrentStats           `json:"stats,omitempty"`
-	Counts                 *TorrentCounts          `json:"counts,omitempty"`      // Include counts for sidebar
-	Categories             map[string]qbt.Category `json:"categories,omitempty"`  // Include categories for sidebar
-	Tags                   []string                `json:"tags,omitempty"`        // Include tags for sidebar
-	ServerState            *qbt.ServerState        `json:"serverState,omitempty"` // Include server state for Dashboard
-	UseSubcategories       bool                    `json:"useSubcategories"`      // Whether subcategories are enabled
-	HasMore                bool                    `json:"hasMore"`               // Whether more pages are available
-	SessionID              string                  `json:"sessionId,omitempty"`   // Optional session tracking
-	CacheMetadata          *CacheMetadata          `json:"cacheMetadata,omitempty"`
-	TrackerHealthSupported bool                    `json:"trackerHealthSupported"`
+	Torrents               []TorrentView              `json:"torrents"`
+	CrossInstanceTorrents  []CrossInstanceTorrentView `json:"cross_instance_torrents,omitempty"`
+	Total                  int                        `json:"total"`
+	Stats                  *TorrentStats              `json:"stats,omitempty"`
+	Counts                 *TorrentCounts             `json:"counts,omitempty"`      // Include counts for sidebar
+	Categories             map[string]qbt.Category    `json:"categories,omitempty"`  // Include categories for sidebar
+	Tags                   []string                   `json:"tags,omitempty"`        // Include tags for sidebar
+	ServerState            *qbt.ServerState           `json:"serverState,omitempty"` // Include server state for Dashboard
+	UseSubcategories       bool                       `json:"useSubcategories"`      // Whether subcategories are enabled
+	HasMore                bool                       `json:"hasMore"`               // Whether more pages are available
+	SessionID              string                     `json:"sessionId,omitempty"`   // Optional session tracking
+	CacheMetadata          *CacheMetadata             `json:"cacheMetadata,omitempty"`
+	TrackerHealthSupported bool                       `json:"trackerHealthSupported"`
+	IsCrossInstance        bool                       `json:"isCrossInstance"` // Whether this is a cross-instance response
+	PartialResults         bool                       `json:"partialResults"`  // Whether some instances failed to respond
 }
 
 // TorrentStats represents aggregated torrent statistics
@@ -586,6 +597,217 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	return response, nil
 }
 
+// GetCachedInstanceTorrents returns a snapshot of torrents for a single instance using cached sync data.
+func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]CrossInstanceTorrentView, error) {
+	instance, err := sm.clientPool.instanceStore.Get(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get instance %d: %w", instanceID, err)
+	}
+
+	// Check for cancellation before touching the sync manager.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	_, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+
+	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
+	if len(torrents) == 0 {
+		return nil, nil
+	}
+
+	views := make([]CrossInstanceTorrentView, len(torrents))
+	for i, torrent := range torrents {
+		views[i] = CrossInstanceTorrentView{
+			TorrentView: TorrentView{
+				Torrent: torrent,
+			},
+			InstanceID:   instance.ID,
+			InstanceName: instance.Name,
+		}
+	}
+
+	slices.SortFunc(views, func(a, b CrossInstanceTorrentView) int {
+		if result := strings.Compare(a.Name, b.Name); result != 0 {
+			return result
+		}
+		return strings.Compare(a.Hash, b.Hash)
+	})
+
+	return views, nil
+}
+
+// GetCrossInstanceTorrentsWithFilters gets torrents matching filters from all instances
+func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, limit, offset int, sort, order, search string, filters FilterOptions) (*TorrentResponse, error) {
+	// Get all instances
+	instances, err := sm.clientPool.instanceStore.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get instances: %w", err)
+	}
+
+	// Sort instances by ID for deterministic processing order
+	slices.SortFunc(instances, func(a, b *models.Instance) int {
+		return a.ID - b.ID
+	})
+
+	var allTorrents []CrossInstanceTorrentView
+	var totalCount int
+	var partialResults bool
+
+	// Iterate through all instances and collect matching torrents
+	for _, instance := range instances {
+		// Check for context cancellation before each network call
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
+		instanceResponse, err := sm.GetTorrentsWithFilters(ctx, instance.ID, 0, 0, "", "", search, filters)
+		if err != nil {
+			log.Warn().
+				Int("instanceID", instance.ID).
+				Str("instanceName", instance.Name).
+				Err(err).
+				Msg("Failed to get torrents from instance for cross-instance filtering")
+			partialResults = true
+			continue
+		}
+
+		// Check for context cancellation after potentially blocking call
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
+		// Convert TorrentView to CrossInstanceTorrentView
+		for _, torrentView := range instanceResponse.Torrents {
+			crossInstanceTorrent := CrossInstanceTorrentView{
+				TorrentView:  torrentView,
+				InstanceID:   instance.ID,
+				InstanceName: instance.Name,
+			}
+			allTorrents = append(allTorrents, crossInstanceTorrent)
+		}
+		totalCount += len(instanceResponse.Torrents)
+	}
+
+	// Apply sorting if specified - always use deterministic secondary sort
+	if sort != "" {
+		switch sort {
+		case "name":
+			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
+				result := strings.Compare(a.Name, b.Name)
+				if result == 0 {
+					// Secondary sort by hash for deterministic ordering
+					result = strings.Compare(a.Hash, b.Hash)
+				}
+				if order == "desc" {
+					result = -result
+				}
+				return result
+			})
+		case "size":
+			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
+				result := cmp.Compare(a.Size, b.Size)
+				if result == 0 {
+					// Secondary sort by name for deterministic ordering
+					result = strings.Compare(a.Name, b.Name)
+				}
+				if order == "desc" {
+					result = -result
+				}
+				return result
+			})
+		case "progress":
+			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
+				result := cmp.Compare(a.Progress, b.Progress)
+				if result == 0 {
+					// Secondary sort by name for deterministic ordering
+					result = strings.Compare(a.Name, b.Name)
+				}
+				if order == "desc" {
+					result = -result
+				}
+				return result
+			})
+		case "added_on":
+			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
+				result := cmp.Compare(a.AddedOn, b.AddedOn)
+				if result == 0 {
+					// Secondary sort by hash for deterministic ordering
+					result = strings.Compare(a.Hash, b.Hash)
+				}
+				if order == "desc" {
+					result = -result
+				}
+				return result
+			})
+		case "instance":
+			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
+				result := strings.Compare(a.InstanceName, b.InstanceName)
+				if result == 0 {
+					// Secondary sort by name for deterministic ordering
+					result = strings.Compare(a.Name, b.Name)
+				}
+				if order == "desc" {
+					result = -result
+				}
+				return result
+			})
+		}
+	} else {
+		// Default sort by name if no sort specified for consistent ordering
+		slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
+			result := strings.Compare(a.Name, b.Name)
+			if result == 0 {
+				result = strings.Compare(a.Hash, b.Hash)
+			}
+			return result
+		})
+	}
+
+	// Apply pagination
+	// Clamp offset to valid range [0, len(allTorrents)]
+	start := offset
+	if start < 0 {
+		start = 0
+	}
+	if start > len(allTorrents) {
+		start = len(allTorrents)
+	}
+
+	// Handle limit: non-positive means "no limit"
+	var end int
+	if limit <= 0 {
+		end = len(allTorrents)
+	} else {
+		end = start + limit
+		if end > len(allTorrents) {
+			end = len(allTorrents)
+		}
+	}
+
+	// Ensure start <= end before slicing
+	if start > end {
+		start = end
+	}
+
+	paginatedTorrents := allTorrents[start:end]
+	hasMore := end < len(allTorrents)
+
+	response := &TorrentResponse{
+		CrossInstanceTorrents:  paginatedTorrents,
+		Total:                  totalCount,
+		HasMore:                hasMore,
+		TrackerHealthSupported: false, // Cross-instance doesn't support tracker health
+		IsCrossInstance:        true,
+		PartialResults:         partialResults,
+	}
+
+	return response, nil
+}
+
 // GetQBittorrentSyncManager returns the underlying qBittorrent sync manager for an instance
 func (sm *SyncManager) GetQBittorrentSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error) {
 	_, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
@@ -808,7 +1030,7 @@ func (sm *SyncManager) GetTorrentTrackers(ctx context.Context, instanceID int, h
 	// Queue icon fetches for discovered trackers
 	for _, tracker := range trackers {
 		if tracker.Url != "" {
-			domain := sm.extractDomainFromURL(tracker.Url)
+			domain := sm.ExtractDomainFromURL(tracker.Url)
 			if domain != "" && domain != "Unknown" {
 				trackericons.QueueFetch(domain, tracker.Url)
 			}
@@ -926,7 +1148,7 @@ func (sm *SyncManager) primaryTrackerDomain(torrent qbt.Torrent) string {
 			continue
 		}
 
-		domain := strings.TrimSpace(sm.extractDomainFromURL(candidate))
+		domain := strings.TrimSpace(sm.ExtractDomainFromURL(candidate))
 		if domain == "" || strings.EqualFold(domain, "unknown") {
 			continue
 		}
@@ -1084,9 +1306,9 @@ type InstanceSpeeds struct {
 	Upload   int64 `json:"upload"`
 }
 
-// extractDomainFromURL extracts the domain from a BitTorrent tracker URL with caching
+// ExtractDomainFromURL extracts the domain from a BitTorrent tracker URL with caching
 // Where scheme is typically: http, https, udp, ws, or wss
-func (sm *SyncManager) extractDomainFromURL(urlStr string) string {
+func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 	urlStr = strings.TrimSpace(urlStr)
 	if urlStr == "" {
 		return ""
@@ -1116,12 +1338,12 @@ func (sm *SyncManager) recordTrackerTransition(client *Client, oldURL, newURL st
 		return
 	}
 
-	newDomain := sm.extractDomainFromURL(newURL)
+	newDomain := sm.ExtractDomainFromURL(newURL)
 	if newDomain != "" {
 		client.removeTrackerExclusions(newDomain, hashes)
 	}
 
-	oldDomain := sm.extractDomainFromURL(oldURL)
+	oldDomain := sm.ExtractDomainFromURL(oldURL)
 	if oldDomain == "" {
 		return
 	}
@@ -1235,7 +1457,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Conte
 		trackerDomainSources := make(map[string]string)         // domain -> example tracker URL for icon fetching
 		for trackerURL, torrentHashes := range mainData.Trackers {
 			// Extract domain from tracker URL
-			domain := sm.extractDomainFromURL(trackerURL)
+			domain := sm.ExtractDomainFromURL(trackerURL)
 			if domain == "" {
 				domain = "Unknown"
 			}
@@ -1959,7 +2181,7 @@ func (sm *SyncManager) applyManualFilters(
 	}
 	if mainData != nil && mainData.Trackers != nil && (len(filters.Trackers) != 0 || len(filters.ExcludeTrackers) != 0) {
 		for trackerURL, hashes := range mainData.Trackers {
-			domain := sm.extractDomainFromURL(trackerURL)
+			domain := sm.ExtractDomainFromURL(trackerURL)
 			if domain == "" {
 				domain = "Unknown"
 			}
@@ -2136,7 +2358,7 @@ torrentsLoop:
 						continue
 					}
 				} else {
-					trackerDomain := sm.extractDomainFromURL(torrent.Tracker)
+					trackerDomain := sm.ExtractDomainFromURL(torrent.Tracker)
 					if trackerDomain == "" {
 						trackerDomain = "Unknown"
 					}
@@ -2173,7 +2395,7 @@ torrentsLoop:
 						continue
 					}
 				} else {
-					trackerDomain := sm.extractDomainFromURL(torrent.Tracker)
+					trackerDomain := sm.ExtractDomainFromURL(torrent.Tracker)
 					if trackerDomain == "" {
 						trackerDomain = "Unknown"
 					}
@@ -2590,9 +2812,9 @@ func (sm *SyncManager) sortTorrentsByPriority(torrents []qbt.Torrent, desc bool)
 			return -1
 		}
 		if desc {
-			return int(a.Priority - b.Priority)
+			return cmp.Compare(a.Priority, b.Priority)
 		}
-		return int(b.Priority - a.Priority)
+		return cmp.Compare(b.Priority, a.Priority)
 	})
 }
 
@@ -3086,7 +3308,7 @@ func (sm *SyncManager) GetActiveTrackers(ctx context.Context, instanceID int) (m
 	trackerExclusions := client.getTrackerExclusionsCopy()
 
 	for trackerURL, hashes := range mainData.Trackers {
-		domain := sm.extractDomainFromURL(trackerURL)
+		domain := sm.ExtractDomainFromURL(trackerURL)
 		if domain == "" || domain == "Unknown" {
 			continue
 		}
@@ -3404,7 +3626,7 @@ func (sm *SyncManager) EditTorrentTracker(ctx context.Context, instanceID int, h
 	sm.recordTrackerTransition(client, oldURL, newURL, []string{hash})
 
 	// Queue icon fetch for the new tracker
-	if newDomain := sm.extractDomainFromURL(newURL); newDomain != "" && newDomain != "Unknown" {
+	if newDomain := sm.ExtractDomainFromURL(newURL); newDomain != "" && newDomain != "Unknown" {
 		trackericons.QueueFetch(newDomain, newURL)
 	}
 
@@ -3439,7 +3661,7 @@ func (sm *SyncManager) AddTorrentTrackers(ctx context.Context, instanceID int, h
 		if trackerURL == "" {
 			continue
 		}
-		if domain := sm.extractDomainFromURL(trackerURL); domain != "" && domain != "Unknown" {
+		if domain := sm.ExtractDomainFromURL(trackerURL); domain != "" && domain != "Unknown" {
 			trackericons.QueueFetch(domain, trackerURL)
 		}
 	}
