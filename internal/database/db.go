@@ -1123,6 +1123,18 @@ const referencedStringsInsertQuery = `
 	SELECT error_type_id AS string_id FROM instance_errors WHERE error_type_id IS NOT NULL
 	UNION ALL
 	SELECT error_message_id AS string_id FROM instance_errors WHERE error_message_id IS NOT NULL
+	UNION ALL
+	SELECT name_id AS string_id FROM torznab_indexers WHERE name_id IS NOT NULL
+	UNION ALL
+	SELECT base_url_id AS string_id FROM torznab_indexers WHERE base_url_id IS NOT NULL
+	UNION ALL
+	SELECT indexer_id_string_id AS string_id FROM torznab_indexers WHERE indexer_id_string_id IS NOT NULL
+	UNION ALL
+	SELECT capability_type_id AS string_id FROM torznab_indexer_capabilities WHERE capability_type_id IS NOT NULL
+	UNION ALL
+	SELECT category_name_id AS string_id FROM torznab_indexer_categories WHERE category_name_id IS NOT NULL
+	UNION ALL
+	SELECT error_message_id AS string_id FROM torznab_indexer_errors WHERE error_message_id IS NOT NULL
 `
 
 func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {

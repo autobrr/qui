@@ -41,6 +41,9 @@ func (h *PreferencesHandler) GetPreferences(w http.ResponseWriter, r *http.Reque
 
 	prefs, err := h.syncManager.GetAppPreferences(r.Context(), instanceID)
 	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "preferences:get") {
+			return
+		}
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get app preferences")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -74,6 +77,9 @@ func (h *PreferencesHandler) UpdatePreferences(w http.ResponseWriter, r *http.Re
 	// Specifically, start_paused_enabled gets rejected/ignored. The frontend now handles
 	// this preference via localStorage as a workaround.
 	if err := h.syncManager.SetAppPreferences(r.Context(), instanceID, prefs); err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "preferences:set") {
+			return
+		}
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to set app preferences")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -82,6 +88,9 @@ func (h *PreferencesHandler) UpdatePreferences(w http.ResponseWriter, r *http.Re
 	// Return updated preferences
 	updatedPrefs, err := h.syncManager.GetAppPreferences(r.Context(), instanceID)
 	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "preferences:getUpdated") {
+			return
+		}
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get updated preferences")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -106,6 +115,9 @@ func (h *PreferencesHandler) GetAlternativeSpeedLimitsMode(w http.ResponseWriter
 
 	enabled, err := h.syncManager.GetAlternativeSpeedLimitsMode(r.Context(), instanceID)
 	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "preferences:getAltSpeeds") {
+			return
+		}
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get alternative speed limits mode")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -129,6 +141,9 @@ func (h *PreferencesHandler) ToggleAlternativeSpeedLimits(w http.ResponseWriter,
 	}
 
 	if err := h.syncManager.ToggleAlternativeSpeedLimits(r.Context(), instanceID); err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "preferences:toggleAltSpeeds") {
+			return
+		}
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to toggle alternative speed limits")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -137,6 +152,9 @@ func (h *PreferencesHandler) ToggleAlternativeSpeedLimits(w http.ResponseWriter,
 	// Return the new state
 	enabled, err := h.syncManager.GetAlternativeSpeedLimitsMode(r.Context(), instanceID)
 	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "preferences:getAltSpeeds") {
+			return
+		}
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get updated alternative speed limits mode")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

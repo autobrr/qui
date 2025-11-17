@@ -15,10 +15,11 @@ import {
 } from "@/components/ui/context-menu"
 import type { TorrentAction } from "@/hooks/useTorrentActions"
 import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
+import { useCrossSeedFilter } from "@/hooks/useCrossSeedFilter"
 import { getLinuxIsoName, getLinuxSavePath, useIncognitoMode } from "@/lib/incognito"
 import { getTorrentDisplayHash } from "@/lib/torrent-utils"
 import { copyTextToClipboard } from "@/lib/utils"
-import type { Category, InstanceCapabilities, Torrent } from "@/types"
+import type { Category, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
 import {
   CheckCircle,
   Copy,
@@ -26,9 +27,11 @@ import {
   FastForward,
   FolderOpen,
   Gauge,
+  GitBranch,
   Pause,
   Play,
   Radio,
+  Search,
   Settings2,
   Sparkles,
   Sprout,
@@ -75,11 +78,15 @@ interface TorrentContextMenuProps {
   isExporting?: boolean
   capabilities?: InstanceCapabilities
   useSubcategories?: boolean
+  canCrossSeedSearch?: boolean
+  onCrossSeedSearch?: (torrent: Torrent) => void
+  isCrossSeedSearching?: boolean
+  onFilterChange?: (filters: TorrentFilters) => void
 }
 
 export const TorrentContextMenu = memo(function TorrentContextMenu({
   children,
-  instanceId,
+  instanceId: _instanceId,
   torrent,
   isSelected,
   isAllSelected = false,
@@ -105,6 +112,10 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   isExporting = false,
   capabilities,
   useSubcategories = false,
+  canCrossSeedSearch = false,
+  onCrossSeedSearch,
+  isCrossSeedSearching = false,
+  onFilterChange,
 }: TorrentContextMenuProps) {
   const [incognitoMode] = useIncognitoMode()
 
@@ -123,6 +134,16 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   )
 
   const count = isAllSelected ? effectiveSelectionCount : hashes.length
+
+  // State for cross-seed search
+  const { isFilteringCrossSeeds, filterCrossSeeds } = useCrossSeedFilter({
+    instanceId: _instanceId,
+    onFilterChange,
+  })
+
+  const handleFilterCrossSeeds = useCallback(() => {
+    filterCrossSeeds(torrents)
+  }, [filterCrossSeeds, torrents])
 
   const copyToClipboard = useCallback(async (text: string, type: "name" | "hash" | "full path", itemCount: number) => {
     try {
@@ -234,6 +255,21 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
         <ContextMenuItem onClick={() => onTorrentSelect?.(torrent)}>
           View Details
         </ContextMenuItem>
+        {onFilterChange && (
+          <ContextMenuItem
+            onClick={handleFilterCrossSeeds}
+            disabled={isPending || isFilteringCrossSeeds || count > 1}
+            title={count > 1 ? "Cross-seed filtering only works with a single selected torrent" : undefined}
+          >
+            <GitBranch className="mr-2 h-4 w-4" />
+            {count > 1 ? (
+              <span className="text-muted-foreground">Filter Cross-Seeds (single selection only)</span>
+            ) : (
+              <>Filter Cross-Seeds</>
+            )}
+            {isFilteringCrossSeeds && <span className="ml-1 text-xs text-muted-foreground">...</span>}
+          </ContextMenuItem>
+        )}
         <ContextMenuSeparator />
         <ContextMenuItem
           onClick={() => onAction(TORRENT_ACTIONS.RESUME, hashes)}
@@ -299,6 +335,16 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           isPending={isPending}
         />
         <ContextMenuSeparator />
+        {canCrossSeedSearch && (
+          <ContextMenuItem
+            onClick={() => onCrossSeedSearch?.(torrent)}
+            disabled={isPending || isCrossSeedSearching}
+          >
+            <Search className="mr-2 h-4 w-4" />
+            Search Cross-Seeds
+          </ContextMenuItem>
+        )}
+        {canCrossSeedSearch && <ContextMenuSeparator />}
         <ContextMenuItem
           onClick={() => onPrepareTags("add", hashes, torrents)}
           disabled={isPending}
@@ -390,7 +436,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           </ContextMenuItem>
         )}
         <ContextMenuSeparator />
-        <ExternalProgramsSubmenu instanceId={instanceId} hashes={hashes} />
+        <ExternalProgramsSubmenu instanceId={_instanceId} hashes={hashes} />
         {supportsTorrentExport && (
           <ContextMenuItem
             onClick={handleExport}
