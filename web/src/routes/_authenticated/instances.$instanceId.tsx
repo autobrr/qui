@@ -29,7 +29,7 @@ function InstanceTorrents() {
   const { instances, isLoading } = useInstances()
   const instanceIdNumber = Number.parseInt(instanceId, 10)
   const instance = instances?.find(i => i.id === instanceIdNumber)
-  const shouldShowInstanceControls = instance ? instance.isActive : instances === undefined
+  const shouldShowInstanceControls = instance?.isActive ?? false
 
   useLayoutEffect(() => {
     if (!Number.isFinite(instanceIdNumber)) {

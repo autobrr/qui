@@ -671,14 +671,14 @@ paths:
         '404':
           description: Instance not found
 
-  /api/instances/{instanceId}/status:
+  /api/instances/{instanceID}/status:
     put:
       tags:
         - Instances
       summary: Update instance status
       description: Enable or disable automatic polling for the specified instance
       parameters:
-        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/instanceID'
       requestBody:
         required: true
         content:
