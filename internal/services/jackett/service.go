@@ -72,6 +72,7 @@ const (
 	defaultTorrentCacheTTL   = 12 * time.Hour
 	defaultSearchCacheTTL    = 24 * time.Hour
 	storeOperationTimeout    = 5 * time.Second
+	defaultSearchTimeout     = 5 * time.Second
 	minSearchCacheTTL        = defaultSearchCacheTTL
 
 	searchCacheCleanupInterval  = 6 * time.Hour
@@ -95,6 +96,20 @@ type searchCacheSignature struct {
 	Key             string
 	Fingerprint     string
 	BaseFingerprint string
+}
+
+// withSearchTimeout ensures long-running torznab searches have a sensible upper bound.
+// If the incoming context already has a deadline, it is preserved.
+func withSearchTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		return context.WithTimeout(context.Background(), defaultSearchTimeout)
+	}
+
+	if _, hasDeadline := ctx.Deadline(); hasDeadline {
+		return ctx, func() {}
+	}
+
+	return context.WithTimeout(ctx, defaultSearchTimeout)
 }
 
 type searchCacheKeyPayload struct {
@@ -271,7 +286,10 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 	}
 
 	// Search selected indexers (defaults to all enabled when none specified)
-	allResults, err := s.searchMultipleIndexers(ctx, indexersToSearch, params, meta)
+	searchCtx, cancel := withSearchTimeout(ctx)
+	defer cancel()
+
+	allResults, err := s.searchMultipleIndexers(searchCtx, indexersToSearch, params, meta)
 	partial := err != nil && errors.Is(err, context.DeadlineExceeded) && len(allResults) > 0
 	if err != nil && !partial {
 		return nil, err
@@ -397,7 +415,10 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 	}
 
 	// Search all indexers
-	allResults, err := s.searchMultipleIndexers(ctx, indexersToSearch, params, meta)
+	searchCtx, cancel := withSearchTimeout(ctx)
+	defer cancel()
+
+	allResults, err := s.searchMultipleIndexers(searchCtx, indexersToSearch, params, meta)
 	partial := err != nil && errors.Is(err, context.DeadlineExceeded) && len(allResults) > 0
 	if err != nil && !partial {
 		return nil, err
@@ -478,7 +499,10 @@ func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int) (*Sea
 		}, nil
 	}
 
-	results, err := s.searchMultipleIndexers(ctx, indexersToSearch, params, nil)
+	searchCtx, cancel := withSearchTimeout(ctx)
+	defer cancel()
+
+	results, err := s.searchMultipleIndexers(searchCtx, indexersToSearch, params, nil)
 	partial := err != nil && errors.Is(err, context.DeadlineExceeded) && len(results) > 0
 	if err != nil && !partial {
 		return nil, err

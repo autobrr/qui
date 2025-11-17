@@ -259,6 +259,8 @@ export function Search() {
       setLoading(true)
       setCacheMetadata(null)
       setSelectedResultGuid(null)
+      setResults([])
+      setTotal(0)
 
       try {
         const payload: TorznabSearchRequest = {
