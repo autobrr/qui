@@ -363,82 +363,115 @@ func TestCrossSeed_TorrentCreationAndParsing(t *testing.T) {
 
 // TestCrossSeed_CategoryAndTagPreservation tests category and tag handling
 func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
+	defaultSettings := models.DefaultCrossSeedAutomationSettings()
+
 	tests := []struct {
 		name             string
-		matchedCategory  string
-		matchedTags      string
-		requestCategory  string
-		requestTags      []string
+		request          *CrossSeedRequest
+		matched          qbt.Torrent
+		settings         *models.CrossSeedAutomationSettings
+		addCrossSeedTag  bool
 		expectedCategory string
 		expectedTags     []string
 	}{
 		{
-			name:             "use matched category when request is empty",
-			matchedCategory:  "movies",
-			matchedTags:      "tracker1,quality-1080p",
-			requestCategory:  "",
-			requestTags:      nil,
+			name: "use matched category when request is empty",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     nil,
+			},
+			matched: qbt.Torrent{
+				Category: "movies",
+				Tags:     "tracker1,quality-1080p",
+			},
+			settings:         defaultSettings,
+			addCrossSeedTag:  true,
 			expectedCategory: "movies",
 			expectedTags:     []string{"tracker1", "quality-1080p", "cross-seed"},
 		},
 		{
-			name:             "override with request category",
-			matchedCategory:  "movies",
-			matchedTags:      "tracker1",
-			requestCategory:  "movies-4k",
-			requestTags:      []string{"custom"},
+			name: "override with request category",
+			request: &CrossSeedRequest{
+				Category: "movies-4k",
+				Tags:     []string{"custom"},
+			},
+			matched: qbt.Torrent{
+				Category: "movies",
+				Tags:     "tracker1",
+			},
+			settings:         defaultSettings,
+			addCrossSeedTag:  true,
 			expectedCategory: "movies-4k",
 			expectedTags:     []string{"custom", "cross-seed"},
 		},
 		{
-			name:             "add cross-seed tag",
-			matchedCategory:  "tv",
-			matchedTags:      "sonarr",
-			requestCategory:  "",
-			requestTags:      nil,
+			name: "add cross-seed tag when matched tags exist",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     nil,
+			},
+			matched: qbt.Torrent{
+				Category: "tv",
+				Tags:     "sonarr",
+			},
+			settings:         defaultSettings,
+			addCrossSeedTag:  true,
 			expectedCategory: "tv",
 			expectedTags:     []string{"sonarr", "cross-seed"},
+		},
+		{
+			name: "use indexer category when enabled",
+			request: &CrossSeedRequest{
+				Category:    "",
+				IndexerName: "IndexerCat",
+			},
+			matched: qbt.Torrent{
+				Category: "fallback",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCategoryFromIndexer: true,
+			},
+			addCrossSeedTag:  true,
+			expectedCategory: "IndexerCat",
+			expectedTags:     []string{"cross-seed"},
+		},
+		{
+			name: "skip cross-seed tag when disabled",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{"keep"},
+			},
+			matched: qbt.Torrent{
+				Category: "tv",
+				Tags:     "",
+			},
+			settings:         defaultSettings,
+			addCrossSeedTag:  false,
+			expectedCategory: "tv",
+			expectedTags:     []string{"keep"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// This tests the tag/category logic conceptually
-			// In real implementation, this would be extracted to a separate function
-
-			category := tt.requestCategory
-			if category == "" {
-				category = tt.matchedCategory
+			svc := &Service{
+				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+					if tt.settings != nil {
+						return tt.settings, nil
+					}
+					return defaultSettings, nil
+				},
 			}
+
+			category := svc.determineCrossSeedCategory(context.Background(), tt.request, &tt.matched)
 			assert.Equal(t, tt.expectedCategory, category)
 
-			// Parse matched tags
-			matchedTags := []string{}
-			if tt.matchedTags != "" {
-				matchedTags = []string{tt.matchedTags}
-				// In real code: strings.Split(tt.matchedTags, ",")
-			}
-
-			// Merge tags
-			tagSet := make(map[string]bool)
-			if len(tt.requestTags) > 0 {
-				for _, tag := range tt.requestTags {
-					tagSet[tag] = true
-				}
+			tags := buildCrossSeedTags(tt.request.Tags, tt.matched.Tags, tt.addCrossSeedTag)
+			if len(tt.expectedTags) == 0 {
+				assert.Empty(t, tags)
 			} else {
-				for _, tag := range matchedTags {
-					tagSet[tag] = true
-				}
+				assert.ElementsMatch(t, tt.expectedTags, tags)
 			}
-			tagSet["cross-seed"] = true
-
-			tags := make([]string, 0, len(tagSet))
-			for tag := range tagSet {
-				tags = append(tags, tag)
-			}
-
-			// Verify cross-seed tag is present
-			assert.Contains(t, tags, "cross-seed")
 		})
 	}
 }
@@ -1459,14 +1492,13 @@ func TestWebhookCheckRequest_Validation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Validate the request structure expectations
-			if !tt.wantErr {
-				// Valid requests should have required fields
-				assert.NotEmpty(t, tt.request.TorrentName, "Valid request should have TorrentName")
-				assert.Greater(t, tt.request.InstanceID, 0, "Valid request should have positive InstanceID")
+			err := validateWebhookCheckRequest(tt.request)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errMsg)
+			} else {
+				require.NoError(t, err)
 			}
-			// Note: Invalid requests can have various combinations of missing/invalid fields
-			// The actual validation is tested in integration tests with the service
 		})
 	}
 }

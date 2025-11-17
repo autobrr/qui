@@ -1497,16 +1497,8 @@ func (s *Service) processCrossSeedCandidate(
 	// Skip hash checking since we're pointing to existing files
 	options["skip_checking"] = "true"
 
-	// Use category from request or matched torrent, or indexer name based on global settings
-	category := req.Category
-	if category == "" {
-		// Check global settings for useCategoryFromIndexer
-		if settings, err := s.GetAutomationSettings(ctx); err == nil && settings.UseCategoryFromIndexer && req.IndexerName != "" {
-			category = req.IndexerName
-		} else {
-			category = matchedTorrent.Category
-		}
-	}
+	// Determine final category to apply
+	category := s.determineCrossSeedCategory(ctx, req, matchedTorrent)
 	if category != "" {
 		options["category"] = category
 	}
@@ -1527,34 +1519,7 @@ func (s *Service) processCrossSeedCandidate(
 		addCrossSeedTag = *req.AddCrossSeedTag
 	}
 
-	tagSet := make(map[string]struct{})
-	finalTags := make([]string, 0)
-	addTag := func(tag string) {
-		tag = strings.TrimSpace(tag)
-		if tag == "" {
-			return
-		}
-		if _, exists := tagSet[tag]; exists {
-			return
-		}
-		tagSet[tag] = struct{}{}
-		finalTags = append(finalTags, tag)
-	}
-
-	for _, tag := range req.Tags {
-		addTag(tag)
-	}
-
-	if len(req.Tags) == 0 && matchedTorrent.Tags != "" {
-		for _, tag := range strings.Split(matchedTorrent.Tags, ",") {
-			addTag(tag)
-		}
-	}
-
-	if addCrossSeedTag {
-		addTag("cross-seed")
-	}
-
+	finalTags := buildCrossSeedTags(req.Tags, matchedTorrent.Tags, addCrossSeedTag)
 	if len(finalTags) > 0 {
 		options["tags"] = strings.Join(finalTags, ",")
 	}
@@ -4636,15 +4601,83 @@ func (s *Service) isSizeWithinTolerance(sourceSize, candidateSize int64, toleran
 	return candidateSizeFloat >= minAcceptableSize && candidateSizeFloat <= maxAcceptableSize
 }
 
+// determineCrossSeedCategory selects the category to apply to a cross-seeded torrent.
+func (s *Service) determineCrossSeedCategory(ctx context.Context, req *CrossSeedRequest, matchedTorrent *qbt.Torrent) string {
+	var matchedCategory string
+	if matchedTorrent != nil {
+		matchedCategory = matchedTorrent.Category
+	}
+
+	if req == nil {
+		return matchedCategory
+	}
+
+	if req.Category != "" {
+		return req.Category
+	}
+
+	if req.IndexerName != "" && s != nil {
+		if settings, err := s.GetAutomationSettings(ctx); err == nil && settings != nil && settings.UseCategoryFromIndexer {
+			return req.IndexerName
+		}
+	}
+
+	return matchedCategory
+}
+
+// buildCrossSeedTags merges request tags, matched torrent tags, and the automatic cross-seed tag.
+func buildCrossSeedTags(requestTags []string, matchedTags string, addCrossSeedTag bool) []string {
+	tagSet := make(map[string]struct{})
+	finalTags := make([]string, 0)
+
+	addTag := func(tag string) {
+		tag = strings.TrimSpace(tag)
+		if tag == "" {
+			return
+		}
+		if _, exists := tagSet[tag]; exists {
+			return
+		}
+		tagSet[tag] = struct{}{}
+		finalTags = append(finalTags, tag)
+	}
+
+	if len(requestTags) > 0 {
+		for _, tag := range requestTags {
+			addTag(tag)
+		}
+	} else if matchedTags != "" {
+		for _, tag := range strings.Split(matchedTags, ",") {
+			addTag(tag)
+		}
+	}
+
+	if addCrossSeedTag {
+		addTag("cross-seed")
+	}
+
+	return finalTags
+}
+
+func validateWebhookCheckRequest(req *WebhookCheckRequest) error {
+	if req == nil {
+		return fmt.Errorf("%w: request is required", ErrInvalidWebhookRequest)
+	}
+	if req.TorrentName == "" {
+		return fmt.Errorf("%w: torrentName is required", ErrInvalidWebhookRequest)
+	}
+	if req.InstanceID <= 0 {
+		return fmt.Errorf("%w: instanceId is required and must be a positive integer", ErrInvalidWebhookRequest)
+	}
+	return nil
+}
+
 // CheckWebhook checks if a release announced by autobrr can be cross-seeded with existing torrents.
 // This endpoint is designed for autobrr webhook integration where autobrr sends parsed release metadata
 // and we check if any existing torrents across our instances match, indicating a cross-seed opportunity.
 func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*WebhookCheckResponse, error) {
-	if req.TorrentName == "" {
-		return nil, fmt.Errorf("%w: torrentName is required", ErrInvalidWebhookRequest)
-	}
-	if req.InstanceID <= 0 {
-		return nil, fmt.Errorf("%w: instanceId is required and must be a positive integer", ErrInvalidWebhookRequest)
+	if err := validateWebhookCheckRequest(req); err != nil {
+		return nil, err
 	}
 
 	// Parse the incoming release using rls - this extracts all metadata from the torrent name
