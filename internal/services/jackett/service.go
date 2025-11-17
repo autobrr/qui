@@ -261,7 +261,8 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 
 	// Search selected indexers (defaults to all enabled when none specified)
 	allResults, err := s.searchMultipleIndexers(ctx, indexersToSearch, params, meta)
-	if err != nil {
+	partial := err != nil && errors.Is(err, context.DeadlineExceeded) && len(allResults) > 0
+	if err != nil && !partial {
 		return nil, err
 	}
 
@@ -272,13 +273,21 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 	response := &SearchResponse{
 		Results: pageResults,
 		Total:   total,
+		Partial: partial,
 	}
 	fullSearchResponse := &SearchResponse{
 		Results: allConverted,
 		Total:   total,
+		Partial: partial,
+	}
+	if partial {
+		log.Warn().
+			Int("indexers_requested", len(indexersToSearch)).
+			Int("results_collected", len(allResults)).
+			Msg("Torznab search returning partial results due to deadline")
 	}
 
-	if cacheEnabled && cacheSig != nil && cacheReadAllowed {
+	if cacheEnabled && cacheSig != nil && cacheReadAllowed && !partial {
 		now := time.Now().UTC()
 		s.annotateSearchResponse(response, scope, false, now, now.Add(s.searchCacheTTL), nil)
 		s.persistSearchCacheEntry(ctx, scope, cacheSig, req, indexerIDs, fullSearchResponse, now)
@@ -378,7 +387,8 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 
 	// Search all indexers
 	allResults, err := s.searchMultipleIndexers(ctx, indexersToSearch, params, meta)
-	if err != nil {
+	partial := err != nil && errors.Is(err, context.DeadlineExceeded) && len(allResults) > 0
+	if err != nil && !partial {
 		return nil, err
 	}
 
@@ -388,13 +398,21 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 	response := &SearchResponse{
 		Results: pageResults,
 		Total:   total,
+		Partial: partial,
 	}
 	fullGenericResponse := &SearchResponse{
 		Results: allConverted,
 		Total:   total,
+		Partial: partial,
+	}
+	if partial {
+		log.Warn().
+			Int("indexers_requested", len(indexersToSearch)).
+			Int("results_collected", len(allResults)).
+			Msg("General Torznab search returning partial results due to deadline")
 	}
 
-	if cacheEnabled && cacheSig != nil && cacheReadAllowed {
+	if cacheEnabled && cacheSig != nil && cacheReadAllowed && !partial {
 		now := time.Now().UTC()
 		s.annotateSearchResponse(response, scope, false, now, now.Add(s.searchCacheTTL), nil)
 		s.persistSearchCacheEntry(ctx, scope, cacheSig, req, indexerIDs, fullGenericResponse, now)
@@ -450,7 +468,8 @@ func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int) (*Sea
 	}
 
 	results, err := s.searchMultipleIndexers(ctx, indexersToSearch, params, nil)
-	if err != nil {
+	partial := err != nil && errors.Is(err, context.DeadlineExceeded) && len(results) > 0
+	if err != nil && !partial {
 		return nil, err
 	}
 	searchResults := s.convertResults(results)
@@ -459,10 +478,18 @@ func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int) (*Sea
 		searchResults = searchResults[:limit]
 	}
 
-	return &SearchResponse{
+	resp := &SearchResponse{
 		Results: searchResults,
 		Total:   len(searchResults),
-	}, nil
+		Partial: partial,
+	}
+	if partial {
+		log.Warn().
+			Int("indexers_requested", len(indexersToSearch)).
+			Int("results_collected", len(searchResults)).
+			Msg("Recent search returning partial results due to deadline")
+	}
+	return resp, nil
 }
 
 // DownloadTorrent fetches the raw torrent bytes for a specific indexer result.
@@ -482,7 +509,10 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 	}
 
 	if s.torrentCache != nil {
-		if data, ok, err := s.torrentCache.Fetch(ctx, req.IndexerID, cacheKey, defaultTorrentCacheTTL); err == nil && ok {
+		cacheCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		data, ok, err := s.torrentCache.Fetch(cacheCtx, req.IndexerID, cacheKey, defaultTorrentCacheTTL)
+		cancel()
+		if err == nil && ok {
 			return data, nil
 		} else if err != nil {
 			log.Debug().Err(err).Msg("torznab torrent cache fetch failed")
@@ -735,7 +765,10 @@ func (s *Service) persistSearchCacheEntry(ctx context.Context, scope string, sig
 		ExpiresAt:          expiresAt,
 	}
 
-	if err := s.searchCache.Store(ctx, entry); err != nil {
+	storeCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	if err := s.searchCache.Store(storeCtx, entry); err != nil {
 		log.Debug().Err(err).Msg("Failed to persist torznab search cache entry")
 		return
 	}
@@ -1255,18 +1288,22 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 	)
 
 	for range availableIndexers {
-		result := <-resultsChan
-		if result.err != nil {
-			if isTimeoutError(result.err) {
-				timeouts++
-			} else {
-				failures++
-				lastErr = result.err
+		select {
+		case <-ctx.Done():
+			return allResults, ctx.Err()
+		case result := <-resultsChan:
+			if result.err != nil {
+				if isTimeoutError(result.err) {
+					timeouts++
+				} else {
+					failures++
+					lastErr = result.err
+				}
+				continue
 			}
-			continue
+			successes++
+			allResults = append(allResults, result.results...)
 		}
-		successes++
-		allResults = append(allResults, result.results...)
 	}
 
 	// Only return error if ALL non-timeout indexers failed

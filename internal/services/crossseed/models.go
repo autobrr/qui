@@ -197,6 +197,7 @@ type TorrentSearchResponse struct {
 	SourceTorrent TorrentInfo                  `json:"source_torrent"`
 	Results       []TorrentSearchResult        `json:"results"`
 	Cache         *jackett.SearchCacheMetadata `json:"cache,omitempty"`
+	Partial       bool                         `json:"partial,omitempty"`
 }
 
 // TorrentSearchSelection represents a user-selected search result that should be added for cross-seeding.

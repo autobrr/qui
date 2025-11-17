@@ -104,6 +104,7 @@ const (
 	indexerDomainCacheTTL               = 1 * time.Minute
 	contentFilteringWaitTimeout         = 5 * time.Second
 	contentFilteringPollInterval        = 150 * time.Millisecond
+	automationSearchTimeout             = 8 * time.Second
 	selectedIndexerContentSkipReason    = "selected indexers were filtered out"
 	selectedIndexerCapabilitySkipReason = "selected indexers do not support required caps"
 	crossSeedRenameWaitTimeout          = 15 * time.Second
@@ -2653,6 +2654,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 			SourceTorrent: sourceInfo,
 			Results:       []TorrentSearchResult{},
 			Cache:         searchResp.Cache,
+			Partial:       searchResp.Partial,
 		}, nil
 	}
 
@@ -2706,6 +2708,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		SourceTorrent: sourceInfo,
 		Results:       results,
 		Cache:         searchResp.Cache,
+		Partial:       searchResp.Partial,
 	}, nil
 }
 
@@ -3382,11 +3385,39 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		return nil
 	}
 
-	searchResp, err := s.SearchTorrentMatches(ctx, state.opts.InstanceID, torrent.Hash, TorrentSearchOptions{
+	searchCtx := ctx
+	var searchCancel context.CancelFunc
+	if automationSearchTimeout > 0 {
+		searchCtx, searchCancel = context.WithTimeout(ctx, automationSearchTimeout)
+	}
+	if searchCancel != nil {
+		defer searchCancel()
+	}
+
+	searchResp, err := s.SearchTorrentMatches(searchCtx, state.opts.InstanceID, torrent.Hash, TorrentSearchOptions{
 		IndexerIDs:             allowedIndexerIDs,
 		FindIndividualEpisodes: state.opts.FindIndividualEpisodes,
 	})
 	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			s.searchMu.Lock()
+			state.run.TorrentsSkipped++
+			s.searchMu.Unlock()
+			s.appendSearchResult(state, models.CrossSeedSearchResult{
+				TorrentHash:  torrent.Hash,
+				TorrentName:  torrent.Name,
+				IndexerName:  "",
+				ReleaseTitle: "",
+				Added:        false,
+				Message:      fmt.Sprintf("search timed out after %s", automationSearchTimeout),
+				ProcessedAt:  processedAt,
+			})
+			s.persistSearchRun(state)
+			return nil
+		}
 		s.searchMu.Lock()
 		state.run.TorrentsFailed++
 		s.searchMu.Unlock()
@@ -3418,6 +3449,14 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		})
 		s.persistSearchRun(state)
 		return nil
+	}
+
+	if searchResp.Partial {
+		log.Warn().
+			Str("torrentHash", torrent.Hash).
+			Dur("timeout", automationSearchTimeout).
+			Int("matches", len(searchResp.Results)).
+			Msg("[CROSSSEED-SEARCH-AUTO] Search returned partial results before timeout")
 	}
 
 	successCount := 0

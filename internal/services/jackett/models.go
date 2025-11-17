@@ -42,6 +42,7 @@ type SearchResponse struct {
 	Results []SearchResult       `json:"results"`
 	Total   int                  `json:"total"`
 	Cache   *SearchCacheMetadata `json:"cache,omitempty"`
+	Partial bool                 `json:"partial,omitempty"`
 }
 
 // SearchCacheMetadata describes how the response was sourced.
