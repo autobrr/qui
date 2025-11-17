@@ -1269,7 +1269,7 @@ func TestFindCandidates_NonTVDoesNotMatchUnrelatedTorrents(t *testing.T) {
 	}
 
 	resp, err := svc.FindCandidates(context.Background(), &FindCandidatesRequest{
-		TorrentName:       "Fictional Artist - B -Hidden Tracks [2020] [WEB 320]",
+		TorrentName:       "Fictional Artist - B - Hidden Tracks [2020] [WEB 320]",
 		TargetInstanceIDs: []int{instance.ID},
 	})
 	require.NoError(t, err)

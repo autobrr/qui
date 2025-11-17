@@ -29,6 +29,39 @@ func setupCrossSeedTestDB(t *testing.T) *database.DB {
 	return db
 }
 
+func ensureStringPoolValue(t *testing.T, db *database.DB, value string) int64 {
+	t.Helper()
+
+	ctx := context.Background()
+	_, err := db.ExecContext(ctx, "INSERT OR IGNORE INTO string_pool (value) VALUES (?)", value)
+	require.NoError(t, err)
+
+	var id int64
+	err = db.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
+	require.NoError(t, err)
+
+	return id
+}
+
+func insertTestTorznabIndexer(t *testing.T, db *database.DB, name, baseURL string) int {
+	t.Helper()
+
+	nameID := ensureStringPoolValue(t, db, name)
+	baseURLID := ensureStringPoolValue(t, db, baseURL)
+
+	ctx := context.Background()
+	result, err := db.ExecContext(ctx, `
+		INSERT INTO torznab_indexers (name_id, base_url_id, api_key_encrypted, backend)
+		VALUES (?, ?, ?, ?)
+	`, nameID, baseURLID, "encrypted-key", "jackett")
+	require.NoError(t, err)
+
+	indexerID, err := result.LastInsertId()
+	require.NoError(t, err)
+
+	return int(indexerID)
+}
+
 func TestCrossSeedStore_SettingsRoundTrip(t *testing.T) {
 	db := setupCrossSeedTestDB(t)
 	store := models.NewCrossSeedStore(db)
@@ -125,7 +158,7 @@ func TestCrossSeedStore_FeedItems(t *testing.T) {
 	require.NoError(t, err)
 
 	guid := "test-guid"
-	indexerID := 7
+	indexerID := insertTestTorznabIndexer(t, db, "Test Indexer", "https://example.com")
 
 	processed, status, err := store.HasProcessedFeedItem(ctx, guid, indexerID)
 	require.NoError(t, err)

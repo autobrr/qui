@@ -68,6 +68,14 @@ func makeReleaseKey(r rls.Release) releaseKey {
 	return releaseKey{}
 }
 
+// parseReleaseName safely parses release metadata when the release cache is available.
+func (s *Service) parseReleaseName(name string) rls.Release {
+	if s == nil || s.releaseCache == nil {
+		return rls.Release{}
+	}
+	return s.releaseCache.Parse(name)
+}
+
 // String serializes the releaseKey into a stable string for caching purposes.
 func (k releaseKey) String() string {
 	return fmt.Sprintf("%d|%d|%d|%d|%d", k.series, k.episode, k.year, k.month, k.day)
@@ -271,7 +279,7 @@ func (s *Service) getMatchTypeFromTitle(targetName, candidateName string, target
 	candidateReleases := make(map[releaseKey]int64)
 	for _, cf := range candidateFiles {
 		if !shouldIgnoreFile(cf.Name, ignorePatterns) {
-			fileRelease := s.releaseCache.Parse(cf.Name)
+			fileRelease := s.parseReleaseName(cf.Name)
 			enrichedRelease := enrichReleaseFromTorrent(fileRelease, candidateRelease)
 
 			key := makeReleaseKey(enrichedRelease)
@@ -391,7 +399,7 @@ func (s *Service) getMatchType(sourceRelease, candidateRelease rls.Release, sour
 		if !shouldIgnoreFile(sf.Name, ignorePatterns) {
 			sourceMap[sf.Name] = sf.Size
 
-			fileRelease := s.releaseCache.Parse(sf.Name)
+			fileRelease := s.parseReleaseName(sf.Name)
 			enrichedRelease := enrichReleaseFromTorrent(fileRelease, sourceRelease)
 
 			key := makeReleaseKey(enrichedRelease)
@@ -419,7 +427,7 @@ func (s *Service) getMatchType(sourceRelease, candidateRelease rls.Release, sour
 		if !shouldIgnoreFile(cf.Name, ignorePatterns) {
 			candidateMap[cf.Name] = cf.Size
 
-			fileRelease := s.releaseCache.Parse(cf.Name)
+			fileRelease := s.parseReleaseName(cf.Name)
 			enrichedRelease := enrichReleaseFromTorrent(fileRelease, candidateRelease)
 
 			key := makeReleaseKey(enrichedRelease)

@@ -139,7 +139,7 @@ func TestGetMatchTypeFromTitle_FallbackWhenReleaseKeysMissing(t *testing.T) {
 func TestGetMatchTypeFromTitle_NonEpisodicRequiresMatchingReleaseKey(t *testing.T) {
 	t.Parallel()
 
-	svc := &Service{releaseCache: nil}
+	svc := &Service{releaseCache: releases.NewDefaultParser()}
 
 	// Non-episodic content with different years should not match purely because
 	// candidate files have some parsed metadata.
@@ -166,7 +166,7 @@ func TestGetMatchTypeFromTitle_NonEpisodicRequiresMatchingReleaseKey(t *testing.
 func TestGetMatchTypeFromTitle_NonEpisodicWithMatchingReleaseKey(t *testing.T) {
 	t.Parallel()
 
-	svc := &Service{releaseCache: nil}
+	svc := &Service{releaseCache: releases.NewDefaultParser()}
 
 	targetName := "Movie.2020.1080p.BluRay.x264-GROUP"
 	targetRelease := rls.Release{
