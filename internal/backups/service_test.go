@@ -737,9 +737,41 @@ func TestIsBackupMissedFailedRunsOnly(t *testing.T) {
 	failedRun2.CompletedAt = &failedCompletedAt2
 	require.NoError(t, store.CreateRun(ctx, failedRun2))
 
-	// Should be missed because there are no successful runs (treated as first run)
+	// Should be missed because the latest failed run is older than the hourly interval
 	missed := svc.isBackupMissed(ctx, instanceID, models.BackupRunKindHourly, true, fixedTime)
 	require.True(t, missed)
+}
+
+func TestIsBackupMissedRecentFailedRunRespectsInterval(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "test-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1})
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	failedRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusFailed,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-30 * time.Minute),
+	}
+	failedCompletedAt := fixedTime.Add(-30 * time.Minute)
+	failedRun.CompletedAt = &failedCompletedAt
+	require.NoError(t, store.CreateRun(ctx, failedRun))
+
+	// Within the hourly interval we should not consider the backup missed
+	missed := svc.isBackupMissed(ctx, instanceID, models.BackupRunKindHourly, true, fixedTime)
+	require.False(t, missed)
+
+	// After the interval elapses it should be considered missed again
+	later := fixedTime.Add(40 * time.Minute)
+	missedLater := svc.isBackupMissed(ctx, instanceID, models.BackupRunKindHourly, true, later)
+	require.True(t, missedLater)
 }
 
 func TestIsBackupMissedMixedStatusRuns(t *testing.T) {
