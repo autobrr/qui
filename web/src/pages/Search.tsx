@@ -246,12 +246,14 @@ export function Search() {
     }
   }, [api])
 
+  const latestReqIdRef = useRef(0)
   const runSearch = useCallback(
     async ({
       bypassCache = false,
       queryOverride,
       searchTypeOverride
     }: { bypassCache?: boolean; queryOverride?: string; searchTypeOverride?: SearchType } = {}) => {
+      const reqId = ++latestReqIdRef.current
       const searchQuery = (queryOverride ?? query).trim()
       const targetSearchType = searchTypeOverride ?? searchType
       const detectedImdbId = extractImdbId(searchQuery)
@@ -334,6 +336,7 @@ export function Search() {
         }
 
         const response = await api.searchTorznab(payload)
+        if (reqId !== latestReqIdRef.current) return
         setResults(response.results)
         setTotal(response.total)
         setCacheMetadata(response.cache ?? null)
@@ -350,7 +353,7 @@ export function Search() {
         toast.error(`Search failed: ${errorMsg}`)
         console.error('Search error:', error)
       } finally {
-        setLoading(false)
+        if (reqId === latestReqIdRef.current) setLoading(false)
       }
     },
     [advancedParams, api, query, selectedIndexers, refreshRecentSearches, searchType]
@@ -500,7 +503,7 @@ export function Search() {
     if (bytes === 0) return '0 B'
     const k = 1024
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    const i = Math.min(Math.max(Math.floor(Math.log(bytes) / Math.log(k)), 0), sizes.length - 1)
     return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`
   }
 
