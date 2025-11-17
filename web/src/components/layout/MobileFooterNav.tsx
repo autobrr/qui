@@ -52,7 +52,7 @@ import {
   Settings,
   Sun
 } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
 
@@ -96,7 +96,7 @@ export function MobileFooterNav() {
   const [showThemeDialog, setShowThemeDialog] = useState(false)
   const appVersion = getAppVersion()
 
-  const { data: instances } = useQuery({
+  const { data: instances, isPending: isLoadingInstances } = useQuery({
     queryKey: ["instances"],
     queryFn: () => api.getInstances(),
   })
@@ -109,11 +109,18 @@ export function MobileFooterNav() {
     refetchOnWindowFocus: false,
   })
 
-  const activeInstances = instances?.filter(i => i.connected) || []
+  const activeInstances = useMemo(() => {
+    if (!instances) {
+      return []
+    }
+    return instances.filter(instance => instance.isActive)
+  }, [instances])
   const isOnInstancePage = location.pathname.startsWith("/instances/")
+  const hasMultipleActiveInstances = activeInstances.length > 1
+  const singleActiveInstance = activeInstances.length === 1 ? activeInstances[0] : null
   const currentInstanceId = isOnInstancePage? location.pathname.split("/")[2]: null
   const currentInstance = instances?.find(i => i.id.toString() === currentInstanceId)
-  const currentInstanceLabel = currentInstance ? currentInstance.name : "Clients"
+  const currentInstanceLabel = currentInstance && currentInstance.isActive ? currentInstance.name : null
 
   const handleModeSelect = useCallback(async (mode: ThemeMode) => {
     await setThemeMode(mode)
@@ -161,70 +168,106 @@ export function MobileFooterNav() {
           <span className="truncate">Dashboard</span>
         </Link>
 
-        {/* Clients dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              className={cn(
-                "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
-                isOnInstancePage? "text-primary": "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <div className="relative">
-                <HardDrive className={cn(
-                  "h-5 w-5",
-                  isOnInstancePage && "text-primary"
-                )} />
-                {activeInstances.length > 0 && (
+        {/* Clients access */}
+        {hasMultipleActiveInstances ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
+                  isOnInstancePage? "text-primary": "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <div className="relative">
+                  <HardDrive className={cn(
+                    "h-5 w-5",
+                    isOnInstancePage && "text-primary"
+                  )} />
                   <Badge
                     className="absolute -top-1 -right-2 h-4 w-4 p-0 flex items-center justify-center text-[9px]"
                     variant="default"
                   >
                     {activeInstances.length}
                   </Badge>
-                )}
-              </div>
-              <span
-                className="block max-w-[7.5rem] truncate text-center"
-                title={currentInstanceLabel}
-              >
-                {currentInstanceLabel}
-              </span>
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="center" side="top" className="w-56 mb-2">
-            <DropdownMenuLabel>qBittorrent Clients</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {instances?.map((instance) => (
-              <DropdownMenuItem key={instance.id} asChild>
-                <Link
-                  to="/instances/$instanceId"
-                  params={{ instanceId: instance.id.toString() }}
-                  className="flex items-center gap-2 min-w-0"
+                </div>
+                <span
+                  className="block max-w-[7.5rem] truncate text-center"
+                  title={currentInstanceLabel ?? "Clients"}
                 >
-                  <HardDrive className="h-4 w-4" />
-                  <span
-                    className="flex-1 min-w-0 truncate"
-                    title={instance.name}
+                  {currentInstanceLabel ?? "Clients"}
+                </span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center" side="top" className="w-56 mb-2">
+              <DropdownMenuLabel>qBittorrent Clients</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {activeInstances.map((instance) => (
+                <DropdownMenuItem key={instance.id} asChild>
+                  <Link
+                    to="/instances/$instanceId"
+                    params={{ instanceId: instance.id.toString() }}
+                    className="flex items-center gap-2 min-w-0"
                   >
-                    {instance.name}
-                  </span>
-                  <span
-                    className={cn(
-                      "h-2 w-2 rounded-full",
-                      instance.connected ? "bg-green-500" : "bg-red-500"
-                    )}
-                  />
-                </Link>
-              </DropdownMenuItem>
-            ))}
-            {(!instances || instances.length === 0) && (
-              <DropdownMenuItem disabled>
-                No clients configured
-              </DropdownMenuItem>
+                    <HardDrive className="h-4 w-4" />
+                    <span
+                      className="flex-1 min-w-0 truncate"
+                      title={instance.name}
+                    >
+                      {instance.name}
+                    </span>
+                    <span
+                      className={cn(
+                        "h-2 w-2 rounded-full",
+                        instance.connected ? "bg-green-500" : "bg-red-500"
+                      )}
+                    />
+                  </Link>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : singleActiveInstance ? (
+          <Link
+            to="/instances/$instanceId"
+            params={{ instanceId: singleActiveInstance.id.toString() }}
+            className={cn(
+              "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
+              isOnInstancePage ? "text-primary" : "text-muted-foreground hover:text-foreground"
             )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+          >
+            <div className="relative">
+              <HardDrive className={cn(
+                "h-5 w-5",
+                isOnInstancePage && "text-primary"
+              )} />
+            </div>
+            <span
+              className="block max-w-[7.5rem] truncate text-center"
+              title={singleActiveInstance.name}
+            >
+              {singleActiveInstance.name}
+            </span>
+          </Link>
+        ) : isLoadingInstances ? (
+          <button
+            className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium min-w-0 flex-1 text-muted-foreground"
+            type="button"
+            disabled
+          >
+            <HardDrive className="h-5 w-5 animate-pulse" />
+            <span className="block max-w-[7.5rem] truncate text-center text-xs">Loading...</span>
+          </button>
+        ) : (
+          <button
+            className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium min-w-0 flex-1 text-muted-foreground"
+            type="button"
+            disabled
+          >
+            <HardDrive className="h-5 w-5" />
+            <span className="block max-w-[7.5rem] truncate text-center">No active clients</span>
+          </button>
+        )}
 
         {/* Settings dropdown */}
         <DropdownMenu>

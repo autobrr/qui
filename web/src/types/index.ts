@@ -24,6 +24,7 @@ export interface Instance {
   basicUsername?: string
   tlsSkipVerify: boolean
   sortOrder: number
+  isActive: boolean
 }
 
 export interface InstanceFormData {

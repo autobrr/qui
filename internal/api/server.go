@@ -329,6 +329,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 				r.Put("/order", instancesHandler.UpdateInstanceOrder)
 
 				r.Route("/{instanceID}", func(r chi.Router) {
+					r.Put("/status", instancesHandler.UpdateInstanceStatus)
 					r.Put("/", instancesHandler.UpdateInstance)
 					r.Delete("/", instancesHandler.DeleteInstance)
 					r.Post("/test", instancesHandler.TestConnection)

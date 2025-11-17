@@ -55,6 +55,9 @@ func (h *QBittorrentInfoHandler) GetQBittorrentAppInfo(w http.ResponseWriter, r 
 
 	client, err := h.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "qbittorrentInfo:getAppInfo") {
+			return
+		}
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
 		RespondError(w, http.StatusInternalServerError, "Failed to get qBittorrent client")
 		return
