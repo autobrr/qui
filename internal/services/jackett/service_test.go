@@ -861,6 +861,9 @@ type mockTorznabIndexerStore struct {
 	mu                 sync.Mutex
 	indexers           []*models.TorznabIndexer
 	capabilities       map[int][]string // indexerID -> capabilities
+	cooldowns          map[int]models.TorznabIndexerCooldown
+	upsertCooldowns    []int
+	deleteCooldowns    []int
 	panicOnListEnabled bool
 	listEnabledCalls   int
 	getCalls           []int
@@ -956,6 +959,49 @@ func (m *mockTorznabIndexerStore) UpdateRequestLimits(ctx context.Context, index
 	return nil
 }
 
+func (m *mockTorznabIndexerStore) ListRateLimitCooldowns(ctx context.Context) ([]models.TorznabIndexerCooldown, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if len(m.cooldowns) == 0 {
+		return nil, nil
+	}
+
+	entries := make([]models.TorznabIndexerCooldown, 0, len(m.cooldowns))
+	for _, cd := range m.cooldowns {
+		entries = append(entries, cd)
+	}
+	return entries, nil
+}
+
+func (m *mockTorznabIndexerStore) UpsertRateLimitCooldown(ctx context.Context, indexerID int, resumeAt time.Time, cooldown time.Duration, reason string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.cooldowns == nil {
+		m.cooldowns = make(map[int]models.TorznabIndexerCooldown)
+	}
+	m.cooldowns[indexerID] = models.TorznabIndexerCooldown{
+		IndexerID: indexerID,
+		ResumeAt:  resumeAt,
+		Cooldown:  cooldown,
+		Reason:    reason,
+	}
+	m.upsertCooldowns = append(m.upsertCooldowns, indexerID)
+	return nil
+}
+
+func (m *mockTorznabIndexerStore) DeleteRateLimitCooldown(ctx context.Context, indexerID int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.cooldowns != nil {
+		delete(m.cooldowns, indexerID)
+	}
+	m.deleteCooldowns = append(m.deleteCooldowns, indexerID)
+	return nil
+}
+
 func TestSearchMultipleIndexersSkipsRateLimitedIndexers(t *testing.T) {
 	store := &mockTorznabIndexerStore{
 		indexers: []*models.TorznabIndexer{
@@ -995,7 +1041,7 @@ func TestSearchMultipleIndexersAllRateLimited(t *testing.T) {
 	service := NewService(store)
 	service.rateLimiter = NewRateLimiter(time.Millisecond)
 	service.rateLimiter.SetCooldown(1, time.Now().Add(time.Minute))
-	service.rateLimiter.SetCooldown(2, time.Now().Add(2 * time.Minute))
+	service.rateLimiter.SetCooldown(2, time.Now().Add(2*time.Minute))
 
 	_, err := service.searchMultipleIndexers(context.Background(), store.indexers, url.Values{"q": {"test"}}, nil)
 	if err == nil || !strings.Contains(err.Error(), "all indexers are currently rate-limited") {

@@ -40,17 +40,23 @@ type IndexerStore interface {
 	RecordError(ctx context.Context, indexerID int, errorMessage, errorCode string) error
 	CountRequests(ctx context.Context, indexerID int, window time.Duration) (int, error)
 	UpdateRequestLimits(ctx context.Context, indexerID int, hourly, daily *int) error
+	ListRateLimitCooldowns(ctx context.Context) ([]models.TorznabIndexerCooldown, error)
+	UpsertRateLimitCooldown(ctx context.Context, indexerID int, resumeAt time.Time, cooldown time.Duration, reason string) error
+	DeleteRateLimitCooldown(ctx context.Context, indexerID int) error
 }
 
 // Service provides Jackett integration for Torznab searching
 type Service struct {
-	indexerStore       IndexerStore
-	releaseParser      *releases.Parser
-	rateLimiter        *RateLimiter
-	torrentCache       *models.TorznabTorrentCacheStore
-	searchCache        *models.TorznabSearchCacheStore
-	searchCacheTTL     time.Duration
-	searchCacheEnabled bool
+	indexerStore           IndexerStore
+	releaseParser          *releases.Parser
+	rateLimiter            *RateLimiter
+	rateLimiterRestoreOnce sync.Once
+	persistedCooldowns     map[int]time.Time
+	persistedCooldownsMu   sync.RWMutex
+	torrentCache           *models.TorznabTorrentCacheStore
+	searchCache            *models.TorznabSearchCacheStore
+	searchCacheTTL         time.Duration
+	searchCacheEnabled     bool
 
 	searchCacheCleanupMu   sync.Mutex
 	nextSearchCacheCleanup time.Time
@@ -63,6 +69,7 @@ const (
 	defaultRateLimitCooldown = 30 * time.Minute
 	defaultTorrentCacheTTL   = 12 * time.Hour
 	defaultSearchCacheTTL    = 24 * time.Hour
+	storeOperationTimeout    = 5 * time.Second
 	minSearchCacheTTL        = defaultSearchCacheTTL
 
 	searchCacheCleanupInterval = 6 * time.Hour
@@ -134,6 +141,7 @@ func NewService(indexerStore IndexerStore, opts ...ServiceOption) *Service {
 		indexerStore:       indexerStore,
 		releaseParser:      releases.NewDefaultParser(),
 		rateLimiter:        NewRateLimiter(defaultMinRequestInterval),
+		persistedCooldowns: make(map[int]time.Time),
 		searchCacheTTL:     defaultSearchCacheTTL,
 		searchCacheEnabled: true,
 	}
@@ -1063,16 +1071,18 @@ func (s *Service) MapCategoriesToIndexerCapabilities(ctx context.Context, indexe
 
 // searchMultipleIndexers searches multiple indexers in parallel and aggregates results
 func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, error) {
+	s.ensureRateLimiterState()
 	// Filter out rate-limited indexers before starting the search
 	availableIndexers := make([]*models.TorznabIndexer, 0, len(indexers))
 	cooldownIndexers := s.rateLimiter.GetCooldownIndexers()
 
 	for _, indexer := range indexers {
 		if resumeAt, inCooldown := cooldownIndexers[indexer.ID]; inCooldown {
+			localResumeAt := resumeAt.In(time.Local)
 			log.Warn().
 				Int("indexer_id", indexer.ID).
 				Str("indexer", indexer.Name).
-				Time("resume_at", resumeAt).
+				Time("resume_at", localResumeAt).
 				Msg("Skipping rate-limited indexer for search")
 			continue
 		}
@@ -1104,6 +1114,7 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 	resultsChan := make(chan indexerResult, len(availableIndexers))
 
 	for _, indexer := range availableIndexers {
+		s.clearPersistedCooldown(indexer.ID)
 		go func(idx *models.TorznabIndexer) {
 			defer func() {
 				if r := recover(); r != nil {
@@ -1773,10 +1784,11 @@ func (s *Service) handleRateLimit(ctx context.Context, idx *models.TorznabIndexe
 		cooldown = defaultRateLimitCooldown
 	}
 	resumeAt := time.Now().Add(cooldown)
+	localResumeAt := resumeAt.In(time.Local)
 	s.rateLimiter.SetCooldown(idx.ID, resumeAt)
 
 	message := fmt.Sprintf("Rate limit triggered for %s, pausing until %s (cooldown: %v)",
-		idx.Name, resumeAt.Format(time.RFC3339), cooldown)
+		idx.Name, localResumeAt.Format(time.RFC3339), cooldown)
 	if err := s.indexerStore.RecordError(ctx, idx.ID, message, "rate_limit"); err != nil {
 		log.Debug().Err(err).Int("indexer_id", idx.ID).Msg("Failed to record rate-limit error")
 	}
@@ -1785,11 +1797,172 @@ func (s *Service) handleRateLimit(ctx context.Context, idx *models.TorznabIndexe
 		Int("indexer_id", idx.ID).
 		Str("indexer", idx.Name).
 		Dur("cooldown", cooldown).
-		Time("resume_at", resumeAt).
+		Time("resume_at", localResumeAt).
 		Err(cause).
 		Msg("Rate limit applied to indexer")
 
+	reason := message
+	if cause != nil && strings.TrimSpace(cause.Error()) != "" {
+		reason = cause.Error()
+	}
+	s.persistRateLimitCooldown(idx.ID, resumeAt, cooldown, reason)
+
 	s.adaptRequestLimits(ctx, idx)
+}
+
+func (s *Service) ensureRateLimiterState() {
+	if s == nil || s.rateLimiter == nil || !s.shouldPersistCooldowns() {
+		return
+	}
+
+	s.rateLimiterRestoreOnce.Do(func() {
+		if err := s.restoreRateLimitCooldowns(); err != nil {
+			log.Warn().Err(err).Msg("Failed to restore torznab rate-limit cooldowns")
+		}
+	})
+}
+
+func (s *Service) restoreRateLimitCooldowns() error {
+	if !s.shouldPersistCooldowns() {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), storeOperationTimeout)
+	defer cancel()
+
+	cooldowns, err := s.indexerStore.ListRateLimitCooldowns(ctx)
+	if err != nil {
+		return err
+	}
+	if len(cooldowns) == 0 {
+		return nil
+	}
+
+	now := time.Now()
+	active := make(map[int]time.Time)
+
+	for _, cd := range cooldowns {
+		if cd.IndexerID <= 0 || cd.ResumeAt.IsZero() {
+			continue
+		}
+
+		resumeAt := cd.ResumeAt.UTC()
+		if !resumeAt.After(now) {
+			s.deleteCooldownRecord(cd.IndexerID)
+			continue
+		}
+
+		active[cd.IndexerID] = resumeAt
+		s.markCooldownPersisted(cd.IndexerID, resumeAt)
+	}
+
+	if len(active) == 0 {
+		return nil
+	}
+
+	s.rateLimiter.LoadCooldowns(active)
+	log.Info().
+		Int("count", len(active)).
+		Msg("Restored persisted torznab rate-limit cooldowns")
+	return nil
+}
+
+func (s *Service) persistRateLimitCooldown(indexerID int, resumeAt time.Time, cooldown time.Duration, reason string) {
+	if !s.shouldPersistCooldowns() || indexerID <= 0 {
+		return
+	}
+
+	cleanReason := strings.TrimSpace(reason)
+	if cleanReason == "" {
+		cleanReason = "rate limit"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), storeOperationTimeout)
+	defer cancel()
+
+	if err := s.indexerStore.UpsertRateLimitCooldown(ctx, indexerID, resumeAt.UTC(), cooldown, cleanReason); err != nil {
+		log.Debug().
+			Err(err).
+			Int("indexer_id", indexerID).
+			Msg("Failed to persist torznab cooldown state")
+		return
+	}
+
+	s.markCooldownPersisted(indexerID, resumeAt)
+}
+
+func (s *Service) clearPersistedCooldown(indexerID int) {
+	if !s.shouldPersistCooldowns() || indexerID <= 0 {
+		return
+	}
+	if !s.isCooldownPersisted(indexerID) {
+		return
+	}
+
+	s.deleteCooldownRecord(indexerID)
+}
+
+func (s *Service) deleteCooldownRecord(indexerID int) {
+	if !s.shouldPersistCooldowns() || indexerID <= 0 {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), storeOperationTimeout)
+	defer cancel()
+
+	if err := s.indexerStore.DeleteRateLimitCooldown(ctx, indexerID); err != nil {
+		log.Debug().
+			Err(err).
+			Int("indexer_id", indexerID).
+			Msg("Failed to delete torznab cooldown state")
+		return
+	}
+
+	s.unmarkCooldownPersisted(indexerID)
+}
+
+func (s *Service) shouldPersistCooldowns() bool {
+	return s != nil && s.indexerStore != nil
+}
+
+func (s *Service) markCooldownPersisted(indexerID int, resumeAt time.Time) {
+	if s == nil || indexerID <= 0 {
+		return
+	}
+
+	s.persistedCooldownsMu.Lock()
+	if s.persistedCooldowns == nil {
+		s.persistedCooldowns = make(map[int]time.Time)
+	}
+	s.persistedCooldowns[indexerID] = resumeAt
+	s.persistedCooldownsMu.Unlock()
+}
+
+func (s *Service) unmarkCooldownPersisted(indexerID int) {
+	if s == nil || indexerID <= 0 {
+		return
+	}
+
+	s.persistedCooldownsMu.Lock()
+	if s.persistedCooldowns != nil {
+		delete(s.persistedCooldowns, indexerID)
+	}
+	s.persistedCooldownsMu.Unlock()
+}
+
+func (s *Service) isCooldownPersisted(indexerID int) bool {
+	if s == nil || indexerID <= 0 {
+		return false
+	}
+
+	s.persistedCooldownsMu.RLock()
+	defer s.persistedCooldownsMu.RUnlock()
+	if s.persistedCooldowns == nil {
+		return false
+	}
+
+	_, ok := s.persistedCooldowns[indexerID]
+	return ok
 }
 
 func (s *Service) adaptRequestLimits(ctx context.Context, idx *models.TorznabIndexer) {

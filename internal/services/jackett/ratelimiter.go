@@ -86,6 +86,24 @@ func (r *RateLimiter) SetCooldown(indexerID int, until time.Time) {
 	}
 }
 
+// LoadCooldowns seeds the rate limiter with pre-existing cooldown windows.
+func (r *RateLimiter) LoadCooldowns(cooldowns map[int]time.Time) {
+	if len(cooldowns) == 0 {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for indexerID, until := range cooldowns {
+		if until.IsZero() {
+			continue
+		}
+		state := r.getStateLocked(indexerID)
+		if until.After(state.cooldownUntil) {
+			state.cooldownUntil = until
+		}
+	}
+}
+
 func (r *RateLimiter) ClearCooldown(indexerID int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
