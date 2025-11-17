@@ -266,9 +266,11 @@ CREATE TABLE IF NOT EXISTS cross_seed_feed_items (
     last_run_id INTEGER,
     info_hash TEXT,
     PRIMARY KEY (guid, indexer_id),
+    FOREIGN KEY (indexer_id) REFERENCES torznab_indexers(id) ON DELETE CASCADE,
     FOREIGN KEY (last_run_id) REFERENCES cross_seed_runs(id) ON DELETE SET NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_cross_seed_feed_items_indexer ON cross_seed_feed_items(indexer_id);
 CREATE INDEX IF NOT EXISTS idx_cross_seed_feed_items_last_seen ON cross_seed_feed_items(last_seen_at DESC);
 
 CREATE TRIGGER IF NOT EXISTS cross_seed_feed_items_touch
