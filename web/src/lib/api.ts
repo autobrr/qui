@@ -52,6 +52,7 @@ import type {
   TorznabIndexerHealth,
   TorznabIndexerLatencyStats,
   TorznabSearchRequest,
+  TorznabSearchResult,
   TorznabSearchResponse,
   TorznabSearchCacheMetadata,
   TorznabSearchCacheStats,
@@ -1392,10 +1393,59 @@ class ApiClient {
   }
 
   async searchTorznab(request: TorznabSearchRequest): Promise<TorznabSearchResponse> {
-    return this.request<TorznabSearchResponse>("/torznab/search", {
+    const response = await this.request<{
+      results: Array<{
+        indexer: string
+        indexer_id: number
+        title: string
+        download_url: string
+        info_url?: string
+        size: number
+        seeders: number
+        leechers: number
+        category_id: number
+        category_name: string
+        publish_date: string
+        download_volume_factor: number
+        upload_volume_factor: number
+        guid: string
+        imdb_id?: string
+        tvdb_id?: string
+        source?: string
+        collection?: string
+        group?: string
+      }>
+      total: number
+      cache?: TorznabSearchCacheMetadata
+    }>("/torznab/search", {
       method: "POST",
       body: JSON.stringify(request),
     })
+
+    return {
+      ...response,
+      results: response.results.map((result): TorznabSearchResult => ({
+        indexer: result.indexer,
+        indexerId: result.indexer_id,
+        title: result.title,
+        downloadUrl: result.download_url,
+        infoUrl: result.info_url,
+        size: result.size,
+        seeders: result.seeders,
+        leechers: result.leechers,
+        categoryId: result.category_id,
+        categoryName: result.category_name,
+        publishDate: result.publish_date,
+        downloadVolumeFactor: result.download_volume_factor,
+        uploadVolumeFactor: result.upload_volume_factor,
+        guid: result.guid,
+        imdbId: result.imdb_id,
+        tvdbId: result.tvdb_id,
+        source: result.source,
+        collection: result.collection,
+        group: result.group,
+      }))
+    }
   }
 
   async getRecentTorznabSearches(limit?: number, scope?: string): Promise<TorznabRecentSearch[]> {

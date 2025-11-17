@@ -1005,6 +1005,7 @@ export interface TorznabRecentSearch {
 
 export interface TorznabSearchResult {
   indexer: string
+  indexerId: number
   title: string
   downloadUrl: string
   infoUrl?: string
