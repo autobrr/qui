@@ -5,11 +5,11 @@
 
 import { themes, getThemeById, getDefaultTheme, type Theme } from "@/config/themes";
 import { loadThemeFonts } from "./fontLoader";
+import { getStoredVariation, setStoredVariation } from "@/hooks/usePersistedThemeVariation";
 
 // Theme constants
 const THEME_KEY = "theme";
 const COLOR_THEME_KEY = "color-theme";
-const VARIATIONS_THEME_KEY = "variations-theme";
 const THEME_DARK = "dark";
 const THEME_LIGHT = "light";
 const THEME_AUTO = "auto";
@@ -158,28 +158,6 @@ const getStoredThemeId = (): string | null => {
 
 const setStoredThemeId = (themeId: string): void => {
   localStorage.setItem(COLOR_THEME_KEY, themeId);
-};
-
-export const getStoredVariation = (themeId: string): string | null => {
-  try {
-    const stored = localStorage.getItem(VARIATIONS_THEME_KEY);
-    if (!stored) return null;
-    const parsed = JSON.parse(stored);
-    return parsed[themeId] || null;
-  } catch {
-    return null
-  }
-};
-
-const setStoredVariation = (themeId: string, variationId: string): void => {
-  try {
-    const stored = localStorage.getItem(VARIATIONS_THEME_KEY);
-    const parsed = stored ? JSON.parse(stored) : {};
-    parsed[themeId] = variationId;
-    localStorage.setItem(VARIATIONS_THEME_KEY, JSON.stringify(parsed));
-  } catch {
-    // Ignore
-  }
 };
 
 const getSystemPreference = (): MediaQueryList => {
@@ -540,3 +518,4 @@ export function getThemeColors(
 // Re-export for backward compatibility
 export { getSystemTheme };
 export { themes };
+export { getStoredVariation };
