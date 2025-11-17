@@ -125,7 +125,7 @@ func (s *TorznabSearchCacheStore) Fetch(ctx context.Context, cacheKey string) (*
 		return nil, false, fmt.Errorf("fetch torznab search cache: %w", err)
 	}
 
-	if time.Now().After(expiresAt) {
+	if time.Now().UTC().After(expiresAt) {
 		s.deleteEntry(ctx, id)
 		return nil, false, nil
 	}
