@@ -24,6 +24,7 @@ type ContentTypeInfo struct {
 
 // DetermineContentType analyzes a release and returns comprehensive content type information
 func DetermineContentType(release rls.Release) ContentTypeInfo {
+	release = normalizeReleaseTypeForContent(release)
 	var info ContentTypeInfo
 
 	switch release.Type {
@@ -90,6 +91,88 @@ func DetermineContentType(release rls.Release) ContentTypeInfo {
 	}
 
 	return info
+}
+
+// normalizeReleaseTypeForContent inspects parsed metadata to correct obvious
+// misclassifications (e.g. video torrents parsed as music because of dash-separated
+// folder names such as BDMV/STREAM paths).
+func normalizeReleaseTypeForContent(release rls.Release) rls.Release {
+	if release.Type != rls.Music {
+		return release
+	}
+
+	if looksLikeVideoRelease(release) {
+		// Preserve episode metadata when present so TV content keeps season info.
+		if release.Series > 0 || release.Episode > 0 {
+			release.Type = rls.Episode
+		} else {
+			release.Type = rls.Movie
+		}
+	}
+
+	return release
+}
+
+func looksLikeVideoRelease(release rls.Release) bool {
+	if release.Resolution != "" {
+		return true
+	}
+	if len(release.HDR) > 0 {
+		return true
+	}
+	if hasVideoCodecHints(release.Codec) {
+		return true
+	}
+	videoTitleHints := []string{
+		"2160p", "1080p", "720p", "576p", "480p", "4k", "remux", "rmhd", "hdr", "hdr10",
+		"dolby vision", "dv", "uhd", "bluray", "blu-ray", "bdrip", "bdremux", "bd50", "bd25",
+		"web-dl", "webdl", "webrip", "hdtv", "cam", "ts", "m2ts", "xvid", "x264", "x265", "hevc",
+	}
+	if containsVideoTokens(release.Title, videoTitleHints) || containsVideoTokens(release.Group, videoTitleHints) {
+		return true
+	}
+	if release.Source != "" {
+		lowerSource := strings.ToLower(release.Source)
+		videoSourceHints := []string{"uhd", "hdr", "remux", "stream", "bdmv", "bluray", "blu-ray", "bdrip", "bdremux", "webrip", "web-dl", "webdl", "hdtv", "dvdrip", "m2ts"}
+		for _, hint := range videoSourceHints {
+			if strings.Contains(lowerSource, hint) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func hasVideoCodecHints(codecs []string) bool {
+	if len(codecs) == 0 {
+		return false
+	}
+	videoCodecHints := []string{"x264", "x265", "h264", "h265", "hevc", "av1", "xvid", "divx"}
+	for _, codec := range codecs {
+		lowerCodec := strings.ToLower(codec)
+		for _, hint := range videoCodecHints {
+			if strings.Contains(lowerCodec, hint) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func containsVideoTokens(value string, tokens []string) bool {
+	if value == "" {
+		return false
+	}
+	lowerValue := strings.ToLower(value)
+	for _, token := range tokens {
+		if token == "" {
+			continue
+		}
+		if strings.Contains(lowerValue, token) {
+			return true
+		}
+	}
+	return false
 }
 
 // OptimizeContentTypeForIndexers optimizes content type information for specific indexers
