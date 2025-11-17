@@ -340,7 +340,19 @@ const CrossSeedDialogComponent = ({
                           />
                           <div className="min-w-0 flex-1 space-y-1">
                             <div className="flex items-start justify-between gap-2">
-                              <span className="min-w-0 flex-1 truncate font-medium text-sm leading-tight" title={result.title}>{result.title}</span>
+                              {result.infoUrl ? (
+                                <a
+                                  href={result.infoUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="min-w-0 flex-1 truncate font-medium text-sm leading-tight text-primary hover:underline"
+                                  title={result.title}
+                                >
+                                  {result.title}
+                                </a>
+                              ) : (
+                                <span className="min-w-0 flex-1 truncate font-medium text-sm leading-tight" title={result.title}>{result.title}</span>
+                              )}
                               <Badge variant="outline" className="shrink-0 text-xs">{result.indexer}</Badge>
                             </div>
                             <div className="flex min-w-0 flex-wrap gap-x-2.5 text-xs text-muted-foreground">
