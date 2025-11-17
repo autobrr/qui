@@ -222,7 +222,8 @@ CREATE TABLE IF NOT EXISTS cross_seed_settings (
     use_category_from_indexer BOOLEAN NOT NULL DEFAULT 0,
     run_external_program_id INTEGER,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (run_external_program_id) REFERENCES external_programs(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_cross_seed_settings_external_program
