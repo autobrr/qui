@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator"
 import { themes, isThemePremium, type Theme } from "@/config/themes"
 import { useHasPremiumAccess } from "@/hooks/useLicense.ts"
 import { useTheme } from "@/hooks/useTheme"
-import { getThemeColors, getStoredVariation } from "@/utils/theme"
+import { getThemeColors, getThemeVariation } from "@/utils/theme"
 import { Sparkles, Lock, Check, Palette, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 
@@ -22,10 +22,8 @@ interface ThemeCardProps {
 }
 
 function ThemeCard({ theme, isSelected, isLocked, onSelect, onVariationSelect }: ThemeCardProps) {
-  // Get current variation for theme
-  const variation = theme.variations && theme.variations.length > 0
-    ? getStoredVariation(theme.id) || theme.variations[0]
-    : null
+  // Get current variation for theme (validated)
+  const variation = getThemeVariation(theme.id)
 
   // Helper to extract colors from theme
   const colors = getThemeColors(theme)

@@ -32,7 +32,7 @@ import {
   setThemeMode,
   setThemeVariation,
   getThemeColors,
-  getStoredVariation,
+  getThemeVariation,
   type ThemeMode
 } from "@/utils/theme"
 import { useQuery } from "@tanstack/react-query"
@@ -485,7 +485,7 @@ export function MobileFooterNav() {
                     const isPremium = isThemePremium(theme.id)
                     const isLocked = isPremium && !hasPremiumAccess
                     const colors = getThemeColors(theme)
-                    const currentVariation = getStoredVariation(theme.id) || theme.variations?.[0]
+                    const currentVariation = getThemeVariation(theme.id)
 
                     return (
                       <button

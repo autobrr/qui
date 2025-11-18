@@ -11,7 +11,7 @@ import {
   setThemeMode,
   setThemeVariation,
   getThemeColors,
-  getStoredVariation,
+  getThemeVariation,
   type ThemeMode
 } from "@/utils/theme";
 import { themes, isThemePremium } from "@/config/themes";
@@ -170,7 +170,7 @@ export const ThemeToggle: React.FC = () => {
             const isPremium = isThemePremium(theme.id);
             const isLocked = isPremium && !hasPremiumAccess;
             const colors = getThemeColors(theme);
-            const currentVariation = getStoredVariation(theme.id) || theme.variations?.[0];
+            const currentVariation = getThemeVariation(theme.id);
 
             return (
               <DropdownMenuItem
