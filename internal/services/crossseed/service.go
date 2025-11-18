@@ -1652,6 +1652,8 @@ func (s *Service) findBestCandidateMatch(
 		candidateFiles qbt.TorrentFiles
 		matchType      string
 		bestScore      int
+		bestHasRoot    bool
+		bestFileCount  int
 	)
 
 	for _, torrent := range candidate.Torrents {
@@ -1678,12 +1680,28 @@ func (s *Service) findBestCandidateMatch(
 			continue
 		}
 
-		if matchedTorrent == nil || score > bestScore {
+		hasRootFolder := detectCommonRoot(files) != ""
+		fileCount := len(files)
+
+		shouldPromote := matchedTorrent == nil || score > bestScore
+		if !shouldPromote && score == bestScore {
+			// Prefer candidates with a top-level folder so cross-seeded torrents inherit cleaner layouts.
+			if hasRootFolder && !bestHasRoot {
+				shouldPromote = true
+			} else if hasRootFolder == bestHasRoot && fileCount > bestFileCount {
+				// Fall back to the candidate that carries more files (season packs vs single files).
+				shouldPromote = true
+			}
+		}
+
+		if shouldPromote {
 			copyTorrent := torrent
 			matchedTorrent = &copyTorrent
 			candidateFiles = files
 			matchType = candidateMatchType
 			bestScore = score
+			bestHasRoot = hasRootFolder
+			bestFileCount = fileCount
 		}
 	}
 

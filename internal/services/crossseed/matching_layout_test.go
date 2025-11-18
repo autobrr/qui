@@ -64,6 +64,46 @@ func TestFindBestCandidateMatch_PrefersLayoutCompatibleTorrent(t *testing.T) {
 	require.Len(t, files, 1)
 }
 
+func TestFindBestCandidateMatch_PrefersTopLevelFolderOnTie(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache: releases.NewDefaultParser(),
+		syncManager: &candidateSelectionSyncManager{
+			files: map[string]qbt.TorrentFiles{
+				"single": {{Name: "payload.bin", Size: 4 << 30}},
+				"folder": {
+					{Name: "folder/payload.bin", Size: 4 << 30},
+					{Name: "folder/extra.txt", Size: 1 << 20},
+				},
+			},
+		},
+	}
+
+	sourceRelease := rls.Release{}
+	sourceFiles := qbt.TorrentFiles{{Name: "PAYLOAD.bin", Size: 4 << 30}}
+
+	candidate := CrossSeedCandidate{
+		InstanceID: 1,
+		Torrents: []qbt.Torrent{
+			{Hash: "single", Name: "Minimal.Payload", Progress: 1.0},
+			{Hash: "folder", Name: "Minimal.Payload", Progress: 1.0},
+		},
+	}
+
+	singleRelease := svc.releaseCache.Parse("Minimal.Payload")
+	singleMatch := svc.getMatchType(sourceRelease, singleRelease, sourceFiles, svc.syncManager.(*candidateSelectionSyncManager).files["single"], nil)
+	folderMatch := svc.getMatchType(sourceRelease, singleRelease, sourceFiles, svc.syncManager.(*candidateSelectionSyncManager).files["folder"], nil)
+	require.Equal(t, singleMatch, folderMatch, "test setup should create identical match priorities")
+	require.Equal(t, "size", singleMatch)
+
+	bestTorrent, files, matchType := svc.findBestCandidateMatch(context.Background(), candidate, sourceRelease, sourceFiles, nil)
+	require.NotNil(t, bestTorrent)
+	require.Equal(t, "folder", bestTorrent.Hash, "top-level folder layout should win tie-breakers")
+	require.Equal(t, "size", matchType)
+	require.Len(t, files, 2, "should return folder-based file list")
+}
+
 type candidateSelectionSyncManager struct {
 	files map[string]qbt.TorrentFiles
 }
