@@ -27,6 +27,8 @@ import type { AppPreferences, Torrent } from "@/types"
 import type { ColumnDef } from "@tanstack/react-table"
 import {
   AlertCircle,
+  ArrowDownAZ,
+  ArrowDownZA,
   CheckCircle2,
   Download,
   Globe,
@@ -817,16 +819,26 @@ export const createColumns = (
   },
   {
     id: "tracker_icon",
-    header: () => (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label="Tracker Icon">
-            <Globe className="h-4 w-4" aria-hidden="true" />
-          </div>
-        </TooltipTrigger>
-        <TooltipContent>Tracker Icon</TooltipContent>
-      </Tooltip>
-    ),
+    header: ({ table }) => {
+      const trackerColumn = table.getColumn("tracker")
+      const sortState = trackerColumn?.getIsSorted()
+      const Icon = sortState === "asc"
+        ? ArrowDownAZ
+        : sortState === "desc"
+          ? ArrowDownZA
+          : Globe
+
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label="Tracker Icon">
+              <Icon className="h-4 w-4" aria-hidden="true" />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>Tracker Icon</TooltipContent>
+        </Tooltip>
+      )
+    },
     meta: {
       headerString: "Tracker Icon",
     },
