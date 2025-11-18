@@ -2475,20 +2475,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/CrossSeedWebhookCheckResponse'
         '404':
-          description: No cross-seed matches found on the target instance, or the specified instanceId is invalid
+          description: No cross-seed matches found on the target instance, or the specified instanceId is invalid (empty matches array and canCrossSeed=false with recommendation="skip")
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  canCrossSeed:
-                    type: boolean
-                  matches:
-                    type: array
-                    items:
-                      type: object
-                  recommendation:
-                    type: string
+                $ref: '#/components/schemas/CrossSeedWebhookCheckResponse'
         '400':
           description: Invalid request body
         '500':
