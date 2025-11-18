@@ -43,6 +43,12 @@ export function useCrossSeedFilter({ instanceId, onFilterChange }: UseCrossSeedF
       const matches: CrossSeedTorrent[] = []
 
       if (allInstances && Array.isArray(allInstances)) {
+        const activeInstances = allInstances.filter(instance => instance.isActive)
+        if (activeInstances.length === 0) {
+          toast.info("No active instances available for cross-seed filtering")
+          return
+        }
+
         const searchWithTimeout = async (instance: Instance, timeoutMs = 15000) => {
           let timeoutHandle: ReturnType<typeof setTimeout> | null = null
 
@@ -68,7 +74,7 @@ export function useCrossSeedFilter({ instanceId, onFilterChange }: UseCrossSeedF
           }
         }
 
-        const searchPromises = allInstances.map(instance => searchWithTimeout(instance))
+        const searchPromises = activeInstances.map(instance => searchWithTimeout(instance))
         const results = await Promise.allSettled(searchPromises)
 
         let successful = 0
@@ -90,7 +96,7 @@ export function useCrossSeedFilter({ instanceId, onFilterChange }: UseCrossSeedF
           toast.info(
             `Search completed with partial results`,
             {
-              description: `${successful}/${allInstances.length} instances searched successfully. ${timedOut} timed out, ${failed} failed.`,
+              description: `${successful}/${activeInstances.length} instances searched successfully. ${timedOut} timed out, ${failed} failed.`,
               duration: 5000,
             }
           )

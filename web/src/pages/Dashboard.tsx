@@ -1109,8 +1109,14 @@ function QuickActionsDropdown({ statsData }: { statsData: DashboardInstanceStats
 
 export function Dashboard() {
   const { instances, isLoading } = useInstances()
-  const allInstances = instances || []
-  const activeInstances = allInstances.filter(instance => instance.isActive)
+  const allInstances = useMemo(
+    () => instances ?? [],
+    [instances]
+  )
+  const activeInstances = useMemo(
+    () => allInstances.filter(instance => instance.isActive),
+    [allInstances]
+  )
   const hasInstances = allInstances.length > 0
   const hasActiveInstances = activeInstances.length > 0
   const [isAdvancedMetricsOpen, setIsAdvancedMetricsOpen] = useState(false)

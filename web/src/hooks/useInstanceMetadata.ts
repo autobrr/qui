@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useEffect, useMemo, useRef, useState } from "react"
-import { useQueryClient } from "@tanstack/react-query"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import type { AppPreferences, Category } from "@/types"
 
@@ -30,11 +30,31 @@ export function useInstanceMetadata(instanceId: number, options: UseInstanceMeta
   const queryKey = useMemo(() => ["instance-metadata", instanceId] as const, [instanceId])
   const fallbackDelay = options.fallbackDelayMs ?? DEFAULT_PREF_FALLBACK_DELAY_MS
 
-  const [metadata, setMetadata] = useState<InstanceMetadata | undefined>(() =>
-    queryClient.getQueryData<InstanceMetadata>(queryKey)
-  )
   const [error, setError] = useState<Error | null>(null)
   const [isFetchingFallback, setIsFetchingFallback] = useState(false)
+
+  const emptyMetadataRef = useRef<InstanceMetadata>({ categories: {}, tags: [] })
+  const getSnapshot = useCallback(
+    () => {
+      if (!instanceId) {
+        return undefined
+      }
+      return queryClient.getQueryData<InstanceMetadata>(queryKey)
+    },
+    [instanceId, queryClient, queryKey]
+  )
+
+  const { data: metadata, refetch: refetchMetadata } = useQuery<InstanceMetadata | undefined>({
+    queryKey,
+    queryFn: async () => getSnapshot() ?? emptyMetadataRef.current,
+    initialData: () => getSnapshot() ?? emptyMetadataRef.current,
+    placeholderData: previous => previous ?? emptyMetadataRef.current,
+    enabled: Boolean(instanceId),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  })
 
   const fallbackRef = useRef<{
     timeoutId: ReturnType<typeof setTimeout> | null
@@ -49,36 +69,6 @@ export function useInstanceMetadata(instanceId: number, options: UseInstanceMeta
       fallbackRef.current.timeoutId = null
     }
   }, [instanceId])
-
-  useEffect(() => {
-    if (!instanceId) {
-      setMetadata(undefined)
-      return
-    }
-
-    setMetadata(queryClient.getQueryData<InstanceMetadata>(queryKey))
-
-    const unsubscribe = queryClient.getQueryCache().subscribe(event => {
-      if (event.type !== "updated") {
-        return
-      }
-
-      const key = event.query.queryKey
-      if (!Array.isArray(key) || key.length < 2) {
-        return
-      }
-
-      if (key[0] !== "instance-metadata" || key[1] !== instanceId) {
-        return
-      }
-
-      setMetadata(event.query.state.data as InstanceMetadata | undefined)
-    })
-
-    return () => {
-      unsubscribe?.()
-    }
-  }, [instanceId, queryClient, queryKey])
 
   useEffect(() => {
     if (!instanceId) {
@@ -110,16 +100,13 @@ export function useInstanceMetadata(instanceId: number, options: UseInstanceMeta
       try {
         const preferences = await api.getInstancePreferences(instanceId)
 
-        setMetadata(previous => {
-          const cached = queryClient.getQueryData<InstanceMetadata>(queryKey)
-          const next: InstanceMetadata = {
-            categories: cached?.categories ?? previous?.categories ?? {},
-            tags: cached?.tags ?? previous?.tags ?? [],
-            preferences,
-          }
-          queryClient.setQueryData(queryKey, next)
-          return previous
-        })
+        const cached = queryClient.getQueryData<InstanceMetadata>(queryKey)
+        const next: InstanceMetadata = {
+          categories: cached?.categories ?? metadata?.categories ?? {},
+          tags: cached?.tags ?? metadata?.tags ?? [],
+          preferences,
+        }
+        queryClient.setQueryData(queryKey, next)
         setError(null)
       } catch (err) {
         if (err instanceof Error) {
@@ -144,11 +131,16 @@ export function useInstanceMetadata(instanceId: number, options: UseInstanceMeta
     }
   }, [fallbackDelay, instanceId, metadata?.preferences, queryClient, queryKey])
 
-  const isLoading = !metadata?.preferences && (isFetchingFallback || !metadata)
+  const hasPreferences = Boolean(metadata?.preferences)
+  const isLoading =
+    Boolean(instanceId) &&
+    !hasPreferences &&
+    (isFetchingFallback || metadata === emptyMetadataRef.current || !metadata)
 
   return {
-    data: metadata,
+    data: instanceId ? metadata : undefined,
     isLoading,
     error,
+    refreshMetadata: refetchMetadata,
   }
 }
