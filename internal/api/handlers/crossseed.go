@@ -234,7 +234,7 @@ func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.R
 
 // AutobrrApply godoc
 // @Summary Add a cross-seed torrent provided by autobrr
-// @Description Accepts a torrent file from autobrr, matches it against the specified instance, and adds it with alignment if a match is found.
+// @Description Accepts a torrent file from autobrr, matches it against the requested instances (or all instances when instanceIds is omitted), and adds it with alignment wherever a match is found.
 // @Tags cross-seed
 // @Accept json
 // @Produce json
@@ -712,14 +712,6 @@ func (h *CrossSeedHandler) WebhookCheck(w http.ResponseWriter, r *http.Request) 
 		case errors.Is(err, crossseed.ErrInvalidWebhookRequest):
 			log.Warn().Err(err).Msg("Invalid webhook payload")
 			RespondError(w, http.StatusBadRequest, err.Error())
-			return
-		case errors.Is(err, crossseed.ErrWebhookInstanceNotFound):
-			log.Warn().Err(err).Msg("Webhook instance not found")
-			RespondJSON(w, http.StatusNotFound, &crossseed.WebhookCheckResponse{
-				CanCrossSeed:   false,
-				Matches:        nil,
-				Recommendation: "skip",
-			})
 			return
 		default:
 			log.Error().Err(err).Msg("Failed to check webhook")
