@@ -47,6 +47,7 @@ export function loadThemes(): Theme[] {
       name: parsedTheme.metadata.name,
       description: parsedTheme.metadata.description,
       isPremium: parsedTheme.metadata.isPremium,
+      variations: parsedTheme.variations,
       cssVars: parsedTheme.cssVars,
     };
 
@@ -74,6 +75,7 @@ export function loadThemes(): Theme[] {
       name: parsedTheme.metadata.name,
       description: parsedTheme.metadata.description,
       isPremium: parsedTheme.metadata.isPremium ?? true, // Default to premium for premium directory
+      variations: parsedTheme.variations,
       cssVars: parsedTheme.cssVars,
     };
 
