@@ -193,6 +193,11 @@ const applyTheme = async (theme: Theme, isDark: boolean, withTransition = false)
     root.classList.remove(THEME_DARK);
   }
 
+  // Clean up all variation variables to prevent stale values
+  Array.from(root.style)
+    .filter(prop => prop.startsWith('--variation'))
+    .forEach(prop => root.style.removeProperty(prop));
+
   // Apply theme CSS variables
   const cssVars = isDark ? theme.cssVars.dark : theme.cssVars.light;
   Object.entries(cssVars).forEach(([key, value]) => {
@@ -201,8 +206,10 @@ const applyTheme = async (theme: Theme, isDark: boolean, withTransition = false)
 
   // Apply variation if possible
   if (theme.variations && theme.variations.length > 0) {
-    const selectedVariation = getStoredVariation(theme.id) || theme.variations[0];
-    const variationColor = cssVars[`--variation-${selectedVariation}`];
+    const selectedVariation = getThemeVariation(theme.id);
+    const variationColor = selectedVariation
+      ? cssVars[`--variation-${selectedVariation}`]
+      : undefined;
 
     if (variationColor) {
       root.style.setProperty("--variation-color", variationColor);
@@ -452,7 +459,12 @@ export const getThemeVariation = (themeId?: string): string | null => {
     return null;
   }
 
-  return getStoredVariation(theme.id) || theme.variations[0];
+  const stored = getStoredVariation(theme.id);
+  if (stored && theme.variations.includes(stored)) {
+    return stored;
+  }
+
+  return theme.variations[0];
 };
 
 // When colorVar is provided, return string
@@ -492,7 +504,8 @@ export function getThemeColors(
 
     if (colorValue === "var(--variation-color)") {
       // Get stored variation or fallback to first variation
-      const variation = getStoredVariation(theme.id) || theme.variations?.[0];
+      const variation = getThemeVariation(theme.id);
+      if (!variation) return "";
       return cssVars[`--variation-${variation}`] || "";
     }
     return colorValue || "";
