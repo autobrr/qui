@@ -31,6 +31,7 @@ import type {
   ExternalProgramUpdate,
   InstanceCapabilities,
   InstanceFormData,
+  InstanceReannounceActivity,
   InstanceResponse,
   JackettIndexer,
   QBittorrentAppInfo,
@@ -287,6 +288,14 @@ class ApiClient {
 
   async getInstanceCapabilities(id: number): Promise<InstanceCapabilities> {
     return this.request<InstanceCapabilities>(`/instances/${id}/capabilities`)
+  }
+
+  async getInstanceReannounceActivity(
+    instanceId: number,
+    limit?: number
+  ): Promise<InstanceReannounceActivity[]> {
+    const query = typeof limit === "number" ? `?limit=${limit}` : ""
+    return this.request<InstanceReannounceActivity[]>(`/instances/${instanceId}/reannounce/activity${query}`)
   }
 
   async reorderInstances(instanceIds: number[]): Promise<InstanceResponse[]> {

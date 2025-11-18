@@ -19,19 +19,26 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/reannounce"
 )
 
 type InstancesHandler struct {
-	instanceStore *models.InstanceStore
-	clientPool    *internalqbittorrent.ClientPool
-	syncManager   *internalqbittorrent.SyncManager
+	instanceStore   *models.InstanceStore
+	reannounceStore *models.InstanceReannounceStore
+	reannounceCache *reannounce.SettingsCache
+	clientPool      *internalqbittorrent.ClientPool
+	syncManager     *internalqbittorrent.SyncManager
+	reannounceSvc   *reannounce.Service
 }
 
-func NewInstancesHandler(instanceStore *models.InstanceStore, clientPool *internalqbittorrent.ClientPool, syncManager *internalqbittorrent.SyncManager) *InstancesHandler {
+func NewInstancesHandler(instanceStore *models.InstanceStore, reannounceStore *models.InstanceReannounceStore, reannounceCache *reannounce.SettingsCache, clientPool *internalqbittorrent.ClientPool, syncManager *internalqbittorrent.SyncManager, svc *reannounce.Service) *InstancesHandler {
 	return &InstancesHandler{
-		instanceStore: instanceStore,
-		clientPool:    clientPool,
-		syncManager:   syncManager,
+		instanceStore:   instanceStore,
+		reannounceStore: reannounceStore,
+		reannounceCache: reannounceCache,
+		clientPool:      clientPool,
+		syncManager:     syncManager,
+		reannounceSvc:   svc,
 	}
 }
 
@@ -72,6 +79,36 @@ func (h *InstancesHandler) GetInstanceCapabilities(w http.ResponseWriter, r *htt
 	RespondJSON(w, http.StatusOK, capabilities)
 }
 
+// GetReannounceActivity returns recent reannounce events for an instance.
+func (h *InstancesHandler) GetReannounceActivity(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+	if h.reannounceSvc == nil {
+		RespondJSON(w, http.StatusOK, []reannounce.ActivityEvent{})
+		return
+	}
+	limitParam := strings.TrimSpace(r.URL.Query().Get("limit"))
+	var limit int
+	if limitParam != "" {
+		if parsed, err := strconv.Atoi(limitParam); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+	events := h.reannounceSvc.GetActivity(instanceID, limit)
+	if events == nil {
+		events = []reannounce.ActivityEvent{}
+	}
+	normalized := make([]reannounce.ActivityEvent, len(events))
+	for i, event := range events {
+		event.Hash = strings.ToLower(event.Hash)
+		normalized[i] = event
+	}
+	RespondJSON(w, http.StatusOK, normalized)
+}
+
 func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, instances []*models.Instance) []InstanceResponse {
 	if len(instances) == 0 {
 		return []InstanceResponse{}
@@ -108,6 +145,7 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 				HasDecryptionError: false,
 				SortOrder:          instances[i].SortOrder,
 				IsActive:           instances[i].IsActive,
+				ReannounceSettings: payloadFromModel(models.DefaultInstanceReannounceSettings(instances[i].ID)),
 				ConnectionStatus: func(active bool) string {
 					if !active {
 						return "disabled"
@@ -152,6 +190,8 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		SortOrder:          instance.SortOrder,
 		IsActive:           instance.IsActive,
 	}
+
+	response.ReannounceSettings = h.getReannounceSettingsPayload(ctx, instance.ID)
 
 	// Fetch recent errors for disconnected instances
 	if instance.IsActive && !healthy {
@@ -209,26 +249,71 @@ func (h *InstancesHandler) testConnectionAsync(instanceID int) {
 	log.Debug().Int("instanceID", instanceID).Msg("Async connection test succeeded")
 }
 
+func (h *InstancesHandler) loadReannounceSettings(ctx context.Context, instanceID int) *models.InstanceReannounceSettings {
+	if h.reannounceStore == nil {
+		return models.DefaultInstanceReannounceSettings(instanceID)
+	}
+	settings, err := h.reannounceStore.Get(ctx, instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to load reannounce settings")
+		return models.DefaultInstanceReannounceSettings(instanceID)
+	}
+	return settings
+}
+
+func (h *InstancesHandler) getReannounceSettingsPayload(ctx context.Context, instanceID int) InstanceReannounceSettingsPayload {
+	if h.reannounceCache != nil {
+		if cached := h.reannounceCache.Get(instanceID); cached != nil {
+			return payloadFromModel(cached)
+		}
+	}
+	return payloadFromModel(h.loadReannounceSettings(ctx, instanceID))
+}
+
+func (h *InstancesHandler) persistReannounceSettings(ctx context.Context, instanceID int, payload *InstanceReannounceSettingsPayload) *models.InstanceReannounceSettings {
+	desired := payload.toModel(instanceID, nil)
+	if h.reannounceStore == nil {
+		if h.reannounceCache != nil {
+			h.reannounceCache.Replace(desired)
+		}
+		return desired
+	}
+	saved, err := h.reannounceStore.Upsert(ctx, desired)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to persist reannounce settings")
+		if h.reannounceCache != nil {
+			h.reannounceCache.Replace(desired)
+		}
+		return desired
+	}
+	if h.reannounceCache != nil {
+		h.reannounceCache.Replace(saved)
+	}
+	return saved
+}
+
 // CreateInstanceRequest represents a request to create a new instance
 type CreateInstanceRequest struct {
-	Name          string  `json:"name"`
-	Host          string  `json:"host"`
-	Username      string  `json:"username"`
-	Password      string  `json:"password"`
-	BasicUsername *string `json:"basicUsername,omitempty"`
-	BasicPassword *string `json:"basicPassword,omitempty"`
-	TLSSkipVerify bool    `json:"tlsSkipVerify,omitempty"`
+	Name               string                             `json:"name"`
+	Host               string                             `json:"host"`
+	Username           string                             `json:"username"`
+	Password           string                             `json:"password"`
+	BasicUsername      *string                            `json:"basicUsername,omitempty"`
+	BasicPassword      *string                            `json:"basicPassword,omitempty"`
+	TLSSkipVerify      bool                               `json:"tlsSkipVerify,omitempty"`
+	ReannounceSettings *InstanceReannounceSettingsPayload `json:"reannounceSettings,omitempty"`
 }
 
 // UpdateInstanceRequest represents a request to update an instance
 type UpdateInstanceRequest struct {
-	Name          string  `json:"name"`
-	Host          string  `json:"host"`
-	Username      string  `json:"username"`
-	Password      string  `json:"password,omitempty"` // Optional for updates
-	BasicUsername *string `json:"basicUsername,omitempty"`
-	BasicPassword *string `json:"basicPassword,omitempty"`
-	TLSSkipVerify *bool   `json:"tlsSkipVerify,omitempty"`
+	Name               string                             `json:"name"`
+	Host               string                             `json:"host"`
+	Username           string                             `json:"username"`
+	Password           string                             `json:"password,omitempty"` // Optional for updates
+	BasicUsername      *string                            `json:"basicUsername,omitempty"`
+	BasicPassword      *string                            `json:"basicPassword,omitempty"`
+	TLSSkipVerify      *bool                              `json:"tlsSkipVerify,omitempty"`
+	ReannounceSettings *InstanceReannounceSettingsPayload `json:"reannounceSettings,omitempty"`
 }
 
 type UpdateInstanceStatusRequest struct {
@@ -237,18 +322,31 @@ type UpdateInstanceStatusRequest struct {
 
 // InstanceResponse represents an instance in API responses
 type InstanceResponse struct {
-	ID                 int                    `json:"id"`
-	Name               string                 `json:"name"`
-	Host               string                 `json:"host"`
-	Username           string                 `json:"username"`
-	BasicUsername      *string                `json:"basicUsername,omitempty"`
-	TLSSkipVerify      bool                   `json:"tlsSkipVerify"`
-	Connected          bool                   `json:"connected"`
-	HasDecryptionError bool                   `json:"hasDecryptionError"`
-	RecentErrors       []models.InstanceError `json:"recentErrors,omitempty"`
-	ConnectionStatus   string                 `json:"connectionStatus,omitempty"`
-	SortOrder          int                    `json:"sortOrder"`
-	IsActive           bool                   `json:"isActive"`
+	ID                 int                               `json:"id"`
+	Name               string                            `json:"name"`
+	Host               string                            `json:"host"`
+	Username           string                            `json:"username"`
+	BasicUsername      *string                           `json:"basicUsername,omitempty"`
+	TLSSkipVerify      bool                              `json:"tlsSkipVerify"`
+	Connected          bool                              `json:"connected"`
+	HasDecryptionError bool                              `json:"hasDecryptionError"`
+	RecentErrors       []models.InstanceError            `json:"recentErrors,omitempty"`
+	ConnectionStatus   string                            `json:"connectionStatus,omitempty"`
+	SortOrder          int                               `json:"sortOrder"`
+	IsActive           bool                              `json:"isActive"`
+	ReannounceSettings InstanceReannounceSettingsPayload `json:"reannounceSettings"`
+}
+
+// InstanceReannounceSettingsPayload carries tracker monitoring config.
+type InstanceReannounceSettingsPayload struct {
+	Enabled                   bool     `json:"enabled"`
+	InitialWaitSeconds        int      `json:"initialWaitSeconds"`
+	ReannounceIntervalSeconds int      `json:"reannounceIntervalSeconds"`
+	MaxAgeSeconds             int      `json:"maxAgeSeconds"`
+	MonitorAll                bool     `json:"monitorAll"`
+	Categories                []string `json:"categories"`
+	Tags                      []string `json:"tags"`
+	Trackers                  []string `json:"trackers"`
 }
 
 // TestConnectionResponse represents connection test results
@@ -256,6 +354,46 @@ type TestConnectionResponse struct {
 	Connected bool   `json:"connected"`
 	Message   string `json:"message,omitempty"`
 	Error     string `json:"error,omitempty"`
+}
+
+func (p *InstanceReannounceSettingsPayload) toModel(instanceID int, base *models.InstanceReannounceSettings) *models.InstanceReannounceSettings {
+	var target *models.InstanceReannounceSettings
+	if base != nil {
+		clone := *base
+		target = &clone
+	} else {
+		target = models.DefaultInstanceReannounceSettings(instanceID)
+	}
+	if p == nil {
+		target.InstanceID = instanceID
+		return target
+	}
+	target.InstanceID = instanceID
+	target.Enabled = p.Enabled
+	target.InitialWaitSeconds = p.InitialWaitSeconds
+	target.ReannounceIntervalSeconds = p.ReannounceIntervalSeconds
+	target.MaxAgeSeconds = p.MaxAgeSeconds
+	target.MonitorAll = p.MonitorAll
+	target.Categories = append([]string{}, p.Categories...)
+	target.Tags = append([]string{}, p.Tags...)
+	target.Trackers = append([]string{}, p.Trackers...)
+	return target
+}
+
+func payloadFromModel(settings *models.InstanceReannounceSettings) InstanceReannounceSettingsPayload {
+	if settings == nil {
+		settings = models.DefaultInstanceReannounceSettings(0)
+	}
+	return InstanceReannounceSettingsPayload{
+		Enabled:                   settings.Enabled,
+		InitialWaitSeconds:        settings.InitialWaitSeconds,
+		ReannounceIntervalSeconds: settings.ReannounceIntervalSeconds,
+		MaxAgeSeconds:             settings.MaxAgeSeconds,
+		MonitorAll:                settings.MonitorAll,
+		Categories:                append([]string{}, settings.Categories...),
+		Tags:                      append([]string{}, settings.Tags...),
+		Trackers:                  append([]string{}, settings.Trackers...),
+	}
 }
 
 // DeleteInstanceResponse represents delete operation result
@@ -362,8 +500,11 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	settings := h.persistReannounceSettings(r.Context(), instance.ID, req.ReannounceSettings)
+
 	// Return quickly without testing connection
 	response := h.buildQuickInstanceResponse(instance)
+	response.ReannounceSettings = payloadFromModel(settings)
 
 	// Test connection asynchronously
 	go h.testConnectionAsync(instance.ID)
@@ -429,8 +570,16 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	// Remove old client from pool to force reconnection
 	h.clientPool.RemoveClient(instanceID)
 
+	var settings *models.InstanceReannounceSettings
+	if req.ReannounceSettings != nil {
+		settings = h.persistReannounceSettings(r.Context(), instanceID, req.ReannounceSettings)
+	} else {
+		settings = h.loadReannounceSettings(r.Context(), instanceID)
+	}
+
 	// Return quickly without testing connection
 	response := h.buildQuickInstanceResponse(instance)
+	response.ReannounceSettings = payloadFromModel(settings)
 
 	// Test connection asynchronously
 	go h.testConnectionAsync(instance.ID)
@@ -501,6 +650,7 @@ func (h *InstancesHandler) UpdateInstanceStatus(w http.ResponseWriter, r *http.R
 	}
 
 	response := h.buildQuickInstanceResponse(instance)
+	response.ReannounceSettings = h.getReannounceSettingsPayload(r.Context(), instanceID)
 	RespondJSON(w, http.StatusOK, response)
 }
 

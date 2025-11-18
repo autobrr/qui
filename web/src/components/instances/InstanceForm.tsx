@@ -126,6 +126,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
       basicUsername: instance?.basicUsername ?? "",
       basicPassword: instance?.basicUsername ? "<redacted>" : "",
       tlsSkipVerify: instance?.tlsSkipVerify ?? false,
+      reannounceSettings: instance?.reannounceSettings,
     },
     onSubmit: ({ value }) => {
       handleSubmit(value)

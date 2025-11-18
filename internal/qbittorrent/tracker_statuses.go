@@ -77,3 +77,13 @@ var trackerDownStatuses = []string{
 	"unable to process your request",
 	"<none>",
 }
+
+// TrackerMessageMatchesUnregistered reports whether the tracker message indicates an unregistered torrent.
+func TrackerMessageMatchesUnregistered(message string) bool {
+	return trackerMessageMatches(message, defaultUnregisteredStatuses)
+}
+
+// TrackerMessageMatchesDown reports whether the tracker message indicates tracker outage.
+func TrackerMessageMatchesDown(message string) bool {
+	return trackerMessageMatches(message, trackerDownStatuses)
+}

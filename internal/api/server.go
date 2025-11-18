@@ -31,6 +31,7 @@ import (
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
@@ -47,6 +48,9 @@ type Server struct {
 	authService          *auth.Service
 	sessionManager       *scs.SessionManager
 	instanceStore        *models.InstanceStore
+	instanceReannounce   *models.InstanceReannounceStore
+	reannounceCache      *reannounce.SettingsCache
+	reannounceService    *reannounce.Service
 	clientAPIKeyStore    *models.ClientAPIKeyStore
 	externalProgramStore *models.ExternalProgramStore
 	clientPool           *qbittorrent.ClientPool
@@ -67,6 +71,9 @@ type Dependencies struct {
 	AuthService          *auth.Service
 	SessionManager       *scs.SessionManager
 	InstanceStore        *models.InstanceStore
+	InstanceReannounce   *models.InstanceReannounceStore
+	ReannounceCache      *reannounce.SettingsCache
+	ReannounceService    *reannounce.Service
 	ClientAPIKeyStore    *models.ClientAPIKeyStore
 	ExternalProgramStore *models.ExternalProgramStore
 	ClientPool           *qbittorrent.ClientPool
@@ -96,8 +103,10 @@ func NewServer(deps *Dependencies) *Server {
 		authService:          deps.AuthService,
 		sessionManager:       deps.SessionManager,
 		instanceStore:        deps.InstanceStore,
+		instanceReannounce:   deps.InstanceReannounce,
 		clientAPIKeyStore:    deps.ClientAPIKeyStore,
 		externalProgramStore: deps.ExternalProgramStore,
+		reannounceCache:      deps.ReannounceCache,
 		clientPool:           deps.ClientPool,
 		syncManager:          deps.SyncManager,
 		licenseService:       deps.LicenseService,
@@ -106,6 +115,7 @@ func NewServer(deps *Dependencies) *Server {
 		backupService:        deps.BackupService,
 		filesManager:         deps.FilesManager,
 		crossSeedService:     deps.CrossSeedService,
+		reannounceService:    deps.ReannounceService,
 		jackettService:       deps.JackettService,
 		torznabIndexerStore:  deps.TorznabIndexerStore,
 	}
@@ -231,7 +241,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	if err != nil {
 		return nil, err
 	}
-	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.clientPool, s.syncManager)
+	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.instanceReannounce, s.reannounceCache, s.clientPool, s.syncManager, s.reannounceService)
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
@@ -240,7 +250,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 	backupsHandler := handlers.NewBackupsHandler(s.backupService)
 	trackerIconHandler := handlers.NewTrackerIconHandler(s.trackerIconService)
-	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.config.Config.BaseURL)
+	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.reannounceCache, s.reannounceService, s.config.Config.BaseURL)
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
 	crossSeedHandler := handlers.NewCrossSeedHandler(s.crossSeedService)
 
@@ -361,6 +371,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					})
 
 					r.Get("/capabilities", instancesHandler.GetInstanceCapabilities)
+					r.Get("/reannounce/activity", instancesHandler.GetReannounceActivity)
 
 					// Torrent creator
 					r.Route("/torrent-creator", func(r chi.Router) {

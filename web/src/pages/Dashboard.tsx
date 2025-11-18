@@ -31,7 +31,7 @@ import { formatBytes, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Activity, Ban, BrickWallFire, ChevronDown, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
+import { Activity, Ban, BrickWallFire, ChevronDown, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Minus, Plus, Rabbit, RefreshCcw, Turtle, Upload, Zap } from "lucide-react"
 import { useMemo, useState } from "react"
 
 import {
@@ -183,6 +183,16 @@ function InstanceCard({
               <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             </Link>
             <div className="flex items-center gap-1 justify-end shrink-0 basis-full sm:basis-auto sm:min-w-[4.5rem]">
+              {instance.reannounceSettings?.enabled && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <RefreshCcw className="h-4 w-4 text-green-600" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Automatic tracker reannounce enabled
+                  </TooltipContent>
+                </Tooltip>
+              )}
               {instance.connected && !isFirstLoad && (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -209,12 +219,11 @@ function InstanceCard({
                   </TooltipContent>
                 </Tooltip>
               )}
-              {showSettingsButton && (
-                <InstanceSettingsButton
-                  instanceId={instance.id}
-                  instanceName={instance.name}
-                />
-              )}
+              <InstanceSettingsButton
+                instanceId={instance.id}
+                instanceName={instance.name}
+                showButton={showSettingsButton}
+              />
             </div>
           </div>
 

@@ -30,10 +30,11 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
+import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { api } from "@/lib/api"
 import type { TorrentCreationParams, TorrentFormat } from "@/types"
 import { useForm } from "@tanstack/react-form"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, ChevronDown, Info, Loader2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
@@ -57,11 +58,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
     formatSelectionUnavailable && versionInfo.libtorrentMajorVersion? `libtorrent ${versionInfo.libtorrentMajorVersion}.x`: "libtorrent 1.x"
 
   // Fetch active trackers for the select dropdown
-  const { data: activeTrackers } = useQuery({
-    queryKey: ["active-trackers", instanceId],
-    queryFn: () => api.getActiveTrackers(instanceId),
-    enabled: open, // Only fetch when dialog is open
-  })
+  const { data: activeTrackers } = useInstanceTrackers(instanceId, { enabled: open })
 
   const mutation = useMutation({
     mutationFn: async (data: TorrentCreationParams) => {

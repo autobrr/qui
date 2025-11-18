@@ -757,6 +757,63 @@ paths:
         '503':
           description: Instance unavailable
 
+  /api/instances/{instanceID}/reannounce/activity:
+    get:
+      tags:
+        - Instances
+      summary: Get recent tracker reannounce activity
+      description: Return the most recent tracker reannounce events for an instance.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+          required: false
+          description: Optional maximum number of events to return.
+      responses:
+        '200':
+          description: Recent reannounce events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    instanceId:
+                      type: integer
+                      format: int64
+                    hash:
+                      type: string
+                      description: Torrent hash in lowercase.
+                    torrentName:
+                      type: string
+                      description: Optional torrent name associated with the reannounce event.
+                    trackers:
+                      type: string
+                      description: Optional comma-separated list of problematic tracker domains for this event.
+                    outcome:
+                      type: string
+                      enum:
+                        - skipped
+                        - failed
+                        - succeeded
+                    reason:
+                      type: string
+                      description: Short explanation for the outcome.
+                    timestamp:
+                      type: string
+                      format: date-time
+                  required:
+                    - instanceId
+                    - hash
+                    - outcome
+                    - timestamp
+        '400':
+          description: Invalid instance ID
+
   /api/instances/{instanceID}/cross-seed/status:
     get:
       tags:

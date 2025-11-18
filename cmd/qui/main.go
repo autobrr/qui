@@ -36,6 +36,7 @@ import (
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/pkg/sqlite3store"
@@ -466,6 +467,11 @@ func (app *Application) runServer() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize instance store")
 	}
+	instanceReannounceStore := models.NewInstanceReannounceStore(db)
+	reannounceSettingsCache := reannounce.NewSettingsCache(instanceReannounceStore)
+	if err := reannounceSettingsCache.LoadAll(context.Background()); err != nil {
+		log.Warn().Err(err).Msg("Failed to preload reannounce settings cache")
+	}
 
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db)
 	externalProgramStore := models.NewExternalProgramStore(db)
@@ -524,12 +530,17 @@ func (app *Application) runServer() {
 	// Initialize cross-seed automation store and service
 	crossSeedStore := models.NewCrossSeedStore(db)
 	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore, clientPool)
+	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 
 	automationCtx, automationCancel := context.WithCancel(context.Background())
 	defer func() {
 		automationCancel()
 		crossSeedService.StopAutomation()
 	}()
+
+	reannounceCtx, reannounceCancel := context.WithCancel(context.Background())
+	defer reannounceCancel()
+	reannounceService.Start(reannounceCtx)
 
 	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, backups.Config{DataDir: cfg.GetDataDir()})
@@ -599,6 +610,9 @@ func (app *Application) runServer() {
 		AuthService:          authService,
 		SessionManager:       sessionManager,
 		InstanceStore:        instanceStore,
+		InstanceReannounce:   instanceReannounceStore,
+		ReannounceCache:      reannounceSettingsCache,
+		ReannounceService:    reannounceService,
 		ClientAPIKeyStore:    clientAPIKeyStore,
 		ExternalProgramStore: externalProgramStore,
 		ClientPool:           clientPool,
