@@ -2423,7 +2423,12 @@ paths:
       tags:
         - Cross-Seed
       summary: Check if a release can be cross-seeded (autobrr webhook)
-      description: Accepts release metadata from autobrr and checks if matching torrents exist on the specified instance. Returns 200 OK when matches are found and 404 Not Found when no matches exist. This endpoint is designed for autobrr filter external webhooks where the instanceId must match the target instance in the autobrr filter action.
+      description: |
+        Accepts release metadata from autobrr and checks if matching torrents exist on the specified instance. The HTTP status describes whether the match is ready:
+        * `200 OK` – at least one matching torrent is fully downloaded and ready for cross-seeding
+        * `202 Accepted` – matching torrents exist but the data is still downloading; retry `/check` until it returns `200` (ready) or `404`
+        * `404 Not Found` – no matches exist (recommendation `skip`)
+        This endpoint is designed for autobrr filter external webhooks where the instanceId must match the target instance in the autobrr filter action.
       parameters:
         - name: apikey
           in: query
@@ -2462,51 +2467,19 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  canCrossSeed:
-                    type: boolean
-                    description: Whether this release can be cross-seeded with existing torrents
-                  matches:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        instanceId:
-                          type: integer
-                        instanceName:
-                          type: string
-                        torrentHash:
-                          type: string
-                        torrentName:
-                          type: string
-                        matchType:
-                          type: string
-                          enum: ["metadata", "exact", "size"]
-                          description: Type of match - metadata (no size check), exact (size < 0.1% diff), or size (within tolerance)
-                        sizeDiff:
-                          type: number
-                          format: double
-                          description: Size difference percentage (only present if size was provided)
-                  recommendation:
-                    type: string
-                    enum: ["download", "skip"]
-                    description: Recommendation - "download" if matches found, "skip" if no matches
-        '404':
-          description: No cross-seed matches found
+                $ref: '#/components/schemas/CrossSeedWebhookCheckResponse'
+        '202':
+          description: Matches exist but torrents are still downloading (retry until 200 OK). The body mirrors the 200 response to show pending matches.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  canCrossSeed:
-                    type: boolean
-                  matches:
-                    type: array
-                    items:
-                      type: object
-                  recommendation:
-                    type: string
+                $ref: '#/components/schemas/CrossSeedWebhookCheckResponse'
+        '404':
+          description: No cross-seed matches found on the target instance, or the specified instanceId is invalid (empty matches array and canCrossSeed=false with recommendation="skip")
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedWebhookCheckResponse'
         '400':
           description: Invalid request body
         '500':
@@ -2933,6 +2906,48 @@ components:
           type: string
           format: date-time
           nullable: true
+
+    CrossSeedWebhookMatch:
+      type: object
+      properties:
+        instanceId:
+          type: integer
+        instanceName:
+          type: string
+        torrentHash:
+          type: string
+        torrentName:
+          type: string
+        matchType:
+          type: string
+          enum: ["metadata", "exact", "size"]
+          description: Type of match - metadata (no size check), exact (size < 0.1% diff), or size (within tolerance)
+        sizeDiff:
+          type: number
+          format: double
+          description: Size difference percentage (only present if size was provided)
+        progress:
+          type: number
+          format: double
+          description: Torrent completion ratio (0.0-1.0). Values below 1.0 indicate the match is still downloading.
+
+    CrossSeedWebhookCheckResponse:
+      type: object
+      properties:
+        canCrossSeed:
+          type: boolean
+          description: >-
+            True only when at least one matching torrent is fully downloaded (progress 1.0).
+            Pending-only matches return HTTP 202 with recommendation "download" while
+            canCrossSeed remains false so clients rely on status and progress.
+        matches:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrossSeedWebhookMatch'
+        recommendation:
+          type: string
+          enum: ["download", "skip"]
+          description: Recommendation - "download" if matches were found (ready or pending) or "skip" if no matches
 
     PathMapping:
       type: object

@@ -691,7 +691,8 @@ func (h *CrossSeedHandler) GetCrossSeedStatus(w http.ResponseWriter, r *http.Req
 // @Accept json
 // @Produce json
 // @Param request body crossseed.WebhookCheckRequest true "Release metadata from autobrr"
-// @Success 200 {object} crossseed.WebhookCheckResponse "Matches found (recommendation=download)"
+// @Success 200 {object} crossseed.WebhookCheckResponse "Matches found (torrents complete, recommendation=download)"
+// @Success 202 {object} crossseed.WebhookCheckResponse "Matches found but torrents still downloading (recommendation=download, retry until 200)"
 // @Failure 404 {object} crossseed.WebhookCheckResponse "No matches found (recommendation=skip)"
 // @Failure 400 {object} httphelpers.ErrorResponse
 // @Failure 500 {object} httphelpers.ErrorResponse
@@ -714,7 +715,11 @@ func (h *CrossSeedHandler) WebhookCheck(w http.ResponseWriter, r *http.Request) 
 			return
 		case errors.Is(err, crossseed.ErrWebhookInstanceNotFound):
 			log.Warn().Err(err).Msg("Webhook instance not found")
-			RespondError(w, http.StatusNotFound, err.Error())
+			RespondJSON(w, http.StatusNotFound, &crossseed.WebhookCheckResponse{
+				CanCrossSeed:   false,
+				Matches:        nil,
+				Recommendation: "skip",
+			})
 			return
 		default:
 			log.Error().Err(err).Msg("Failed to check webhook")
@@ -723,10 +728,18 @@ func (h *CrossSeedHandler) WebhookCheck(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	if !response.CanCrossSeed {
-		RespondJSON(w, http.StatusNotFound, response)
-		return
-	}
+	RespondJSON(w, webhookResponseStatus(response), response)
+}
 
-	RespondJSON(w, http.StatusOK, response)
+func webhookResponseStatus(response *crossseed.WebhookCheckResponse) int {
+	switch {
+	case response == nil:
+		return http.StatusInternalServerError
+	case response.CanCrossSeed:
+		return http.StatusOK
+	case len(response.Matches) > 0:
+		return http.StatusAccepted
+	default:
+		return http.StatusNotFound
+	}
 }
