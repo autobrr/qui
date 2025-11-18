@@ -50,6 +50,9 @@ func (h *InstancesHandler) GetInstanceCapabilities(w http.ResponseWriter, r *htt
 	if err != nil {
 		client, err = h.clientPool.GetClientWithTimeout(ctx, instanceID, 15*time.Second)
 		if err != nil {
+			if respondIfInstanceDisabled(w, err, instanceID, "instances:getCapabilities") {
+				return
+			}
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client for capabilities")
 			RespondError(w, http.StatusServiceUnavailable, "Failed to load instance capabilities")
 			return
@@ -104,6 +107,13 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 				Connected:          false,
 				HasDecryptionError: false,
 				SortOrder:          instances[i].SortOrder,
+				IsActive:           instances[i].IsActive,
+				ConnectionStatus: func(active bool) string {
+					if !active {
+						return "disabled"
+					}
+					return ""
+				}(instances[i].IsActive),
 			}
 		}
 	}
@@ -115,10 +125,12 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *models.Instance) InstanceResponse {
 	// Use cached connection status only, do not test connection synchronously
 	client, _ := h.clientPool.GetClientOffline(ctx, instance.ID)
-	healthy := client != nil && client.IsHealthy()
+	healthy := client != nil && client.IsHealthy() && instance.IsActive
 
 	var connectionStatus string
-	if client != nil {
+	if !instance.IsActive {
+		connectionStatus = "disabled"
+	} else if client != nil {
 		if status := strings.TrimSpace(client.GetCachedConnectionStatus()); status != "" {
 			connectionStatus = strings.ToLower(status)
 		}
@@ -138,10 +150,11 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		HasDecryptionError: hasDecryptionError,
 		ConnectionStatus:   connectionStatus,
 		SortOrder:          instance.SortOrder,
+		IsActive:           instance.IsActive,
 	}
 
 	// Fetch recent errors for disconnected instances
-	if !healthy {
+	if instance.IsActive && !healthy {
 		errorStore := h.clientPool.GetErrorStore()
 		recentErrors, err := errorStore.GetRecentErrors(ctx, instance.ID, 5)
 		if err != nil {
@@ -156,6 +169,10 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 
 // buildQuickInstanceResponse creates a response without testing connection
 func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance) InstanceResponse {
+	connectionStatus := ""
+	if !instance.IsActive {
+		connectionStatus = "disabled"
+	}
 	return InstanceResponse{
 		ID:                 instance.ID,
 		Name:               instance.Name,
@@ -166,6 +183,8 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 		Connected:          false, // Will be updated asynchronously
 		HasDecryptionError: false,
 		SortOrder:          instance.SortOrder,
+		IsActive:           instance.IsActive,
+		ConnectionStatus:   connectionStatus,
 	}
 }
 
@@ -212,6 +231,10 @@ type UpdateInstanceRequest struct {
 	TLSSkipVerify *bool   `json:"tlsSkipVerify,omitempty"`
 }
 
+type UpdateInstanceStatusRequest struct {
+	IsActive bool `json:"isActive"`
+}
+
 // InstanceResponse represents an instance in API responses
 type InstanceResponse struct {
 	ID                 int                    `json:"id"`
@@ -225,6 +248,7 @@ type InstanceResponse struct {
 	RecentErrors       []models.InstanceError `json:"recentErrors,omitempty"`
 	ConnectionStatus   string                 `json:"connectionStatus,omitempty"`
 	SortOrder          int                    `json:"sortOrder"`
+	IsActive           bool                   `json:"isActive"`
 }
 
 // TestConnectionResponse represents connection test results
@@ -443,6 +467,43 @@ func (h *InstancesHandler) DeleteInstance(w http.ResponseWriter, r *http.Request
 	RespondJSON(w, http.StatusOK, response)
 }
 
+// UpdateInstanceStatus toggles whether an instance should be actively polled
+func (h *InstancesHandler) UpdateInstanceStatus(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	var req UpdateInstanceStatusRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	instance, err := h.instanceStore.SetActiveState(r.Context(), instanceID, req.IsActive)
+	if err != nil {
+		if errors.Is(err, models.ErrInstanceNotFound) {
+			RespondError(w, http.StatusNotFound, "Instance not found")
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to update instance status")
+		RespondError(w, http.StatusInternalServerError, "Failed to update instance status")
+		return
+	}
+
+	if !req.IsActive {
+		h.clientPool.RemoveClient(instanceID)
+	} else {
+		// Clear backoff state and errors when re-enabling instance
+		h.clientPool.ResetFailureTracking(instanceID)
+		go h.testConnectionAsync(instanceID)
+	}
+
+	response := h.buildQuickInstanceResponse(instance)
+	RespondJSON(w, http.StatusOK, response)
+}
+
 // TestConnection tests the connection to an instance
 func (h *InstancesHandler) TestConnection(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL
@@ -455,6 +516,15 @@ func (h *InstancesHandler) TestConnection(w http.ResponseWriter, r *http.Request
 	// Try to get client (this will create connection if needed)
 	client, err := h.clientPool.GetClient(r.Context(), instanceID)
 	if err != nil {
+		if errors.Is(err, internalqbittorrent.ErrInstanceDisabled) {
+			response := TestConnectionResponse{
+				Connected: false,
+				Message:   "Instance is disabled",
+				Error:     err.Error(),
+			}
+			RespondJSON(w, http.StatusOK, response)
+			return
+		}
 		response := TestConnectionResponse{
 			Connected: false,
 			Error:     err.Error(),

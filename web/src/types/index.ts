@@ -24,6 +24,7 @@ export interface Instance {
   basicUsername?: string
   tlsSkipVerify: boolean
   sortOrder: number
+  isActive: boolean
 }
 
 export interface InstanceFormData {
@@ -239,6 +240,8 @@ export interface TorrentFilters {
 
 export interface TorrentResponse {
   torrents: Torrent[]
+  crossInstanceTorrents?: CrossInstanceTorrent[]
+  cross_instance_torrents?: CrossInstanceTorrent[]  // Backend uses snake_case
   total: number
   stats?: TorrentStats
   counts?: TorrentCounts
@@ -251,6 +254,12 @@ export interface TorrentResponse {
   cacheMetadata?: CacheMetadata
   hasMore?: boolean
   trackerHealthSupported?: boolean
+  isCrossInstance?: boolean
+}
+
+export interface CrossInstanceTorrent extends Torrent {
+  instanceId: number
+  instanceName: string
 }
 
 export interface TorrentStreamMeta {
@@ -871,4 +880,385 @@ export interface ExternalProgramExecuteResult {
 
 export interface ExternalProgramExecuteResponse {
   results: ExternalProgramExecuteResult[]
+}
+
+export interface TorznabIndexer {
+  id: number
+  name: string
+  base_url: string
+  indexer_id: string
+  backend: "jackett" | "prowlarr" | "native"
+  enabled: boolean
+  priority: number
+  timeout_seconds: number
+  hourly_request_limit?: number | null
+  daily_request_limit?: number | null
+  capabilities: string[]
+  categories: TorznabIndexerCategory[]
+  last_test_at?: string
+  last_test_status: string
+  last_test_error?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface TorznabIndexerCategory {
+  indexer_id: number
+  category_id: number
+  category_name: string
+  parent_category_id?: number
+}
+
+export interface TorznabIndexerError {
+  id: number
+  indexer_id: number
+  error_message: string
+  error_code: string
+  occurred_at: string
+  resolved_at?: string
+  error_count: number
+}
+
+export interface TorznabIndexerLatencyStats {
+  indexer_id: number
+  operation_type: string
+  total_requests: number
+  successful_requests: number
+  avg_latency_ms?: number
+  min_latency_ms?: number
+  max_latency_ms?: number
+  success_rate_pct: number
+  last_measured_at: string
+}
+
+export interface TorznabIndexerHealth {
+  indexer_id: number
+  indexer_name: string
+  enabled: boolean
+  last_test_status: string
+  errors_last_24h: number
+  unresolved_errors: number
+  avg_latency_ms?: number
+  success_rate_pct?: number
+  requests_last_7d?: number
+  last_measured_at?: string
+}
+
+export interface TorznabIndexerFormData {
+  name: string
+  base_url: string
+  indexer_id?: string
+  api_key: string
+  backend?: "jackett" | "prowlarr" | "native"
+  enabled?: boolean
+  priority?: number
+  timeout_seconds?: number
+  capabilities?: string[]
+}
+
+export interface TorznabIndexerUpdate {
+  name?: string
+  base_url?: string
+  api_key?: string
+  indexer_id?: string
+  backend?: "jackett" | "prowlarr" | "native"
+  enabled?: boolean
+  priority?: number
+  timeout_seconds?: number
+  capabilities?: string[]
+}
+
+export interface TorznabSearchRequest {
+  query?: string
+  categories?: number[]
+  imdb_id?: string
+  tvdb_id?: string
+  year?: number
+  season?: number
+  episode?: number
+  artist?: string
+  album?: string
+  limit?: number
+  offset?: number
+  indexer_ids?: number[]
+  cache_mode?: "bypass"
+}
+
+export interface TorznabSearchResponse {
+  results: TorznabSearchResult[]
+  total: number
+  cache?: TorznabSearchCacheMetadata
+}
+
+export interface TorznabSearchCacheMetadata {
+  hit: boolean
+  scope: string
+  source: string
+  cachedAt: string
+  expiresAt: string
+  lastUsed?: string
+}
+
+export interface TorznabSearchCacheStats {
+  entries: number
+  totalHits: number
+  approxSizeBytes: number
+  oldestCachedAt?: string
+  newestCachedAt?: string
+  lastUsedAt?: string
+  enabled: boolean
+  ttlMinutes: number
+}
+
+export interface TorznabRecentSearch {
+  cacheKey: string
+  scope: string
+  query: string
+  categories: number[]
+  indexerIds: number[]
+  totalResults: number
+  cachedAt: string
+  lastUsedAt?: string
+  expiresAt: string
+  hitCount: number
+}
+
+export interface TorznabSearchResult {
+  indexer: string
+  indexerId: number
+  title: string
+  downloadUrl: string
+  infoUrl?: string
+  size: number
+  seeders: number
+  leechers: number
+  categoryId: number
+  categoryName: string
+  publishDate: string
+  downloadVolumeFactor: number
+  uploadVolumeFactor: number
+  guid: string
+  imdbId?: string
+  tvdbId?: string
+  source?: string
+  collection?: string
+  group?: string
+}
+
+export interface JackettIndexer {
+  id: string
+  name: string
+  description: string
+  type: string
+  configured: boolean
+  backend?: "jackett" | "prowlarr" | "native"
+  caps?: string[]
+}
+
+export interface DiscoverJackettRequest {
+  base_url: string
+  api_key: string
+}
+
+export interface DiscoverJackettResponse {
+  indexers: JackettIndexer[]
+}
+
+export interface CrossSeedTorrentInfo {
+  instanceId?: number
+  instanceName?: string
+  hash?: string
+  name: string
+  category?: string
+  size?: number
+  progress?: number
+  totalFiles?: number
+  matchingFiles?: number
+  fileCount?: number
+  contentType?: string
+  searchType?: string
+  searchCategories?: number[]
+  requiredCaps?: string[]
+  // Pre-filtering information for UI context menu
+  availableIndexers?: number[]
+  filteredIndexers?: number[]
+  excludedIndexers?: Record<number, string>
+  contentMatches?: string[]
+  // Async filtering status
+  contentFilteringCompleted?: boolean
+}
+
+export interface AsyncIndexerFilteringState {
+  capabilitiesCompleted: boolean
+  contentCompleted: boolean
+  capabilityIndexers: number[]
+  filteredIndexers: number[]
+  excludedIndexers: Record<number, string>
+  contentMatches: string[]
+}
+
+export interface CrossSeedInstanceResult {
+  instanceId: number
+  instanceName: string
+  success: boolean
+  status: string
+  message?: string
+  matchedTorrent?: {
+    hash: string
+    name: string
+    progress: number
+    size: number
+  }
+}
+
+export interface CrossSeedTorrentSearchResult {
+  indexer: string
+  indexerId: number
+  title: string
+  downloadUrl: string
+  infoUrl?: string
+  size: number
+  seeders: number
+  leechers: number
+  categoryId: number
+  categoryName: string
+  publishDate: string
+  downloadVolumeFactor: number
+  uploadVolumeFactor: number
+  guid: string
+  imdbId?: string
+  tvdbId?: string
+  matchReason?: string
+  matchScore: number
+}
+
+export interface CrossSeedTorrentSearchResponse {
+  sourceTorrent: CrossSeedTorrentInfo
+  results: CrossSeedTorrentSearchResult[]
+  cache?: TorznabSearchCacheMetadata
+}
+
+export interface CrossSeedTorrentSearchSelection {
+  indexerId: number
+  indexer: string
+  downloadUrl: string
+  title: string
+  guid?: string
+}
+
+export interface CrossSeedApplyResult {
+  title: string
+  indexer: string
+  torrentName?: string
+  success: boolean
+  instanceResults?: CrossSeedInstanceResult[]
+  error?: string
+}
+
+export interface CrossSeedApplyResponse {
+  results: CrossSeedApplyResult[]
+}
+
+export interface CrossSeedRunResult {
+  instanceId: number
+  instanceName: string
+  success: boolean
+  status: string
+  message?: string
+  matchedTorrentHash?: string
+  matchedTorrentName?: string
+}
+
+export interface CrossSeedRun {
+  id: number
+  triggeredBy: string
+  mode: "auto" | "manual"
+  status: "pending" | "running" | "success" | "partial" | "failed"
+  startedAt: string
+  completedAt?: string
+  totalFeedItems: number
+  candidatesFound: number
+  torrentsAdded: number
+  torrentsFailed: number
+  torrentsSkipped: number
+  message?: string
+  errorMessage?: string
+  results?: CrossSeedRunResult[]
+  createdAt: string
+}
+
+export interface CrossSeedAutomationSettings {
+  enabled: boolean
+  runIntervalMinutes: number
+  startPaused: boolean
+  category?: string | null
+  tags: string[]
+  ignorePatterns: string[]
+  targetInstanceIds: number[]
+  targetIndexerIds: number[]
+  maxResultsPerRun: number
+  findIndividualEpisodes: boolean
+  sizeMismatchTolerancePercent: number
+  useCategoryFromIndexer: boolean
+  runExternalProgramId?: number | null
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface CrossSeedAutomationStatus {
+  settings: CrossSeedAutomationSettings
+  lastRun?: CrossSeedRun | null
+  nextRunAt?: string
+  running: boolean
+}
+
+export interface CrossSeedSearchFilters {
+  categories: string[]
+  tags: string[]
+}
+
+export interface CrossSeedSearchResult {
+  torrentHash: string
+  torrentName: string
+  indexerName: string
+  releaseTitle: string
+  added: boolean
+  message?: string
+  processedAt: string
+}
+
+export interface CrossSeedSearchRun {
+  id: number
+  instanceId: number
+  status: string
+  startedAt: string
+  completedAt?: string
+  totalTorrents: number
+  processed: number
+  torrentsAdded: number
+  torrentsFailed: number
+  torrentsSkipped: number
+  message?: string
+  errorMessage?: string
+  filters: CrossSeedSearchFilters
+  indexerIds: number[]
+  intervalSeconds: number
+  cooldownMinutes: number
+  results: CrossSeedSearchResult[]
+  createdAt: string
+}
+
+export interface CrossSeedSearchCandidate {
+  torrentHash: string
+  torrentName: string
+  category?: string
+  tags: string[]
+}
+
+export interface CrossSeedSearchStatus {
+  running: boolean
+  run?: CrossSeedSearchRun
+  currentTorrent?: CrossSeedSearchCandidate
+  recentResults: CrossSeedSearchResult[]
+  nextRunAt?: string
 }

@@ -6,6 +6,25 @@ A fast, modern web interface for qBittorrent. Supports managing multiple qBittor
   <img src=".github/assets/qui.png" alt="qui" width="100%" />
 </div>
 
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [API](#api)
+- [Metrics](#metrics)
+- [External Programs](#external-programs)
+- [Tracker Icons](#tracker-icons)
+- [Reverse Proxy for External Applications](#reverse-proxy-for-external-applications)
+- [Cross Seed](#cross-seed)
+- [Docker](#docker)
+- [Base URL Configuration](#base-url-configuration)
+- [qBittorrent Version Compatibility](#qbittorrent-version-compatibility)
+- [Community](#community)
+- [Support Development](#support-development)
+- [Contributing](#contributing)
+- [License](#license)
+
 ## Features
 
 - **Single Binary**: No dependencies, just download and run
@@ -424,6 +443,8 @@ http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz
 - Leave username/password blank and press **Test**
 - Leave basic auth blank since qui handles that
 
+For cross-seed integration with autobrr, see the [Cross-Seed](#cross-seed) section below.
+
 **cross-seed**
 - Open cross-seed config file
 - Add or edit the `torrentClients` section.
@@ -463,6 +484,141 @@ This reverse proxy will work with any application that supports qBittorrent's We
 **Version String Errors:**
 - This was a common issue that's now resolved with the new proxy implementation
 - Try regenerating the Client API Key if you still see version parsing errors
+
+## Cross-Seed
+
+qui includes intelligent cross-seeding capabilities that help you automatically find and add matching torrents across different trackers. This allows you to maximize your ratio by seeding the same content to multiple trackers.
+
+### Prerequisites
+
+You need to use Prowlarr or Jackett. You can easily add your indexers in Settings via a "1-click-sync" feature..
+
+Once that's done, head over to the Cross-Seed page in the sidebar and the UI should be pretty self-explanatory from there.
+
+
+### autobrr Integration
+
+qui can integrate directly with autobrr through a webhook endpoint. When autobrr receives a new release, it can check qui to see if you already have matching content across your qBittorrent instances - indicating a cross-seed opportunity.
+
+#### How It Works
+
+1. autobrr sees a new release from a tracker
+2. autobrr sends the torrentname and target instance ID to qui's webhook endpoint
+3. qui searches the specified qBittorrent instance for matching content
+4. qui responds whether you can cross-seed (200 OK) or not (404 Not Found)
+5. autobrr can decide to download based on the response
+
+#### Setup
+
+**1. Create an API Key in qui**
+- Go to **Settings → API Keys** in qui
+- Click **Create API Key**
+- Give it a name like "autobrr webhook"
+- Copy the generated API key
+
+**2. Configure autobrr External Filter**
+
+In your autobrr filter, go to the **External** tab and click **Add new**:
+
+**Type:** `Webhook`
+
+**Name:** `qui` (or any name you prefer)
+
+**On Error:** `Reject`
+
+**Endpoint:**
+```
+http://localhost:7476/api/cross-seed/webhook/check
+```
+
+**HTTP Method:** `POST`
+
+**HTTP Request Headers:**
+```
+X-API-Key=YOUR_QUI_API_KEY,Content-Type=application/json
+```
+
+**Expected HTTP Status Code:** `200`
+
+> qui returns `404 Not Found` when no cross-seed matches exist (recommendation `skip`). Leaving the expected status at `200` lets autobrr automatically reject those responses. You'll also see a `404` if the provided `instanceId` is not configured in qui—fix the filter rather than retrying.
+
+> Invalid payloads return `400 Bad Request`, so double-check `torrentName` and `instanceId` if autobrr reports a validation error.
+
+**Data (JSON):**
+```json
+{
+  "torrentName": "{{ .TorrentName }}",
+  "instanceId": 1,
+  "findIndividualEpisodes": false
+}
+```
+
+**Field Descriptions:**
+- `torrentName` (required): The release name as announced
+- `instanceId` (required): The target qBittorrent instance ID to check against. This **must** match the instance where your autobrr filter action will download to. You can find instance IDs in the qui web UI under Instances.
+- `size` (optional): The total torrent size in bytes - enables size validation when provided
+- `findIndividualEpisodes` (optional): Overrides the global **Find individual episodes** setting for this webhook call. Leave it out to use the value configured in qui, or set explicitly (e.g., `false`) when a filter should force strict season-pack matching.
+
+Click **Save** to create the external filter.
+
+#### Apply Endpoint
+
+When `/cross-seed/webhook/check` returns `200 OK`, autobrr can hand the torrent file directly to qui via a **Webhook action** that calls `POST /api/cross-seed/apply`.
+
+**Action setup in autobrr**
+
+In **Settings → Actions** (or from the filter’s Actions tab), create a new action:
+
+- **Action Type:** `Webhook`
+- **Name:** `qui cross-seed` (or any name you prefer)
+- **Endpoint:**  
+  For autobrr, use a query parameter because webhook actions cannot set custom headers:
+  ```text
+  http://localhost:7476/api/cross-seed/apply?apikey=YOUR_QUI_API_KEY
+  ```
+  For other clients, prefer the `X-API-Key` header instead of the query parameter.
+
+**Payload (JSON):**
+
+```json
+{
+  "torrentData": "{{ .TorrentDataRawBytes | toString | b64enc }}",
+  "instanceId": 1
+}
+```
+
+`torrentData` is base64-encoded torrent bytes; in autobrr you can use the `TorrentDataRawBytes` macro together with `toString` and the `b64enc` sprig helper as shown above (the extra `toString` converts the byte slice into the string type sprig expects). `instanceId` must match the target qBittorrent instance ID in qui (the same one you used for the webhook check).
+
+Optionally, you can include additional fields supported by qui’s `AutobrrApplyRequest`:
+
+```json
+{
+  "torrentData": "{{ .TorrentDataRawBytes | toString | b64enc }}",
+  "instanceId": 1,
+  "addCrossSeedTag": true,
+  "skipIfExists": true
+}
+```
+
+When this action runs after a successful `/api/cross-seed/webhook/check`, autobrr posts the torrent to `/api/cross-seed/apply`. qui then decodes the torrent, re-validates it by finding a 100% complete matching torrent on the specified instance, aligns the new torrent’s naming and file layout with the existing one, and finally adds it using the same cross-seed pipeline as manual apply.
+
+If you omit `category`, qui reuses the category (and AutoTMM/save path) from the matched, already-seeding torrent so the cross-seed lands alongside the original files. If you omit `tags`, qui copies the matched torrent’s tags and then appends a `cross-seed` tag by default; you can optionally include `category` (e.g., `"TV"`) and `tags` (e.g., `["autobrr", "cross-seed"]`) in the payload to override those defaults, and `cross-seed` is still added unless you set `addCrossSeedTag` to `false`.
+
+Cross-seeded torrents are first added paused with hash checking skipped (`skip_checking=true`) so qBittorrent can immediately reuse existing data; if that add fails, qui retries without `skip_checking` to let qBittorrent run a full recheck. After adding, qui polls the torrent state: if qBittorrent reports ~100% complete, qui automatically resumes it; if progress stays lower (for example because optional files like samples or subtitles are missing), it remains paused so you can review it manually.
+
+Episode-aware matching (season pack ↔ single episode) is controlled by the **Find individual episodes** setting on the Cross-Seed page, and can be overridden per-call via the `findIndividualEpisodes` field on the `/cross-seed/webhook/check` payload. Using the webhook preflight with this flag is recommended when you want to influence matching behaviour, rather than sending it on the apply call itself.
+
+#### Settings
+
+Cross-seed matching behavior is controlled by settings in qui's Cross-Seed page:
+
+**Global Settings:**
+- **Size mismatch tolerance** - Maximum size difference percentage (default: 5%).
+- **Ignore patterns** - File patterns used to skip sidecar and sample files when comparing torrents. Plain strings match any path ending in the given text (for example, `.nfo` or `.srr` will ignore files whose path ends with those extensions). Glob patterns treat `/` as a folder separator, so `*.nfo` only matches top-level files; to ignore sample folders in any release, use `*/sample/*`.
+
+Ignore patterns apply to RSS automation, `/cross-seed/webhook/check`, `/cross-seed/apply` (Autobrr Apply), and seeded torrent search additions.
+
+These settings affect both the webhook endpoint and qui's other cross-seed features.
 
 ## Docker
 
@@ -557,9 +713,53 @@ qui automatically detects the features available on each qBittorrent instance an
 
 ## Community
 
-Join our friendly and welcoming community on [Discord](https://discord.autobrr.com/qui)! Connect with fellow autobrr users, get advice, and share your experiences. 
-Whether you're seeking help, wanting to contribute, or just looking to discuss your ideas, our community is a hub of discussion and support. 
+Join our friendly and welcoming community on [Discord](https://discord.autobrr.com/qui)! Connect with fellow autobrr users, get advice, and share your experiences.
+Whether you're seeking help, wanting to contribute, or just looking to discuss your ideas, our community is a hub of discussion and support.
 We're all here to help each other out, so don't hesitate to jump in!
+
+## Support Development
+
+qui is developed and maintained by volunteers. Your support helps us continue improving the project.
+
+### License Key
+
+Pay what you want (minimum $9.99) to unlock premium themes:
+- Visit [Polar.sh](https://buy.polar.sh/polar_cl_yyXJesVM9pFVfAPIplspbfCukgVgXzXjXIc2N0I8WcL) or Settings → Themes in your qui instance
+- License is lifetime
+
+### Other methods
+
+- **soup**
+  - [GitHub Sponsors](https://github.com/s0up4200)
+  - [Buy Me a Coffee](https://buymeacoffee.com/s0up4200)
+- **zze0s**
+  - [GitHub Sponsors](https://github.com/zze0s)
+
+#### Cryptocurrency
+
+To get a qui license with crypto, send the transaction link to soup or ze0s on Discord.
+
+#### Bitcoin (BTC)
+- soup: `bc1qfe093kmhvsa436v4ksz0udfcggg3vtnm2tjgem`
+- zze0s: `bc1q2nvdd83hrzelqn4vyjm8tvjwmsuuxsdlg4ws7x`
+
+#### Ethereum (ETH)
+- soup: `0xD8f517c395a68FEa8d19832398d4dA7b45cbc38F`
+- zze0s: `0xBF7d749574aabF17fC35b27232892d3F0ff4D423`
+
+#### Litecoin (LTC)
+- soup: `ltc1q86nx64mu2j22psj378amm58ghvy4c9dw80z88h`
+- zze0s: `ltc1qza9ffjr5y43uk8nj9ndjx9hkj0ph3rhur6wudn`
+
+#### Monero (XMR)
+- soup: `8AMPTPgjmLG9armLBvRA8NMZqPWuNT4US3kQoZrxDDVSU21kpYpFr1UCWmmtcBKGsvDCFA3KTphGXExWb3aHEu67JkcjAvC`
+- zze0s: `44AvbWXzFN3bnv2oj92AmEaR26PQf5Ys4W155zw3frvEJf2s4g325bk4tRBgH7umSVMhk88vkU3gw9cDvuCSHgpRPsuWVJp`
+
+---
+
+All methods unlock premium themes — use whichever works best for you. For other currencies or payment methods, [reach out on Discord](https://discord.autobrr.com/qui).
+
+Thank you for your support ❤️
 
 ## Contributing
 

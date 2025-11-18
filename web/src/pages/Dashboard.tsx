@@ -1110,10 +1110,13 @@ function QuickActionsDropdown({ statsData }: { statsData: DashboardInstanceStats
 export function Dashboard() {
   const { instances, isLoading } = useInstances()
   const allInstances = instances || []
+  const activeInstances = allInstances.filter(instance => instance.isActive)
+  const hasInstances = allInstances.length > 0
+  const hasActiveInstances = activeInstances.length > 0
   const [isAdvancedMetricsOpen, setIsAdvancedMetricsOpen] = useState(false)
 
   // Use safe hook that always calls the same number of hooks
-  const statsData = useAllInstanceStats(allInstances)
+  const statsData = useAllInstanceStats(activeInstances)
 
   if (isLoading) {
     return (
@@ -1157,33 +1160,48 @@ export function Dashboard() {
       {/* Show banner if any instances have decryption errors */}
       <PasswordIssuesBanner instances={instances || []} />
 
-      {instances && instances.length > 0 ? (
+      {hasInstances ? (
         <div className="space-y-6">
-          {/* Stats Bar */}
-          <GlobalAllTimeStats statsData={statsData} />
+          {hasActiveInstances ? (
+            <>
+              {/* Stats Bar */}
+              <GlobalAllTimeStats statsData={statsData} />
 
-          {/* Global Stats */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <GlobalStatsCards statsData={statsData} />
-          </div>
-
-
-          {/* Instance Cards */}
-          {allInstances.length > 0 && (
-            <div>
-              <h2 className="text-xl font-semibold mb-4">Instances</h2>
-              {/* Responsive layout so each instance mounts once */}
-              <div className="flex flex-col gap-4 sm:grid sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-                {statsData.map(instanceData => (
-                  <InstanceCard
-                    key={instanceData.instance.id}
-                    instanceData={instanceData}
-                    isAdvancedMetricsOpen={isAdvancedMetricsOpen}
-                    setIsAdvancedMetricsOpen={setIsAdvancedMetricsOpen}
-                  />
-                ))}
+              {/* Global Stats */}
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <GlobalStatsCards statsData={statsData} />
               </div>
-            </div>
+
+              {/* Instance Cards */}
+              <div>
+                <h2 className="text-xl font-semibold mb-4">Instances</h2>
+                {/* Responsive layout so each instance mounts once */}
+                <div className="flex flex-col gap-4 sm:grid sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+                  {statsData.map(instanceData => (
+                    <InstanceCard
+                      key={instanceData.instance.id}
+                      instanceData={instanceData}
+                      isAdvancedMetricsOpen={isAdvancedMetricsOpen}
+                      setIsAdvancedMetricsOpen={setIsAdvancedMetricsOpen}
+                    />
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <Card className="p-8 text-center">
+              <div className="space-y-3">
+                <h3 className="text-lg font-semibold">All instances are disabled</h3>
+                <p className="text-muted-foreground">
+                  Enable an instance from Settings → Instances to see dashboard stats.
+                </p>
+                <Link to="/settings" search={{ tab: "instances" as const }}>
+                  <Button variant="outline" size="sm">
+                    Manage Instances
+                  </Button>
+                </Link>
+              </div>
+            </Card>
           )}
         </div>
       ) : (

@@ -38,10 +38,15 @@ export function DraggableTableHeader({ header, columnFilters = [], onFilterChang
     id: column.id,
     disabled: column.id === "select",
   })
+  const table = header.getContext().table
+  const trackerColumn = isTrackerIconHeader ? table.getColumn("tracker") : null
 
   const canResize = column.getCanResize()
   const shouldShowSeparator = canResize || column.columnDef.enableResizing === false
   const shouldShowSortIndicator = !isSelectHeader && column.getIsSorted() && (isPriorityHeader || !isCompactHeader)
+  const canSort = column.getCanSort() || (!!trackerColumn && trackerColumn.getCanSort())
+  const toggleSortingHandler = column.getToggleSortingHandler()
+  const trackerToggleHandler = trackerColumn?.getToggleSortingHandler()
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -60,11 +65,24 @@ export function DraggableTableHeader({ header, columnFilters = [], onFilterChang
     >
       <div
         className={`${headerPadding} h-10 text-left text-sm font-medium text-muted-foreground flex items-center ${
-          column.getCanSort() ? "cursor-pointer select-none" : ""
+          canSort ? "cursor-pointer select-none" : ""
         } ${
           column.id !== "select" ? "cursor-grab active:cursor-grabbing" : ""
         }`}
-        onClick={column.id !== "select" && column.getCanSort() ? column.getToggleSortingHandler() : undefined}
+        onClick={event => {
+          if (column.id === "select" || !canSort) {
+            return
+          }
+
+          if (isTrackerIconHeader && trackerToggleHandler) {
+            trackerToggleHandler(event)
+            return
+          }
+
+          if (toggleSortingHandler) {
+            toggleSortingHandler(event)
+          }
+        }}
         {...(column.id !== "select" ? attributes : {})}
         {...(column.id !== "select" ? listeners : {})}
       >

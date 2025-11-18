@@ -6,9 +6,10 @@
 import { useEffect } from "react"
 import { useTheme } from "@/hooks/useTheme"
 import { getThemeById } from "@/config/themes"
+import { getThemeColors } from "@/utils/theme"
 
 export function useDynamicFavicon() {
-  const { theme } = useTheme()
+  const { theme, variation } = useTheme()
 
   useEffect(() => {
     const updateFavicon = () => {
@@ -24,9 +25,8 @@ export function useDynamicFavicon() {
       const currentTheme = getThemeById(theme)
       if (!currentTheme) return
 
-      // Use the dark mode primary color value directly from the theme
-      // The cssVars object stores values with the -- prefix
-      const primaryColor = currentTheme.cssVars.dark["--primary"]
+      // Use dark mode color
+      const primaryColor = getThemeColors(currentTheme, '--primary', 'dark')
 
       const svg = `
         <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 1024 1024">
@@ -82,5 +82,5 @@ export function useDynamicFavicon() {
     const timeoutId = setTimeout(updateFavicon, 0)
 
     return () => clearTimeout(timeoutId)
-  }, [theme])
+  }, [theme, variation])
 }
