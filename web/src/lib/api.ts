@@ -100,26 +100,8 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      // Don't auto-redirect for auth check endpoints - let React Router handle navigation
-      const isAuthCheckEndpoint = endpoint === "/auth/me" || endpoint === "/auth/validate"
-
-      if ((response.status === 401 || response.status === 403) && !isAuthCheckEndpoint && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
-        window.location.href = withBasePath("/login")
-        throw new Error("Session expired")
-      }
-
-      let errorMessage = `HTTP error! status: ${response.status}`
-      try {
-        const errorData = await response.json()
-        errorMessage = errorData.error || errorData.message || errorMessage
-      } catch {
-        try {
-          const errorText = await response.text()
-          errorMessage = errorText || errorMessage
-        } catch {
-          // nothing to see here
-        }
-      }
+      const errorMessage = await this.extractErrorMessage(response)
+      this.handleAuthError(response.status, endpoint, errorMessage)
       throw new Error(errorMessage)
     }
 
@@ -129,6 +111,73 @@ class ApiClient {
     }
 
     return response.json()
+  }
+
+  private async extractErrorMessage(response: Response): Promise<string> {
+    const fallbackMessage = `HTTP error! status: ${response.status}`
+
+    try {
+      const rawBody = await response.text()
+      if (!rawBody) {
+        return fallbackMessage
+      }
+
+      try {
+        const errorData = JSON.parse(rawBody) as { error?: string; message?: string }
+        const parsedMessage = errorData?.error ?? errorData?.message
+        if (typeof parsedMessage === "string" && parsedMessage.trim().length > 0) {
+          return parsedMessage
+        }
+      } catch {
+        const trimmed = rawBody.trim()
+        if (trimmed.length > 0) {
+          return trimmed
+        }
+      }
+
+      return fallbackMessage
+    } catch {
+      return fallbackMessage
+    }
+  }
+
+  private handleAuthError(status: number, endpoint: string, errorMessage: string): void {
+    if (!this.shouldForceLogout(status, endpoint, errorMessage)) {
+      return
+    }
+
+    window.location.href = withBasePath("/login")
+    throw new Error("Session expired")
+  }
+
+  private shouldForceLogout(status: number, endpoint: string, errorMessage: string): boolean {
+    if (typeof window === "undefined") {
+      return false
+    }
+
+    if (this.isAuthCheckEndpoint(endpoint)) {
+      return false
+    }
+
+    const pathname = window.location.pathname
+    if (pathname.startsWith(withBasePath("/login")) || pathname.startsWith(withBasePath("/setup"))) {
+      return false
+    }
+
+    if (status === 401) {
+      return true
+    }
+
+    if (status === 403) {
+      const normalizedMessage = errorMessage.trim().toLowerCase()
+      return normalizedMessage === "unauthorized"
+    }
+
+    return false
+  }
+
+  private isAuthCheckEndpoint(endpoint: string): boolean {
+    return endpoint === "/auth/me" || endpoint === "/auth/validate"
   }
 
   // Auth endpoints
@@ -993,23 +1042,8 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      if ((response.status === 401 || response.status === 403) && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
-        window.location.href = withBasePath("/login")
-        throw new Error("Session expired")
-      }
-
-      let errorMessage = `HTTP error! status: ${response.status}`
-      try {
-        const errorData = await response.json()
-        errorMessage = errorData.error || errorData.message || errorMessage
-      } catch {
-        try {
-          const errorText = await response.text()
-          errorMessage = errorText || errorMessage
-        } catch {
-          // nothing to see here
-        }
-      }
+      const errorMessage = await this.extractErrorMessage(response)
+      this.handleAuthError(response.status, `/instances/${instanceId}/torrents/${encodedHash}/export`, errorMessage)
       throw new Error(errorMessage)
     }
 
