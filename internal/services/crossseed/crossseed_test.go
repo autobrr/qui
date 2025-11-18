@@ -1113,6 +1113,16 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 					assert.Less(t, match.Progress, 1.0)
 				}
 			}
+			if !tt.expectPending && tt.wantMatchCount > 0 {
+				hasComplete := false
+				for _, match := range resp.Matches {
+					if match.Progress >= 1.0 {
+						hasComplete = true
+						break
+					}
+				}
+				assert.True(t, hasComplete, "expected at least one completed match")
+			}
 		})
 	}
 }
