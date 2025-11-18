@@ -531,7 +531,7 @@ export function getThemeColors(
     variations: theme.variations?.map(varId => ({
       id: varId,
       color: cssVars[`--variation-${varId}`],
-    })),
+    })).filter(v => v.color !== undefined),
   };
 }
 
