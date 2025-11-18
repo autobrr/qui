@@ -104,7 +104,7 @@ const (
 	indexerDomainCacheTTL               = 1 * time.Minute
 	contentFilteringWaitTimeout         = 5 * time.Second
 	contentFilteringPollInterval        = 150 * time.Millisecond
-	automationSearchTimeout             = 8 * time.Second
+	automationSearchTimeout             = 12 * time.Second
 	selectedIndexerContentSkipReason    = "selected indexers were filtered out"
 	selectedIndexerCapabilitySkipReason = "selected indexers do not support required caps"
 	crossSeedRenameWaitTimeout          = 15 * time.Second
@@ -3418,7 +3418,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	}
 
 	if searchResp.Partial {
-		log.Warn().
+		log.Debug().
 			Str("torrentHash", torrent.Hash).
 			Dur("timeout", automationSearchTimeout).
 			Int("matches", len(searchResp.Results)).
