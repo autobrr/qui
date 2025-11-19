@@ -18,6 +18,27 @@ import (
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 )
 
+func TestComputeAutomationSearchTimeout(t *testing.T) {
+	tests := []struct {
+		name         string
+		indexers     int
+		expectedTime time.Duration
+	}{
+		{name: "no indexers uses base", indexers: 0, expectedTime: automationSearchTimeout},
+		{name: "single indexer", indexers: 1, expectedTime: automationSearchTimeout},
+		{name: "grows with indexers", indexers: 4, expectedTime: automationSearchTimeout + 3*automationTimeoutPerIndexer},
+		{name: "caps at max", indexers: 100, expectedTime: maxAutomationSearchTimeout},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := computeAutomationSearchTimeout(tt.indexers); got != tt.expectedTime {
+				t.Fatalf("computeAutomationSearchTimeout(%d) = %s, want %s", tt.indexers, got, tt.expectedTime)
+			}
+		})
+	}
+}
+
 func TestResolveAllowedIndexerIDsRespectsSelection(t *testing.T) {
 	svc := &Service{}
 	state := &AsyncIndexerFilteringState{
