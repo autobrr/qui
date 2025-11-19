@@ -72,7 +72,7 @@ const (
 	defaultTorrentCacheTTL   = 12 * time.Hour
 	defaultSearchCacheTTL    = 24 * time.Hour
 	storeOperationTimeout    = 5 * time.Second
-	defaultSearchTimeout     = 5 * time.Second
+	defaultSearchTimeout     = 12 * time.Second
 	minSearchCacheTTL        = defaultSearchCacheTTL
 
 	searchCacheCleanupInterval  = 6 * time.Hour
@@ -310,7 +310,7 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 		Partial: partial,
 	}
 	if partial {
-		log.Warn().
+		log.Debug().
 			Int("indexers_requested", len(indexersToSearch)).
 			Int("results_collected", len(allResults)).
 			Msg("Torznab search returning partial results due to deadline")
@@ -438,7 +438,7 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 		Partial: partial,
 	}
 	if partial {
-		log.Warn().
+		log.Debug().
 			Int("indexers_requested", len(indexersToSearch)).
 			Int("results_collected", len(allResults)).
 			Msg("General Torznab search returning partial results due to deadline")
@@ -1914,7 +1914,7 @@ func (s *Service) restoreRateLimitCooldowns() error {
 	}
 
 	s.rateLimiter.LoadCooldowns(active)
-	log.Info().
+	log.Debug().
 		Int("count", len(active)).
 		Msg("Restored persisted torznab rate-limit cooldowns")
 	return nil
