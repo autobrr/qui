@@ -689,17 +689,19 @@ func (s *Service) trackersUpdating(trackers []qbt.TorrentTracker) bool {
 	if len(trackers) == 0 {
 		return false
 	}
+
+	var activeCount int
 	for _, tracker := range trackers {
 		switch tracker.Status {
 		case qbt.TrackerStatusDisabled:
 			continue
 		case qbt.TrackerStatusUpdating, qbt.TrackerStatusNotContacted:
-			continue
+			activeCount++
 		default:
 			return false
 		}
 	}
-	return true
+	return activeCount > 0
 }
 
 func splitTags(raw string) []string {
