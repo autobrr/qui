@@ -191,6 +191,10 @@ func (s *Service) loop(ctx context.Context) {
 }
 
 func (s *Service) scanInstances(ctx context.Context) {
+	if s == nil || s.syncManager == nil {
+		return
+	}
+
 	instances, err := s.instanceStore.List(ctx)
 	if err != nil {
 		log.Error().Err(err).Msg("reannounce: failed to list instances")
