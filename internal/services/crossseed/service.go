@@ -104,7 +104,7 @@ const (
 	indexerDomainCacheTTL               = 1 * time.Minute
 	contentFilteringWaitTimeout         = 5 * time.Second
 	contentFilteringPollInterval        = 150 * time.Millisecond
-	automationSearchTimeout             = 8 * time.Second
+	automationSearchTimeout             = 12 * time.Second
 	selectedIndexerContentSkipReason    = "selected indexers were filtered out"
 	selectedIndexerCapabilitySkipReason = "selected indexers do not support required caps"
 	crossSeedRenameWaitTimeout          = 15 * time.Second
@@ -1652,6 +1652,8 @@ func (s *Service) findBestCandidateMatch(
 		candidateFiles qbt.TorrentFiles
 		matchType      string
 		bestScore      int
+		bestHasRoot    bool
+		bestFileCount  int
 	)
 
 	for _, torrent := range candidate.Torrents {
@@ -1678,12 +1680,28 @@ func (s *Service) findBestCandidateMatch(
 			continue
 		}
 
-		if matchedTorrent == nil || score > bestScore {
+		hasRootFolder := detectCommonRoot(files) != ""
+		fileCount := len(files)
+
+		shouldPromote := matchedTorrent == nil || score > bestScore
+		if !shouldPromote && score == bestScore {
+			// Prefer candidates with a top-level folder so cross-seeded torrents inherit cleaner layouts.
+			if hasRootFolder && !bestHasRoot {
+				shouldPromote = true
+			} else if hasRootFolder == bestHasRoot && fileCount > bestFileCount {
+				// Fall back to the candidate that carries more files (season packs vs single files).
+				shouldPromote = true
+			}
+		}
+
+		if shouldPromote {
 			copyTorrent := torrent
 			matchedTorrent = &copyTorrent
 			candidateFiles = files
 			matchType = candidateMatchType
 			bestScore = score
+			bestHasRoot = hasRootFolder
+			bestFileCount = fileCount
 		}
 	}
 
@@ -3002,18 +3020,21 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 }
 
 // deduplicateSourceTorrents removes duplicate torrents from the search queue by keeping only
-// the oldest instance of each unique content. This prevents searching the same content multiple
-// times when cross-seeds exist in the source instance.
+// the best representative of each unique content group. It now prefers torrents that already
+// have a top-level folder (so subsequent cross-seeds inherit cleaner layouts) and falls back to
+// the oldest torrent when folder layout is identical. This prevents searching the same content
+// multiple times when cross-seeds exist in the source instance.
 //
 // The deduplication works by:
-// 1. Parsing each torrent's release info (title, year, series, episode, group)
-// 2. Grouping torrents with matching content using the same logic as cross-seed matching
-// 3. For each group, keeping only the torrent with the earliest AddedOn timestamp
+//  1. Parsing each torrent's release info (title, year, series, episode, group)
+//  2. Grouping torrents with matching content using the same logic as cross-seed matching
+//  3. Selecting a representative per group by preferring torrents with top-level folders, then
+//     the earliest AddedOn timestamp
 //
 // This significantly reduces API calls and processing time when an instance contains multiple
 // cross-seeds of the same content from different trackers, while enforcing strict matching so
 // that season packs never collapse individual-episode queue entries.
-func (s *Service) deduplicateSourceTorrents(torrents []qbt.Torrent) ([]qbt.Torrent, map[string][]string) {
+func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int, torrents []qbt.Torrent) ([]qbt.Torrent, map[string][]string) {
 	if len(torrents) <= 1 {
 		return torrents, map[string][]string{}
 	}
@@ -3034,15 +3055,18 @@ func (s *Service) deduplicateSourceTorrents(torrents []qbt.Torrent) ([]qbt.Torre
 	}
 
 	// Group torrents by matching content
-	// We'll track the oldest torrent for each unique content group
+	// We'll track the preferred torrent (folder-aware, then oldest) for each unique content group
 	type contentGroup struct {
-		oldest     *qbt.Torrent
-		addedOn    int64
-		duplicates []string // Track duplicate names for logging
+		representative  *qbt.Torrent
+		addedOn         int64
+		duplicates      []string // Track duplicate names for logging
+		hasRootFolder   bool
+		rootFolderKnown bool
 	}
 
 	groups := make(map[int]*contentGroup)
 	groupIndex := 0
+	hasRootCache := make(map[string]bool)
 
 	for i := range parsed {
 		current := &parsed[i]
@@ -3053,7 +3077,7 @@ func (s *Service) deduplicateSourceTorrents(torrents []qbt.Torrent) ([]qbt.Torre
 			if s.releasesMatch(current.release, existing.release, false) {
 				// Find which group this existing torrent belongs to
 				for groupID, group := range groups {
-					if group.oldest.Hash == existing.torrent.Hash {
+					if group.representative.Hash == existing.torrent.Hash {
 						foundGroup = groupID
 						break
 					}
@@ -3074,23 +3098,41 @@ func (s *Service) deduplicateSourceTorrents(torrents []qbt.Torrent) ([]qbt.Torre
 		if foundGroup == -1 {
 			// Create new group with this torrent as the first member
 			groups[groupIndex] = &contentGroup{
-				oldest:     &current.torrent,
-				addedOn:    current.torrent.AddedOn,
-				duplicates: []string{},
+				representative: &current.torrent,
+				addedOn:        current.torrent.AddedOn,
+				duplicates:     []string{},
 			}
 			groupIndex++
-		} else {
-			// Add to existing group, update oldest if this one is older
-			group := groups[foundGroup]
+			continue
+		}
+
+		group := groups[foundGroup]
+		currentHasRoot := s.torrentHasTopLevelFolderCached(ctx, instanceID, &current.torrent, hasRootCache)
+		groupHasRoot := group.hasRootFolder
+		if !group.rootFolderKnown {
+			groupHasRoot = s.torrentHasTopLevelFolderCached(ctx, instanceID, group.representative, hasRootCache)
+			group.hasRootFolder = groupHasRoot
+			group.rootFolderKnown = true
+		}
+
+		promoteCurrent := false
+		switch {
+		case currentHasRoot && !groupHasRoot:
+			promoteCurrent = true
+		case currentHasRoot == groupHasRoot:
 			if current.torrent.AddedOn < group.addedOn {
-				// Current torrent is older, make it the representative
-				group.duplicates = append(group.duplicates, group.oldest.Hash)
-				group.oldest = &current.torrent
-				group.addedOn = current.torrent.AddedOn
-			} else {
-				// Keep existing oldest, track this as duplicate
-				group.duplicates = append(group.duplicates, current.torrent.Hash)
+				promoteCurrent = true
 			}
+		}
+
+		if promoteCurrent {
+			group.duplicates = append(group.duplicates, group.representative.Hash)
+			group.representative = &current.torrent
+			group.addedOn = current.torrent.AddedOn
+			group.hasRootFolder = currentHasRoot
+			group.rootFolderKnown = true
+		} else {
+			group.duplicates = append(group.duplicates, current.torrent.Hash)
 		}
 	}
 
@@ -3099,16 +3141,16 @@ func (s *Service) deduplicateSourceTorrents(torrents []qbt.Torrent) ([]qbt.Torre
 	totalDuplicates := 0
 
 	for _, group := range groups {
-		deduplicated = append(deduplicated, *group.oldest)
+		deduplicated = append(deduplicated, *group.representative)
 		if len(group.duplicates) > 0 {
 			totalDuplicates += len(group.duplicates)
 			log.Trace().
-				Str("representative", group.oldest.Name).
-				Str("representativeHash", group.oldest.Hash).
-				Int64("addedOn", group.oldest.AddedOn).
+				Str("representative", group.representative.Name).
+				Str("representativeHash", group.representative.Hash).
+				Int64("addedOn", group.representative.AddedOn).
 				Int("duplicateCount", len(group.duplicates)).
 				Strs("duplicateHashes", group.duplicates).
-				Msg("[CROSSSEED-DEDUP] Grouped duplicate content, keeping oldest")
+				Msg("[CROSSSEED-DEDUP] Grouped duplicate content, keeping preferred representative")
 		}
 	}
 
@@ -3124,10 +3166,38 @@ func (s *Service) deduplicateSourceTorrents(torrents []qbt.Torrent) ([]qbt.Torre
 		if len(group.duplicates) == 0 {
 			continue
 		}
-		duplicateMap[group.oldest.Hash] = append([]string(nil), group.duplicates...)
+		duplicateMap[group.representative.Hash] = append([]string(nil), group.duplicates...)
 	}
 
 	return deduplicated, duplicateMap
+}
+
+func (s *Service) torrentHasTopLevelFolderCached(ctx context.Context, instanceID int, torrent *qbt.Torrent, cache map[string]bool) bool {
+	if torrent == nil {
+		return false
+	}
+	hash := strings.ToLower(strings.TrimSpace(torrent.Hash))
+	if hash != "" {
+		if val, ok := cache[hash]; ok {
+			return val
+		}
+	}
+	hasRoot := s.torrentHasTopLevelFolder(ctx, instanceID, torrent)
+	if hash != "" {
+		cache[hash] = hasRoot
+	}
+	return hasRoot
+}
+
+func (s *Service) torrentHasTopLevelFolder(ctx context.Context, instanceID int, torrent *qbt.Torrent) bool {
+	if s == nil || s.syncManager == nil || torrent == nil {
+		return false
+	}
+	filesPtr, err := s.syncManager.GetTorrentFiles(ctx, instanceID, torrent.Hash)
+	if err != nil || filesPtr == nil || len(*filesPtr) == 0 {
+		return false
+	}
+	return detectCommonRoot(*filesPtr) != ""
 }
 
 func (s *Service) propagateDuplicateSearchHistory(ctx context.Context, state *searchRunState, representativeHash string, processedAt time.Time) {
@@ -3175,7 +3245,7 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 
 	// Deduplicate source torrents to avoid searching the same content multiple times
 	// when cross-seeds exist in the source instance
-	deduplicated, duplicates := s.deduplicateSourceTorrents(filtered)
+	deduplicated, duplicates := s.deduplicateSourceTorrents(ctx, state.opts.InstanceID, filtered)
 
 	state.queue = deduplicated
 	state.index = 0
@@ -3418,7 +3488,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	}
 
 	if searchResp.Partial {
-		log.Warn().
+		log.Debug().
 			Str("torrentHash", torrent.Hash).
 			Dur("timeout", automationSearchTimeout).
 			Int("matches", len(searchResp.Results)).
