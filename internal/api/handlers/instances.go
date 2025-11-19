@@ -374,6 +374,7 @@ type InstanceReannounceSettingsPayload struct {
 	InitialWaitSeconds        int      `json:"initialWaitSeconds"`
 	ReannounceIntervalSeconds int      `json:"reannounceIntervalSeconds"`
 	MaxAgeSeconds             int      `json:"maxAgeSeconds"`
+	Aggressive                bool     `json:"aggressive"`
 	MonitorAll                bool     `json:"monitorAll"`
 	ExcludeCategories         bool     `json:"excludeCategories"`
 	Categories                []string `json:"categories"`
@@ -407,6 +408,7 @@ func (p *InstanceReannounceSettingsPayload) toModel(instanceID int, base *models
 	target.InitialWaitSeconds = p.InitialWaitSeconds
 	target.ReannounceIntervalSeconds = p.ReannounceIntervalSeconds
 	target.MaxAgeSeconds = p.MaxAgeSeconds
+	target.Aggressive = p.Aggressive
 	target.MonitorAll = p.MonitorAll
 	target.ExcludeCategories = p.ExcludeCategories
 	target.Categories = append([]string{}, p.Categories...)
@@ -426,6 +428,7 @@ func payloadFromModel(settings *models.InstanceReannounceSettings) InstanceReann
 		InitialWaitSeconds:        settings.InitialWaitSeconds,
 		ReannounceIntervalSeconds: settings.ReannounceIntervalSeconds,
 		MaxAgeSeconds:             settings.MaxAgeSeconds,
+		Aggressive:                settings.Aggressive,
 		MonitorAll:                settings.MonitorAll,
 		ExcludeCategories:         settings.ExcludeCategories,
 		Categories:                append([]string{}, settings.Categories...),
