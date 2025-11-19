@@ -72,6 +72,30 @@ type ActivityEvent struct {
 
 const defaultHistorySize = 50
 
+// MonitoredTorrentState describes the current monitoring state for a torrent.
+type MonitoredTorrentState string
+
+const (
+	MonitoredTorrentStateWatching     MonitoredTorrentState = "watching"
+	MonitoredTorrentStateReannouncing MonitoredTorrentState = "reannouncing"
+	MonitoredTorrentStateCooldown     MonitoredTorrentState = "cooldown"
+)
+
+// MonitoredTorrent represents a torrent that currently falls within the tracker
+// reannounce monitoring scope for an instance.
+type MonitoredTorrent struct {
+	InstanceID        int                   `json:"instanceId"`
+	Hash              string                `json:"hash"`
+	TorrentName       string                `json:"torrentName"`
+	Trackers          string                `json:"trackers"`
+	TimeActiveSeconds int64                 `json:"timeActiveSeconds"`
+	Category          string                `json:"category"`
+	Tags              string                `json:"tags"`
+	State             MonitoredTorrentState `json:"state"`
+	HasTrackerProblem bool                  `json:"hasTrackerProblem"`
+	WaitingForInitial bool                  `json:"waitingForInitial"`
+}
+
 // DefaultConfig returns sane defaults.
 func DefaultConfig() Config {
 	return Config{
@@ -200,6 +224,81 @@ func (s *Service) scanInstance(ctx context.Context, instanceID int, settings *mo
 		trackers := s.getProblematicTrackers(torrent.Trackers)
 		s.enqueue(instanceID, strings.ToUpper(torrent.Hash), torrent.Name, trackers)
 	}
+}
+
+// GetMonitoredTorrents returns a snapshot of torrents that currently fall within
+// the monitoring scope and either have tracker problems or are still waiting for
+// their initial tracker contact.
+func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []MonitoredTorrent {
+	if s == nil || instanceID == 0 {
+		return nil
+	}
+	if s.syncManager == nil {
+		return nil
+	}
+
+	settings := s.getSettings(ctx, instanceID)
+	if settings == nil || !settings.Enabled {
+		return nil
+	}
+
+	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
+	if err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("reannounce: failed to fetch torrents for snapshot")
+		return nil
+	}
+
+	s.jobsMu.Lock()
+	defer s.jobsMu.Unlock()
+
+	now := s.currentTime()
+	instJobs := s.j[instanceID]
+
+	var result []MonitoredTorrent
+	for _, torrent := range torrents {
+		if !s.torrentMeetsCriteria(torrent, settings) {
+			continue
+		}
+
+		hasProblem := s.trackerProblemDetected(torrent.Trackers)
+		waiting := s.trackersUpdating(torrent.Trackers) && !hasProblem
+		if !hasProblem && !waiting {
+			continue
+		}
+
+		hashUpper := strings.ToUpper(strings.TrimSpace(torrent.Hash))
+		if hashUpper == "" {
+			continue
+		}
+
+		state := MonitoredTorrentStateWatching
+		if instJobs != nil {
+			if job, ok := instJobs[hashUpper]; ok {
+				if job.isRunning {
+					state = MonitoredTorrentStateReannouncing
+				} else if !job.lastCompleted.IsZero() && now.Sub(job.lastCompleted) < s.cfg.DebounceWindow {
+					state = MonitoredTorrentStateCooldown
+				}
+			}
+		}
+
+		trackers := s.getProblematicTrackers(torrent.Trackers)
+
+		result = append(result, MonitoredTorrent{
+			InstanceID:        instanceID,
+			Hash:              strings.ToLower(hashUpper),
+			TorrentName:       torrent.Name,
+			Trackers:          trackers,
+			TimeActiveSeconds: torrent.TimeActive,
+			Category:          torrent.Category,
+			Tags:              torrent.Tags,
+			State:             state,
+			HasTrackerProblem: hasProblem,
+			WaitingForInitial: waiting,
+		})
+	}
+
+	return result
 }
 
 func (s *Service) enqueue(instanceID int, hash string, torrentName string, trackers string) bool {

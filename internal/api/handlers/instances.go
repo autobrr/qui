@@ -109,6 +109,37 @@ func (h *InstancesHandler) GetReannounceActivity(w http.ResponseWriter, r *http.
 	RespondJSON(w, http.StatusOK, normalized)
 }
 
+// GetReannounceCandidates returns torrents that currently fall within the
+// reannounce monitoring scope and either have tracker problems or are still
+// waiting for their initial tracker contact.
+func (h *InstancesHandler) GetReannounceCandidates(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+	if h.reannounceSvc == nil {
+		RespondJSON(w, http.StatusOK, []reannounce.MonitoredTorrent{})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	candidates := h.reannounceSvc.GetMonitoredTorrents(ctx, instanceID)
+	if candidates == nil {
+		candidates = []reannounce.MonitoredTorrent{}
+	}
+
+	normalized := make([]reannounce.MonitoredTorrent, len(candidates))
+	for i, candidate := range candidates {
+		candidate.Hash = strings.ToLower(candidate.Hash)
+		normalized[i] = candidate
+	}
+
+	RespondJSON(w, http.StatusOK, normalized)
+}
+
 func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, instances []*models.Instance) []InstanceResponse {
 	if len(instances) == 0 {
 		return []InstanceResponse{}

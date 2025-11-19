@@ -32,6 +32,7 @@ import type {
   InstanceCapabilities,
   InstanceFormData,
   InstanceReannounceActivity,
+  InstanceReannounceCandidate,
   InstanceResponse,
   JackettIndexer,
   QBittorrentAppInfo,
@@ -296,6 +297,12 @@ class ApiClient {
   ): Promise<InstanceReannounceActivity[]> {
     const query = typeof limit === "number" ? `?limit=${limit}` : ""
     return this.request<InstanceReannounceActivity[]>(`/instances/${instanceId}/reannounce/activity${query}`)
+  }
+
+  async getInstanceReannounceCandidates(
+    instanceId: number
+  ): Promise<InstanceReannounceCandidate[]> {
+    return this.request<InstanceReannounceCandidate[]>(`/instances/${instanceId}/reannounce/candidates`)
   }
 
   async reorderInstances(instanceIds: number[]): Promise<InstanceResponse[]> {

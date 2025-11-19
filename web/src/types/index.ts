@@ -60,6 +60,19 @@ export interface InstanceReannounceActivity {
   timestamp: string
 }
 
+export interface InstanceReannounceCandidate {
+  instanceId: number
+  hash: string
+  torrentName?: string
+  trackers?: string
+  timeActiveSeconds?: number
+  category?: string
+  tags?: string
+  state: "watching" | "reannouncing" | "cooldown"
+  hasTrackerProblem: boolean
+  waitingForInitial: boolean
+}
+
 export interface InstanceError {
   id: number
   instanceId: number

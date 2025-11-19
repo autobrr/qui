@@ -372,6 +372,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 					r.Get("/capabilities", instancesHandler.GetInstanceCapabilities)
 					r.Get("/reannounce/activity", instancesHandler.GetReannounceActivity)
+					r.Get("/reannounce/candidates", instancesHandler.GetReannounceCandidates)
 
 					// Torrent creator
 					r.Route("/torrent-creator", func(r chi.Router) {

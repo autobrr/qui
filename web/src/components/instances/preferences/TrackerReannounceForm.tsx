@@ -301,7 +301,9 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
           {activityEnabled ? (
             <>
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <p className="text-sm text-muted-foreground">Events refresh automatically while open.</p>
+                <p className="text-sm text-muted-foreground">
+                  Monitor snapshot and events refresh automatically while open.
+                </p>
                 <div className="flex items-center gap-3 self-start sm:self-auto">
                   <div className="flex items-center gap-2">
                     <Label htmlFor="hide-skipped" className="text-sm font-normal cursor-pointer">
@@ -324,9 +326,9 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
               {activityQuery.isLoading ? (
                 <p className="text-sm text-muted-foreground">Loading activity…</p>
               ) : activityEvents.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No activity yet. Reannounce attempts will appear here.</p>
+                <p className="text-xs flex justify-end text-muted-foreground">No activity yet. Reannounce attempts will appear here.</p>
               ) : (
-                <ScrollArea className="max-h-[300px] sm:max-h-[400px] pr-3 sm:pr-4">
+                <ScrollArea className="h-[300px] sm:h-[400px] pr-3 sm:pr-4">
                   <div className="space-y-2">
                     {activityEvents.map((event, index) => (
                       <div key={`${event.hash}-${index}-${event.timestamp}`} className="rounded-md border bg-background px-3 sm:px-4 py-2 sm:py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
