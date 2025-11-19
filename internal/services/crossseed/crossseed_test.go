@@ -1434,6 +1434,10 @@ func (f *fakeSyncManager) RenameTorrentFolder(_ context.Context, _ int, _, _, _ 
 	return fmt.Errorf("RenameTorrentFolder not implemented in fakeSyncManager")
 }
 
+func (f *fakeSyncManager) SetTags(_ context.Context, _ int, _ []string, _ string) error {
+	return nil
+}
+
 func (f *fakeSyncManager) GetCachedInstanceTorrents(_ context.Context, instanceID int) ([]internalqb.CrossInstanceTorrentView, error) {
 	if cached, ok := f.cached[instanceID]; ok {
 		return cached, nil

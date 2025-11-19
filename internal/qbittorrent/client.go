@@ -53,6 +53,10 @@ type Client struct {
 	mu                sync.RWMutex
 	serverStateMu     sync.RWMutex
 	healthMu          sync.RWMutex
+	completionMu      sync.Mutex
+	completionState   map[string]bool
+	completionHandler TorrentCompletionHandler
+	completionInit    bool
 }
 
 func NewClient(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool) (*Client, error) {
@@ -93,6 +97,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 			SetDefaultTTL(30 * time.Second)), // Updates expire after 30 seconds
 		trackerExclusions: make(map[string]map[string]struct{}),
 		peerSyncManager:   make(map[string]*qbt.PeerSyncManager),
+		completionState:   make(map[string]bool),
 	}
 
 	if err := client.RefreshCapabilities(ctx); err != nil {
@@ -114,6 +119,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 	syncOpts.OnUpdate = func(data *qbt.MainData) {
 		client.updateHealthStatus(true)
 		client.updateServerState(data)
+		client.handleCompletionUpdates(data)
 		log.Debug().Int("instanceID", instanceID).Int("torrentCount", len(data.Torrents)).Msg("Sync manager update received, marking client as healthy")
 	}
 
@@ -437,6 +443,16 @@ func (c *Client) invalidateTrackerCache(hashes ...string) {
 	}
 }
 
+// SetTorrentCompletionHandler registers a callback to be invoked when torrents finish downloading.
+func (c *Client) SetTorrentCompletionHandler(handler TorrentCompletionHandler) {
+	c.completionMu.Lock()
+	c.completionHandler = handler
+	if c.completionState == nil {
+		c.completionState = make(map[string]bool)
+	}
+	c.completionMu.Unlock()
+}
+
 func (c *Client) StartSyncManager(ctx context.Context) error {
 	c.mu.RLock()
 	syncManager := c.syncManager
@@ -447,6 +463,98 @@ func (c *Client) StartSyncManager(ctx context.Context) error {
 	}
 
 	return syncManager.Start(ctx)
+}
+
+const completionProgressThreshold = 0.9999
+
+func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
+	if data == nil {
+		return
+	}
+
+	c.completionMu.Lock()
+	if c.completionState == nil {
+		c.completionState = make(map[string]bool)
+	}
+
+	handler := c.completionHandler
+
+	for _, removed := range data.TorrentsRemoved {
+		delete(c.completionState, normalizeHashForCompletion(removed))
+	}
+
+	if !c.completionInit {
+		if len(data.Torrents) == 0 {
+			c.completionMu.Unlock()
+			return
+		}
+		for hash, torrent := range data.Torrents {
+			normalized := normalizeHashForCompletion(hash)
+			c.completionState[normalized] = isTorrentComplete(&torrent)
+		}
+		c.completionInit = true
+		c.completionMu.Unlock()
+		return
+	}
+
+	ready := make([]qbt.Torrent, 0)
+	for hash, torrent := range data.Torrents {
+		normalized := normalizeHashForCompletion(hash)
+		alreadyHandled := c.completionState[normalized]
+		isComplete := isTorrentComplete(&torrent)
+
+		if !alreadyHandled && isComplete {
+			c.completionState[normalized] = true
+			ready = append(ready, torrent)
+			continue
+		}
+
+		if !isComplete && !alreadyHandled {
+			c.completionState[normalized] = false
+		}
+	}
+	c.completionMu.Unlock()
+
+	if handler == nil || len(ready) == 0 {
+		return
+	}
+
+	for _, torrent := range ready {
+		torrentCopy := torrent
+		go handler(context.Background(), c.instanceID, torrentCopy)
+	}
+}
+
+func normalizeHashForCompletion(hash string) string {
+	return strings.ToUpper(strings.TrimSpace(hash))
+}
+
+func isTorrentComplete(t *qbt.Torrent) bool {
+	if t == nil {
+		return false
+	}
+
+	if t.Progress < completionProgressThreshold {
+		return false
+	}
+
+	switch t.State {
+	case qbt.TorrentStateDownloading,
+		qbt.TorrentStateMetaDl,
+		qbt.TorrentStatePausedDl,
+		qbt.TorrentStateStoppedDl,
+		qbt.TorrentStateQueuedDl,
+		qbt.TorrentStateStalledDl,
+		qbt.TorrentStateCheckingDl,
+		qbt.TorrentStateForcedDl,
+		qbt.TorrentStateCheckingResumeData,
+		qbt.TorrentStateAllocating,
+		qbt.TorrentStateMoving,
+		qbt.TorrentStateUnknown:
+		return false
+	default:
+		return true
+	}
 }
 
 // GetOrCreatePeerSyncManager gets or creates a PeerSyncManager for a specific torrent

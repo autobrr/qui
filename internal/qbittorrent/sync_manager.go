@@ -36,6 +36,9 @@ type FilesManager interface {
 	InvalidateCache(ctx context.Context, instanceID int, hash string) error
 }
 
+// TorrentCompletionHandler is invoked when a torrent transitions to a completed state.
+type TorrentCompletionHandler func(ctx context.Context, instanceID int, torrent qbt.Torrent)
+
 // Global URL cache for domain extraction - shared across all sync managers
 var urlCache = ttlcache.New(ttlcache.Options[string, string]{}.SetDefaultTTL(5 * time.Minute))
 
@@ -155,6 +158,14 @@ func (sm *SyncManager) getFilesManager() FilesManager {
 		return nil
 	}
 	return v.(FilesManager)
+}
+
+// SetTorrentCompletionHandler registers a callback for torrent completion events across all clients.
+func (sm *SyncManager) SetTorrentCompletionHandler(handler TorrentCompletionHandler) {
+	if sm == nil || sm.clientPool == nil {
+		return
+	}
+	sm.clientPool.SetTorrentCompletionHandler(handler)
 }
 
 // InvalidateFileCache invalidates the file cache for a torrent

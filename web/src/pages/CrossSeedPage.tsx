@@ -28,6 +28,7 @@ import { api } from "@/lib/api"
 import type {
   CrossSeedAutomationSettings,
   CrossSeedAutomationStatus,
+  CrossSeedCompletionSettings,
   CrossSeedRun
 } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -65,6 +66,14 @@ interface GlobalCrossSeedSettings {
   ignorePatterns: string
 }
 
+interface CompletionFormState {
+  enabled: boolean
+  categories: string
+  tags: string
+  excludeCategories: string
+  excludeTags: string
+}
+
 // RSS Automation constants
 const MIN_RSS_INTERVAL_MINUTES = 30   // RSS: minimum interval between RSS feed polls
 const DEFAULT_RSS_INTERVAL_MINUTES = 120  // RSS: default interval (2 hours)
@@ -89,6 +98,22 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   useCategoryFromIndexer: false,
   runExternalProgramId: null,
   ignorePatterns: "",
+}
+
+const DEFAULT_COMPLETION_SETTINGS: CrossSeedCompletionSettings = {
+  enabled: false,
+  categories: [],
+  tags: [],
+  excludeCategories: [],
+  excludeTags: [],
+}
+
+const DEFAULT_COMPLETION_FORM: CompletionFormState = {
+  enabled: false,
+  categories: "",
+  tags: "",
+  excludeCategories: "",
+  excludeTags: "",
 }
 
 function parseList(value: string): string[] {
@@ -144,8 +169,10 @@ export function CrossSeedPage() {
   // RSS Automation state
   const [automationForm, setAutomationForm] = useState<AutomationFormState>(DEFAULT_AUTOMATION_FORM)
   const [globalSettings, setGlobalSettings] = useState<GlobalCrossSeedSettings>(DEFAULT_GLOBAL_SETTINGS)
+  const [completionForm, setCompletionForm] = useState<CompletionFormState>(DEFAULT_COMPLETION_FORM)
   const [formInitialized, setFormInitialized] = useState(false)
   const [globalSettingsInitialized, setGlobalSettingsInitialized] = useState(false)
+  const [completionFormInitialized, setCompletionFormInitialized] = useState(false)
   const [dryRun, setDryRun] = useState(false)
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
 
@@ -297,6 +324,20 @@ export function CrossSeedPage() {
     }
   }, [settings, globalSettingsInitialized])
 
+  useEffect(() => {
+    if (settings && !completionFormInitialized) {
+      const completion = settings.completion ?? DEFAULT_COMPLETION_SETTINGS
+      setCompletionForm({
+        enabled: completion.enabled,
+        categories: completion.categories.join(", "),
+        tags: completion.tags.join(", "),
+        excludeCategories: completion.excludeCategories.join(", "),
+        excludeTags: completion.excludeTags.join(", "),
+      })
+      setCompletionFormInitialized(true)
+    }
+  }, [settings, completionFormInitialized])
+
   const ignorePatternError = useMemo(
     () => validateIgnorePatterns(globalSettings.ignorePatterns),
     [globalSettings.ignorePatterns]
@@ -318,10 +359,69 @@ export function CrossSeedPage() {
     }
   }, [instances, searchInstanceId])
 
+  const buildSettingsPayload = useCallback((): CrossSeedAutomationSettings | null => {
+    if (!settings) return null
+
+    const normalizedIgnorePatterns = normalizeIgnorePatterns(globalSettings.ignorePatterns)
+    const automationSource = formInitialized
+      ? automationForm
+      : {
+          enabled: settings.enabled,
+          runIntervalMinutes: settings.runIntervalMinutes,
+          startPaused: settings.startPaused,
+          category: settings.category ?? "",
+          tags: settings.tags.join(", "),
+          targetInstanceIds: settings.targetInstanceIds,
+          targetIndexerIds: settings.targetIndexerIds,
+          maxResultsPerRun: settings.maxResultsPerRun,
+        }
+
+    const completionSource = settings.completion ?? DEFAULT_COMPLETION_SETTINGS
+    const completionState = completionFormInitialized
+      ? completionForm
+      : {
+          enabled: completionSource.enabled,
+          categories: completionSource.categories.join(", "),
+          tags: completionSource.tags.join(", "),
+          excludeCategories: completionSource.excludeCategories.join(", "),
+          excludeTags: completionSource.excludeTags.join(", "),
+        }
+
+    return {
+      enabled: automationSource.enabled,
+      runIntervalMinutes: automationSource.runIntervalMinutes,
+      startPaused: automationSource.startPaused,
+      category: automationSource.category.trim() || null,
+      tags: parseList(automationSource.tags),
+      ignorePatterns: normalizedIgnorePatterns,
+      targetInstanceIds: automationSource.targetInstanceIds,
+      targetIndexerIds: automationSource.targetIndexerIds,
+      maxResultsPerRun: automationSource.maxResultsPerRun,
+      findIndividualEpisodes: globalSettings.findIndividualEpisodes,
+      sizeMismatchTolerancePercent: globalSettings.sizeMismatchTolerancePercent,
+      useCategoryFromIndexer: globalSettings.useCategoryFromIndexer,
+      runExternalProgramId: globalSettings.runExternalProgramId,
+      completion: {
+        enabled: completionState.enabled,
+        categories: parseList(completionState.categories),
+        tags: parseList(completionState.tags),
+        excludeCategories: parseList(completionState.excludeCategories),
+        excludeTags: parseList(completionState.excludeTags),
+      },
+    }
+  }, [
+    settings,
+    globalSettings,
+    automationForm,
+    formInitialized,
+    completionForm,
+    completionFormInitialized,
+  ])
+
   const updateSettingsMutation = useMutation({
     mutationFn: (payload: CrossSeedAutomationSettings) => api.updateCrossSeedSettings(payload),
     onSuccess: (data) => {
-      toast.success("Automation settings updated")
+      toast.success("Settings updated")
       // Don't reinitialize the form since we just saved it
       queryClient.setQueryData(["cross-seed", "settings"], data)
       refetchStatus()
@@ -392,28 +492,9 @@ export function CrossSeedPage() {
     if (validationErrors.ignorePatterns) {
       setValidationErrors(prev => ({ ...prev, ignorePatterns: "" }))
     }
-    // Get current settings to merge with global changes
-    if (!settings) return
+    const payload = buildSettingsPayload()
+    if (!payload) return
 
-    const normalizedIgnorePatterns = normalizeIgnorePatterns(globalSettings.ignorePatterns)
-
-    const payload: CrossSeedAutomationSettings = {
-      // Use current automation form values if they've been modified, otherwise use saved settings
-      enabled: formInitialized ? automationForm.enabled : settings.enabled,
-      runIntervalMinutes: formInitialized ? automationForm.runIntervalMinutes : settings.runIntervalMinutes,
-      startPaused: formInitialized ? automationForm.startPaused : settings.startPaused,
-      category: formInitialized ? (automationForm.category.trim() || null) : settings.category,
-      tags: formInitialized ? parseList(automationForm.tags) : settings.tags,
-      ignorePatterns: normalizedIgnorePatterns,
-      targetInstanceIds: formInitialized ? automationForm.targetInstanceIds : settings.targetInstanceIds,
-      targetIndexerIds: formInitialized ? automationForm.targetIndexerIds : settings.targetIndexerIds,
-      maxResultsPerRun: formInitialized ? automationForm.maxResultsPerRun : settings.maxResultsPerRun,
-      // Only update the global settings
-      findIndividualEpisodes: globalSettings.findIndividualEpisodes,
-      sizeMismatchTolerancePercent: globalSettings.sizeMismatchTolerancePercent,
-      useCategoryFromIndexer: globalSettings.useCategoryFromIndexer,
-      runExternalProgramId: globalSettings.runExternalProgramId,
-    }
     updateGlobalSettingsMutation.mutate(payload)
   }
 
@@ -435,23 +516,24 @@ export function CrossSeedPage() {
       setValidationErrors(prev => ({ ...prev, ignorePatterns: "" }))
     }
 
-    const normalizedIgnorePatterns = normalizeIgnorePatterns(globalSettings.ignorePatterns)
+    const payload = buildSettingsPayload()
+    if (!payload) return
 
-    const payload: CrossSeedAutomationSettings = {
-      enabled: automationForm.enabled,
-      runIntervalMinutes: automationForm.runIntervalMinutes,
-      startPaused: automationForm.startPaused,
-      category: automationForm.category.trim() || null,
-      tags: parseList(automationForm.tags),
-      ignorePatterns: normalizedIgnorePatterns,
-      targetInstanceIds: automationForm.targetInstanceIds,
-      targetIndexerIds: automationForm.targetIndexerIds,
-      maxResultsPerRun: automationForm.maxResultsPerRun,
-      findIndividualEpisodes: globalSettings.findIndividualEpisodes,
-      sizeMismatchTolerancePercent: globalSettings.sizeMismatchTolerancePercent,
-      useCategoryFromIndexer: globalSettings.useCategoryFromIndexer,
-      runExternalProgramId: globalSettings.runExternalProgramId,
+    updateSettingsMutation.mutate(payload)
+  }
+
+  const handleCompletionSave = () => {
+    if (ignorePatternError) {
+      setValidationErrors(prev => ({ ...prev, ignorePatterns: ignorePatternError }))
+      return
     }
+    if (validationErrors.ignorePatterns) {
+      setValidationErrors(prev => ({ ...prev, ignorePatterns: "" }))
+    }
+
+    const payload = buildSettingsPayload()
+    if (!payload) return
+
     updateSettingsMutation.mutate(payload)
   }
 
@@ -979,6 +1061,88 @@ export function CrossSeedPage() {
           </CollapsibleContent>
         </Card>
       </Collapsible>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Auto-search on completion</CardTitle>
+          <CardDescription>Kick off a cross-seed search the moment a torrent finishes, using simple category and tag filters.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-1">
+              <Label htmlFor="completion-enabled">Enable on completion</Label>
+              <p className="text-xs text-muted-foreground">Only runs when qBittorrent reports 100% and passes the filters below.</p>
+              <p className="text-xs text-muted-foreground">Torrents already tagged <span className="font-semibold">cross-seed</span> are skipped automatically.</p>
+            </div>
+            <Switch
+              id="completion-enabled"
+              checked={completionForm.enabled}
+              onCheckedChange={value => setCompletionForm(prev => ({ ...prev, enabled: !!value }))}
+            />
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="completion-categories">Categories (allow list)</Label>
+              <Input
+                id="completion-categories"
+                placeholder="Comma separated"
+                value={completionForm.categories}
+                onChange={event => setCompletionForm(prev => ({ ...prev, categories: event.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">Only run for these categories. Leave blank to include all categories.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="completion-exclude-categories">Exclude categories</Label>
+              <Input
+                id="completion-exclude-categories"
+                placeholder="Comma separated"
+                value={completionForm.excludeCategories}
+                onChange={event => setCompletionForm(prev => ({ ...prev, excludeCategories: event.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">Stop completion searches for matching categories.</p>
+            </div>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="completion-tags">Tags (allow list)</Label>
+              <Input
+                id="completion-tags"
+                placeholder="Comma separated"
+                value={completionForm.tags}
+                onChange={event => setCompletionForm(prev => ({ ...prev, tags: event.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">Require at least one matching tag. Leave blank to include all tags.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="completion-exclude-tags">Exclude tags</Label>
+              <Input
+                id="completion-exclude-tags"
+                placeholder="Comma separated"
+                value={completionForm.excludeTags}
+                onChange={event => setCompletionForm(prev => ({ ...prev, excludeTags: event.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">Skip completion searches when any of these tags are present.</p>
+            </div>
+          </div>
+        </CardContent>
+        <CardFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <Button
+              onClick={handleCompletionSave}
+              disabled={updateSettingsMutation.isPending || Boolean(ignorePatternError)}
+            >
+              {updateSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save settings
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setCompletionForm(DEFAULT_COMPLETION_FORM)}
+            >
+              Reset
+            </Button>
+          </div>
+        </CardFooter>
+      </Card>
 
       <Collapsible open={seededSearchOpen} onOpenChange={setSeededSearchOpen}>
         <Card className={!seededSearchOpen ? "hover:bg-muted/50 transition-colors" : ""}>

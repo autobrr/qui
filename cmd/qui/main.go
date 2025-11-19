@@ -532,6 +532,8 @@ func (app *Application) runServer() {
 	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore, clientPool)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 
+	syncManager.SetTorrentCompletionHandler(crossSeedService.HandleTorrentCompletion)
+
 	automationCtx, automationCancel := context.WithCancel(context.Background())
 	defer func() {
 		automationCancel()

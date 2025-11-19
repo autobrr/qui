@@ -243,6 +243,10 @@ func (f *episodeSyncManager) BulkAction(context.Context, int, []string, string) 
 	return nil
 }
 
+func (f *episodeSyncManager) SetTags(context.Context, int, []string, string) error {
+	return nil
+}
+
 func (f *episodeSyncManager) GetCachedInstanceTorrents(context.Context, int) ([]internalqb.CrossInstanceTorrentView, error) {
 	return nil, nil
 }

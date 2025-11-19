@@ -63,6 +63,7 @@ type ClientPool struct {
 	stopHealth        chan struct{}
 	failureTracker    map[int]*failureInfo
 	decryptionTracker map[int]*decryptionErrorInfo
+	completionHandler TorrentCompletionHandler
 }
 
 // NewClientPool creates a new client pool
@@ -87,6 +88,22 @@ func NewClientPool(instanceStore *models.InstanceStore, errorStore *models.Insta
 	go cp.healthCheckLoop()
 
 	return cp, nil
+}
+
+// SetTorrentCompletionHandler registers a callback for new and existing clients when torrents complete.
+func (cp *ClientPool) SetTorrentCompletionHandler(handler TorrentCompletionHandler) {
+	cp.mu.Lock()
+	cp.completionHandler = handler
+
+	clients := make([]*Client, 0, len(cp.clients))
+	for _, client := range cp.clients {
+		clients = append(clients, client)
+	}
+	cp.mu.Unlock()
+
+	for _, client := range clients {
+		client.SetTorrentCompletionHandler(handler)
+	}
 }
 
 // getInstanceLock gets or creates a per-instance creation lock
@@ -214,6 +231,10 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 	if err != nil {
 		cp.trackFailure(instanceID, err)
 		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	if cp.completionHandler != nil {
+		client.SetTorrentCompletionHandler(cp.completionHandler)
 	}
 
 	// Store in pool (need write lock for this)
