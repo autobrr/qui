@@ -72,7 +72,7 @@ const (
 	defaultTorrentCacheTTL   = 12 * time.Hour
 	defaultSearchCacheTTL    = 24 * time.Hour
 	storeOperationTimeout    = 5 * time.Second
-	defaultSearchTimeout     = 5 * time.Second
+	defaultSearchTimeout     = 12 * time.Second
 	minSearchCacheTTL        = defaultSearchCacheTTL
 
 	searchCacheCleanupInterval  = 6 * time.Hour
