@@ -35,6 +35,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/pkg/timeouts"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
@@ -104,13 +105,16 @@ const (
 	indexerDomainCacheTTL               = 1 * time.Minute
 	contentFilteringWaitTimeout         = 5 * time.Second
 	contentFilteringPollInterval        = 150 * time.Millisecond
-	automationSearchTimeout             = 12 * time.Second
 	selectedIndexerContentSkipReason    = "selected indexers were filtered out"
 	selectedIndexerCapabilitySkipReason = "selected indexers do not support required caps"
 	crossSeedRenameWaitTimeout          = 15 * time.Second
 	crossSeedRenamePollInterval         = 200 * time.Millisecond
 	automationSettingsQueryTimeout      = 5 * time.Second
 )
+
+func computeAutomationSearchTimeout(indexerCount int) time.Duration {
+	return timeouts.AdaptiveSearchTimeout(indexerCount)
+}
 
 // initializeDomainMappings returns a hardcoded mapping of tracker domains to indexer domains.
 // This helps map tracker domains (from existing torrents) to indexer domains (from Jackett/Prowlarr)
@@ -3422,8 +3426,9 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 
 	searchCtx := ctx
 	var searchCancel context.CancelFunc
-	if automationSearchTimeout > 0 {
-		searchCtx, searchCancel = context.WithTimeout(ctx, automationSearchTimeout)
+	searchTimeout := computeAutomationSearchTimeout(len(allowedIndexerIDs))
+	if searchTimeout > 0 {
+		searchCtx, searchCancel = context.WithTimeout(ctx, searchTimeout)
 	}
 	if searchCancel != nil {
 		defer searchCancel()
@@ -3438,6 +3443,10 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			return ctx.Err()
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
+			timeoutDisplay := searchTimeout
+			if timeoutDisplay <= 0 {
+				timeoutDisplay = timeouts.DefaultSearchTimeout
+			}
 			s.searchMu.Lock()
 			state.run.TorrentsSkipped++
 			s.searchMu.Unlock()
@@ -3447,7 +3456,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 				IndexerName:  "",
 				ReleaseTitle: "",
 				Added:        false,
-				Message:      fmt.Sprintf("search timed out after %s", automationSearchTimeout),
+				Message:      fmt.Sprintf("search timed out after %s", timeoutDisplay),
 				ProcessedAt:  processedAt,
 			})
 			s.persistSearchRun(state)
@@ -3487,11 +3496,13 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	}
 
 	if searchResp.Partial {
-		log.Debug().
+		logger := log.Debug().
 			Str("torrentHash", torrent.Hash).
-			Dur("timeout", automationSearchTimeout).
-			Int("matches", len(searchResp.Results)).
-			Msg("[CROSSSEED-SEARCH-AUTO] Search returned partial results before timeout")
+			Int("matches", len(searchResp.Results))
+		if searchTimeout > 0 {
+			logger = logger.Dur("timeout", searchTimeout)
+		}
+		logger.Msg("[CROSSSEED-SEARCH-AUTO] Search returned partial results before timeout")
 	}
 
 	successCount := 0
