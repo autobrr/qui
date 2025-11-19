@@ -544,18 +544,7 @@ func (s *Service) torrentMeetsCriteria(torrent qbt.Torrent, settings *models.Ins
 
 	if settings.ExcludeTrackers && len(settings.Trackers) > 0 {
 		for _, tracker := range torrent.Trackers {
-			domain := ""
-			if s.syncManager != nil {
-				domain = s.syncManager.ExtractDomainFromURL(tracker.Url)
-			} else {
-				// Fallback if syncManager is not available (e.g. in tests)
-				if u, err := url.Parse(tracker.Url); err == nil && u.Hostname() != "" {
-					domain = u.Hostname()
-				}
-			}
-			if domain == "" {
-				domain = strings.TrimSpace(tracker.Url)
-			}
+			domain := s.extractTrackerDomain(tracker.Url)
 			for _, excluded := range settings.Trackers {
 				if strings.EqualFold(domain, excluded) {
 					return false
@@ -614,18 +603,7 @@ func (s *Service) torrentMeetsCriteria(torrent qbt.Torrent, settings *models.Ins
 
 	if !settings.ExcludeTrackers && len(settings.Trackers) > 0 {
 		for _, tracker := range torrent.Trackers {
-			domain := ""
-			if s.syncManager != nil {
-				domain = s.syncManager.ExtractDomainFromURL(tracker.Url)
-			} else {
-				// Fallback if syncManager is not available (e.g. in tests)
-				if u, err := url.Parse(tracker.Url); err == nil && u.Hostname() != "" {
-					domain = u.Hostname()
-				}
-			}
-			if domain == "" {
-				domain = strings.TrimSpace(tracker.Url)
-			}
+			domain := s.extractTrackerDomain(tracker.Url)
 			for _, expected := range settings.Trackers {
 				if strings.EqualFold(domain, expected) {
 					return true
@@ -694,18 +672,7 @@ func (s *Service) getProblematicTrackers(trackers []qbt.TorrentTracker) string {
 			}
 		}
 		if isProblematic {
-			domain := ""
-			if s.syncManager != nil {
-				domain = s.syncManager.ExtractDomainFromURL(tracker.Url)
-			} else {
-				// Fallback if syncManager is not available (e.g. in tests)
-				if u, err := url.Parse(tracker.Url); err == nil && u.Hostname() != "" {
-					domain = u.Hostname()
-				}
-			}
-			if domain == "" {
-				domain = strings.TrimSpace(tracker.Url)
-			}
+			domain := s.extractTrackerDomain(tracker.Url)
 			if domain != "" {
 				domainLower := strings.ToLower(domain)
 				if _, exists := seenDomains[domainLower]; !exists {
@@ -826,4 +793,19 @@ func (s *Service) currentTime() time.Time {
 		return s.now()
 	}
 	return time.Now()
+}
+
+func (s *Service) extractTrackerDomain(trackerURL string) string {
+	if trackerURL == "" {
+		return ""
+	}
+	if s != nil && s.syncManager != nil {
+		if domain := s.syncManager.ExtractDomainFromURL(trackerURL); domain != "" {
+			return domain
+		}
+	}
+	if u, err := url.Parse(trackerURL); err == nil && u.Hostname() != "" {
+		return u.Hostname()
+	}
+	return strings.TrimSpace(trackerURL)
 }
