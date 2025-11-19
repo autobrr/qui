@@ -310,6 +310,13 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 	if hash == "" {
 		return false
 	}
+
+	baseCtx := s.baseContext()
+	if baseCtx == nil {
+		s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, "service not started")
+		return false
+	}
+
 	s.jobsMu.Lock()
 	defer s.jobsMu.Unlock()
 	instJobs, ok := s.j[instanceID]
@@ -330,7 +337,7 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 	}
 
 	// Check debounce window if Aggressive mode is disabled
-	settings := s.getSettings(s.baseContext(), instanceID)
+	settings := s.getSettings(baseCtx, instanceID)
 	isAggressive := settings != nil && settings.Aggressive
 
 	if !isAggressive && !job.lastCompleted.IsZero() {
@@ -339,12 +346,9 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 			return true
 		}
 	}
+
 	job.isRunning = true
-	baseCtx := s.baseContext()
-	if baseCtx == nil {
-		s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, "service not started")
-		return false
-	}
+
 	runner := s.runJob
 	if runner == nil {
 		runner = s.executeJob
