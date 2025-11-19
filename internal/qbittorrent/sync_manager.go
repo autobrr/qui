@@ -867,31 +867,9 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	case "resume":
 		err = client.ResumeCtx(ctx, hashes)
 	case "delete":
-		err = client.DeleteTorrentsCtx(ctx, hashes, false)
-		// Invalidate file cache for deleted torrents
-		if err == nil {
-			if fm := sm.getFilesManager(); fm != nil {
-				for _, hash := range hashes {
-					if invalidateErr := fm.InvalidateCache(ctx, instanceID, hash); invalidateErr != nil {
-						log.Warn().Err(invalidateErr).Int("instanceID", instanceID).Str("hash", hash).
-							Msg("Failed to invalidate file cache after torrent deletion")
-					}
-				}
-			}
-		}
+		err = sm.deleteTorrents(ctx, client, instanceID, hashes, false)
 	case "deleteWithFiles":
-		err = client.DeleteTorrentsCtx(ctx, hashes, true)
-		// Invalidate file cache for deleted torrents
-		if err == nil {
-			if fm := sm.getFilesManager(); fm != nil {
-				for _, hash := range hashes {
-					if invalidateErr := fm.InvalidateCache(ctx, instanceID, hash); invalidateErr != nil {
-						log.Warn().Err(invalidateErr).Int("instanceID", instanceID).Str("hash", hash).
-							Msg("Failed to invalidate file cache after torrent deletion")
-					}
-				}
-			}
-		}
+		err = sm.deleteTorrents(ctx, client, instanceID, hashes, true)
 	case "recheck":
 		err = client.RecheckCtx(ctx, hashes)
 	case "reannounce":
@@ -922,6 +900,50 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	}
 
 	return err
+}
+
+// deleteTorrents removes torrents and optionally their files. When deleting files for
+// multiple torrents, qBittorrent sometimes leaves behind data if hashes are batched
+// together. To avoid this we delete each torrent individually when deleteFiles is true.
+func (sm *SyncManager) deleteTorrents(ctx context.Context, client *Client, instanceID int, hashes []string, deleteFiles bool) error {
+	if len(hashes) == 0 {
+		return nil
+	}
+
+	batchSize := len(hashes)
+	if deleteFiles && len(hashes) > 1 {
+		batchSize = 1
+	}
+
+	for start := 0; start < len(hashes); start += batchSize {
+		end := start + batchSize
+		if end > len(hashes) {
+			end = len(hashes)
+		}
+
+		batch := hashes[start:end]
+		if err := client.DeleteTorrentsCtx(ctx, batch, deleteFiles); err != nil {
+			return err
+		}
+
+		sm.invalidateFileCache(ctx, instanceID, batch)
+	}
+
+	return nil
+}
+
+func (sm *SyncManager) invalidateFileCache(ctx context.Context, instanceID int, hashes []string) {
+	fm := sm.getFilesManager()
+	if fm == nil {
+		return
+	}
+
+	for _, hash := range hashes {
+		if err := fm.InvalidateCache(ctx, instanceID, hash); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
+				Msg("Failed to invalidate file cache after torrent deletion")
+		}
+	}
 }
 
 // AddTorrent adds a new torrent from file content
