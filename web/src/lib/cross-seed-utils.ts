@@ -334,10 +334,17 @@ export const useCrossSeedMatches = (
     staleTime: 60000,
   })
 
+  const unfilteredInstances = allInstances ?? []
+
+  const eligibleInstances = useMemo(
+    () => unfilteredInstances.filter(instance => instance.isActive),
+    [unfilteredInstances]
+  )
+
   // Create stable instance IDs and files key for dependencies
   const instanceIds = useMemo(
-    () => allInstances?.map(i => i.id).sort().join(',') || '',
-    [allInstances]
+    () => eligibleInstances.map(i => i.id).sort().join(',') || '',
+    [eligibleInstances]
   )
 
   const currentFilesKey = useMemo(
@@ -347,7 +354,7 @@ export const useCrossSeedMatches = (
 
   // Build cross-seed queries for all instances
   const crossSeedQueries = useMemo(() => {
-    if (!allInstances || allInstances.length === 0 || !torrent || !enabled) {
+    if (!eligibleInstances.length || !torrent || !enabled) {
       return []
     }
     
@@ -358,7 +365,7 @@ export const useCrossSeedMatches = (
 
     const currentFiles = currentTorrentFiles || []
 
-    return allInstances.map((instance) => ({
+    return eligibleInstances.map((instance) => ({
       queryKey: ["torrents", instance.id, "crossseed", resolvedInfohashV1, resolvedInfohashV2, torrent.name, torrent.content_path, isDiscContent, currentFilesKey],
       queryFn: () => searchCrossSeedMatches(
         torrent,
@@ -383,7 +390,7 @@ export const useCrossSeedMatches = (
     isDiscContent,
     enabled,
     currentFilesKey,
-    allInstances,
+    eligibleInstances,
     instanceId,
     currentTorrentFiles,
     isLoadingCurrentFiles
@@ -421,6 +428,7 @@ export const useCrossSeedMatches = (
     isLoadingMatches,
     isLoadingInstances,
     pendingQueryCount,
-    allInstances: allInstances || [],
+    allInstances: unfilteredInstances,
+    activeInstances: eligibleInstances,
   }
 }

@@ -248,6 +248,8 @@ export interface TorrentResponse {
   categories?: Record<string, Category>
   tags?: string[]
   serverState?: ServerState
+  appInfo?: QBittorrentAppInfo
+  preferences?: AppPreferences
   useSubcategories?: boolean
   cacheMetadata?: CacheMetadata
   hasMore?: boolean
@@ -258,6 +260,23 @@ export interface TorrentResponse {
 export interface CrossInstanceTorrent extends Torrent {
   instanceId: number
   instanceName: string
+}
+
+export interface TorrentStreamMeta {
+  instanceId: number
+  rid?: number
+  fullUpdate?: boolean
+  timestamp: string
+  retryInSeconds?: number
+  page?: number
+  streamKey?: string
+}
+
+export interface TorrentStreamPayload {
+  type: "init" | "update" | "stream-error"
+  data?: TorrentResponse
+  meta?: TorrentStreamMeta
+  error?: string
 }
 
 // Simplified MainData - only used for Dashboard server stats
