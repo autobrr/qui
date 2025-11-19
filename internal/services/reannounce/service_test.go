@@ -7,6 +7,7 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -61,6 +62,172 @@ func TestTorrentMeetsCriteria_ScopedByCategoryTagAndTracker(t *testing.T) {
 	// Non-matching torrent should be filtered out
 	nonMatch := qbt.Torrent{TimeActive: 10, Category: "music", Tags: "other", Trackers: []qbt.TorrentTracker{{Url: "other.tracker"}}}
 	require.False(t, service.torrentMeetsCriteria(nonMatch, settings), "expected non match to be filtered")
+}
+
+func TestTorrentMeetsCriteria_IncludeExcludeLogic(t *testing.T) {
+	type criteriaTestCase struct {
+		name     string
+		settings models.InstanceReannounceSettings
+		torrent  qbt.Torrent
+		want     bool
+	}
+
+	tests := []criteriaTestCase{
+		{
+			name: "Disabled",
+			settings: models.InstanceReannounceSettings{
+				Enabled: false,
+			},
+			torrent: qbt.Torrent{TimeActive: 10},
+			want:    false,
+		},
+		{
+			name: "MaxAge Exceeded",
+			settings: models.InstanceReannounceSettings{
+				Enabled:       true,
+				MaxAgeSeconds: 60,
+			},
+			torrent: qbt.Torrent{TimeActive: 61},
+			want:    false,
+		},
+		{
+			name: "Monitor All - No Exclusions",
+			settings: models.InstanceReannounceSettings{
+				Enabled:    true,
+				MonitorAll: true,
+			},
+			torrent: qbt.Torrent{TimeActive: 10},
+			want:    true,
+		},
+		{
+			name: "Exclude Category Match",
+			settings: models.InstanceReannounceSettings{
+				Enabled:           true,
+				MonitorAll:        true, // Exclusions should override MonitorAll
+				ExcludeCategories: true,
+				Categories:        []string{"TV"},
+			},
+			torrent: qbt.Torrent{TimeActive: 10, Category: "TV"},
+			want:    false,
+		},
+		{
+			name: "Exclude Category No Match",
+			settings: models.InstanceReannounceSettings{
+				Enabled:           true,
+				MonitorAll:        true,
+				ExcludeCategories: true,
+				Categories:        []string{"TV"},
+			},
+			torrent: qbt.Torrent{TimeActive: 10, Category: "Movies"},
+			want:    true,
+		},
+		{
+			name: "Exclude Tag Match",
+			settings: models.InstanceReannounceSettings{
+				Enabled:     true,
+				MonitorAll:  true,
+				ExcludeTags: true,
+				Tags:        []string{"iso"},
+			},
+			torrent: qbt.Torrent{TimeActive: 10, Tags: "iso, linux"},
+			want:    false,
+		},
+		{
+			name: "Exclude Tracker Match",
+			settings: models.InstanceReannounceSettings{
+				Enabled:         true,
+				MonitorAll:      true,
+				ExcludeTrackers: true,
+				Trackers:        []string{"linux.iso"},
+			},
+			torrent: qbt.Torrent{
+				TimeActive: 10,
+				Trackers:   []qbt.TorrentTracker{{Url: "http://linux.iso/announce"}},
+			},
+			want: false,
+		},
+		{
+			name: "Include Category Match (MonitorAll=false)",
+			settings: models.InstanceReannounceSettings{
+				Enabled:           true,
+				MonitorAll:        false,
+				ExcludeCategories: false,
+				Categories:        []string{"TV"},
+			},
+			torrent: qbt.Torrent{TimeActive: 10, Category: "TV"},
+			want:    true,
+		},
+		{
+			name: "Include Category No Match",
+			settings: models.InstanceReannounceSettings{
+				Enabled:           true,
+				MonitorAll:        false,
+				ExcludeCategories: false,
+				Categories:        []string{"TV"},
+			},
+			torrent: qbt.Torrent{TimeActive: 10, Category: "Movies"},
+			want:    false,
+		},
+		{
+			name: "Include Tag Match",
+			settings: models.InstanceReannounceSettings{
+				Enabled:     true,
+				MonitorAll:  false,
+				ExcludeTags: false,
+				Tags:        []string{"hd"},
+			},
+			torrent: qbt.Torrent{TimeActive: 10, Tags: "hd"},
+			want:    true,
+		},
+		{
+			name: "Include Tracker Match",
+			settings: models.InstanceReannounceSettings{
+				Enabled:         true,
+				MonitorAll:      false,
+				ExcludeTrackers: false,
+				Trackers:        []string{"tracker.op"},
+			},
+			torrent: qbt.Torrent{
+				TimeActive: 10,
+				Trackers:   []qbt.TorrentTracker{{Url: "http://tracker.op/announce"}},
+			},
+			want: true,
+		},
+		{
+			name: "Mixed: Exclude Category overrides Include Tag",
+			settings: models.InstanceReannounceSettings{
+				Enabled:           true,
+				MonitorAll:        false,
+				ExcludeCategories: true,
+				Categories:        []string{"TV"},
+				ExcludeTags:       false,
+				Tags:              []string{"bad"},
+			},
+			torrent: qbt.Torrent{TimeActive: 10, Category: "TV", Tags: "bad"},
+			want:    false,
+		},
+		{
+			name: "Mixed: Multiple Includes (One Match Sufficient)",
+			settings: models.InstanceReannounceSettings{
+				Enabled:           true,
+				MonitorAll:        false,
+				ExcludeCategories: false,
+				Categories:        []string{"TV"},
+				ExcludeTags:       false,
+				Tags:              []string{"good"},
+			},
+			torrent: qbt.Torrent{TimeActive: 10, Category: "Movies", Tags: "good"},
+			want:    true,
+		},
+	}
+
+	service := &Service{}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := service.torrentMeetsCriteria(tc.torrent, &tc.settings)
+			assert.Equal(t, tc.want, got)
+		})
+	}
 }
 
 func TestTrackerProblemDetected_BasicCases(t *testing.T) {

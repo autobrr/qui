@@ -497,18 +497,84 @@ func (s *Service) torrentMeetsCriteria(torrent qbt.Torrent, settings *models.Ins
 	if settings.MaxAgeSeconds > 0 && torrent.TimeActive > int64(settings.MaxAgeSeconds) {
 		return false
 	}
+
+	// 1. Check exclusions first
+	if settings.ExcludeCategories && len(settings.Categories) > 0 {
+		for _, category := range settings.Categories {
+			if strings.EqualFold(category, torrent.Category) {
+				return false
+			}
+		}
+	}
+
+	if settings.ExcludeTags && len(settings.Tags) > 0 {
+		torrentTags := splitTags(torrent.Tags)
+		for _, tag := range torrentTags {
+			for _, excluded := range settings.Tags {
+				if strings.EqualFold(excluded, tag) {
+					return false
+				}
+			}
+		}
+	}
+
+	if settings.ExcludeTrackers && len(settings.Trackers) > 0 {
+		for _, tracker := range torrent.Trackers {
+			domain := ""
+			if s.syncManager != nil {
+				domain = s.syncManager.ExtractDomainFromURL(tracker.Url)
+			}
+			if domain == "" {
+				domain = strings.TrimSpace(tracker.Url)
+			}
+			for _, excluded := range settings.Trackers {
+				if strings.EqualFold(domain, excluded) {
+					return false
+				}
+			}
+		}
+	}
+
+	// 2. If MonitorAll is on, we're good (exclusions already passed)
 	if settings.MonitorAll {
 		return true
 	}
-	if len(settings.Categories) > 0 {
+
+	// 3. Check inclusions
+	// If no inclusions are defined, we shouldn't match anything (unless MonitorAll is true, handled above).
+	// However, existing tests imply that empty inclusion lists act as "wildcard" if we don't check for emptiness.
+	// But the new logic is specific: you must match AT LEAST one inclusion criteria if MonitorAll is false.
+	// Let's check if any inclusion criteria is actually set.
+
+	hasInclusionCriteria := (len(settings.Categories) > 0 && !settings.ExcludeCategories) ||
+		(len(settings.Tags) > 0 && !settings.ExcludeTags) ||
+		(len(settings.Trackers) > 0 && !settings.ExcludeTrackers)
+
+	if !hasInclusionCriteria {
+		// If MonitorAll is false and no inclusion criteria are provided, we match nothing.
+		// Wait, if I have "Exclude Category TV" and MonitorAll=False, does it mean "Include Everything EXCEPT TV"?
+		// If MonitorAll is false, the UI says "Monitor specific ...".
+		// If I set "Exclude Category TV", then MonitorAll=False, do I want to monitor everything else?
+		// The UI implies "Monitor scope" switch toggles between "All" and "Specific".
+		// If "Specific", you must provide positive criteria.
+		// BUT, now we have exclusions.
+		// If I want to "Monitor All EXCEPT TV", I should enable MonitorAll and add Exclude TV.
+		// If I disable MonitorAll, I am in "Allowlist" mode (plus local blocklists).
+		// So if MonitorAll=False, I MUST match an Allowlist entry.
+		return false
+	}
+
+	if !settings.ExcludeCategories && len(settings.Categories) > 0 {
 		for _, category := range settings.Categories {
 			if strings.EqualFold(category, torrent.Category) {
 				return true
 			}
 		}
 	}
-	if len(settings.Tags) > 0 {
-		for _, tag := range splitTags(torrent.Tags) {
+
+	if !settings.ExcludeTags && len(settings.Tags) > 0 {
+		torrentTags := splitTags(torrent.Tags)
+		for _, tag := range torrentTags {
 			for _, configured := range settings.Tags {
 				if strings.EqualFold(configured, tag) {
 					return true
@@ -516,7 +582,8 @@ func (s *Service) torrentMeetsCriteria(torrent qbt.Torrent, settings *models.Ins
 			}
 		}
 	}
-	if len(settings.Trackers) > 0 {
+
+	if !settings.ExcludeTrackers && len(settings.Trackers) > 0 {
 		for _, tracker := range torrent.Trackers {
 			domain := ""
 			if s.syncManager != nil {
@@ -532,6 +599,9 @@ func (s *Service) torrentMeetsCriteria(torrent qbt.Torrent, settings *models.Ins
 			}
 		}
 	}
+
+	// If MonitorAll is false, we require at least one positive inclusion criterion to match.
+	// Since we haven't returned true by now, no inclusion criteria were matched.
 	return false
 }
 

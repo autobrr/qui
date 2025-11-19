@@ -375,8 +375,11 @@ type InstanceReannounceSettingsPayload struct {
 	ReannounceIntervalSeconds int      `json:"reannounceIntervalSeconds"`
 	MaxAgeSeconds             int      `json:"maxAgeSeconds"`
 	MonitorAll                bool     `json:"monitorAll"`
+	ExcludeCategories         bool     `json:"excludeCategories"`
 	Categories                []string `json:"categories"`
+	ExcludeTags               bool     `json:"excludeTags"`
 	Tags                      []string `json:"tags"`
+	ExcludeTrackers           bool     `json:"excludeTrackers"`
 	Trackers                  []string `json:"trackers"`
 }
 
@@ -405,8 +408,11 @@ func (p *InstanceReannounceSettingsPayload) toModel(instanceID int, base *models
 	target.ReannounceIntervalSeconds = p.ReannounceIntervalSeconds
 	target.MaxAgeSeconds = p.MaxAgeSeconds
 	target.MonitorAll = p.MonitorAll
+	target.ExcludeCategories = p.ExcludeCategories
 	target.Categories = append([]string{}, p.Categories...)
+	target.ExcludeTags = p.ExcludeTags
 	target.Tags = append([]string{}, p.Tags...)
+	target.ExcludeTrackers = p.ExcludeTrackers
 	target.Trackers = append([]string{}, p.Trackers...)
 	return target
 }
@@ -421,8 +427,11 @@ func payloadFromModel(settings *models.InstanceReannounceSettings) InstanceReann
 		ReannounceIntervalSeconds: settings.ReannounceIntervalSeconds,
 		MaxAgeSeconds:             settings.MaxAgeSeconds,
 		MonitorAll:                settings.MonitorAll,
+		ExcludeCategories:         settings.ExcludeCategories,
 		Categories:                append([]string{}, settings.Categories...),
+		ExcludeTags:               settings.ExcludeTags,
 		Tags:                      append([]string{}, settings.Tags...),
+		ExcludeTrackers:           settings.ExcludeTrackers,
 		Trackers:                  append([]string{}, settings.Trackers...),
 	}
 }

@@ -29,8 +29,11 @@ type InstanceReannounceSettings struct {
 	ReannounceIntervalSeconds int       `json:"reannounceIntervalSeconds"`
 	MaxAgeSeconds             int       `json:"maxAgeSeconds"`
 	MonitorAll                bool      `json:"monitorAll"`
+	ExcludeCategories         bool      `json:"excludeCategories"`
 	Categories                []string  `json:"categories"`
+	ExcludeTags               bool      `json:"excludeTags"`
 	Tags                      []string  `json:"tags"`
+	ExcludeTrackers           bool      `json:"excludeTrackers"`
 	Trackers                  []string  `json:"trackers"`
 	UpdatedAt                 time.Time `json:"updatedAt"`
 }
@@ -54,8 +57,11 @@ func DefaultInstanceReannounceSettings(instanceID int) *InstanceReannounceSettin
 		ReannounceIntervalSeconds: defaultReannounceIntervalSecs,
 		MaxAgeSeconds:             defaultMaxAgeSeconds,
 		MonitorAll:                false,
+		ExcludeCategories:         false,
 		Categories:                []string{},
+		ExcludeTags:               false,
 		Tags:                      []string{},
+		ExcludeTrackers:           false,
 		Trackers:                  []string{},
 	}
 }
@@ -63,7 +69,8 @@ func DefaultInstanceReannounceSettings(instanceID int) *InstanceReannounceSettin
 // Get returns settings for an instance, falling back to defaults if missing.
 func (s *InstanceReannounceStore) Get(ctx context.Context, instanceID int) (*InstanceReannounceSettings, error) {
 	const query = `SELECT instance_id, enabled, initial_wait_seconds, reannounce_interval_seconds,
-		max_age_seconds, monitor_all, categories_json, tags_json, trackers_json, updated_at
+		max_age_seconds, monitor_all, categories_json, tags_json, trackers_json, updated_at,
+		exclude_categories, exclude_tags, exclude_trackers
 		FROM instance_reannounce_settings WHERE instance_id = ?`
 
 	row := s.db.QueryRowContext(ctx, query, instanceID)
@@ -80,7 +87,8 @@ func (s *InstanceReannounceStore) Get(ctx context.Context, instanceID int) (*Ins
 // List returns settings for all instances that have overrides. Instances without overrides are omitted.
 func (s *InstanceReannounceStore) List(ctx context.Context) ([]*InstanceReannounceSettings, error) {
 	const query = `SELECT instance_id, enabled, initial_wait_seconds, reannounce_interval_seconds,
-		max_age_seconds, monitor_all, categories_json, tags_json, trackers_json, updated_at
+		max_age_seconds, monitor_all, categories_json, tags_json, trackers_json, updated_at,
+		exclude_categories, exclude_tags, exclude_trackers
 		FROM instance_reannounce_settings`
 
 	rows, err := s.db.QueryContext(ctx, query)
@@ -127,8 +135,9 @@ func (s *InstanceReannounceStore) Upsert(ctx context.Context, settings *Instance
 
 	const stmt = `INSERT INTO instance_reannounce_settings (
 		instance_id, enabled, initial_wait_seconds, reannounce_interval_seconds,
-		max_age_seconds, monitor_all, categories_json, tags_json, trackers_json)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		max_age_seconds, monitor_all, categories_json, tags_json, trackers_json,
+		exclude_categories, exclude_tags, exclude_trackers)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(instance_id) DO UPDATE SET
 		enabled = excluded.enabled,
 		initial_wait_seconds = excluded.initial_wait_seconds,
@@ -137,7 +146,10 @@ func (s *InstanceReannounceStore) Upsert(ctx context.Context, settings *Instance
 		monitor_all = excluded.monitor_all,
 		categories_json = excluded.categories_json,
 		tags_json = excluded.tags_json,
-		trackers_json = excluded.trackers_json`
+		trackers_json = excluded.trackers_json,
+		exclude_categories = excluded.exclude_categories,
+		exclude_tags = excluded.exclude_tags,
+		exclude_trackers = excluded.exclude_trackers`
 
 	_, err = s.db.ExecContext(ctx, stmt,
 		coerced.InstanceID,
@@ -149,6 +161,9 @@ func (s *InstanceReannounceStore) Upsert(ctx context.Context, settings *Instance
 		catJSON,
 		tagJSON,
 		trackerJSON,
+		boolToSQLite(coerced.ExcludeCategories),
+		boolToSQLite(coerced.ExcludeTags),
+		boolToSQLite(coerced.ExcludeTrackers),
 	)
 	if err != nil {
 		return nil, err
@@ -228,16 +243,19 @@ func scanInstanceReannounceSettings(scanner interface {
 	Scan(dest ...any) error
 }) (*InstanceReannounceSettings, error) {
 	var (
-		instanceID         int
-		enabledInt         int
-		initialWait        int
-		reannounceInterval int
-		maxAge             int
-		monitorAllInt      int
-		catJSON            sql.NullString
-		tagJSON            sql.NullString
-		trackerJSON        sql.NullString
-		updatedAt          sql.NullTime
+		instanceID           int
+		enabledInt           int
+		initialWait          int
+		reannounceInterval   int
+		maxAge               int
+		monitorAllInt        int
+		catJSON              sql.NullString
+		tagJSON              sql.NullString
+		trackerJSON          sql.NullString
+		updatedAt            sql.NullTime
+		excludeCategoriesInt int
+		excludeTagsInt       int
+		excludeTrackersInt   int
 	)
 
 	if err := scanner.Scan(
@@ -251,6 +269,9 @@ func scanInstanceReannounceSettings(scanner interface {
 		&tagJSON,
 		&trackerJSON,
 		&updatedAt,
+		&excludeCategoriesInt,
+		&excludeTagsInt,
+		&excludeTrackersInt,
 	); err != nil {
 		return nil, err
 	}
@@ -275,8 +296,11 @@ func scanInstanceReannounceSettings(scanner interface {
 		ReannounceIntervalSeconds: reannounceInterval,
 		MaxAgeSeconds:             maxAge,
 		MonitorAll:                monitorAllInt == 1,
+		ExcludeCategories:         excludeCategoriesInt == 1,
 		Categories:                categories,
+		ExcludeTags:               excludeTagsInt == 1,
 		Tags:                      tags,
+		ExcludeTrackers:           excludeTrackersInt == 1,
 		Trackers:                  trackers,
 	}
 

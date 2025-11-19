@@ -33,8 +33,11 @@ const DEFAULT_SETTINGS: InstanceReannounceSettings = {
   reannounceIntervalSeconds: 7,
   maxAgeSeconds: 600,
   monitorAll: false,
+  excludeCategories: false,
   categories: [],
+  excludeTags: false,
   tags: [],
+  excludeTrackers: false,
   trackers: [],
 }
 
@@ -238,13 +241,22 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
               <div className="space-y-0.5 flex-1">
                 <Label className="mb-0">Monitor scope</Label>
                 <p className="text-sm text-muted-foreground">
-                  Enable to monitor all torrents, or configure specific categories, tags, or tracker domains below.
+                  Enable to monitor all torrents. Disable to configure specific categories, tags, or tracker domains.
                 </p>
               </div>
               <Switch
                 id="monitor-all"
                 checked={settings.monitorAll}
-                onCheckedChange={(monitorAll) => setSettings((prev) => ({ ...prev, monitorAll }))}
+                onCheckedChange={(monitorAll) => {
+                  setSettings((prev) => ({
+                     ...prev, 
+                     monitorAll,
+                     // When enabling monitor all, force all exclusions to true? 
+                     // Or we just hide the UI and let the backend logic handle "if MonitorAll, ignore includes, respect excludes"
+                     // The user request says: "And that being enabled should not display the options below"
+                     // So we should hide the options when monitorAll is true.
+                  }))
+                }}
                 className="shrink-0"
               />
             </div>
@@ -252,7 +264,20 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
             {!settings.monitorAll && (
               <div className="space-y-3 sm:space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="scope-categories">Categories</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="scope-categories">Categories</Label>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="exclude-categories" className="text-xs font-normal text-muted-foreground cursor-pointer">
+                        {settings.excludeCategories ? "Exclude" : "Include"}
+                      </Label>
+                      <Switch
+                        id="exclude-categories"
+                        checked={settings.excludeCategories}
+                        onCheckedChange={(excludeCategories) => setSettings((prev) => ({ ...prev, excludeCategories }))}
+                        className="scale-75 origin-right"
+                      />
+                    </div>
+                  </div>
                   <MultiSelect
                     options={categoryOptions}
                     selected={settings.categories}
@@ -264,7 +289,20 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="scope-tags">Tags</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="scope-tags">Tags</Label>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="exclude-tags" className="text-xs font-normal text-muted-foreground cursor-pointer">
+                        {settings.excludeTags ? "Exclude" : "Include"}
+                      </Label>
+                      <Switch
+                        id="exclude-tags"
+                        checked={settings.excludeTags}
+                        onCheckedChange={(excludeTags) => setSettings((prev) => ({ ...prev, excludeTags }))}
+                        className="scale-75 origin-right"
+                      />
+                    </div>
+                  </div>
                   <MultiSelect
                     options={tagOptions}
                     selected={settings.tags}
@@ -276,7 +314,20 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="scope-trackers">Tracker domains</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="scope-trackers">Tracker domains</Label>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="exclude-trackers" className="text-xs font-normal text-muted-foreground cursor-pointer">
+                        {settings.excludeTrackers ? "Exclude" : "Include"}
+                      </Label>
+                      <Switch
+                        id="exclude-trackers"
+                        checked={settings.excludeTrackers}
+                        onCheckedChange={(excludeTrackers) => setSettings((prev) => ({ ...prev, excludeTrackers }))}
+                        className="scale-75 origin-right"
+                      />
+                    </div>
+                  </div>
                   <MultiSelect
                     options={trackerOptions}
                     selected={settings.trackers}
@@ -424,8 +475,11 @@ function cloneSettings(settings?: InstanceReannounceSettings): InstanceReannounc
     reannounceIntervalSeconds: settings.reannounceIntervalSeconds,
     maxAgeSeconds: settings.maxAgeSeconds,
     monitorAll: settings.monitorAll,
+    excludeCategories: settings.excludeCategories,
     categories: [...settings.categories],
+    excludeTags: settings.excludeTags,
     tags: [...settings.tags],
+    excludeTrackers: settings.excludeTrackers,
     trackers: [...settings.trackers],
   }
 }
@@ -443,8 +497,11 @@ function sanitizeSettings(settings: InstanceReannounceSettings): InstanceReannou
     reannounceIntervalSeconds: clamp(settings.reannounceIntervalSeconds, DEFAULT_SETTINGS.reannounceIntervalSeconds, MIN_INTERVAL),
     maxAgeSeconds: clamp(settings.maxAgeSeconds, DEFAULT_SETTINGS.maxAgeSeconds, MIN_MAX_AGE),
     monitorAll: settings.monitorAll,
+    excludeCategories: settings.excludeCategories,
     categories: normalizeList(settings.categories),
+    excludeTags: settings.excludeTags,
     tags: normalizeList(settings.tags),
+    excludeTrackers: settings.excludeTrackers,
     trackers: normalizeList(settings.trackers),
   }
 }

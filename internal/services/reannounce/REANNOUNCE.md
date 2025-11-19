@@ -19,18 +19,21 @@ qui can proactively reannounce torrents whose trackers initially respond with �
    - **Initial tracker wait** – seconds to wait for the first announce before reannounce attempts (default 15s).
    - **Reannounce interval** – delay between retries (default 7s, matching qBittorrent’s built‑in value).
    - **Monitor torrents added within** – age cutoff based on qBittorrent’s “active time”; torrents whose active time exceeds this are ignored (default 600s / 10 minutes).
-5. Choose **Monitor all** or disable it to limit monitoring to:
-   - Specific **categories** (e.g. `tv`, `movies`).
-   - Specific **tags** (comma‑separated).
-   - Specific **tracker domains** (e.g. `tracker.example.org`).
-6. Save the instance. Settings are remembered per instance.
+5. Choose your **Monitor scope**:
+   - **Monitor all**: Enables monitoring for all torrents, subject to any explicit exclusions you define.
+   - **Monitor specific...** (Monitor all OFF): Enables "Allowlist" mode. You must specify at least one Category, Tag, or Tracker domain to include. Only matching torrents will be monitored.
+6. **Configure Exclusions** (Optional):
+   - You can explicitly **Exclude** specific Categories, Tags, or Tracker domains.
+   - **Exclusions take priority**: If a torrent matches an exclusion, it will be ignored regardless of "Monitor all" or inclusion settings.
+   - Useful for filtering out public trackers, specific labels, or categories that don't need monitoring.
+7. Save the instance. Settings are remembered per instance.
 
 ## What happens once it’s enabled?
 
 - qui watches the instance’s sync data for torrents whose trackers report:
   - “Unregistered”‑style messages (matched against built‑in patterns).
   - Known outage phrases (“tracker is down”, “maintenance”, etc.).
-- Only torrents that match your scope, have a detected tracker problem, are still within the configured max active‑time window, and have no working trackers will be considered for reannounce.
+- Only torrents that match your scope (and are not excluded), have a detected tracker problem, are still within the configured max active‑time window, and have no working trackers will be considered for reannounce.
 - For problematic torrents whose trackers are still in an “updating / not contacted yet” state, qui waits up to the configured **Initial tracker wait** to let qBittorrent finish its first announce cycle. If the tracker becomes healthy during this window, no reannounce is issued.
 - For each eligible torrent, qui runs a background job that:
   - Uses qBittorrent’s `/torrents/reannounce` API via `ReannounceTorrentWithRetry`.
@@ -57,6 +60,7 @@ When monitoring is enabled for an instance:
 - Start with the defaults: they mirror qbrr’s conservative timing and work well for most trackers.
 - If your tracker takes longer to register uploads, raise the **initial tracker wait** (e.g. 30–60 seconds).
 - Keep the **monitor torrents added within** window narrow (≤15 minutes) so older torrents are not reannounced unnecessarily.
+- Use **Exclusions** to filter out noise. For example, exclude `public` tag or specific tracker domains that are known to be flaky or don't support reannounce.
 - Use the scope filters to avoid tracking torrents that do not need this feature (e.g., freeleech categories or private trackers that already auto reannounce on their end).
 - Remember that the reannounce monitor never deletes torrents if reannounce fails; it simply logs the failure and moves on.
 

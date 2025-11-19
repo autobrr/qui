@@ -45,8 +45,11 @@ export interface InstanceReannounceSettings {
   reannounceIntervalSeconds: number
   maxAgeSeconds: number
   monitorAll: boolean
+  excludeCategories: boolean
   categories: string[]
+  excludeTags: boolean
   tags: string[]
+  excludeTrackers: boolean
   trackers: string[]
 }
 
