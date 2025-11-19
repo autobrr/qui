@@ -757,6 +757,125 @@ paths:
         '503':
           description: Instance unavailable
 
+  /api/instances/{instanceID}/reannounce/activity:
+    get:
+      tags:
+        - Instances
+      summary: Get recent tracker reannounce activity
+      description: Return the most recent tracker reannounce events for an instance.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+          required: false
+          description: Optional maximum number of events to return.
+      responses:
+        '200':
+          description: Recent reannounce events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    instanceId:
+                      type: integer
+                      format: int64
+                    hash:
+                      type: string
+                      description: Torrent hash in lowercase.
+                    torrentName:
+                      type: string
+                      description: Optional torrent name associated with the reannounce event.
+                    trackers:
+                      type: string
+                      description: Optional comma-separated list of problematic tracker domains for this event.
+                    outcome:
+                      type: string
+                      enum:
+                        - skipped
+                        - failed
+                        - succeeded
+                    reason:
+                      type: string
+                      description: Short explanation for the outcome.
+                    timestamp:
+                      type: string
+                      format: date-time
+                  required:
+                    - instanceId
+                    - hash
+                    - outcome
+                    - timestamp
+        '400':
+          description: Invalid instance ID
+
+  /api/instances/{instanceID}/reannounce/candidates:
+    get:
+      tags:
+        - Instances
+      summary: Get current tracker reannounce candidates
+      description: Return torrents that currently fall within the reannounce monitoring scope and have problematic or pending trackers.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: Current reannounce monitoring candidates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    instanceId:
+                      type: integer
+                      format: int64
+                    hash:
+                      type: string
+                      description: Torrent hash in lowercase.
+                    torrentName:
+                      type: string
+                      description: Torrent name associated with the candidate.
+                    trackers:
+                      type: string
+                      description: Optional comma-separated list of problematic tracker domains for this torrent.
+                    timeActiveSeconds:
+                      type: integer
+                      format: int64
+                      description: Active time for the torrent in seconds.
+                    category:
+                      type: string
+                      description: Torrent category.
+                    tags:
+                      type: string
+                      description: Comma-separated tags as reported by qBittorrent.
+                    state:
+                      type: string
+                      description: Monitoring state for this torrent.
+                      enum:
+                        - watching
+                        - reannouncing
+                        - cooldown
+                    hasTrackerProblem:
+                      type: boolean
+                      description: Whether a tracker problem has been detected for this torrent.
+                    waitingForInitial:
+                      type: boolean
+                      description: Whether trackers are still in an initial updating/not contacted state.
+                  required:
+                    - instanceId
+                    - hash
+                    - state
+                    - hasTrackerProblem
+                    - waitingForInitial
+        '400':
+          description: Invalid instance ID
+
   /api/instances/{instanceID}/cross-seed/status:
     get:
       tags:

@@ -25,6 +25,7 @@ export interface Instance {
   tlsSkipVerify: boolean
   sortOrder: number
   isActive: boolean
+  reannounceSettings: InstanceReannounceSettings
 }
 
 export interface InstanceFormData {
@@ -35,6 +36,45 @@ export interface InstanceFormData {
   basicUsername?: string
   basicPassword?: string
   tlsSkipVerify: boolean
+  reannounceSettings: InstanceReannounceSettings
+}
+
+export interface InstanceReannounceSettings {
+  enabled: boolean
+  initialWaitSeconds: number
+  reannounceIntervalSeconds: number
+  maxAgeSeconds: number
+  aggressive: boolean
+  monitorAll: boolean
+  excludeCategories: boolean
+  categories: string[]
+  excludeTags: boolean
+  tags: string[]
+  excludeTrackers: boolean
+  trackers: string[]
+}
+
+export interface InstanceReannounceActivity {
+  instanceId: number
+  hash: string
+  torrentName?: string
+  trackers?: string
+  outcome: "skipped" | "failed" | "succeeded"
+  reason?: string
+  timestamp: string
+}
+
+export interface InstanceReannounceCandidate {
+  instanceId: number
+  hash: string
+  torrentName?: string
+  trackers?: string
+  timeActiveSeconds?: number
+  category?: string
+  tags?: string
+  state: "watching" | "reannouncing" | "cooldown"
+  hasTrackerProblem: boolean
+  waitingForInitial: boolean
 }
 
 export interface InstanceError {
