@@ -505,8 +505,11 @@ qui can integrate directly with autobrr through a webhook endpoint. When autobrr
 1. autobrr sees a new release from a tracker
 2. autobrr sends the torrentname and target instance ID to qui's webhook endpoint
 3. qui searches the specified qBittorrent instance for matching content
-4. qui responds whether you can cross-seed (200 OK) or not (404 Not Found)
-5. autobrr can decide to download based on the response
+4. qui responds with one of three states:
+   - `200 OK` – matching torrent is already complete and ready to cross-seed
+   - `202 Accepted` – matching torrent exists but is still downloading; retry until it completes
+   - `404 Not Found` – no matching torrent exists on that instance
+5. autobrr can decide to download (or retry) based on the response
 
 #### Setup
 
@@ -540,9 +543,22 @@ X-API-Key=YOUR_QUI_API_KEY,Content-Type=application/json
 
 **Expected HTTP Status Code:** `200`
 
-> qui returns `404 Not Found` when no cross-seed matches exist (recommendation `skip`). Leaving the expected status at `200` lets autobrr automatically reject those responses. You'll also see a `404` if the provided `instanceId` is not configured in qui—fix the filter rather than retrying.
+> `/api/cross-seed/webhook/check` returns three main outcomes:
+> - `200 OK` – a matching torrent is fully complete and ready to cross-seed (safe to proceed to `/api/cross-seed/apply`)
+> - `202 Accepted` – a matching torrent exists but is still downloading; callers should keep polling until it becomes `200` or `404`
+> - `404 Not Found` – no matching torrent exists on that instance (recommendation `skip`), including when the `instanceId` is invalid  
+> Invalid payloads still return `400 Bad Request`, so double‑check `torrentName` and `instanceId` if autobrr reports a validation error.
 
-> Invalid payloads return `400 Bad Request`, so double-check `torrentName` and `instanceId` if autobrr reports a validation error.
+Use autobrr's **Retry** block on webhook actions, configure it so `202` is handled as a retry instead of an immediate failure:
+
+- **Retry HTTP status code(s):** `202`
+- **Maximum retry attempts:** e.g. `10`
+- **Retry delay in seconds:** e.g. `4`
+
+With this setup:
+- `200 OK` is the only status treated as success for the External filter.
+- `202 Accepted` causes autobrr to retry the request (up to the configured attempts) instead of failing immediately.
+- `404 Not Found` (or other non‑200 / non‑202 statuses) cause the External step to fail according to the **On Error** setting (`Reject` in this example).
 
 **Data (JSON):**
 ```json
@@ -563,7 +579,7 @@ Click **Save** to create the external filter.
 
 #### Apply Endpoint
 
-When `/cross-seed/webhook/check` returns `200 OK`, autobrr can hand the torrent file directly to qui via a **Webhook action** that calls `POST /api/cross-seed/apply`.
+When `/api/cross-seed/webhook/check` returns `200 OK`, autobrr can hand the torrent file directly to qui via a **Webhook action** that calls `POST /api/cross-seed/apply`. If the webhook returns `202 Accepted`, autobrr’s retry logic should keep polling `/api/cross-seed/webhook/check` until it transitions to `200 OK` (or `404` if the match disappears); only then should you enqueue `/api/cross-seed/apply`.
 
 **Action setup in autobrr**
 
