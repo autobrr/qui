@@ -32,6 +32,7 @@ const DEFAULT_SETTINGS: InstanceReannounceSettings = {
   initialWaitSeconds: 15,
   reannounceIntervalSeconds: 7,
   maxAgeSeconds: 600,
+  aggressive: false,
   monitorAll: false,
   excludeCategories: false,
   categories: [],
@@ -195,8 +196,8 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
           <div className="space-y-1 flex-1">
             <Label className="text-base">Automatic tracker reannounce</Label>
             <p className="text-sm mb-2 text-muted-foreground">
-              qui will reannounce torrents whose trackers report "unregistered" or outage errors. Requests are debounced so
-              trackers are not spammed.
+              qui will reannounce torrents whose trackers report "unregistered" or outage errors.
+              Only <strong>stalled</strong> torrents are monitored.
             </p>
             <p className="text-xs text-muted-foreground">
               Background scan interval: <code>{GLOBAL_SCAN_INTERVAL_SECONDS} seconds</code>.
@@ -233,6 +234,21 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                 min={MIN_MAX_AGE}
                 value={settings.maxAgeSeconds}
                 onChange={(value) => setSettings((prev) => ({ ...prev, maxAgeSeconds: value }))}
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-3 sm:gap-4">
+              <div className="space-y-0.5 flex-1">
+                <Label className="mb-0" htmlFor="aggressive-mode">Aggressive mode</Label>
+                <p className="text-sm text-muted-foreground">
+                  Retry immediately on failure (disables cooldown window).
+                </p>
+              </div>
+              <Switch
+                id="aggressive-mode"
+                checked={settings.aggressive}
+                onCheckedChange={(aggressive) => setSettings((prev) => ({ ...prev, aggressive }))}
+                className="shrink-0"
               />
             </div>
 
@@ -480,6 +496,7 @@ function cloneSettings(settings?: InstanceReannounceSettings): InstanceReannounc
     tags: [...settings.tags],
     excludeTrackers: settings.excludeTrackers,
     trackers: [...settings.trackers],
+    aggressive: settings.aggressive,
   }
 }
 
@@ -502,5 +519,6 @@ function sanitizeSettings(settings: InstanceReannounceSettings): InstanceReannou
     tags: normalizeList(settings.tags),
     excludeTrackers: settings.excludeTrackers,
     trackers: normalizeList(settings.trackers),
+    aggressive: settings.aggressive,
   }
 }

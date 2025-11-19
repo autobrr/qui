@@ -20,6 +20,7 @@ const DEFAULT_REANNOUNCE_SETTINGS: InstanceReannounceSettings = {
   initialWaitSeconds: 15,
   reannounceIntervalSeconds: 7,
   maxAgeSeconds: 600,
+  aggressive: false,
   monitorAll: false,
   excludeCategories: false,
   categories: [],

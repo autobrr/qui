@@ -324,7 +324,12 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 		s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, "already running")
 		return true
 	}
-	if !job.lastCompleted.IsZero() {
+
+	// Check debounce window if Aggressive mode is disabled
+	settings := s.getSettings(s.baseContext(), instanceID)
+	isAggressive := settings != nil && settings.Aggressive
+
+	if !isAggressive && !job.lastCompleted.IsZero() {
 		if elapsed := now.Sub(job.lastCompleted); elapsed < s.cfg.DebounceWindow {
 			s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, "debounced during cooldown window")
 			return true
@@ -499,6 +504,12 @@ func (s *Service) torrentMeetsCriteria(torrent qbt.Torrent, settings *models.Ins
 	if settings == nil || !settings.Enabled {
 		return false
 	}
+
+	// Global requirement: Only monitor stalled torrents
+	if torrent.State != qbt.TorrentStateStalledDl && torrent.State != qbt.TorrentStateStalledUp {
+		return false
+	}
+
 	if settings.MaxAgeSeconds > 0 && torrent.TimeActive > int64(settings.MaxAgeSeconds) {
 		return false
 	}

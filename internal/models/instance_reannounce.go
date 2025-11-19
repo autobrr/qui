@@ -28,6 +28,7 @@ type InstanceReannounceSettings struct {
 	InitialWaitSeconds        int       `json:"initialWaitSeconds"`
 	ReannounceIntervalSeconds int       `json:"reannounceIntervalSeconds"`
 	MaxAgeSeconds             int       `json:"maxAgeSeconds"`
+	Aggressive                bool      `json:"aggressive"`
 	MonitorAll                bool      `json:"monitorAll"`
 	ExcludeCategories         bool      `json:"excludeCategories"`
 	Categories                []string  `json:"categories"`
@@ -56,6 +57,7 @@ func DefaultInstanceReannounceSettings(instanceID int) *InstanceReannounceSettin
 		InitialWaitSeconds:        defaultInitialWaitSeconds,
 		ReannounceIntervalSeconds: defaultReannounceIntervalSecs,
 		MaxAgeSeconds:             defaultMaxAgeSeconds,
+		Aggressive:                false,
 		MonitorAll:                false,
 		ExcludeCategories:         false,
 		Categories:                []string{},
@@ -69,7 +71,7 @@ func DefaultInstanceReannounceSettings(instanceID int) *InstanceReannounceSettin
 // Get returns settings for an instance, falling back to defaults if missing.
 func (s *InstanceReannounceStore) Get(ctx context.Context, instanceID int) (*InstanceReannounceSettings, error) {
 	const query = `SELECT instance_id, enabled, initial_wait_seconds, reannounce_interval_seconds,
-		max_age_seconds, monitor_all, categories_json, tags_json, trackers_json, updated_at,
+		max_age_seconds, aggressive, monitor_all, categories_json, tags_json, trackers_json, updated_at,
 		exclude_categories, exclude_tags, exclude_trackers
 		FROM instance_reannounce_settings WHERE instance_id = ?`
 
@@ -87,7 +89,7 @@ func (s *InstanceReannounceStore) Get(ctx context.Context, instanceID int) (*Ins
 // List returns settings for all instances that have overrides. Instances without overrides are omitted.
 func (s *InstanceReannounceStore) List(ctx context.Context) ([]*InstanceReannounceSettings, error) {
 	const query = `SELECT instance_id, enabled, initial_wait_seconds, reannounce_interval_seconds,
-		max_age_seconds, monitor_all, categories_json, tags_json, trackers_json, updated_at,
+		max_age_seconds, aggressive, monitor_all, categories_json, tags_json, trackers_json, updated_at,
 		exclude_categories, exclude_tags, exclude_trackers
 		FROM instance_reannounce_settings`
 
@@ -135,14 +137,15 @@ func (s *InstanceReannounceStore) Upsert(ctx context.Context, settings *Instance
 
 	const stmt = `INSERT INTO instance_reannounce_settings (
 		instance_id, enabled, initial_wait_seconds, reannounce_interval_seconds,
-		max_age_seconds, monitor_all, categories_json, tags_json, trackers_json,
+		max_age_seconds, aggressive, monitor_all, categories_json, tags_json, trackers_json,
 		exclude_categories, exclude_tags, exclude_trackers)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(instance_id) DO UPDATE SET
 		enabled = excluded.enabled,
 		initial_wait_seconds = excluded.initial_wait_seconds,
 		reannounce_interval_seconds = excluded.reannounce_interval_seconds,
 		max_age_seconds = excluded.max_age_seconds,
+		aggressive = excluded.aggressive,
 		monitor_all = excluded.monitor_all,
 		categories_json = excluded.categories_json,
 		tags_json = excluded.tags_json,
@@ -157,6 +160,7 @@ func (s *InstanceReannounceStore) Upsert(ctx context.Context, settings *Instance
 		coerced.InitialWaitSeconds,
 		coerced.ReannounceIntervalSeconds,
 		coerced.MaxAgeSeconds,
+		boolToSQLite(coerced.Aggressive),
 		boolToSQLite(coerced.MonitorAll),
 		catJSON,
 		tagJSON,
@@ -248,6 +252,7 @@ func scanInstanceReannounceSettings(scanner interface {
 		initialWait          int
 		reannounceInterval   int
 		maxAge               int
+		aggressiveInt        int
 		monitorAllInt        int
 		catJSON              sql.NullString
 		tagJSON              sql.NullString
@@ -264,6 +269,7 @@ func scanInstanceReannounceSettings(scanner interface {
 		&initialWait,
 		&reannounceInterval,
 		&maxAge,
+		&aggressiveInt,
 		&monitorAllInt,
 		&catJSON,
 		&tagJSON,
@@ -295,6 +301,7 @@ func scanInstanceReannounceSettings(scanner interface {
 		InitialWaitSeconds:        initialWait,
 		ReannounceIntervalSeconds: reannounceInterval,
 		MaxAgeSeconds:             maxAge,
+		Aggressive:                aggressiveInt == 1,
 		MonitorAll:                monitorAllInt == 1,
 		ExcludeCategories:         excludeCategoriesInt == 1,
 		Categories:                categories,

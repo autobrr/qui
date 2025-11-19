@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS instance_reannounce_settings (
     initial_wait_seconds INTEGER NOT NULL DEFAULT 15,
     reannounce_interval_seconds INTEGER NOT NULL DEFAULT 7,
     max_age_seconds INTEGER NOT NULL DEFAULT 600,
+    aggressive INTEGER NOT NULL DEFAULT 0,
     monitor_all INTEGER NOT NULL DEFAULT 1,
     exclude_categories INTEGER NOT NULL DEFAULT 0,
     categories_json TEXT NOT NULL DEFAULT '[]',
@@ -24,3 +25,4 @@ BEGIN
     SET updated_at = CURRENT_TIMESTAMP
     WHERE instance_id = NEW.instance_id;
 END;
+ 
