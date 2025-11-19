@@ -312,10 +312,7 @@ func (h *InstancesHandler) persistReannounceSettings(ctx context.Context, instan
 	saved, err := h.reannounceStore.Upsert(ctx, desired)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to persist reannounce settings")
-		if h.reannounceCache != nil {
-			h.reannounceCache.Replace(desired)
-		}
-		return desired, err
+		return nil, err
 	}
 	if h.reannounceCache != nil {
 		h.reannounceCache.Replace(saved)
