@@ -179,9 +179,6 @@ var ErrNoIndexersConfigured = errors.New("no torznab indexers configured")
 // ErrInvalidWebhookRequest indicates a webhook check payload failed validation.
 var ErrInvalidWebhookRequest = errors.New("invalid webhook request")
 
-// ErrWebhookInstanceNotFound indicates the requested instance does not exist.
-var ErrWebhookInstanceNotFound = errors.New("cross-seed instance not found")
-
 // ErrInvalidRequest indicates a generic cross-seed request validation error.
 var ErrInvalidRequest = errors.New("cross-seed invalid request")
 
@@ -1334,8 +1331,9 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 	if strings.TrimSpace(req.TorrentData) == "" {
 		return nil, fmt.Errorf("%w: torrentData is required", ErrInvalidRequest)
 	}
-	if req.InstanceID <= 0 {
-		return nil, fmt.Errorf("%w: instanceId must be a positive integer", ErrInvalidRequest)
+	targetInstanceIDs := normalizeInstanceIDs(req.InstanceIDs)
+	if len(req.InstanceIDs) > 0 && len(targetInstanceIDs) == 0 {
+		return nil, fmt.Errorf("%w: instanceIds must contain at least one positive integer", ErrInvalidRequest)
 	}
 
 	settings, settingsErr := s.GetAutomationSettings(ctx)
@@ -1358,7 +1356,7 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 
 	crossReq := &CrossSeedRequest{
 		TorrentData:            req.TorrentData,
-		TargetInstanceIDs:      []int{req.InstanceID},
+		TargetInstanceIDs:      targetInstanceIDs,
 		Category:               req.Category,
 		Tags:                   req.Tags,
 		IgnorePatterns:         ignorePatterns,
@@ -1374,7 +1372,8 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 	}
 
 	log.Debug().
-		Int("instanceID", req.InstanceID).
+		Ints("targetInstanceIDs", targetInstanceIDs).
+		Bool("globalTarget", len(targetInstanceIDs) == 0).
 		Bool("success", resp.Success).
 		Int("resultCount", len(resp.Results)).
 		Msg("AutobrrApply completed cross-seed request")
@@ -4785,10 +4784,62 @@ func validateWebhookCheckRequest(req *WebhookCheckRequest) error {
 	if req.TorrentName == "" {
 		return fmt.Errorf("%w: torrentName is required", ErrInvalidWebhookRequest)
 	}
-	if req.InstanceID <= 0 {
-		return fmt.Errorf("%w: instanceId is required and must be a positive integer", ErrInvalidWebhookRequest)
+	if len(req.InstanceIDs) > 0 {
+		for _, id := range req.InstanceIDs {
+			if id > 0 {
+				return nil
+			}
+		}
+		return fmt.Errorf("%w: instanceIds must contain at least one positive integer", ErrInvalidWebhookRequest)
 	}
 	return nil
+}
+
+func normalizeInstanceIDs(ids []int) []int {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	normalized := make([]int, 0, len(ids))
+	seen := make(map[int]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		normalized = append(normalized, id)
+	}
+	return normalized
+}
+
+func (s *Service) resolveInstances(ctx context.Context, requested []int) ([]*models.Instance, error) {
+	if len(requested) == 0 {
+		instances, err := s.instanceStore.List(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list cross-seed instances: %w", err)
+		}
+		return instances, nil
+	}
+
+	instances := make([]*models.Instance, 0, len(requested))
+	for _, id := range requested {
+		instance, err := s.instanceStore.Get(ctx, id)
+		if err != nil {
+			if errors.Is(err, models.ErrInstanceNotFound) {
+				log.Warn().
+					Int("instanceID", id).
+					Msg("Requested cross-seed instance not found; skipping")
+				continue
+			}
+			return nil, fmt.Errorf("failed to get instance %d: %w", id, err)
+		}
+		instances = append(instances, instance)
+	}
+
+	return instances, nil
 }
 
 // CheckWebhook checks if a release announced by autobrr can be cross-seeded with existing torrents.
@@ -4798,6 +4849,8 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	if err := validateWebhookCheckRequest(req); err != nil {
 		return nil, err
 	}
+
+	requestedInstanceIDs := normalizeInstanceIDs(req.InstanceIDs)
 
 	// Parse the incoming release using rls - this extracts all metadata from the torrent name
 	incomingRelease := s.releaseCache.Parse(req.TorrentName)
@@ -4817,12 +4870,36 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		findIndividualEpisodes = *req.FindIndividualEpisodes
 	}
 
+	instances, err := s.resolveInstances(ctx, requestedInstanceIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(instances) == 0 {
+		log.Warn().
+			Str("source", "cross-seed.webhook").
+			Ints("requestedInstanceIds", requestedInstanceIDs).
+			Msg("Webhook check skipped because no instances were available")
+		return &WebhookCheckResponse{
+			CanCrossSeed:   false,
+			Matches:        nil,
+			Recommendation: "skip",
+		}, nil
+	}
+
+	targetInstanceIDs := make([]int, len(instances))
+	for i, instance := range instances {
+		targetInstanceIDs[i] = instance.ID
+	}
+
 	// Describe the parsed content type for easier debugging and tuning.
 	contentInfo := DetermineContentType(incomingRelease)
 
 	log.Debug().
 		Str("source", "cross-seed.webhook").
-		Int("instanceId", req.InstanceID).
+		Ints("requestedInstanceIds", requestedInstanceIDs).
+		Ints("targetInstanceIds", targetInstanceIDs).
+		Bool("globalScan", len(requestedInstanceIDs) == 0).
 		Str("torrentName", req.TorrentName).
 		Uint64("size", req.Size).
 		Str("contentType", contentInfo.ContentType).
@@ -4835,16 +4912,6 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		Str("resolution", incomingRelease.Resolution).
 		Str("sourceRelease", incomingRelease.Source).
 		Msg("Webhook check: parsed incoming release")
-
-	// Get the target instance
-	instance, err := s.instanceStore.Get(ctx, req.InstanceID)
-	if err != nil {
-		if errors.Is(err, models.ErrInstanceNotFound) {
-			return nil, fmt.Errorf("%w: instance %d not found", ErrWebhookInstanceNotFound, req.InstanceID)
-		}
-		return nil, fmt.Errorf("failed to get instance %d: %w", req.InstanceID, err)
-	}
-	instances := []*models.Instance{instance}
 
 	var (
 		matches          []WebhookCheckMatch
@@ -4965,7 +5032,8 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 
 	log.Debug().
 		Str("source", "cross-seed.webhook").
-		Int("instanceId", req.InstanceID).
+		Ints("requestedInstanceIds", requestedInstanceIDs).
+		Ints("targetInstanceIds", targetInstanceIDs).
 		Str("torrentName", req.TorrentName).
 		Int("matchCount", len(matches)).
 		Bool("canCrossSeed", canCrossSeed).

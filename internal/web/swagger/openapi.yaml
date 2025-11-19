@@ -2424,11 +2424,11 @@ paths:
         - Cross-Seed
       summary: Check if a release can be cross-seeded (autobrr webhook)
       description: |
-        Accepts release metadata from autobrr and checks if matching torrents exist on the specified instance. The HTTP status describes whether the match is ready:
+        Accepts release metadata from autobrr and checks if matching torrents exist on the requested instances (or all instances when no list is provided). The HTTP status describes whether the match is ready:
         * `200 OK` – at least one matching torrent is fully downloaded and ready for cross-seeding
         * `202 Accepted` – matching torrents exist but the data is still downloading; retry `/check` until it returns `200` (ready) or `404`
         * `404 Not Found` – no matches exist (recommendation `skip`)
-        This endpoint is designed for autobrr filter external webhooks where the instanceId must match the target instance in the autobrr filter action.
+        This endpoint is designed for autobrr filter external webhooks. When `instanceIds` is omitted or empty, qui will search every configured instance. Provide a subset of IDs to restrict the scan.
       parameters:
         - name: apikey
           in: query
@@ -2444,16 +2444,17 @@ paths:
               type: object
               required:
                 - torrentName
-                - instanceId
               properties:
                 torrentName:
                   type: string
                   description: Release name as announced (parsed using rls library to extract metadata)
                   example: "That.Movie.2025.1080p.BluRay.x264-GROUP"
-                instanceId:
-                  type: integer
-                  description: Target instance ID to check against (must match the instance where autobrr will download the torrent)
-                  example: 1
+                instanceIds:
+                  type: array
+                  items:
+                    type: integer
+                  description: Optional list of qBittorrent instance IDs to consider. When omitted or empty, qui searches all configured instances.
+                  example: [1, 2, 3]
                 size:
                   type: integer
                   format: uint64
@@ -2475,7 +2476,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/CrossSeedWebhookCheckResponse'
         '404':
-          description: No cross-seed matches found on the target instance, or the specified instanceId is invalid (empty matches array and canCrossSeed=false with recommendation="skip")
+          description: No cross-seed matches found across the targeted instances, or no instances were available (empty matches array and canCrossSeed=false with recommendation="skip")
           content:
             application/json:
               schema:
@@ -2490,7 +2491,7 @@ paths:
       tags:
         - Cross-Seed
       summary: Add a cross-seed torrent provided by autobrr
-      description: Accepts a torrent file from autobrr, matches it against the specified instance, and adds it with alignment if a match is found.
+      description: Accepts a torrent file from autobrr, matches it against the requested instances, and adds it with alignment wherever a complete match exists. When `instanceIds` is omitted or empty, qui attempts to inject the torrent into every configured instance that has a match.
       parameters:
         - name: apikey
           in: query
@@ -2506,15 +2507,16 @@ paths:
               type: object
               required:
                 - torrentData
-                - instanceId
               properties:
                 torrentData:
                   type: string
                   description: Base64-encoded torrent file provided by autobrr (for example, using the TorrentDataRawBytes macro piped through toString|b64enc or toJson)
-                instanceId:
-                  type: integer
-                  description: Target instance ID where the torrent should be added
-                  example: 1
+                instanceIds:
+                  type: array
+                  items:
+                    type: integer
+                  description: Optional list of target instance IDs. When omitted or empty, qui attempts to cross-seed into any instance that has a complete match.
+                  example: [1, 2]
                 category:
                   type: string
                   description: Category to apply when adding the torrent
