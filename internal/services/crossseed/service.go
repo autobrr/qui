@@ -35,6 +35,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/pkg/timeouts"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
@@ -104,9 +105,6 @@ const (
 	indexerDomainCacheTTL               = 1 * time.Minute
 	contentFilteringWaitTimeout         = 5 * time.Second
 	contentFilteringPollInterval        = 150 * time.Millisecond
-	automationSearchTimeout             = 9 * time.Second
-	maxAutomationSearchTimeout          = 45 * time.Second
-	automationTimeoutPerIndexer         = 1 * time.Second
 	selectedIndexerContentSkipReason    = "selected indexers were filtered out"
 	selectedIndexerCapabilitySkipReason = "selected indexers do not support required caps"
 	crossSeedRenameWaitTimeout          = 15 * time.Second
@@ -115,21 +113,7 @@ const (
 )
 
 func computeAutomationSearchTimeout(indexerCount int) time.Duration {
-	if automationSearchTimeout <= 0 {
-		return 0
-	}
-	if indexerCount <= 1 {
-		return automationSearchTimeout
-	}
-	extra := time.Duration(indexerCount-1) * automationTimeoutPerIndexer
-	if extra < 0 {
-		extra = 0
-	}
-	timeout := automationSearchTimeout + extra
-	if timeout > maxAutomationSearchTimeout {
-		return maxAutomationSearchTimeout
-	}
-	return timeout
+	return timeouts.AdaptiveSearchTimeout(indexerCount)
 }
 
 // initializeDomainMappings returns a hardcoded mapping of tracker domains to indexer domains.
@@ -3462,7 +3446,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		if errors.Is(err, context.DeadlineExceeded) {
 			timeoutDisplay := searchTimeout
 			if timeoutDisplay <= 0 {
-				timeoutDisplay = automationSearchTimeout
+				timeoutDisplay = timeouts.DefaultSearchTimeout
 			}
 			s.searchMu.Lock()
 			state.run.TorrentsSkipped++

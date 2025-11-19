@@ -15,6 +15,7 @@ import (
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/pkg/timeouts"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 )
 
@@ -24,10 +25,10 @@ func TestComputeAutomationSearchTimeout(t *testing.T) {
 		indexers     int
 		expectedTime time.Duration
 	}{
-		{name: "no indexers uses base", indexers: 0, expectedTime: automationSearchTimeout},
-		{name: "single indexer", indexers: 1, expectedTime: automationSearchTimeout},
-		{name: "grows with indexers", indexers: 4, expectedTime: automationSearchTimeout + 3*automationTimeoutPerIndexer},
-		{name: "caps at max", indexers: 100, expectedTime: maxAutomationSearchTimeout},
+		{name: "no indexers uses base", indexers: 0, expectedTime: timeouts.DefaultSearchTimeout},
+		{name: "single indexer", indexers: 1, expectedTime: timeouts.DefaultSearchTimeout},
+		{name: "grows with indexers", indexers: 4, expectedTime: timeouts.DefaultSearchTimeout + 3*timeouts.PerIndexerSearchTimeout},
+		{name: "caps at max", indexers: 100, expectedTime: timeouts.MaxSearchTimeout},
 	}
 
 	for _, tt := range tests {

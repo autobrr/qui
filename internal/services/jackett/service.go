@@ -23,6 +23,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/pkg/timeouts"
 	"github.com/autobrr/qui/pkg/prowlarr"
 	"github.com/autobrr/qui/pkg/releases"
 )
@@ -88,9 +89,6 @@ const (
 	defaultTorrentCacheTTL   = 12 * time.Hour
 	defaultSearchCacheTTL    = 24 * time.Hour
 	storeOperationTimeout    = 5 * time.Second
-	defaultSearchTimeout     = 9 * time.Second
-	maxSearchTimeout         = 45 * time.Second
-	perIndexerSearchTimeout  = 1 * time.Second
 	minSearchCacheTTL        = defaultSearchCacheTTL
 
 	searchCacheCleanupInterval  = 6 * time.Hour
@@ -149,39 +147,6 @@ type searchCacheSignature struct {
 	Key             string
 	Fingerprint     string
 	BaseFingerprint string
-}
-
-// withSearchTimeout ensures long-running torznab searches have a sensible upper bound.
-// If the incoming context already has a deadline, it is preserved.
-func withSearchTimeout(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
-	if timeout <= 0 {
-		timeout = defaultSearchTimeout
-	}
-
-	if ctx == nil {
-		return context.WithTimeout(context.Background(), timeout)
-	}
-
-	if _, hasDeadline := ctx.Deadline(); hasDeadline {
-		return ctx, func() {}
-	}
-
-	return context.WithTimeout(ctx, timeout)
-}
-
-func adaptiveSearchTimeout(indexerCount int) time.Duration {
-	if indexerCount <= 1 {
-		return defaultSearchTimeout
-	}
-	extra := time.Duration(indexerCount-1) * perIndexerSearchTimeout
-	if extra < 0 {
-		extra = 0
-	}
-	timeout := defaultSearchTimeout + extra
-	if timeout > maxSearchTimeout {
-		return maxSearchTimeout
-	}
-	return timeout
 }
 
 type searchCacheKeyPayload struct {
@@ -382,8 +347,8 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 	}
 
 	// Search selected indexers (defaults to all enabled when none specified)
-	searchTimeout := adaptiveSearchTimeout(len(indexersToSearch))
-	searchCtx, cancel := withSearchTimeout(ctx, searchTimeout)
+	searchTimeout := timeouts.AdaptiveSearchTimeout(len(indexersToSearch))
+	searchCtx, cancel := timeouts.WithSearchTimeout(ctx, searchTimeout)
 	defer cancel()
 
 	allResults, networkCoverage, err := s.executeSearch(searchCtx, indexersToSearch, params, meta)
@@ -560,8 +525,8 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 	}
 
 	// Search remaining indexers
-	searchTimeout := adaptiveSearchTimeout(len(indexersToSearch))
-	searchCtx, cancel := withSearchTimeout(ctx, searchTimeout)
+	searchTimeout := timeouts.AdaptiveSearchTimeout(len(indexersToSearch))
+	searchCtx, cancel := timeouts.WithSearchTimeout(ctx, searchTimeout)
 	defer cancel()
 
 	allResults, networkCoverage, err := s.executeSearch(searchCtx, indexersToSearch, params, meta)
@@ -670,8 +635,8 @@ func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int) (*Sea
 		}, nil
 	}
 
-	searchTimeout := adaptiveSearchTimeout(len(indexersToSearch))
-	searchCtx, cancel := withSearchTimeout(ctx, searchTimeout)
+	searchTimeout := timeouts.AdaptiveSearchTimeout(len(indexersToSearch))
+	searchCtx, cancel := timeouts.WithSearchTimeout(ctx, searchTimeout)
 	defer cancel()
 
 	results, coverage, err := s.executeSearch(searchCtx, indexersToSearch, params, nil)

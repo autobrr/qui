@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/pkg/timeouts"
 )
 
 func TestDetectContentType(t *testing.T) {
@@ -311,16 +312,16 @@ func TestAdaptiveSearchTimeoutScalesWithIndexerCount(t *testing.T) {
 		indexerCount  int
 		expectedLimit time.Duration
 	}{
-		{name: "zero indexers uses default", indexerCount: 0, expectedLimit: defaultSearchTimeout},
-		{name: "single indexer uses default", indexerCount: 1, expectedLimit: defaultSearchTimeout},
-		{name: "adds budget per indexer", indexerCount: 5, expectedLimit: defaultSearchTimeout + 4*perIndexerSearchTimeout},
-		{name: "clamps to max", indexerCount: 500, expectedLimit: maxSearchTimeout},
+		{name: "zero indexers uses default", indexerCount: 0, expectedLimit: timeouts.DefaultSearchTimeout},
+		{name: "single indexer uses default", indexerCount: 1, expectedLimit: timeouts.DefaultSearchTimeout},
+		{name: "adds budget per indexer", indexerCount: 5, expectedLimit: timeouts.DefaultSearchTimeout + 4*timeouts.PerIndexerSearchTimeout},
+		{name: "clamps to max", indexerCount: 500, expectedLimit: timeouts.MaxSearchTimeout},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := adaptiveSearchTimeout(tt.indexerCount); got != tt.expectedLimit {
-				t.Fatalf("adaptiveSearchTimeout(%d) = %s, want %s", tt.indexerCount, got, tt.expectedLimit)
+			if got := timeouts.AdaptiveSearchTimeout(tt.indexerCount); got != tt.expectedLimit {
+				t.Fatalf("AdaptiveSearchTimeout(%d) = %s, want %s", tt.indexerCount, got, tt.expectedLimit)
 			}
 		})
 	}
