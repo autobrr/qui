@@ -333,7 +333,8 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 	job.isRunning = true
 	baseCtx := s.baseContext()
 	if baseCtx == nil {
-		baseCtx = context.Background()
+		s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, "service not started")
+		return false
 	}
 	runner := s.runJob
 	if runner == nil {
@@ -459,6 +460,9 @@ func (s *Service) waitForInitialContact(ctx context.Context, client *qbittorrent
 func (s *Service) lookupTorrents(ctx context.Context, instanceID int, hashes []string) map[string]qbt.Torrent {
 	result := make(map[string]qbt.Torrent)
 	if len(hashes) == 0 {
+		return result
+	}
+	if s.syncManager == nil {
 		return result
 	}
 	sync, err := s.syncManager.GetQBittorrentSyncManager(ctx, instanceID)

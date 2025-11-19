@@ -301,13 +301,13 @@ func (h *InstancesHandler) getReannounceSettingsPayload(ctx context.Context, ins
 	return payloadFromModel(h.loadReannounceSettings(ctx, instanceID))
 }
 
-func (h *InstancesHandler) persistReannounceSettings(ctx context.Context, instanceID int, payload *InstanceReannounceSettingsPayload) *models.InstanceReannounceSettings {
+func (h *InstancesHandler) persistReannounceSettings(ctx context.Context, instanceID int, payload *InstanceReannounceSettingsPayload) (*models.InstanceReannounceSettings, error) {
 	desired := payload.toModel(instanceID, nil)
 	if h.reannounceStore == nil {
 		if h.reannounceCache != nil {
 			h.reannounceCache.Replace(desired)
 		}
-		return desired
+		return desired, nil
 	}
 	saved, err := h.reannounceStore.Upsert(ctx, desired)
 	if err != nil {
@@ -315,12 +315,12 @@ func (h *InstancesHandler) persistReannounceSettings(ctx context.Context, instan
 		if h.reannounceCache != nil {
 			h.reannounceCache.Replace(desired)
 		}
-		return desired
+		return desired, err
 	}
 	if h.reannounceCache != nil {
 		h.reannounceCache.Replace(saved)
 	}
-	return saved
+	return saved, nil
 }
 
 // CreateInstanceRequest represents a request to create a new instance
@@ -540,7 +540,11 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	settings := h.persistReannounceSettings(r.Context(), instance.ID, req.ReannounceSettings)
+	settings, err := h.persistReannounceSettings(r.Context(), instance.ID, req.ReannounceSettings)
+	if err != nil {
+		RespondError(w, http.StatusInternalServerError, "Failed to save reannounce settings")
+		return
+	}
 
 	// Return quickly without testing connection
 	response := h.buildQuickInstanceResponse(instance)
@@ -612,7 +616,12 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 
 	var settings *models.InstanceReannounceSettings
 	if req.ReannounceSettings != nil {
-		settings = h.persistReannounceSettings(r.Context(), instanceID, req.ReannounceSettings)
+		var err error
+		settings, err = h.persistReannounceSettings(r.Context(), instanceID, req.ReannounceSettings)
+		if err != nil {
+			RespondError(w, http.StatusInternalServerError, "Failed to save reannounce settings")
+			return
+		}
 	} else {
 		settings = h.loadReannounceSettings(r.Context(), instanceID)
 	}

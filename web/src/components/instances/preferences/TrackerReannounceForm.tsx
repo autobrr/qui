@@ -134,7 +134,6 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
       name: instance.name,
       host: instance.host,
       username: instance.username,
-      password: "",
       tlsSkipVerify: instance.tlsSkipVerify,
       reannounceSettings: sanitized,
     }
@@ -157,16 +156,16 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
     )
   }
 
-  if (!instance) {
-    return <p className="text-sm text-muted-foreground">Instance not found. Please close and reopen the dialog.</p>
-  }
-
   const activityQuery = useQuery({
     queryKey: ["instance-reannounce-activity", instanceId],
     queryFn: () => api.getInstanceReannounceActivity(instanceId, 50),
     enabled: Boolean(instance && settings.enabled),
     refetchInterval: activityOpen ? 15000 : false,
   })
+
+  if (!instance) {
+    return <p className="text-sm text-muted-foreground">Instance not found. Please close and reopen the dialog.</p>
+  }
 
   const allActivityEvents: InstanceReannounceActivity[] = (activityQuery.data ?? []).slice().reverse()
   const activityEvents = hideSkipped ? allActivityEvents.filter((event) => event.outcome !== "skipped") : allActivityEvents

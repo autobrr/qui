@@ -871,6 +871,8 @@ paths:
                     - instanceId
                     - hash
                     - state
+                    - hasTrackerProblem
+                    - waitingForInitial
         '400':
           description: Invalid instance ID
 

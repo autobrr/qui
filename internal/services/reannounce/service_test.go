@@ -366,6 +366,7 @@ func newTestServiceForDebounce(window time.Duration, now func() time.Time) *Serv
 		spawn:      func(fn func()) { fn() },
 		history:    make(map[int][]ActivityEvent),
 		historyCap: defaultHistorySize,
+		baseCtx:    context.Background(),
 	}
 }
 
