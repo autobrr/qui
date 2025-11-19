@@ -6,6 +6,7 @@ package reannounce
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -523,6 +524,11 @@ func (s *Service) torrentMeetsCriteria(torrent qbt.Torrent, settings *models.Ins
 			domain := ""
 			if s.syncManager != nil {
 				domain = s.syncManager.ExtractDomainFromURL(tracker.Url)
+			} else {
+				// Fallback if syncManager is not available (e.g. in tests)
+				if u, err := url.Parse(tracker.Url); err == nil && u.Hostname() != "" {
+					domain = u.Hostname()
+				}
 			}
 			if domain == "" {
 				domain = strings.TrimSpace(tracker.Url)
@@ -588,6 +594,11 @@ func (s *Service) torrentMeetsCriteria(torrent qbt.Torrent, settings *models.Ins
 			domain := ""
 			if s.syncManager != nil {
 				domain = s.syncManager.ExtractDomainFromURL(tracker.Url)
+			} else {
+				// Fallback if syncManager is not available (e.g. in tests)
+				if u, err := url.Parse(tracker.Url); err == nil && u.Hostname() != "" {
+					domain = u.Hostname()
+				}
 			}
 			if domain == "" {
 				domain = strings.TrimSpace(tracker.Url)
@@ -663,6 +674,11 @@ func (s *Service) getProblematicTrackers(trackers []qbt.TorrentTracker) string {
 			domain := ""
 			if s.syncManager != nil {
 				domain = s.syncManager.ExtractDomainFromURL(tracker.Url)
+			} else {
+				// Fallback if syncManager is not available (e.g. in tests)
+				if u, err := url.Parse(tracker.Url); err == nil && u.Hostname() != "" {
+					domain = u.Hostname()
+				}
 			}
 			if domain == "" {
 				domain = strings.TrimSpace(tracker.Url)
