@@ -19,6 +19,7 @@ interface MultiSelectProps {
   className?: string
   creatable?: boolean
   onCreateOption?: (inputValue: string) => void
+  disabled?: boolean
 }
 
 export function MultiSelect({
@@ -29,6 +30,7 @@ export function MultiSelect({
   className,
   creatable = false,
   onCreateOption,
+  disabled = false,
 }: MultiSelectProps) {
   const [open, setOpen] = React.useState(false)
   const [inputValue, setInputValue] = React.useState("")
@@ -65,6 +67,7 @@ export function MultiSelect({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          disabled={disabled}
           className={cn("w-full justify-between h-auto min-h-10 hover:bg-background", className)}
         >
           <div className="flex flex-wrap gap-1">

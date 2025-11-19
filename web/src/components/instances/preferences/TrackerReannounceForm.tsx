@@ -299,98 +299,127 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                     </div>
 
                     <div className="space-y-4">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <Label className="text-base">Monitoring Scope</Label>
-                        <Tabs
-                          value={settings.monitorAll ? "all" : "custom"}
-                          onValueChange={(v) => setSettings(prev => ({ ...prev, monitorAll: v === "all" }))}
-                          className="w-full sm:w-auto"
-                        >
-                          <TabsList className="grid w-full grid-cols-2 sm:w-[300px]">
-                            <TabsTrigger value="all">Monitor All</TabsTrigger>
-                            <TabsTrigger value="custom">Custom Filter</TabsTrigger>
-                          </TabsList>
-                        </Tabs>
+                      <div className="flex items-center justify-between rounded-lg border border-border/60 p-3 bg-muted/20">
+                        <div className="space-y-0.5">
+                          <Label htmlFor="monitor-all" className="text-base">Monitor All Stalled Torrents</Label>
+                          <p className="text-sm text-muted-foreground">
+                            If enabled, monitors everything except excluded items.<br />
+                            If disabled, only monitors items matching the include rules below.
+                          </p>
+                        </div>
+                        <Switch
+                          id="monitor-all"
+                          checked={settings.monitorAll}
+                          onCheckedChange={(v) => {
+                            setSettings(prev => {
+                              const next = { ...prev, monitorAll: v }
+                              // Automatically switch to exclude mode if monitoring all
+                              if (v) {
+                                next.excludeCategories = true
+                                next.excludeTags = true
+                                next.excludeTrackers = true
+                              }
+                              return next
+                            })
+                          }}
+                        />
                       </div>
 
-                      {!settings.monitorAll && (
-                        <div className="grid gap-6 pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
-                          {/* Categories */}
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <Label htmlFor="scope-categories">Categories</Label>
-                              <Tabs
-                                value={settings.excludeCategories ? "exclude" : "include"}
-                                onValueChange={(v) => setSettings(prev => ({ ...prev, excludeCategories: v === "exclude" }))}
-                                className="h-7"
-                              >
-                                <TabsList className="h-7">
-                                  <TabsTrigger value="include" className="text-xs h-5 px-2">Include</TabsTrigger>
-                                  <TabsTrigger value="exclude" className="text-xs h-5 px-2">Exclude</TabsTrigger>
-                                </TabsList>
-                              </Tabs>
-                            </div>
-                            <MultiSelect
-                              options={categoryOptions}
-                              selected={settings.categories}
-                              onChange={(values) => setSettings((prev) => ({ ...prev, categories: values }))}
-                              placeholder="Select categories..."
-                              creatable
-                              onCreateOption={(value) => appendUniqueValue("categories", value)}
-                            />
-                          </div>
 
-                          {/* Tags */}
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <Label htmlFor="scope-tags">Tags</Label>
-                              <Tabs
-                                value={settings.excludeTags ? "exclude" : "include"}
-                                onValueChange={(v) => setSettings(prev => ({ ...prev, excludeTags: v === "exclude" }))}
-                                className="h-7"
-                              >
-                                <TabsList className="h-7">
-                                  <TabsTrigger value="include" className="text-xs h-5 px-2">Include</TabsTrigger>
-                                  <TabsTrigger value="exclude" className="text-xs h-5 px-2">Exclude</TabsTrigger>
-                                </TabsList>
-                              </Tabs>
-                            </div>
-                            <MultiSelect
-                              options={tagOptions}
-                              selected={settings.tags}
-                              onChange={(values) => setSettings((prev) => ({ ...prev, tags: values }))}
-                              placeholder="Select tags..."
-                              creatable
-                              onCreateOption={(value) => appendUniqueValue("tags", value)}
-                            />
+                      <div className="grid gap-6 pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                        {/* Categories */}
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor="scope-categories">Categories</Label>
+                            <Tabs
+                              value={settings.excludeCategories ? "exclude" : "include"}
+                              onValueChange={(v) => setSettings(prev => ({ ...prev, excludeCategories: v === "exclude" }))}
+                              className="h-7"
+                            >
+                              <TabsList className="h-7">
+                                <TabsTrigger 
+                                  value="include" 
+                                  className="text-xs h-5 px-2"
+                                  disabled={settings.monitorAll}
+                                >
+                                  Include
+                                </TabsTrigger>
+                                <TabsTrigger value="exclude" className="text-xs h-5 px-2">Exclude</TabsTrigger>
+                              </TabsList>
+                            </Tabs>
                           </div>
-
-                          {/* Trackers */}
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <Label htmlFor="scope-trackers">Tracker Domains</Label>
-                              <Tabs
-                                value={settings.excludeTrackers ? "exclude" : "include"}
-                                onValueChange={(v) => setSettings(prev => ({ ...prev, excludeTrackers: v === "exclude" }))}
-                                className="h-7"
-                              >
-                                <TabsList className="h-7">
-                                  <TabsTrigger value="include" className="text-xs h-5 px-2">Include</TabsTrigger>
-                                  <TabsTrigger value="exclude" className="text-xs h-5 px-2">Exclude</TabsTrigger>
-                                </TabsList>
-                              </Tabs>
-                            </div>
-                            <MultiSelect
-                              options={trackerOptions}
-                              selected={settings.trackers}
-                              onChange={(values) => setSettings((prev) => ({ ...prev, trackers: values }))}
-                              placeholder="Select tracker domains..."
-                              creatable
-                              onCreateOption={(value) => appendUniqueValue("trackers", value)}
-                            />
-                          </div>
+                          <MultiSelect
+                            options={categoryOptions}
+                            selected={settings.categories}
+                            onChange={(values) => setSettings((prev) => ({ ...prev, categories: values }))}
+                            placeholder="Select categories..."
+                            creatable
+                            onCreateOption={(value) => appendUniqueValue("categories", value)}
+                          />
                         </div>
-                      )}
+
+                        {/* Tags */}
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor="scope-tags">Tags</Label>
+                            <Tabs
+                              value={settings.excludeTags ? "exclude" : "include"}
+                              onValueChange={(v) => setSettings(prev => ({ ...prev, excludeTags: v === "exclude" }))}
+                              className="h-7"
+                            >
+                              <TabsList className="h-7">
+                                <TabsTrigger 
+                                  value="include" 
+                                  className="text-xs h-5 px-2"
+                                  disabled={settings.monitorAll}
+                                >
+                                  Include
+                                </TabsTrigger>
+                                <TabsTrigger value="exclude" className="text-xs h-5 px-2">Exclude</TabsTrigger>
+                              </TabsList>
+                            </Tabs>
+                          </div>
+                          <MultiSelect
+                            options={tagOptions}
+                            selected={settings.tags}
+                            onChange={(values) => setSettings((prev) => ({ ...prev, tags: values }))}
+                            placeholder="Select tags..."
+                            creatable
+                            onCreateOption={(value) => appendUniqueValue("tags", value)}
+                          />
+                        </div>
+
+                        {/* Trackers */}
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor="scope-trackers">Tracker Domains</Label>
+                            <Tabs
+                              value={settings.excludeTrackers ? "exclude" : "include"}
+                              onValueChange={(v) => setSettings(prev => ({ ...prev, excludeTrackers: v === "exclude" }))}
+                              className="h-7"
+                            >
+                              <TabsList className="h-7">
+                                <TabsTrigger 
+                                  value="include" 
+                                  className="text-xs h-5 px-2"
+                                  disabled={settings.monitorAll}
+                                >
+                                  Include
+                                </TabsTrigger>
+                                <TabsTrigger value="exclude" className="text-xs h-5 px-2">Exclude</TabsTrigger>
+                              </TabsList>
+                            </Tabs>
+                          </div>
+                          <MultiSelect
+                            options={trackerOptions}
+                            selected={settings.trackers}
+                            onChange={(values) => setSettings((prev) => ({ ...prev, trackers: values }))}
+                            placeholder="Select tracker domains..."
+                            creatable
+                            onCreateOption={(value) => appendUniqueValue("trackers", value)}
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
 
