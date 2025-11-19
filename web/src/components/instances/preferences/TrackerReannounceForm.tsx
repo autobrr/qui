@@ -21,7 +21,7 @@ import { cn, copyTextToClipboard } from "@/lib/utils"
 import type { InstanceFormData, InstanceReannounceActivity, InstanceReannounceSettings } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { Copy, Info, RefreshCcw } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { toast } from "sonner"
 
 interface TrackerReannounceFormProps {
@@ -120,10 +120,6 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
       }
     })
   }
-
-  useEffect(() => {
-    setSettings(cloneSettings(instance?.reannounceSettings))
-  }, [instance?.reannounceSettings, instanceId])
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -311,7 +307,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                           id="monitor-all"
                           checked={settings.monitorAll}
                           onCheckedChange={(v) => {
-                            setSettings(prev => {
+                            setSettings((prev) => {
                               const next = { ...prev, monitorAll: v }
                               // Automatically switch to exclude mode if monitoring all
                               if (v) {
@@ -333,7 +329,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                             <Label htmlFor="scope-categories">Categories</Label>
                             <Tabs
                               value={settings.excludeCategories ? "exclude" : "include"}
-                              onValueChange={(v) => setSettings(prev => ({ ...prev, excludeCategories: v === "exclude" }))}
+                              onValueChange={(v) => setSettings((prev) => ({ ...prev, excludeCategories: v === "exclude" }))}
                               className="h-7"
                             >
                               <TabsList className="h-7">
@@ -364,7 +360,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                             <Label htmlFor="scope-tags">Tags</Label>
                             <Tabs
                               value={settings.excludeTags ? "exclude" : "include"}
-                              onValueChange={(v) => setSettings(prev => ({ ...prev, excludeTags: v === "exclude" }))}
+                              onValueChange={(v) => setSettings((prev) => ({ ...prev, excludeTags: v === "exclude" }))}
                               className="h-7"
                             >
                               <TabsList className="h-7">
@@ -395,7 +391,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                             <Label htmlFor="scope-trackers">Tracker Domains</Label>
                             <Tabs
                               value={settings.excludeTrackers ? "exclude" : "include"}
-                              onValueChange={(v) => setSettings(prev => ({ ...prev, excludeTrackers: v === "exclude" }))}
+                              onValueChange={(v) => setSettings((prev) => ({ ...prev, excludeTrackers: v === "exclude" }))}
                               className="h-7"
                             >
                               <TabsList className="h-7">
@@ -440,7 +436,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                       Enable automatic reannouncing to configure settings and start monitoring stalled torrents.
                     </p>
                   </div>
-                  <Button variant="outline" onClick={() => setSettings(prev => ({ ...prev, enabled: true }))}>
+                  <Button variant="outline" onClick={() => setSettings((prev) => ({ ...prev, enabled: true }))}>
                     Enable Monitoring
                   </Button>
                 </div>
