@@ -548,8 +548,8 @@ X-API-Key=YOUR_QUI_API_KEY,Content-Type=application/json
 > `/api/cross-seed/webhook/check` returns three main outcomes:
 > - `200 OK` – a matching torrent is fully complete and ready to cross-seed (safe to proceed to `/api/cross-seed/apply`)
 > - `202 Accepted` – a matching torrent exists but is still downloading; callers should keep polling until it becomes `200` or `404`
-> - `404 Not Found` – no matching torrent exists on that instance (recommendation `skip`), including when the `instanceId` is invalid  
-> Invalid payloads still return `400 Bad Request`, so double‑check `torrentName` and `instanceId` if autobrr reports a validation error.
+> - `404 Not Found` – no matching torrent exists on the targeted instances (recommendation `skip`)
+> Invalid payloads still return `400 Bad Request`, so double‑check `torrentName` and `instanceIds` if autobrr reports a validation error.
 
 Use autobrr's **Retry** block on webhook actions, configure it so `202` is handled as a retry instead of an immediate failure:
 
@@ -566,14 +566,22 @@ With this setup:
 ```json
 {
   "torrentName": "{{ .TorrentName }}",
-  "instanceId": 1,
+  "instanceIds": [1],
   "findIndividualEpisodes": false
+}
+```
+
+To search **all** configured instances from a single autobrr filter, omit `instanceIds` entirely (or pass an empty array):
+
+```json
+{
+  "torrentName": "{{ .TorrentName }}"
 }
 ```
 
 **Field Descriptions:**
 - `torrentName` (required): The release name as announced
-- `instanceId` (required): The target qBittorrent instance ID to check against. This **must** match the instance where your autobrr filter action will download to. You can find instance IDs in the qui web UI under Instances.
+- `instanceIds` (optional): List of qBittorrent instance IDs to scan. When omitted or empty, qui searches all configured instances. Single-instance setups should explicitly pass their ID (e.g., `[1]`) so behaviour remains predictable if you add more instances later.
 - `size` (optional): The total torrent size in bytes - enables size validation when provided
 - `findIndividualEpisodes` (optional): Overrides the global **Find individual episodes** setting for this webhook call. Leave it out to use the value configured in qui, or set explicitly (e.g., `false`) when a filter should force strict season-pack matching.
 
@@ -601,24 +609,31 @@ In **Settings → Actions** (or from the filter’s Actions tab), create a new a
 ```json
 {
   "torrentData": "{{ .TorrentDataRawBytes | toString | b64enc }}",
-  "instanceId": 1
+  "instanceIds": [1]
 }
 ```
 
-`torrentData` is base64-encoded torrent bytes; in autobrr you can use the `TorrentDataRawBytes` macro together with `toString` and the `b64enc` sprig helper as shown above (the extra `toString` converts the byte slice into the string type sprig expects). `instanceId` must match the target qBittorrent instance ID in qui (the same one you used for the webhook check).
+`torrentData` is base64-encoded torrent bytes; in autobrr you can use the `TorrentDataRawBytes` macro together with `toString` and the `b64enc` sprig helper as shown above (the extra `toString` converts the byte slice into the string type sprig expects). `instanceIds` controls which qBittorrent instances qui will attempt to cross-seed into; omit it (or use an empty array) to apply globally, or provide a subset to keep the action scoped.
+
+To run in global mode (any instance with a complete match), drop the `instanceIds` field:
+
+```json
+{
+  "torrentData": "{{ .TorrentDataRawBytes | toString | b64enc }}"
+}
+```
 
 Optionally, you can include additional fields supported by qui’s `AutobrrApplyRequest`:
 
 ```json
 {
   "torrentData": "{{ .TorrentDataRawBytes | toString | b64enc }}",
-  "instanceId": 1,
-  "addCrossSeedTag": true,
-  "skipIfExists": true
+  "instanceIds": [1, 2],
+  "addCrossSeedTag": true
 }
 ```
 
-When this action runs after a successful `/api/cross-seed/webhook/check`, autobrr posts the torrent to `/api/cross-seed/apply`. qui then decodes the torrent, re-validates it by finding a 100% complete matching torrent on the specified instance, aligns the new torrent’s naming and file layout with the existing one, and finally adds it using the same cross-seed pipeline as manual apply.
+When this action runs after a successful `/api/cross-seed/webhook/check`, autobrr posts the torrent to `/api/cross-seed/apply`. qui then decodes the torrent, re-validates it by finding 100% complete matching torrents on the targeted instances, aligns the new torrent’s naming and file layout with the existing one, and finally adds it using the same cross-seed pipeline as manual apply.
 
 If you omit `category`, qui reuses the category (and AutoTMM/save path) from the matched, already-seeding torrent so the cross-seed lands alongside the original files. If you omit `tags`, qui copies the matched torrent’s tags and then appends a `cross-seed` tag by default; you can optionally include `category` (e.g., `"TV"`) and `tags` (e.g., `["autobrr", "cross-seed"]`) in the payload to override those defaults, and `cross-seed` is still added unless you set `addCrossSeedTag` to `false`.
 

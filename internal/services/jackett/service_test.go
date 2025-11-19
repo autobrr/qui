@@ -5,6 +5,7 @@ package jackett
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"maps"
 	"net/url"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/pkg/timeouts"
 )
 
 func TestDetectContentType(t *testing.T) {
@@ -302,6 +304,275 @@ func TestParseCategoryID(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAdaptiveSearchTimeoutScalesWithIndexerCount(t *testing.T) {
+	tests := []struct {
+		name          string
+		indexerCount  int
+		expectedLimit time.Duration
+	}{
+		{name: "zero indexers uses default", indexerCount: 0, expectedLimit: timeouts.DefaultSearchTimeout},
+		{name: "single indexer uses default", indexerCount: 1, expectedLimit: timeouts.DefaultSearchTimeout},
+		{name: "adds budget per indexer", indexerCount: 5, expectedLimit: timeouts.DefaultSearchTimeout + 4*timeouts.PerIndexerSearchTimeout},
+		{name: "clamps to max", indexerCount: 500, expectedLimit: timeouts.MaxSearchTimeout},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := timeouts.AdaptiveSearchTimeout(tt.indexerCount); got != tt.expectedLimit {
+				t.Fatalf("AdaptiveSearchTimeout(%d) = %s, want %s", tt.indexerCount, got, tt.expectedLimit)
+			}
+		})
+	}
+}
+
+func TestLoadCachedSearchPortionReturnsPartialCoverage(t *testing.T) {
+	svc := &Service{
+		searchCacheEnabled: true,
+		searchCacheTTL:     time.Hour,
+	}
+	req := &TorznabSearchRequest{Query: "My Query"}
+	payload := searchCacheKeyPayload{
+		Scope:       searchCacheScopeCrossSeed,
+		Query:       canonicalizeQuery(req.Query),
+		IndexerIDs:  []int{1, 2},
+		ContentType: contentTypeTVShow,
+	}
+	full, base, err := buildSearchCacheFingerprints(payload)
+	if err != nil {
+		t.Fatalf("buildSearchCacheFingerprints: %v", err)
+	}
+	sig := &searchCacheSignature{Key: "cache-key", Fingerprint: full, BaseFingerprint: base}
+	encoded, err := json.Marshal(&SearchResponse{Results: []SearchResult{
+		{Indexer: "one", IndexerID: 1, GUID: "guid-1", DownloadURL: "http://one"},
+		{Indexer: "two", IndexerID: 2, GUID: "guid-2", DownloadURL: "http://two"},
+	}})
+	if err != nil {
+		t.Fatalf("marshal cached response: %v", err)
+	}
+	now := time.Now().UTC()
+	entry := &models.TorznabSearchCacheEntry{
+		ID:                 42,
+		Scope:              searchCacheScopeCrossSeed,
+		IndexerIDs:         []int{1, 2},
+		RequestFingerprint: full,
+		ResponseData:       encoded,
+		TotalResults:       2,
+		CachedAt:           now,
+		LastUsedAt:         now,
+		ExpiresAt:          now.Add(2 * time.Hour),
+	}
+	fakeCache := &fakeSearchCache{
+		fetchFn: func(context.Context, string) (*models.TorznabSearchCacheEntry, bool, error) {
+			return nil, false, nil
+		},
+		findFn: func(_ context.Context, scope, query string) ([]*models.TorznabSearchCacheEntry, error) {
+			if scope != searchCacheScopeCrossSeed {
+				t.Fatalf("unexpected scope %s", scope)
+			}
+			if query != canonicalizeQuery(req.Query) {
+				t.Fatalf("unexpected query %s", query)
+			}
+			return []*models.TorznabSearchCacheEntry{entry}, nil
+		},
+	}
+	svc.searchCache = fakeCache
+	portion, complete := svc.loadCachedSearchPortion(context.Background(), sig, searchCacheScopeCrossSeed, req, []int{1, 3}, true)
+	if portion == nil {
+		t.Fatal("expected cached portion")
+	}
+	if complete {
+		t.Fatal("expected partial coverage")
+	}
+	if len(portion.results) != 1 || portion.results[0].IndexerID != 1 {
+		t.Fatalf("unexpected filtered results: %+v", portion.results)
+	}
+	if len(portion.indexerIDs) != 1 || portion.indexerIDs[0] != 1 {
+		t.Fatalf("unexpected coverage: %+v", portion.indexerIDs)
+	}
+}
+
+func TestSelectCacheEntryForCoveragePrefersMostCoverage(t *testing.T) {
+	payload := searchCacheKeyPayload{
+		Scope:       searchCacheScopeCrossSeed,
+		Query:       "query",
+		ContentType: contentTypeTVShow,
+	}
+	firstFull, base, err := buildSearchCacheFingerprints(payload)
+	if err != nil {
+		t.Fatalf("fingerprint first: %v", err)
+	}
+	first := &models.TorznabSearchCacheEntry{IndexerIDs: []int{1, 2}, RequestFingerprint: firstFull}
+	payload.IndexerIDs = []int{1, 2, 3, 4}
+	secondFull, _, err := buildSearchCacheFingerprints(payload)
+	if err != nil {
+		t.Fatalf("fingerprint second: %v", err)
+	}
+	second := &models.TorznabSearchCacheEntry{IndexerIDs: []int{1, 2, 3, 4}, RequestFingerprint: secondFull}
+	best, coverage := selectCacheEntryForCoverage([]*models.TorznabSearchCacheEntry{first, second}, []int{1, 4}, base, false)
+	if best != second {
+		t.Fatalf("expected entry with broader coverage")
+	}
+	if len(coverage) != 2 || coverage[0] != 1 || coverage[1] != 4 {
+		t.Fatalf("unexpected coverage: %+v", coverage)
+	}
+	if entry, coverage := selectCacheEntryForCoverage([]*models.TorznabSearchCacheEntry{first}, []int{1, 3}, base, true); entry != nil || coverage != nil {
+		t.Fatalf("expected nil when full coverage unavailable")
+	}
+}
+
+type fakeSearchCache struct {
+	fetchFn func(context.Context, string) (*models.TorznabSearchCacheEntry, bool, error)
+	findFn  func(context.Context, string, string) ([]*models.TorznabSearchCacheEntry, error)
+	storeFn func(context.Context, *models.TorznabSearchCacheEntry) error
+}
+
+func (f *fakeSearchCache) Fetch(ctx context.Context, key string) (*models.TorznabSearchCacheEntry, bool, error) {
+	if f.fetchFn != nil {
+		return f.fetchFn(ctx, key)
+	}
+	return nil, false, nil
+}
+
+func (f *fakeSearchCache) FindActiveByScopeAndQuery(ctx context.Context, scope string, query string) ([]*models.TorznabSearchCacheEntry, error) {
+	if f.findFn != nil {
+		return f.findFn(ctx, scope, query)
+	}
+	return nil, nil
+}
+
+func (f *fakeSearchCache) Touch(context.Context, int64) {}
+
+func (f *fakeSearchCache) Store(ctx context.Context, entry *models.TorznabSearchCacheEntry) error {
+	if f.storeFn != nil {
+		return f.storeFn(ctx, entry)
+	}
+	return nil
+}
+
+func (f *fakeSearchCache) CleanupExpired(context.Context) (int64, error) {
+	return 0, nil
+}
+
+func (f *fakeSearchCache) Flush(context.Context) (int64, error) {
+	return 0, nil
+}
+
+func (f *fakeSearchCache) InvalidateByIndexerIDs(context.Context, []int) (int64, error) {
+	return 0, nil
+}
+
+func TestSearchCachesAfterDeadlineWhenCoverageComplete(t *testing.T) {
+	store := &mockTorznabIndexerStore{
+		indexers: []*models.TorznabIndexer{
+			{ID: 1, Name: "IndexerOne", Enabled: true},
+			{ID: 2, Name: "IndexerTwo", Enabled: true},
+		},
+	}
+	service := NewService(store)
+	service.searchCacheEnabled = true
+	service.searchCacheTTL = time.Hour
+	var stored *models.TorznabSearchCacheEntry
+	service.searchCache = &fakeSearchCache{
+		storeFn: func(_ context.Context, entry *models.TorznabSearchCacheEntry) error {
+			stored = entry
+			return nil
+		},
+	}
+	service.searchExecutor = func(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
+		results := []Result{{
+			IndexerID: indexers[0].ID,
+			Tracker:   indexers[0].Name,
+			Title:     "Example",
+			GUID:      "guid-1",
+			Link:      "http://example/1",
+		}}
+		coverage := make([]int, 0, len(indexers))
+		for _, idx := range indexers {
+			coverage = append(coverage, idx.ID)
+		}
+		return results, coverage, context.DeadlineExceeded
+	}
+
+	req := &TorznabSearchRequest{Query: "Example", Categories: []int{CategoryTV}}
+	resp, err := service.Search(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected response")
+	}
+	if resp.Partial {
+		t.Fatal("expected non-partial response when all coverage complete")
+	}
+	if stored == nil {
+		t.Fatal("expected cache entry to be stored")
+	}
+	if !slices.Equal(stored.IndexerIDs, []int{1, 2}) {
+		t.Fatalf("stored coverage mismatch: %+v", stored.IndexerIDs)
+	}
+}
+
+func TestSearchCachesPartialCoverageAfterDeadline(t *testing.T) {
+	store := &mockTorznabIndexerStore{
+		indexers: []*models.TorznabIndexer{
+			{ID: 1, Name: "IndexerOne", Enabled: true},
+			{ID: 2, Name: "IndexerTwo", Enabled: true},
+			{ID: 3, Name: "IndexerThree", Enabled: true},
+		},
+	}
+	service := NewService(store)
+	service.searchCacheEnabled = true
+	service.searchCacheTTL = time.Hour
+	var stored *models.TorznabSearchCacheEntry
+	service.searchCache = &fakeSearchCache{
+		storeFn: func(_ context.Context, entry *models.TorznabSearchCacheEntry) error {
+			stored = entry
+			return nil
+		},
+	}
+	service.searchExecutor = func(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
+		results := []Result{{
+			IndexerID: indexers[0].ID,
+			Tracker:   indexers[0].Name,
+			Title:     "Example",
+			GUID:      "guid-1",
+			Link:      "http://example/1",
+		}}
+		coverage := []int{indexers[0].ID, indexers[1].ID}
+		return results, coverage, context.DeadlineExceeded
+	}
+
+	req := &TorznabSearchRequest{Query: "Example", Categories: []int{CategoryTV}}
+	resp, err := service.Search(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected response")
+	}
+	if !resp.Partial {
+		t.Fatal("expected partial response when coverage incomplete")
+	}
+	if stored == nil {
+		t.Fatal("expected cache entry to be stored")
+	}
+	if !slices.Equal(stored.IndexerIDs, []int{1, 2}) {
+		t.Fatalf("stored coverage mismatch: %+v", stored.IndexerIDs)
+	}
+}
+
+func (f *fakeSearchCache) Stats(context.Context) (*models.TorznabSearchCacheStats, error) {
+	return nil, nil
+}
+
+func (f *fakeSearchCache) RecentSearches(context.Context, string, int) ([]*models.TorznabRecentSearch, error) {
+	return nil, nil
+}
+
+func (f *fakeSearchCache) UpdateSettings(context.Context, int) (*models.TorznabSearchCacheSettings, error) {
+	return nil, nil
 }
 
 func TestBuildSearchParams(t *testing.T) {
@@ -1017,7 +1288,7 @@ func TestSearchMultipleIndexersSkipsRateLimitedIndexers(t *testing.T) {
 	service.rateLimiter = NewRateLimiter(time.Millisecond)
 	service.rateLimiter.SetCooldown(1, time.Now().Add(time.Minute))
 
-	_, err := service.searchMultipleIndexers(context.Background(), store.indexers, url.Values{"q": {"test"}}, nil)
+	_, _, err := service.searchMultipleIndexers(context.Background(), store.indexers, url.Values{"q": {"test"}}, nil)
 	if err == nil {
 		t.Fatalf("expected error when all available indexers fail")
 	}
@@ -1043,7 +1314,7 @@ func TestSearchMultipleIndexersAllRateLimited(t *testing.T) {
 	service.rateLimiter.SetCooldown(1, time.Now().Add(time.Minute))
 	service.rateLimiter.SetCooldown(2, time.Now().Add(2*time.Minute))
 
-	_, err := service.searchMultipleIndexers(context.Background(), store.indexers, url.Values{"q": {"test"}}, nil)
+	_, _, err := service.searchMultipleIndexers(context.Background(), store.indexers, url.Values{"q": {"test"}}, nil)
 	if err == nil || !strings.Contains(err.Error(), "all indexers are currently rate-limited") {
 		t.Fatalf("expected all rate-limited error, got %v", err)
 	}

@@ -295,8 +295,8 @@ type AsyncTorrentAnalysis struct {
 type WebhookCheckRequest struct {
 	// TorrentName is the release name as announced (required)
 	TorrentName string `json:"torrentName"`
-	// InstanceID is the target instance to check against (required - must match the instance where autobrr will download)
-	InstanceID int `json:"instanceId"`
+	// InstanceIDs optionally limits the scan to the requested instances; omit or pass an empty array to search all instances.
+	InstanceIDs []int `json:"instanceIds,omitempty"`
 	// Size is the total torrent size in bytes (optional - enables size validation if provided)
 	Size uint64 `json:"size,omitempty"`
 	// FindIndividualEpisodes overrides the default behavior when matching season packs vs episodes.
@@ -324,14 +324,16 @@ type WebhookCheckResponse struct {
 
 // AutobrrApplyRequest represents autobrr pushing a torrent directly to qui for application.
 type AutobrrApplyRequest struct {
-	TorrentData     string   `json:"torrentData"`
-	InstanceID      int      `json:"instanceId"`
-	Category        string   `json:"category,omitempty"`
-	Tags            []string `json:"tags,omitempty"`
-	IgnorePatterns  []string `json:"ignorePatterns,omitempty"`
-	StartPaused     *bool    `json:"startPaused,omitempty"`
-	AddCrossSeedTag *bool    `json:"addCrossSeedTag,omitempty"`
-	SkipIfExists    *bool    `json:"skipIfExists,omitempty"`
+	TorrentData string `json:"torrentData"`
+	// InstanceIDs optionally scopes the apply request to specific instances; omit or pass an empty array to target all matches.
+	InstanceIDs    []int    `json:"instanceIds,omitempty"`
+	Category       string   `json:"category,omitempty"`
+	Tags           []string `json:"tags,omitempty"`
+	IgnorePatterns []string `json:"ignorePatterns,omitempty"`
+	StartPaused    *bool    `json:"startPaused,omitempty"`
+	// AddCrossSeedTag controls whether qui should apply the cross-seed tag automatically; defaults to true.
+	AddCrossSeedTag *bool `json:"addCrossSeedTag,omitempty"`
+	SkipIfExists    *bool `json:"skipIfExists,omitempty"`
 	// FindIndividualEpisodes overrides the automation-level episode matching behavior when set.
 	FindIndividualEpisodes *bool `json:"findIndividualEpisodes,omitempty"`
 }
