@@ -502,9 +502,10 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   }, [])
 
   const handleRenameFileClick = useCallback((filePath: string) => {
+    if (incognitoMode) return
     setRenameFilePath(filePath)
     setShowRenameFileDialog(true)
-  }, [])
+  }, [incognitoMode])
 
   // Handle rename file
   const handleRenameFileConfirm = useCallback(({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
@@ -523,7 +524,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     const folderSet = new Set<string>()
     if (files) {
       files.forEach(file => {
-        const parts = file.name.split('/')
+        const parts = file.name.split('/').filter(Boolean)
         if (parts.length <= 1) return
 
         // Build all folder paths progressively
@@ -1226,16 +1227,16 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             : `${files.length} file${files.length !== 1 ? "s" : ""}`}
                         </span>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setShowRenameFolderDialog(true)}
-                          disabled={renameFolderMutation.isPending || !files || files.length === 0}
-                        >
-                          <FolderPen className="h-4 w-4 mr-2" />
-                          Rename Folder
-                        </Button>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setShowRenameFolderDialog(true)}
+                              disabled={incognitoMode || renameFolderMutation.isPending || !files || files.length === 0}
+                            >
+                              <FolderPen className="h-4 w-4 mr-2" />
+                              Rename Folder
+                            </Button>
                         {supportsFilePriority ? (
                           <>
                             <Button
@@ -1308,7 +1309,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                     size="icon"
                                     className="h-8 w-8"
                                     onClick={() => handleRenameFileClick(file.name)}
-                                    disabled={renameFileMutation.isPending}
+                                    disabled={incognitoMode || renameFileMutation.isPending}
                                     title="Rename file"
                                   >
                                     <Pencil className="h-4 w-4" />
