@@ -65,10 +65,35 @@ export function useCrossSeedSearch(instanceId: number) {
     staleTime: 5 * 60 * 1000,
   })
 
-  const crossSeedIndexerOptions = useMemo(
-    () => sortedEnabledIndexers.map(indexer => ({ id: indexer.id, name: indexer.name })),
-    [sortedEnabledIndexers]
-  )
+  const crossSeedIndexerOptions = useMemo(() => {
+    const allowedIds = crossSeedSearchResponse?.sourceTorrent?.availableIndexers
+    const filteredIds = crossSeedSearchResponse?.sourceTorrent?.filteredIndexers
+    const excludedIds = crossSeedSearchResponse?.sourceTorrent?.excludedIndexers
+
+    let candidateIds: Set<number> | null = null
+    if (allowedIds && allowedIds.length > 0) {
+      candidateIds = new Set(allowedIds)
+    } else if (filteredIds && filteredIds.length > 0) {
+      candidateIds = new Set(filteredIds)
+    }
+
+    const excludedIdSet = excludedIds
+      ? new Set(
+          Object.keys(excludedIds)
+            .map(id => Number(id))
+            .filter(id => !Number.isNaN(id))
+        )
+      : null
+
+    return sortedEnabledIndexers
+      .filter(indexer => (!candidateIds || candidateIds.has(indexer.id)) && (!excludedIdSet || !excludedIdSet.has(indexer.id)))
+      .map(indexer => ({ id: indexer.id, name: indexer.name }))
+  }, [
+    crossSeedSearchResponse?.sourceTorrent?.availableIndexers,
+    crossSeedSearchResponse?.sourceTorrent?.filteredIndexers,
+    crossSeedSearchResponse?.sourceTorrent?.excludedIndexers,
+    sortedEnabledIndexers,
+  ])
 
   const crossSeedIndexerNameMap = useMemo(() => {
     const map: Record<number, string> = {}

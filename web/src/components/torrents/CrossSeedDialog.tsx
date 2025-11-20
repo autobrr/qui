@@ -533,6 +533,7 @@ const IndexerCheckboxItem = memo(({
       key={option.id}
       checked={isChecked}
       onCheckedChange={handleChange}
+      onSelect={(event) => event.preventDefault()} // keep menu open for multi-select
     >
       {option.name}
     </DropdownMenuCheckboxItem>
@@ -555,7 +556,10 @@ const CrossSeedScopeSelector = memo(({
 }: CrossSeedScopeSelectorProps) => {
   const total = indexerOptions.length
   const selectedCount = selectedIndexerIds.length
-  const excludedCount = excludedIndexerIds.length
+  const excludedCount = useMemo(
+    () => excludedIndexerIds.filter(id => indexerOptions.some(option => option.id === id)).length,
+    [excludedIndexerIds, indexerOptions]
+  )
   const disableCustomSelection = total === 0
   const filteringInProgress = !contentFilteringCompleted
   const scopeSearchDisabled = filteringInProgress || isSearching || (indexerMode === "custom" && selectedCount === 0)
@@ -563,12 +567,10 @@ const CrossSeedScopeSelector = memo(({
   // Calculate the actual count of indexers that will be used for search
   const searchIndexerCount = useMemo(() => {
     if (indexerMode === "all") {
-      return Math.max(0, total - excludedCount)
+      return total
     }
-    // For custom mode, exclude any selected indexers that are also excluded
-    const availableSelected = selectedIndexerIds.filter(id => !excludedIndexerIds.includes(id))
-    return availableSelected.length
-  }, [indexerMode, total, excludedCount, selectedIndexerIds, excludedIndexerIds])
+    return selectedCount
+  }, [indexerMode, total, selectedCount])
 
   const statusText = useMemo(() => {
     const suffix = total === 1 ? "indexer" : "indexers"
@@ -673,8 +675,20 @@ const CrossSeedScopeSelector = memo(({
                 <DropdownMenuSeparator />
                 {indexerItems}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={onSelectAllIndexers} className="text-xs">Select all</DropdownMenuItem>
-                <DropdownMenuItem onClick={onClearIndexerSelection} className="text-xs">Clear selection</DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={(event) => event.preventDefault()}
+                  onClick={onSelectAllIndexers}
+                  className="text-xs"
+                >
+                  Select all
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={(event) => event.preventDefault()}
+                  onClick={onClearIndexerSelection}
+                  className="text-xs"
+                >
+                  Clear selection
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
