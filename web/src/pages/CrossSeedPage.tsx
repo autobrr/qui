@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
@@ -190,8 +191,6 @@ export function CrossSeedPage() {
   const [showSearchTags, setShowSearchTags] = useState(false)
   const [showAutomationInstances, setShowAutomationInstances] = useState(false)
   const [rssRunsOpen, setRssRunsOpen] = useState(false)
-  const [rssAutomationOpen, setRssAutomationOpen] = useState(true)
-  const [seededSearchOpen, setSeededSearchOpen] = useState(true)
   const [now, setNow] = useState(() => Date.now())
   const formatDateValue = useCallback((value?: string | Date | null) => {
     if (!value) {
@@ -456,19 +455,6 @@ export function CrossSeedPage() {
     },
   })
 
-  const updateGlobalSettingsMutation = useMutation({
-    mutationFn: (payload: CrossSeedAutomationSettings) => api.updateCrossSeedSettings(payload),
-    onSuccess: (data) => {
-      toast.success("Global settings updated")
-      // Update the cache and invalidate to ensure fresh data
-      queryClient.setQueryData(["cross-seed", "settings"], data)
-      queryClient.invalidateQueries({ queryKey: ["cross-seed", "settings"] })
-    },
-    onError: (error: Error) => {
-      toast.error(error.message)
-    },
-  })
-
   const triggerRunMutation = useMutation({
     mutationFn: (payload: { limit?: number; dryRun?: boolean }) => api.triggerCrossSeedRun(payload),
     onSuccess: () => {
@@ -484,27 +470,11 @@ export function CrossSeedPage() {
     },
   })
 
-  const handleGlobalSettingsSave = () => {
-    if (ignorePatternError) {
-      setValidationErrors(prev => ({ ...prev, ignorePatterns: ignorePatternError }))
-      return
-    }
-    if (validationErrors.ignorePatterns) {
-      setValidationErrors(prev => ({ ...prev, ignorePatterns: "" }))
-    }
-    const payload = buildSettingsPayload()
-    if (!payload) return
-
-    updateGlobalSettingsMutation.mutate(payload)
-  }
-
-  const handleAutomationSave = () => {
-    // Clear previous validation errors except ignorePatterns if present
+  const handleSaveAll = () => {
     setValidationErrors(prev => ({ ...prev, runIntervalMinutes: "" }))
 
-    // Validate RSS run interval
     if (automationForm.runIntervalMinutes < MIN_RSS_INTERVAL_MINUTES) {
-      setValidationErrors({ runIntervalMinutes: `Must be at least ${MIN_RSS_INTERVAL_MINUTES} minutes` })
+      setValidationErrors(prev => ({ ...prev, runIntervalMinutes: `Must be at least ${MIN_RSS_INTERVAL_MINUTES} minutes` }))
       return
     }
 
@@ -512,21 +482,7 @@ export function CrossSeedPage() {
       setValidationErrors(prev => ({ ...prev, ignorePatterns: ignorePatternError }))
       return
     }
-    if (validationErrors.ignorePatterns) {
-      setValidationErrors(prev => ({ ...prev, ignorePatterns: "" }))
-    }
 
-    const payload = buildSettingsPayload()
-    if (!payload) return
-
-    updateSettingsMutation.mutate(payload)
-  }
-
-  const handleCompletionSave = () => {
-    if (ignorePatternError) {
-      setValidationErrors(prev => ({ ...prev, ignorePatterns: ignorePatternError }))
-      return
-    }
     if (validationErrors.ignorePatterns) {
       setValidationErrors(prev => ({ ...prev, ignorePatterns: "" }))
     }
@@ -691,11 +647,6 @@ export function CrossSeedPage() {
     })
   }
 
-  const runSummary = useMemo(() => {
-    if (!latestRun) return "No runs yet"
-    return `${latestRun.status.toUpperCase()} • Added ${latestRun.torrentsAdded} / Failed ${latestRun.torrentsFailed} • ${formatDateValue(latestRun.startedAt)}`
-  }, [latestRun, formatDateValue])
-
   const estimatedCompletionInfo = useMemo(() => {
     if (!activeSearchRun) {
       return null
@@ -713,11 +664,92 @@ export function CrossSeedPage() {
     return { eta, remaining, interval }
   }, [activeSearchRun])
 
+  const automationEnabled = formInitialized ? automationForm.enabled : settings?.enabled ?? false
+  const completionEnabled = completionFormInitialized
+    ? completionForm.enabled
+    : settings?.completion?.enabled ?? false
+
+  const enabledIndexerCount = useMemo(
+    () => (indexers ?? []).filter(indexer => indexer.enabled).length,
+    [indexers]
+  )
+
+  const searchInstanceName = useMemo(
+    () => instances?.find(instance => instance.id === searchInstanceId)?.name ?? "No instance selected",
+    [instances, searchInstanceId]
+  )
+
+  const ignorePatternCount = useMemo(
+    () => normalizeIgnorePatterns(globalSettings.ignorePatterns).length,
+    [globalSettings.ignorePatterns]
+  )
+
+  const automationStatusLabel = automationRunning ? "RUNNING" : automationEnabled ? "SCHEDULED" : "DISABLED"
+  const automationStatusVariant: "default" | "secondary" | "destructive" | "outline" =
+    automationRunning ? "default" : automationEnabled ? "secondary" : "destructive"
+  const searchStatusLabel = searchRunning ? "RUNNING" : "IDLE"
+  const searchStatusVariant: "default" | "secondary" | "destructive" | "outline" =
+    searchRunning ? "default" : "secondary"
+
+  const groupedRuns = useMemo(() => {
+    const result = {
+      scheduled: [] as CrossSeedRun[],
+      manual: [] as CrossSeedRun[],
+      other: [] as CrossSeedRun[],
+    }
+    if (!runs) {
+      return result
+    }
+    for (const run of runs) {
+      if (run.triggeredBy === "scheduler") {
+        result.scheduled.push(run)
+      } else if (run.triggeredBy === "api") {
+        result.manual.push(run)
+      } else {
+        result.other.push(run)
+      }
+    }
+    return result
+  }, [runs])
+
+  const getRunStatusVariant = (status: CrossSeedRun["status"]) => {
+    switch (status) {
+      case "success":
+        return "default"
+      case "running":
+      case "partial":
+        return "secondary"
+      case "failed":
+        return "destructive"
+      case "pending":
+      default:
+        return "outline"
+    }
+  }
+
+  const formatTriggerLabel = (triggeredBy: string) => {
+    if (triggeredBy === "scheduler") return "Scheduled"
+    if (triggeredBy === "api") return "Manual"
+    return triggeredBy || "Unknown"
+  }
+
   return (
     <div className="space-y-6 p-6 pb-16">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Cross-Seed</h1>
-        <p className="text-sm text-muted-foreground">Identify compatible torrents and automate cross-seeding across your instances.</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Cross-Seed</h1>
+          <p className="text-sm text-muted-foreground">
+            Identify compatible torrents and automate cross-seeding across your instances.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <Badge variant={automationEnabled ? "default" : "secondary"}>
+            Automation {automationEnabled ? "on" : "off"}
+          </Badge>
+          <Badge variant={completionEnabled ? "default" : "secondary"}>
+            On completion {completionEnabled ? "on" : "off"}
+          </Badge>
+        </div>
       </div>
 
       {!hasEnabledIndexers && (
@@ -736,18 +768,112 @@ export function CrossSeedPage() {
         </Alert>
       )}
 
-      <Collapsible open={rssAutomationOpen} onOpenChange={setRssAutomationOpen}>
-        <Card className={!rssAutomationOpen ? "hover:bg-muted/50 transition-colors" : ""}>
-          <CollapsibleTrigger className="block w-full text-left cursor-pointer px-6">
-            <div className="flex items-center justify-between gap-4 py-1.5">
-              <div className="flex-1 space-y-1.5">
-                <CardTitle>RSS Automation</CardTitle>
-                <CardDescription>Poll tracker RSS feeds on a fixed interval and add matching cross-seeds automatically.</CardDescription>
-              </div>
-              <ChevronDown className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${rssAutomationOpen ? "rotate-180" : ""}`} />
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <Card className="h-full">
+          <CardHeader className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="text-base">RSS automation</CardTitle>
+              <Badge variant={automationStatusVariant}>
+                {automationStatusLabel}
+              </Badge>
             </div>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
+            <CardDescription>Hands-free polling of tracker RSS feeds using your rules.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Next run</span>
+              <span className="font-medium">
+                {automationEnabled
+                  ? automationStatus?.nextRunAt
+                    ? formatDateValue(automationStatus.nextRunAt)
+                    : "—"
+                  : "Disabled"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Manual trigger</span>
+              <span className="font-medium">{manualCooldownActive ? `Cooldown ${manualCooldownDisplay}` : "Ready"}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Last run</span>
+              <span className="font-medium">
+                {latestRun ? `${latestRun.status.toUpperCase()} • ${formatDateValue(latestRun.startedAt)}` : "No runs yet"}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="h-full">
+          <CardHeader className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="text-base">Seeded torrent search</CardTitle>
+              <Badge variant={searchStatusVariant}>{searchStatusLabel}</Badge>
+            </div>
+            <CardDescription>Deep scan the torrents you already seed to backfill gaps.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Instance</span>
+              <span className="font-medium truncate text-right max-w-[180px]">{searchInstanceName}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Recent additions</span>
+              <span className="font-medium">{recentAddedResults.length}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Now</span>
+              <span className="font-medium">
+                {searchRunning
+                  ? activeSearchRun
+                    ? `${activeSearchRun.processed}/${activeSearchRun.totalTorrents ?? "?"} scanned`
+                    : "Running..."
+                  : "Idle"}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="h-full">
+          <CardHeader className="space-y-2">
+            <CardTitle className="text-base">Cross-seed health</CardTitle>
+            <CardDescription>Keep the prerequisites and safeguards in view.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Indexers</span>
+              <span className="font-medium">
+                {enabledIndexerCount} / {indexers?.length ?? 0} enabled
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Search cache</span>
+              <span className="font-medium">
+                {searchCacheStats
+                  ? `${searchCacheStats.entries} entries • TTL ${searchCacheStats.ttlMinutes}m`
+                  : "Loading..."}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Ignore patterns</span>
+              <span className="font-medium">{ignorePatternCount || "None"}</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Tabs defaultValue="automation" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-3 gap-2 md:w-auto">
+          <TabsTrigger value="automation">Automation</TabsTrigger>
+          <TabsTrigger value="search">Seeded search</TabsTrigger>
+          <TabsTrigger value="global">Global rules</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="automation" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>RSS Automation</CardTitle>
+              <CardDescription>Poll tracker RSS feeds on a fixed interval and add matching cross-seeds automatically.</CardDescription>
+            </CardHeader>
             <CardContent className="space-y-4">
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -957,50 +1083,62 @@ export function CrossSeedPage() {
 
           <Separator />
 
-          <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium">Status</p>
-              <Badge variant={automationStatus?.running ? "default" : "secondary"}>
-                {automationStatus?.running ? "RUNNING" : "IDLE"}
-              </Badge>
-            </div>
-            {automationStatus?.running ? (
-              <p className="text-xs text-muted-foreground">RSS automation run in progress</p>
-            ) : (
-              <div className="text-xs">
-                <span className="text-muted-foreground">Next run:</span>{" "}
-                <span className="font-medium">{automationStatus?.nextRunAt ? formatDateValue(automationStatus.nextRunAt) : "—"}</span>
-              </div>
-            )}
-          </div>
-
-          <Collapsible open={rssRunsOpen} onOpenChange={setRssRunsOpen} className="rounded-md border mb-4">
-            <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium hover:cursor-pointer">
-              <span>Recent RSS runs</span>
+          <Collapsible open={rssRunsOpen} onOpenChange={setRssRunsOpen} className="rounded-md border px-3 py-3 text-sm">
+            <CollapsibleTrigger className="flex w-full items-center justify-between text-sm font-medium hover:cursor-pointer">
+              <span className="flex items-center gap-2">
+                Recent RSS runs
+                <ChevronDown className={`h-4 w-4 transition-transform ${rssRunsOpen ? "" : "-rotate-90"}`} />
+              </span>
               <Badge variant="outline">{runs?.length ?? 0}</Badge>
             </CollapsibleTrigger>
-            <CollapsibleContent className="px-3 pb-3 pt-1 space-y-3 text-sm text-muted-foreground">
-              <p>{runSummary}</p>
+            <CollapsibleContent className="pt-2 space-y-3">
               {runs && runs.length > 0 ? (
-                runs.map(run => (
-                  <div key={run.id} className="rounded border p-3 space-y-1">
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="uppercase text-xs">{run.status}</Badge>
-                        <span>{run.triggeredBy}</span>
+                <div className="space-y-3">
+                  {(["scheduled", "manual", "other"] as const).map(group => {
+                    const data = groupedRuns[group]
+                    if (!data || data.length === 0) return null
+                    const title =
+                      group === "scheduled" ? "Scheduled runs" : group === "manual" ? "Manual runs" : "Other triggers"
+                    return (
+                      <div key={group} className="space-y-2">
+                        <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-muted-foreground">
+                          <span>{title}</span>
+                          <Badge variant="outline">{data.length}</Badge>
+                        </div>
+                        <div className="space-y-2">
+                          {data.map(run => (
+                            <div key={run.id} className="rounded border p-3 space-y-2 bg-muted/40">
+                              <div className="flex items-center justify-between text-sm">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant={getRunStatusVariant(run.status)} className="uppercase text-[11px] tracking-wide">
+                                    {run.status}
+                                  </Badge>
+                                  <span className="text-foreground">{formatTriggerLabel(run.triggeredBy)}</span>
+                                </div>
+                                <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                <Badge variant="secondary" className="text-[11px]">
+                                  Added {run.torrentsAdded}
+                                </Badge>
+                                <Badge variant="outline" className="text-[11px]">
+                                  Skipped {run.torrentsSkipped}
+                                </Badge>
+                                <Badge variant={run.torrentsFailed > 0 ? "destructive" : "outline"} className="text-[11px]">
+                                  Failed {run.torrentsFailed}
+                                </Badge>
+                                <span className="text-[11px]">Feed items {run.totalFeedItems}</span>
+                              </div>
+                              {run.message && (
+                                <p className="text-xs text-muted-foreground leading-snug">{run.message}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
-                    </div>
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      <span>Added {run.torrentsAdded}</span>
-                      <span>Skipped {run.torrentsSkipped}</span>
-                      <span>Failed {run.torrentsFailed}</span>
-                    </div>
-                    {run.message && (
-                      <p className="text-xs text-muted-foreground">{run.message}</p>
-                    )}
-                  </div>
-                ))
+                    )
+                  })}
+                </div>
               ) : (
                 <p className="text-xs text-muted-foreground">No RSS automation runs recorded yet.</p>
               )}
@@ -1040,11 +1178,11 @@ export function CrossSeedPage() {
                 )}
               </Tooltip>
               <Button
-                onClick={handleAutomationSave}
+                onClick={handleSaveAll}
                 disabled={updateSettingsMutation.isPending || Boolean(ignorePatternError)}
               >
                 {updateSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save settings
+                Save cross-seed settings
               </Button>
               <Button
                 variant="outline"
@@ -1058,9 +1196,7 @@ export function CrossSeedPage() {
             </div>
           </div>
         </CardFooter>
-          </CollapsibleContent>
-        </Card>
-      </Collapsible>
+          </Card>
 
       <Card>
         <CardHeader>
@@ -1071,8 +1207,9 @@ export function CrossSeedPage() {
           <div className="flex items-center justify-between gap-4">
             <div className="space-y-1">
               <Label htmlFor="completion-enabled">Enable on completion</Label>
-              <p className="text-xs text-muted-foreground">Only runs when qBittorrent reports 100% and passes the filters below.</p>
-              <p className="text-xs text-muted-foreground">Torrents already tagged <span className="font-semibold">cross-seed</span> are skipped automatically.</p>
+              <p className="text-xs text-muted-foreground">
+                Runs when qBittorrent reports 100% and passes the filters below; torrents already tagged <span className="font-semibold">cross-seed</span> are skipped automatically.
+              </p>
             </div>
             <Switch
               id="completion-enabled"
@@ -1124,38 +1261,18 @@ export function CrossSeedPage() {
               <p className="text-xs text-muted-foreground">Skip completion searches when any of these tags are present.</p>
             </div>
           </div>
+          <p className="text-xs text-muted-foreground">Use “Save cross-seed settings” above to persist completion filters.</p>
         </CardContent>
-        <CardFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-            <Button
-              onClick={handleCompletionSave}
-              disabled={updateSettingsMutation.isPending || Boolean(ignorePatternError)}
-            >
-              {updateSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save settings
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => setCompletionForm(DEFAULT_COMPLETION_FORM)}
-            >
-              Reset
-            </Button>
-          </div>
-        </CardFooter>
       </Card>
 
-      <Collapsible open={seededSearchOpen} onOpenChange={setSeededSearchOpen}>
-        <Card className={!seededSearchOpen ? "hover:bg-muted/50 transition-colors" : ""}>
-          <CollapsibleTrigger className="block w-full text-left cursor-pointer px-6">
-            <div className="flex items-center justify-between gap-4 py-1.5">
-              <div className="flex-1 space-y-1.5">
-                <CardTitle>Seeded Torrent Search</CardTitle>
-                <CardDescription>Walk the torrents you already seed on the selected instance, collapse identical content down to the oldest copy, and query Torznab feeds once per unique release while skipping trackers you already have it from.</CardDescription>
-              </div>
-              <ChevronDown className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${seededSearchOpen ? "rotate-180" : ""}`} />
-            </div>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
+        </TabsContent>
+
+        <TabsContent value="search" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Seeded Torrent Search</CardTitle>
+              <CardDescription>Walk the torrents you already seed on the selected instance, collapse identical content down to the oldest copy, and query Torznab feeds once per unique release while skipping trackers you already have it from.</CardDescription>
+            </CardHeader>
             <CardContent className="space-y-4">
           <Alert className="border-destructive/20 bg-destructive/10 text-destructive">
             <AlertTriangle className="h-4 w-4 !text-destructive" />
@@ -1354,18 +1471,18 @@ export function CrossSeedPage() {
 
           <Separator />
 
-          <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium">Status</p>
-              <Badge variant={searchRunning ? "default" : "secondary"}>{searchRunning ? "RUNNING" : "IDLE"}</Badge>
-            </div>
-            {searchStatus?.currentTorrent && (
-              <div className="text-xs">
-                <span className="text-muted-foreground">Currently processing:</span>{" "}
-                <span className="font-medium">{searchStatus.currentTorrent.torrentName}</span>
+          {activeSearchRun && (
+            <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">Status</p>
+                <Badge variant={searchRunning ? "default" : "secondary"}>{searchRunning ? "RUNNING" : "IDLE"}</Badge>
               </div>
-            )}
-            {activeSearchRun ? (
+              {searchStatus?.currentTorrent && (
+                <div className="text-xs">
+                  <span className="text-muted-foreground">Currently processing:</span>{" "}
+                  <span className="font-medium">{searchStatus.currentTorrent.torrentName}</span>
+                </div>
+              )}
               <div className="grid gap-2 text-xs">
                 <div className="flex items-center gap-4">
                   <span className="text-muted-foreground">Progress:</span>
@@ -1377,30 +1494,31 @@ export function CrossSeedPage() {
                     {activeSearchRun.torrentsAdded} added • {activeSearchRun.torrentsSkipped} skipped • {activeSearchRun.torrentsFailed} failed
                   </span>
                 </div>
-              <div className="flex items-center gap-4">
-                <span className="text-muted-foreground">Started:</span>
-                <span className="font-medium">{formatDateValue(activeSearchRun.startedAt)}</span>
-              </div>
-              {estimatedCompletionInfo && (
                 <div className="flex items-center gap-4">
-                  <span className="text-muted-foreground">Est. completion:</span>
-                  <span className="font-medium">
-                    {formatDateValue(estimatedCompletionInfo.eta)}
-                    <span className="text-[10px] text-muted-foreground font-normal ml-2">
-                      ≈ {estimatedCompletionInfo.remaining} torrents remaining @ {estimatedCompletionInfo.interval}s intervals
-                    </span>
-                  </span>
+                  <span className="text-muted-foreground">Started:</span>
+                  <span className="font-medium">{formatDateValue(activeSearchRun.startedAt)}</span>
                 </div>
-              )}
+                {estimatedCompletionInfo && (
+                  <div className="flex items-center gap-4">
+                    <span className="text-muted-foreground">Est. completion:</span>
+                    <span className="font-medium">
+                      {formatDateValue(estimatedCompletionInfo.eta)}
+                      <span className="text-[10px] text-muted-foreground font-normal ml-2">
+                        ≈ {estimatedCompletionInfo.remaining} torrents remaining @ {estimatedCompletionInfo.interval}s intervals
+                      </span>
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">No active run</p>
           )}
-        </div>
 
           <Collapsible open={searchResultsOpen} onOpenChange={setSearchResultsOpen} className="border rounded-md mb-4">
             <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium hover:cursor-pointer">
-              <span>Recent search additions</span>
+              <span className="flex items-center gap-2">
+                Recent search additions
+                <ChevronDown className={`h-4 w-4 transition-transform ${searchResultsOpen ? "" : "-rotate-90"}`} />
+              </span>
               <Badge variant="outline">{recentAddedResults.length}</Badge>
             </CollapsibleTrigger>
             <CollapsibleContent className="px-3 pb-3">
@@ -1409,11 +1527,12 @@ export function CrossSeedPage() {
               ) : (
                 <ul className="space-y-2">
                   {recentAddedResults.map(result => (
-                    <li key={`${result.torrentHash}-${result.processedAt}`} className="flex items-start justify-between gap-3 rounded border px-2 py-2">
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium leading-tight">{result.torrentName}</p>
-                        <p className="text-xs text-muted-foreground">{result.indexerName} • {result.releaseTitle}</p>
-                        {result.message && <p className="text-xs text-muted-foreground">{result.message}</p>}
+                    <li key={`${result.torrentHash}-${result.processedAt}`} className="flex items-start justify-between gap-3 rounded border px-3 py-3 bg-muted/40">
+                      <div className="space-y-1.5 max-w-[80%]">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium leading-tight">{result.torrentName}</p>
+                          <Badge variant="secondary" className="text-[11px]">{result.indexerName || "Indexer"}</Badge>
+                        </div>
                         <p className="text-[10px] text-muted-foreground">{formatDateValue(result.processedAt)}</p>
                       </div>
                       <Badge variant="default">Added</Badge>
@@ -1453,10 +1572,11 @@ export function CrossSeedPage() {
             </Button>
           </div>
         </CardFooter>
-          </CollapsibleContent>
-        </Card>
-      </Collapsible>
+          </Card>
 
+        </TabsContent>
+
+        <TabsContent value="global" className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>Global Cross-Seed Settings</CardTitle>
@@ -1595,18 +1715,20 @@ export function CrossSeedPage() {
               )}
             </p>
           </div>
-      </CardContent>
-        <CardFooter className="flex items-center gap-3">
+        </CardContent>
+        <CardFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
           <Button
-            onClick={handleGlobalSettingsSave}
-            disabled={updateGlobalSettingsMutation.isPending || Boolean(ignorePatternError)}
-            >
-              {updateGlobalSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save settings
-            </Button>
+            onClick={handleSaveAll}
+            disabled={updateSettingsMutation.isPending || Boolean(ignorePatternError)}
+          >
+            {updateSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Save cross-seed settings
+          </Button>
         </CardFooter>
       </Card>
 
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
