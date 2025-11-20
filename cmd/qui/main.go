@@ -431,10 +431,11 @@ func RunMigrateCommand() *cobra.Command {
 	command.RunE = func(cmd *cobra.Command, args []string) error {
 		source := args[0]
 		opts := clientmigrate.Options{
-			Source:    source,
-			SourceDir: sourceDir,
-			QbitDir:   qbitDir,
-			DryRun:    dryRun,
+			Source:     source,
+			SourceDir:  sourceDir,
+			QbitDir:    qbitDir,
+			DryRun:     dryRun,
+			SkipBackup: skipBackup,
 		}
 
 		mig := clientmigrate.New(opts)

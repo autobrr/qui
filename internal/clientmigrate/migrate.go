@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/mholt/archives"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 )
 
 type Options struct {
@@ -56,7 +56,7 @@ func (m Migrater) Migrate(ctx context.Context) error {
 
 	// Backup data before running
 	if !skipBackup {
-		log.Print("prepare to backup torrent data before import..\n")
+		log.Info().Msg("prepare to backup torrent data before import..")
 
 		timeStamp := time.Now().Format("20060102150405")
 
@@ -64,9 +64,9 @@ func (m Migrater) Migrate(ctx context.Context) error {
 		qbitBackupArchive := filepath.Join("qbt_backup", "qBittorrent_backup_"+timeStamp+".tar.gz")
 
 		if dryRun {
-			log.Printf("dry-run: creating %s backup of directory: %s to %s ...\n", source, sourceDir, sourceBackupArchive)
+			log.Info().Msgf("dry-run: creating %s backup of directory: %s to %s ...", source, sourceDir, sourceBackupArchive)
 		} else {
-			log.Printf("creating %s backup of directory: %s to %s ...\n", source, sourceDir, sourceBackupArchive)
+			log.Info().Msgf("creating %s backup of directory: %s to %s ...", source, sourceDir, sourceBackupArchive)
 
 			// map files on disk to their paths in the archive using default settings (second arg)
 			files, err := archives.FilesFromDisk(ctx, nil, map[string]string{
@@ -96,9 +96,9 @@ func (m Migrater) Migrate(ctx context.Context) error {
 		}
 
 		if dryRun {
-			log.Printf("dry-run: creating qBittorrent backup of directory: %s to %s ...\n", qbitDir, qbitBackupArchive)
+			log.Info().Msgf("dry-run: creating qBittorrent backup of directory: %s to %s ...", qbitDir, qbitBackupArchive)
 		} else {
-			log.Printf("creating qBittorrent backup of directory: %s to %s ...\n", qbitDir, qbitBackupArchive)
+			log.Info().Msgf("creating qBittorrent backup of directory: %s to %s ...", qbitDir, qbitBackupArchive)
 
 			// map files on disk to their paths in the archive using default settings (second arg)
 			files, err := archives.FilesFromDisk(ctx, nil, map[string]string{
@@ -127,16 +127,16 @@ func (m Migrater) Migrate(ctx context.Context) error {
 			}
 		}
 
-		log.Print("Backup completed!\n")
+		log.Print("Backup completed!")
 	}
 
 	start := time.Now()
 
 	if dryRun {
-		log.Printf("dry-run: preparing to import torrents from: %s dir: %s\n", source, sourceDir)
-		log.Println("dry-run: no data will be written")
+		log.Info().Msgf("dry-run: preparing to import torrents from: %s dir: %s", source, sourceDir)
+		log.Info().Msg("dry-run: no data will be written")
 	} else {
-		log.Printf("preparing to import torrents from: %s dir: %s\n", source, sourceDir)
+		log.Info().Msgf("preparing to import torrents from: %s dir: %s", source, sourceDir)
 	}
 
 	if err := imp.Migrate(); err != nil {
@@ -145,7 +145,7 @@ func (m Migrater) Migrate(ctx context.Context) error {
 
 	elapsed := time.Since(start)
 
-	log.Printf("\nImport finished in: %s\n", elapsed)
+	log.Info().Msgf("Import finished in: %s", elapsed)
 
 	return nil
 }

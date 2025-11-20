@@ -1,7 +1,6 @@
 package clientmigrate
 
 import (
-	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/anacrolix/torrent/metainfo"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 	"github.com/zeebo/bencode"
 )
 
@@ -51,13 +51,13 @@ func (i *RTorrentImport) Migrate() error {
 	}
 
 	if len(matches) == 0 {
-		log.Printf("Found 0 files to process in: %s\n", torrentsSessionDir)
+		log.Info().Msgf("Found 0 files to process in: %s", torrentsSessionDir)
 		return nil
 	}
 
 	totalJobs := len(matches)
 
-	log.Printf("Total torrents to process: %d\n", totalJobs)
+	log.Info().Msgf("Total torrents to process: %d", totalJobs)
 
 	positionNum := 0
 	for _, match := range matches {
@@ -69,37 +69,39 @@ func (i *RTorrentImport) Migrate() error {
 
 		// If file already exists, skip
 		if _, err = os.Stat(torrentOutFile); err == nil {
-			log.Printf("(%d/%d) %s Torrent already exists, skipping\n", positionNum, totalJobs, torrentOutFile)
+			log.Error().Err(err).Msgf("(%d/%d) %s Torrent already exists, skipping", positionNum, totalJobs, torrentOutFile)
 			continue
 		}
 
 		if i.opts.DryRun {
-			log.Printf("dry-run: (%d/%d) successfully imported: %s\n", positionNum, totalJobs, torrentID)
+			log.Info().Msgf("dry-run: (%d/%d) successfully imported: %s", positionNum, totalJobs, torrentID)
 			continue
 		}
 
 		file, err := metainfo.LoadFromFile(match)
 		if err != nil {
-			log.Printf("Could not load torrent file %s for %s\n", match, torrentID)
+			log.Error().Err(err).Msgf("Could not load torrent file %s for %s", match, torrentID)
 			continue
 		}
 
 		metaInfo, err := file.UnmarshalInfo()
 		if err != nil {
-			log.Printf("Could not unmarshal torrent file %s for %s\n", match, torrentID)
+			log.Error().Err(err).Msgf("Could not unmarshal torrent file %s for %s", match, torrentID)
 			continue
 		}
 
 		// check for FILE.torrent.libtorrent_resume
 		resumeFile, err := i.decodeRTorrentLibTorrentResumeFile(match)
 		if err != nil {
-			return err
+			log.Error().Err(err).Msgf("Could not decode rtorrent libtorrent resume file %s for %s", match, torrentID)
+			continue
 		}
 
 		// check for FILE.torrent.rtorrent
-		rtFile, err := i.decodeRTorrentFile(match + rtStateFileExtension)
+		rtFile, err := i.decodeRTorrentFile(match)
 		if err != nil {
-			return err
+			log.Error().Err(err).Msgf("Could not decode rtorrent state file %s for %s", match, torrentID)
+			continue
 		}
 
 		newFastResume := qbittorrent.Fastresume{
@@ -141,7 +143,7 @@ func (i *RTorrentImport) Migrate() error {
 			QbtTags:                   []string{},
 			SavePath:                  rtFile.Directory,
 			SeedMode:                  0,
-			SeedingTime:               0,
+			SeedingTime:               getActiveTime(rtFile.Custom.SeedingTime),
 			SequentialDownload:        0,
 			ShareMode:                 0,
 			StopWhenReady:             0,
@@ -194,19 +196,19 @@ func (i *RTorrentImport) Migrate() error {
 		// copy torrent file
 		fastResumeOutFile := filepath.Join(i.opts.QbitDir, torrentID+".fastresume")
 		if err = newFastResume.Encode(fastResumeOutFile); err != nil {
-			log.Printf("Could not create qBittorrent fastresume file %s error: %q\n", fastResumeOutFile, err)
+			log.Error().Err(err).Msgf("Could not create qBittorrent fastresume file %s error: %q", fastResumeOutFile, err)
 			return err
 		}
 
 		if err = CopyFile(match, torrentOutFile); err != nil {
-			log.Printf("Could copy qBittorrent torrent file %s error %q\n", torrentOutFile, err)
+			log.Error().Err(err).Msgf("Could copy qBittorrent torrent file %s error %q", torrentOutFile, err)
 			return err
 		}
 
-		log.Printf("(%d/%d) successfully imported: %s %s\n", positionNum, totalJobs, torrentID, metaInfo.Name)
+		log.Info().Msgf("(%d/%d) successfully imported: %s %s", positionNum, totalJobs, torrentID, metaInfo.Name)
 	}
 
-	log.Printf("(%d/%d) successfully imported torrents!\n", positionNum, totalJobs)
+	log.Info().Msgf("(%d/%d) successfully imported torrents!", positionNum, totalJobs)
 
 	return nil
 }
@@ -258,7 +260,7 @@ func (i *RTorrentImport) decodeRTorrentLibTorrentResumeFile(path string) (*RTorr
 }
 
 func (i *RTorrentImport) decodeRTorrentFile(path string) (*RTorrentTorrentFile, error) {
-	dat, err := os.ReadFile(path)
+	dat, err := os.ReadFile(path + rtStateFileExtension)
 	if err != nil {
 		return nil, err
 	}
