@@ -233,19 +233,17 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
-	cp.mu.RLock()
-	handler := cp.completionHandler
-	cp.mu.RUnlock()
-	if handler != nil {
-		client.SetTorrentCompletionHandler(handler)
-	}
-
 	// Store in pool (need write lock for this)
 	cp.mu.Lock()
 	cp.clients[instanceID] = client
 	// Reset failure tracking on successful connection
 	cp.resetFailureTrackingLocked(instanceID)
+	handler := cp.completionHandler
 	cp.mu.Unlock()
+
+	if handler != nil {
+		client.SetTorrentCompletionHandler(handler)
+	}
 
 	// Start the sync manager
 	if err := client.StartSyncManager(ctx); err != nil {
