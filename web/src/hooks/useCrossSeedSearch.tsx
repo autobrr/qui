@@ -55,7 +55,6 @@ export function useCrossSeedSearch(instanceId: number) {
   const [crossSeedIndexerSelection, setCrossSeedIndexerSelection] = useState<number[]>([])
   const [crossSeedHasSearched, setCrossSeedHasSearched] = useState(false)
   const [crossSeedRefreshCooldownUntil, setCrossSeedRefreshCooldownUntil] = useState(0)
-  const [lastSourceTorrent, setLastSourceTorrent] = useState<CrossSeedTorrentSearchResponse["sourceTorrent"] | null>(null)
 
   const crossSeedPollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const crossSeedPollingInFlightRef = useRef(false)
@@ -66,53 +65,10 @@ export function useCrossSeedSearch(instanceId: number) {
     staleTime: 5 * 60 * 1000,
   })
 
-  useEffect(() => {
-    if (crossSeedSearchResponse?.sourceTorrent) {
-      setLastSourceTorrent(crossSeedSearchResponse.sourceTorrent)
-    }
-  }, [crossSeedSearchResponse?.sourceTorrent])
-
-  const crossSeedIndexerOptions = useMemo(() => {
-    const sourceTorrent = crossSeedSearchResponse?.sourceTorrent ?? lastSourceTorrent
-    if (!sourceTorrent) {
-      return sortedEnabledIndexers.map(indexer => ({ id: indexer.id, name: indexer.name }))
-    }
-
-    if (sourceTorrent.availableIndexers && sourceTorrent.filteredIndexers) {
-      const targetIndexerIds = crossSeedHasSearched ? sourceTorrent.filteredIndexers : sourceTorrent.availableIndexers
-      const filteredIds = new Set(targetIndexerIds)
-      return sortedEnabledIndexers
-        .filter(indexer => filteredIds.has(indexer.id))
-        .map(indexer => ({ id: indexer.id, name: indexer.name }))
-    }
-
-    if (sourceTorrent.filteredIndexers && sourceTorrent.filteredIndexers.length > 0) {
-      const filteredIds = new Set(sourceTorrent.filteredIndexers)
-      return sortedEnabledIndexers
-        .filter(indexer => filteredIds.has(indexer.id))
-        .map(indexer => ({ id: indexer.id, name: indexer.name }))
-    }
-
-    const requiredCaps = sourceTorrent.requiredCaps ?? []
-    const requiredCategories = sourceTorrent.searchCategories ?? []
-
-    const filteredIndexers = sortedEnabledIndexers.filter(indexer => {
-      if (requiredCaps.length === 0 && requiredCategories.length === 0) {
-        return true
-      }
-
-      const indexerCaps = indexer.capabilities ?? []
-      const hasRequiredCaps = requiredCaps.length === 0 || requiredCaps.every(cap => indexerCaps.includes(cap))
-
-      const indexerCategoryIds = (indexer.categories ?? []).map(cat => cat.category_id)
-      const hasRequiredCategories = requiredCategories.length === 0 ||
-        requiredCategories.some(catId => indexerCategoryIds.includes(catId))
-
-      return hasRequiredCaps && hasRequiredCategories
-    })
-
-    return filteredIndexers.map(indexer => ({ id: indexer.id, name: indexer.name }))
-  }, [sortedEnabledIndexers, crossSeedSearchResponse, lastSourceTorrent, crossSeedHasSearched])
+  const crossSeedIndexerOptions = useMemo(
+    () => sortedEnabledIndexers.map(indexer => ({ id: indexer.id, name: indexer.name })),
+    [sortedEnabledIndexers]
+  )
 
   const crossSeedIndexerNameMap = useMemo(() => {
     const map: Record<number, string> = {}
@@ -121,6 +77,14 @@ export function useCrossSeedSearch(instanceId: number) {
     }
     return map
   }, [sortedEnabledIndexers])
+
+  const excludedIndexerIds = useMemo(
+    () =>
+      Object.keys(crossSeedSearchResponse?.sourceTorrent?.excludedIndexers ?? {})
+        .map(id => Number(id))
+        .filter(id => !Number.isNaN(id)),
+    [crossSeedSearchResponse?.sourceTorrent?.excludedIndexers]
+  )
 
   const getCrossSeedResultKey = useCallback(
     (result: CrossSeedTorrentSearchResponse["results"][number], index: number) =>
@@ -142,7 +106,6 @@ export function useCrossSeedSearch(instanceId: number) {
     setCrossSeedApplyResult(null)
     setCrossSeedIndexerMode("all")
     setCrossSeedIndexerSelection([])
-    setLastSourceTorrent(null)
     setCrossSeedHasSearched(false)
   }, [])
 
@@ -176,11 +139,17 @@ export function useCrossSeedSearch(instanceId: number) {
         return
       }
 
-      let resolvedIndexerIds: number[] | undefined
+      let resolvedIndexerIds: number[] | null | undefined
       if (indexerOverride !== undefined) {
-        resolvedIndexerIds = indexerOverride ?? undefined
-      } else if (crossSeedIndexerMode === "custom" && crossSeedIndexerSelection.length > 0) {
+        resolvedIndexerIds = indexerOverride
+      } else if (crossSeedIndexerMode === "custom") {
         resolvedIndexerIds = crossSeedIndexerSelection
+      } else {
+        resolvedIndexerIds = sortedEnabledIndexers.map(indexer => indexer.id)
+      }
+
+      if (Array.isArray(resolvedIndexerIds) && excludedIndexerIds.length > 0) {
+        resolvedIndexerIds = resolvedIndexerIds.filter(id => !excludedIndexerIds.includes(id))
       }
 
       setCrossSeedSearchLoading(true)
@@ -192,7 +161,7 @@ export function useCrossSeedSearch(instanceId: number) {
       void api
         .searchCrossSeedTorrent(instanceId, torrent.hash, {
           findIndividualEpisodes: crossSeedSettings?.findIndividualEpisodes ?? false,
-          indexerIds: resolvedIndexerIds && resolvedIndexerIds.length > 0 ? resolvedIndexerIds : undefined,
+          indexerIds: Array.isArray(resolvedIndexerIds) && resolvedIndexerIds.length > 0 ? resolvedIndexerIds : undefined,
           cacheMode: options?.bypassCache ? "bypass" : undefined,
         })
         .then(response => {
@@ -235,6 +204,8 @@ export function useCrossSeedSearch(instanceId: number) {
       crossSeedIndexerSelection,
       crossSeedSettings?.findIndividualEpisodes,
       getCrossSeedResultKey,
+      excludedIndexerIds,
+      sortedEnabledIndexers,
       instanceId,
     ]
   )

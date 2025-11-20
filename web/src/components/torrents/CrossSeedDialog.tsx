@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
-import { formatBytes } from "@/lib/utils"
+import { formatBytes, formatRelativeTime } from "@/lib/utils"
 import type {
   CrossSeedApplyResponse,
   CrossSeedTorrentSearchResponse,
@@ -38,7 +38,6 @@ import type {
 } from "@/types"
 import { ChevronDown, ChevronRight, Loader2, RefreshCw, SlidersHorizontal } from "lucide-react"
 import { memo, useCallback, useMemo, useState } from "react"
-import { formatRelativeTime } from "@/lib/utils"
 
 type CrossSeedSearchResult = CrossSeedTorrentSearchResponse["results"][number]
 type CrossSeedIndexerOption = {
@@ -138,6 +137,22 @@ const CrossSeedDialogComponent = ({
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [indexerNameMap, sourceTorrent?.excludedIndexers])
 
+  const capabilityFilteredIndexerEntries = useMemo(() => {
+    const available = sourceTorrent?.availableIndexers
+    if (!available || available.length === 0) {
+      return []
+    }
+    const supported = new Set(available)
+    return Object.keys(indexerNameMap)
+      .map(id => Number(id))
+      .filter(id => !Number.isNaN(id) && !supported.has(id))
+      .map(id => ({
+        id,
+        name: indexerNameMap[id] ?? `Indexer ${id}`,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [indexerNameMap, sourceTorrent?.availableIndexers])
+
   const [excludedOpen, setExcludedOpen] = useState(false)
   const [applyResultOpen, setApplyResultOpen] = useState(true)
 
@@ -209,13 +224,25 @@ const CrossSeedDialogComponent = ({
                 onScopeSearch={onScopeSearch}
                 isSearching={isLoading}
               />
-            ) : sourceTorrent && (
+            ) : (
               <div className="space-y-1.5 text-sm text-muted-foreground">
-                <p className="font-medium">No compatible indexers found</p>
+                <p className="font-medium">No Torznab indexers available</p>
                 <p className="text-xs">
-                  None of your enabled indexers support the required capabilities ({sourceTorrent.requiredCaps?.join(", ")})
-                  or categories ({sourceTorrent.searchCategories?.join(", ")}) for this {sourceTorrent.contentType} content.
+                  Add or enable Torznab indexers in Settings to search for cross-seeds.
                 </p>
+              </div>
+            )}
+            {(capabilityFilteredIndexerEntries.length > 0 && indexerOptions.length > 0) && (
+              <div className="mt-2 rounded-md border border-dashed border-border/60 bg-muted/30 p-2 text-xs text-muted-foreground">
+                <p className="font-medium text-[11px] text-foreground">Capability note</p>
+                <p>
+                  These indexers lack the required capabilities/categories for this torrent and will be skipped by the server:
+                </p>
+                <ul className="mt-1.5 ml-4 space-y-0.5">
+                  {capabilityFilteredIndexerEntries.map(entry => (
+                    <li key={entry.id} className="break-words">• {entry.name}</li>
+                  ))}
+                </ul>
               </div>
             )}
           </div>
@@ -308,7 +335,7 @@ const CrossSeedDialogComponent = ({
             <>
               {results.length === 0 ? (
                 <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
-                  No matches found across the enabled indexers.
+                  No matches found in your search.
                 </div>
               ) : (
                 <>
@@ -546,7 +573,7 @@ const CrossSeedScopeSelector = memo(({
   const statusText = useMemo(() => {
     const suffix = total === 1 ? "indexer" : "indexers"
     if (indexerMode === "all") {
-      return `${total} compatible ${suffix}`
+      return `${total} enabled ${suffix}`
     }
     if (selectedCount === 0) {
       return "None selected"
@@ -613,7 +640,7 @@ const CrossSeedScopeSelector = memo(({
             disabled={isSearching}
             className="h-7 flex-1 sm:flex-initial text-xs"
           >
-            All Compatible
+            All indexers
           </Button>
           <Button
             size="sm"
