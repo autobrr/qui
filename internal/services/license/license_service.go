@@ -20,6 +20,8 @@ var (
 	ErrLicenseNotFound = errors.New("license not found")
 )
 
+const offlineGracePeriod = 7 * 24 * time.Hour
+
 // Service handles license operations
 type Service struct {
 	db          *database.DB
@@ -337,6 +339,9 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 		return true, nil
 	}
 
+	allValid := true
+	var transientErr error
+
 	for _, license := range licenses {
 		// Skip recently validated licenses (within 1 hour)
 		//if time.Since(license.LastValidated) < time.Hour {
@@ -421,19 +426,46 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 				log.Error().
 					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
 					Msg("License fingerprint mismatch - database appears to have been copied from another machine")
+				allValid = false
 			case errors.Is(err, polar.ErrActivationLimitExceeded):
 				log.Error().
 					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
 					Msg("License activation limit exceeded")
+				allValid = false
 			case errors.Is(err, polar.ErrInvalidLicenseKey):
 				log.Error().
 					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
 					Msg("Invalid license key - license does not exist")
+				allValid = false
 			default:
-				log.Error().
+				offlineDeadline := license.LastValidated.Add(offlineGracePeriod)
+				if time.Now().After(offlineDeadline) {
+					log.Warn().
+						Err(err).
+						Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+						Time("lastValidated", license.LastValidated).
+						Time("offlineDeadline", offlineDeadline).
+						Msg("License validation failed and offline grace window expired, marking invalid")
+
+					if updateErr := s.licenseRepo.UpdateLicenseStatus(ctx, license.ID, models.LicenseStatusInvalid); updateErr != nil {
+						log.Error().
+							Err(updateErr).
+							Int("licenseId", license.ID).
+							Msg("Failed to update license status to invalid after expired offline grace")
+					}
+
+					allValid = false
+					continue
+				}
+
+				log.Warn().
 					Err(err).
 					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
-					Msg(polar.LicenseFailedMsg)
+					Msg("License validation failed, keeping existing status")
+				if transientErr == nil {
+					transientErr = err
+				}
+				continue
 			}
 
 			// Mark license as invalid when validation fails
@@ -444,13 +476,14 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 					Msg("Failed to update license status to invalid")
 			}
 
-			return false, err
+			continue
 		}
 
 		// Update status
 		newStatus := models.LicenseStatusActive
 		if !licenseInfo.ValidLicense() {
 			newStatus = models.LicenseStatusInvalid
+			allValid = false
 		}
 
 		if err := s.licenseRepo.UpdateLicenseStatus(ctx, license.ID, newStatus); err != nil {
@@ -461,7 +494,7 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 		}
 	}
 
-	return true, nil
+	return allValid, transientErr
 }
 
 func (s *Service) GetLicenseByKey(ctx context.Context, licenseKey string) (*models.ProductLicense, error) {
