@@ -21,7 +21,7 @@ import { cn, copyTextToClipboard } from "@/lib/utils"
 import type { InstanceFormData, InstanceReannounceActivity, InstanceReannounceSettings } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { Copy, Info, RefreshCcw } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
 interface TrackerReannounceFormProps {
@@ -235,7 +235,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                         id="initial-wait"
                         label="Initial Wait"
                         description="Seconds before first check"
-                        tooltip="How long to wait after a torrent is added before checking its status. Gives the tracker time to register it naturally."
+                        tooltip="How long to wait after a torrent is added before checking its status. Gives the tracker time to register it naturally. Minimum 5 seconds."
                         min={MIN_INITIAL_WAIT}
                         value={settings.initialWaitSeconds}
                         onChange={(value) => setSettings((prev) => ({ ...prev, initialWaitSeconds: value }))}
@@ -244,7 +244,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                         id="reannounce-interval"
                         label="Retry Interval"
                         description="Seconds between retries"
-                        tooltip="How often to retry reannouncing if the previous attempt failed. Avoid setting this too low to prevent tracker spam."
+                        tooltip="How often to retry inside a single reannounce attempt (up to 3 tries). Aggressive Mode only removes the 2-minute cooldown between scans; this interval still applies. Minimum 5 seconds."
                         min={MIN_INTERVAL}
                         value={settings.reannounceIntervalSeconds}
                         onChange={(value) => setSettings((prev) => ({ ...prev, reannounceIntervalSeconds: value }))}
@@ -253,7 +253,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                         id="max-age"
                         label="Max Torrent Age"
                         description="Stop monitoring after (s)"
-                        tooltip="Stop monitoring torrents older than this (in seconds). Prevents checking old torrents that are permanently dead."
+                        tooltip="Stop monitoring torrents older than this (in seconds). Prevents checking old torrents that are permanently dead. Minimum 60 seconds."
                         min={MIN_MAX_AGE}
                         value={settings.maxAgeSeconds}
                         onChange={(value) => setSettings((prev) => ({ ...prev, maxAgeSeconds: value }))}
@@ -271,13 +271,14 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                             <TooltipContent className="max-w-[300px]">
                               <p>
                                 Normally, we wait 2 minutes between attempts to be polite. 
-                                Enable this to retry immediately upon failure. 
+                                Enable this to skip that cooldown and let the next 7s scan retry immediately if the torrent is still stalled. 
+                                Per-torrent retries inside each attempt still follow the Retry Interval.
                               </p>
                             </TooltipContent>
                           </Tooltip>
                         </div>
                         <p className="text-sm text-muted-foreground">
-                          Bypass wait times on failure
+                          Skip the 2-minute cooldown between scans (Retry Interval still applies)
                         </p>
                       </div>
                       <Switch
@@ -576,6 +577,21 @@ interface NumberFieldProps {
 }
 
 function NumberField({ id, label, description, tooltip, value, min, onChange }: NumberFieldProps) {
+  const [inputValue, setInputValue] = useState<string>(() => String(value))
+
+  useEffect(() => {
+    setInputValue(String(value))
+  }, [value])
+
+  const sanitizeAndCommit = (rawValue: string) => {
+    const parsed = Math.floor(Number(rawValue))
+    const sanitized = !rawValue.trim() || !Number.isFinite(parsed) ? Math.max(min, value) : Math.max(min, parsed)
+    if (sanitized !== value) {
+      onChange(sanitized)
+    }
+    setInputValue(String(sanitized))
+  }
+
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
@@ -596,8 +612,18 @@ function NumberField({ id, label, description, tooltip, value, min, onChange }: 
         type="number"
         inputMode="numeric"
         min={min}
-        value={value}
-        onChange={(event) => onChange(Math.max(min, Number(event.target.value) || min))}
+        value={inputValue}
+        onChange={(event) => {
+          const nextValue = event.target.value
+          setInputValue(nextValue)
+
+          const parsed = Math.floor(Number(nextValue))
+          if (!nextValue.trim() || !Number.isFinite(parsed)) {
+            return
+          }
+          onChange(parsed)
+        }}
+        onBlur={(event) => sanitizeAndCommit(event.target.value)}
         className="h-9"
       />
       {description && <p className="text-[11px] text-muted-foreground">{description}</p>}
