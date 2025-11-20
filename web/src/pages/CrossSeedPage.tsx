@@ -921,9 +921,9 @@ export function CrossSeedPage() {
               <CardTitle>RSS Automation</CardTitle>
               <CardDescription>Poll tracker RSS feeds on a fixed interval and add matching cross-seeds automatically.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-5">
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-5 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="automation-enabled" className="flex items-center gap-2">
                 <Switch
@@ -955,7 +955,7 @@ export function CrossSeedPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-1">
+          <div className="grid gap-5 md:grid-cols-1">
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <Label htmlFor="automation-interval">RSS run interval (minutes)</Label>
@@ -994,7 +994,7 @@ export function CrossSeedPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-5 md:grid-cols-2">
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <Label htmlFor="automation-category">Category</Label>
@@ -1055,7 +1055,7 @@ export function CrossSeedPage() {
               </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-5 md:grid-cols-2">
             <div className="space-y-2">
               <Label>Target instances</Label>
               <MultiSelect
@@ -1223,7 +1223,7 @@ export function CrossSeedPage() {
           <CardTitle>Auto-search on completion</CardTitle>
           <CardDescription>Kick off a cross-seed search the moment a torrent finishes, using simple category and tag filters. Torrents already tagged <span className="font-semibold text-foreground">cross-seed</span> are skipped automatically.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-5">
           <div className="flex gap-4">
             <Label htmlFor="completion-enabled">Enable on completion</Label>
             <Switch
@@ -1232,7 +1232,7 @@ export function CrossSeedPage() {
               onCheckedChange={value => setCompletionForm(prev => ({ ...prev, enabled: !!value }))}
             />
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-5 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="completion-categories">Categories (allow list)</Label>
               <Input
@@ -1254,7 +1254,7 @@ export function CrossSeedPage() {
               <p className="text-xs text-muted-foreground">Stop completion searches for matching categories.</p>
             </div>
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-5 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="completion-tags">Tags (allow list)</Label>
               <Input
@@ -1296,7 +1296,7 @@ export function CrossSeedPage() {
               <CardTitle>Seeded Torrent Search</CardTitle>
               <CardDescription>Walk the torrents you already seed on the selected instance, collapse identical content down to the oldest copy, and query Torznab feeds once per unique release while skipping trackers you already have it from.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-5">
           <Alert className="border-destructive/20 bg-destructive/10 text-destructive mb-8">
             <AlertTriangle className="h-4 w-4 !text-destructive" />
             <AlertTitle>Run sparingly</AlertTitle>
@@ -1305,8 +1305,8 @@ export function CrossSeedPage() {
             </AlertDescription>
           </Alert>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
+          <div className="grid gap-5 md:grid-cols-2">
+            <div className="space-y-3">
               <Label htmlFor="search-interval">Interval between torrents (seconds)</Label>
               <Input
                 id="search-interval"
@@ -1327,7 +1327,7 @@ export function CrossSeedPage() {
               )}
               <p className="text-xs text-muted-foreground">Wait time before scanning the next seeded torrent. Minimum {MIN_SEEDED_SEARCH_INTERVAL_SECONDS} seconds.</p>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-3">
               <Label htmlFor="search-cooldown">Cooldown (minutes)</Label>
               <Input
                 id="search-cooldown"
@@ -1350,8 +1350,8 @@ export function CrossSeedPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
+          <div className="grid gap-5 md:grid-cols-2">
+            <div className="space-y-3">
               <Label>Categories</Label>
               <MultiSelect
                 options={searchCategorySelectOptions}
@@ -1375,7 +1375,7 @@ export function CrossSeedPage() {
               </p>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-3">
               <Label>Tags</Label>
               <MultiSelect
                 options={searchTagSelectOptions}
@@ -1400,8 +1400,8 @@ export function CrossSeedPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
+          <div className="grid gap-5 md:grid-cols-2">
+            <div className="space-y-3">
               <Label>Source instance</Label>
               <Select
                 value={searchInstanceId ? String(searchInstanceId) : ""}
@@ -1424,7 +1424,7 @@ export function CrossSeedPage() {
               )}
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-3">
               <Label>Indexers</Label>
               <MultiSelect
                 options={indexerOptions}
