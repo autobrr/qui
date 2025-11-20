@@ -385,6 +385,7 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 							Int("licenseId", license.ID).
 							Msg("Failed to update license status to invalid")
 					}
+					allValid = false
 				}
 				// Continue to next license instead of failing entire validation
 				continue
@@ -462,6 +463,9 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 					Err(err).
 					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
 					Msg("License validation failed, keeping existing status")
+				if license.Status != models.LicenseStatusActive {
+					allValid = false
+				}
 				if transientErr == nil {
 					transientErr = err
 				}
@@ -476,6 +480,7 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 					Msg("Failed to update license status to invalid")
 			}
 
+			allValid = false
 			continue
 		}
 
@@ -492,6 +497,10 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 				Int("licenseId", license.ID).
 				Msg("Failed to update license status")
 		}
+	}
+
+	if !allValid && transientErr != nil {
+		return allValid, nil
 	}
 
 	return allValid, transientErr

@@ -114,6 +114,76 @@ func TestValidateLicenses_OfflineBeyondGraceMarksInvalid(t *testing.T) {
 	assert.Equal(t, models.LicenseStatusInvalid, stored.Status)
 }
 
+func TestValidateLicenses_InvalidThenTransientStillReturnsInvalid(t *testing.T) {
+	ctx := context.Background()
+
+	dbPath := filepath.Join(t.TempDir(), "licenses.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err)
+	defer db.Close()
+
+	repo := database.NewLicenseRepo(db)
+
+	now := time.Now()
+	licenseBad := &models.ProductLicense{
+		LicenseKey:        "QUI-BAD",
+		ProductName:       ProductNamePremium,
+		Status:            models.LicenseStatusActive,
+		ActivatedAt:       now.Add(-time.Hour),
+		LastValidated:     now.Add(-time.Hour),
+		PolarActivationID: "activation-bad",
+		Username:          "tester",
+		CreatedAt:         now.Add(-time.Hour),
+		UpdatedAt:         now.Add(-time.Hour),
+	}
+	licenseSlow := &models.ProductLicense{
+		LicenseKey:        "QUI-SLOW",
+		ProductName:       ProductNamePremium,
+		Status:            models.LicenseStatusActive,
+		ActivatedAt:       now.Add(-time.Hour),
+		LastValidated:     now.Add(-time.Hour),
+		PolarActivationID: "activation-slow",
+		Username:          "tester",
+		CreatedAt:         now.Add(-time.Hour),
+		UpdatedAt:         now.Add(-time.Hour),
+	}
+
+	require.NoError(t, repo.StoreLicense(ctx, licenseBad))
+	require.NoError(t, repo.StoreLicense(ctx, licenseSlow))
+
+	client := polar.NewClient(
+		polar.WithOrganizationID("test-org"),
+		polar.WithHTTPClient(&http.Client{
+			Transport: roundTripper(func(req *http.Request) (*http.Response, error) {
+				// First call (bad license) returns revoked, second returns timeout
+				if strings.Contains(req.URL.Path, "validate") && strings.Contains(string(mustRead(req.Body)), "QUI-BAD") {
+					body := `{"status":"revoked"}`
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(strings.NewReader(body)),
+						Header:     make(http.Header),
+					}, nil
+				}
+				return nil, context.DeadlineExceeded
+			}),
+		}),
+	)
+
+	service := NewLicenseService(repo, client, t.TempDir())
+
+	valid, err := service.ValidateLicenses(ctx)
+	require.NoError(t, err, "transient error should be suppressed when invalid licenses were found")
+	assert.False(t, valid, "overall validity should be false when any license is invalid")
+
+	storedBad, err := repo.GetLicenseByKey(ctx, licenseBad.LicenseKey)
+	require.NoError(t, err)
+	assert.Equal(t, models.LicenseStatusInvalid, storedBad.Status)
+
+	storedSlow, err := repo.GetLicenseByKey(ctx, licenseSlow.LicenseKey)
+	require.NoError(t, err)
+	assert.Equal(t, models.LicenseStatusActive, storedSlow.Status, "transient failure keeps prior status")
+}
+
 func TestValidateLicenses_InvalidStatusMarksLicenseInvalid(t *testing.T) {
 	ctx := context.Background()
 
@@ -168,4 +238,10 @@ type roundTripper func(*http.Request) (*http.Response, error)
 
 func (rt roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	return rt(r)
+}
+
+func mustRead(rc io.ReadCloser) []byte {
+	defer rc.Close()
+	b, _ := io.ReadAll(rc)
+	return b
 }
