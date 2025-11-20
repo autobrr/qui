@@ -543,6 +543,10 @@ export function CrossSeedPage() {
     ? automationForm.runIntervalMinutes
     : settings?.runIntervalMinutes ?? DEFAULT_RSS_INTERVAL_MINUTES
   const enforcedRunIntervalMinutes = Math.max(effectiveRunIntervalMinutes, MIN_RSS_INTERVAL_MINUTES)
+  const automationTargetInstanceCount = formInitialized
+    ? automationForm.targetInstanceIds.length
+    : settings?.targetInstanceIds?.length ?? 0
+  const hasAutomationTargets = automationTargetInstanceCount > 0
 
   const nextManualRunAt = useMemo(() => {
     if (!latestRun?.startedAt) {
@@ -566,10 +570,13 @@ export function CrossSeedPage() {
 
   const manualCooldownActive = manualCooldownRemainingMs > 0
   const manualCooldownDisplay = manualCooldownActive ? formatDurationShort(manualCooldownRemainingMs) : ""
-  const runButtonDisabled = triggerRunMutation.isPending || automationRunning || manualCooldownActive || !hasEnabledIndexers
+  const runButtonDisabled = triggerRunMutation.isPending || automationRunning || manualCooldownActive || !hasEnabledIndexers || !hasAutomationTargets
   const runButtonDisabledReason = useMemo(() => {
     if (!hasEnabledIndexers) {
       return "Configure at least one Torznab indexer before running RSS automation."
+    }
+    if (!hasAutomationTargets) {
+      return "Select at least one instance before running RSS automation."
     }
     if (automationRunning) {
       return "Automation run is already in progress."
@@ -578,7 +585,31 @@ export function CrossSeedPage() {
       return `Manual runs are limited to every ${enforcedRunIntervalMinutes}-minute interval. Try again in ${manualCooldownDisplay}.`
     }
     return undefined
-  }, [automationRunning, enforcedRunIntervalMinutes, hasEnabledIndexers, manualCooldownActive, manualCooldownDisplay])
+  }, [automationRunning, enforcedRunIntervalMinutes, hasAutomationTargets, hasEnabledIndexers, manualCooldownActive, manualCooldownDisplay])
+
+  const handleTriggerAutomationRun = () => {
+    if (!hasEnabledIndexers) {
+      notifyMissingIndexers("RSS automation runs require at least one Torznab indexer.")
+      return
+    }
+    if (!hasAutomationTargets) {
+      setValidationErrors(prev => ({ ...prev, targetInstanceIds: "Select at least one instance for RSS automation." }))
+      toast.error("Pick at least one instance to receive cross-seeds before running RSS automation.")
+      return
+    }
+    if (formInitialized && settings) {
+      const savedTargets = [...(settings.targetInstanceIds ?? [])].sort((a, b) => a - b)
+      const currentTargets = [...automationForm.targetInstanceIds].sort((a, b) => a - b)
+      const targetsMatchSaved =
+        savedTargets.length === currentTargets.length &&
+        savedTargets.every((value, index) => value === currentTargets[index])
+      if (!targetsMatchSaved) {
+        toast.error("Save RSS automation settings to apply the updated target instances before running.")
+        return
+      }
+    }
+    triggerRunMutation.mutate({ dryRun })
+  }
 
   const searchRunning = searchStatus?.running ?? false
   const activeSearchRun = searchStatus?.run
@@ -1147,19 +1178,12 @@ export function CrossSeedPage() {
             <Label htmlFor="automation-dry-run">Dry run</Label>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-
             <div className="flex items-center gap-2">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="outline"
-                    onClick={() => {
-                      if (!hasEnabledIndexers) {
-                        notifyMissingIndexers("RSS automation runs require at least one Torznab indexer.")
-                        return
-                      }
-                      triggerRunMutation.mutate({ dryRun })
-                    }}
+                    onClick={handleTriggerAutomationRun}
                     disabled={runButtonDisabled}
                     className="disabled:cursor-not-allowed disabled:pointer-events-auto"
                   >
@@ -1192,7 +1216,7 @@ export function CrossSeedPage() {
             </div>
           </div>
         </CardFooter>
-          </Card>
+      </Card>
 
       <Card>
         <CardHeader>

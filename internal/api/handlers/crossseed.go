@@ -745,6 +745,10 @@ func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.R
 			RespondError(w, http.StatusBadRequest, "No Torznab indexers configured. Add at least one enabled indexer before running automation.")
 			return
 		}
+		if errors.Is(err, crossseed.ErrNoTargetInstancesConfigured) {
+			RespondError(w, http.StatusBadRequest, "Select at least one target instance before running automation.")
+			return
+		}
 		log.Error().Err(err).Msg("Failed to trigger cross-seed automation run")
 		RespondError(w, http.StatusInternalServerError, "Failed to start automation run")
 		return

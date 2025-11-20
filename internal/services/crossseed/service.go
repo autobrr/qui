@@ -177,6 +177,9 @@ var ErrSearchRunActive = errors.New("cross-seed search run already running")
 // ErrNoIndexersConfigured indicates no Torznab indexers are available.
 var ErrNoIndexersConfigured = errors.New("no torznab indexers configured")
 
+// ErrNoTargetInstancesConfigured indicates automation has no target qBittorrent instances.
+var ErrNoTargetInstancesConfigured = errors.New("no target instances configured for cross-seed automation")
+
 // ErrInvalidWebhookRequest indicates a webhook check payload failed validation.
 var ErrInvalidWebhookRequest = errors.New("invalid webhook request")
 
@@ -400,6 +403,10 @@ func (s *Service) RunAutomation(ctx context.Context, opts AutomationRunOptions) 
 
 	if err := s.ensureIndexersConfigured(ctx); err != nil {
 		return nil, err
+	}
+
+	if len(settings.TargetInstanceIDs) == 0 {
+		return nil, ErrNoTargetInstancesConfigured
 	}
 
 	// Default requested by / mode values
@@ -876,6 +883,9 @@ func (s *Service) automationLoop(ctx context.Context) {
 					}
 				} else if errors.Is(err, ErrNoIndexersConfigured) {
 					log.Info().Msg("Skipping cross-seed automation run: no Torznab indexers configured")
+					s.waitTimer(ctx, timer, 5*time.Minute)
+				} else if errors.Is(err, ErrNoTargetInstancesConfigured) {
+					log.Info().Msg("Skipping cross-seed automation run: no target instances configured")
 					s.waitTimer(ctx, timer, 5*time.Minute)
 				} else {
 					log.Warn().Err(err).Msg("Cross-seed automation run failed")
@@ -4743,35 +4753,6 @@ func normalizeStringSlice(values []string) []string {
 		result = append(result, trimmed)
 	}
 	return result
-}
-
-func (s *Service) ensureCrossSeedTag(ctx context.Context, instanceID int, torrent *qbt.Torrent) {
-	if torrent == nil || torrent.Hash == "" || s.syncManager == nil {
-		return
-	}
-
-	if hasCrossSeedTag(torrent.Tags) {
-		return
-	}
-
-	tagCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	existing := splitTags(torrent.Tags)
-	finalTags := normalizeStringSlice(append(existing, "cross-seed"))
-	if err := s.syncManager.SetTags(tagCtx, instanceID, []string{torrent.Hash}, strings.Join(finalTags, ",")); err != nil {
-		log.Debug().
-			Err(err).
-			Int("instanceID", instanceID).
-			Str("hash", torrent.Hash).
-			Msg("[CROSSSEED-COMPLETION] Failed to tag completed torrent as cross-seed")
-		return
-	}
-
-	log.Debug().
-		Int("instanceID", instanceID).
-		Str("hash", torrent.Hash).
-		Msg("[CROSSSEED-COMPLETION] Tagged completed torrent for cross-seed processing")
 }
 
 func uniquePositiveInts(values []int) []int {
