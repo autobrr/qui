@@ -1208,6 +1208,14 @@ export interface CrossSeedRun {
   createdAt: string
 }
 
+export interface CrossSeedCompletionSettings {
+  enabled: boolean
+  categories: string[]
+  tags: string[]
+  excludeCategories: string[]
+  excludeTags: string[]
+}
+
 export interface CrossSeedAutomationSettings {
   enabled: boolean
   runIntervalMinutes: number
@@ -1222,6 +1230,7 @@ export interface CrossSeedAutomationSettings {
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
   runExternalProgramId?: number | null
+  completion?: CrossSeedCompletionSettings
   createdAt?: string
   updatedAt?: string
 }

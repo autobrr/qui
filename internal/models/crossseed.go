@@ -30,13 +30,34 @@ type CrossSeedAutomationSettings struct {
 	MaxResultsPerRun   int      `json:"maxResultsPerRun"`   // RSS: max results to process per run (default: 50)
 
 	// Global cross-seed settings (apply to both RSS Automation and Seeded Torrent Search)
-	FindIndividualEpisodes       bool    `json:"findIndividualEpisodes"`       // Match season packs with individual episodes
-	SizeMismatchTolerancePercent float64 `json:"sizeMismatchTolerancePercent"` // Size tolerance for matching (default: 5%)
-	UseCategoryFromIndexer       bool    `json:"useCategoryFromIndexer"`       // Use indexer name as category for cross-seeds
-	RunExternalProgramID         *int    `json:"runExternalProgramId"`         // Optional external program to run after successful cross-seed injection
+	FindIndividualEpisodes       bool                        `json:"findIndividualEpisodes"`       // Match season packs with individual episodes
+	SizeMismatchTolerancePercent float64                     `json:"sizeMismatchTolerancePercent"` // Size tolerance for matching (default: 5%)
+	UseCategoryFromIndexer       bool                        `json:"useCategoryFromIndexer"`       // Use indexer name as category for cross-seeds
+	RunExternalProgramID         *int                        `json:"runExternalProgramId"`         // Optional external program to run after successful cross-seed injection
+	Completion                   CrossSeedCompletionSettings `json:"completion"`                   // Automatic search on torrent completion
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// CrossSeedCompletionSettings controls automatic searches triggered when torrents complete.
+type CrossSeedCompletionSettings struct {
+	Enabled           bool     `json:"enabled"`
+	Categories        []string `json:"categories"`
+	Tags              []string `json:"tags"`
+	ExcludeCategories []string `json:"excludeCategories"`
+	ExcludeTags       []string `json:"excludeTags"`
+}
+
+// DefaultCrossSeedCompletionSettings returns defaults for completion-triggered automation.
+func DefaultCrossSeedCompletionSettings() CrossSeedCompletionSettings {
+	return CrossSeedCompletionSettings{
+		Enabled:           false,
+		Categories:        []string{},
+		Tags:              []string{},
+		ExcludeCategories: []string{},
+		ExcludeTags:       []string{},
+	}
 }
 
 // DefaultCrossSeedAutomationSettings returns sensible defaults for RSS automation.
@@ -56,6 +77,7 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		SizeMismatchTolerancePercent: 5.0,   // Allow 5% size difference by default
 		UseCategoryFromIndexer:       false, // Default to false - don't override categories by default
 		RunExternalProgramID:         nil,   // No external program by default
+		Completion:                   DefaultCrossSeedCompletionSettings(),
 		CreatedAt:                    time.Now().UTC(),
 		UpdatedAt:                    time.Now().UTC(),
 	}
@@ -197,7 +219,10 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		SELECT enabled, run_interval_minutes, start_paused, category,
 		       tags, ignore_patterns, target_instance_ids, target_indexer_ids,
 		       max_results_per_run, find_individual_episodes, size_mismatch_tolerance_percent,
-		       use_category_from_indexer, run_external_program_id, created_at, updated_at
+		       use_category_from_indexer, run_external_program_id,
+		       completion_enabled, completion_categories, completion_tags,
+		       completion_exclude_categories, completion_exclude_tags,
+		       created_at, updated_at
 		FROM cross_seed_settings
 		WHERE id = 1
 	`
@@ -207,6 +232,9 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	var settings CrossSeedAutomationSettings
 	var category sql.NullString
 	var tagsJSON, ignoreJSON, instancesJSON, indexersJSON sql.NullString
+	var completionCategories, completionTags sql.NullString
+	var completionExcludeCategories, completionExcludeTags sql.NullString
+	var completionEnabled bool
 	var runExternalProgramID sql.NullInt64
 	var createdAt, updatedAt sql.NullTime
 
@@ -224,6 +252,11 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&settings.SizeMismatchTolerancePercent,
 		&settings.UseCategoryFromIndexer,
 		&runExternalProgramID,
+		&completionEnabled,
+		&completionCategories,
+		&completionTags,
+		&completionExcludeCategories,
+		&completionExcludeTags,
 		&createdAt,
 		&updatedAt,
 	)
@@ -255,6 +288,19 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	if err := decodeIntSlice(indexersJSON, &settings.TargetIndexerIDs); err != nil {
 		return nil, fmt.Errorf("decode target indexers: %w", err)
 	}
+	settings.Completion.Enabled = completionEnabled
+	if err := decodeStringSlice(completionCategories, &settings.Completion.Categories); err != nil {
+		return nil, fmt.Errorf("decode completion categories: %w", err)
+	}
+	if err := decodeStringSlice(completionTags, &settings.Completion.Tags); err != nil {
+		return nil, fmt.Errorf("decode completion tags: %w", err)
+	}
+	if err := decodeStringSlice(completionExcludeCategories, &settings.Completion.ExcludeCategories); err != nil {
+		return nil, fmt.Errorf("decode completion exclude categories: %w", err)
+	}
+	if err := decodeStringSlice(completionExcludeTags, &settings.Completion.ExcludeTags); err != nil {
+		return nil, fmt.Errorf("decode completion exclude tags: %w", err)
+	}
 
 	if createdAt.Valid {
 		settings.CreatedAt = createdAt.Time
@@ -262,6 +308,8 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	if updatedAt.Valid {
 		settings.UpdatedAt = updatedAt.Time
 	}
+
+	NormalizeCrossSeedCompletionSettings(&settings.Completion)
 
 	return &settings, nil
 }
@@ -271,6 +319,8 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 	if settings == nil {
 		return nil, errors.New("settings cannot be nil")
 	}
+
+	NormalizeCrossSeedCompletionSettings(&settings.Completion)
 
 	tagsJSON, err := encodeStringSlice(settings.Tags)
 	if err != nil {
@@ -288,15 +338,33 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 	if err != nil {
 		return nil, fmt.Errorf("encode target indexers: %w", err)
 	}
+	completionCategories, err := encodeStringSlice(settings.Completion.Categories)
+	if err != nil {
+		return nil, fmt.Errorf("encode completion categories: %w", err)
+	}
+	completionTags, err := encodeStringSlice(settings.Completion.Tags)
+	if err != nil {
+		return nil, fmt.Errorf("encode completion tags: %w", err)
+	}
+	completionExcludeCategories, err := encodeStringSlice(settings.Completion.ExcludeCategories)
+	if err != nil {
+		return nil, fmt.Errorf("encode completion exclude categories: %w", err)
+	}
+	completionExcludeTags, err := encodeStringSlice(settings.Completion.ExcludeTags)
+	if err != nil {
+		return nil, fmt.Errorf("encode completion exclude tags: %w", err)
+	}
 
 	query := `
 		INSERT INTO cross_seed_settings (
 			id, enabled, run_interval_minutes, start_paused, category,
 			tags, ignore_patterns, target_instance_ids, target_indexer_ids,
 			max_results_per_run, find_individual_episodes, size_mismatch_tolerance_percent,
-			use_category_from_indexer, run_external_program_id
+			use_category_from_indexer, run_external_program_id,
+			completion_enabled, completion_categories, completion_tags,
+			completion_exclude_categories, completion_exclude_tags
 		) VALUES (
-			1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -311,7 +379,12 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			find_individual_episodes = excluded.find_individual_episodes,
 			size_mismatch_tolerance_percent = excluded.size_mismatch_tolerance_percent,
 			use_category_from_indexer = excluded.use_category_from_indexer,
-			run_external_program_id = excluded.run_external_program_id
+			run_external_program_id = excluded.run_external_program_id,
+			completion_enabled = excluded.completion_enabled,
+			completion_categories = excluded.completion_categories,
+			completion_tags = excluded.completion_tags,
+			completion_exclude_categories = excluded.completion_exclude_categories,
+			completion_exclude_tags = excluded.completion_exclude_tags
 	`
 
 	// Convert *int to interface{} for proper SQL handling
@@ -326,6 +399,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 	}
 
 	_, err = s.db.ExecContext(ctx, query,
+		1,
 		settings.Enabled,
 		settings.RunIntervalMinutes,
 		settings.StartPaused,
@@ -339,6 +413,11 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		settings.SizeMismatchTolerancePercent,
 		settings.UseCategoryFromIndexer,
 		runExternalProgramID,
+		settings.Completion.Enabled,
+		completionCategories,
+		completionTags,
+		completionExcludeCategories,
+		completionExcludeTags,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("upsert settings: %w", err)
@@ -968,6 +1047,40 @@ func decodeIntSlice(src sql.NullString, dest *[]int) error {
 	}
 	*dest = tmp
 	return nil
+}
+
+// NormalizeCrossSeedCompletionSettings trims, deduplicates, and ensures slices are non-nil.
+func NormalizeCrossSeedCompletionSettings(settings *CrossSeedCompletionSettings) {
+	if settings == nil {
+		return
+	}
+	settings.Categories = normalizeStringSlice(settings.Categories)
+	settings.Tags = normalizeStringSlice(settings.Tags)
+	settings.ExcludeCategories = normalizeStringSlice(settings.ExcludeCategories)
+	settings.ExcludeTags = normalizeStringSlice(settings.ExcludeTags)
+}
+
+func normalizeStringSlice(values []string) []string {
+	if len(values) == 0 {
+		return []string{}
+	}
+
+	seen := make(map[string]struct{}, len(values))
+	normalized := make([]string, 0, len(values))
+
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		normalized = append(normalized, trimmed)
+	}
+
+	return normalized
 }
 
 func encodeRunResults(results []CrossSeedRunResult) (string, error) {

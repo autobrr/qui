@@ -60,6 +60,7 @@ type qbittorrentSync interface {
 	RenameTorrent(ctx context.Context, instanceID int, hash, name string) error
 	RenameTorrentFile(ctx context.Context, instanceID int, hash, oldPath, newPath string) error
 	RenameTorrentFolder(ctx context.Context, instanceID int, hash, oldPath, newPath string) error
+	SetTags(ctx context.Context, instanceID int, hashes []string, tags string) error
 }
 
 // Service provides cross-seed functionality
@@ -292,6 +293,11 @@ func (s *Service) GetAutomationSettings(ctx context.Context) (*models.CrossSeedA
 		return nil, fmt.Errorf("load automation settings: %w", err)
 	}
 
+	if settings == nil {
+		settings = models.DefaultCrossSeedAutomationSettings()
+	}
+	models.NormalizeCrossSeedCompletionSettings(&settings.Completion)
+
 	return settings, nil
 }
 
@@ -338,6 +344,8 @@ func (s *Service) validateAndNormalizeSettings(settings *models.CrossSeedAutomat
 	if settings.SizeMismatchTolerancePercent > 100.0 {
 		settings.SizeMismatchTolerancePercent = 100.0
 	}
+
+	models.NormalizeCrossSeedCompletionSettings(&settings.Completion)
 }
 
 // StartAutomation launches the background scheduler loop.
@@ -461,6 +469,72 @@ func (s *Service) RunAutomation(ctx context.Context, opts AutomationRunOptions) 
 	return finalRun, nil
 }
 
+// HandleTorrentCompletion evaluates completed torrents for cross-seed opportunities.
+func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, torrent qbt.Torrent) {
+	if s == nil || instanceID <= 0 {
+		return
+	}
+	if s.jackettService == nil {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	} else {
+		ctx = context.WithoutCancel(ctx)
+	}
+
+	settings, err := s.GetAutomationSettings(ctx)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", torrent.Hash).
+			Msg("[CROSSSEED-COMPLETION] Failed to load automation settings")
+		return
+	}
+	if settings == nil {
+		settings = models.DefaultCrossSeedAutomationSettings()
+	}
+
+	models.NormalizeCrossSeedCompletionSettings(&settings.Completion)
+	completion := settings.Completion
+	if !completion.Enabled {
+		return
+	}
+
+	if torrent.Progress < 1.0 || torrent.Hash == "" {
+		// Safety check – the qbittorrent completion hook should only fire for 100% torrents.
+		return
+	}
+
+	if hasCrossSeedTag(torrent.Tags) {
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("hash", torrent.Hash).
+			Str("name", torrent.Name).
+			Msg("[CROSSSEED-COMPLETION] Skipping already tagged cross-seed torrent")
+		return
+	}
+
+	if !matchesCompletionFilters(&torrent, completion) {
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("hash", torrent.Hash).
+			Str("name", torrent.Name).
+			Msg("[CROSSSEED-COMPLETION] Torrent does not match completion filters")
+		return
+	}
+
+	if err := s.executeCompletionSearch(ctx, instanceID, &torrent, settings); err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", torrent.Hash).
+			Str("name", torrent.Name).
+			Msg("[CROSSSEED-COMPLETION] Failed to run completion search")
+	}
+}
+
 // GetAutomationStatus returns scheduler information for the API.
 func (s *Service) GetAutomationStatus(ctx context.Context) (*AutomationStatus, error) {
 	settings, err := s.GetAutomationSettings(ctx)
@@ -503,6 +577,131 @@ func (s *Service) ListAutomationRuns(ctx context.Context, limit, offset int) ([]
 		return nil, fmt.Errorf("list automation runs: %w", err)
 	}
 	return runs, nil
+}
+
+func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, torrent *qbt.Torrent, settings *models.CrossSeedAutomationSettings) error {
+	if torrent == nil {
+		return nil
+	}
+	if s.jackettService == nil {
+		return fmt.Errorf("torznab search is not configured")
+	}
+	if s.syncManager == nil {
+		return fmt.Errorf("qbittorrent sync manager not configured")
+	}
+
+	if err := s.ensureIndexersConfigured(ctx); err != nil {
+		return err
+	}
+
+	requestedIndexerIDs := uniquePositiveInts(settings.TargetIndexerIDs)
+
+	asyncAnalysis, err := s.filterIndexerIDsForTorrentAsync(ctx, instanceID, torrent.Hash, requestedIndexerIDs, true)
+	var allowedIndexerIDs []int
+	var skipReason string
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", torrent.Hash).
+			Msg("[CROSSSEED-COMPLETION] Failed to filter indexers, falling back to requested set")
+		allowedIndexerIDs = requestedIndexerIDs
+	} else {
+		allowedIndexerIDs, skipReason = s.resolveAllowedIndexerIDs(ctx, torrent.Hash, asyncAnalysis.FilteringState, requestedIndexerIDs)
+	}
+
+	if len(allowedIndexerIDs) == 0 {
+		if skipReason == "" {
+			skipReason = "no eligible indexers"
+		}
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("hash", torrent.Hash).
+			Str("name", torrent.Name).
+			Msgf("[CROSSSEED-COMPLETION] Skipping completion search: %s", skipReason)
+		return nil
+	}
+
+	searchCtx := ctx
+	var searchCancel context.CancelFunc
+	searchTimeout := computeAutomationSearchTimeout(len(allowedIndexerIDs))
+	if searchTimeout > 0 {
+		searchCtx, searchCancel = context.WithTimeout(ctx, searchTimeout)
+	}
+	if searchCancel != nil {
+		defer searchCancel()
+	}
+
+	searchResp, err := s.SearchTorrentMatches(searchCtx, instanceID, torrent.Hash, TorrentSearchOptions{
+		IndexerIDs:             allowedIndexerIDs,
+		FindIndividualEpisodes: settings.FindIndividualEpisodes,
+	})
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			log.Debug().
+				Int("instanceID", instanceID).
+				Str("hash", torrent.Hash).
+				Str("name", torrent.Name).
+				Dur("timeout", searchTimeout).
+				Msg("[CROSSSEED-COMPLETION] Search timed out")
+			return nil
+		}
+		return err
+	}
+
+	if len(searchResp.Results) == 0 {
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("hash", torrent.Hash).
+			Str("name", torrent.Name).
+			Msg("[CROSSSEED-COMPLETION] No matches returned for completed torrent")
+		return nil
+	}
+
+	searchState := &searchRunState{
+		opts: SearchRunOptions{
+			InstanceID:             instanceID,
+			FindIndividualEpisodes: settings.FindIndividualEpisodes,
+			StartPaused:            settings.StartPaused,
+			CategoryOverride:       settings.Category,
+			TagsOverride:           normalizeStringSlice(settings.Tags),
+			IgnorePatterns:         append([]string(nil), settings.IgnorePatterns...),
+		},
+	}
+
+	successCount := 0
+	for _, match := range searchResp.Results {
+		result, attemptErr := s.executeCrossSeedSearchAttempt(ctx, searchState, torrent, match, time.Now().UTC())
+		if attemptErr != nil {
+			log.Debug().
+				Err(attemptErr).
+				Int("instanceID", instanceID).
+				Str("hash", torrent.Hash).
+				Str("matchIndexer", match.Indexer).
+				Msg("[CROSSSEED-COMPLETION] Cross-seed apply attempt failed")
+			continue
+		}
+		if result != nil && result.Added {
+			successCount++
+		}
+	}
+
+	if successCount > 0 {
+		log.Info().
+			Int("instanceID", instanceID).
+			Str("hash", torrent.Hash).
+			Str("name", torrent.Name).
+			Int("added", successCount).
+			Msg("[CROSSSEED-COMPLETION] Added cross-seed from completion search")
+	} else {
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("hash", torrent.Hash).
+			Str("name", torrent.Name).
+			Msg("[CROSSSEED-COMPLETION] Completion search executed with no additions")
+	}
+
+	return nil
 }
 
 // StartSearchRun launches an on-demand search automation run for a single instance.
@@ -4481,6 +4680,54 @@ func matchesSearchFilters(torrent *qbt.Torrent, opts SearchRunOptions) bool {
 	return true
 }
 
+func matchesCompletionFilters(torrent *qbt.Torrent, settings models.CrossSeedCompletionSettings) bool {
+	if torrent == nil {
+		return false
+	}
+
+	if len(settings.ExcludeCategories) > 0 && slices.Contains(settings.ExcludeCategories, torrent.Category) {
+		return false
+	}
+
+	if len(settings.Categories) > 0 && !slices.Contains(settings.Categories, torrent.Category) {
+		return false
+	}
+
+	torrentTags := splitTags(torrent.Tags)
+
+	if len(settings.ExcludeTags) > 0 {
+		for _, tag := range torrentTags {
+			for _, excluded := range settings.ExcludeTags {
+				if strings.EqualFold(tag, excluded) {
+					return false
+				}
+			}
+		}
+	}
+
+	if len(settings.Tags) > 0 {
+		for _, tag := range torrentTags {
+			for _, allowed := range settings.Tags {
+				if strings.EqualFold(tag, allowed) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	return true
+}
+
+func hasCrossSeedTag(rawTags string) bool {
+	for _, tag := range splitTags(rawTags) {
+		if strings.EqualFold(tag, "cross-seed") {
+			return true
+		}
+	}
+	return false
+}
+
 func splitTags(raw string) []string {
 	if strings.TrimSpace(raw) == "" {
 		return []string{}
@@ -4511,6 +4758,35 @@ func normalizeStringSlice(values []string) []string {
 		result = append(result, trimmed)
 	}
 	return result
+}
+
+func (s *Service) ensureCrossSeedTag(ctx context.Context, instanceID int, torrent *qbt.Torrent) {
+	if torrent == nil || torrent.Hash == "" || s.syncManager == nil {
+		return
+	}
+
+	if hasCrossSeedTag(torrent.Tags) {
+		return
+	}
+
+	tagCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	existing := splitTags(torrent.Tags)
+	finalTags := normalizeStringSlice(append(existing, "cross-seed"))
+	if err := s.syncManager.SetTags(tagCtx, instanceID, []string{torrent.Hash}, strings.Join(finalTags, ",")); err != nil {
+		log.Debug().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", torrent.Hash).
+			Msg("[CROSSSEED-COMPLETION] Failed to tag completed torrent as cross-seed")
+		return
+	}
+
+	log.Debug().
+		Int("instanceID", instanceID).
+		Str("hash", torrent.Hash).
+		Msg("[CROSSSEED-COMPLETION] Tagged completed torrent for cross-seed processing")
 }
 
 func uniquePositiveInts(values []int) []int {

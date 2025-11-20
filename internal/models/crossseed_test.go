@@ -85,6 +85,13 @@ func TestCrossSeedStore_SettingsRoundTrip(t *testing.T) {
 		TargetInstanceIDs:  []int{1, 2},
 		TargetIndexerIDs:   []int{11, 42},
 		MaxResultsPerRun:   25,
+		Completion: models.CrossSeedCompletionSettings{
+			Enabled:           true,
+			Categories:        []string{"tv"},
+			Tags:              []string{"scene"},
+			ExcludeCategories: []string{"movies"},
+			ExcludeTags:       []string{"skip"},
+		},
 	})
 	require.NoError(t, err)
 
@@ -98,6 +105,11 @@ func TestCrossSeedStore_SettingsRoundTrip(t *testing.T) {
 	assert.ElementsMatch(t, []int{1, 2}, updated.TargetInstanceIDs)
 	assert.ElementsMatch(t, []int{11, 42}, updated.TargetIndexerIDs)
 	assert.Equal(t, 25, updated.MaxResultsPerRun)
+	assert.True(t, updated.Completion.Enabled)
+	assert.ElementsMatch(t, []string{"tv"}, updated.Completion.Categories)
+	assert.ElementsMatch(t, []string{"scene"}, updated.Completion.Tags)
+	assert.ElementsMatch(t, []string{"movies"}, updated.Completion.ExcludeCategories)
+	assert.ElementsMatch(t, []string{"skip"}, updated.Completion.ExcludeTags)
 
 	reloaded, err := store.GetSettings(ctx)
 	require.NoError(t, err)

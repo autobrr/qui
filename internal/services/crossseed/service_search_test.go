@@ -242,6 +242,10 @@ func (*queueTestSyncManager) BulkAction(context.Context, int, []string, string) 
 	return nil
 }
 
+func (*queueTestSyncManager) SetTags(context.Context, int, []string, string) error {
+	return nil
+}
+
 func (*queueTestSyncManager) GetCachedInstanceTorrents(context.Context, int) ([]internalqb.CrossInstanceTorrentView, error) {
 	return nil, nil
 }

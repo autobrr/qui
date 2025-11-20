@@ -158,6 +158,10 @@ func (c *candidateSelectionSyncManager) RenameTorrentFolder(context.Context, int
 	return fmt.Errorf("not implemented")
 }
 
+func (c *candidateSelectionSyncManager) SetTags(context.Context, int, []string, string) error {
+	return nil
+}
+
 func TestGetMatchTypeFromTitle_FallbackWhenReleaseKeysMissing(t *testing.T) {
 	t.Parallel()
 

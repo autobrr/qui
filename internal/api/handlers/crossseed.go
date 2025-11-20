@@ -25,19 +25,28 @@ type CrossSeedHandler struct {
 }
 
 type automationSettingsRequest struct {
-	Enabled                      bool     `json:"enabled"`
-	RunIntervalMinutes           int      `json:"runIntervalMinutes"`
-	StartPaused                  bool     `json:"startPaused"`
-	Category                     *string  `json:"category"`
-	Tags                         []string `json:"tags"`
-	IgnorePatterns               []string `json:"ignorePatterns"`
-	TargetInstanceIDs            []int    `json:"targetInstanceIds"`
-	TargetIndexerIDs             []int    `json:"targetIndexerIds"`
-	MaxResultsPerRun             int      `json:"maxResultsPerRun"`
-	FindIndividualEpisodes       bool     `json:"findIndividualEpisodes"`
-	SizeMismatchTolerancePercent float64  `json:"sizeMismatchTolerancePercent"`
-	UseCategoryFromIndexer       bool     `json:"useCategoryFromIndexer"`
-	RunExternalProgramID         *int     `json:"runExternalProgramId"`
+	Enabled                      bool                       `json:"enabled"`
+	RunIntervalMinutes           int                        `json:"runIntervalMinutes"`
+	StartPaused                  bool                       `json:"startPaused"`
+	Category                     *string                    `json:"category"`
+	Tags                         []string                   `json:"tags"`
+	IgnorePatterns               []string                   `json:"ignorePatterns"`
+	TargetInstanceIDs            []int                      `json:"targetInstanceIds"`
+	TargetIndexerIDs             []int                      `json:"targetIndexerIds"`
+	MaxResultsPerRun             int                        `json:"maxResultsPerRun"`
+	FindIndividualEpisodes       bool                       `json:"findIndividualEpisodes"`
+	SizeMismatchTolerancePercent float64                    `json:"sizeMismatchTolerancePercent"`
+	UseCategoryFromIndexer       bool                       `json:"useCategoryFromIndexer"`
+	RunExternalProgramID         *int                       `json:"runExternalProgramId"`
+	Completion                   *completionSettingsRequest `json:"completion"`
+}
+
+type completionSettingsRequest struct {
+	Enabled           bool     `json:"enabled"`
+	Categories        []string `json:"categories"`
+	Tags              []string `json:"tags"`
+	ExcludeCategories []string `json:"excludeCategories"`
+	ExcludeTags       []string `json:"excludeTags"`
 }
 
 type automationRunRequest struct {
@@ -387,6 +396,17 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		}
 	}
 
+	completion := models.DefaultCrossSeedCompletionSettings()
+	if req.Completion != nil {
+		completion = models.CrossSeedCompletionSettings{
+			Enabled:           req.Completion.Enabled,
+			Categories:        req.Completion.Categories,
+			Tags:              req.Completion.Tags,
+			ExcludeCategories: req.Completion.ExcludeCategories,
+			ExcludeTags:       req.Completion.ExcludeTags,
+		}
+	}
+
 	settings := &models.CrossSeedAutomationSettings{
 		Enabled:                      req.Enabled,
 		RunIntervalMinutes:           req.RunIntervalMinutes,
@@ -401,6 +421,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		SizeMismatchTolerancePercent: req.SizeMismatchTolerancePercent,
 		UseCategoryFromIndexer:       req.UseCategoryFromIndexer,
 		RunExternalProgramID:         req.RunExternalProgramID,
+		Completion:                   completion,
 	}
 
 	updated, err := h.service.UpdateAutomationSettings(r.Context(), settings)

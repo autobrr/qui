@@ -3540,6 +3540,30 @@ components:
           format: float
         useCategoryFromIndexer:
           type: boolean
+        runExternalProgramId:
+          type: integer
+          nullable: true
+        completion:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            categories:
+              type: array
+              items:
+                type: string
+            tags:
+              type: array
+              items:
+                type: string
+            excludeCategories:
+              type: array
+              items:
+                type: string
+            excludeTags:
+              type: array
+              items:
+                type: string
         createdAt:
           type: string
           format: date-time
