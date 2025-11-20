@@ -194,7 +194,6 @@ type AutomationRunOptions struct {
 	RequestedBy string
 	Mode        models.CrossSeedRunMode
 	DryRun      bool
-	Limit       int
 }
 
 // SearchRunOptions configures how the library search automation operates.
@@ -1002,17 +1001,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		settings = models.DefaultCrossSeedAutomationSettings()
 	}
 
-	limit := opts.Limit
-	if limit <= 0 {
-		limit = settings.MaxResultsPerRun
-	}
-	if limit <= 0 {
-		limit = 50
-	}
-
-	releaseFetchLimit := max(int(math.Ceil(float64(limit)*1.5)), limit)
-
-	searchResp, err := s.jackettService.Recent(ctx, releaseFetchLimit, settings.TargetIndexerIDs)
+	searchResp, err := s.jackettService.Recent(ctx, 0, settings.TargetIndexerIDs)
 	if err != nil {
 		msg := err.Error()
 		run.ErrorMessage = &msg
@@ -1038,10 +1027,6 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 	for _, result := range searchResp.Results {
 		if ctx.Err() != nil {
 			runErr = ctx.Err()
-			break
-		}
-
-		if limit > 0 && processed >= limit {
 			break
 		}
 
@@ -1410,7 +1395,7 @@ func (s *Service) FindCandidates(ctx context.Context, req *FindCandidatesRequest
 		}
 	}
 
-	log.Debug().
+	log.Trace().
 		Str("targetTitle", req.TorrentName).
 		Str("sourceIndexer", req.SourceIndexer).
 		Int("instancesSearched", len(searchInstanceIDs)).

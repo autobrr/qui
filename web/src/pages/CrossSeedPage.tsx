@@ -27,8 +27,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api } from "@/lib/api"
 import type {
-  CrossSeedAutomationStatus,
   CrossSeedAutomationSettingsPatch,
+  CrossSeedAutomationStatus,
   CrossSeedCompletionSettings,
   CrossSeedRun
 } from "@/types"
@@ -55,7 +55,6 @@ interface AutomationFormState {
   tags: string
   targetInstanceIds: number[]
   targetIndexerIds: number[]
-  maxResultsPerRun: number  // RSS Automation: max results to process per run
 }
 
 // Global cross-seed settings (apply to both RSS Automation and Seeded Torrent Search)
@@ -90,7 +89,6 @@ const DEFAULT_AUTOMATION_FORM: AutomationFormState = {
   tags: "",
   targetInstanceIds: [],
   targetIndexerIds: [],
-  maxResultsPerRun: 50,
 }
 
 const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
@@ -302,7 +300,6 @@ export function CrossSeedPage() {
         tags: settings.tags.join(", "),
         targetInstanceIds: settings.targetInstanceIds,
         targetIndexerIds: settings.targetIndexerIds,
-        maxResultsPerRun: settings.maxResultsPerRun,
       })
       setFormInitialized(true)
     }
@@ -371,7 +368,6 @@ export function CrossSeedPage() {
           tags: settings.tags.join(", "),
           targetInstanceIds: settings.targetInstanceIds,
           targetIndexerIds: settings.targetIndexerIds,
-          maxResultsPerRun: settings.maxResultsPerRun,
         }
 
     return {
@@ -382,7 +378,6 @@ export function CrossSeedPage() {
       tags: parseList(automationSource.tags),
       targetInstanceIds: automationSource.targetInstanceIds,
       targetIndexerIds: automationSource.targetIndexerIds,
-      maxResultsPerRun: automationSource.maxResultsPerRun,
     }
   }, [settings, automationForm, formInitialized])
 
@@ -478,7 +473,7 @@ export function CrossSeedPage() {
   })
 
   const triggerRunMutation = useMutation({
-    mutationFn: (payload: { limit?: number; dryRun?: boolean }) => api.triggerCrossSeedRun(payload),
+    mutationFn: (payload: { dryRun?: boolean }) => api.triggerCrossSeedRun(payload),
     onSuccess: () => {
       toast.success("Automation run started")
       refetchStatus()
@@ -943,7 +938,23 @@ export function CrossSeedPage() {
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="automation-interval">RSS run interval (minutes)</Label>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="automation-interval">RSS run interval (minutes)</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-foreground"
+                      aria-label="RSS interval help"
+                    >
+                      <Info className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent align="start" className="max-w-xs text-xs">
+                    Automation processes the full feed from every enabled Torznab indexer on each run. Minimum interval is {MIN_RSS_INTERVAL_MINUTES} minutes to avoid hammering indexers.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <Input
                 id="automation-interval"
                 type="number"
@@ -962,27 +973,14 @@ export function CrossSeedPage() {
                 <p className="text-sm text-destructive">{validationErrors.runIntervalMinutes}</p>
               )}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="automation-max-results">Max RSS results per run</Label>
-              <Input
-                id="automation-max-results"
-                type="number"
-                min={1}
-                value={automationForm.maxResultsPerRun}
-                onChange={event => setAutomationForm(prev => ({ ...prev, maxResultsPerRun: Number(event.target.value) }))}
-              />
-              <p className="text-xs text-muted-foreground">
-                Torznab feeds only deliver the 100 newest results. Use 100 here to scan the entire feed each run.
-              </p>
-            </div>
           </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="automation-category">Category</Label>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="automation-category">Category</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
                       <button
                         type="button"
                         className="text-muted-foreground hover:text-foreground"
@@ -1198,7 +1196,7 @@ export function CrossSeedPage() {
                         notifyMissingIndexers("RSS automation runs require at least one Torznab indexer.")
                         return
                       }
-                      triggerRunMutation.mutate({ limit: automationForm.maxResultsPerRun, dryRun })
+                      triggerRunMutation.mutate({ dryRun })
                     }}
                     disabled={runButtonDisabled}
                     className="disabled:cursor-not-allowed disabled:pointer-events-auto"

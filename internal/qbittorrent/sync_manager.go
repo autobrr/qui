@@ -1974,7 +1974,7 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 		}
 	}
 
-	log.Debug().Int("instanceID", instanceID).Int("torrents", len(torrents)).Msg("getAllTorrentsForStats: Fetched from sync manager with optimistic updates")
+	log.Trace().Int("instanceID", instanceID).Int("torrents", len(torrents)).Msg("getAllTorrentsForStats: Fetched from sync manager with optimistic updates")
 
 	return torrents, nil
 }

@@ -615,13 +615,11 @@ func (s *Service) GetIndexers(ctx context.Context) (*IndexersResponse, error) {
 
 // Recent fetches the latest releases across selected indexers without a search query.
 func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int) (*SearchResponse, error) {
-	if limit <= 0 {
-		limit = 50
-	}
-
 	params := url.Values{}
 	params.Set("t", "search")
-	params.Set("limit", strconv.Itoa(limit))
+	if limit > 0 {
+		params.Set("limit", strconv.Itoa(limit))
+	}
 
 	indexersToSearch, err := s.resolveIndexerSelection(ctx, indexerIDs)
 	if err != nil {
@@ -649,10 +647,6 @@ func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int) (*Sea
 		partial = false
 	}
 	searchResults := s.convertResults(results)
-
-	if len(searchResults) > limit {
-		searchResults = searchResults[:limit]
-	}
 
 	resp := &SearchResponse{
 		Results: searchResults,

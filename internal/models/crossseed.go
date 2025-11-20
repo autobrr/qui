@@ -27,7 +27,7 @@ type CrossSeedAutomationSettings struct {
 	IgnorePatterns     []string `json:"ignorePatterns"`     // RSS: file patterns to ignore
 	TargetInstanceIDs  []int    `json:"targetInstanceIds"`  // RSS: instances to add cross-seeds to
 	TargetIndexerIDs   []int    `json:"targetIndexerIds"`   // RSS: indexers to poll for RSS feeds
-	MaxResultsPerRun   int      `json:"maxResultsPerRun"`   // RSS: max results to process per run (default: 50)
+	MaxResultsPerRun   int      `json:"maxResultsPerRun"`   // Deprecated: automation processes full feeds; retained for backward compatibility
 
 	// Global cross-seed settings (apply to both RSS Automation and Seeded Torrent Search)
 	FindIndividualEpisodes       bool                        `json:"findIndividualEpisodes"`       // Match season packs with individual episodes
