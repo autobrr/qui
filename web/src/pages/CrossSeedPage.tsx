@@ -130,7 +130,7 @@ function normalizeNumberList(values: Array<string | number>): number[] {
   return Array.from(new Set(
     values
       .map(value => Number(value))
-      .filter(value => !Number.isNaN(value))
+      .filter(value => !Number.isNaN(value) && value > 0)
   ))
 }
 
@@ -230,16 +230,22 @@ export function CrossSeedPage() {
     queryKey: ["instances"],
     queryFn: () => api.getInstances(),
   })
+  const activeInstances = useMemo(
+    () => (instances ?? []).filter(instance => instance.isActive),
+    [instances]
+  )
 
   const { data: indexers } = useQuery({
     queryKey: ["torznab", "indexers"],
     queryFn: () => api.listTorznabIndexers(),
   })
 
-  const hasEnabledIndexers = useMemo(
-    () => (indexers ?? []).some(indexer => indexer.enabled),
+  const enabledIndexers = useMemo(
+    () => (indexers ?? []).filter(indexer => indexer.enabled),
     [indexers]
   )
+
+  const hasEnabledIndexers = enabledIndexers.length > 0
 
   const notifyMissingIndexers = useCallback((context: string) => {
     toast.error("No Torznab indexers configured", {
@@ -260,6 +266,10 @@ export function CrossSeedPage() {
     queryKey: ["external-programs"],
     queryFn: () => api.listExternalPrograms(),
   })
+  const enabledExternalPrograms = useMemo(
+    () => (externalPrograms ?? []).filter(program => program.enabled),
+    [externalPrograms]
+  )
 
   const { data: searchStatus, refetch: refetchSearchStatus } = useQuery({
     queryKey: ["cross-seed", "search-status"],
@@ -641,13 +651,13 @@ export function CrossSeedPage() {
   }, [manualCooldownActive, nextManualRunAt])
 
   const instanceOptions = useMemo(
-    () => (instances ?? []).map(instance => ({ label: instance.name, value: String(instance.id) })),
-    [instances]
+    () => activeInstances.map(instance => ({ label: instance.name, value: String(instance.id) })),
+    [activeInstances]
   )
 
   const indexerOptions = useMemo(
-    () => (indexers ?? []).map(indexer => ({ label: indexer.name, value: String(indexer.id) })),
-    [indexers]
+    () => enabledIndexers.map(indexer => ({ label: indexer.name, value: String(indexer.id) })),
+    [enabledIndexers]
   )
 
   const searchCategoryNames = useMemo(() => {
@@ -1071,8 +1081,8 @@ export function CrossSeedPage() {
                     setValidationErrors(prev => ({ ...prev, targetInstanceIds: "" }))
                   }
                 }}
-                placeholder={instances?.length ? "Select qBittorrent instances" : "No instances available"}
-                disabled={!instances?.length}
+                placeholder={instanceOptions.length ? "Select qBittorrent instances" : "No active instances available"}
+                disabled={!instanceOptions.length}
               />
               <p className="text-xs text-muted-foreground">
                 {instanceOptions.length === 0
@@ -1095,8 +1105,8 @@ export function CrossSeedPage() {
                   ...prev,
                   targetIndexerIds: normalizeNumberList(values),
                 }))}
-                placeholder={indexers?.length ? "All enabled indexers (leave empty for all)" : "No Torznab indexers configured"}
-                disabled={!indexers?.length}
+                placeholder={indexerOptions.length ? "All enabled indexers (leave empty for all)" : "No Torznab indexers configured"}
+                disabled={!indexerOptions.length}
               />
               <p className="text-xs text-muted-foreground">
                 {indexerOptions.length === 0
@@ -1633,32 +1643,32 @@ export function CrossSeedPage() {
               <div className="space-y-2">
                 <Label htmlFor="global-external-program">Run external program after injection</Label>
                 <Select
-                  value={globalSettings.runExternalProgramId ? String(globalSettings.runExternalProgramId) : "none"}
-                  onValueChange={(value) => setGlobalSettings(prev => ({ 
-                    ...prev, 
-                    runExternalProgramId: value === "none" ? null : Number(value) 
-                  }))}
-                  disabled={!externalPrograms?.length}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={
-                      !externalPrograms?.length 
+                value={globalSettings.runExternalProgramId ? String(globalSettings.runExternalProgramId) : "none"}
+                onValueChange={(value) => setGlobalSettings(prev => ({ 
+                  ...prev, 
+                  runExternalProgramId: value === "none" ? null : Number(value) 
+                }))}
+                disabled={!enabledExternalPrograms.length}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={
+                      !enabledExternalPrograms.length 
                         ? "No external programs available" 
                         : "Select external program (optional)"
                     } />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    {externalPrograms?.filter(program => program.enabled).map(program => (
-                      <SelectItem key={program.id} value={String(program.id)}>
-                        {program.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {enabledExternalPrograms.map(program => (
+                    <SelectItem key={program.id} value={String(program.id)}>
+                      {program.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
                 <p className="text-xs text-muted-foreground">
                   Optionally run an external program after successfully injecting a cross-seed torrent. Only enabled programs are shown.
-                  {!externalPrograms?.length && (
+                  {!enabledExternalPrograms.length && (
                     <> <Link to="/settings" search={{ tab: "external-programs" }} className="font-medium text-primary underline-offset-4 hover:underline">Configure external programs</Link> to use this feature.</>
                   )}
                 </p>
