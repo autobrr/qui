@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net"
 	"net/url"
 	"path/filepath"
 	"slices"
@@ -34,6 +35,9 @@ type FilesManager interface {
 	CacheFiles(ctx context.Context, instanceID int, hash string, torrentProgress float64, files qbt.TorrentFiles) error
 	InvalidateCache(ctx context.Context, instanceID int, hash string) error
 }
+
+// TorrentCompletionHandler is invoked when a torrent transitions to a completed state.
+type TorrentCompletionHandler func(ctx context.Context, instanceID int, torrent qbt.Torrent)
 
 // Global URL cache for domain extraction - shared across all sync managers
 var urlCache = ttlcache.New(ttlcache.Options[string, string]{}.SetDefaultTTL(5 * time.Minute))
@@ -154,6 +158,14 @@ func (sm *SyncManager) getFilesManager() FilesManager {
 		return nil
 	}
 	return v.(FilesManager)
+}
+
+// SetTorrentCompletionHandler registers a callback for torrent completion events across all clients.
+func (sm *SyncManager) SetTorrentCompletionHandler(handler TorrentCompletionHandler) {
+	if sm == nil || sm.clientPool == nil {
+		return
+	}
+	sm.clientPool.SetTorrentCompletionHandler(handler)
 }
 
 // InvalidateFileCache invalidates the file cache for a torrent
@@ -445,6 +457,10 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	if sort == "state" {
 		sm.sortTorrentsByStatus(filteredTorrents, order == "desc", trackerHealthSupported)
+	}
+
+	if sort == "tracker" {
+		sm.sortTorrentsByTracker(filteredTorrents, order == "desc")
 	}
 
 	// Apply custom sorting for priority field
@@ -1306,8 +1322,16 @@ type InstanceSpeeds struct {
 	Upload   int64 `json:"upload"`
 }
 
-// ExtractDomainFromURL extracts the domain from a BitTorrent tracker URL with caching
-// Where scheme is typically: http, https, udp, ws, or wss
+// ExtractDomainFromURL extracts the domain from a BitTorrent tracker URL with caching.
+// Handles multiple formats:
+//   - Standard URLs with schemes (http, https, udp, ws, wss)
+//   - Scheme-less URLs (tracker.example.com/announce)
+//   - IPv6 literals with or without brackets
+//
+// Fallback strategy: url.Parse → prepend "//" and retry → manual host extraction → port stripping
+//
+// Known limitation: IPv6 addresses with ports but without brackets (e.g., 2001:db8::1:8080)
+// may be parsed incorrectly. Standard format is [2001:db8::1]:8080.
 func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 	urlStr = strings.TrimSpace(urlStr)
 	if urlStr == "" {
@@ -1319,11 +1343,61 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 		return cachedDomain
 	}
 
-	domain := "Unknown"
+	const unknown = "Unknown"
+	domain := unknown
+
+	// Strategy 1: Standard URL parsing with scheme
 	if u, err := url.Parse(urlStr); err == nil {
 		if hostname := u.Hostname(); hostname != "" {
 			domain = hostname
 		}
+	}
+
+	// Strategy 2: Handle scheme-less trackers like "tracker.example.com/announce"
+	if domain == unknown && !strings.Contains(urlStr, "://") {
+		if u, err := url.Parse("//" + urlStr); err == nil {
+			if hostname := u.Hostname(); hostname != "" {
+				domain = hostname
+			}
+		}
+	}
+
+	// Strategy 3: Manual extraction as final fallback
+	// Extract the first segment before a path/query as the domain
+	if domain == unknown {
+		candidate := urlStr
+		if idx := strings.IndexAny(candidate, "/?#"); idx != -1 {
+			candidate = candidate[:idx]
+		}
+		candidate = strings.TrimPrefix(candidate, "//")
+		candidate = strings.TrimSpace(candidate)
+
+		if candidate != "" {
+			// Try to split host:port using net.SplitHostPort
+			if host, _, err := net.SplitHostPort(candidate); err == nil {
+				domain = host
+			} else {
+				// Preserve IPv6 literals like "2001:db8::1" which lack brackets/port information
+				if ip := net.ParseIP(candidate); ip != nil && strings.Contains(candidate, ":") {
+					domain = candidate
+				} else {
+					// Strip port from IPv4/hostname (e.g., "tracker.com:8080" → "tracker.com")
+					if idx := strings.Index(candidate, ":"); idx != -1 {
+						candidate = candidate[:idx]
+					}
+					if candidate != "" {
+						domain = candidate
+					}
+				}
+			}
+		}
+	}
+
+	if domain != unknown {
+		domain = strings.Trim(domain, "[]")
+		domain = strings.ToLower(domain)
+	} else {
+		domain = unknown
 	}
 
 	// Cache the result
@@ -2766,6 +2840,113 @@ func (sm *SyncManager) sortTorrentsByStatus(torrents []qbt.Torrent, desc bool, t
 		}
 		return cmp
 	})
+}
+
+// sortTorrentsByTracker normalizes tracker values to compare by domain first, then full URL.
+// This prevents qBittorrent's case-sensitive/raw string ordering from splitting identical hosts.
+func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) {
+	if len(torrents) <= 1 {
+		return
+	}
+
+	type trackerSortKey struct {
+		hasDomain  bool
+		domain     string
+		normalized string
+		hash       string
+	}
+
+	keys := make([]trackerSortKey, len(torrents))
+
+	for i := range torrents {
+		torrent := &torrents[i]
+		key := &keys[i]
+
+		key.hash = strings.ToLower(strings.TrimSpace(torrent.Hash))
+
+		addCandidate := func(candidate string) {
+			candidate = strings.TrimSpace(candidate)
+			if candidate == "" {
+				return
+			}
+
+			lowerCandidate := strings.ToLower(candidate)
+			if key.normalized == "" {
+				key.normalized = lowerCandidate
+			}
+
+			domain := strings.ToLower(sm.ExtractDomainFromURL(candidate))
+			if domain == "" || domain == "unknown" {
+				return
+			}
+
+			key.hasDomain = true
+			key.domain = domain
+		}
+
+		addCandidate(torrent.Tracker)
+
+		if !key.hasDomain && len(torrent.Trackers) > 0 {
+			for _, tracker := range torrent.Trackers {
+				addCandidate(tracker.Url)
+				if key.hasDomain {
+					break
+				}
+			}
+		}
+
+		if key.normalized == "" {
+			key.normalized = key.hash
+		}
+	}
+
+	indices := make([]int, len(torrents))
+	for idx := range indices {
+		indices[idx] = idx
+	}
+
+	compare := func(aIdx, bIdx int) int {
+		a := keys[aIdx]
+		b := keys[bIdx]
+
+		if a.hasDomain != b.hasDomain {
+			if a.hasDomain {
+				return -1
+			}
+			return 1
+		}
+
+		if cmp := strings.Compare(a.domain, b.domain); cmp != 0 {
+			if desc {
+				return -cmp
+			}
+			return cmp
+		}
+
+		if cmp := strings.Compare(a.normalized, b.normalized); cmp != 0 {
+			if desc {
+				return -cmp
+			}
+			return cmp
+		}
+
+		cmp := strings.Compare(a.hash, b.hash)
+		if desc {
+			return -cmp
+		}
+		return cmp
+	}
+
+	slices.SortFunc(indices, func(i, j int) int {
+		return compare(i, j)
+	})
+
+	// Apply the sorted order to the torrents slice
+	sorted := make([]qbt.Torrent, len(torrents))
+	for i, srcIdx := range indices {
+		sorted[i] = torrents[srcIdx]
+	}
+	copy(torrents, sorted)
 }
 
 // sortTorrentsByNameCaseInsensitive enforces a case-insensitive ordering for torrent names.

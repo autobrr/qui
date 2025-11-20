@@ -25,19 +25,28 @@ type CrossSeedHandler struct {
 }
 
 type automationSettingsRequest struct {
-	Enabled                      bool     `json:"enabled"`
-	RunIntervalMinutes           int      `json:"runIntervalMinutes"`
-	StartPaused                  bool     `json:"startPaused"`
-	Category                     *string  `json:"category"`
-	Tags                         []string `json:"tags"`
-	IgnorePatterns               []string `json:"ignorePatterns"`
-	TargetInstanceIDs            []int    `json:"targetInstanceIds"`
-	TargetIndexerIDs             []int    `json:"targetIndexerIds"`
-	MaxResultsPerRun             int      `json:"maxResultsPerRun"`
-	FindIndividualEpisodes       bool     `json:"findIndividualEpisodes"`
-	SizeMismatchTolerancePercent float64  `json:"sizeMismatchTolerancePercent"`
-	UseCategoryFromIndexer       bool     `json:"useCategoryFromIndexer"`
-	RunExternalProgramID         *int     `json:"runExternalProgramId"`
+	Enabled                      bool                       `json:"enabled"`
+	RunIntervalMinutes           int                        `json:"runIntervalMinutes"`
+	StartPaused                  bool                       `json:"startPaused"`
+	Category                     *string                    `json:"category"`
+	Tags                         []string                   `json:"tags"`
+	IgnorePatterns               []string                   `json:"ignorePatterns"`
+	TargetInstanceIDs            []int                      `json:"targetInstanceIds"`
+	TargetIndexerIDs             []int                      `json:"targetIndexerIds"`
+	MaxResultsPerRun             int                        `json:"maxResultsPerRun"`
+	FindIndividualEpisodes       bool                       `json:"findIndividualEpisodes"`
+	SizeMismatchTolerancePercent float64                    `json:"sizeMismatchTolerancePercent"`
+	UseCategoryFromIndexer       bool                       `json:"useCategoryFromIndexer"`
+	RunExternalProgramID         *int                       `json:"runExternalProgramId"`
+	Completion                   *completionSettingsRequest `json:"completion"`
+}
+
+type completionSettingsRequest struct {
+	Enabled           bool     `json:"enabled"`
+	Categories        []string `json:"categories"`
+	Tags              []string `json:"tags"`
+	ExcludeCategories []string `json:"excludeCategories"`
+	ExcludeTags       []string `json:"excludeTags"`
 }
 
 type automationRunRequest struct {
@@ -234,7 +243,7 @@ func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.R
 
 // AutobrrApply godoc
 // @Summary Add a cross-seed torrent provided by autobrr
-// @Description Accepts a torrent file from autobrr, matches it against the specified instance, and adds it with alignment if a match is found.
+// @Description Accepts a torrent file from autobrr, matches it against the requested instances (or all instances when instanceIds is omitted), and adds it with alignment wherever a match is found.
 // @Tags cross-seed
 // @Accept json
 // @Produce json
@@ -387,6 +396,17 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		}
 	}
 
+	completion := models.DefaultCrossSeedCompletionSettings()
+	if req.Completion != nil {
+		completion = models.CrossSeedCompletionSettings{
+			Enabled:           req.Completion.Enabled,
+			Categories:        req.Completion.Categories,
+			Tags:              req.Completion.Tags,
+			ExcludeCategories: req.Completion.ExcludeCategories,
+			ExcludeTags:       req.Completion.ExcludeTags,
+		}
+	}
+
 	settings := &models.CrossSeedAutomationSettings{
 		Enabled:                      req.Enabled,
 		RunIntervalMinutes:           req.RunIntervalMinutes,
@@ -401,6 +421,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		SizeMismatchTolerancePercent: req.SizeMismatchTolerancePercent,
 		UseCategoryFromIndexer:       req.UseCategoryFromIndexer,
 		RunExternalProgramID:         req.RunExternalProgramID,
+		Completion:                   completion,
 	}
 
 	updated, err := h.service.UpdateAutomationSettings(r.Context(), settings)
@@ -691,7 +712,8 @@ func (h *CrossSeedHandler) GetCrossSeedStatus(w http.ResponseWriter, r *http.Req
 // @Accept json
 // @Produce json
 // @Param request body crossseed.WebhookCheckRequest true "Release metadata from autobrr"
-// @Success 200 {object} crossseed.WebhookCheckResponse "Matches found (recommendation=download)"
+// @Success 200 {object} crossseed.WebhookCheckResponse "Matches found (torrents complete, recommendation=download)"
+// @Success 202 {object} crossseed.WebhookCheckResponse "Matches found but torrents still downloading (recommendation=download, retry until 200)"
 // @Failure 404 {object} crossseed.WebhookCheckResponse "No matches found (recommendation=skip)"
 // @Failure 400 {object} httphelpers.ErrorResponse
 // @Failure 500 {object} httphelpers.ErrorResponse
@@ -712,10 +734,6 @@ func (h *CrossSeedHandler) WebhookCheck(w http.ResponseWriter, r *http.Request) 
 			log.Warn().Err(err).Msg("Invalid webhook payload")
 			RespondError(w, http.StatusBadRequest, err.Error())
 			return
-		case errors.Is(err, crossseed.ErrWebhookInstanceNotFound):
-			log.Warn().Err(err).Msg("Webhook instance not found")
-			RespondError(w, http.StatusNotFound, err.Error())
-			return
 		default:
 			log.Error().Err(err).Msg("Failed to check webhook")
 			RespondError(w, http.StatusInternalServerError, "Failed to check webhook")
@@ -723,10 +741,18 @@ func (h *CrossSeedHandler) WebhookCheck(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	if !response.CanCrossSeed {
-		RespondJSON(w, http.StatusNotFound, response)
-		return
-	}
+	RespondJSON(w, webhookResponseStatus(response), response)
+}
 
-	RespondJSON(w, http.StatusOK, response)
+func webhookResponseStatus(response *crossseed.WebhookCheckResponse) int {
+	switch {
+	case response == nil:
+		return http.StatusInternalServerError
+	case response.CanCrossSeed:
+		return http.StatusOK
+	case len(response.Matches) > 0:
+		return http.StatusAccepted
+	default:
+		return http.StatusNotFound
+	}
 }

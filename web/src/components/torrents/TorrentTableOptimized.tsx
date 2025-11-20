@@ -41,6 +41,7 @@ import {
 } from "@tanstack/react-table"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
 import { TorrentContextMenu } from "./TorrentContextMenu"
 import { TORRENT_SORT_OPTIONS, type TorrentSortOptionValue, getDefaultSortOrder } from "./torrentSortOptions"
 
@@ -84,6 +85,7 @@ import {
 } from "@/components/ui/tooltip"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences.ts"
+import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
@@ -114,6 +116,7 @@ import {
   LayoutGrid,
   Loader2,
   Rabbit,
+  RefreshCcw,
   Table as TableIcon,
   Tag,
   Turtle,
@@ -647,6 +650,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const [excludedFromSelectAll, setExcludedFromSelectAll] = useState<Set<string>>(new Set())
   const [dropPayload, setDropPayload] = useState<AddTorrentDropPayload | null>(null)
 
+  // Instance preferences dialog state
+  const [preferencesOpen, setPreferencesOpen] = useState(false)
+  const [preferencesDefaultTab, setPreferencesDefaultTab] = useState<string>("speed")
+
   // Filter lifecycle state machine to replace fragile timing-based coordination
   type FilterLifecycleState = 'idle' | 'clearing-all' | 'clearing-columns-only' | 'cleared'
   const [filterLifecycleState, setFilterLifecycleState] = useState<FilterLifecycleState>('idle')
@@ -656,6 +663,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
   const { formatTimestamp } = useDateTimeFormatters()
   const { preferences } = useInstancePreferences(instanceId)
+  const { instances } = useInstances()
+  const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
 
   // Desktop view mode state (separate from mobile view mode)
   const { viewMode: desktopViewMode, cycleViewMode } = usePersistedCompactViewState("normal", TABLE_ALLOWED_VIEW_MODES)
@@ -2725,6 +2734,26 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                 </TooltipTrigger>
                 <TooltipContent>{altSpeedTooltip}</TooltipContent>
               </Tooltip>
+              {instance?.reannounceSettings?.enabled && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setPreferencesDefaultTab("reannounce")
+                        setPreferencesOpen(true)
+                      }}
+                      className="h-6 w-6 text-muted-foreground hover:text-accent-foreground"
+                    >
+                      <RefreshCcw className="h-4 w-4 text-green-500" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Automatic tracker reannounce enabled - Click to configure</TooltipContent>
+                </Tooltip>
+              )}
             </div>
             <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
               <Button
@@ -2977,6 +3006,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Instance Preferences Dialog */}
+      {instance && (
+        <InstancePreferencesDialog
+          open={preferencesOpen}
+          onOpenChange={setPreferencesOpen}
+          instanceId={instanceId}
+          instanceName={instance.name}
+          defaultTab={preferencesDefaultTab}
+        />
+      )}
 
       {/* Scroll to top button*/}
       <div className="hidden lg:block">
