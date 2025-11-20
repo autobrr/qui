@@ -111,6 +111,8 @@ const (
 	crossSeedRenameWaitTimeout          = 15 * time.Second
 	crossSeedRenamePollInterval         = 200 * time.Millisecond
 	automationSettingsQueryTimeout      = 5 * time.Second
+	minSearchIntervalSeconds            = 60
+	minSearchCooldownMinutes            = 720
 )
 
 func computeAutomationSearchTimeout(indexerCount int) time.Duration {
@@ -213,6 +215,17 @@ type SearchRunOptions struct {
 	CategoryOverride       *string
 	TagsOverride           []string
 	IgnorePatterns         []string
+}
+
+// SearchSettingsPatch captures optional updates to seeded search defaults.
+type SearchSettingsPatch struct {
+	InstanceIDSet   bool
+	InstanceID      *int
+	Categories      *[]string
+	Tags            *[]string
+	IndexerIDs      *[]int
+	IntervalSeconds *int
+	CooldownMinutes *int
 }
 
 // SearchRunStatus summarises the current state of the active search run.
@@ -348,6 +361,130 @@ func (s *Service) validateAndNormalizeSettings(settings *models.CrossSeedAutomat
 	}
 
 	models.NormalizeCrossSeedCompletionSettings(&settings.Completion)
+}
+
+func normalizeSearchTiming(intervalSeconds, cooldownMinutes int) (int, int) {
+	if intervalSeconds < minSearchIntervalSeconds {
+		intervalSeconds = minSearchIntervalSeconds
+	}
+	if cooldownMinutes < minSearchCooldownMinutes {
+		cooldownMinutes = minSearchCooldownMinutes
+	}
+	return intervalSeconds, cooldownMinutes
+}
+
+func (s *Service) normalizeSearchSettings(settings *models.CrossSeedSearchSettings) {
+	if settings == nil {
+		return
+	}
+	settings.Categories = normalizeStringSlice(settings.Categories)
+	settings.Tags = normalizeStringSlice(settings.Tags)
+	settings.IndexerIDs = uniquePositiveInts(settings.IndexerIDs)
+	settings.IntervalSeconds, settings.CooldownMinutes = normalizeSearchTiming(settings.IntervalSeconds, settings.CooldownMinutes)
+}
+
+// GetSearchSettings returns stored defaults for seeded torrent searches.
+func (s *Service) GetSearchSettings(ctx context.Context) (*models.CrossSeedSearchSettings, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	} else {
+		ctx = context.WithoutCancel(ctx)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, automationSettingsQueryTimeout)
+	defer cancel()
+
+	if s.automationStore == nil {
+		settings := models.DefaultCrossSeedSearchSettings()
+		s.normalizeSearchSettings(settings)
+		return settings, nil
+	}
+
+	settings, err := s.automationStore.GetSearchSettings(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load search settings: %w", err)
+	}
+	if settings == nil {
+		settings = models.DefaultCrossSeedSearchSettings()
+	}
+
+	s.normalizeSearchSettings(settings)
+
+	if settings.InstanceID != nil {
+		instance, err := s.instanceStore.Get(ctx, *settings.InstanceID)
+		if err != nil {
+			if errors.Is(err, models.ErrInstanceNotFound) {
+				settings.InstanceID = nil
+			} else {
+				return nil, fmt.Errorf("load instance %d: %w", *settings.InstanceID, err)
+			}
+		}
+		if instance == nil {
+			settings.InstanceID = nil
+		}
+	}
+
+	return settings, nil
+}
+
+// PatchSearchSettings merges updates into stored seeded search defaults.
+func (s *Service) PatchSearchSettings(ctx context.Context, patch SearchSettingsPatch) (*models.CrossSeedSearchSettings, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	} else {
+		ctx = context.WithoutCancel(ctx)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, automationSettingsQueryTimeout)
+	defer cancel()
+
+	if s.automationStore == nil {
+		return nil, errors.New("automation storage not configured")
+	}
+
+	settings, err := s.GetSearchSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if settings == nil {
+		settings = models.DefaultCrossSeedSearchSettings()
+	}
+
+	if patch.InstanceIDSet {
+		settings.InstanceID = patch.InstanceID
+	}
+	if patch.Categories != nil {
+		settings.Categories = append([]string(nil), *patch.Categories...)
+	}
+	if patch.Tags != nil {
+		settings.Tags = append([]string(nil), *patch.Tags...)
+	}
+	if patch.IndexerIDs != nil {
+		settings.IndexerIDs = append([]int(nil), *patch.IndexerIDs...)
+	}
+	if patch.IntervalSeconds != nil {
+		settings.IntervalSeconds = *patch.IntervalSeconds
+	}
+	if patch.CooldownMinutes != nil {
+		settings.CooldownMinutes = *patch.CooldownMinutes
+	}
+
+	s.normalizeSearchSettings(settings)
+
+	if settings.InstanceID != nil {
+		instance, err := s.instanceStore.Get(ctx, *settings.InstanceID)
+		if err != nil {
+			if errors.Is(err, models.ErrInstanceNotFound) {
+				return nil, fmt.Errorf("%w: instance %d not found", ErrInvalidRequest, *settings.InstanceID)
+			}
+			return nil, fmt.Errorf("load instance %d: %w", *settings.InstanceID, err)
+		}
+		if instance == nil {
+			return nil, fmt.Errorf("%w: instance %d not found", ErrInvalidRequest, *settings.InstanceID)
+		}
+	}
+
+	return s.automationStore.UpsertSearchSettings(ctx, settings)
 }
 
 // StartAutomation launches the background scheduler loop.
@@ -724,6 +861,18 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		return nil, err
 	}
 
+	if _, err := s.PatchSearchSettings(ctx, SearchSettingsPatch{
+		InstanceIDSet:   true,
+		InstanceID:      &opts.InstanceID,
+		Categories:      &opts.Categories,
+		Tags:            &opts.Tags,
+		IndexerIDs:      &opts.IndexerIDs,
+		IntervalSeconds: &opts.IntervalSeconds,
+		CooldownMinutes: &opts.CooldownMinutes,
+	}); err != nil {
+		return nil, err
+	}
+
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
 		return nil, err
@@ -905,12 +1054,7 @@ func (s *Service) validateSearchRunOptions(ctx context.Context, opts *SearchRunO
 	if opts.InstanceID <= 0 {
 		return fmt.Errorf("%w: instance id must be positive", ErrInvalidRequest)
 	}
-	if opts.IntervalSeconds < 60 {
-		opts.IntervalSeconds = 60
-	}
-	if opts.CooldownMinutes < 720 {
-		opts.CooldownMinutes = 720
-	}
+	opts.IntervalSeconds, opts.CooldownMinutes = normalizeSearchTiming(opts.IntervalSeconds, opts.CooldownMinutes)
 	opts.Categories = normalizeStringSlice(opts.Categories)
 	opts.Tags = normalizeStringSlice(opts.Tags)
 	opts.IndexerIDs = uniquePositiveInts(opts.IndexerIDs)

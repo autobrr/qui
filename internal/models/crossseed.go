@@ -83,6 +83,33 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 	}
 }
 
+// CrossSeedSearchSettings stores defaults for manual seeded torrent searches.
+type CrossSeedSearchSettings struct {
+	InstanceID      *int      `json:"instanceId"`
+	Categories      []string  `json:"categories"`
+	Tags            []string  `json:"tags"`
+	IndexerIDs      []int     `json:"indexerIds"`
+	IntervalSeconds int       `json:"intervalSeconds"`
+	CooldownMinutes int       `json:"cooldownMinutes"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
+}
+
+// DefaultCrossSeedSearchSettings returns defaults for seeded torrent searches.
+func DefaultCrossSeedSearchSettings() *CrossSeedSearchSettings {
+	now := time.Now().UTC()
+	return &CrossSeedSearchSettings{
+		InstanceID:      nil,
+		Categories:      []string{},
+		Tags:            []string{},
+		IndexerIDs:      []int{},
+		IntervalSeconds: 60,
+		CooldownMinutes: 720,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+}
+
 // CrossSeedRunStatus indicates the outcome of an automation run.
 type CrossSeedRunStatus string
 
@@ -424,6 +451,118 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 	}
 
 	return s.GetSettings(ctx)
+}
+
+// GetSearchSettings returns the stored seeded search defaults, or defaults when unset.
+func (s *CrossSeedStore) GetSearchSettings(ctx context.Context) (*CrossSeedSearchSettings, error) {
+	query := `
+		SELECT instance_id, categories, tags, indexer_ids,
+		       interval_seconds, cooldown_minutes,
+		       created_at, updated_at
+		FROM cross_seed_search_settings
+		WHERE id = 1
+	`
+
+	row := s.db.QueryRowContext(ctx, query)
+
+	var settings CrossSeedSearchSettings
+	var instanceID sql.NullInt64
+	var categoriesJSON, tagsJSON, indexersJSON sql.NullString
+	var createdAt, updatedAt sql.NullTime
+
+	if err := row.Scan(
+		&instanceID,
+		&categoriesJSON,
+		&tagsJSON,
+		&indexersJSON,
+		&settings.IntervalSeconds,
+		&settings.CooldownMinutes,
+		&createdAt,
+		&updatedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return DefaultCrossSeedSearchSettings(), nil
+		}
+		return nil, fmt.Errorf("query search settings: %w", err)
+	}
+
+	if instanceID.Valid {
+		id := int(instanceID.Int64)
+		settings.InstanceID = &id
+	}
+
+	if err := decodeStringSlice(categoriesJSON, &settings.Categories); err != nil {
+		return nil, fmt.Errorf("decode search categories: %w", err)
+	}
+	if err := decodeStringSlice(tagsJSON, &settings.Tags); err != nil {
+		return nil, fmt.Errorf("decode search tags: %w", err)
+	}
+	if err := decodeIntSlice(indexersJSON, &settings.IndexerIDs); err != nil {
+		return nil, fmt.Errorf("decode search indexers: %w", err)
+	}
+
+	if createdAt.Valid {
+		settings.CreatedAt = createdAt.Time
+	}
+	if updatedAt.Valid {
+		settings.UpdatedAt = updatedAt.Time
+	}
+
+	return &settings, nil
+}
+
+// UpsertSearchSettings saves seeded search defaults.
+func (s *CrossSeedStore) UpsertSearchSettings(ctx context.Context, settings *CrossSeedSearchSettings) (*CrossSeedSearchSettings, error) {
+	if settings == nil {
+		return nil, errors.New("settings cannot be nil")
+	}
+
+	categoryJSON, err := encodeStringSlice(settings.Categories)
+	if err != nil {
+		return nil, fmt.Errorf("encode search categories: %w", err)
+	}
+	tagsJSON, err := encodeStringSlice(settings.Tags)
+	if err != nil {
+		return nil, fmt.Errorf("encode search tags: %w", err)
+	}
+	indexerJSON, err := encodeIntSlice(settings.IndexerIDs)
+	if err != nil {
+		return nil, fmt.Errorf("encode search indexers: %w", err)
+	}
+
+	var instanceID interface{}
+	if settings.InstanceID != nil {
+		instanceID = *settings.InstanceID
+	}
+
+	query := `
+		INSERT INTO cross_seed_search_settings (
+			id, instance_id, categories, tags, indexer_ids,
+			interval_seconds, cooldown_minutes
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			instance_id = excluded.instance_id,
+			categories = excluded.categories,
+			tags = excluded.tags,
+			indexer_ids = excluded.indexer_ids,
+			interval_seconds = excluded.interval_seconds,
+			cooldown_minutes = excluded.cooldown_minutes
+	`
+
+	_, err = s.db.ExecContext(ctx, query,
+		1,
+		instanceID,
+		categoryJSON,
+		tagsJSON,
+		indexerJSON,
+		settings.IntervalSeconds,
+		settings.CooldownMinutes,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("upsert search settings: %w", err)
+	}
+
+	return s.GetSearchSettings(ctx)
 }
 
 // CreateRun inserts a new automation run record.
