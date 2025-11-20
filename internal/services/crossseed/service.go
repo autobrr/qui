@@ -408,7 +408,11 @@ func (s *Service) GetSearchSettings(ctx context.Context) (*models.CrossSeedSearc
 	if settings.InstanceID != nil {
 		instance, err := s.instanceStore.Get(ctx, *settings.InstanceID)
 		if err != nil {
-			return nil, fmt.Errorf("load instance %d: %w", *settings.InstanceID, err)
+			if errors.Is(err, models.ErrInstanceNotFound) {
+				settings.InstanceID = nil
+			} else {
+				return nil, fmt.Errorf("load instance %d: %w", *settings.InstanceID, err)
+			}
 		}
 		if instance == nil {
 			settings.InstanceID = nil
