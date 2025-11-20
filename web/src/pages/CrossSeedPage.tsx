@@ -884,7 +884,7 @@ export function CrossSeedPage() {
         </Alert>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2 mb-6">
         <Card className="h-full">
           <CardHeader className="space-y-2">
             <div className="flex items-center justify-between gap-3">
@@ -950,7 +950,7 @@ export function CrossSeedPage() {
         </Card>
       </div>
 
-      <Tabs defaultValue="automation" className="space-y-6">
+      <Tabs defaultValue="automation" className="space-y-4">
         <TabsList className="grid w-full grid-cols-3 gap-2 md:w-auto">
           <TabsTrigger value="automation">Automation</TabsTrigger>
           <TabsTrigger value="search">Seeded search</TabsTrigger>
