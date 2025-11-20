@@ -1270,6 +1270,26 @@ export interface CrossSeedSearchFilters {
   tags: string[]
 }
 
+export interface CrossSeedSearchSettings {
+  instanceId?: number | null
+  categories: string[]
+  tags: string[]
+  indexerIds: number[]
+  intervalSeconds: number
+  cooldownMinutes: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface CrossSeedSearchSettingsPatch {
+  instanceId?: number | null
+  categories?: string[]
+  tags?: string[]
+  indexerIds?: number[]
+  intervalSeconds?: number
+  cooldownMinutes?: number
+}
+
 export interface CrossSeedSearchResult {
   torrentHash: string
   torrentName: string

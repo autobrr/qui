@@ -22,6 +22,8 @@ import type {
   CrossSeedTorrentInfo,
   CrossSeedTorrentSearchResponse,
   CrossSeedTorrentSearchSelection,
+  CrossSeedSearchSettings,
+  CrossSeedSearchSettingsPatch,
   CrossSeedSearchRun,
   CrossSeedSearchStatus,
   DuplicateTorrentMatch,
@@ -942,6 +944,17 @@ class ApiClient {
 
   async patchCrossSeedSettings(payload: CrossSeedAutomationSettingsPatch): Promise<CrossSeedAutomationSettings> {
     return this.request<CrossSeedAutomationSettings>("/cross-seed/settings", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async getCrossSeedSearchSettings(): Promise<CrossSeedSearchSettings> {
+    return this.request<CrossSeedSearchSettings>("/cross-seed/search/settings")
+  }
+
+  async patchCrossSeedSearchSettings(payload: CrossSeedSearchSettingsPatch): Promise<CrossSeedSearchSettings> {
+    return this.request<CrossSeedSearchSettings>("/cross-seed/search/settings", {
       method: "PATCH",
       body: JSON.stringify(payload),
     })

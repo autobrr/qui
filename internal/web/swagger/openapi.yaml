@@ -2424,6 +2424,44 @@ paths:
         '500':
           description: Failed to trigger automation run
 
+  /api/cross-seed/search/settings:
+    get:
+      tags:
+        - Cross-Seed
+      summary: Get seeded torrent search settings
+      description: Returns the persisted defaults used by Seeded Torrent Search runs.
+      responses:
+        '200':
+          description: Current seeded search settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedSearchSettings'
+        '500':
+          description: Failed to load search settings
+    patch:
+      tags:
+        - Cross-Seed
+      summary: Update seeded torrent search settings
+      description: Persists default filters and timing for Seeded Torrent Search runs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrossSeedSearchSettingsPatch'
+      responses:
+        '200':
+          description: Updated seeded search settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedSearchSettings'
+        '400':
+          description: Invalid request body
+        '500':
+          description: Failed to update search settings
+
   /api/cross-seed/search/run:
     post:
       tags:
@@ -3676,6 +3714,58 @@ components:
           nullable: true
         running:
           type: boolean
+
+    CrossSeedSearchSettingsPatch:
+      type: object
+      properties:
+        instanceId:
+          type: integer
+          nullable: true
+        categories:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        indexerIds:
+          type: array
+          items:
+            type: integer
+        intervalSeconds:
+          type: integer
+        cooldownMinutes:
+          type: integer
+
+    CrossSeedSearchSettings:
+      type: object
+      properties:
+        instanceId:
+          type: integer
+          nullable: true
+        categories:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        indexerIds:
+          type: array
+          items:
+            type: integer
+        intervalSeconds:
+          type: integer
+        cooldownMinutes:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
 
     CrossSeedRunRequest:
       type: object
