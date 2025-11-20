@@ -1216,6 +1216,14 @@ export interface CrossSeedCompletionSettings {
   excludeTags: string[]
 }
 
+export interface CrossSeedCompletionSettingsPatch {
+  enabled?: boolean
+  categories?: string[]
+  tags?: string[]
+  excludeCategories?: string[]
+  excludeTags?: string[]
+}
+
 export interface CrossSeedAutomationSettings {
   enabled: boolean
   runIntervalMinutes: number
@@ -1233,6 +1241,23 @@ export interface CrossSeedAutomationSettings {
   completion?: CrossSeedCompletionSettings
   createdAt?: string
   updatedAt?: string
+}
+
+export interface CrossSeedAutomationSettingsPatch {
+  enabled?: boolean
+  runIntervalMinutes?: number
+  startPaused?: boolean
+  category?: string | null
+  tags?: string[]
+  ignorePatterns?: string[]
+  targetInstanceIds?: number[]
+  targetIndexerIds?: number[]
+  maxResultsPerRun?: number
+  findIndividualEpisodes?: boolean
+  sizeMismatchTolerancePercent?: number
+  useCategoryFromIndexer?: boolean
+  runExternalProgramId?: number | null
+  completion?: CrossSeedCompletionSettingsPatch
 }
 
 export interface CrossSeedAutomationStatus {
