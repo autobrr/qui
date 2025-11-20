@@ -486,19 +486,9 @@ export function CrossSeedPage() {
   })
 
   const startSearchRunMutation = useMutation({
-    mutationFn: async (payload: Parameters<typeof api.startCrossSeedSearchRun>[0]) => {
-      const savedSettings = await api.patchCrossSeedSearchSettings({
-        instanceId: payload.instanceId,
-        categories: payload.categories,
-        tags: payload.tags,
-        indexerIds: payload.indexerIds,
-        intervalSeconds: payload.intervalSeconds,
-        cooldownMinutes: payload.cooldownMinutes,
-      })
-      queryClient.setQueryData(["cross-seed", "search", "settings"], savedSettings)
-      return api.startCrossSeedSearchRun(payload)
-    },
+    mutationFn: (payload: Parameters<typeof api.startCrossSeedSearchRun>[0]) => api.startCrossSeedSearchRun(payload),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cross-seed", "search", "settings"] })
       toast.success("Search run started")
       refetchSearchStatus()
     },
