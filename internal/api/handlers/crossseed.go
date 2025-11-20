@@ -112,6 +112,24 @@ func (o *optionalInt) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type searchSettingsPatchRequest struct {
+	InstanceID      optionalInt `json:"instanceId"`
+	Categories      *[]string   `json:"categories,omitempty"`
+	Tags            *[]string   `json:"tags,omitempty"`
+	IndexerIDs      *[]int      `json:"indexerIds,omitempty"`
+	IntervalSeconds *int        `json:"intervalSeconds,omitempty"`
+	CooldownMinutes *int        `json:"cooldownMinutes,omitempty"`
+}
+
+func (r searchSettingsPatchRequest) isEmpty() bool {
+	return !r.InstanceID.Set &&
+		r.Categories == nil &&
+		r.Tags == nil &&
+		r.IndexerIDs == nil &&
+		r.IntervalSeconds == nil &&
+		r.CooldownMinutes == nil
+}
+
 func (r automationSettingsPatchRequest) isEmpty() bool {
 	return r.Enabled == nil &&
 		r.RunIntervalMinutes == nil &&
@@ -252,6 +270,8 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 		r.Get("/runs", h.ListAutomationRuns)
 		r.Post("/run", h.TriggerAutomationRun)
 		r.Route("/search", func(r chi.Router) {
+			r.Get("/settings", h.GetSearchSettings)
+			r.Patch("/settings", h.PatchSearchSettings)
 			r.Get("/status", h.GetSearchRunStatus)
 			r.Post("/run", h.StartSearchRun)
 			r.Post("/run/cancel", h.CancelSearchRun)
@@ -755,6 +775,68 @@ func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.R
 	}
 
 	RespondJSON(w, http.StatusAccepted, run)
+}
+
+// GetSearchSettings godoc
+// @Summary Get seeded torrent search settings
+// @Description Returns the persisted defaults used by Seeded Torrent Search runs.
+// @Tags cross-seed
+// @Produce json
+// @Success 200 {object} models.CrossSeedSearchSettings
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/search/settings [get]
+func (h *CrossSeedHandler) GetSearchSettings(w http.ResponseWriter, r *http.Request) {
+	settings, err := h.service.GetSearchSettings(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load cross-seed search settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to load search settings")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, settings)
+}
+
+// PatchSearchSettings godoc
+// @Summary Update seeded torrent search settings
+// @Description Persists default filters and timing for Seeded Torrent Search runs.
+// @Tags cross-seed
+// @Accept json
+// @Produce json
+// @Param request body searchSettingsPatchRequest true "Search settings patch"
+// @Success 200 {object} models.CrossSeedSearchSettings
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/search/settings [patch]
+func (h *CrossSeedHandler) PatchSearchSettings(w http.ResponseWriter, r *http.Request) {
+	var patch searchSettingsPatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if patch.isEmpty() {
+		RespondError(w, http.StatusBadRequest, "No settings provided")
+		return
+	}
+
+	updated, err := h.service.PatchSearchSettings(r.Context(), crossseed.SearchSettingsPatch{
+		InstanceIDSet:   patch.InstanceID.Set,
+		InstanceID:      patch.InstanceID.Value,
+		Categories:      patch.Categories,
+		Tags:            patch.Tags,
+		IndexerIDs:      patch.IndexerIDs,
+		IntervalSeconds: patch.IntervalSeconds,
+		CooldownMinutes: patch.CooldownMinutes,
+	})
+	if err != nil {
+		status := mapCrossSeedErrorStatus(err)
+		log.Error().Err(err).Msg("Failed to update cross-seed search settings")
+		RespondError(w, status, err.Error())
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, updated)
 }
 
 // StartSearchRun godoc
