@@ -363,6 +363,16 @@ func (s *Service) validateAndNormalizeSettings(settings *models.CrossSeedAutomat
 	models.NormalizeCrossSeedCompletionSettings(&settings.Completion)
 }
 
+func normalizeSearchTiming(intervalSeconds, cooldownMinutes int) (int, int) {
+	if intervalSeconds < minSearchIntervalSeconds {
+		intervalSeconds = minSearchIntervalSeconds
+	}
+	if cooldownMinutes < minSearchCooldownMinutes {
+		cooldownMinutes = minSearchCooldownMinutes
+	}
+	return intervalSeconds, cooldownMinutes
+}
+
 func (s *Service) normalizeSearchSettings(settings *models.CrossSeedSearchSettings) {
 	if settings == nil {
 		return
@@ -370,12 +380,7 @@ func (s *Service) normalizeSearchSettings(settings *models.CrossSeedSearchSettin
 	settings.Categories = normalizeStringSlice(settings.Categories)
 	settings.Tags = normalizeStringSlice(settings.Tags)
 	settings.IndexerIDs = uniquePositiveInts(settings.IndexerIDs)
-	if settings.IntervalSeconds < minSearchIntervalSeconds {
-		settings.IntervalSeconds = minSearchIntervalSeconds
-	}
-	if settings.CooldownMinutes < minSearchCooldownMinutes {
-		settings.CooldownMinutes = minSearchCooldownMinutes
-	}
+	settings.IntervalSeconds, settings.CooldownMinutes = normalizeSearchTiming(settings.IntervalSeconds, settings.CooldownMinutes)
 }
 
 // GetSearchSettings returns stored defaults for seeded torrent searches.
@@ -1046,12 +1051,7 @@ func (s *Service) validateSearchRunOptions(ctx context.Context, opts *SearchRunO
 	if opts.InstanceID <= 0 {
 		return fmt.Errorf("%w: instance id must be positive", ErrInvalidRequest)
 	}
-	if opts.IntervalSeconds < minSearchIntervalSeconds {
-		opts.IntervalSeconds = minSearchIntervalSeconds
-	}
-	if opts.CooldownMinutes < minSearchCooldownMinutes {
-		opts.CooldownMinutes = minSearchCooldownMinutes
-	}
+	opts.IntervalSeconds, opts.CooldownMinutes = normalizeSearchTiming(opts.IntervalSeconds, opts.CooldownMinutes)
 	opts.Categories = normalizeStringSlice(opts.Categories)
 	opts.Tags = normalizeStringSlice(opts.Tags)
 	opts.IndexerIDs = uniquePositiveInts(opts.IndexerIDs)
