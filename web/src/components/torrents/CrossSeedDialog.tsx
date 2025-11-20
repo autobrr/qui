@@ -556,10 +556,7 @@ const CrossSeedScopeSelector = memo(({
 }: CrossSeedScopeSelectorProps) => {
   const total = indexerOptions.length
   const selectedCount = selectedIndexerIds.length
-  const excludedCount = useMemo(
-    () => excludedIndexerIds.filter(id => indexerOptions.some(option => option.id === id)).length,
-    [excludedIndexerIds, indexerOptions]
-  )
+  const excludedCount = excludedIndexerIds.length
   const disableCustomSelection = total === 0
   const filteringInProgress = !contentFilteringCompleted
   const scopeSearchDisabled = filteringInProgress || isSearching || (indexerMode === "custom" && selectedCount === 0)
