@@ -33,7 +33,7 @@ type automationSettingsRequest struct {
 	IgnorePatterns               []string                   `json:"ignorePatterns"`
 	TargetInstanceIDs            []int                      `json:"targetInstanceIds"`
 	TargetIndexerIDs             []int                      `json:"targetIndexerIds"`
-	MaxResultsPerRun             int                        `json:"maxResultsPerRun"`
+	MaxResultsPerRun             int                        `json:"maxResultsPerRun"` // Deprecated: automation now processes full feeds and ignores this value
 	FindIndividualEpisodes       bool                       `json:"findIndividualEpisodes"`
 	SizeMismatchTolerancePercent float64                    `json:"sizeMismatchTolerancePercent"`
 	UseCategoryFromIndexer       bool                       `json:"useCategoryFromIndexer"`
@@ -58,7 +58,7 @@ type automationSettingsPatchRequest struct {
 	IgnorePatterns               *[]string                       `json:"ignorePatterns,omitempty"`
 	TargetInstanceIDs            *[]int                          `json:"targetInstanceIds,omitempty"`
 	TargetIndexerIDs             *[]int                          `json:"targetIndexerIds,omitempty"`
-	MaxResultsPerRun             *int                            `json:"maxResultsPerRun,omitempty"`
+	MaxResultsPerRun             *int                            `json:"maxResultsPerRun,omitempty"` // Deprecated: automation now processes full feeds and ignores this value
 	FindIndividualEpisodes       *bool                           `json:"findIndividualEpisodes,omitempty"`
 	SizeMismatchTolerancePercent *float64                        `json:"sizeMismatchTolerancePercent,omitempty"`
 	UseCategoryFromIndexer       *bool                           `json:"useCategoryFromIndexer,omitempty"`
@@ -210,7 +210,6 @@ func applyCompletionSettingsPatch(dest *models.CrossSeedCompletionSettings, patc
 }
 
 type automationRunRequest struct {
-	Limit  int  `json:"limit"`
 	DryRun bool `json:"dryRun"`
 }
 
@@ -732,7 +731,6 @@ func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.R
 		RequestedBy: "api",
 		Mode:        models.CrossSeedRunModeManual,
 		DryRun:      req.DryRun,
-		Limit:       req.Limit,
 	})
 	if err != nil {
 		if errors.Is(err, crossseed.ErrAutomationRunning) {
@@ -745,6 +743,10 @@ func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.R
 		}
 		if errors.Is(err, crossseed.ErrNoIndexersConfigured) {
 			RespondError(w, http.StatusBadRequest, "No Torznab indexers configured. Add at least one enabled indexer before running automation.")
+			return
+		}
+		if errors.Is(err, crossseed.ErrNoTargetInstancesConfigured) {
+			RespondError(w, http.StatusBadRequest, "Select at least one target instance before running automation.")
 			return
 		}
 		log.Error().Err(err).Msg("Failed to trigger cross-seed automation run")

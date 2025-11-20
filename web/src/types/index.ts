@@ -1233,7 +1233,6 @@ export interface CrossSeedAutomationSettings {
   ignorePatterns: string[]
   targetInstanceIds: number[]
   targetIndexerIds: number[]
-  maxResultsPerRun: number
   findIndividualEpisodes: boolean
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
@@ -1252,7 +1251,6 @@ export interface CrossSeedAutomationSettingsPatch {
   ignorePatterns?: string[]
   targetInstanceIds?: number[]
   targetIndexerIds?: number[]
-  maxResultsPerRun?: number
   findIndividualEpisodes?: boolean
   sizeMismatchTolerancePercent?: number
   useCategoryFromIndexer?: boolean

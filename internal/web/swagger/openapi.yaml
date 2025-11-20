@@ -3577,6 +3577,8 @@ components:
             type: integer
         maxResultsPerRun:
           type: integer
+          description: Deprecated; RSS automation always processes full feeds and ignores this value.
+          deprecated: true
         findIndividualEpisodes:
           type: boolean
         sizeMismatchTolerancePercent:
@@ -3620,6 +3622,8 @@ components:
             type: integer
         maxResultsPerRun:
           type: integer
+          description: Deprecated; RSS automation always processes full feeds and ignores this value.
+          deprecated: true
         findIndividualEpisodes:
           type: boolean
         sizeMismatchTolerancePercent:
@@ -3676,9 +3680,6 @@ components:
     CrossSeedRunRequest:
       type: object
       properties:
-        limit:
-          type: integer
-          minimum: 1
         dryRun:
           type: boolean
 

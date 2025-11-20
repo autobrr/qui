@@ -989,7 +989,7 @@ class ApiClient {
     return this.request<CrossSeedSearchRun[]>(`/cross-seed/search/runs?${search.toString()}`)
   }
 
-  async triggerCrossSeedRun(payload: { limit?: number; dryRun?: boolean } = {}): Promise<CrossSeedRun> {
+  async triggerCrossSeedRun(payload: { dryRun?: boolean } = {}): Promise<CrossSeedRun> {
     return this.request<CrossSeedRun>("/cross-seed/run", {
       method: "POST",
       body: JSON.stringify(payload),
