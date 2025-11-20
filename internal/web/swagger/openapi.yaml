@@ -2327,6 +2327,28 @@ paths:
           description: Invalid request body
         '500':
           description: Failed to update automation settings
+    patch:
+      tags:
+        - Cross-Seed
+      summary: Patch cross-seed automation settings
+      description: Partially update automation, completion, or global cross-seed settings without overwriting unspecified fields
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrossSeedAutomationSettingsPatch'
+      responses:
+        '200':
+          description: Updated automation settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedAutomationSettings'
+        '400':
+          description: Invalid request body
+        '500':
+          description: Failed to update automation settings
 
   /api/cross-seed/status:
     get:
@@ -3502,6 +3524,71 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CrossSeedRunResult'
+
+    CrossSeedCompletionSettingsPatch:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        categories:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        excludeCategories:
+          type: array
+          items:
+            type: string
+        excludeTags:
+          type: array
+          items:
+            type: string
+
+    CrossSeedAutomationSettingsPatch:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        runIntervalMinutes:
+          type: integer
+        startPaused:
+          type: boolean
+        category:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        ignorePatterns:
+          type: array
+          items:
+            type: string
+        targetInstanceIds:
+          type: array
+          items:
+            type: integer
+        targetIndexerIds:
+          type: array
+          items:
+            type: integer
+        maxResultsPerRun:
+          type: integer
+        findIndividualEpisodes:
+          type: boolean
+        sizeMismatchTolerancePercent:
+          type: number
+          format: float
+        useCategoryFromIndexer:
+          type: boolean
+        runExternalProgramId:
+          type: integer
+          nullable: true
+        completion:
+          $ref: '#/components/schemas/CrossSeedCompletionSettingsPatch'
 
     CrossSeedAutomationSettings:
       type: object

@@ -27,8 +27,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api } from "@/lib/api"
 import type {
-  CrossSeedAutomationSettings,
   CrossSeedAutomationStatus,
+  CrossSeedAutomationSettingsPatch,
   CrossSeedCompletionSettings,
   CrossSeedRun
 } from "@/types"
@@ -358,10 +358,9 @@ export function CrossSeedPage() {
     }
   }, [instances, searchInstanceId])
 
-  const buildSettingsPayload = useCallback((): CrossSeedAutomationSettings | null => {
+  const buildAutomationPatch = useCallback((): CrossSeedAutomationSettingsPatch | null => {
     if (!settings) return null
 
-    const normalizedIgnorePatterns = normalizeIgnorePatterns(globalSettings.ignorePatterns)
     const automationSource = formInitialized
       ? automationForm
       : {
@@ -375,6 +374,21 @@ export function CrossSeedPage() {
           maxResultsPerRun: settings.maxResultsPerRun,
         }
 
+    return {
+      enabled: automationSource.enabled,
+      runIntervalMinutes: automationSource.runIntervalMinutes,
+      startPaused: automationSource.startPaused,
+      category: automationSource.category.trim() || null,
+      tags: parseList(automationSource.tags),
+      targetInstanceIds: automationSource.targetInstanceIds,
+      targetIndexerIds: automationSource.targetIndexerIds,
+      maxResultsPerRun: automationSource.maxResultsPerRun,
+    }
+  }, [settings, automationForm, formInitialized])
+
+  const buildCompletionPatch = useCallback((): CrossSeedAutomationSettingsPatch | null => {
+    if (!settings) return null
+
     const completionSource = settings.completion ?? DEFAULT_COMPLETION_SETTINGS
     const completionState = completionFormInitialized
       ? completionForm
@@ -387,19 +401,6 @@ export function CrossSeedPage() {
         }
 
     return {
-      enabled: automationSource.enabled,
-      runIntervalMinutes: automationSource.runIntervalMinutes,
-      startPaused: automationSource.startPaused,
-      category: automationSource.category.trim() || null,
-      tags: parseList(automationSource.tags),
-      ignorePatterns: normalizedIgnorePatterns,
-      targetInstanceIds: automationSource.targetInstanceIds,
-      targetIndexerIds: automationSource.targetIndexerIds,
-      maxResultsPerRun: automationSource.maxResultsPerRun,
-      findIndividualEpisodes: globalSettings.findIndividualEpisodes,
-      sizeMismatchTolerancePercent: globalSettings.sizeMismatchTolerancePercent,
-      useCategoryFromIndexer: globalSettings.useCategoryFromIndexer,
-      runExternalProgramId: globalSettings.runExternalProgramId,
       completion: {
         enabled: completionState.enabled,
         categories: parseList(completionState.categories),
@@ -408,17 +409,38 @@ export function CrossSeedPage() {
         excludeTags: parseList(completionState.excludeTags),
       },
     }
+  }, [settings, completionForm, completionFormInitialized])
+
+  const buildGlobalPatch = useCallback((): CrossSeedAutomationSettingsPatch | null => {
+    if (!settings) return null
+
+    const ignorePatterns = Array.isArray(settings.ignorePatterns) ? settings.ignorePatterns : []
+
+    const globalSource = globalSettingsInitialized
+      ? globalSettings
+      : {
+          findIndividualEpisodes: settings.findIndividualEpisodes,
+          sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent,
+          useCategoryFromIndexer: settings.useCategoryFromIndexer,
+          runExternalProgramId: settings.runExternalProgramId ?? null,
+          ignorePatterns: ignorePatterns.length > 0 ? ignorePatterns.join(", ") : "",
+        }
+
+    return {
+      findIndividualEpisodes: globalSource.findIndividualEpisodes,
+      sizeMismatchTolerancePercent: globalSource.sizeMismatchTolerancePercent,
+      useCategoryFromIndexer: globalSource.useCategoryFromIndexer,
+      runExternalProgramId: globalSource.runExternalProgramId,
+      ignorePatterns: normalizeIgnorePatterns(globalSource.ignorePatterns),
+    }
   }, [
     settings,
     globalSettings,
-    automationForm,
-    formInitialized,
-    completionForm,
-    completionFormInitialized,
+    globalSettingsInitialized,
   ])
 
-  const updateSettingsMutation = useMutation({
-    mutationFn: (payload: CrossSeedAutomationSettings) => api.updateCrossSeedSettings(payload),
+  const patchSettingsMutation = useMutation({
+    mutationFn: (payload: CrossSeedAutomationSettingsPatch) => api.patchCrossSeedSettings(payload),
     onSuccess: (data) => {
       toast.success("Settings updated")
       // Don't reinitialize the form since we just saved it
@@ -470,7 +492,7 @@ export function CrossSeedPage() {
     },
   })
 
-  const handleSaveAll = () => {
+  const handleSaveAutomation = () => {
     setValidationErrors(prev => ({ ...prev, runIntervalMinutes: "" }))
 
     if (automationForm.runIntervalMinutes < MIN_RSS_INTERVAL_MINUTES) {
@@ -478,6 +500,20 @@ export function CrossSeedPage() {
       return
     }
 
+    const payload = buildAutomationPatch()
+    if (!payload) return
+
+    patchSettingsMutation.mutate(payload)
+  }
+
+  const handleSaveCompletion = () => {
+    const payload = buildCompletionPatch()
+    if (!payload) return
+
+    patchSettingsMutation.mutate(payload)
+  }
+
+  const handleSaveGlobal = () => {
     if (ignorePatternError) {
       setValidationErrors(prev => ({ ...prev, ignorePatterns: ignorePatternError }))
       return
@@ -487,10 +523,10 @@ export function CrossSeedPage() {
       setValidationErrors(prev => ({ ...prev, ignorePatterns: "" }))
     }
 
-    const payload = buildSettingsPayload()
+    const payload = buildGlobalPatch()
     if (!payload) return
 
-    updateSettingsMutation.mutate(payload)
+    patchSettingsMutation.mutate(payload)
   }
 
   const automationStatus: CrossSeedAutomationStatus | undefined = status
@@ -1178,11 +1214,11 @@ export function CrossSeedPage() {
                 )}
               </Tooltip>
               <Button
-                onClick={handleSaveAll}
-                disabled={updateSettingsMutation.isPending || Boolean(ignorePatternError)}
+                onClick={handleSaveAutomation}
+                disabled={patchSettingsMutation.isPending}
               >
-                {updateSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save cross-seed settings
+                {patchSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Save RSS automation settings
               </Button>
               <Button
                 variant="outline"
@@ -1261,8 +1297,17 @@ export function CrossSeedPage() {
               <p className="text-xs text-muted-foreground">Skip completion searches when any of these tags are present.</p>
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">Use “Save cross-seed settings” above to persist completion filters.</p>
+          <p className="text-xs text-muted-foreground">Saving here only updates the completion filters; RSS automation and global settings stay unchanged.</p>
         </CardContent>
+        <CardFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+          <Button
+            onClick={handleSaveCompletion}
+            disabled={patchSettingsMutation.isPending}
+          >
+            {patchSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Save completion settings
+          </Button>
+        </CardFooter>
       </Card>
 
         </TabsContent>
@@ -1718,11 +1763,11 @@ export function CrossSeedPage() {
         </CardContent>
         <CardFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
           <Button
-            onClick={handleSaveAll}
-            disabled={updateSettingsMutation.isPending || Boolean(ignorePatternError)}
+            onClick={handleSaveGlobal}
+            disabled={patchSettingsMutation.isPending || Boolean(ignorePatternError)}
           >
-            {updateSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Save cross-seed settings
+            {patchSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Save global cross-seed settings
           </Button>
         </CardFooter>
       </Card>

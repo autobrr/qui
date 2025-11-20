@@ -49,6 +49,166 @@ type completionSettingsRequest struct {
 	ExcludeTags       []string `json:"excludeTags"`
 }
 
+type automationSettingsPatchRequest struct {
+	Enabled                      *bool                           `json:"enabled,omitempty"`
+	RunIntervalMinutes           *int                            `json:"runIntervalMinutes,omitempty"`
+	StartPaused                  *bool                           `json:"startPaused,omitempty"`
+	Category                     optionalString                  `json:"category"`
+	Tags                         *[]string                       `json:"tags,omitempty"`
+	IgnorePatterns               *[]string                       `json:"ignorePatterns,omitempty"`
+	TargetInstanceIDs            *[]int                          `json:"targetInstanceIds,omitempty"`
+	TargetIndexerIDs             *[]int                          `json:"targetIndexerIds,omitempty"`
+	MaxResultsPerRun             *int                            `json:"maxResultsPerRun,omitempty"`
+	FindIndividualEpisodes       *bool                           `json:"findIndividualEpisodes,omitempty"`
+	SizeMismatchTolerancePercent *float64                        `json:"sizeMismatchTolerancePercent,omitempty"`
+	UseCategoryFromIndexer       *bool                           `json:"useCategoryFromIndexer,omitempty"`
+	RunExternalProgramID         optionalInt                     `json:"runExternalProgramId"`
+	Completion                   *completionSettingsPatchRequest `json:"completion,omitempty"`
+}
+
+type completionSettingsPatchRequest struct {
+	Enabled           *bool     `json:"enabled,omitempty"`
+	Categories        *[]string `json:"categories,omitempty"`
+	Tags              *[]string `json:"tags,omitempty"`
+	ExcludeCategories *[]string `json:"excludeCategories,omitempty"`
+	ExcludeTags       *[]string `json:"excludeTags,omitempty"`
+}
+
+type optionalString struct {
+	Set   bool
+	Value *string
+}
+
+func (o *optionalString) UnmarshalJSON(data []byte) error {
+	o.Set = true
+	if string(data) == "null" {
+		o.Value = nil
+		return nil
+	}
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	o.Value = &value
+	return nil
+}
+
+type optionalInt struct {
+	Set   bool
+	Value *int
+}
+
+func (o *optionalInt) UnmarshalJSON(data []byte) error {
+	o.Set = true
+	if string(data) == "null" {
+		o.Value = nil
+		return nil
+	}
+	var value int
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	o.Value = &value
+	return nil
+}
+
+func (r automationSettingsPatchRequest) isEmpty() bool {
+	return r.Enabled == nil &&
+		r.RunIntervalMinutes == nil &&
+		r.StartPaused == nil &&
+		!r.Category.Set &&
+		r.Tags == nil &&
+		r.IgnorePatterns == nil &&
+		r.TargetInstanceIDs == nil &&
+		r.TargetIndexerIDs == nil &&
+		r.MaxResultsPerRun == nil &&
+		r.FindIndividualEpisodes == nil &&
+		r.SizeMismatchTolerancePercent == nil &&
+		r.UseCategoryFromIndexer == nil &&
+		!r.RunExternalProgramID.Set &&
+		(r.Completion == nil || r.Completion.isEmpty())
+}
+
+func (r completionSettingsPatchRequest) isEmpty() bool {
+	return r.Enabled == nil &&
+		r.Categories == nil &&
+		r.Tags == nil &&
+		r.ExcludeCategories == nil &&
+		r.ExcludeTags == nil
+}
+
+func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, patch automationSettingsPatchRequest) {
+	if patch.Enabled != nil {
+		settings.Enabled = *patch.Enabled
+	}
+	if patch.RunIntervalMinutes != nil {
+		settings.RunIntervalMinutes = *patch.RunIntervalMinutes
+	}
+	if patch.StartPaused != nil {
+		settings.StartPaused = *patch.StartPaused
+	}
+	if patch.Category.Set {
+		if patch.Category.Value == nil {
+			settings.Category = nil
+		} else {
+			trimmed := strings.TrimSpace(*patch.Category.Value)
+			if trimmed == "" {
+				settings.Category = nil
+			} else {
+				settings.Category = &trimmed
+			}
+		}
+	}
+	if patch.Tags != nil {
+		settings.Tags = *patch.Tags
+	}
+	if patch.IgnorePatterns != nil {
+		settings.IgnorePatterns = *patch.IgnorePatterns
+	}
+	if patch.TargetInstanceIDs != nil {
+		settings.TargetInstanceIDs = *patch.TargetInstanceIDs
+	}
+	if patch.TargetIndexerIDs != nil {
+		settings.TargetIndexerIDs = *patch.TargetIndexerIDs
+	}
+	if patch.MaxResultsPerRun != nil {
+		settings.MaxResultsPerRun = *patch.MaxResultsPerRun
+	}
+	if patch.FindIndividualEpisodes != nil {
+		settings.FindIndividualEpisodes = *patch.FindIndividualEpisodes
+	}
+	if patch.SizeMismatchTolerancePercent != nil {
+		settings.SizeMismatchTolerancePercent = *patch.SizeMismatchTolerancePercent
+	}
+	if patch.UseCategoryFromIndexer != nil {
+		settings.UseCategoryFromIndexer = *patch.UseCategoryFromIndexer
+	}
+	if patch.RunExternalProgramID.Set {
+		settings.RunExternalProgramID = patch.RunExternalProgramID.Value
+	}
+	if patch.Completion != nil {
+		applyCompletionSettingsPatch(&settings.Completion, patch.Completion)
+	}
+}
+
+func applyCompletionSettingsPatch(dest *models.CrossSeedCompletionSettings, patch *completionSettingsPatchRequest) {
+	if patch.Enabled != nil {
+		dest.Enabled = *patch.Enabled
+	}
+	if patch.Categories != nil {
+		dest.Categories = *patch.Categories
+	}
+	if patch.Tags != nil {
+		dest.Tags = *patch.Tags
+	}
+	if patch.ExcludeCategories != nil {
+		dest.ExcludeCategories = *patch.ExcludeCategories
+	}
+	if patch.ExcludeTags != nil {
+		dest.ExcludeTags = *patch.ExcludeTags
+	}
+}
+
 type automationRunRequest struct {
 	Limit  int  `json:"limit"`
 	DryRun bool `json:"dryRun"`
@@ -87,6 +247,7 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 			r.Post("/{instanceID}/{hash}/apply", h.ApplyTorrentSearchResults)
 		})
 		r.Get("/settings", h.GetAutomationSettings)
+		r.Patch("/settings", h.PatchAutomationSettings)
 		r.Put("/settings", h.UpdateAutomationSettings)
 		r.Get("/status", h.GetAutomationStatus)
 		r.Get("/runs", h.ListAutomationRuns)
@@ -428,6 +589,55 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 	if err != nil {
 		status := mapCrossSeedErrorStatus(err)
 		log.Error().Err(err).Msg("Failed to update cross-seed automation settings")
+		if status == http.StatusBadRequest {
+			RespondError(w, status, err.Error())
+		} else {
+			RespondError(w, status, "Failed to update automation settings")
+		}
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, updated)
+}
+
+// PatchAutomationSettings merges updates into the existing cross-seed configuration.
+// PatchAutomationSettings godoc
+// @Summary Patch cross-seed automation settings
+// @Description Partially update automation, completion, or global cross-seed settings without overwriting unspecified fields
+// @Tags cross-seed
+// @Accept json
+// @Produce json
+// @Param request body automationSettingsPatchRequest true "Automation settings fields to update"
+// @Success 200 {object} models.CrossSeedAutomationSettings
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/settings [patch]
+func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *http.Request) {
+	var req automationSettingsPatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if req.isEmpty() {
+		RespondError(w, http.StatusBadRequest, "No fields provided to update")
+		return
+	}
+
+	current, err := h.service.GetAutomationSettings(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load cross-seed automation settings for patch")
+		RespondError(w, http.StatusInternalServerError, "Failed to load automation settings")
+		return
+	}
+
+	merged := *current
+	applyAutomationSettingsPatch(&merged, req)
+
+	updated, err := h.service.UpdateAutomationSettings(r.Context(), &merged)
+	if err != nil {
+		status := mapCrossSeedErrorStatus(err)
+		log.Error().Err(err).Msg("Failed to patch cross-seed automation settings")
 		if status == http.StatusBadRequest {
 			RespondError(w, status, err.Error())
 		} else {

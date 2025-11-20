@@ -14,6 +14,7 @@ import type {
   Category,
   CrossSeedApplyResponse,
   CrossSeedAutomationSettings,
+  CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
   CrossInstanceTorrent,
   CrossSeedInstanceResult,
@@ -935,6 +936,13 @@ class ApiClient {
   async updateCrossSeedSettings(payload: CrossSeedAutomationSettings): Promise<CrossSeedAutomationSettings> {
     return this.request<CrossSeedAutomationSettings>("/cross-seed/settings", {
       method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async patchCrossSeedSettings(payload: CrossSeedAutomationSettingsPatch): Promise<CrossSeedAutomationSettings> {
+    return this.request<CrossSeedAutomationSettings>("/cross-seed/settings", {
+      method: "PATCH",
       body: JSON.stringify(payload),
     })
   }
