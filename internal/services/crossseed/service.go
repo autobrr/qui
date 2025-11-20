@@ -474,7 +474,10 @@ func (s *Service) PatchSearchSettings(ctx context.Context, patch SearchSettingsP
 	if settings.InstanceID != nil {
 		instance, err := s.instanceStore.Get(ctx, *settings.InstanceID)
 		if err != nil {
-			return nil, fmt.Errorf("load instance: %w", err)
+			if errors.Is(err, models.ErrInstanceNotFound) {
+				return nil, fmt.Errorf("%w: instance %d not found", ErrInvalidRequest, *settings.InstanceID)
+			}
+			return nil, fmt.Errorf("load instance %d: %w", *settings.InstanceID, err)
 		}
 		if instance == nil {
 			return nil, fmt.Errorf("%w: instance %d not found", ErrInvalidRequest, *settings.InstanceID)
