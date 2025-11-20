@@ -194,6 +194,7 @@ export function CrossSeedPage() {
   const [searchIndexerIds, setSearchIndexerIds] = useState<number[]>([])
   const [searchIntervalSeconds, setSearchIntervalSeconds] = useState(MIN_SEEDED_SEARCH_INTERVAL_SECONDS)
   const [searchCooldownMinutes, setSearchCooldownMinutes] = useState(MIN_SEEDED_SEARCH_COOLDOWN_MINUTES)
+  const [searchSettingsInitialized, setSearchSettingsInitialized] = useState(false)
   const [searchResultsOpen, setSearchResultsOpen] = useState(false)
   const [rssRunsOpen, setRssRunsOpen] = useState(false)
   const [now, setNow] = useState(() => Date.now())
@@ -219,6 +220,13 @@ export function CrossSeedPage() {
     queryKey: ["cross-seed", "status"],
     queryFn: () => api.getCrossSeedStatus(),
     refetchInterval: 30_000,
+  })
+
+  const { data: searchSettings } = useQuery({
+    queryKey: ["cross-seed", "search", "settings"],
+    queryFn: () => api.getCrossSeedSearchSettings(),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
   })
 
   const { data: runs, refetch: refetchRuns } = useQuery({
@@ -351,6 +359,19 @@ export function CrossSeedPage() {
     }
   }, [settings, completionFormInitialized])
 
+  useEffect(() => {
+    if (!searchSettings || searchSettingsInitialized) {
+      return
+    }
+    setSearchInstanceId(searchSettings.instanceId ?? null)
+    setSearchCategories(normalizeStringList(searchSettings.categories ?? []))
+    setSearchTags(normalizeStringList(searchSettings.tags ?? []))
+    setSearchIndexerIds(searchSettings.indexerIds ?? [])
+    setSearchIntervalSeconds(searchSettings.intervalSeconds ?? MIN_SEEDED_SEARCH_INTERVAL_SECONDS)
+    setSearchCooldownMinutes(searchSettings.cooldownMinutes ?? MIN_SEEDED_SEARCH_COOLDOWN_MINUTES)
+    setSearchSettingsInitialized(true)
+  }, [searchSettings, searchSettingsInitialized])
+
   const ignorePatternError = useMemo(
     () => validateIgnorePatterns(globalSettings.ignorePatterns),
     [globalSettings.ignorePatterns]
@@ -467,6 +488,7 @@ export function CrossSeedPage() {
   const startSearchRunMutation = useMutation({
     mutationFn: (payload: Parameters<typeof api.startCrossSeedSearchRun>[0]) => api.startCrossSeedSearchRun(payload),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cross-seed", "search", "settings"] })
       toast.success("Search run started")
       refetchSearchStatus()
     },
@@ -852,7 +874,7 @@ export function CrossSeedPage() {
         </Alert>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2 mb-6">
         <Card className="h-full">
           <CardHeader className="space-y-2">
             <div className="flex items-center justify-between gap-3">
@@ -918,7 +940,7 @@ export function CrossSeedPage() {
         </Card>
       </div>
 
-      <Tabs defaultValue="automation" className="space-y-6">
+      <Tabs defaultValue="automation" className="space-y-4">
         <TabsList className="grid w-full grid-cols-3 gap-2 md:w-auto">
           <TabsTrigger value="automation">Automation</TabsTrigger>
           <TabsTrigger value="search">Seeded search</TabsTrigger>
