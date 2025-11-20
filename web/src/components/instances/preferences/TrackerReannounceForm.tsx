@@ -244,7 +244,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                         id="reannounce-interval"
                         label="Retry Interval"
                         description="Seconds between retries"
-                        tooltip="How often to retry reannouncing if the previous attempt failed. Avoid setting this too low to prevent tracker spam. Minimum 5 seconds."
+                        tooltip="How often to retry inside a single reannounce attempt (up to 3 tries). Aggressive Mode only removes the 2-minute cooldown between scans; this interval still applies. Minimum 5 seconds."
                         min={MIN_INTERVAL}
                         value={settings.reannounceIntervalSeconds}
                         onChange={(value) => setSettings((prev) => ({ ...prev, reannounceIntervalSeconds: value }))}
@@ -271,13 +271,14 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                             <TooltipContent className="max-w-[300px]">
                               <p>
                                 Normally, we wait 2 minutes between attempts to be polite. 
-                                Enable this to retry immediately upon failure. 
+                                Enable this to skip that cooldown and let the next 7s scan retry immediately if the torrent is still stalled. 
+                                Per-torrent retries inside each attempt still follow the Retry Interval.
                               </p>
                             </TooltipContent>
                           </Tooltip>
                         </div>
                         <p className="text-sm text-muted-foreground">
-                          Bypass wait times on failure
+                          Skip the 2-minute cooldown between scans (Retry Interval still applies)
                         </p>
                       </div>
                       <Switch

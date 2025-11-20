@@ -15,7 +15,7 @@ That’s it! qui will now monitor stalled torrents in the background.
 
 ### Timing
 * **Initial Wait**: How long to wait after a torrent is added before checking it (default: 15s). This gives the tracker time to work normally before we interfere.
-* **Retry Interval**: How often to retry if the tracker is still reporting errors (default: 7s).
+* **Retry Interval**: How often to retry within a single reannounce attempt (up to 3 tries; default: 7s). This is separate from the scan cooldown below.
 * **Max Torrent Age**: Stop monitoring torrents older than this (default: 10 mins). Prevents checking old, permanently dead torrents.
 
 ### Monitoring Scope
@@ -28,8 +28,9 @@ You can choose which torrents to monitor:
   * You can still add **Exclusions** to block specific items within those allowed groups.
 
 ### Aggressive Mode
-By default, qui waits about **2 minutes** between reannounce attempts for the same torrent to be polite to trackers.
-*   **Enable Aggressive Mode** to remove this cooldown and retry immediately on the next scan (every 7s) if the torrent is still stalled.
+By default, qui waits about **2 minutes** between reannounce attempts for the same torrent to be polite to trackers (a per-torrent cooldown between scans).
+*   **Enable Aggressive Mode** to remove this cooldown and retry on the very next scan (every 7s) if the torrent is still stalled.
+*   The **Retry Interval** still controls the spacing of the up-to-3 retries inside each scan attempt.
 
 ## Activity Log
 To see what’s happening:
