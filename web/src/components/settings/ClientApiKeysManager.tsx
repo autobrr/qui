@@ -371,7 +371,7 @@ export function ClientApiKeysManager() {
               {keys.map((key) => (
                 <div
                   key={key.id}
-                  className="rounded-lg border bg-card p-4 transition-colors"
+                  className="rounded-lg border bg-muted/40 p-4 transition-colors"
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="space-y-3">

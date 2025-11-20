@@ -11,8 +11,9 @@ import (
 )
 
 type InstanceInfo struct {
-	ID   int
-	Name string
+	ID       int
+	Name     string
+	IsActive bool
 }
 
 func (i *InstanceInfo) IDString() string {
@@ -29,8 +30,9 @@ func (cp *ClientPool) GetAllInstances(ctx context.Context) []*InstanceInfo {
 	var result []*InstanceInfo
 	for _, instance := range instances {
 		result = append(result, &InstanceInfo{
-			ID:   instance.ID,
-			Name: instance.Name,
+			ID:       instance.ID,
+			Name:     instance.Name,
+			IsActive: instance.IsActive,
 		})
 	}
 

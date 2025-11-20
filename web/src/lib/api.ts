@@ -5,12 +5,25 @@
 
 import type {
   AppPreferences,
+  AsyncIndexerFilteringState,
   AuthResponse,
   BackupManifest,
   BackupRun,
   BackupRunsResponse,
   BackupSettings,
   Category,
+  CrossSeedApplyResponse,
+  CrossSeedAutomationSettings,
+  CrossSeedAutomationSettingsPatch,
+  CrossSeedAutomationStatus,
+  CrossInstanceTorrent,
+  CrossSeedInstanceResult,
+  CrossSeedRun,
+  CrossSeedTorrentInfo,
+  CrossSeedTorrentSearchResponse,
+  CrossSeedTorrentSearchSelection,
+  CrossSeedSearchRun,
+  CrossSeedSearchStatus,
   DuplicateTorrentMatch,
   ExternalProgram,
   ExternalProgramCreate,
@@ -19,7 +32,10 @@ import type {
   ExternalProgramUpdate,
   InstanceCapabilities,
   InstanceFormData,
+  InstanceReannounceActivity,
+  InstanceReannounceCandidate,
   InstanceResponse,
+  JackettIndexer,
   QBittorrentAppInfo,
   RestoreMode,
   RestorePlan,
@@ -33,11 +49,44 @@ import type {
   TorrentProperties,
   TorrentResponse,
   TorrentTracker,
+  TorznabIndexer,
+  TorznabIndexerError,
+  TorznabIndexerFormData,
+  TorznabIndexerHealth,
+  TorznabIndexerLatencyStats,
+  TorznabSearchRequest,
+  TorznabSearchResult,
+  TorznabSearchResponse,
+  TorznabSearchCacheMetadata,
+  TorznabSearchCacheStats,
+  TorznabRecentSearch,
   User
 } from "@/types"
 import { getApiBaseUrl, withBasePath } from "./base-url"
 
 const API_BASE = getApiBaseUrl()
+
+const normalizeExcludedIndexerMap = (excluded?: Record<string, string>): Record<number, string> | undefined => {
+  if (!excluded) {
+    return undefined
+  }
+
+  const normalizedEntries = Object.entries(excluded)
+    .map(([key, value]) => {
+      const numericKey = Number(key)
+      if (Number.isNaN(numericKey)) {
+        return null
+      }
+      return [numericKey, value] as const
+    })
+    .filter((entry): entry is readonly [number, string] => entry !== null)
+
+  if (normalizedEntries.length === 0) {
+    return undefined
+  }
+
+  return Object.fromEntries(normalizedEntries) as Record<number, string>
+}
 
 class ApiClient {
   private async request<T>(
@@ -54,26 +103,8 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      // Don't auto-redirect for auth check endpoints - let React Router handle navigation
-      const isAuthCheckEndpoint = endpoint === "/auth/me" || endpoint === "/auth/validate"
-
-      if ((response.status === 401 || response.status === 403) && !isAuthCheckEndpoint && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
-        window.location.href = withBasePath("/login")
-        throw new Error("Session expired")
-      }
-
-      let errorMessage = `HTTP error! status: ${response.status}`
-      try {
-        const errorData = await response.json()
-        errorMessage = errorData.error || errorData.message || errorMessage
-      } catch {
-        try {
-          const errorText = await response.text()
-          errorMessage = errorText || errorMessage
-        } catch {
-          // nothing to see here
-        }
-      }
+      const errorMessage = await this.extractErrorMessage(response)
+      this.handleAuthError(response.status, endpoint, errorMessage)
       throw new Error(errorMessage)
     }
 
@@ -83,6 +114,73 @@ class ApiClient {
     }
 
     return response.json()
+  }
+
+  private async extractErrorMessage(response: Response): Promise<string> {
+    const fallbackMessage = `HTTP error! status: ${response.status}`
+
+    try {
+      const rawBody = await response.text()
+      if (!rawBody) {
+        return fallbackMessage
+      }
+
+      try {
+        const errorData = JSON.parse(rawBody) as { error?: string; message?: string }
+        const parsedMessage = errorData?.error ?? errorData?.message
+        if (typeof parsedMessage === "string" && parsedMessage.trim().length > 0) {
+          return parsedMessage
+        }
+      } catch {
+        const trimmed = rawBody.trim()
+        if (trimmed.length > 0) {
+          return trimmed
+        }
+      }
+
+      return fallbackMessage
+    } catch {
+      return fallbackMessage
+    }
+  }
+
+  private handleAuthError(status: number, endpoint: string, errorMessage: string): void {
+    if (!this.shouldForceLogout(status, endpoint, errorMessage)) {
+      return
+    }
+
+    window.location.href = withBasePath("/login")
+    throw new Error("Session expired")
+  }
+
+  private shouldForceLogout(status: number, endpoint: string, errorMessage: string): boolean {
+    if (typeof window === "undefined") {
+      return false
+    }
+
+    if (this.isAuthCheckEndpoint(endpoint)) {
+      return false
+    }
+
+    const pathname = window.location.pathname
+    if (pathname.startsWith(withBasePath("/login")) || pathname.startsWith(withBasePath("/setup"))) {
+      return false
+    }
+
+    if (status === 401) {
+      return true
+    }
+
+    if (status === 403) {
+      const normalizedMessage = errorMessage.trim().toLowerCase()
+      return normalizedMessage === "unauthorized"
+    }
+
+    return false
+  }
+
+  private isAuthCheckEndpoint(endpoint: string): boolean {
+    return endpoint === "/auth/me" || endpoint === "/auth/validate"
   }
 
   // Auth endpoints
@@ -172,6 +270,16 @@ class ApiClient {
     })
   }
 
+  async updateInstanceStatus(
+    id: number,
+    isActive: boolean
+  ): Promise<InstanceResponse> {
+    return this.request<InstanceResponse>(`/instances/${id}/status`, {
+      method: "PUT",
+      body: JSON.stringify({ isActive }),
+    })
+  }
+
   async deleteInstance(id: number): Promise<void> {
     return this.request(`/instances/${id}`, { method: "DELETE" })
   }
@@ -182,6 +290,20 @@ class ApiClient {
 
   async getInstanceCapabilities(id: number): Promise<InstanceCapabilities> {
     return this.request<InstanceCapabilities>(`/instances/${id}/capabilities`)
+  }
+
+  async getInstanceReannounceActivity(
+    instanceId: number,
+    limit?: number
+  ): Promise<InstanceReannounceActivity[]> {
+    const query = typeof limit === "number" ? `?limit=${limit}` : ""
+    return this.request<InstanceReannounceActivity[]>(`/instances/${instanceId}/reannounce/activity${query}`)
+  }
+
+  async getInstanceReannounceCandidates(
+    instanceId: number
+  ): Promise<InstanceReannounceCandidate[]> {
+    return this.request<InstanceReannounceCandidate[]>(`/instances/${instanceId}/reannounce/candidates`)
   }
 
   async reorderInstances(instanceIds: number[]): Promise<InstanceResponse[]> {
@@ -311,6 +433,88 @@ class ApiClient {
     )
   }
 
+  async getCrossInstanceTorrents(
+    params: {
+      page?: number
+      limit?: number
+      sort?: string
+      order?: "asc" | "desc"
+      search?: string
+      filters?: TorrentFilters
+    }
+  ): Promise<TorrentResponse> {
+    const searchParams = new URLSearchParams()
+    if (params.page !== undefined) searchParams.set("page", params.page.toString())
+    if (params.limit !== undefined) searchParams.set("limit", params.limit.toString())
+    if (params.sort) searchParams.set("sort", params.sort)
+    if (params.order) searchParams.set("order", params.order)
+    if (params.search) searchParams.set("search", params.search)
+    if (params.filters) searchParams.set("filters", JSON.stringify(params.filters))
+
+    type RawCrossInstanceTorrent = Omit<CrossInstanceTorrent, "instanceId" | "instanceName"> & {
+      instanceId?: number
+      instanceName?: string
+      instance_id?: number
+      instance_name?: string
+    }
+
+    const normalizeCrossInstanceTorrents = (
+      torrents?: RawCrossInstanceTorrent[] | null
+    ): CrossInstanceTorrent[] | undefined => {
+      if (!torrents) {
+        return undefined
+      }
+
+      let needsNormalization = false
+
+      for (const torrent of torrents) {
+        if (torrent.instanceId === undefined || torrent.instanceName === undefined) {
+          needsNormalization = true
+          break
+        }
+      }
+
+      if (!needsNormalization) {
+        return torrents as CrossInstanceTorrent[]
+      }
+
+      const normalizedTorrents: CrossInstanceTorrent[] = []
+
+      torrents.forEach(torrent => {
+        const instanceId = torrent.instanceId ?? torrent.instance_id
+        const instanceName = torrent.instanceName ?? torrent.instance_name
+
+        if (instanceId === undefined || instanceName === undefined) {
+          console.error("Missing instance fields in cross-instance torrent:", torrent)
+          return
+        }
+
+        normalizedTorrents.push({
+          ...torrent,
+          instanceId,
+          instanceName,
+        })
+      })
+
+      return normalizedTorrents
+    }
+
+    const response = await this.request<TorrentResponse>(
+      `/torrents/cross-instance?${searchParams}`
+    )
+
+    const normalizedCrossInstanceTorrents = normalizeCrossInstanceTorrents(
+      (response.crossInstanceTorrents ?? response.cross_instance_torrents) as RawCrossInstanceTorrent[] | undefined
+    )
+
+    if (normalizedCrossInstanceTorrents) {
+      response.crossInstanceTorrents = normalizedCrossInstanceTorrents
+      response.cross_instance_torrents = normalizedCrossInstanceTorrents
+    }
+
+    return response
+  }
+
   async addTorrent(
     instanceId: number,
     data: {
@@ -417,6 +621,381 @@ class ApiClient {
     })
   }
 
+  async analyzeTorrentForCrossSeedSearch(
+    instanceId: number,
+    hash: string
+  ): Promise<CrossSeedTorrentInfo> {
+    type RawTorrentInfo = {
+      instance_id?: number
+      instance_name?: string
+      hash?: string
+      name: string
+      category?: string
+      size?: number
+      progress?: number
+      total_files?: number
+      matching_files?: number
+      file_count?: number
+      content_type?: string
+      search_type?: string
+      search_categories?: number[]
+      required_caps?: string[]
+      available_indexers?: number[]
+      filtered_indexers?: number[]
+      excluded_indexers?: Record<string, string>
+      content_matches?: string[]
+      content_filtering_completed?: boolean
+    }
+
+    const raw = await this.request<RawTorrentInfo>(
+      `/cross-seed/torrents/${instanceId}/${hash}/analyze`,
+      { method: "GET" }
+    )
+
+    return {
+      instanceId: raw.instance_id,
+      instanceName: raw.instance_name,
+      hash: raw.hash,
+      name: raw.name,
+      category: raw.category,
+      size: raw.size,
+      progress: raw.progress,
+      totalFiles: raw.total_files,
+      matchingFiles: raw.matching_files,
+      fileCount: raw.file_count,
+      contentType: raw.content_type,
+      searchType: raw.search_type,
+      searchCategories: raw.search_categories,
+      requiredCaps: raw.required_caps,
+      availableIndexers: raw.available_indexers,
+      filteredIndexers: raw.filtered_indexers,
+      excludedIndexers: normalizeExcludedIndexerMap(raw.excluded_indexers),
+      contentMatches: raw.content_matches,
+      contentFilteringCompleted: raw.content_filtering_completed,
+    }
+  }
+
+  async getAsyncFilteringStatus(
+    instanceId: number,
+    hash: string
+  ): Promise<AsyncIndexerFilteringState> {
+    type RawAsyncFilteringState = {
+      capabilities_completed: boolean
+      content_completed: boolean
+      capability_indexers: number[]
+      filtered_indexers: number[]
+      excluded_indexers: Record<string, string>
+      content_matches: string[]
+    }
+
+    const raw = await this.request<RawAsyncFilteringState>(
+      `/cross-seed/torrents/${instanceId}/${hash}/async-status`,
+      { method: "GET" }
+    )
+
+    return {
+      capabilitiesCompleted: raw.capabilities_completed,
+      contentCompleted: raw.content_completed,
+      capabilityIndexers: raw.capability_indexers,
+      filteredIndexers: raw.filtered_indexers,
+      excludedIndexers: normalizeExcludedIndexerMap(raw.excluded_indexers) || {},
+      contentMatches: raw.content_matches,
+    }
+  }
+
+  async searchCrossSeedTorrent(
+    instanceId: number,
+    hash: string,
+    options: {
+      query?: string
+      limit?: number
+      indexerIds?: number[]
+      findIndividualEpisodes?: boolean
+      cacheMode?: "bypass"
+    } = {}
+  ): Promise<CrossSeedTorrentSearchResponse> {
+    const body: Record<string, unknown> = {}
+    const trimmedQuery = options.query?.trim()
+    if (trimmedQuery) {
+      body.query = trimmedQuery
+    }
+    if (options.limit !== undefined) {
+      body.limit = options.limit
+    }
+    if (options.indexerIds && options.indexerIds.length > 0) {
+      body.indexer_ids = options.indexerIds
+    }
+    if (options.findIndividualEpisodes !== undefined) {
+      body.find_individual_episodes = options.findIndividualEpisodes
+    }
+    if (options.cacheMode) {
+      body.cache_mode = options.cacheMode
+    }
+
+    type RawTorrentInfo = {
+      instance_id?: number
+      instance_name?: string
+      hash?: string
+      name?: string
+      category?: string
+      size?: number
+      progress?: number
+      total_files?: number
+      matching_files?: number
+      file_count?: number
+      content_type?: string
+      search_type?: string
+      search_categories?: number[]
+      required_caps?: string[]
+      available_indexers?: number[]
+      filtered_indexers?: number[]
+      excluded_indexers?: Record<string, string>
+      content_matches?: string[]
+    } | null
+
+    type RawSearchResult = {
+      indexer: string
+      indexer_id: number
+      title: string
+      download_url: string
+      info_url?: string
+      size: number
+      seeders: number
+      leechers: number
+      category_id: number
+      category_name: string
+      publish_date: string
+      download_volume_factor: number
+      upload_volume_factor: number
+      guid: string
+      imdb_id?: string
+      tvdb_id?: string
+      match_reason?: string
+      match_score?: number
+    }
+
+    type RawSearchResponse = {
+      source_torrent: RawTorrentInfo
+      results?: RawSearchResult[]
+      cache?: TorznabSearchCacheMetadata
+    }
+
+    const response = await this.request<RawSearchResponse>(`/cross-seed/torrents/${instanceId}/${hash}/search`, {
+      method: "POST",
+      body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined,
+    })
+
+    const normalizeTorrentInfo = (torrent?: RawTorrentInfo): CrossSeedTorrentInfo => ({
+      instanceId: torrent?.instance_id ?? undefined,
+      instanceName: torrent?.instance_name ?? undefined,
+      hash: torrent?.hash ?? undefined,
+      name: torrent?.name ?? trimmedQuery ?? "",
+      category: torrent?.category ?? undefined,
+      size: torrent?.size ?? undefined,
+      progress: torrent?.progress ?? undefined,
+      totalFiles: torrent?.total_files ?? undefined,
+      matchingFiles: torrent?.matching_files ?? undefined,
+      fileCount: torrent?.file_count ?? undefined,
+      contentType: torrent?.content_type ?? undefined,
+      searchType: torrent?.search_type ?? undefined,
+      searchCategories: torrent?.search_categories ?? undefined,
+      requiredCaps: torrent?.required_caps ?? undefined,
+      availableIndexers: torrent?.available_indexers ?? undefined,
+      filteredIndexers: torrent?.filtered_indexers ?? undefined,
+      excludedIndexers: normalizeExcludedIndexerMap(torrent?.excluded_indexers),
+      contentMatches: torrent?.content_matches ?? undefined,
+    })
+
+    return {
+      sourceTorrent: normalizeTorrentInfo(response.source_torrent ?? null),
+      results: (response.results ?? []).map((result): CrossSeedTorrentSearchResponse["results"][number] => ({
+        indexer: result.indexer,
+        indexerId: result.indexer_id,
+        title: result.title,
+        downloadUrl: result.download_url,
+        infoUrl: result.info_url,
+        size: result.size,
+        seeders: result.seeders,
+        leechers: result.leechers,
+        categoryId: result.category_id,
+        categoryName: result.category_name,
+        publishDate: result.publish_date,
+        downloadVolumeFactor: result.download_volume_factor,
+        uploadVolumeFactor: result.upload_volume_factor,
+        guid: result.guid,
+        imdbId: result.imdb_id ?? undefined,
+        tvdbId: result.tvdb_id ?? undefined,
+        matchReason: result.match_reason ?? undefined,
+        matchScore: result.match_score ?? 0,
+      })),
+      cache: response.cache,
+    }
+  }
+
+  async applyCrossSeedSearchResults(
+    instanceId: number,
+    hash: string,
+    payload: {
+      selections: CrossSeedTorrentSearchSelection[]
+      useTag: boolean
+      tagName?: string
+      startPaused?: boolean
+      findIndividualEpisodes?: boolean
+    }
+  ): Promise<CrossSeedApplyResponse> {
+    const body: Record<string, unknown> = {
+      selections: payload.selections.map(selection => {
+        const item: Record<string, unknown> = {
+          indexer_id: selection.indexerId,
+          indexer: selection.indexer,
+          download_url: selection.downloadUrl,
+          title: selection.title,
+        }
+        if (selection.guid) {
+          item.guid = selection.guid
+        }
+        return item
+      }),
+      use_tag: payload.useTag,
+    }
+
+    if (payload.tagName) {
+      body.tag_name = payload.tagName
+    }
+    if (payload.startPaused !== undefined) {
+      body.start_paused = payload.startPaused
+    }
+    if (payload.findIndividualEpisodes !== undefined) {
+      body.find_individual_episodes = payload.findIndividualEpisodes
+    }
+
+    type RawMatchedTorrent = {
+      hash?: string
+      name?: string
+      progress?: number
+      size?: number
+    }
+
+    type RawInstanceResult = {
+      instance_id: number
+      instance_name: string
+      success: boolean
+      status: string
+      message?: string
+      matched_torrent?: RawMatchedTorrent
+    }
+
+    type RawApplyResult = {
+      title: string
+      indexer: string
+      torrent_name?: string
+      success: boolean
+      instance_results?: RawInstanceResult[]
+      error?: string
+    }
+
+    type RawApplyResponse = {
+      results?: RawApplyResult[]
+    }
+
+    const response = await this.request<RawApplyResponse>(`/cross-seed/torrents/${instanceId}/${hash}/apply`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    })
+
+    return {
+      results: (response.results ?? []).map((result): CrossSeedApplyResponse["results"][number] => ({
+        title: result.title,
+        indexer: result.indexer,
+        torrentName: result.torrent_name ?? undefined,
+        success: result.success,
+        instanceResults: (result.instance_results ?? []).map((instance): CrossSeedInstanceResult => ({
+          instanceId: instance.instance_id,
+          instanceName: instance.instance_name,
+          success: instance.success,
+          status: instance.status,
+          message: instance.message,
+          matchedTorrent: instance.matched_torrent
+            ? {
+                hash: instance.matched_torrent.hash ?? "",
+                name: instance.matched_torrent.name ?? "",
+                progress: instance.matched_torrent.progress ?? 0,
+                size: instance.matched_torrent.size ?? 0,
+              }
+            : undefined,
+        })),
+        error: result.error ?? undefined,
+      })),
+    }
+  }
+
+  async getCrossSeedSettings(): Promise<CrossSeedAutomationSettings> {
+    return this.request<CrossSeedAutomationSettings>("/cross-seed/settings")
+  }
+
+  async updateCrossSeedSettings(payload: CrossSeedAutomationSettings): Promise<CrossSeedAutomationSettings> {
+    return this.request<CrossSeedAutomationSettings>("/cross-seed/settings", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async patchCrossSeedSettings(payload: CrossSeedAutomationSettingsPatch): Promise<CrossSeedAutomationSettings> {
+    return this.request<CrossSeedAutomationSettings>("/cross-seed/settings", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async getCrossSeedStatus(): Promise<CrossSeedAutomationStatus> {
+    return this.request<CrossSeedAutomationStatus>("/cross-seed/status")
+  }
+
+  async listCrossSeedRuns(params?: { limit?: number; offset?: number }): Promise<CrossSeedRun[]> {
+    const search = new URLSearchParams()
+    if (params?.limit !== undefined) search.set("limit", params.limit.toString())
+    if (params?.offset !== undefined) search.set("offset", params.offset.toString())
+    const query = search.toString()
+    const suffix = query ? `?${query}` : ""
+    return this.request<CrossSeedRun[]>(`/cross-seed/runs${suffix}`)
+  }
+
+  async getCrossSeedSearchStatus(): Promise<CrossSeedSearchStatus> {
+    return this.request<CrossSeedSearchStatus>("/cross-seed/search/status")
+  }
+
+  async startCrossSeedSearchRun(payload: {
+    instanceId: number
+    categories: string[]
+    tags: string[]
+    intervalSeconds: number
+    indexerIds: number[]
+    cooldownMinutes: number
+  }): Promise<CrossSeedSearchRun> {
+    return this.request<CrossSeedSearchRun>("/cross-seed/search/run", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async cancelCrossSeedSearchRun(): Promise<void> {
+    await this.request("/cross-seed/search/run/cancel", { method: "POST" })
+  }
+
+  async listCrossSeedSearchRuns(instanceId: number, params?: { limit?: number; offset?: number }): Promise<CrossSeedSearchRun[]> {
+    const search = new URLSearchParams({ instanceId: instanceId.toString() })
+    if (params?.limit !== undefined) search.set("limit", params.limit.toString())
+    if (params?.offset !== undefined) search.set("offset", params.offset.toString())
+    return this.request<CrossSeedSearchRun[]>(`/cross-seed/search/runs?${search.toString()}`)
+  }
+
+  async triggerCrossSeedRun(payload: { dryRun?: boolean } = {}): Promise<CrossSeedRun> {
+    return this.request<CrossSeedRun>("/cross-seed/run", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
   // Torrent Details
   async getTorrentProperties(instanceId: number, hash: string): Promise<TorrentProperties> {
     return this.request<TorrentProperties>(`/instances/${instanceId}/torrents/${hash}/properties`)
@@ -487,23 +1066,8 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      if ((response.status === 401 || response.status === 403) && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
-        window.location.href = withBasePath("/login")
-        throw new Error("Session expired")
-      }
-
-      let errorMessage = `HTTP error! status: ${response.status}`
-      try {
-        const errorData = await response.json()
-        errorMessage = errorData.error || errorData.message || errorMessage
-      } catch {
-        try {
-          const errorText = await response.text()
-          errorMessage = errorText || errorMessage
-        } catch {
-          // nothing to see here
-        }
-      }
+      const errorMessage = await this.extractErrorMessage(response)
+      this.handleAuthError(response.status, `/instances/${instanceId}/torrents/${encodedHash}/export`, errorMessage)
       throw new Error(errorMessage)
     }
 
@@ -846,6 +1410,150 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify(request),
     })
+  }
+
+  // Torznab Indexer endpoints
+  async listTorznabIndexers(): Promise<TorznabIndexer[]> {
+    return this.request<TorznabIndexer[]>("/torznab/indexers")
+  }
+
+  async getTorznabIndexer(id: number): Promise<TorznabIndexer> {
+    return this.request<TorznabIndexer>(`/torznab/indexers/${id}`)
+  }
+
+  async createTorznabIndexer(data: TorznabIndexerFormData): Promise<TorznabIndexer> {
+    return this.request<TorznabIndexer>("/torznab/indexers", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateTorznabIndexer(id: number, data: Partial<TorznabIndexerFormData>): Promise<TorznabIndexer> {
+    return this.request<TorznabIndexer>(`/torznab/indexers/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async syncTorznabCaps(id: number): Promise<TorznabIndexer> {
+    return this.request<TorznabIndexer>(`/torznab/indexers/${id}/caps/sync`, {
+      method: "POST",
+    })
+  }
+
+  async deleteTorznabIndexer(id: number): Promise<void> {
+    return this.request<void>(`/torznab/indexers/${id}`, {
+      method: "DELETE",
+    })
+  }
+
+  async testTorznabIndexer(id: number): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/torznab/indexers/${id}/test`, {
+      method: "POST",
+    })
+  }
+
+  async discoverJackettIndexers(baseUrl: string, apiKey: string): Promise<JackettIndexer[]> {
+    return this.request<JackettIndexer[]>("/torznab/indexers/discover", {
+      method: "POST",
+      body: JSON.stringify({ base_url: baseUrl, api_key: apiKey }),
+    })
+  }
+
+  async searchTorznab(request: TorznabSearchRequest): Promise<TorznabSearchResponse> {
+    const response = await this.request<{
+      results: Array<{
+        indexer: string
+        indexer_id: number
+        title: string
+        download_url: string
+        info_url?: string
+        size: number
+        seeders: number
+        leechers: number
+        category_id: number
+        category_name: string
+        publish_date: string
+        download_volume_factor: number
+        upload_volume_factor: number
+        guid: string
+        imdb_id?: string
+        tvdb_id?: string
+        source?: string
+        collection?: string
+        group?: string
+      }>
+      total: number
+      cache?: TorznabSearchCacheMetadata
+    }>("/torznab/search", {
+      method: "POST",
+      body: JSON.stringify(request),
+    })
+
+    return {
+      ...response,
+      results: response.results.map((result): TorznabSearchResult => ({
+        indexer: result.indexer,
+        indexerId: result.indexer_id,
+        title: result.title,
+        downloadUrl: result.download_url,
+        infoUrl: result.info_url,
+        size: result.size,
+        seeders: result.seeders,
+        leechers: result.leechers,
+        categoryId: result.category_id,
+        categoryName: result.category_name,
+        publishDate: result.publish_date,
+        downloadVolumeFactor: result.download_volume_factor,
+        uploadVolumeFactor: result.upload_volume_factor,
+        guid: result.guid,
+        imdbId: result.imdb_id,
+        tvdbId: result.tvdb_id,
+        source: result.source,
+        collection: result.collection,
+        group: result.group,
+      }))
+    }
+  }
+
+  async getRecentTorznabSearches(limit?: number, scope?: string): Promise<TorznabRecentSearch[]> {
+    const params = new URLSearchParams()
+    if (limit && limit > 0) {
+      params.set("limit", String(limit))
+    }
+    if (scope) {
+      params.set("scope", scope)
+    }
+    const query = params.toString() ? `?${params.toString()}` : ""
+    return this.request<TorznabRecentSearch[]>(`/torznab/search/recent${query}`)
+  }
+
+  async getTorznabSearchCacheStats(): Promise<TorznabSearchCacheStats> {
+    return this.request<TorznabSearchCacheStats>("/torznab/search/cache")
+  }
+
+  async updateTorznabSearchCacheSettings(ttlMinutes: number): Promise<TorznabSearchCacheStats> {
+    return this.request<TorznabSearchCacheStats>("/torznab/search/cache/settings", {
+      method: "PUT",
+      body: JSON.stringify({ ttlMinutes }),
+    })
+  }
+
+  async getAllIndexerHealth(): Promise<TorznabIndexerHealth[]> {
+    return this.request<TorznabIndexerHealth[]>("/torznab/indexers/health")
+  }
+
+  async getIndexerHealth(id: number): Promise<TorznabIndexerHealth> {
+    return this.request<TorznabIndexerHealth>(`/torznab/indexers/${id}/health`)
+  }
+
+  async getIndexerErrors(id: number, limit?: number): Promise<TorznabIndexerError[]> {
+    const params = limit ? `?limit=${limit}` : ""
+    return this.request<TorznabIndexerError[]>(`/torznab/indexers/${id}/errors${params}`)
+  }
+
+  async getIndexerStats(id: number): Promise<TorznabIndexerLatencyStats[]> {
+    return this.request<TorznabIndexerLatencyStats[]>(`/torznab/indexers/${id}/stats`)
   }
 }
 

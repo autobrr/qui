@@ -35,10 +35,13 @@ import {
 import {
   flexRender,
   getCoreRowModel,
+  getFilteredRowModel,
+  getSortedRowModel,
   useReactTable
 } from "@tanstack/react-table"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
 import { TorrentContextMenu } from "./TorrentContextMenu"
 import { TORRENT_SORT_OPTIONS, type TorrentSortOptionValue, getDefaultSortOrder } from "./torrentSortOptions"
 
@@ -82,13 +85,20 @@ import {
 } from "@/components/ui/tooltip"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences.ts"
+import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
 import { cn } from "@/lib/utils"
-import type { Category, ServerState, Torrent, TorrentCounts, TorrentFilters } from "@/types"
+import type {
+  Category,
+  ServerState,
+  Torrent,
+  TorrentCounts,
+  TorrentFilters
+} from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSearch } from "@tanstack/react-router"
 import {
@@ -106,6 +116,7 @@ import {
   LayoutGrid,
   Loader2,
   Rabbit,
+  RefreshCcw,
   Table as TableIcon,
   Tag,
   Turtle,
@@ -175,6 +186,7 @@ const DEFAULT_COLUMN_VISIBILITY = {
   infohash_v2: false,
   reannounce: false,
   private: false,
+  instance: false, // Hidden by default, shown when cross-seed filtering
 }
 const DEFAULT_COLUMN_SIZING = {}
 
@@ -604,6 +616,10 @@ interface TorrentTableOptimizedProps {
     selectionFilters?: TorrentFilters
   ) => void
   onResetSelection?: (handler?: () => void) => void
+  onFilterChange?: (filters: TorrentFilters) => void
+  canCrossSeedSearch?: boolean
+  onCrossSeedSearch?: (torrent: Torrent) => void
+  isCrossSeedSearching?: boolean
 }
 
 export const TorrentTableOptimized = memo(function TorrentTableOptimized({
@@ -616,6 +632,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   onFilteredDataUpdate,
   onSelectionChange,
   onResetSelection,
+  onFilterChange,
+  canCrossSeedSearch,
+  onCrossSeedSearch,
+  isCrossSeedSearching,
 }: TorrentTableOptimizedProps) {
   // State management
   // Move default values outside the component for stable references
@@ -630,11 +650,21 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const [excludedFromSelectAll, setExcludedFromSelectAll] = useState<Set<string>>(new Set())
   const [dropPayload, setDropPayload] = useState<AddTorrentDropPayload | null>(null)
 
+  // Instance preferences dialog state
+  const [preferencesOpen, setPreferencesOpen] = useState(false)
+  const [preferencesDefaultTab, setPreferencesDefaultTab] = useState<string>("speed")
+
+  // Filter lifecycle state machine to replace fragile timing-based coordination
+  type FilterLifecycleState = 'idle' | 'clearing-all' | 'clearing-columns-only' | 'cleared'
+  const [filterLifecycleState, setFilterLifecycleState] = useState<FilterLifecycleState>('idle')
+
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
   const { formatTimestamp } = useDateTimeFormatters()
   const { preferences } = useInstancePreferences(instanceId)
+  const { instances } = useInstances()
+  const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
 
   // Desktop view mode state (separate from mobile view mode)
   const { viewMode: desktopViewMode, cycleViewMode } = usePersistedCompactViewState("normal", TABLE_ALLOWED_VIEW_MODES)
@@ -683,6 +713,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // State for range select capabilities for checkboxes
   const shiftPressedRef = useRef<boolean>(false)
   const lastSelectedIndexRef = useRef<number | null>(null)
+
+  // Cross-seed async filtering polling
 
   const handleCompactCheckboxPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     shiftPressedRef.current = event.shiftKey
@@ -862,6 +894,31 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Convert column filters to expr format for backend
   const columnFiltersExpr = useMemo(() => columnFiltersToExpr(columnFilters), [columnFilters])
 
+  // Detect if this is cross-seed filtering (same logic as in useTorrentsList)
+  const isDoingCrossSeedFiltering = useMemo(() => {
+    return filters?.expr?.includes('Hash ==') && filters?.expr?.includes('||')
+  }, [filters?.expr])
+
+  // Combine column filters with any existing filter expression
+  // For cross-seed filtering, we'll apply column filters client-side only
+  const combinedFiltersExpr = useMemo(() => {
+    const columnExpr = columnFiltersExpr
+    const filterExpr = filters?.expr
+    
+    // If we're doing cross-seed filtering, don't send column filters to backend
+    // They will be applied client-side by TanStack Table (along with sorting)
+    if (isDoingCrossSeedFiltering) {
+      return filterExpr // Only use the cross-seed expression for backend
+    }
+    
+    // For regular filtering, combine column filters with existing filters
+    if (columnExpr && filterExpr) {
+      const combined = `(${columnExpr}) && (${filterExpr})`
+      return combined
+    }
+    return columnExpr || filterExpr
+  }, [columnFiltersExpr, filters?.expr, isDoingCrossSeedFiltering])
+
   // Detect user-initiated changes
   useEffect(() => {
     const filtersChanged = JSON.stringify(previousFiltersRef.current) !== JSON.stringify(filters)
@@ -918,6 +975,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     isLoadingMore,
     hasLoadedAll,
     loadMore: backendLoadMore,
+    isCrossSeedFiltering,
   } = useTorrentsList(instanceId, {
     search: effectiveSearch,
     filters: {
@@ -931,7 +989,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       excludeTrackers: filters?.excludeTrackers || [],
       expandedCategories: filters?.expandedCategories,
       expandedExcludeCategories: filters?.expandedExcludeCategories,
-      expr: columnFiltersExpr || undefined,
+      expr: combinedFiltersExpr || undefined,
     },
     sort: activeSortField,
     order: activeSortOrder,
@@ -942,6 +1000,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const allowSubcategories = Boolean(
     supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false)
   )
+
+  // When cross-seed filtering is active, ensure instance column is visible
+  useEffect(() => {
+    if (isDoingCrossSeedFiltering && columnVisibility.instance === false) {
+      setColumnVisibility(prev => ({ ...prev, instance: true }))
+    }
+  }, [isDoingCrossSeedFiltering, columnVisibility.instance, setColumnVisibility])
 
   // Delayed loading state to avoid flicker on fast loads
   useEffect(() => {
@@ -1026,6 +1091,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents
+
+  // Atomic filter clearing callback
+  const clearFiltersAtomically = useCallback((mode: 'all' | 'columns-only' = 'all') => {
+    setFilterLifecycleState(mode === 'all' ? 'clearing-all' : 'clearing-columns-only');
+  }, []);
   const effectiveServerState = useMemo(() => {
     const cached = serverStateRef.current
     const instanceChanged = cached.instanceId !== instanceId
@@ -1179,8 +1249,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       onRowSelection: handleRowSelection,
       isAllSelected,
       excludedFromSelectAll,
-    }, speedUnit, trackerIcons, formatTimestamp, preferences, supportsTrackerHealth),
-    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth]
+    }, speedUnit, trackerIcons, formatTimestamp, preferences, supportsTrackerHealth, isCrossSeedFiltering),
+    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth, isCrossSeedFiltering]
   )
 
   const torrentIdentityCounts = useMemo(() => {
@@ -1199,7 +1269,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     data: sortedTorrents,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    manualSorting: true,
+    // For cross-seed filtering, enable client-side sorting and filtering
+    // For regular filtering, backend handles sorting and column filters
+    manualSorting: !isCrossSeedFiltering,
+    getSortedRowModel: isCrossSeedFiltering ? getSortedRowModel() : undefined,
+    manualFiltering: !isCrossSeedFiltering,
+    getFilteredRowModel: isCrossSeedFiltering ? getFilteredRowModel() : undefined,
     // Prefer stable torrent hash for row identity while keeping duplicates unique
     getRowId: (row: Torrent, index: number) => {
       const baseIdentity = row.hash ?? row.infohash_v1 ?? row.infohash_v2
@@ -1222,6 +1297,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       columnSizing,
       columnVisibility,
       columnOrder,
+      // Convert our custom ColumnFilter format to TanStack Table format when doing client-side filtering
+      ...(isCrossSeedFiltering && {
+        columnFilters: columnFilters.map(filter => ({
+          id: filter.columnId,
+          value: filter.value
+        }))
+      }),
     },
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
@@ -1238,6 +1320,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     autoResetPageIndex: false,
     autoResetExpanded: false,
   })
+
+  // Fix virtualization when column filters are cleared in cross-seed mode
+  // Only run when lifecycle is idle to avoid racing with filter lifecycle handler
+  useEffect(() => {
+    if (filterLifecycleState === 'idle' && isCrossSeedFiltering && columnFilters.length === 0) {
+      // Reset loadedRows to ensure all rows are visible when filters are cleared
+      const targetRows = Math.min(100, sortedTorrents.length)
+      // Use functional update to ensure idempotent, non-racing updates
+      setLoadedRows(prev => Math.max(prev, targetRows))
+    }
+  }, [filterLifecycleState, isCrossSeedFiltering, columnFilters.length, sortedTorrents.length])
 
   const resolveSortColumnId = useCallback((field: string): string => {
     const columns = table.getAllLeafColumns()
@@ -1419,6 +1512,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   }, [isAllSelected, stats?.totalSize, excludedFromSelectAll, sortedTorrents, selectedTorrents])
   const selectedFormattedSize = useMemo(() => formatBytes(selectedTotalSize), [selectedTotalSize])
   const queryClient = useQueryClient()
+
   const [altSpeedOverride, setAltSpeedOverride] = useState<boolean | null>(null)
   const serverAltSpeedEnabled = effectiveServerState?.use_alt_speed_limits
   const hasAltSpeedStatus = typeof serverAltSpeedEnabled === "boolean"
@@ -1448,6 +1542,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       setAltSpeedOverride(null)
     }
   }, [serverAltSpeedEnabled, altSpeedOverride])
+
+  // Poll for async cross-seed filtering status updates
+  
 
   const handleToggleAltSpeedLimits = useCallback(async () => {
     if (isTogglingAltSpeed) {
@@ -1582,10 +1679,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Also keep loadedRows in sync with actual data to prevent status display issues
   useEffect(() => {
-    if (loadedRows > rows.length && rows.length > 0) {
+    if (filterLifecycleState === 'idle' && loadedRows > rows.length && rows.length > 0) {
       setLoadedRows(rows.length)
     }
-  }, [loadedRows, rows.length])
+  }, [loadedRows, rows.length, filterLifecycleState])
 
   // useVirtualizer must be called at the top level, not inside useMemo
   const virtualizer = useVirtualizer({
@@ -1618,6 +1715,43 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       }
     },
   })
+
+  // Filter lifecycle state machine
+  useLayoutEffect(() => {
+    if (filterLifecycleState === 'clearing-all' || filterLifecycleState === 'clearing-columns-only') {
+
+      // Perform clearing operations atomically
+      setColumnFilters([]);
+      setSorting([]);
+      virtualizer.scrollToOffset(0);
+      virtualizer.measure();
+      
+      // Reset loadedRows to a reasonable initial value
+      const newLoadedRows = Math.min(100, sortedTorrents.length);
+      setLoadedRows(newLoadedRows);
+      
+      // Only clear parent filters if clearing all (not just columns)
+      if (filterLifecycleState === 'clearing-all') {
+        const emptyFilters: TorrentFilters = {
+          status: [],
+          excludeStatus: [],
+          categories: [],
+          excludeCategories: [],
+          tags: [],
+          excludeTags: [],
+          trackers: [],
+          excludeTrackers: []
+        };
+        onFilterChange?.(emptyFilters);
+      }
+
+      // Transition to cleared state
+      setFilterLifecycleState('cleared');
+    } else if (filterLifecycleState === 'cleared') {
+      // Reset to idle state after clearing is complete
+      setFilterLifecycleState('idle');
+    }
+  }, [filterLifecycleState, virtualizer, onFilterChange, setLoadedRows, sortedTorrents.length]);
 
   // Force virtualizer to recalculate when count changes
   useEffect(() => {
@@ -2073,7 +2207,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                           variant="outline"
                           size="icon"
                           className="relative mr-1"
-                          onClick={() => setColumnFilters([])}
+                          onClick={() => {
+                            // Use atomic filter clearing to avoid race conditions
+                            // Only clear column filters in cross-seed mode, clear all filters otherwise
+                            const clearingMode = isCrossSeedFiltering ? 'columns-only' : 'all'
+                            clearFiltersAtomically(clearingMode)
+                          }}
                         >
                           <X className="h-4 w-4"/>
                           <span className="sr-only">Clear all column filters</span>
@@ -2307,6 +2446,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       isExporting={isExportingTorrent}
                       capabilities={capabilities}
                       useSubcategories={allowSubcategories}
+                      canCrossSeedSearch={canCrossSeedSearch}
+                      onCrossSeedSearch={onCrossSeedSearch}
+                      isCrossSeedSearching={isCrossSeedSearching}
+                      onFilterChange={onFilterChange}
                     >
                       <CompactRow
                         torrent={torrent}
@@ -2402,6 +2545,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                     isExporting={isExportingTorrent}
                     capabilities={capabilities}
                     useSubcategories={allowSubcategories}
+                    canCrossSeedSearch={canCrossSeedSearch}
+                    onCrossSeedSearch={onCrossSeedSearch}
+                    isCrossSeedSearching={isCrossSeedSearching}
+                    onFilterChange={onFilterChange}
                   >
                     <div
                       className={`flex border-b cursor-pointer hover:bg-muted/50 ${isRowSelected ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}
@@ -2581,6 +2728,26 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                 </TooltipTrigger>
                 <TooltipContent>{altSpeedTooltip}</TooltipContent>
               </Tooltip>
+              {instance?.reannounceSettings?.enabled && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setPreferencesDefaultTab("reannounce")
+                        setPreferencesOpen(true)
+                      }}
+                      className="h-6 w-6 text-muted-foreground hover:text-accent-foreground"
+                    >
+                      <RefreshCcw className="h-4 w-4 text-green-500" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Automatic tracker reannounce enabled - Click to configure</TooltipContent>
+                </Tooltip>
+              )}
             </div>
             <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
               <Button
@@ -2833,6 +3000,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Instance Preferences Dialog */}
+      {instance && (
+        <InstancePreferencesDialog
+          open={preferencesOpen}
+          onOpenChange={setPreferencesOpen}
+          instanceId={instanceId}
+          instanceName={instance.name}
+          defaultTab={preferencesDefaultTab}
+        />
+      )}
 
       {/* Scroll to top button*/}
       <div className="hidden lg:block">

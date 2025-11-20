@@ -4,17 +4,19 @@
  */
 
 import { useState, useEffect } from "react"
-import { getCurrentTheme, getCurrentThemeMode, setTheme as setThemeUtil, setThemeMode as setThemeModeUtil, type ThemeMode } from "@/utils/theme"
+import { getCurrentTheme, getCurrentThemeMode, getThemeVariation, setTheme as setThemeUtil, setThemeMode as setThemeModeUtil, setThemeVariation as setThemeVariationUtil, type ThemeMode } from "@/utils/theme"
 
 export function useTheme() {
   const [theme, setThemeState] = useState(() => getCurrentTheme().id)
   const [mode, setModeState] = useState(() => getCurrentThemeMode())
+  const [variation, setVariationState] = useState(() => getThemeVariation())
 
   useEffect(() => {
     const handleThemeChange = (event: CustomEvent) => {
-      const { theme: newTheme, mode: newMode } = event.detail
+      const { theme: newTheme, mode: newMode, variant: newVariant } = event.detail
       setThemeState(newTheme.id)
       setModeState(newMode)
+      setVariationState(newVariant)
     }
 
     // Listen for theme changes
@@ -33,11 +35,17 @@ export function useTheme() {
     await setThemeModeUtil(newMode)
   }
 
+  const setVariation = async (newVariant: string) => {
+    await setThemeVariationUtil(newVariant)
+  }
+
   return {
     theme,
     mode,
+    variation,
     setTheme,
     setThemeMode,
+    setVariation,
     currentTheme: getCurrentTheme(),
   }
 }

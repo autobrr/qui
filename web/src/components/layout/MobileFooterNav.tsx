@@ -30,6 +30,9 @@ import {
   getCurrentThemeMode,
   setTheme,
   setThemeMode,
+  setThemeVariation,
+  getThemeColors,
+  getThemeVariation,
   type ThemeMode
 } from "@/utils/theme"
 import { useQuery } from "@tanstack/react-query"
@@ -37,8 +40,10 @@ import { Link, useLocation } from "@tanstack/react-router"
 import {
   Archive,
   Check,
+  CornerDownRight,
   Copyright,
   Download,
+  GitBranch,
   Github,
   HardDrive,
   Home,
@@ -46,20 +51,14 @@ import {
   Monitor,
   Moon,
   Palette,
+  Search as SearchIcon,
   Server,
   Settings,
   Sun
 } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
-
-// Helper to extract primary color from theme
-function getThemePrimaryColor(theme: typeof themes[0]) {
-  const isDark = document.documentElement.classList.contains("dark")
-  const cssVars = isDark ? theme.cssVars.dark : theme.cssVars.light
-  return cssVars["--primary"] || ""
-}
 
 // Custom hook for theme change detection
 const useThemeChange = () => {
@@ -94,7 +93,7 @@ export function MobileFooterNav() {
   const [showThemeDialog, setShowThemeDialog] = useState(false)
   const appVersion = getAppVersion()
 
-  const { data: instances } = useQuery({
+  const { data: instances, isPending: isLoadingInstances } = useQuery({
     queryKey: ["instances"],
     queryFn: () => api.getInstances(),
   })
@@ -107,11 +106,18 @@ export function MobileFooterNav() {
     refetchOnWindowFocus: false,
   })
 
-  const activeInstances = instances?.filter(i => i.connected) || []
+  const activeInstances = useMemo(() => {
+    if (!instances) {
+      return []
+    }
+    return instances.filter(instance => instance.isActive)
+  }, [instances])
   const isOnInstancePage = location.pathname.startsWith("/instances/")
+  const hasMultipleActiveInstances = activeInstances.length > 1
+  const singleActiveInstance = activeInstances.length === 1 ? activeInstances[0] : null
   const currentInstanceId = isOnInstancePage? location.pathname.split("/")[2]: null
   const currentInstance = instances?.find(i => i.id.toString() === currentInstanceId)
-  const currentInstanceLabel = currentInstance ? currentInstance.name : "Clients"
+  const currentInstanceLabel = currentInstance && currentInstance.isActive ? currentInstance.name : null
 
   const handleModeSelect = useCallback(async (mode: ThemeMode) => {
     await setThemeMode(mode)
@@ -129,6 +135,20 @@ export function MobileFooterNav() {
     await setTheme(themeId)
     const theme = themes.find(t => t.id === themeId)
     toast.success(`Switched to ${theme?.name || themeId} theme`)
+  }, [hasPremiumAccess])
+
+  const handleVariationSelect = useCallback(async (themeId: string, variationId: string): Promise<boolean> => {
+    const isPremium = isThemePremium(themeId)
+    if (isPremium && !hasPremiumAccess) {
+      toast.error("This is a premium theme. Please purchase a license to use it.")
+      return false
+    }
+
+    await setTheme(themeId)
+    await setThemeVariation(variationId)
+    const theme = themes.find(t => t.id === themeId)
+    toast.success(`Switched to ${theme?.name || themeId} theme (${variationId})`)
+    return true
   }, [hasPremiumAccess])
 
   if (isSelectionMode) {
@@ -159,70 +179,106 @@ export function MobileFooterNav() {
           <span className="truncate">Dashboard</span>
         </Link>
 
-        {/* Clients dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              className={cn(
-                "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
-                isOnInstancePage? "text-primary": "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <div className="relative">
-                <HardDrive className={cn(
-                  "h-5 w-5",
-                  isOnInstancePage && "text-primary"
-                )} />
-                {activeInstances.length > 0 && (
+        {/* Clients access */}
+        {hasMultipleActiveInstances ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
+                  isOnInstancePage? "text-primary": "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <div className="relative">
+                  <HardDrive className={cn(
+                    "h-5 w-5",
+                    isOnInstancePage && "text-primary"
+                  )} />
                   <Badge
                     className="absolute -top-1 -right-2 h-4 w-4 p-0 flex items-center justify-center text-[9px]"
                     variant="default"
                   >
                     {activeInstances.length}
                   </Badge>
-                )}
-              </div>
-              <span
-                className="block max-w-[7.5rem] truncate text-center"
-                title={currentInstanceLabel}
-              >
-                {currentInstanceLabel}
-              </span>
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="center" side="top" className="w-56 mb-2">
-            <DropdownMenuLabel>qBittorrent Clients</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {instances?.map((instance) => (
-              <DropdownMenuItem key={instance.id} asChild>
-                <Link
-                  to="/instances/$instanceId"
-                  params={{ instanceId: instance.id.toString() }}
-                  className="flex items-center gap-2 min-w-0"
+                </div>
+                <span
+                  className="block max-w-[7.5rem] truncate text-center"
+                  title={currentInstanceLabel ?? "Clients"}
                 >
-                  <HardDrive className="h-4 w-4" />
-                  <span
-                    className="flex-1 min-w-0 truncate"
-                    title={instance.name}
+                  {currentInstanceLabel ?? "Clients"}
+                </span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center" side="top" className="w-56 mb-2">
+              <DropdownMenuLabel>qBittorrent Clients</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {activeInstances.map((instance) => (
+                <DropdownMenuItem key={instance.id} asChild>
+                  <Link
+                    to="/instances/$instanceId"
+                    params={{ instanceId: instance.id.toString() }}
+                    className="flex items-center gap-2 min-w-0"
                   >
-                    {instance.name}
-                  </span>
-                  <span
-                    className={cn(
-                      "h-2 w-2 rounded-full",
-                      instance.connected ? "bg-green-500" : "bg-red-500"
-                    )}
-                  />
-                </Link>
-              </DropdownMenuItem>
-            ))}
-            {(!instances || instances.length === 0) && (
-              <DropdownMenuItem disabled>
-                No clients configured
-              </DropdownMenuItem>
+                    <HardDrive className="h-4 w-4" />
+                    <span
+                      className="flex-1 min-w-0 truncate"
+                      title={instance.name}
+                    >
+                      {instance.name}
+                    </span>
+                    <span
+                      className={cn(
+                        "h-2 w-2 rounded-full",
+                        instance.connected ? "bg-green-500" : "bg-red-500"
+                      )}
+                    />
+                  </Link>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : singleActiveInstance ? (
+          <Link
+            to="/instances/$instanceId"
+            params={{ instanceId: singleActiveInstance.id.toString() }}
+            className={cn(
+              "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
+              isOnInstancePage ? "text-primary" : "text-muted-foreground hover:text-foreground"
             )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+          >
+            <div className="relative">
+              <HardDrive className={cn(
+                "h-5 w-5",
+                isOnInstancePage && "text-primary"
+              )} />
+            </div>
+            <span
+              className="block max-w-[7.5rem] truncate text-center"
+              title={singleActiveInstance.name}
+            >
+              {singleActiveInstance.name}
+            </span>
+          </Link>
+        ) : isLoadingInstances ? (
+          <button
+            className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium min-w-0 flex-1 text-muted-foreground"
+            type="button"
+            disabled
+          >
+            <HardDrive className="h-5 w-5 animate-pulse" />
+            <span className="block max-w-[7.5rem] truncate text-center text-xs">Loading...</span>
+          </button>
+        ) : (
+          <button
+            className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium min-w-0 flex-1 text-muted-foreground"
+            type="button"
+            disabled
+          >
+            <HardDrive className="h-5 w-5" />
+            <span className="block max-w-[7.5rem] truncate text-center">No active clients</span>
+          </button>
+        )}
 
         {/* Settings dropdown */}
         <DropdownMenu>
@@ -272,6 +328,37 @@ export function MobileFooterNav() {
             )}
             <DropdownMenuItem asChild>
               <Link
+                to="/search"
+                className="flex items-center gap-2"
+              >
+                <SearchIcon className="h-4 w-4" />
+                Search
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link
+                to="/cross-seed"
+                params={{}}
+                className="flex items-center gap-2"
+              >
+                <GitBranch className="h-4 w-4" />
+                Cross-Seed
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link
+                to="/backups"
+                className="flex items-center gap-2"
+              >
+                <Archive className="h-4 w-4" />
+                Instance Backups
+              </Link>
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
+            <DropdownMenuItem asChild>
+              <Link
                 to="/settings"
                 className="flex items-center gap-2"
               >
@@ -289,19 +376,6 @@ export function MobileFooterNav() {
                 Manage Instances
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link
-                to="/backups"
-                className="flex items-center gap-2"
-              >
-                <Archive className="h-4 w-4" />
-                Instance Backups
-              </Link>
-            </DropdownMenuItem>
-
-            <DropdownMenuSeparator />
-
-            {/* Theme menu item - opens dialog */}
             <DropdownMenuItem onClick={() => setShowThemeDialog(true)}>
               <Palette className="h-4 w-4" />
               Appearance
@@ -410,6 +484,8 @@ export function MobileFooterNav() {
                   .map((theme) => {
                     const isPremium = isThemePremium(theme.id)
                     const isLocked = isPremium && !hasPremiumAccess
+                    const colors = getThemeColors(theme)
+                    const currentVariation = getThemeVariation(theme.id)
 
                     return (
                       <button
@@ -427,23 +503,62 @@ export function MobileFooterNav() {
                           isLocked && "opacity-60 cursor-not-allowed"
                         )}
                       >
-                        <div
-                          className="h-4 w-4 rounded-full ring-1 ring-black/10 dark:ring-white/10 flex-shrink-0"
-                          style={{
-                            backgroundColor: getThemePrimaryColor(theme),
-                            backgroundImage: "none",
-                            background: getThemePrimaryColor(theme) + " !important",
-                          }}
-                        />
-                        <div className="flex items-center justify-between gap-2 flex-1 min-w-0">
-                          <span className="truncate">{theme.name}</span>
-                          {isPremium && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium flex-shrink-0">
-                              Premium
-                            </span>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className="h-4 w-4 rounded-full ring-1 ring-black/10 dark:ring-white/10 flex-shrink-0"
+                              style={{
+                                backgroundColor: colors.primary,
+                                backgroundImage: "none",
+                                background: colors.primary + " !important",
+                              }}
+                            />
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              <span className="truncate">{theme.name}</span>
+                              {isPremium && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium flex-shrink-0">
+                                  Premium
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Variation pills */}
+                          {colors.variations && colors.variations.length > 0 && (
+                            <div className="flex items-center gap-2 pl-1.5 mt-2">
+                              <CornerDownRight className="h-4 w-4 text-muted-foreground" />
+                              <div className="flex gap-2">
+                                {colors.variations.map((variation) => {
+                                  const isSelected = currentVariation === variation.id
+                                  return (
+                                    <div
+                                      key={variation.id}
+                                      onClick={async (e) => {
+                                        e.stopPropagation()
+                                        const success = await handleVariationSelect(theme.id, variation.id)
+                                        if (success) {
+                                          setShowThemeDialog(false)
+                                        }
+                                      }}
+                                      className={cn(
+                                        "w-8 h-8 rounded-full transition-all cursor-pointer",
+                                        isSelected
+                                          ? "ring-2 ring-black dark:ring-white"
+                                          : "ring-1 ring-black/10 dark:ring-white/10"
+                                      )}
+                                      style={{
+                                        backgroundColor: variation.color,
+                                        backgroundImage: "none",
+                                        background: variation.color + " !important",
+                                      }}
+                                    />
+                                  )
+                                })}
+                              </div>
+                            </div>
                           )}
                         </div>
-                        {currentTheme.id === theme.id && <Check className="h-4 w-4 flex-shrink-0" />}
+                        {currentTheme.id === theme.id && <Check className="h-4 w-4 flex-shrink-0 self-center" />}
                       </button>
                     )
                   })}
