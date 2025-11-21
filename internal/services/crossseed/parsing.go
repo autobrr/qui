@@ -42,9 +42,9 @@ func isAdultContent(release rls.Release) bool {
 	}
 
 	// Check for JAV code patterns (4 letters - 3-4 digits), but exclude if it's a valid RIAJ media code
-	if reJAV.MatchString(release.Title) || reJAV.MatchString(release.Subtitle) || reJAV.MatchString(release.Collection) {
-		// exclude if the same-looking token is a valid RIAJ media code in Title or Subtitle
-		if detectRIAJMediaType(release.Title) == "" && detectRIAJMediaType(release.Subtitle) == "" && detectRIAJMediaType(release.Collection) == "" {
+	if reJAV.MatchString(release.Title) {
+		// exclude if the same-looking token is a valid RIAJ media code in Title
+		if detectRIAJMediaType(release.Title) == "" {
 			return true
 		}
 	}
