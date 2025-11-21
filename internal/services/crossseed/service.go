@@ -96,6 +96,9 @@ type Service struct {
 	// domainMappings provides static mappings between tracker domains and indexer domains
 	domainMappings map[string][]string
 
+	indexerSearchLimiter *indexerSearchLimiter
+	searchWorkerLimit    int
+
 	// test hooks
 	crossSeedInvoker    func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
 	torrentDownloadFunc func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
@@ -113,6 +116,8 @@ const (
 	automationSettingsQueryTimeout      = 5 * time.Second
 	minSearchIntervalSeconds            = 60
 	minSearchCooldownMinutes            = 720
+	defaultSearchWorkerCount            = 3
+	indexerSearchCooldown               = 60 * time.Second
 )
 
 func computeAutomationSearchTimeout(indexerCount int) time.Duration {
@@ -164,6 +169,8 @@ func NewService(
 		clientPool:           clientPool,
 		automationWake:       make(chan struct{}, 1),
 		domainMappings:       initializeDomainMappings(),
+		indexerSearchLimiter: newIndexerSearchLimiter(indexerSearchCooldown),
+		searchWorkerLimit:    defaultSearchWorkerCount,
 	}
 }
 
@@ -257,56 +264,152 @@ type searchRunState struct {
 	// representative hash so cooldowns can be propagated to other copies.
 	duplicateHashes map[string][]string
 	// fileCache caches torrent files within a search run to avoid repeated
-	// GetTorrentFiles calls for the same hash during automation.
-	fileCache map[string]qbt.TorrentFiles
+	// GetTorrentFiles calls for the same hash during automation. It is safe for
+	// concurrent use by multiple workers.
+	fileCache *torrentFileStash
 
 	currentCandidate *SearchCandidateStatus
 	recentResults    []models.CrossSeedSearchResult
 	nextWake         time.Time
 	lastError        error
+	errMu            sync.Mutex
 }
 
 type torrentFilesStashKey struct{}
 
-func contextWithTorrentFileStash(ctx context.Context, stash map[string]qbt.TorrentFiles) context.Context {
+type torrentFileStash struct {
+	mu    sync.RWMutex
+	files map[string]qbt.TorrentFiles
+}
+
+func newTorrentFileStash() *torrentFileStash {
+	return &torrentFileStash{files: make(map[string]qbt.TorrentFiles)}
+}
+
+func (t *torrentFileStash) Get(hash string) (qbt.TorrentFiles, bool) {
+	if t == nil || hash == "" {
+		return nil, false
+	}
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	files, ok := t.files[hash]
+	return files, ok
+}
+
+func (t *torrentFileStash) Set(hash string, files qbt.TorrentFiles) {
+	if t == nil || hash == "" {
+		return
+	}
+	t.mu.Lock()
+	t.files[hash] = files
+	t.mu.Unlock()
+}
+
+func (t *torrentFileStash) Len() int {
+	if t == nil {
+		return 0
+	}
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return len(t.files)
+}
+
+func contextWithTorrentFileStash(ctx context.Context, stash *torrentFileStash) context.Context {
 	if ctx == nil || stash == nil {
 		return ctx
 	}
 	return context.WithValue(ctx, torrentFilesStashKey{}, stash)
 }
 
-func torrentFileStashFromContext(ctx context.Context) map[string]qbt.TorrentFiles {
+func torrentFileStashFromContext(ctx context.Context) *torrentFileStash {
 	if ctx == nil {
 		return nil
 	}
-	stash, _ := ctx.Value(torrentFilesStashKey{}).(map[string]qbt.TorrentFiles)
+	stash, _ := ctx.Value(torrentFilesStashKey{}).(*torrentFileStash)
 	return stash
 }
 
-func ensureTorrentFileStash(ctx context.Context) (context.Context, map[string]qbt.TorrentFiles) {
+func ensureTorrentFileStash(ctx context.Context) (context.Context, *torrentFileStash) {
 	stash := torrentFileStashFromContext(ctx)
 	if stash == nil {
-		stash = make(map[string]qbt.TorrentFiles)
+		stash = newTorrentFileStash()
 		ctx = contextWithTorrentFileStash(ctx, stash)
 	}
 	return ctx, stash
 }
 
-func (s *Service) ensureSearchRunFileCache(state *searchRunState) map[string]qbt.TorrentFiles {
+func (s *Service) ensureSearchRunFileCache(state *searchRunState) *torrentFileStash {
 	if state == nil {
 		return nil
 	}
 	if state.fileCache == nil {
-		state.fileCache = make(map[string]qbt.TorrentFiles)
+		state.fileCache = newTorrentFileStash()
 	}
 	return state.fileCache
+}
+
+type indexerSearchLimiter struct {
+	mu          sync.Mutex
+	nextAllowed map[int]time.Time
+	interval    time.Duration
+}
+
+func newIndexerSearchLimiter(interval time.Duration) *indexerSearchLimiter {
+	if interval <= 0 {
+		interval = time.Second
+	}
+	return &indexerSearchLimiter{
+		nextAllowed: make(map[int]time.Time),
+		interval:    interval,
+	}
+}
+
+func (l *indexerSearchLimiter) Wait(ctx context.Context, indexerIDs []int) error {
+	if l == nil || len(indexerIDs) == 0 {
+		return nil
+	}
+	for _, id := range uniquePositiveInts(indexerIDs) {
+		if id <= 0 {
+			continue
+		}
+		if err := l.waitSingle(ctx, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (l *indexerSearchLimiter) waitSingle(ctx context.Context, indexerID int) error {
+	if l.interval <= 0 {
+		return nil
+	}
+	for {
+		l.mu.Lock()
+		now := time.Now()
+		readyAt := l.nextAllowed[indexerID]
+		if readyAt.IsZero() || now.After(readyAt) || now.Equal(readyAt) {
+			l.nextAllowed[indexerID] = now.Add(l.interval)
+			l.mu.Unlock()
+			return nil
+		}
+		waitFor := readyAt.Sub(now)
+		l.mu.Unlock()
+
+		timer := time.NewTimer(waitFor)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
 }
 
 func (s *Service) getTorrentFilesFromStash(ctx context.Context, instanceID int, hash string) (qbt.TorrentFiles, error) {
 	normalized := strings.ToLower(strings.TrimSpace(hash))
 	stash := torrentFileStashFromContext(ctx)
 	if stash != nil && normalized != "" {
-		if files, ok := stash[normalized]; ok {
+		if files, ok := stash.Get(normalized); ok {
 			return files, nil
 		}
 	}
@@ -323,7 +426,7 @@ func (s *Service) getTorrentFilesFromStash(ctx context.Context, instanceID int, 
 	copy(files, *filesPtr)
 
 	if stash != nil && normalized != "" {
-		stash[normalized] = files
+		stash.Set(normalized, files)
 	}
 
 	return files, nil
@@ -805,7 +908,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 
 	requestedIndexerIDs := uniquePositiveInts(settings.TargetIndexerIDs)
 
-	ctxWithStash := contextWithTorrentFileStash(ctx, make(map[string]qbt.TorrentFiles))
+	ctxWithStash := contextWithTorrentFileStash(ctx, newTorrentFileStash())
 	asyncAnalysis, err := s.filterIndexerIDsForTorrentAsync(ctxWithStash, instanceID, torrent.Hash, requestedIndexerIDs, true)
 	var allowedIndexerIDs []int
 	var skipReason string
@@ -3392,44 +3495,103 @@ func (s *Service) searchRunLoop(ctx context.Context, state *searchRunState) {
 	}()
 
 	if err := s.refreshSearchQueue(ctx, state); err != nil {
-		state.lastError = err
+		s.recordSearchRunError(state, err)
 		return
 	}
 
-	interval := time.Duration(state.opts.IntervalSeconds) * time.Second
+	workerCount := s.searchWorkerCount()
+	jobs := make(chan *qbt.Torrent, workerCount)
+	var wg sync.WaitGroup
 
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for torrent := range jobs {
+				if torrent == nil {
+					continue
+				}
+				if ctx.Err() != nil {
+					return
+				}
+				s.setCurrentCandidate(state, torrent)
+				if err := s.processSearchCandidate(ctx, state, torrent); err != nil {
+					s.recordSearchRunError(state, err)
+				}
+			}
+		}()
+	}
+
+	interval := time.Duration(state.opts.IntervalSeconds) * time.Second
+	producerErr := s.produceSearchJobs(ctx, state, jobs, interval)
+	close(jobs)
+	wg.Wait()
+
+	if producerErr != nil {
+		s.recordSearchRunError(state, producerErr)
+	}
+}
+
+func (s *Service) searchWorkerCount() int {
+	if s == nil || s.searchWorkerLimit <= 0 {
+		return 1
+	}
+	return s.searchWorkerLimit
+}
+
+func (s *Service) recordSearchRunError(state *searchRunState, err error) {
+	if err == nil || errors.Is(err, context.Canceled) {
+		return
+	}
+	if state == nil {
+		return
+	}
+	state.errMu.Lock()
+	state.lastError = err
+	state.errMu.Unlock()
+}
+
+func (s *Service) produceSearchJobs(ctx context.Context, state *searchRunState, jobs chan<- *qbt.Torrent, interval time.Duration) error {
 	for {
 		if ctx.Err() != nil {
-			return
+			return ctx.Err()
 		}
 
 		candidate, err := s.nextSearchCandidate(ctx, state)
 		if err != nil {
-			state.lastError = err
-			return
+			return err
 		}
 		if candidate == nil {
-			return
+			return nil
 		}
 
-		s.setCurrentCandidate(state, candidate)
-
-		if err := s.processSearchCandidate(ctx, state, candidate); err != nil {
-			state.lastError = err
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case jobs <- candidate:
 		}
 
 		if interval > 0 {
-			s.setNextWake(state, time.Now().Add(interval))
-			t := time.NewTimer(interval)
+			nextWake := time.Now().Add(interval)
+			s.setNextWake(state, nextWake)
+			timer := time.NewTimer(interval)
 			select {
 			case <-ctx.Done():
-				t.Stop()
-				return
-			case <-t.C:
+				timer.Stop()
+				s.setNextWake(state, time.Time{})
+				return ctx.Err()
+			case <-timer.C:
 			}
 			s.setNextWake(state, time.Time{})
 		}
 	}
+}
+
+func (s *Service) waitForIndexerCooldown(ctx context.Context, indexerIDs []int) error {
+	if len(indexerIDs) == 0 || s == nil || s.indexerSearchLimiter == nil {
+		return nil
+	}
+	return s.indexerSearchLimiter.Wait(ctx, indexerIDs)
 }
 
 func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
@@ -3874,6 +4036,10 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		})
 		s.persistSearchRun(state)
 		return nil
+	}
+
+	if err := s.waitForIndexerCooldown(ctx, allowedIndexerIDs); err != nil {
+		return err
 	}
 
 	searchCtx := stashCtx

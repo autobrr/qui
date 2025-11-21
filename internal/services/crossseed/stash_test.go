@@ -15,16 +15,18 @@ import (
 
 func TestContextWithTorrentFileStashRoundTrip(t *testing.T) {
 	baseCtx := context.Background()
-	stash := map[string]qbt.TorrentFiles{
-		"abc123": {{Name: "movie.mkv", Size: 123}},
-	}
+	stash := newTorrentFileStash()
+	stash.Set("abc123", qbt.TorrentFiles{{Name: "movie.mkv", Size: 123}})
 
 	ctx := contextWithTorrentFileStash(baseCtx, stash)
 	require.NotNil(t, ctx)
 
 	recovered := torrentFileStashFromContext(ctx)
 	require.NotNil(t, recovered)
-	assert.Equal(t, stash, recovered)
+	assert.Same(t, stash, recovered)
+	files, ok := recovered.Get("abc123")
+	require.True(t, ok)
+	assert.Len(t, files, 1)
 }
 
 func TestEnsureTorrentFileStashReusesExisting(t *testing.T) {
@@ -34,14 +36,16 @@ func TestEnsureTorrentFileStashReusesExisting(t *testing.T) {
 	require.NotNil(t, stash)
 
 	stashKey := "abc"
-	stash[stashKey] = qbt.TorrentFiles{{Name: "keep.me", Size: 1}}
+	stash.Set(stashKey, qbt.TorrentFiles{{Name: "keep.me", Size: 1}})
 
 	ctxWithStashAgain, reused := ensureTorrentFileStash(ctxWithStash)
 	require.NotNil(t, reused)
 
 	assert.Equal(t, ctxWithStash, ctxWithStashAgain)
-	assert.Contains(t, reused, stashKey)
-	assert.Equal(t, stash, reused)
+	assert.Same(t, stash, reused)
+	files, ok := reused.Get(stashKey)
+	require.True(t, ok)
+	assert.Len(t, files, 1)
 }
 
 func TestServiceGetTorrentFilesFromStashUsesContextCache(t *testing.T) {
