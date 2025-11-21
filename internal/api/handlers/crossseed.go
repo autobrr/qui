@@ -24,6 +24,22 @@ type CrossSeedHandler struct {
 	service *crossseed.Service
 }
 
+// GetCrossSeedObservations godoc
+// @Summary Get aggregated telemetry about cross-seed automation
+// @Description Returns counters describing seeded search performance characteristics for surfacing on the Torznab Search Cache page.
+// @Tags cross-seed
+// @Produce json
+// @Success 200 {object} crossseed.ObservationsSnapshot
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/observations [get]
+func (h *CrossSeedHandler) GetCrossSeedObservations(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.service == nil {
+		RespondError(w, http.StatusInternalServerError, "cross-seed service unavailable")
+		return
+	}
+	RespondJSON(w, http.StatusOK, h.service.ObservationsSnapshot())
+}
+
 type automationSettingsRequest struct {
 	Enabled                      bool                       `json:"enabled"`
 	RunIntervalMinutes           int                        `json:"runIntervalMinutes"`
@@ -257,6 +273,7 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 
 	r.Route("/cross-seed", func(r chi.Router) {
 		r.Post("/apply", h.AutobrrApply)
+		r.Get("/observations", h.GetCrossSeedObservations)
 		r.Route("/torrents", func(r chi.Router) {
 			r.Get("/{instanceID}/{hash}/analyze", h.AnalyzeTorrentForSearch)
 			r.Get("/{instanceID}/{hash}/async-status", h.GetAsyncFilteringStatus)

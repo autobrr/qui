@@ -16,6 +16,7 @@ import type {
   CrossSeedAutomationSettings,
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
+  CrossSeedObservations,
   CrossInstanceTorrent,
   CrossSeedInstanceResult,
   CrossSeedRun,
@@ -962,6 +963,10 @@ class ApiClient {
 
   async getCrossSeedStatus(): Promise<CrossSeedAutomationStatus> {
     return this.request<CrossSeedAutomationStatus>("/cross-seed/status")
+  }
+
+  async getCrossSeedObservations(): Promise<CrossSeedObservations> {
+    return this.request<CrossSeedObservations>("/cross-seed/observations")
   }
 
   async listCrossSeedRuns(params?: { limit?: number; offset?: number }): Promise<CrossSeedRun[]> {

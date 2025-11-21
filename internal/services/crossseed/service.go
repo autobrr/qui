@@ -98,6 +98,7 @@ type Service struct {
 
 	indexerSearchLimiter *indexerSearchLimiter
 	searchWorkerLimit    int
+	observations         *crossSeedObservations
 
 	// test hooks
 	crossSeedInvoker    func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
@@ -171,6 +172,7 @@ func NewService(
 		domainMappings:       initializeDomainMappings(),
 		indexerSearchLimiter: newIndexerSearchLimiter(indexerSearchCooldown),
 		searchWorkerLimit:    defaultSearchWorkerCount,
+		observations:         newCrossSeedObservations(),
 	}
 }
 
@@ -273,6 +275,88 @@ type searchRunState struct {
 	nextWake         time.Time
 	lastError        error
 	errMu            sync.Mutex
+}
+
+// ObservationsSnapshot captures coarse-grained counters for surfacing on the
+// Torznab Search Cache settings page and via Prometheus.
+type ObservationsSnapshot struct {
+	GeneratedAt            time.Time `json:"generatedAt"`
+	StashHits              uint64    `json:"stashHits"`
+	StashMisses            uint64    `json:"stashMisses"`
+	DeduplicatedGroups     uint64    `json:"deduplicatedGroups"`
+	DeduplicatedDuplicates uint64    `json:"deduplicatedDuplicates"`
+	SearchTimeouts         uint64    `json:"searchTimeouts"`
+	RateLimiterWaits       uint64    `json:"rateLimiterWaits"`
+	RateLimiterWaitTimeMs  int64     `json:"rateLimiterWaitTimeMillis"`
+	ActiveWorkers          int       `json:"activeWorkers"`
+	WorkerCapacity         int       `json:"workerCapacity"`
+}
+
+type crossSeedObservations struct {
+	stashHits            uint64
+	stashMisses          uint64
+	dedupGroups          uint64
+	dedupDuplicates      uint64
+	searchTimeouts       uint64
+	rateLimiterWaits     uint64
+	rateLimiterWaitNanos int64
+	activeWorkers        int64
+}
+
+func newCrossSeedObservations() *crossSeedObservations {
+	return &crossSeedObservations{}
+}
+
+func (o *crossSeedObservations) RecordStashHit() {
+	atomic.AddUint64(&o.stashHits, 1)
+}
+
+func (o *crossSeedObservations) RecordStashMiss() {
+	atomic.AddUint64(&o.stashMisses, 1)
+}
+
+func (o *crossSeedObservations) RecordDedup(groups, duplicates int) {
+	if groups > 0 {
+		atomic.AddUint64(&o.dedupGroups, uint64(groups))
+	}
+	if duplicates > 0 {
+		atomic.AddUint64(&o.dedupDuplicates, uint64(duplicates))
+	}
+}
+
+func (o *crossSeedObservations) RecordSearchTimeout() {
+	atomic.AddUint64(&o.searchTimeouts, 1)
+}
+
+func (o *crossSeedObservations) RecordLimiterWait(d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	atomic.AddUint64(&o.rateLimiterWaits, 1)
+	atomic.AddInt64(&o.rateLimiterWaitNanos, d.Nanoseconds())
+}
+
+func (o *crossSeedObservations) WorkerJobStarted() {
+	atomic.AddInt64(&o.activeWorkers, 1)
+}
+
+func (o *crossSeedObservations) WorkerJobFinished() {
+	atomic.AddInt64(&o.activeWorkers, -1)
+}
+
+func (o *crossSeedObservations) Snapshot(workerCapacity int) ObservationsSnapshot {
+	return ObservationsSnapshot{
+		GeneratedAt:            time.Now().UTC(),
+		StashHits:              atomic.LoadUint64(&o.stashHits),
+		StashMisses:            atomic.LoadUint64(&o.stashMisses),
+		DeduplicatedGroups:     atomic.LoadUint64(&o.dedupGroups),
+		DeduplicatedDuplicates: atomic.LoadUint64(&o.dedupDuplicates),
+		SearchTimeouts:         atomic.LoadUint64(&o.searchTimeouts),
+		RateLimiterWaits:       atomic.LoadUint64(&o.rateLimiterWaits),
+		RateLimiterWaitTimeMs:  time.Duration(atomic.LoadInt64(&o.rateLimiterWaitNanos)).Milliseconds(),
+		ActiveWorkers:          int(atomic.LoadInt64(&o.activeWorkers)),
+		WorkerCapacity:         workerCapacity,
+	}
 }
 
 type torrentFilesStashKey struct{}
@@ -410,7 +494,13 @@ func (s *Service) getTorrentFilesFromStash(ctx context.Context, instanceID int, 
 	stash := torrentFileStashFromContext(ctx)
 	if stash != nil && normalized != "" {
 		if files, ok := stash.Get(normalized); ok {
+			if s != nil && s.observations != nil {
+				s.observations.RecordStashHit()
+			}
 			return files, nil
+		}
+		if s != nil && s.observations != nil {
+			s.observations.RecordStashMiss()
 		}
 	}
 
@@ -951,6 +1041,9 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	})
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
+			if s != nil && s.observations != nil {
+				s.observations.RecordSearchTimeout()
+			}
 			log.Debug().
 				Int("instanceID", instanceID).
 				Str("hash", torrent.Hash).
@@ -3511,12 +3604,23 @@ func (s *Service) searchRunLoop(ctx context.Context, state *searchRunState) {
 				if torrent == nil {
 					continue
 				}
+				tracked := false
+				if s != nil && s.observations != nil {
+					s.observations.WorkerJobStarted()
+					tracked = true
+				}
 				if ctx.Err() != nil {
+					if tracked {
+						s.observations.WorkerJobFinished()
+					}
 					return
 				}
 				s.setCurrentCandidate(state, torrent)
 				if err := s.processSearchCandidate(ctx, state, torrent); err != nil {
 					s.recordSearchRunError(state, err)
+				}
+				if tracked {
+					s.observations.WorkerJobFinished()
 				}
 			}
 		}()
@@ -3537,6 +3641,21 @@ func (s *Service) searchWorkerCount() int {
 		return 1
 	}
 	return s.searchWorkerLimit
+}
+
+// ObservationsSnapshot returns aggregated automation telemetry counters for API/UI consumption.
+func (s *Service) ObservationsSnapshot() ObservationsSnapshot {
+	if s == nil {
+		return ObservationsSnapshot{GeneratedAt: time.Now().UTC()}
+	}
+	workerCapacity := s.searchWorkerCount()
+	if s.observations == nil {
+		return ObservationsSnapshot{
+			GeneratedAt:    time.Now().UTC(),
+			WorkerCapacity: workerCapacity,
+		}
+	}
+	return s.observations.Snapshot(workerCapacity)
 }
 
 func (s *Service) recordSearchRunError(state *searchRunState, err error) {
@@ -3591,7 +3710,12 @@ func (s *Service) waitForIndexerCooldown(ctx context.Context, indexerIDs []int) 
 	if len(indexerIDs) == 0 || s == nil || s.indexerSearchLimiter == nil {
 		return nil
 	}
-	return s.indexerSearchLimiter.Wait(ctx, indexerIDs)
+	start := time.Now()
+	err := s.indexerSearchLimiter.Wait(ctx, indexerIDs)
+	if err == nil && s.observations != nil {
+		s.observations.RecordLimiterWait(time.Since(start))
+	}
+	return err
 }
 
 func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
@@ -3781,6 +3905,10 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 			continue
 		}
 		duplicateMap[group.representative.Hash] = append([]string(nil), group.duplicates...)
+	}
+
+	if s != nil && s.observations != nil {
+		s.observations.RecordDedup(len(groups), totalDuplicates)
 	}
 
 	return deduplicated, duplicateMap
@@ -4061,6 +4189,9 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			return ctx.Err()
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
+			if s != nil && s.observations != nil {
+				s.observations.RecordSearchTimeout()
+			}
 			timeoutDisplay := searchTimeout
 			if timeoutDisplay <= 0 {
 				timeoutDisplay = timeouts.DefaultSearchTimeout

@@ -47,7 +47,7 @@ import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
 import { copyTextToClipboard, formatBytes } from "@/lib/utils"
-import type { Instance, TorznabSearchCacheStats } from "@/types"
+import type { CrossSeedObservations, Instance, TorznabSearchCacheStats } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate, useSearch } from "@tanstack/react-router"
@@ -60,6 +60,22 @@ const settingsTabs = ["instances", "indexers", "search-cache", "client-api", "ap
 type SettingsTab = (typeof settingsTabs)[number]
 
 const TORZNAB_CACHE_MIN_TTL_MINUTES = 1440
+
+const formatDurationFromMillis = (ms: number): string => {
+  if (!Number.isFinite(ms) || ms <= 0) {
+    return "0 ms"
+  }
+  if (ms < 1_000) {
+    return `${Math.round(ms)} ms`
+  }
+  if (ms < 60_000) {
+    return `${(ms / 1_000).toFixed(1)} s`
+  }
+  if (ms < 3_600_000) {
+    return `${(ms / 60_000).toFixed(1)} min`
+  }
+  return `${(ms / 3_600_000).toFixed(1)} h`
+}
 
 const isSettingsTab = (value: unknown): value is SettingsTab => {
   return typeof value === "string" && settingsTabs.some((tab) => tab === value)
@@ -560,6 +576,12 @@ function TorznabSearchCachePanel() {
   const { formatDate } = useDateTimeFormatters()
 
   const stats: TorznabSearchCacheStats | undefined = statsQuery.data
+  const observationsQuery = useQuery({
+    queryKey: ["cross-seed", "observations"],
+    queryFn: () => api.getCrossSeedObservations(),
+    refetchInterval: 30_000,
+  })
+  const searchObservations: CrossSeedObservations | undefined = observationsQuery.data
   const [ttlInput, setTtlInput] = useState("")
 
   const formatCacheTimestamp = (value?: string | null) => {
@@ -630,6 +652,25 @@ function TorznabSearchCachePanel() {
     [approxSize, formatDate, stats?.entries, stats?.lastUsedAt, stats?.newestCachedAt, stats?.totalHits, ttlMinutes]
   )
 
+  const observationRows = useMemo(() => {
+    const totalWaitDisplay = formatDurationFromMillis(searchObservations?.rateLimiterWaitTimeMillis ?? 0)
+    const avgWaitDisplay = searchObservations && searchObservations.rateLimiterWaits > 0
+      ? formatDurationFromMillis((searchObservations.rateLimiterWaitTimeMillis ?? 0) / searchObservations.rateLimiterWaits)
+      : "0 ms"
+    return [
+      { label: "Last sampled", value: formatCacheTimestamp(searchObservations?.generatedAt) },
+      { label: "Stash hits", value: searchObservations?.stashHits?.toLocaleString() ?? "0" },
+      { label: "Stash misses", value: searchObservations?.stashMisses?.toLocaleString() ?? "0" },
+      { label: "Dedup groups", value: searchObservations?.deduplicatedGroups?.toLocaleString() ?? "0" },
+      { label: "Duplicates trimmed", value: searchObservations?.deduplicatedDuplicates?.toLocaleString() ?? "0" },
+      { label: "Search timeouts", value: searchObservations?.searchTimeouts?.toLocaleString() ?? "0" },
+      { label: "Indexer waits", value: searchObservations?.rateLimiterWaits?.toLocaleString() ?? "0" },
+      { label: "Total wait", value: totalWaitDisplay },
+      { label: "Avg wait", value: avgWaitDisplay },
+      { label: "Workers", value: searchObservations ? `${searchObservations.activeWorkers} / ${searchObservations.workerCapacity}` : "—" },
+    ]
+  }, [searchObservations, formatCacheTimestamp])
+
   return (
     <div className="space-y-4">
       <Card>
@@ -653,6 +694,37 @@ function TorznabSearchCachePanel() {
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           {rows.map(row => (
+            <div key={row.label} className="space-y-1 rounded-lg border p-3 bg-muted/40">
+              <p className="text-xs uppercase text-muted-foreground">{row.label}</p>
+              <p className="text-lg font-semibold">{row.value}</p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>Seeded Search Observability</CardTitle>
+            <CardDescription>Live counters captured during cross-seed automation.</CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline">
+              Workers {searchObservations ? `${searchObservations.activeWorkers}/${searchObservations.workerCapacity}` : "—"}
+            </Badge>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => observationsQuery.refetch()}
+              disabled={observationsQuery.isFetching}
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${observationsQuery.isFetching ? "animate-spin" : ""}`} />
+              Refresh metrics
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          {observationRows.map(row => (
             <div key={row.label} className="space-y-1 rounded-lg border p-3 bg-muted/40">
               <p className="text-xs uppercase text-muted-foreground">{row.label}</p>
               <p className="text-lg font-semibold">{row.value}</p>

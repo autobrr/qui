@@ -1265,6 +1265,19 @@ export interface CrossSeedAutomationStatus {
   running: boolean
 }
 
+export interface CrossSeedObservations {
+  generatedAt: string
+  stashHits: number
+  stashMisses: number
+  deduplicatedGroups: number
+  deduplicatedDuplicates: number
+  searchTimeouts: number
+  rateLimiterWaits: number
+  rateLimiterWaitTimeMillis: number
+  activeWorkers: number
+  workerCapacity: number
+}
+
 export interface CrossSeedSearchFilters {
   categories: string[]
   tags: string[]
