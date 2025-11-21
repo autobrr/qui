@@ -3640,6 +3640,10 @@ components:
           format: float
         useCategoryFromIndexer:
           type: boolean
+        preventReaddPreviouslyAdded:
+          type: boolean
+          description: Prevent re-adding hashes that were already injected by cross-seed
+          default: true
         runExternalProgramId:
           type: integer
           nullable: true
@@ -3685,6 +3689,10 @@ components:
           format: float
         useCategoryFromIndexer:
           type: boolean
+        preventReaddPreviouslyAdded:
+          type: boolean
+          description: Prevent re-adding torrents that were already cross-seeded
+          default: true
         runExternalProgramId:
           type: integer
           nullable: true

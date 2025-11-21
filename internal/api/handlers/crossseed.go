@@ -55,7 +55,24 @@ type automationSettingsRequest struct {
 	UseCategoryFromIndexer       bool                       `json:"useCategoryFromIndexer"`
 	RunExternalProgramID         *int                       `json:"runExternalProgramId"`
 	PreventReaddPreviouslyAdded  bool                       `json:"preventReaddPreviouslyAdded"`
+	preventReaddProvided         bool                       `json:"-"`
 	Completion                   *completionSettingsRequest `json:"completion"`
+}
+
+func (r *automationSettingsRequest) UnmarshalJSON(data []byte) error {
+	type alias automationSettingsRequest
+	var aux alias
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	*r = automationSettingsRequest(aux)
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	_, r.preventReaddProvided = raw["preventReaddPreviouslyAdded"]
+	return nil
 }
 
 type completionSettingsRequest struct {
@@ -589,6 +606,21 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		return
 	}
 
+	preventReadd := req.PreventReaddPreviouslyAdded
+	if !req.preventReaddProvided {
+		current, err := h.service.GetAutomationSettings(r.Context())
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to load current automation settings")
+			RespondError(w, http.StatusInternalServerError, "Failed to load automation settings")
+			return
+		}
+		if current != nil {
+			preventReadd = current.PreventReaddPreviouslyAdded
+		} else {
+			preventReadd = models.DefaultCrossSeedAutomationSettings().PreventReaddPreviouslyAdded
+		}
+	}
+
 	category := req.Category
 	if category != nil {
 		trimmed := strings.TrimSpace(*category)
@@ -624,7 +656,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		SizeMismatchTolerancePercent: req.SizeMismatchTolerancePercent,
 		UseCategoryFromIndexer:       req.UseCategoryFromIndexer,
 		RunExternalProgramID:         req.RunExternalProgramID,
-		PreventReaddPreviouslyAdded:  req.PreventReaddPreviouslyAdded,
+		PreventReaddPreviouslyAdded:  preventReadd,
 		Completion:                   completion,
 	}
 
