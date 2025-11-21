@@ -3405,8 +3405,8 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		rootFolderKnown bool
 	}
 
-	groups := make(map[int]*contentGroup)
-	groupIndex := 0
+	groups := make([]*contentGroup, 0)
+	groupMap := make(map[string]int) // hash to group index
 	hasRootCache := make(map[string]bool)
 
 	for i := range parsed {
@@ -3414,36 +3414,23 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 
 		// Try to find an existing group this torrent belongs to
 		foundGroup := -1
-		for _, existing := range parsed[:i] {
+		for j := 0; j < i; j++ {
+			existing := &parsed[j]
 			if s.releasesMatch(current.release, existing.release, false) {
-				// Find which group this existing torrent belongs to
-				for groupID, group := range groups {
-					if group.representative.Hash == existing.torrent.Hash {
-						foundGroup = groupID
-						break
-					}
-					// Check if any duplicate in the group matches
-					if slices.Contains(group.duplicates, existing.torrent.Hash) {
-						foundGroup = groupID
-					}
-					if foundGroup != -1 {
-						break
-					}
-				}
-				if foundGroup != -1 {
-					break
-				}
+				foundGroup = groupMap[existing.torrent.Hash]
+				break
 			}
 		}
 
 		if foundGroup == -1 {
 			// Create new group with this torrent as the first member
-			groups[groupIndex] = &contentGroup{
+			group := &contentGroup{
 				representative: &current.torrent,
 				addedOn:        current.torrent.AddedOn,
 				duplicates:     []string{},
 			}
-			groupIndex++
+			groups = append(groups, group)
+			groupMap[current.torrent.Hash] = len(groups) - 1
 			continue
 		}
 
@@ -3475,6 +3462,7 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		} else {
 			group.duplicates = append(group.duplicates, current.torrent.Hash)
 		}
+		groupMap[current.torrent.Hash] = foundGroup
 	}
 
 	// Build deduplicated list from group representatives
