@@ -2734,6 +2734,17 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 
 		safeQuery := buildSafeSearchQuery(sourceTorrent.Name, queryRelease, baseQuery)
 		query = strings.TrimSpace(safeQuery.Query)
+		if query == "" {
+			// Fallback to a basic title-based query to avoid empty searches
+			switch {
+			case baseQuery != "":
+				query = strings.TrimSpace(baseQuery)
+			case queryRelease.Title != "":
+				query = queryRelease.Title
+			default:
+				query = sourceTorrent.Name
+			}
+		}
 		seasonPtr = safeQuery.Season
 		episodePtr = safeQuery.Episode
 
@@ -2949,12 +2960,12 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 			searchReq.Categories = contentInfo.Categories
 		}
 
-		// Add season/episode info for TV content
-		if sourceRelease.Series > 0 {
+		// Add season/episode info for TV content only if not already set by safe query
+		if sourceRelease.Series > 0 && searchReq.Season == nil {
 			season := sourceRelease.Series
 			searchReq.Season = &season
 
-			if sourceRelease.Episode > 0 {
+			if sourceRelease.Episode > 0 && searchReq.Episode == nil {
 				episode := sourceRelease.Episode
 				searchReq.Episode = &episode
 			}
