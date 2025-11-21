@@ -42,6 +42,18 @@ type TorrentCompletionHandler func(ctx context.Context, instanceID int, torrent 
 // Global URL cache for domain extraction - shared across all sync managers
 var urlCache = ttlcache.New(ttlcache.Options[string, string]{}.SetDefaultTTL(5 * time.Minute))
 
+type filesCacheContextKey struct{}
+
+// WithForceFilesRefresh returns a context that bypasses the cached torrent files snapshot.
+func WithForceFilesRefresh(ctx context.Context) context.Context {
+	return context.WithValue(ctx, filesCacheContextKey{}, true)
+}
+
+func forceFilesRefresh(ctx context.Context) bool {
+	value, ok := ctx.Value(filesCacheContextKey{}).(bool)
+	return ok && value
+}
+
 // CacheMetadata provides information about cache state
 type CacheMetadata struct {
 	Source      string `json:"source"`      // "cache" or "fresh"
@@ -1090,8 +1102,10 @@ func (sm *SyncManager) GetTorrentFiles(ctx context.Context, instanceID int, hash
 		torrentProgress = float64(torrents[0].Progress)
 	}
 
+	forceRefresh := forceFilesRefresh(ctx)
+
 	// Try to get from cache if files manager is available
-	if fm := sm.getFilesManager(); fm != nil {
+	if fm := sm.getFilesManager(); fm != nil && !forceRefresh {
 		cachedFiles, err := fm.GetCachedFiles(ctx, instanceID, hash, torrentProgress)
 		if err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).

@@ -375,6 +375,16 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     },
   })
 
+  const refreshTorrentFiles = useCallback(async () => {
+    if (!torrent) return
+    try {
+      const freshFiles = await api.getTorrentFiles(instanceId, torrent.hash, { refresh: true })
+      queryClient.setQueryData(["torrent-files", instanceId, torrent.hash], freshFiles)
+    } catch (err) {
+      console.warn("Failed to refresh torrent files", err)
+    }
+  }, [instanceId, queryClient, torrent])
+
   // Handle copy peer IP:port
   const handleCopyPeer = useCallback(async (peer: TorrentPeer) => {
     const peerAddress = `${peer.ip}:${peer.port}`
@@ -501,11 +511,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     }
   }, [])
 
-  const handleRenameFileClick = useCallback((filePath: string) => {
+  const handleRenameFileClick = useCallback(async (filePath: string) => {
     if (incognitoMode) return
+    await refreshTorrentFiles()
     setRenameFilePath(filePath)
     setShowRenameFileDialog(true)
-  }, [incognitoMode])
+  }, [incognitoMode, refreshTorrentFiles])
 
   // Handle rename file
   const handleRenameFileConfirm = useCallback(({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
@@ -518,6 +529,11 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     if (!torrent) return
     renameFolderMutation.mutate({ hash: torrent.hash, oldPath, newPath })
   }, [renameFolderMutation, torrent])
+
+  const handleRenameFolderDialogOpen = useCallback(async () => {
+    await refreshTorrentFiles()
+    setShowRenameFolderDialog(true)
+  }, [refreshTorrentFiles])
 
   // Extract all unique folder paths (including subfolders) from file paths
   const folders = useMemo(() => {
@@ -1231,7 +1247,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => setShowRenameFolderDialog(true)}
+                              onClick={() => { void handleRenameFolderDialogOpen() }}
                               disabled={incognitoMode || renameFolderMutation.isPending || !files || files.length === 0}
                             >
                               <FolderPen className="h-4 w-4 mr-2" />
@@ -1308,7 +1324,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                     variant="ghost"
                                     size="icon"
                                     className="h-8 w-8"
-                                    onClick={() => handleRenameFileClick(file.name)}
+                                    onClick={() => { void handleRenameFileClick(file.name) }}
                                     disabled={incognitoMode || renameFileMutation.isPending}
                                     title="Rename file"
                                   >

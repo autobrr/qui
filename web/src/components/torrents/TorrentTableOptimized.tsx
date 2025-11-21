@@ -844,9 +844,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     isLoading: renameEntriesLoading,
   } = useQuery({
     queryKey: ["torrent-files", instanceId, contextHashes[0]],
-    queryFn: () => api.getTorrentFiles(instanceId, contextHashes[0]!),
+    queryFn: () => api.getTorrentFiles(instanceId, contextHashes[0]!, { refresh: true }),
     enabled: shouldLoadRenameEntries,
-    staleTime: 30000,
+    staleTime: 0,
     gcTime: 5 * 60 * 1000,
   })
 
