@@ -1323,6 +1323,11 @@ paths:
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
+        - in: query
+          name: refresh
+          schema:
+            type: boolean
+          description: Force refresh from qBittorrent instead of serving cached file metadata.
       responses:
         '200':
           description: List of files

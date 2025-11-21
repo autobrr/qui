@@ -37,9 +37,8 @@ func NewService(db dbinterface.Querier) *Service {
 // and file retrieval, but this is acceptable because:
 // 1. The worst case is serving slightly stale data (same as normal cache behavior)
 // 2. Cache invalidation is triggered by user actions (rename, delete, etc.)
-// 3. The cache has built-in freshness checks that limit staleness (5 min for active torrents)
-// 4. Complete torrents have stable file lists, so stale data is functionally equivalent
-// 5. Avoiding transactions prevents deadlocks during concurrent operations (backups, writes, etc.)
+// 3. The cache has built-in freshness checks that limit staleness (5 min for active torrents, 30 min for completed)
+// 4. Avoiding transactions prevents deadlocks during concurrent operations (backups, writes, etc.)
 //
 // If absolute consistency is required, the caller should invalidate the cache
 // before calling this method, or use the qBittorrent API directly.
@@ -55,15 +54,15 @@ func (s *Service) GetCachedFiles(ctx context.Context, instanceID int, hash strin
 	}
 
 	// If torrent is 100% complete and we have a cache, use it
-	// Otherwise, check if cache is fresh enough (less than 5 minutes old)
+	// Otherwise, check if cache is fresh enough (less than 5 minutes old for active torrents)
 	cacheFreshDuration := 5 * time.Minute
 	if torrentProgress >= 1.0 && syncInfo.TorrentProgress < 1.0 {
 		// Torrent reached completion since we cached it; bypass stale snapshot
 		return nil, nil
 	}
 	if torrentProgress >= 1.0 {
-		// For complete torrents, cache is valid indefinitely
-		cacheFreshDuration = 365 * 24 * time.Hour
+		// Completed torrents change infrequently, but still refresh periodically to pick up external renames
+		cacheFreshDuration = 30 * time.Minute
 	}
 
 	cacheAge := time.Since(syncInfo.LastSyncedAt)
