@@ -12,9 +12,11 @@ import (
 	"net"
 	"net/url"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -24,6 +26,7 @@ import (
 	"github.com/expr-lang/expr/vm"
 	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/trackericons"
@@ -32,6 +35,10 @@ import (
 // FilesManager interface for caching torrent files
 type FilesManager interface {
 	GetCachedFiles(ctx context.Context, instanceID int, hash string, torrentProgress float64) (qbt.TorrentFiles, error)
+	// GetCachedFilesBatch returns cached files for a set of torrents and the hashes that were missing/stale.
+	// Callers must pass hashes (and the keys in torrentProgress) already trimmed/normalized (e.g. lowercase hex)
+	// because implementations treat the provided keys as-is when populating lookups and cache metadata.
+	GetCachedFilesBatch(ctx context.Context, instanceID int, hashes []string, torrentProgress map[string]float64) (map[string]qbt.TorrentFiles, []string, error)
 	CacheFiles(ctx context.Context, instanceID int, hash string, torrentProgress float64, files qbt.TorrentFiles) error
 	InvalidateCache(ctx context.Context, instanceID int, hash string) error
 }
@@ -1088,51 +1095,167 @@ func (sm *SyncManager) GetTorrentPeers(ctx context.Context, instanceID int, hash
 	return peerSync.GetPeers(), nil
 }
 
-// GetTorrentFiles gets files information for a specific torrent
-func (sm *SyncManager) GetTorrentFiles(ctx context.Context, instanceID int, hash string) (*qbt.TorrentFiles, error) {
-	// Get client and sync manager
+// GetTorrentFilesBatch fetches file lists for many torrents using cache-aware batching.
+// Semantics:
+//   - Partial results are normal: the returned map only includes hashes that successfully produced files.
+//     Callers must compare requested hashes against the map keys to detect misses.
+//   - Context cancellations/timeouts short-circuit and return the error immediately; other per-hash fetch
+//     errors are logged and excluded from the map without failing the call.
+//   - Cached entries are returned first; only cache misses are fetched concurrently. Empty/whitespace hashes
+//     are ignored defensively.
+func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get torrent progress to determine if we should use cache
-	var torrentProgress float64 = 0
-	if torrents := client.getTorrentsByHashes([]string{hash}); len(torrents) > 0 {
-		torrentProgress = float64(torrents[0].Progress)
+	requested := dedupeHashes(hashes)
+	if len(requested) == 0 {
+		return map[string]qbt.TorrentFiles{}, nil
 	}
 
-	forceRefresh := forceFilesRefresh(ctx)
-
-	// Try to get from cache if files manager is available
-	if fm := sm.getFilesManager(); fm != nil && !forceRefresh {
-		cachedFiles, err := fm.GetCachedFiles(ctx, instanceID, hash, torrentProgress)
-		if err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
-				Msg("Failed to get cached files, falling back to API")
-		} else if cachedFiles != nil {
-			log.Debug().Int("instanceID", instanceID).Str("hash", hash).
-				Int("fileCount", len(cachedFiles)).
-				Msg("Serving torrent files from cache")
-			return &cachedFiles, nil
+	progressByHash := make(map[string]float64, len(requested))
+	if torrents := client.getTorrentsByHashes(requested); len(torrents) > 0 {
+		for i := range torrents {
+			t := torrents[i]
+			progressByHash[strings.TrimSpace(t.Hash)] = float64(t.Progress)
 		}
 	}
 
-	// Get files from qBittorrent API
-	files, err := client.GetFilesInformationCtx(ctx, hash)
+	filesByHash := make(map[string]qbt.TorrentFiles, len(requested))
+	hashesToFetch := requested
+
+	if fm := sm.getFilesManager(); fm != nil {
+		if cached, missing, cacheErr := fm.GetCachedFilesBatch(ctx, instanceID, requested, progressByHash); cacheErr != nil {
+			log.Warn().
+				Err(cacheErr).
+				Int("instanceID", instanceID).
+				Int("hashes", len(requested)).
+				Msg("Failed to load cached torrent files in batch")
+		} else {
+			for hash, files := range cached {
+				filesByHash[hash] = files
+			}
+			hashesToFetch = missing
+		}
+	}
+
+	if len(hashesToFetch) == 0 {
+		return filesByHash, nil
+	}
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(fileFetchConcurrency(len(hashesToFetch)))
+
+	var mu sync.Mutex
+	var fetchErrors []error
+
+	for _, hash := range hashesToFetch {
+		h := strings.TrimSpace(hash)
+		if h == "" {
+			continue
+		}
+
+		g.Go(func() error {
+			files, fetchErr := client.GetFilesInformationCtx(gctx, h)
+			if fetchErr != nil {
+				if errors.Is(fetchErr, context.Canceled) || errors.Is(fetchErr, context.DeadlineExceeded) {
+					return fetchErr
+				}
+				mu.Lock()
+				fetchErrors = append(fetchErrors, fmt.Errorf("fetch torrent files %s: %w", h, fetchErr))
+				mu.Unlock()
+				return nil
+			}
+
+			if files == nil {
+				mu.Lock()
+				fetchErrors = append(fetchErrors, fmt.Errorf("fetch torrent files %s: empty response", h))
+				mu.Unlock()
+				return nil
+			}
+
+			if fm := sm.getFilesManager(); fm != nil {
+				progress := progressByHash[h]
+				if err := fm.CacheFiles(gctx, instanceID, h, progress, *files); err != nil {
+					log.Warn().
+						Err(err).
+						Int("instanceID", instanceID).
+						Str("hash", h).
+						Msg("Failed to cache torrent files after fetch")
+				}
+			}
+
+			mu.Lock()
+			filesByHash[h] = *files
+			mu.Unlock()
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return filesByHash, err
+	}
+
+	if len(fetchErrors) > 0 {
+		log.Debug().
+			Int("instanceID", instanceID).
+			Int("missing", len(fetchErrors)).
+			Int("requested", len(requested)).
+			Msg("Completed batch torrent file fetch with partial failures")
+	}
+
+	return filesByHash, nil
+}
+
+// GetTorrentFiles gets files information for a specific torrent
+func (sm *SyncManager) GetTorrentFiles(ctx context.Context, instanceID int, hash string) (*qbt.TorrentFiles, error) {
+	normalizedHash := strings.TrimSpace(hash)
+	filesByHash, err := sm.GetTorrentFilesBatch(ctx, instanceID, []string{normalizedHash})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get torrent files: %w", err)
+		return nil, err
 	}
 
-	// Cache the files if files manager is available
-	if fm := sm.getFilesManager(); fm != nil && files != nil {
-		if err := fm.CacheFiles(ctx, instanceID, hash, torrentProgress, *files); err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
-				Msg("Failed to cache torrent files")
+	files, ok := filesByHash[normalizedHash]
+	if !ok {
+		return nil, nil
+	}
+	return &files, nil
+}
+
+func fileFetchConcurrency(requestCount int) int {
+	if requestCount <= 0 {
+		return 0
+	}
+
+	limit := runtime.NumCPU()
+	if limit < 4 {
+		limit = 4
+	}
+	if limit > 16 {
+		limit = 16
+	}
+	if requestCount < limit {
+		return requestCount
+	}
+	return limit
+}
+
+func dedupeHashes(hashes []string) []string {
+	seen := make(map[string]struct{}, len(hashes))
+	unique := make([]string, 0, len(hashes))
+	for _, h := range hashes {
+		h = strings.TrimSpace(h)
+		if h == "" {
+			continue
 		}
+		if _, ok := seen[h]; ok {
+			continue
+		}
+		seen[h] = struct{}{}
+		unique = append(unique, h)
 	}
-
-	return files, nil
+	return unique
 }
 
 // ExportTorrent returns the raw .torrent data along with a display name suggestion
