@@ -200,15 +200,17 @@ func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sq
 // Commit commits the transaction and releases the writer mutex if this is a write transaction.
 // Also promotes any transaction-prepared statements to the DB cache for future use.
 func (t *Tx) Commit() error {
+	defer func() {
+		// Release mutex after commit completes (for write transactions). Guarded to avoid double unlocks.
+		if t.unlockFn != nil {
+			t.unlockOnce.Do(t.unlockFn)
+		}
+	}()
+
 	err := t.tx.Commit()
 	if err == nil {
 		// Commit succeeded - promote statements to cache
 		t.promoteStatementsToCache()
-
-		// Release mutex after commit completes (for write transactions)
-		if t.unlockFn != nil {
-			t.unlockOnce.Do(t.unlockFn)
-		}
 	}
 
 	return err
