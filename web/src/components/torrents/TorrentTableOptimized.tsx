@@ -1039,6 +1039,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       excludeStatus = [],
       categories = [],
       excludeCategories = [],
+      expandedCategories = [],
+      expandedExcludeCategories = [],
       tags = [],
       excludeTags = [],
       trackers = [],
@@ -1051,6 +1053,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       excludeStatus.length > 0 ||
       categories.length > 0 ||
       excludeCategories.length > 0 ||
+      expandedCategories.length > 0 ||
+      expandedExcludeCategories.length > 0 ||
       tags.length > 0 ||
       excludeTags.length > 0 ||
       trackers.length > 0 ||
@@ -2708,19 +2712,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
             ) : (
               <>
                 {/* Show special loading message when fetching without cache (cold load) */}
-                {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (
-                  <>
-                    <Loader2 className="h-3 w-3 animate-spin inline mr-1"/>
-                    Loading torrents...
-                  </>
-                ) : totalCount === 0 ? (
-                  "No torrents found"
-                ) : (
-                  <>
-                    {hasLoadedAll ? (
-                      `${torrents.length} torrent${torrents.length !== 1 ? "s" : ""}`
-                    ) : isLoadingMore ? (
-                      "Loading more torrents..."
+            {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin inline mr-1"/>
+                Loading torrents...
+              </>
+            ) : totalCount === 0 ? (
+              hasActiveFilters ? "No torrents match the current filters" : "No torrents found"
+            ) : (
+              <>
+                {hasLoadedAll ? (
+                  `${torrents.length} torrent${torrents.length !== 1 ? "s" : ""}`
+                ) : isLoadingMore ? (
+                  "Loading more torrents..."
                     ) : (
                       `${torrents.length} of ${totalCount} torrents loaded`
                     )}
