@@ -1029,6 +1029,54 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
   }, [isLoading, torrents.length])
 
+  const hasSidebarFilters = useMemo(() => {
+    if (!filters) {
+      return false
+    }
+
+    const {
+      status = [],
+      excludeStatus = [],
+      categories = [],
+      excludeCategories = [],
+      expandedCategories = [],
+      expandedExcludeCategories = [],
+      tags = [],
+      excludeTags = [],
+      trackers = [],
+      excludeTrackers = [],
+      expr,
+    } = filters
+
+    return (
+      status.length > 0 ||
+      excludeStatus.length > 0 ||
+      categories.length > 0 ||
+      excludeCategories.length > 0 ||
+      expandedCategories.length > 0 ||
+      expandedExcludeCategories.length > 0 ||
+      tags.length > 0 ||
+      excludeTags.length > 0 ||
+      trackers.length > 0 ||
+      excludeTrackers.length > 0 ||
+      Boolean(expr?.trim())
+    )
+  }, [filters])
+
+  const hasSearchQuery = Boolean(effectiveSearch)
+  const hasFilterControls = useMemo(() => {
+    return hasSidebarFilters || columnFilters.length > 0
+  }, [hasSidebarFilters, columnFilters])
+  const emptyStateMessage = useMemo(() => {
+    if (hasFilterControls) {
+      return "No torrents match the current filters"
+    }
+    if (hasSearchQuery) {
+      return "No torrents match the current search"
+    }
+    return "No torrents found"
+  }, [hasFilterControls, hasSearchQuery])
+
   // Call the callback when filtered data updates
   useEffect(() => {
     if (!onFilteredDataUpdate || isLoading) {
@@ -2315,9 +2363,23 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
             </div>
           )}
           {torrents.length === 0 && !isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center z-40 animate-in fade-in duration-300 pointer-events-none">
-              <div className="text-center animate-in zoom-in-95 duration-300 text-muted-foreground">
-                <p>No torrents found</p>
+            <div
+              className={cn(
+                "absolute inset-0 flex items-center justify-center z-40 animate-in fade-in duration-300",
+                !hasFilterControls && "pointer-events-none"
+              )}
+            >
+              <div className="text-center animate-in zoom-in-95 duration-300 text-muted-foreground space-y-3">
+                <p>{emptyStateMessage}</p>
+                {hasFilterControls && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => clearFiltersAtomically("all")}
+                  >
+                    Clear filters
+                  </Button>
+                )}
               </div>
             </div>
           )}
@@ -2660,19 +2722,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
             ) : (
               <>
                 {/* Show special loading message when fetching without cache (cold load) */}
-                {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (
-                  <>
-                    <Loader2 className="h-3 w-3 animate-spin inline mr-1"/>
-                    Loading torrents...
-                  </>
-                ) : totalCount === 0 ? (
-                  "No torrents found"
-                ) : (
-                  <>
-                    {hasLoadedAll ? (
-                      `${torrents.length} torrent${torrents.length !== 1 ? "s" : ""}`
-                    ) : isLoadingMore ? (
-                      "Loading more torrents..."
+            {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin inline mr-1"/>
+                Loading torrents...
+              </>
+            ) : totalCount === 0 ? (
+              emptyStateMessage
+            ) : (
+              <>
+                {hasLoadedAll ? (
+                  `${torrents.length} torrent${torrents.length !== 1 ? "s" : ""}`
+                ) : isLoadingMore ? (
+                  "Loading more torrents..."
                     ) : (
                       `${torrents.length} of ${totalCount} torrents loaded`
                     )}
