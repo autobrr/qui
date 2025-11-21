@@ -3,6 +3,7 @@ package crossseed
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -57,7 +58,8 @@ func TestFindBestCandidateMatch_PrefersLayoutCompatibleTorrent(t *testing.T) {
 		},
 	}
 
-	bestTorrent, files, matchType := svc.findBestCandidateMatch(context.Background(), candidate, sourceRelease, sourceFiles, nil)
+	filesByHash := svc.batchLoadCandidateFiles(context.Background(), candidate.InstanceID, candidate.Torrents)
+	bestTorrent, files, matchType := svc.findBestCandidateMatch(context.Background(), candidate, sourceRelease, sourceFiles, nil, filesByHash)
 	require.NotNil(t, bestTorrent)
 	require.Equal(t, "mkv", bestTorrent.Hash)
 	require.Equal(t, "exact", matchType)
@@ -97,7 +99,8 @@ func TestFindBestCandidateMatch_PrefersTopLevelFolderOnTie(t *testing.T) {
 	require.Equal(t, singleMatch, folderMatch, "test setup should create identical match priorities")
 	require.Equal(t, "size", singleMatch)
 
-	bestTorrent, files, matchType := svc.findBestCandidateMatch(context.Background(), candidate, sourceRelease, sourceFiles, nil)
+	filesByHash := svc.batchLoadCandidateFiles(context.Background(), candidate.InstanceID, candidate.Torrents)
+	bestTorrent, files, matchType := svc.findBestCandidateMatch(context.Background(), candidate, sourceRelease, sourceFiles, nil, filesByHash)
 	require.NotNil(t, bestTorrent)
 	require.Equal(t, "folder", bestTorrent.Hash, "top-level folder layout should win tie-breakers")
 	require.Equal(t, "size", matchType)
@@ -113,7 +116,8 @@ func (c *candidateSelectionSyncManager) GetAllTorrents(context.Context, int) ([]
 }
 
 func (c *candidateSelectionSyncManager) GetTorrentFiles(_ context.Context, _ int, hash string) (*qbt.TorrentFiles, error) {
-	files, ok := c.files[hash]
+	key := strings.ToLower(hash)
+	files, ok := c.files[key]
 	if !ok {
 		return nil, fmt.Errorf("files not found")
 	}
@@ -124,6 +128,16 @@ func (c *candidateSelectionSyncManager) GetTorrentFiles(_ context.Context, _ int
 
 func (c *candidateSelectionSyncManager) GetTorrentProperties(context.Context, int, string) (*qbt.TorrentProperties, error) {
 	return nil, fmt.Errorf("not implemented")
+}
+
+func (c *candidateSelectionSyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	result := make(map[string]qbt.TorrentFiles, len(hashes))
+	for _, h := range hashes {
+		if files, err := c.GetTorrentFiles(ctx, instanceID, h); err == nil && files != nil {
+			result[normalizeHash(h)] = *files
+		}
+	}
+	return result, nil
 }
 
 func (c *candidateSelectionSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {

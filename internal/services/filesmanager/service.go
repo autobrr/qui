@@ -44,85 +44,81 @@ func NewService(db dbinterface.Querier) *Service {
 // If absolute consistency is required, the caller should invalidate the cache
 // before calling this method, or use the qBittorrent API directly.
 func (s *Service) GetCachedFiles(ctx context.Context, instanceID int, hash string, torrentProgress float64) (qbt.TorrentFiles, error) {
-	// Check if we have sync metadata (without transaction to avoid deadlocks)
-	syncInfo, err := s.repo.GetSyncInfo(ctx, instanceID, hash)
+	results, missing, err := s.GetCachedFilesBatch(ctx, instanceID, []string{hash}, map[string]float64{hash: torrentProgress})
 	if err != nil {
-		if err == sql.ErrNoRows {
-			// No cache exists
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed to get sync info: %w", err)
+		return nil, err
 	}
-
-	// If torrent is 100% complete and we have a cache, use it
-	// Otherwise, check if cache is fresh enough (less than 5 minutes old)
-	cacheFreshDuration := 5 * time.Minute
-	if torrentProgress >= 1.0 && syncInfo.TorrentProgress < 1.0 {
-		// Torrent reached completion since we cached it; bypass stale snapshot
+	// If the requested hash was not returned or explicitly marked missing, behave like a cache miss.
+	if _, found := lookupMissing(hash, missing); found {
 		return nil, nil
 	}
-	if torrentProgress >= 1.0 {
-		// For complete torrents, cache is valid indefinitely
-		cacheFreshDuration = 365 * 24 * time.Hour
-	}
-
-	cacheAge := time.Since(syncInfo.LastSyncedAt)
-	if cacheAge > cacheFreshDuration {
-		// Cache is stale
+	files, ok := results[hash]
+	if !ok {
 		return nil, nil
 	}
-
-	// For in-progress torrents, check if progress has advanced significantly
-	// This ensures the UI shows up-to-date progress for actively downloading torrents
-	if torrentProgress < 1.0 {
-		const progressThreshold = 0.01 // 1% progress change triggers cache refresh
-		progressDelta := torrentProgress - syncInfo.TorrentProgress
-		if progressDelta > progressThreshold || progressDelta < 0 {
-			// Progress has advanced significantly or regressed (torrent deleted/reset), bypass cache to get fresh data
-			return nil, nil
-		}
-	}
-
-	// Retrieve cached files (without transaction to avoid deadlocks)
-	cachedFiles, err := s.repo.GetFiles(ctx, instanceID, hash)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get cached files: %w", err)
-	}
-
-	if len(cachedFiles) == 0 {
-		return nil, nil
-	}
-
-	// Convert to qBittorrent format
-	files := make(qbt.TorrentFiles, len(cachedFiles))
-	for i, cf := range cachedFiles {
-		isSeed := false
-		if cf.IsSeed != nil {
-			isSeed = *cf.IsSeed
-		}
-
-		files[i] = struct {
-			Availability float32 `json:"availability"`
-			Index        int     `json:"index"`
-			IsSeed       bool    `json:"is_seed,omitempty"`
-			Name         string  `json:"name"`
-			PieceRange   []int   `json:"piece_range"`
-			Priority     int     `json:"priority"`
-			Progress     float32 `json:"progress"`
-			Size         int64   `json:"size"`
-		}{
-			Availability: float32(cf.Availability),
-			Index:        cf.FileIndex,
-			IsSeed:       isSeed,
-			Name:         cf.Name,
-			PieceRange:   []int{int(cf.PieceRangeStart), int(cf.PieceRangeEnd)},
-			Priority:     cf.Priority,
-			Progress:     float32(cf.Progress),
-			Size:         cf.Size,
-		}
-	}
-
 	return files, nil
+}
+
+// GetCachedFilesBatch retrieves cached file information for multiple torrents.
+// Missing or stale entries are returned in the second slice so callers can decide what to refresh.
+func (s *Service) GetCachedFilesBatch(ctx context.Context, instanceID int, hashes []string, torrentProgress map[string]float64) (map[string]qbt.TorrentFiles, []string, error) {
+	unique := dedupeHashes(hashes)
+	if len(unique) == 0 {
+		return map[string]qbt.TorrentFiles{}, nil, nil
+	}
+
+	if torrentProgress == nil {
+		torrentProgress = make(map[string]float64)
+	}
+
+	syncInfoMap, err := s.repo.GetSyncInfoBatch(ctx, instanceID, unique)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, nil, fmt.Errorf("failed to get sync info batch: %w", err)
+	}
+
+	freshHashes := make([]string, 0, len(unique))
+	missing := make([]string, 0, len(unique))
+
+	for _, hash := range unique {
+		info := syncInfoMap[hash]
+		progress, hasProgress := torrentProgress[hash]
+		if !hasProgress || info == nil {
+			missing = append(missing, hash)
+			continue
+		}
+
+		if !cacheIsFresh(info, progress) {
+			missing = append(missing, hash)
+			continue
+		}
+
+		freshHashes = append(freshHashes, hash)
+	}
+
+	results := make(map[string]qbt.TorrentFiles, len(freshHashes))
+	if len(freshHashes) > 0 {
+		cachedFiles, err := s.repo.GetFilesBatch(ctx, instanceID, freshHashes)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get cached files batch: %w", err)
+		}
+
+		for hash, files := range cachedFiles {
+			if len(files) == 0 {
+				missing = append(missing, hash)
+				continue
+			}
+			results[hash] = convertCachedFiles(files)
+		}
+
+		// Ensure fresh hashes that lacked rows are marked missing.
+		for _, hash := range freshHashes {
+			if _, ok := results[hash]; !ok {
+				missing = append(missing, hash)
+			}
+		}
+	}
+
+	return results, missing, nil
 }
 
 // CacheFiles stores file information in the database
@@ -223,4 +219,76 @@ func (s *Service) CleanupStaleCache(ctx context.Context, olderThan time.Duration
 // GetCacheStats returns statistics about the cache
 func (s *Service) GetCacheStats(ctx context.Context, instanceID int) (*CacheStats, error) {
 	return s.repo.GetCacheStats(ctx, instanceID)
+}
+
+func cacheIsFresh(info *SyncInfo, torrentProgress float64) bool {
+	if info == nil {
+		return false
+	}
+
+	cacheFreshDuration := 5 * time.Minute
+	if torrentProgress >= 1.0 && info.TorrentProgress < 1.0 {
+		return false
+	}
+	if torrentProgress >= 1.0 {
+		cacheFreshDuration = 365 * 24 * time.Hour
+	}
+
+	if time.Since(info.LastSyncedAt) > cacheFreshDuration {
+		return false
+	}
+
+	if torrentProgress < 1.0 {
+		const progressThreshold = 0.01
+		progressDelta := torrentProgress - info.TorrentProgress
+		if progressDelta > progressThreshold || progressDelta < 0 {
+			return false
+		}
+	}
+
+	return true
+}
+
+func convertCachedFiles(cached []CachedFile) qbt.TorrentFiles {
+	if len(cached) == 0 {
+		return nil
+	}
+
+	files := make(qbt.TorrentFiles, len(cached))
+	for i, cf := range cached {
+		isSeed := false
+		if cf.IsSeed != nil {
+			isSeed = *cf.IsSeed
+		}
+
+		files[i] = struct {
+			Availability float32 `json:"availability"`
+			Index        int     `json:"index"`
+			IsSeed       bool    `json:"is_seed,omitempty"`
+			Name         string  `json:"name"`
+			PieceRange   []int   `json:"piece_range"`
+			Priority     int     `json:"priority"`
+			Progress     float32 `json:"progress"`
+			Size         int64   `json:"size"`
+		}{
+			Availability: float32(cf.Availability),
+			Index:        cf.FileIndex,
+			IsSeed:       isSeed,
+			Name:         cf.Name,
+			PieceRange:   []int{int(cf.PieceRangeStart), int(cf.PieceRangeEnd)},
+			Priority:     cf.Priority,
+			Progress:     float32(cf.Progress),
+			Size:         cf.Size,
+		}
+	}
+	return files
+}
+
+func lookupMissing(hash string, missing []string) (string, bool) {
+	for _, m := range missing {
+		if m == hash {
+			return m, true
+		}
+	}
+	return "", false
 }
