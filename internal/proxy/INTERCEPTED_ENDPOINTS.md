@@ -141,6 +141,11 @@ Some write operations are intercepted to perform additional qui-specific actions
 - **Action**: Invalidates file cache for deleted torrents after forwarding to qBittorrent
 - **Reason**: Cleanup cached data for removed torrents
 
+#### 5. Reannounce torrents
+- **Endpoint**: `/api/v2/torrents/reannounce`
+- **Action**: When tracker monitoring is enabled for an instance, qui consumes the request and delegates it to the internal reannounce service with debouncing. Hashes that aren't monitored are still forwarded upstream.
+- **Reason**: Prevents duplicate or excessive reannounce calls by centralizing retry logic.
+
 ## Non-Intercepted Endpoints
 
 All other endpoints are forwarded to qBittorrent via reverse proxy, including:

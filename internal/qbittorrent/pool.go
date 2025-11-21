@@ -18,8 +18,9 @@ import (
 )
 
 var (
-	ErrClientNotFound = errors.New("qBittorrent client not found")
-	ErrPoolClosed     = errors.New("client pool is closed")
+	ErrClientNotFound   = errors.New("qBittorrent client not found")
+	ErrPoolClosed       = errors.New("client pool is closed")
+	ErrInstanceDisabled = errors.New("qBittorrent instance is disabled")
 )
 
 // Backoff constants
@@ -62,6 +63,7 @@ type ClientPool struct {
 	stopHealth        chan struct{}
 	failureTracker    map[int]*failureInfo
 	decryptionTracker map[int]*decryptionErrorInfo
+	completionHandler TorrentCompletionHandler
 }
 
 // NewClientPool creates a new client pool
@@ -86,6 +88,22 @@ func NewClientPool(instanceStore *models.InstanceStore, errorStore *models.Insta
 	go cp.healthCheckLoop()
 
 	return cp, nil
+}
+
+// SetTorrentCompletionHandler registers a callback for new and existing clients when torrents complete.
+func (cp *ClientPool) SetTorrentCompletionHandler(handler TorrentCompletionHandler) {
+	cp.mu.Lock()
+	cp.completionHandler = handler
+
+	clients := make([]*Client, 0, len(cp.clients))
+	for _, client := range cp.clients {
+		clients = append(clients, client)
+	}
+	cp.mu.Unlock()
+
+	for _, client := range clients {
+		client.SetTorrentCompletionHandler(handler)
+	}
 }
 
 // getInstanceLock gets or creates a per-instance creation lock
@@ -181,6 +199,10 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 		return nil, fmt.Errorf("failed to get instance: %w", err)
 	}
 
+	if !instance.IsActive {
+		return nil, ErrInstanceDisabled
+	}
+
 	// Decrypt password
 	password, err := cp.instanceStore.GetDecryptedPassword(instance)
 	if err != nil {
@@ -207,6 +229,7 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 	// Create new client with custom timeout
 	client, err := NewClientWithTimeout(instanceID, instance.Host, instance.Username, password, instance.BasicUsername, basicPassword, instance.TLSSkipVerify, timeout)
 	if err != nil {
+		cp.trackFailure(instanceID, err)
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
@@ -215,7 +238,12 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 	cp.clients[instanceID] = client
 	// Reset failure tracking on successful connection
 	cp.resetFailureTrackingLocked(instanceID)
+	handler := cp.completionHandler
 	cp.mu.Unlock()
+
+	if handler != nil {
+		client.SetTorrentCompletionHandler(handler)
+	}
 
 	// Start the sync manager
 	if err := client.StartSyncManager(ctx); err != nil {
@@ -291,7 +319,7 @@ func (cp *ClientPool) performHealthChecks() {
 				// Do not recreate client if unhealthy; just log and return
 			} else {
 				// Health check succeeded, reset failure tracking
-				cp.resetFailureTracking(instanceID)
+				cp.ResetFailureTracking(instanceID)
 			}
 		}(client, instanceID)
 	}
@@ -388,8 +416,8 @@ func (cp *ClientPool) calculateBackoff(attempts int, initialDuration, maxDuratio
 	return backoff
 }
 
-// resetFailureTracking clears failure tracking for successful connections
-func (cp *ClientPool) resetFailureTracking(instanceID int) {
+// ResetFailureTracking clears failure tracking for successful connections or explicit user actions
+func (cp *ClientPool) ResetFailureTracking(instanceID int) {
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
 	cp.resetFailureTrackingLocked(instanceID)

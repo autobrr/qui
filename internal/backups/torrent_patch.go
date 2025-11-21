@@ -4,14 +4,15 @@
 package backups
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/anacrolix/torrent/bencode"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
-	"github.com/zeebo/bencode"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
@@ -34,7 +35,7 @@ func patchTorrentTrackers(data []byte, trackers []string) ([]byte, bool, error) 
 	}
 
 	var root map[string]any
-	if err := bencode.DecodeBytes(data, &root); err != nil {
+	if err := bencode.Unmarshal(data, &root); err != nil {
 		return data, false, fmt.Errorf("decode torrent: %w", err)
 	}
 
@@ -57,12 +58,12 @@ func patchTorrentTrackers(data []byte, trackers []string) ([]byte, bool, error) 
 		return data, false, nil
 	}
 
-	encoded, err := bencode.EncodeBytes(root)
-	if err != nil {
+	var buf bytes.Buffer
+	if err := bencode.NewEncoder(&buf).Encode(root); err != nil {
 		return data, false, fmt.Errorf("encode torrent: %w", err)
 	}
 
-	return encoded, true, nil
+	return buf.Bytes(), true, nil
 }
 
 func shouldInjectTrackerMetadata(apiVersion string) bool {

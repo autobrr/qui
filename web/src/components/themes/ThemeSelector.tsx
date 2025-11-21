@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator"
 import { themes, isThemePremium, type Theme } from "@/config/themes"
 import { useHasPremiumAccess } from "@/hooks/useLicense.ts"
 import { useTheme } from "@/hooks/useTheme"
+import { getThemeColors, getThemeVariation } from "@/utils/theme"
 import { Sparkles, Lock, Check, Palette, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 
@@ -17,23 +18,14 @@ interface ThemeCardProps {
   isSelected: boolean
   isLocked: boolean
   onSelect: () => void
+  onVariationSelect: (themeId: string, variationId: string) => void
 }
 
-// Helper to extract color preview from theme
-function getThemeColors(theme: Theme) {
-  // Check if dark mode is active by looking at the document element
-  const isDark = document.documentElement.classList.contains("dark")
-  const cssVars = isDark ? theme.cssVars.dark : theme.cssVars.light
+function ThemeCard({ theme, isSelected, isLocked, onSelect, onVariationSelect }: ThemeCardProps) {
+  // Get current variation for theme (validated)
+  const variation = getThemeVariation(theme.id)
 
-  // Extract the actual color values from the theme
-  const primary = cssVars["--primary"]
-  const secondary = cssVars["--secondary"]
-  const accent = cssVars["--accent"]
-
-  return { primary, secondary, accent }
-}
-
-function ThemeCard({ theme, isSelected, isLocked, onSelect }: ThemeCardProps) {
+  // Helper to extract colors from theme
   const colors = getThemeColors(theme)
 
   return (
@@ -62,32 +54,61 @@ function ThemeCard({ theme, isSelected, isLocked, onSelect }: ThemeCardProps) {
         )}
       </CardHeader>
       <CardContent className="pt-0 space-y-2 sm:space-y-3">
-        {/* Theme preview colors */}
-        <div className="flex gap-1">
-          <div
-            className="w-3 h-3 sm:w-4 sm:h-4 rounded-full ring-1 ring-black/10 dark:ring-white/10"
-            style={{
-              backgroundColor: colors.primary,
-              backgroundImage: "none",
-              background: colors.primary + " !important",
-            }}
-          />
-          <div
-            className="w-3 h-3 sm:w-4 sm:h-4 rounded-full ring-1 ring-black/10 dark:ring-white/10"
-            style={{
-              backgroundColor: colors.secondary,
-              backgroundImage: "none",
-              background: colors.secondary + " !important",
-            }}
-          />
-          <div
-            className="w-3 h-3 sm:w-4 sm:h-4 rounded-full ring-1 ring-black/10 dark:ring-white/10"
-            style={{
-              backgroundColor: colors.accent,
-              backgroundImage: "none",
-              background: colors.accent + " !important",
-            }}
-          />
+        {/* Theme preview colors and variations */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          {/* Preview colors */}
+          <div className="flex gap-1">
+            <div
+              className="w-3 h-3 sm:w-4 sm:h-4 rounded-full ring-1 ring-black/10 dark:ring-white/10"
+              style={{
+                backgroundColor: colors.primary,
+                backgroundImage: "none",
+                background: colors.primary + " !important",
+              }}
+            />
+            <div
+              className="w-3 h-3 sm:w-4 sm:h-4 rounded-full ring-1 ring-black/10 dark:ring-white/10"
+              style={{
+                backgroundColor: colors.secondary,
+                backgroundImage: "none",
+                background: colors.secondary + " !important",
+              }}
+            />
+            <div
+              className="w-3 h-3 sm:w-4 sm:h-4 rounded-full ring-1 ring-black/10 dark:ring-white/10"
+              style={{
+                backgroundColor: colors.accent,
+                backgroundImage: "none",
+                background: colors.accent + " !important",
+              }}
+            />
+          </div>
+
+          {/* Variation colors */}
+          {colors.variations && colors.variations.length > 0 && (
+            <div className="flex gap-1">
+              {colors.variations.map((v) => {
+                const selected = variation === v.id
+                return (
+                  <button
+                    key={v.id}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onVariationSelect(theme.id, v.id)
+                    }}
+                    className={`w-3 h-3 sm:w-4 sm:h-4 rounded-full transition-all ${
+                      selected ? "ring-2 ring-black dark:ring-white" : "ring-1 ring-black/10 dark:ring-white/10"
+                    }`}
+                    style={{
+                      backgroundColor: v.color,
+                      backgroundImage: "none",
+                      background: v.color + " !important",
+                    }}
+                  />
+                )
+              })}
+            </div>
+          )}
         </div>
 
         {/* Badges */}
@@ -118,7 +139,7 @@ function ThemeCard({ theme, isSelected, isLocked, onSelect }: ThemeCardProps) {
 }
 
 export function ThemeSelector() {
-  const { theme: currentTheme, setTheme } = useTheme()
+  const { theme: currentTheme, setTheme, setVariation } = useTheme()
   const { hasPremiumAccess, isLoading } = useHasPremiumAccess()
 
   const isThemeLicensed = (themeId: string) => {
@@ -132,6 +153,17 @@ export function ThemeSelector() {
   const handleThemeSelect = (themeId: string) => {
     if (isThemeLicensed(themeId)) {
       setTheme(themeId)
+    } else {
+      toast.error("This theme requires a premium license", {
+        description: "Please purchase a license to access premium themes",
+      })
+    }
+  }
+
+  const handleVariationSelect = (themeId: string, variationId: string) => {
+    if (isThemeLicensed(themeId)) {
+      setTheme(themeId)
+      setVariation(variationId)
     } else {
       toast.error("This theme requires a premium license", {
         description: "Please purchase a license to access premium themes",
@@ -188,6 +220,7 @@ export function ThemeSelector() {
                 isSelected={currentTheme === theme.id}
                 isLocked={false}
                 onSelect={() => handleThemeSelect(theme.id)}
+                onVariationSelect={handleVariationSelect}
               />
             ))}
           </div>
@@ -227,6 +260,7 @@ export function ThemeSelector() {
                     isSelected={currentTheme === theme.id}
                     isLocked={!isLicensed}
                     onSelect={() => handleThemeSelect(theme.id)}
+                    onVariationSelect={handleVariationSelect}
                   />
                 )
               })}

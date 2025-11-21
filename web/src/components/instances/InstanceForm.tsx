@@ -9,11 +9,26 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { useInstances } from "@/hooks/useInstances"
 import { formatErrorMessage } from "@/lib/utils"
-import type { Instance, InstanceFormData } from "@/types"
+import type { Instance, InstanceFormData, InstanceReannounceSettings } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useState } from "react"
 import { toast } from "sonner"
 import { z } from "zod"
+
+const DEFAULT_REANNOUNCE_SETTINGS: InstanceReannounceSettings = {
+  enabled: false,
+  initialWaitSeconds: 15,
+  reannounceIntervalSeconds: 7,
+  maxAgeSeconds: 600,
+  aggressive: false,
+  monitorAll: false,
+  excludeCategories: false,
+  categories: [],
+  excludeTags: false,
+  tags: [],
+  excludeTrackers: false,
+  trackers: [],
+}
 
 // URL validation schema
 const urlSchema = z
@@ -126,6 +141,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
       basicUsername: instance?.basicUsername ?? "",
       basicPassword: instance?.basicUsername ? "<redacted>" : "",
       tlsSkipVerify: instance?.tlsSkipVerify ?? false,
+      reannounceSettings: instance?.reannounceSettings ?? DEFAULT_REANNOUNCE_SETTINGS,
     },
     onSubmit: ({ value }) => {
       handleSubmit(value)

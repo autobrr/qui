@@ -13,9 +13,7 @@ import { useQuery } from "@tanstack/react-query"
 export function useTrackerIcons() {
   const query = useQuery<Record<string, string>>({
     queryKey: ["tracker-icons"],
-    queryFn: async () => {
-      return api.getTrackerIcons()
-    },
+    queryFn: () => api.getTrackerIcons(),
     staleTime: 60000, // 1 minute
     gcTime: 1800000, // Keep in cache for 30 minutes
     refetchInterval: 60000, // Refetch every 1 minute

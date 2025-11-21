@@ -19,9 +19,11 @@ import {
   Archive,
   Copyright,
   Github,
+  GitBranch,
   HardDrive,
   Home,
   LogOut,
+  Search,
   Settings
 } from "lucide-react"
 
@@ -29,6 +31,7 @@ interface NavItem {
   title: string
   href: string
   icon: React.ComponentType<{ className?: string }>
+  params?: Record<string, string>
 }
 
 const navigation: NavItem[] = [
@@ -36,6 +39,17 @@ const navigation: NavItem[] = [
     title: "Dashboard",
     href: "/dashboard",
     icon: Home,
+  },
+  {
+    title: "Search",
+    href: "/search",
+    icon: Search,
+  },
+  {
+    title: "Cross-Seed",
+    href: "/cross-seed",
+    icon: GitBranch,
+    params: {},
   },
   {
     title: "Backups",
@@ -58,6 +72,8 @@ export function Sidebar() {
     queryKey: ["instances"],
     queryFn: () => api.getInstances(),
   })
+  const activeInstances = instances?.filter(instance => instance.isActive) ?? []
+  const hasConfiguredInstances = (instances?.length ?? 0) > 0
 
   const appVersion = getAppVersion()
 
@@ -84,6 +100,7 @@ export function Sidebar() {
               <Link
                 key={item.href}
                 to={item.href}
+                params={item.params}
                 className={cn(
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
                   isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -104,7 +121,7 @@ export function Sidebar() {
               Instances
             </p>
             <div className="mt-1 flex-1 overflow-y-auto space-y-1 pr-1">
-              {instances?.map((instance) => {
+              {activeInstances.map((instance) => {
                 const instancePath = `/instances/${instance.id}`
                 const isActive = location.pathname === instancePath || location.pathname.startsWith(`${instancePath}/`)
 
@@ -129,9 +146,9 @@ export function Sidebar() {
                   </Link>
                 )
               })}
-              {(!instances || instances.length === 0) && (
+              {activeInstances.length === 0 && (
                 <p className="px-3 py-2 text-sm text-sidebar-foreground/50">
-                  No instances configured
+                  {hasConfiguredInstances ? "All instances are disabled" : "No instances configured"}
                 </p>
               )}
             </div>

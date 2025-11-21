@@ -35,7 +35,7 @@ import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
-import { ChevronsUpDown, Download, FileEdit, FunnelPlus, FunnelX, HardDrive, Home, Info, ListTodo, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
+import { Archive, ChevronsUpDown, Download, FileEdit, FunnelPlus, FunnelX, GitBranch, HardDrive, Home, Info, ListTodo, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 
@@ -50,7 +50,7 @@ export function Header({
 }: HeaderProps) {
   const { logout } = useAuth()
   const navigate = useNavigate()
-  const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string; [key: string]: unknown }
+  const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string;[key: string]: unknown }
   const { state: layoutRouteState } = useLayoutRoute()
 
   // Get selection state from context
@@ -73,12 +73,17 @@ export function Header({
   const [searchValue, setSearchValue] = useState<string>(routeSearch?.q || "")
   const debouncedSearch = useDebounce(searchValue, 500)
   const { instances } = useInstances()
+  const activeInstances = useMemo(
+    () => (instances ?? []).filter(instance => instance.isActive),
+    [instances]
+  )
 
 
   const instanceName = useMemo(() => {
     if (!isInstanceRoute || !instances || selectedInstanceId === null) return null
     return instances.find(i => i.id === selectedInstanceId)?.name ?? null
   }, [isInstanceRoute, instances, selectedInstanceId])
+  const hasMultipleActiveInstances = activeInstances.length > 1
 
   // Keep local state in sync with URL when navigating between instances/routes
   useEffect(() => {
@@ -164,7 +169,7 @@ export function Header({
     <header className="sticky top-0 z-50 hidden md:flex flex-wrap lg:flex-nowrap items-start lg:items-center justify-between sm:border-b bg-background pl-2 pr-4 md:pl-4 md:pr-4 lg:pl-0 lg:static py-2 lg:py-0 lg:h-16">
       <div className="hidden md:flex items-center gap-2 mr-2 h-12 lg:h-auto order-1 lg:order-none">
         {children}
-        {instanceName && instances && instances.length > 1 ? (
+        {instanceName && hasMultipleActiveInstances ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -194,28 +199,32 @@ export function Header({
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <div className="max-h-64 overflow-y-auto space-y-1">
-                {instances.map((instance) => (
-                  <DropdownMenuItem key={instance.id} asChild>
-                    <Link
-                      to="/instances/$instanceId"
-                      params={{ instanceId: instance.id.toString() }}
-                      className={cn(
-                        "flex items-center gap-2 cursor-pointer rounded-sm px-2 py-1.5 text-sm focus-visible:outline-none",
-                        instance.id === selectedInstanceId? "bg-accent text-accent-foreground font-medium": "hover:bg-accent/80 data-[highlighted]:bg-accent/80 text-foreground"
-                      )}
-                    >
-                      <HardDrive className="h-4 w-4 flex-shrink-0" />
-                      <span className="flex-1 truncate">{instance.name}</span>
-                      <span
+                {activeInstances.length > 0 ? (
+                  activeInstances.map((instance) => (
+                    <DropdownMenuItem key={instance.id} asChild>
+                      <Link
+                        to="/instances/$instanceId"
+                        params={{ instanceId: instance.id.toString() }}
                         className={cn(
-                          "h-2 w-2 rounded-full flex-shrink-0",
-                          instance.connected ? "bg-green-500" : "bg-red-500"
+                          "flex items-center gap-2 cursor-pointer rounded-sm px-2 py-1.5 text-sm focus-visible:outline-none",
+                          instance.id === selectedInstanceId ? "bg-accent text-accent-foreground font-medium" : "hover:bg-accent/80 data-[highlighted]:bg-accent/80 text-foreground"
                         )}
-                        aria-label={instance.connected ? "Connected" : "Disconnected"}
-                      />
-                    </Link>
-                  </DropdownMenuItem>
-                ))}
+                      >
+                        <HardDrive className="h-4 w-4 flex-shrink-0" />
+                        <span className="flex-1 truncate">{instance.name}</span>
+                        <span
+                          className={cn(
+                            "h-2 w-2 rounded-full flex-shrink-0",
+                            instance.connected ? "bg-green-500" : "bg-red-500"
+                          )}
+                          aria-label={instance.connected ? "Connected" : "Disconnected"}
+                        />
+                      </Link>
+                    </DropdownMenuItem>
+                  ))
+                ) : (
+                  <p className="px-2 py-1.5 text-xs text-muted-foreground">No active instances</p>
+                )}
               </div>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -255,9 +264,9 @@ export function Header({
                   onClick={handleToggleFilters}
                 >
                   {filterSidebarCollapsed ? (
-                    <FunnelPlus className="h-4 w-4"/>
+                    <FunnelPlus className="h-4 w-4" />
                   ) : (
-                    <FunnelX className="h-4 w-4"/>
+                    <FunnelX className="h-4 w-4" />
                   )}
                 </Button>
               </TooltipTrigger>
@@ -275,7 +284,7 @@ export function Header({
                     navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
                   }}
                 >
-                  <Plus className="h-4 w-4"/>
+                  <Plus className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Add torrent</TooltipContent>
@@ -293,7 +302,7 @@ export function Header({
                       navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
                     }}
                   >
-                    <FileEdit className="h-4 w-4"/>
+                    <FileEdit className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Create torrent</TooltipContent>
@@ -312,7 +321,7 @@ export function Header({
                       navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
                     }}
                   >
-                    <ListTodo className="h-4 w-4"/>
+                    <ListTodo className="h-4 w-4" />
                     {activeTaskCount > 0 && (
                       <Badge variant="default" className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs">
                         {activeTaskCount}
@@ -351,7 +360,7 @@ export function Header({
           <div className="flex items-center gap-2 flex-1 justify-end mr-2">
             {/* Search bar - hidden on mobile (< lg), use modal search button instead */}
             <div className="relative w-full md:w-62 md:focus-within:w-full max-w-md transition-[width] duration-100 ease-out will-change-[width] hidden md:block">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none transition-opacity duration-300"/>
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none transition-opacity duration-300" />
               <Input
                 ref={searchInputRef}
                 placeholder={isGlobSearch ? "Glob pattern..." : `Search torrents... (${shortcutKey})`}
@@ -377,9 +386,8 @@ export function Header({
                     }, 100)
                   }
                 }}
-                className={`w-full pl-9 pr-16 transition-[box-shadow,border-color] duration-200 text-xs ${
-                  searchValue ? "ring-1 ring-primary/50" : ""
-                } ${isGlobSearch ? "ring-1 ring-primary" : ""}`}
+                className={`w-full pl-9 pr-16 transition-[box-shadow,border-color] duration-200 text-xs ${searchValue ? "ring-1 ring-primary/50" : ""
+                  } ${isGlobSearch ? "ring-1 ring-primary" : ""}`}
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                 {/* Clear search button */}
@@ -396,7 +404,7 @@ export function Header({
                           navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
                         }}
                       >
-                        <X className="h-3.5 w-3.5 text-muted-foreground"/>
+                        <X className="h-3.5 w-3.5 text-muted-foreground" />
                       </button>
                     </TooltipTrigger>
                     <TooltipContent>Clear search</TooltipContent>
@@ -410,7 +418,7 @@ export function Header({
                       className="p-1 hover:bg-muted rounded-sm transition-colors hidden sm:block"
                       onClick={(e) => e.preventDefault()}
                     >
-                      <Info className="h-3.5 w-3.5 text-muted-foreground"/>
+                      <Info className="h-3.5 w-3.5 text-muted-foreground" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
@@ -429,14 +437,14 @@ export function Header({
                 </Tooltip>
               </div>
             </div>
-            <span id="header-search-actions" className="flex items-center gap-1"/>
+            <span id="header-search-actions" className="flex items-center gap-1" />
           </div>
         </div>
       )}
 
 
       <div className="grid grid-cols-[auto_auto] items-center gap-1 transition-all duration-300 ease-out sm:order-4 lg:order-none sm:h-12 lg:h-auto">
-        <ThemeToggle/>
+        <ThemeToggle />
         <div className={cn(
           "transition-all duration-300 ease-out overflow-hidden",
           sidebarCollapsed ? "w-10 opacity-100" : "w-0 opacity-0"
@@ -444,7 +452,7 @@ export function Header({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="hover:bg-muted hover:text-foreground transition-colors relative">
-                <Menu className="h-4 w-4"/>
+                <Menu className="h-4 w-4" />
                 {updateInfo && (
                   <span className="absolute top-1 right-1 h-2 w-2 bg-green-500 rounded-full" />
                 )}
@@ -475,8 +483,35 @@ export function Header({
                   to="/dashboard"
                   className="flex cursor-pointer"
                 >
-                  <Home className="mr-2 h-4 w-4"/>
+                  <Home className="mr-2 h-4 w-4" />
                   Dashboard
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link
+                  to="/search"
+                  className="flex cursor-pointer"
+                >
+                  <Search className="mr-2 h-4 w-4" />
+                  Search
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link
+                  to="/cross-seed"
+                  className="flex cursor-pointer"
+                >
+                  <GitBranch className="mr-2 h-4 w-4" />
+                  Cross-Seed
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link
+                  to="/backups"
+                  className="flex cursor-pointer"
+                >
+                  <Archive className="mr-2 h-4 w-4" />
+                  Backups
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
@@ -485,20 +520,20 @@ export function Header({
                   search={{ tab: "instances" }}
                   className="flex cursor-pointer"
                 >
-                  <Server className="mr-2 h-4 w-4"/>
+                  <Server className="mr-2 h-4 w-4" />
                   Instances
                 </Link>
               </DropdownMenuItem>
-              {instances && instances.length > 0 && (
+              {activeInstances.length > 0 && (
                 <>
-                  {instances.map((instance) => (
+                  {activeInstances.map((instance) => (
                     <DropdownMenuItem key={instance.id} asChild>
                       <Link
                         to="/instances/$instanceId"
                         params={{ instanceId: instance.id.toString() }}
                         className="flex cursor-pointer pl-6"
                       >
-                        <HardDrive className="mr-2 h-4 w-4"/>
+                        <HardDrive className="mr-2 h-4 w-4" />
                         <span className="truncate">{instance.name}</span>
                         <span
                           className={cn(
@@ -511,19 +546,19 @@ export function Header({
                   ))}
                 </>
               )}
-              <DropdownMenuSeparator/>
+              <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
                 <Link
                   to="/settings"
                   className="flex cursor-pointer"
                 >
-                  <Settings className="mr-2 h-4 w-4"/>
+                  <Settings className="mr-2 h-4 w-4" />
                   Settings
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuSeparator/>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => logout()}>
-                <LogOut className="mr-2 h-4 w-4"/>
+                <LogOut className="mr-2 h-4 w-4" />
                 Logout
               </DropdownMenuItem>
             </DropdownMenuContent>

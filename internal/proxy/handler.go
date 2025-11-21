@@ -26,6 +26,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/pkg/httphelpers"
 )
 
@@ -36,6 +37,8 @@ type Handler struct {
 	clientAPIKeyStore *models.ClientAPIKeyStore
 	instanceStore     *models.InstanceStore
 	syncManager       *qbittorrent.SyncManager
+	reannounceCache   *reannounce.SettingsCache
+	reannounceService *reannounce.Service
 	bufferPool        *BufferPool
 	proxy             *httputil.ReverseProxy
 }
@@ -64,7 +67,7 @@ type proxyContext struct {
 }
 
 // NewHandler creates a new proxy handler
-func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.ClientAPIKeyStore, instanceStore *models.InstanceStore, syncManager *qbittorrent.SyncManager, baseURL string) *Handler {
+func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.ClientAPIKeyStore, instanceStore *models.InstanceStore, syncManager *qbittorrent.SyncManager, cache *reannounce.SettingsCache, svc *reannounce.Service, baseURL string) *Handler {
 	bufferPool := NewBufferPool()
 	basePath := httphelpers.NormalizeBasePath(baseURL)
 
@@ -74,6 +77,8 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 		clientAPIKeyStore: clientAPIKeyStore,
 		instanceStore:     instanceStore,
 		syncManager:       syncManager,
+		reannounceCache:   cache,
+		reannounceService: svc,
 		bufferPool:        bufferPool,
 	}
 
@@ -384,6 +389,8 @@ func (h *Handler) Routes(r chi.Router) {
 		// Apply proxy context middleware (adds instance info to context)
 		pr.Use(h.prepareProxyContextMiddleware)
 
+		pr.Post("/api/v2/torrents/reannounce", h.handleReannounce)
+
 		// Register intercepted endpoints (these use qui's sync manager or special handling)
 		pr.Post("/api/v2/auth/login", h.handleAuthLogin)
 		pr.Get("/api/v2/sync/maindata", h.handleSyncMainData)
@@ -439,6 +446,11 @@ func (h *Handler) prepareProxyContext(r *http.Request) (*proxyContext, error) {
 		return nil, err
 	}
 
+	if !instance.IsActive {
+		logger.Warn().Msg("Instance disabled, rejecting proxy request")
+		return nil, qbittorrent.ErrInstanceDisabled
+	}
+
 	instanceURL, err := url.Parse(instance.Host)
 	if err != nil {
 		logger.Error().Err(err).Str("host", instance.Host).Msg("Failed to parse instance host for proxy request")
@@ -488,6 +500,58 @@ func (h *Handler) writeProxyError(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusBadGateway)
 	_, _ = w.Write([]byte(proxyErrorPayload))
+}
+
+func (h *Handler) monitoringEnabled(instanceID int) bool {
+	if h.reannounceCache == nil {
+		return false
+	}
+	settings := h.reannounceCache.Get(instanceID)
+	return settings != nil && settings.Enabled
+}
+
+func restoreBody(r *http.Request, body []byte) {
+	if r == nil {
+		return
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	r.ContentLength = int64(len(body))
+}
+
+func normalizeHashes(hashes []string) []string {
+	result := make([]string, 0, len(hashes))
+	seen := make(map[string]struct{}, len(hashes))
+	for _, hash := range hashes {
+		trimmed := strings.ToUpper(strings.TrimSpace(hash))
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+	}
+	return result
+}
+
+func difference(all, subset []string) []string {
+	if len(subset) == 0 {
+		return append([]string{}, all...)
+	}
+	remaining := make([]string, 0, len(all))
+	set := make(map[string]int, len(subset))
+	for _, val := range subset {
+		set[val]++
+	}
+	for _, val := range all {
+		if count, ok := set[val]; ok && count > 0 {
+			set[val] = count - 1
+			continue
+		}
+		remaining = append(remaining, val)
+	}
+	return remaining
 }
 
 func generateLoginCookieValue() (string, error) {
@@ -1217,6 +1281,62 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 
 	// Forward to qBittorrent
 	h.proxy.ServeHTTP(w, r)
+}
+
+func (h *Handler) handleReannounce(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	if h.reannounceService == nil || !h.monitoringEnabled(instanceID) {
+		h.proxy.ServeHTTP(w, r)
+		return
+	}
+
+	bodyBytes, err := bufferRequestBody(r)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to read reannounce body")
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to parse reannounce form")
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	raw := r.Form.Get("hashes")
+	normalized := normalizeHashes(strings.Split(raw, "|"))
+	if len(normalized) == 0 {
+		restoreBody(r, bodyBytes)
+		h.proxy.ServeHTTP(w, r)
+		return
+	}
+
+	handled := h.reannounceService.RequestReannounce(ctx, instanceID, normalized)
+	if len(handled) == 0 {
+		restoreBody(r, bodyBytes)
+		h.proxy.ServeHTTP(w, r)
+		return
+	}
+
+	remaining := difference(normalized, handled)
+	if len(remaining) > 0 {
+		form := url.Values{}
+		form.Set("hashes", strings.Join(remaining, "|"))
+		encoded := form.Encode()
+		r.Body = io.NopCloser(strings.NewReader(encoded))
+		r.ContentLength = int64(len(encoded))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		h.proxy.ServeHTTP(w, r)
+		return
+	}
+
+	log.Debug().Int("instanceId", instanceID).Str("client", clientAPIKey.ClientName).Int("handled", len(handled)).Msg("Intercepted reannounce request")
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(proxyLoginSuccessBody))
 }
 
 // handleRenameFile handles /api/v2/torrents/renameFile and invalidates file cache
