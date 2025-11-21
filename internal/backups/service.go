@@ -72,6 +72,16 @@ type job struct {
 	kind       models.BackupRunKind
 }
 
+func referenceTimeFromRun(run *models.BackupRun) time.Time {
+	if run == nil {
+		return time.Time{}
+	}
+	if run.CompletedAt != nil {
+		return *run.CompletedAt
+	}
+	return run.RequestedAt
+}
+
 // Manifest captures details about a backup run and its contents for API responses and archived metadata.
 type Manifest struct {
 	InstanceID   int                                `json:"instanceId"`
@@ -276,8 +286,9 @@ func (s *Service) isBackupMissed(ctx context.Context, instanceID int, kind model
 		return false
 	}
 
-	// We only consider the most recent successful run as the reference point. Failed/running/pending
-	// runs do not count toward the schedule — i.e. a failed run doesn't reset the schedule.
+	// Prefer the most recent successful run as the reference point so successful backups
+	// govern the cadence. If no successful runs exist we still honor the cadence by using
+	// the most recent attempt of any status instead of retrying continuously.
 	runs, err := s.store.ListRunsByKind(ctx, instanceID, kind, 10)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
@@ -289,25 +300,31 @@ func (s *Service) isBackupMissed(ctx context.Context, instanceID int, kind model
 
 	// Find the most recent successful run
 	var refTime *time.Time
-	var foundSuccess bool
 	for _, r := range runs {
 		if r == nil {
 			continue
 		}
 		if r.Status == models.BackupRunStatusSuccess {
-			if r.CompletedAt != nil {
-				refTime = r.CompletedAt
-			} else {
-				refTime = &r.RequestedAt
-			}
-			foundSuccess = true
+			ref := referenceTimeFromRun(r)
+			refTime = &ref
 			break
 		}
 	}
 
-	// If we found no successful run, consider it missed (first-run semantics)
-	if !foundSuccess || refTime == nil {
-		return true
+	if refTime == nil {
+		// No successful runs found. If no runs exist, treat as first-run semantics.
+		var latest *models.BackupRun
+		for _, r := range runs {
+			if r != nil {
+				latest = r
+				break
+			}
+		}
+		if latest == nil {
+			return true
+		}
+		ref := referenceTimeFromRun(latest)
+		refTime = &ref
 	}
 
 	ref := *refTime
