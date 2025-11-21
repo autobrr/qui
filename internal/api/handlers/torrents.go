@@ -1334,6 +1334,11 @@ func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if files == nil {
+		RespondError(w, http.StatusNotFound, "Torrent files not found")
+		return
+	}
+
 	RespondJSON(w, http.StatusOK, files)
 }
 

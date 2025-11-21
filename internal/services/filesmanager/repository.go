@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -20,6 +21,9 @@ type Repository struct {
 	db dbinterface.Querier
 }
 
+// Use a conservative batch size to stay under SQLite parameter limits (900 default).
+const maxBatchItems = 800
+
 // NewRepository creates a new files repository
 func NewRepository(db dbinterface.Querier) *Repository {
 	return &Repository{db: db}
@@ -28,6 +32,76 @@ func NewRepository(db dbinterface.Querier) *Repository {
 // GetFiles retrieves all cached files for a torrent
 func (r *Repository) GetFiles(ctx context.Context, instanceID int, hash string) ([]CachedFile, error) {
 	return r.getFiles(ctx, r.db, instanceID, hash)
+}
+
+// GetFilesBatch retrieves cached files for multiple torrents at once.
+func (r *Repository) GetFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string][]CachedFile, error) {
+	cleaned := dedupeHashes(hashes)
+	if len(cleaned) == 0 {
+		return map[string][]CachedFile{}, nil
+	}
+
+	results := make(map[string][]CachedFile, len(cleaned))
+	for _, batch := range chunkHashes(cleaned, maxBatchItems) {
+		args := make([]any, 0, len(batch)+1)
+		args = append(args, instanceID)
+		for _, h := range batch {
+			args = append(args, h)
+		}
+
+		query := fmt.Sprintf(`
+			SELECT id, instance_id, torrent_hash, file_index, name, size, progress,
+			       priority, is_seed, piece_range_start, piece_range_end, availability, cached_at
+			FROM torrent_files_cache_view
+			WHERE instance_id = ? AND torrent_hash IN (%s)
+			ORDER BY torrent_hash, file_index ASC
+		`, buildPlaceholders(len(batch)))
+
+		rows, err := r.db.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, err
+		}
+
+		for rows.Next() {
+			var (
+				f      CachedFile
+				isSeed sql.NullBool
+			)
+			if err := rows.Scan(
+				&f.ID,
+				&f.InstanceID,
+				&f.TorrentHash,
+				&f.FileIndex,
+				&f.Name,
+				&f.Size,
+				&f.Progress,
+				&f.Priority,
+				&isSeed,
+				&f.PieceRangeStart,
+				&f.PieceRangeEnd,
+				&f.Availability,
+				&f.CachedAt,
+			); err != nil {
+				rows.Close()
+				return nil, err
+			}
+
+			if isSeed.Valid {
+				f.IsSeed = &isSeed.Bool
+			}
+
+			results[f.TorrentHash] = append(results[f.TorrentHash], f)
+		}
+
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+
+	return results, nil
 }
 
 // GetFilesTx retrieves all cached files for a torrent within a transaction
@@ -245,6 +319,59 @@ func (r *Repository) GetSyncInfo(ctx context.Context, instanceID int, hash strin
 	return r.getSyncInfo(ctx, r.db, instanceID, hash)
 }
 
+// GetSyncInfoBatch retrieves sync metadata for multiple torrents in a single query.
+func (r *Repository) GetSyncInfoBatch(ctx context.Context, instanceID int, hashes []string) (map[string]*SyncInfo, error) {
+	cleaned := dedupeHashes(hashes)
+	if len(cleaned) == 0 {
+		return map[string]*SyncInfo{}, nil
+	}
+
+	results := make(map[string]*SyncInfo, len(cleaned))
+	for _, batch := range chunkHashes(cleaned, maxBatchItems) {
+		args := make([]any, 0, len(batch)+1)
+		args = append(args, instanceID)
+		for _, h := range batch {
+			args = append(args, h)
+		}
+
+		query := fmt.Sprintf(`
+			SELECT instance_id, torrent_hash, last_synced_at, torrent_progress, file_count
+			FROM torrent_files_sync_view
+			WHERE instance_id = ? AND torrent_hash IN (%s)
+		`, buildPlaceholders(len(batch)))
+
+		rows, err := r.db.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, err
+		}
+
+		for rows.Next() {
+			var info SyncInfo
+			if err := rows.Scan(
+				&info.InstanceID,
+				&info.TorrentHash,
+				&info.LastSyncedAt,
+				&info.TorrentProgress,
+				&info.FileCount,
+			); err != nil {
+				rows.Close()
+				return nil, err
+			}
+
+			results[info.TorrentHash] = &info
+		}
+
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+
+	return results, nil
+}
+
 // GetSyncInfoTx retrieves sync metadata for a torrent within a transaction
 func (r *Repository) GetSyncInfoTx(ctx context.Context, tx dbinterface.TxQuerier, instanceID int, hash string) (*SyncInfo, error) {
 	return r.getSyncInfo(ctx, tx, instanceID, hash)
@@ -432,4 +559,50 @@ func (r *Repository) GetCacheStats(ctx context.Context, instanceID int) (*CacheS
 	}
 
 	return &stats, nil
+}
+
+func dedupeHashes(hashes []string) []string {
+	seen := make(map[string]struct{}, len(hashes))
+	unique := make([]string, 0, len(hashes))
+	for _, h := range hashes {
+		h = strings.TrimSpace(h)
+		if h == "" {
+			continue
+		}
+		if _, ok := seen[h]; ok {
+			continue
+		}
+		seen[h] = struct{}{}
+		unique = append(unique, h)
+	}
+	return unique
+}
+
+func chunkHashes(hashes []string, size int) [][]string {
+	if size <= 0 || len(hashes) == 0 {
+		return nil
+	}
+	var chunks [][]string
+	for start := 0; start < len(hashes); start += size {
+		end := start + size
+		if end > len(hashes) {
+			end = len(hashes)
+		}
+		chunks = append(chunks, hashes[start:end])
+	}
+	return chunks
+}
+
+func buildPlaceholders(count int) string {
+	if count <= 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for i := 0; i < count; i++ {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("?")
+	}
+	return sb.String()
 }

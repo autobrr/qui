@@ -225,6 +225,16 @@ func (f *episodeSyncManager) GetTorrentFiles(_ context.Context, instanceID int, 
 	return &qbt.TorrentFiles{}, nil
 }
 
+func (f *episodeSyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	result := make(map[string]qbt.TorrentFiles, len(hashes))
+	for _, h := range hashes {
+		if files, _ := f.GetTorrentFiles(ctx, instanceID, h); files != nil {
+			result[normalizeHash(h)] = *files
+		}
+	}
+	return result, nil
+}
+
 func (f *episodeSyncManager) GetTorrentProperties(_ context.Context, instanceID int, hash string) (*qbt.TorrentProperties, error) {
 	if instProps, ok := f.props[instanceID]; ok {
 		if props, ok := instProps[strings.ToLower(hash)]; ok {
