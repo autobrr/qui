@@ -2710,38 +2710,51 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	query := strings.TrimSpace(opts.Query)
+	var seasonPtr, episodePtr *int
 	queryRelease := sourceRelease
 	if contentInfo.IsMusic && contentDetectionRelease.Type == rls.Music {
 		// For music, create a proper music release object by parsing the torrent name as music
 		queryRelease = ParseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
 	}
 	if query == "" {
-		// Build a better search query from parsed release info instead of using full filename
+		baseQuery := ""
 		if queryRelease.Title != "" {
 			if contentInfo.IsMusic {
 				// For music, use artist and title format if available
 				if queryRelease.Artist != "" {
-					query = queryRelease.Artist + " " + queryRelease.Title
+					baseQuery = queryRelease.Artist + " " + queryRelease.Title
 				} else {
-					query = queryRelease.Title
+					baseQuery = queryRelease.Title
 				}
 			} else {
 				// For non-music, start with the title
-				query = queryRelease.Title
+				baseQuery = queryRelease.Title
 			}
-
-			log.Debug().
-				Str("originalName", sourceTorrent.Name).
-				Str("generatedQuery", query).
-				Str("contentType", contentInfo.ContentType).
-				Msg("[CROSSSEED-SEARCH] Generated search query from parsed release")
-		} else {
-			// Fallback to full name if parsing failed
-			query = sourceTorrent.Name
-			log.Debug().
-				Str("originalName", sourceTorrent.Name).
-				Msg("[CROSSSEED-SEARCH] Using full filename as query (parsing failed)")
 		}
+
+		safeQuery := buildSafeSearchQuery(sourceTorrent.Name, queryRelease, baseQuery)
+		query = strings.TrimSpace(safeQuery.Query)
+		if query == "" {
+			// Fallback to a basic title-based query to avoid empty searches
+			switch {
+			case baseQuery != "":
+				query = strings.TrimSpace(baseQuery)
+			case queryRelease.Title != "":
+				query = queryRelease.Title
+			default:
+				query = sourceTorrent.Name
+			}
+		}
+		seasonPtr = safeQuery.Season
+		episodePtr = safeQuery.Episode
+
+		log.Debug().
+			Str("originalName", sourceTorrent.Name).
+			Str("generatedQuery", query).
+			Bool("hasSeason", seasonPtr != nil).
+			Bool("hasEpisode", episodePtr != nil).
+			Str("contentType", contentInfo.ContentType).
+			Msg("[CROSSSEED-SEARCH] Generated search query with fallback parsing")
 	}
 
 	limit := opts.Limit
@@ -2902,6 +2915,13 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		CacheMode:  opts.CacheMode,
 	}
 
+	if seasonPtr != nil {
+		searchReq.Season = seasonPtr
+	}
+	if episodePtr != nil {
+		searchReq.Episode = episodePtr
+	}
+
 	// Add music-specific parameters if we have them
 	if contentInfo.IsMusic {
 		// Parse music information from the source release or torrent name
@@ -2940,12 +2960,12 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 			searchReq.Categories = contentInfo.Categories
 		}
 
-		// Add season/episode info for TV content
-		if sourceRelease.Series > 0 {
+		// Add season/episode info for TV content only if not already set by safe query
+		if sourceRelease.Series > 0 && searchReq.Season == nil {
 			season := sourceRelease.Series
 			searchReq.Season = &season
 
-			if sourceRelease.Episode > 0 {
+			if sourceRelease.Episode > 0 && searchReq.Episode == nil {
 				episode := sourceRelease.Episode
 				searchReq.Episode = &episode
 			}

@@ -81,7 +81,7 @@ type TorrentInfo struct {
 	MatchingFiles    int           `json:"matching_files,omitempty"` // Files that match source
 	FileCount        int           `json:"file_count"`               // Deprecated: use TotalFiles
 	Files            []TorrentFile `json:"files,omitempty"`
-	ContentType      string        `json:"content_type,omitempty"`      // Detected content type: movie, tv, music, audiobook, book, comic, game, app, unknown
+	ContentType      string        `json:"content_type,omitempty"`      // Detected content type: movie, tv, music, audiobook, book, comic, game, app, adult, unknown
 	SearchType       string        `json:"search_type,omitempty"`       // Search type to use: tvsearch, movie, music, book, search
 	SearchCategories []int         `json:"search_categories,omitempty"` // Torznab categories required for this search
 	RequiredCaps     []string      `json:"required_caps,omitempty"`     // Required indexer capabilities (e.g., "tv-search", "movie-search", "music-search")
