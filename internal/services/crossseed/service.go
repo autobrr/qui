@@ -3983,7 +3983,6 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		} else {
 			group.duplicates = append(group.duplicates, current.torrent.Hash)
 		}
-
 		groupMap[current.torrent.Hash] = foundGroup
 	}
 
