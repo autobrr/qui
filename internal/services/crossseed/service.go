@@ -50,6 +50,9 @@ type instanceProvider interface {
 // qbittorrentSync exposes the sync manager functionality needed by the service.
 type qbittorrentSync interface {
 	GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
+	// GetTorrentFilesBatch returns files keyed by the provided hashes (normalized by callers).
+	// The returned map uses the same hash strings that were requested; missing entries indicate
+	// per-hash fetch failures or absent torrents.
 	GetTorrentFiles(ctx context.Context, instanceID int, hash string) (*qbt.TorrentFiles, error)
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	GetTorrentProperties(ctx context.Context, instanceID int, hash string) (*qbt.TorrentProperties, error)
@@ -1522,14 +1525,11 @@ func (s *Service) FindCandidates(ctx context.Context, req *FindCandidatesRequest
 			continue
 		}
 
-		filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, candidateHashes)
-		if err != nil {
-			log.Warn().
-				Int("instanceID", instanceID).
-				Str("instanceName", instance.Name).
-				Err(err).
-				Msg("Failed batch torrent file lookup during candidate search")
+		candidates := make([]qbt.Torrent, 0, len(torrentByHash))
+		for _, t := range torrentByHash {
+			candidates = append(candidates, t)
 		}
+		filesByHash := s.batchLoadCandidateFiles(ctx, instanceID, candidates)
 
 		var matchedTorrents []qbt.Torrent
 		matchTypeCounts := make(map[string]int)
@@ -1999,6 +1999,7 @@ func (s *Service) processCrossSeedCandidate(
 }
 
 func normalizeHash(hash string) string {
+	// qBittorrent file lookups and batch maps use uppercase-trimmed hashes to keep keying consistent.
 	return strings.ToUpper(strings.TrimSpace(hash))
 }
 
@@ -2055,9 +2056,13 @@ func (s *Service) batchLoadCandidateFiles(ctx context.Context, instanceID int, t
 		// Fallback: try single-torrent fetches so file-level validation still runs
 		filesByHash = make(map[string]qbt.TorrentFiles, len(hashes))
 		for _, hash := range hashes {
+			if ctx.Err() != nil {
+				return filesByHash
+			}
+
 			filesPtr, singleErr := s.syncManager.GetTorrentFiles(ctx, instanceID, hash)
 			if singleErr != nil {
-				log.Debug().
+				log.Trace().
 					Int("instanceID", instanceID).
 					Str("hash", hash).
 					Err(singleErr).

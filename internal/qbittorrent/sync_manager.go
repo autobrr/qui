@@ -1122,7 +1122,7 @@ func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int,
 				Msg("Failed to load cached torrent files in batch")
 		} else {
 			for hash, files := range cached {
-				filesByHash[strings.TrimSpace(hash)] = files
+				filesByHash[hash] = files
 			}
 			hashesToFetch = missing
 		}
