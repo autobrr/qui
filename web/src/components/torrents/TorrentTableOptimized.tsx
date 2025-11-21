@@ -1063,9 +1063,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     )
   }, [filters])
 
-  const hasActiveFilters = useMemo(() => {
+  const hasSearchQuery = Boolean(effectiveSearch)
+  const hasFilterControls = useMemo(() => {
     return hasSidebarFilters || columnFilters.length > 0
   }, [hasSidebarFilters, columnFilters])
+  const emptyStateMessage = useMemo(() => {
+    if (hasFilterControls) {
+      return "No torrents match the current filters"
+    }
+    if (hasSearchQuery) {
+      return "No torrents match the current search"
+    }
+    return "No torrents found"
+  }, [hasFilterControls, hasSearchQuery])
 
   // Call the callback when filtered data updates
   useEffect(() => {
@@ -2356,12 +2366,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
             <div
               className={cn(
                 "absolute inset-0 flex items-center justify-center z-40 animate-in fade-in duration-300",
-                !hasActiveFilters && "pointer-events-none"
+                !hasFilterControls && "pointer-events-none"
               )}
             >
               <div className="text-center animate-in zoom-in-95 duration-300 text-muted-foreground space-y-3">
-                <p>{hasActiveFilters ? "No torrents match the current filters" : "No torrents found"}</p>
-                {hasActiveFilters && (
+                <p>{emptyStateMessage}</p>
+                {hasFilterControls && (
                   <Button
                     size="sm"
                     variant="outline"
@@ -2718,7 +2728,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                 Loading torrents...
               </>
             ) : totalCount === 0 ? (
-              hasActiveFilters ? "No torrents match the current filters" : "No torrents found"
+              emptyStateMessage
             ) : (
               <>
                 {hasLoadedAll ? (
