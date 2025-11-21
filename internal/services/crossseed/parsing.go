@@ -27,37 +27,39 @@ type ContentTypeInfo struct {
 // isAdultContent checks if a release appears to be adult/pornographic content
 func isAdultContent(release rls.Release) bool {
 	titleLower := strings.ToLower(release.Title)
-	
+	subtitleLower := strings.ToLower(release.Subtitle)
+	collectionLower := strings.ToLower(release.Collection)
+
 	// Check for explicit adult indicators that are unlikely to appear in legitimate TV/movies
 	adultIndicators := []string{
 		"xxx",
 	}
-	
+
 	for _, indicator := range adultIndicators {
-		if strings.Contains(titleLower, indicator) {
+		if strings.Contains(titleLower, indicator) || strings.Contains(subtitleLower, indicator) || strings.Contains(collectionLower, indicator) {
 			return true
 		}
 	}
-	
+
 	// Check for JAV code patterns (4 letters - 3-4 digits), but exclude if it's a valid RIAJ media code
-	if reJAV.MatchString(release.Title) {
-		// exclude if the same-looking token is a valid RIAJ media code
-		if detectRIAJMediaType(release.Title) == "" {
+	if reJAV.MatchString(release.Title) || reJAV.MatchString(release.Subtitle) || reJAV.MatchString(release.Collection) {
+		// exclude if the same-looking token is a valid RIAJ media code in Title or Subtitle
+		if detectRIAJMediaType(release.Title) == "" && detectRIAJMediaType(release.Subtitle) == "" && detectRIAJMediaType(release.Collection) == "" {
 			return true
 		}
 	}
-	
+
 	// Check for date patterns common in adult content (MMDDYY_XXX or similar)
 	// This is more specific than the previous broad terms
-	if reAdultDate.MatchString(titleLower) {
+	if reAdultDate.MatchString(titleLower) || reAdultDate.MatchString(subtitleLower) || reAdultDate.MatchString(collectionLower) {
 		return true
 	}
-	
+
 	// Check for bracketed date patterns common in Japanese adult content
-	if reBracketDate.MatchString(titleLower) {
+	if reBracketDate.MatchString(titleLower) || reBracketDate.MatchString(subtitleLower) || reBracketDate.MatchString(collectionLower) {
 		return true
 	}
-	
+
 	return false
 }
 
@@ -106,6 +108,7 @@ var (
 	// explicit 'xxx' indicator (case-insensitive word boundary)
 	reAdultXXX = regexp.MustCompile(`(?i)\bxxx\b`)
 )
+
 func detectRIAJMediaType(title string) string {
 	// find the first RIAJ-like code
 	match := reRIAJ.FindString(title)
