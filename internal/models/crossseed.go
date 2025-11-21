@@ -230,6 +230,15 @@ type CrossSeedFeedItem struct {
 	InfoHash    *string                 `json:"infoHash,omitempty"`
 }
 
+// CrossSeedDedupCacheEntry stores representative/duplicate relationships for torrents in an instance.
+type CrossSeedDedupCacheEntry struct {
+	InstanceID         int       `json:"instanceId"`
+	TorrentHash        string    `json:"torrentHash"`
+	RepresentativeHash string    `json:"representativeHash"`
+	HasTopLevelFolder  bool      `json:"hasTopLevelFolder"`
+	LastSeenAt         time.Time `json:"lastSeenAt"`
+}
+
 // CrossSeedStore persists automation settings, runs, and feed items.
 type CrossSeedStore struct {
 	db dbinterface.Querier
@@ -922,6 +931,123 @@ func (s *CrossSeedStore) ListSearchRuns(ctx context.Context, instanceID, limit, 
 	}
 
 	return runs, nil
+}
+
+// GetDedupCache returns cached representative mappings for an instance keyed by normalized hash.
+func (s *CrossSeedStore) GetDedupCache(ctx context.Context, instanceID int) (map[string]CrossSeedDedupCacheEntry, error) {
+	if instanceID <= 0 {
+		return map[string]CrossSeedDedupCacheEntry{}, nil
+	}
+
+	const query = `
+		SELECT torrent_hash, representative_hash, has_top_level_folder, last_seen_at
+		FROM cross_seed_dedup_cache
+		WHERE instance_id = ?
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("get dedup cache: %w", err)
+	}
+	defer rows.Close()
+
+	entries := make(map[string]CrossSeedDedupCacheEntry)
+	for rows.Next() {
+		var (
+			entry   CrossSeedDedupCacheEntry
+			hasRoot int
+		)
+		entry.InstanceID = instanceID
+		if err := rows.Scan(&entry.TorrentHash, &entry.RepresentativeHash, &hasRoot, &entry.LastSeenAt); err != nil {
+			return nil, fmt.Errorf("scan dedup cache: %w", err)
+		}
+		entry.HasTopLevelFolder = hasRoot != 0
+		key := strings.ToLower(strings.TrimSpace(entry.TorrentHash))
+		if key == "" {
+			key = entry.TorrentHash
+		}
+		entries[key] = entry
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate dedup cache: %w", err)
+	}
+
+	return entries, nil
+}
+
+// UpsertDedupCache stores representative mappings for the provided torrents.
+func (s *CrossSeedStore) UpsertDedupCache(ctx context.Context, instanceID int, entries []CrossSeedDedupCacheEntry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	if instanceID <= 0 {
+		return fmt.Errorf("invalid instance id %d", instanceID)
+	}
+
+	const stmtSQL = `
+		INSERT INTO cross_seed_dedup_cache (instance_id, torrent_hash, representative_hash, has_top_level_folder, last_seen_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(instance_id, torrent_hash) DO UPDATE SET
+			representative_hash = excluded.representative_hash,
+			has_top_level_folder = excluded.has_top_level_folder,
+			last_seen_at = excluded.last_seen_at
+	`
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin dedup cache tx: %w", err)
+	}
+
+	for _, entry := range entries {
+		if strings.TrimSpace(entry.TorrentHash) == "" {
+			continue
+		}
+		repHash := entry.RepresentativeHash
+		if strings.TrimSpace(repHash) == "" {
+			repHash = entry.TorrentHash
+		}
+		seenAt := entry.LastSeenAt
+		if seenAt.IsZero() {
+			seenAt = time.Now().UTC()
+		}
+		if _, err := tx.ExecContext(ctx, stmtSQL,
+			instanceID,
+			entry.TorrentHash,
+			repHash,
+			boolToSQLite(entry.HasTopLevelFolder),
+			seenAt,
+		); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("upsert dedup cache: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit dedup cache tx: %w", err)
+	}
+	return nil
+}
+
+// PruneDedupCacheBefore removes cached mappings that have not been observed since the cutoff.
+func (s *CrossSeedStore) PruneDedupCacheBefore(ctx context.Context, instanceID int, cutoff time.Time) (int64, error) {
+	if instanceID <= 0 || cutoff.IsZero() {
+		return 0, nil
+	}
+
+	const query = `
+		DELETE FROM cross_seed_dedup_cache
+		WHERE instance_id = ? AND last_seen_at < ?
+	`
+
+	result, err := s.db.ExecContext(ctx, query, instanceID, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("prune dedup cache: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, nil
+	}
+	return rows, nil
 }
 
 // UpsertSearchHistory updates the last searched timestamp for a torrent on an instance.

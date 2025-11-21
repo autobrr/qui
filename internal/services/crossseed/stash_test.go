@@ -82,6 +82,87 @@ func TestServiceGetTorrentFilesFromStashUsesContextCache(t *testing.T) {
 	assert.Equal(t, counting.callCount("abc123"), 2)
 }
 
+func TestServiceGetTorrentFilesFromStashReusesRepresentativeEntry(t *testing.T) {
+	const (
+		representativeHash = "abc123"
+		duplicateHash      = "zzz999"
+	)
+	instance := &models.Instance{ID: 1, Name: "primary"}
+	torrents := []qbt.Torrent{
+		{Hash: representativeHash, Name: "Rep.Torrent", Progress: 1.0},
+		{Hash: duplicateHash, Name: "Dup.Torrent", Progress: 1.0},
+	}
+	files := map[string]qbt.TorrentFiles{
+		representativeHash: {{Name: "rep.bin", Size: 42}},
+		duplicateHash:      {{Name: "dup.bin", Size: 42}},
+	}
+
+	base := newFakeSyncManager(instance, torrents, files)
+	counting := newCountingSyncManager(base)
+
+	svc := &Service{
+		syncManager: counting,
+		dedupCache: map[int]map[string]models.CrossSeedDedupCacheEntry{
+			instance.ID: {
+				representativeHash: {InstanceID: instance.ID, TorrentHash: representativeHash, RepresentativeHash: representativeHash},
+				duplicateHash:      {InstanceID: instance.ID, TorrentHash: duplicateHash, RepresentativeHash: representativeHash},
+			},
+		},
+	}
+
+	ctx, _ := ensureTorrentFileStash(context.Background())
+
+	_, err := svc.getTorrentFilesFromStash(ctx, instance.ID, representativeHash)
+	require.NoError(t, err)
+	assert.Equal(t, 1, counting.callCount(representativeHash))
+
+	_, err = svc.getTorrentFilesFromStash(ctx, instance.ID, duplicateHash)
+	require.NoError(t, err)
+	assert.Equal(t, 1, counting.callCount(representativeHash), "duplicate should reuse representative stash entry")
+	assert.Equal(t, 0, counting.callCount(duplicateHash), "duplicate should not trigger a direct GetTorrentFiles call")
+}
+
+func TestServiceGetTorrentFilesFromStashSeedsRepresentativeFromDuplicateFetch(t *testing.T) {
+	const (
+		representativeHash = "aaa111"
+		duplicateHash      = "bbb222"
+	)
+	instance := &models.Instance{ID: 1, Name: "primary"}
+	torrents := []qbt.Torrent{
+		{Hash: representativeHash, Name: "Rep.Torrent", Progress: 1.0},
+		{Hash: duplicateHash, Name: "Dup.Torrent", Progress: 1.0},
+	}
+	files := map[string]qbt.TorrentFiles{
+		representativeHash: {{Name: "rep.bin", Size: 42}},
+		duplicateHash:      {{Name: "dup.bin", Size: 42}},
+	}
+
+	base := newFakeSyncManager(instance, torrents, files)
+	counting := newCountingSyncManager(base)
+
+	svc := &Service{
+		syncManager: counting,
+		dedupCache: map[int]map[string]models.CrossSeedDedupCacheEntry{
+			instance.ID: {
+				representativeHash: {InstanceID: instance.ID, TorrentHash: representativeHash, RepresentativeHash: representativeHash},
+				duplicateHash:      {InstanceID: instance.ID, TorrentHash: duplicateHash, RepresentativeHash: representativeHash},
+			},
+		},
+	}
+
+	ctx, _ := ensureTorrentFileStash(context.Background())
+
+	_, err := svc.getTorrentFilesFromStash(ctx, instance.ID, duplicateHash)
+	require.NoError(t, err)
+	assert.Equal(t, 1, counting.callCount(duplicateHash))
+	assert.Equal(t, 0, counting.callCount(representativeHash))
+
+	_, err = svc.getTorrentFilesFromStash(ctx, instance.ID, representativeHash)
+	require.NoError(t, err)
+	assert.Equal(t, 1, counting.callCount(duplicateHash), "representative should reuse duplicate's cached files")
+	assert.Equal(t, 0, counting.callCount(representativeHash))
+}
+
 // countingSyncManager wraps fakeSyncManager to track GetTorrentFiles invocations per hash.
 type countingSyncManager struct {
 	*fakeSyncManager

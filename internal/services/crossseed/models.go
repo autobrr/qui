@@ -170,6 +170,9 @@ type TorrentSearchOptions struct {
 	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
 	// CacheMode forces cache behaviour when querying Torznab ("" = default, "bypass" = skip cache)
 	CacheMode string `json:"cache_mode,omitempty"`
+	// PrefetchedFiles allows callers that already loaded torrent files during analysis to avoid
+	// re-fetching them when executing the search. Internal use only.
+	PrefetchedFiles qbt.TorrentFiles `json:"-"`
 }
 
 // TorrentSearchResult represents an indexer search result that appears to match the seeded torrent.
@@ -290,6 +293,8 @@ func (s *AsyncIndexerFilteringState) Clone() *AsyncIndexerFilteringState {
 type AsyncTorrentAnalysis struct {
 	TorrentInfo    *TorrentInfo                `json:"torrent_info"`
 	FilteringState *AsyncIndexerFilteringState `json:"filtering_state"`
+	// SourceFiles memoises torrent files retrieved during analysis so subsequent stages can reuse them.
+	SourceFiles qbt.TorrentFiles `json:"-"`
 }
 
 // WebhookCheckRequest represents a request from autobrr to check if a release can be cross-seeded.

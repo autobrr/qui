@@ -100,6 +100,9 @@ type Service struct {
 	searchWorkerLimit    int
 	observations         *crossSeedObservations
 
+	dedupCacheMu sync.RWMutex
+	dedupCache   map[int]map[string]models.CrossSeedDedupCacheEntry
+
 	// test hooks
 	crossSeedInvoker    func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
 	torrentDownloadFunc func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
@@ -119,6 +122,7 @@ const (
 	minSearchCooldownMinutes            = 720
 	defaultSearchWorkerCount            = 3
 	indexerSearchCooldown               = 60 * time.Second
+	dedupCacheRetention                 = 30 * 24 * time.Hour
 )
 
 func computeAutomationSearchTimeout(indexerCount int) time.Duration {
@@ -173,6 +177,7 @@ func NewService(
 		indexerSearchLimiter: newIndexerSearchLimiter(indexerSearchCooldown),
 		searchWorkerLimit:    defaultSearchWorkerCount,
 		observations:         newCrossSeedObservations(),
+		dedupCache:           make(map[int]map[string]models.CrossSeedDedupCacheEntry),
 	}
 }
 
@@ -432,6 +437,84 @@ func (s *Service) ensureSearchRunFileCache(state *searchRunState) *torrentFileSt
 	return state.fileCache
 }
 
+func (s *Service) invalidateDedupCache(instanceID int) {
+	if s == nil || instanceID <= 0 {
+		return
+	}
+	s.dedupCacheMu.Lock()
+	if s.dedupCache != nil {
+		delete(s.dedupCache, instanceID)
+	}
+	s.dedupCacheMu.Unlock()
+}
+
+func (s *Service) loadDedupCache(ctx context.Context, instanceID int) map[string]models.CrossSeedDedupCacheEntry {
+	if s == nil || instanceID <= 0 {
+		return nil
+	}
+	s.dedupCacheMu.RLock()
+	entries := s.dedupCache[instanceID]
+	s.dedupCacheMu.RUnlock()
+	if entries != nil {
+		return entries
+	}
+	if s.automationStore == nil {
+		return nil
+	}
+	loaded, err := s.automationStore.GetDedupCache(ctx, instanceID)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", instanceID).
+			Msg("failed to load cross-seed dedup cache")
+		return nil
+	}
+	if loaded == nil {
+		loaded = make(map[string]models.CrossSeedDedupCacheEntry)
+	}
+	s.dedupCacheMu.Lock()
+	if s.dedupCache == nil {
+		s.dedupCache = make(map[int]map[string]models.CrossSeedDedupCacheEntry)
+	}
+	s.dedupCache[instanceID] = loaded
+	s.dedupCacheMu.Unlock()
+	return loaded
+}
+
+func (s *Service) getDedupCacheEntry(ctx context.Context, instanceID int, normalizedHash string) (models.CrossSeedDedupCacheEntry, bool) {
+	if normalizedHash == "" {
+		return models.CrossSeedDedupCacheEntry{}, false
+	}
+	entries := s.loadDedupCache(ctx, instanceID)
+	if len(entries) == 0 {
+		return models.CrossSeedDedupCacheEntry{}, false
+	}
+	entry, ok := entries[normalizedHash]
+	if !ok {
+		return models.CrossSeedDedupCacheEntry{}, false
+	}
+	if strings.TrimSpace(entry.RepresentativeHash) == "" {
+		entry.RepresentativeHash = entry.TorrentHash
+	}
+	return entry, true
+}
+
+func (s *Service) lookupRepresentativeHash(ctx context.Context, instanceID int, normalizedHash string) string {
+	entry, ok := s.getDedupCacheEntry(ctx, instanceID, normalizedHash)
+	if !ok {
+		return ""
+	}
+	rep := strings.TrimSpace(entry.RepresentativeHash)
+	if rep == "" {
+		rep = entry.TorrentHash
+	}
+	return strings.ToLower(rep)
+}
+
+func normalizeTorrentHash(hash string) string {
+	return strings.ToLower(strings.TrimSpace(hash))
+}
+
 type indexerSearchLimiter struct {
 	mu          sync.Mutex
 	nextAllowed map[int]time.Time
@@ -490,14 +573,28 @@ func (l *indexerSearchLimiter) waitSingle(ctx context.Context, indexerID int) er
 }
 
 func (s *Service) getTorrentFilesFromStash(ctx context.Context, instanceID int, hash string) (qbt.TorrentFiles, error) {
-	normalized := strings.ToLower(strings.TrimSpace(hash))
+	normalized := normalizeTorrentHash(hash)
 	stash := torrentFileStashFromContext(ctx)
+	representative := ""
+	if normalized != "" {
+		representative = s.lookupRepresentativeHash(ctx, instanceID, normalized)
+	}
 	if stash != nil && normalized != "" {
 		if files, ok := stash.Get(normalized); ok {
 			if s != nil && s.observations != nil {
 				s.observations.RecordStashHit()
 			}
 			return files, nil
+		}
+		if representative != "" && representative != normalized {
+			if files, ok := stash.Get(representative); ok {
+				if s != nil && s.observations != nil {
+					s.observations.RecordStashHit()
+				}
+				copied := append(qbt.TorrentFiles(nil), files...)
+				stash.Set(normalized, copied)
+				return copied, nil
+			}
 		}
 		if s != nil && s.observations != nil {
 			s.observations.RecordStashMiss()
@@ -517,6 +614,11 @@ func (s *Service) getTorrentFilesFromStash(ctx context.Context, instanceID int, 
 
 	if stash != nil && normalized != "" {
 		stash.Set(normalized, files)
+		if representative != "" && representative != normalized {
+			if _, ok := stash.Get(representative); !ok {
+				stash.Set(representative, append(qbt.TorrentFiles(nil), files...))
+			}
+		}
 	}
 
 	return files, nil
@@ -1035,9 +1137,14 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 		defer searchCancel()
 	}
 
+	var prefetchedFiles qbt.TorrentFiles
+	if asyncAnalysis != nil {
+		prefetchedFiles = asyncAnalysis.SourceFiles
+	}
 	searchResp, err := s.SearchTorrentMatches(searchCtx, instanceID, torrent.Hash, TorrentSearchOptions{
 		IndexerIDs:             allowedIndexerIDs,
 		FindIndividualEpisodes: settings.FindIndividualEpisodes,
+		PrefetchedFiles:        prefetchedFiles,
 	})
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -1698,6 +1805,7 @@ func (s *Service) FindCandidates(ctx context.Context, req *FindCandidatesRequest
 	if req.TorrentName == "" {
 		return nil, fmt.Errorf("torrent_name is required")
 	}
+	ctx, _ = ensureTorrentFileStash(ctx)
 
 	// Parse the title string to understand what we're looking for
 	targetRelease := s.releaseCache.Parse(req.TorrentName)
@@ -1795,14 +1903,11 @@ func (s *Service) FindCandidates(ctx context.Context, req *FindCandidatesRequest
 		for _, cand := range filtered {
 			files := batchFiles[cand.torrent.Hash]
 			if len(files) == 0 {
-				candidateFilesPtr, err := s.syncManager.GetTorrentFiles(ctx, instanceID, cand.torrent.Hash)
-				if err != nil || candidateFilesPtr == nil || len(*candidateFilesPtr) == 0 {
+				fetchedFiles, err := s.getTorrentFilesFromStash(ctx, instanceID, cand.torrent.Hash)
+				if err != nil || len(fetchedFiles) == 0 {
 					continue
 				}
-				files = *candidateFilesPtr
-				if len(files) == 0 {
-					continue
-				}
+				files = fetchedFiles
 				if batchFiles == nil {
 					batchFiles = make(map[string]qbt.TorrentFiles)
 				}
@@ -2303,11 +2408,11 @@ func (s *Service) findBestCandidateMatch(
 
 		files := candidate.TorrentFiles[torrent.Hash]
 		if len(files) == 0 {
-			candidateFilesPtr, err := s.syncManager.GetTorrentFiles(ctx, candidate.InstanceID, torrent.Hash)
-			if err != nil || candidateFilesPtr == nil || len(*candidateFilesPtr) == 0 {
+			fetchedFiles, err := s.getTorrentFilesFromStash(ctx, candidate.InstanceID, torrent.Hash)
+			if err != nil || len(fetchedFiles) == 0 {
 				continue
 			}
-			files = *candidateFilesPtr
+			files = fetchedFiles
 			if candidate.TorrentFiles != nil {
 				candidate.TorrentFiles[torrent.Hash] = files
 			}
@@ -2552,6 +2657,7 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 	result := &AsyncTorrentAnalysis{
 		TorrentInfo:    torrentInfo,
 		FilteringState: filteringState,
+		SourceFiles:    sourceFiles,
 	}
 
 	log.Debug().
@@ -2859,9 +2965,23 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	// Get files to find the largest file for better content type detection
-	sourceFiles, err := s.getTorrentFilesFromStash(ctx, instanceID, hash)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get torrent files: %w", err)
+	sourceFiles := opts.PrefetchedFiles
+	if len(sourceFiles) == 0 {
+		sourceFiles, err = s.getTorrentFilesFromStash(ctx, instanceID, hash)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get torrent files: %w", err)
+		}
+	} else {
+		if s != nil && s.observations != nil {
+			s.observations.RecordStashHit()
+		}
+		if stash := torrentFileStashFromContext(ctx); stash != nil {
+			normalized := strings.ToLower(strings.TrimSpace(hash))
+			if normalized != "" {
+				stash.Set(normalized, append(qbt.TorrentFiles(nil), sourceFiles...))
+			}
+		}
+		sourceFiles = append(qbt.TorrentFiles(nil), sourceFiles...)
 	}
 
 	// Parse both torrent name and largest file for content detection
@@ -3772,9 +3892,12 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 // This significantly reduces API calls and processing time when an instance contains multiple
 // cross-seeds of the same content from different trackers, while enforcing strict matching so
 // that season packs never collapse individual-episode queue entries.
-func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int, torrents []qbt.Torrent) ([]qbt.Torrent, map[string][]string) {
+func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int, torrents []qbt.Torrent, hasRootCache map[string]bool) ([]qbt.Torrent, map[string][]string) {
 	if len(torrents) <= 1 {
 		return torrents, map[string][]string{}
+	}
+	if hasRootCache == nil {
+		hasRootCache = make(map[string]bool)
 	}
 
 	// Parse all torrents and track their releases
@@ -3804,7 +3927,6 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 
 	groups := make(map[int]*contentGroup)
 	groupIndex := 0
-	hasRootCache := make(map[string]bool)
 
 	for i := range parsed {
 		current := &parsed[i]
@@ -3914,6 +4036,81 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 	return deduplicated, duplicateMap
 }
 
+func (s *Service) persistDedupCache(ctx context.Context, state *searchRunState, representatives []qbt.Torrent, duplicates map[string][]string, hasRootCache map[string]bool) {
+	if s == nil || s.automationStore == nil || state == nil {
+		return
+	}
+	if len(representatives) == 0 {
+		return
+	}
+	if hasRootCache == nil {
+		hasRootCache = make(map[string]bool)
+	}
+
+	entries := make([]models.CrossSeedDedupCacheEntry, 0, len(representatives))
+	runTimestamp := state.run.StartedAt
+	if runTimestamp.IsZero() {
+		runTimestamp = time.Now().UTC()
+	}
+
+	for _, rep := range representatives {
+		repHash := strings.TrimSpace(rep.Hash)
+		if repHash == "" {
+			continue
+		}
+		repNorm := normalizeTorrentHash(repHash)
+		repHasRoot := hasRootCache[repNorm]
+		entries = append(entries, models.CrossSeedDedupCacheEntry{
+			InstanceID:         state.opts.InstanceID,
+			TorrentHash:        repHash,
+			RepresentativeHash: repHash,
+			HasTopLevelFolder:  repHasRoot,
+			LastSeenAt:         runTimestamp,
+		})
+		if dupList := duplicates[repHash]; len(dupList) > 0 {
+			for _, dupHash := range dupList {
+				trimmed := strings.TrimSpace(dupHash)
+				if trimmed == "" {
+					continue
+				}
+				dupNorm := normalizeTorrentHash(trimmed)
+				dupHasRoot, ok := hasRootCache[dupNorm]
+				if !ok {
+					dupHasRoot = repHasRoot
+				}
+				entries = append(entries, models.CrossSeedDedupCacheEntry{
+					InstanceID:         state.opts.InstanceID,
+					TorrentHash:        trimmed,
+					RepresentativeHash: repHash,
+					HasTopLevelFolder:  dupHasRoot,
+					LastSeenAt:         runTimestamp,
+				})
+			}
+		}
+	}
+
+	if len(entries) == 0 {
+		return
+	}
+	if err := s.automationStore.UpsertDedupCache(ctx, state.opts.InstanceID, entries); err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", state.opts.InstanceID).
+			Msg("failed to persist cross-seed dedup cache")
+		return
+	}
+	s.invalidateDedupCache(state.opts.InstanceID)
+	cutoff := runTimestamp.Add(-dedupCacheRetention)
+	if _, err := s.automationStore.PruneDedupCacheBefore(ctx, state.opts.InstanceID, cutoff); err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", state.opts.InstanceID).
+			Msg("failed to prune cross-seed dedup cache")
+	} else {
+		s.invalidateDedupCache(state.opts.InstanceID)
+	}
+}
+
 func (s *Service) torrentHasTopLevelFolderCached(ctx context.Context, instanceID int, torrent *qbt.Torrent, cache map[string]bool) bool {
 	if torrent == nil {
 		return false
@@ -3986,10 +4183,26 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 		}
 	}
 
+	hasRootCache := make(map[string]bool)
+	if s.automationStore != nil {
+		if entries, err := s.automationStore.GetDedupCache(ctx, state.opts.InstanceID); err != nil {
+			log.Warn().Err(err).
+				Int("instanceID", state.opts.InstanceID).
+				Msg("failed to load cross-seed dedup cache")
+		} else if len(entries) > 0 {
+			for hash, entry := range entries {
+				hasRootCache[hash] = entry.HasTopLevelFolder
+			}
+		}
+	}
+
 	// Deduplicate source torrents to avoid searching the same content multiple times
 	// when cross-seeds exist in the source instance
 	stashCtx := contextWithTorrentFileStash(ctx, s.ensureSearchRunFileCache(state))
-	deduplicated, duplicates := s.deduplicateSourceTorrents(stashCtx, state.opts.InstanceID, filtered)
+	deduplicated, duplicates := s.deduplicateSourceTorrents(stashCtx, state.opts.InstanceID, filtered, hasRootCache)
+	if s.automationStore != nil {
+		s.persistDedupCache(ctx, state, deduplicated, duplicates, hasRootCache)
+	}
 
 	state.queue = deduplicated
 	state.index = 0
@@ -4183,6 +4396,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	searchResp, err := s.SearchTorrentMatches(searchCtx, state.opts.InstanceID, torrent.Hash, TorrentSearchOptions{
 		IndexerIDs:             allowedIndexerIDs,
 		FindIndividualEpisodes: state.opts.FindIndividualEpisodes,
+		PrefetchedFiles:        asyncAnalysis.SourceFiles,
 	})
 	if err != nil {
 		if ctx.Err() != nil {
