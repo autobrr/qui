@@ -1315,14 +1315,27 @@ func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Optional cache bypass for callers that need the freshest file list (e.g., rename dialogs)
+	refreshParam := strings.TrimSpace(r.URL.Query().Get("refresh"))
+	forceRefresh := refreshParam != "" && refreshParam != "0" && !strings.EqualFold(refreshParam, "false")
+	ctx := r.Context()
+	if forceRefresh {
+		ctx = qbittorrent.WithForceFilesRefresh(ctx)
+	}
+
 	// Get files
-	files, err := h.syncManager.GetTorrentFiles(r.Context(), instanceID, hash)
+	files, err := h.syncManager.GetTorrentFiles(ctx, instanceID, hash)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getFiles") {
 			return
 		}
 		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent files")
 		RespondError(w, http.StatusInternalServerError, "Failed to get torrent files")
+		return
+	}
+
+	if files == nil {
+		RespondError(w, http.StatusNotFound, "Torrent files not found")
 		return
 	}
 

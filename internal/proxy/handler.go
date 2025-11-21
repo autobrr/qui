@@ -1138,6 +1138,14 @@ func (h *Handler) handleTorrentFiles(w http.ResponseWriter, r *http.Request) {
 		h.writeProxyError(w)
 		return
 	}
+	if files == nil {
+		log.Warn().
+			Int("instanceId", instanceID).
+			Str("hash", hash).
+			Msg("Torrent files not found")
+		h.writeProxyError(w)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
