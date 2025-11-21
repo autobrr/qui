@@ -50,7 +50,11 @@ type instanceProvider interface {
 // qbittorrentSync exposes the sync manager functionality needed by the service.
 type qbittorrentSync interface {
 	GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
+	// GetTorrentFilesBatch returns files keyed by the provided hashes (normalized by callers).
+	// The returned map uses the same hash strings that were requested; missing entries indicate
+	// per-hash fetch failures or absent torrents.
 	GetTorrentFiles(ctx context.Context, instanceID int, hash string) (*qbt.TorrentFiles, error)
+	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	GetTorrentProperties(ctx context.Context, instanceID int, hash string) (*qbt.TorrentProperties, error)
 	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error
 	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
@@ -1488,10 +1492,10 @@ func (s *Service) FindCandidates(ctx context.Context, req *FindCandidatesRequest
 			continue
 		}
 
-		var matchedTorrents []qbt.Torrent
-		matchTypeCounts := make(map[string]int)
+		torrentByHash := make(map[string]qbt.Torrent, len(torrents))
+		candidateHashes := make([]string, 0, len(torrents))
 
-		// Check EVERY torrent to see if it has the files we need
+		// Pre-filter torrents before loading files to reduce downstream work
 		for _, torrent := range torrents {
 			// Only complete torrents can provide data
 			if torrent.Progress < 1.0 {
@@ -1505,27 +1509,55 @@ func (s *Service) FindCandidates(ctx context.Context, req *FindCandidatesRequest
 				continue
 			}
 
-			// Get the candidate torrent's files to check if it has what we need
-			candidateFilesPtr, err := s.syncManager.GetTorrentFiles(ctx, instanceID, torrent.Hash)
-			if err != nil || candidateFilesPtr == nil || len(*candidateFilesPtr) == 0 {
+			hashKey := normalizeHash(torrent.Hash)
+			if hashKey == "" {
 				continue
 			}
-			candidateFiles := *candidateFilesPtr
+			if _, exists := torrentByHash[hashKey]; exists {
+				continue
+			}
+
+			torrentByHash[hashKey] = torrent
+			candidateHashes = append(candidateHashes, hashKey)
+		}
+
+		if len(candidateHashes) == 0 {
+			continue
+		}
+
+		candidates := make([]qbt.Torrent, 0, len(torrentByHash))
+		for _, t := range torrentByHash {
+			candidates = append(candidates, t)
+		}
+		filesByHash := s.batchLoadCandidateFiles(ctx, instanceID, candidates)
+
+		var matchedTorrents []qbt.Torrent
+		matchTypeCounts := make(map[string]int)
+
+		for _, hashKey := range candidateHashes {
+			torrent := torrentByHash[hashKey]
+			candidateFiles, ok := filesByHash[hashKey]
+			if !ok || len(candidateFiles) == 0 {
+				continue
+			}
 
 			// Now check if this torrent actually has the files we need
 			// This handles: single episode in season pack, season pack containing episodes, etc.
+			candidateRelease := s.releaseCache.Parse(torrent.Name)
 			matchType := s.getMatchTypeFromTitle(req.TorrentName, torrent.Name, targetRelease, candidateRelease, candidateFiles, req.IgnorePatterns)
-			if matchType != "" {
-				matchedTorrents = append(matchedTorrents, torrent)
-				matchTypeCounts[matchType]++
-				log.Debug().
-					Str("targetTitle", req.TorrentName).
-					Str("existingTorrent", torrent.Name).
-					Int("instanceID", instanceID).
-					Str("instanceName", instance.Name).
-					Str("matchType", matchType).
-					Msg("Found matching torrent with required files")
+			if matchType == "" {
+				continue
 			}
+
+			matchedTorrents = append(matchedTorrents, torrent)
+			matchTypeCounts[matchType]++
+			log.Debug().
+				Str("targetTitle", req.TorrentName).
+				Str("existingTorrent", torrent.Name).
+				Int("instanceID", instanceID).
+				Str("instanceName", instance.Name).
+				Str("matchType", matchType).
+				Msg("Found matching torrent with required files")
 		}
 
 		// Add all matches from this instance
@@ -1796,7 +1828,8 @@ func (s *Service) processCrossSeedCandidate(
 		}
 	}
 
-	matchedTorrent, candidateFiles, matchType := s.findBestCandidateMatch(ctx, candidate, sourceRelease, sourceFiles, req.IgnorePatterns)
+	candidateFilesByHash := s.batchLoadCandidateFiles(ctx, candidate.InstanceID, candidate.Torrents)
+	matchedTorrent, candidateFiles, matchType := s.findBestCandidateMatch(ctx, candidate, sourceRelease, sourceFiles, req.IgnorePatterns, candidateFilesByHash)
 	if matchedTorrent == nil {
 		result.Status = "no_match"
 		result.Message = "No matching torrents found with required files"
@@ -1965,6 +1998,11 @@ func (s *Service) processCrossSeedCandidate(
 	return result
 }
 
+func normalizeHash(hash string) string {
+	// qBittorrent file lookups and batch maps use uppercase-trimmed hashes to keep keying consistent.
+	return strings.ToUpper(strings.TrimSpace(hash))
+}
+
 func matchTypePriority(matchType string) int {
 	switch matchType {
 	case "exact":
@@ -1981,12 +2019,79 @@ func matchTypePriority(matchType string) int {
 	}
 }
 
+func (s *Service) batchLoadCandidateFiles(ctx context.Context, instanceID int, torrents []qbt.Torrent) map[string]qbt.TorrentFiles {
+	if len(torrents) == 0 || s.syncManager == nil {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(torrents))
+	hashes := make([]string, 0, len(torrents))
+	for _, torrent := range torrents {
+		if torrent.Progress < 1.0 {
+			continue
+		}
+		hash := normalizeHash(torrent.Hash)
+		if hash == "" {
+			continue
+		}
+		if _, exists := seen[hash]; exists {
+			continue
+		}
+		seen[hash] = struct{}{}
+		hashes = append(hashes, hash)
+	}
+
+	if len(hashes) == 0 {
+		return nil
+	}
+
+	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+	if err != nil {
+		log.Warn().
+			Int("instanceID", instanceID).
+			Int("hashCount", len(hashes)).
+			Err(err).
+			Msg("Failed to batch load torrent files for candidate selection")
+
+		// Fallback: try single-torrent fetches so file-level validation still runs
+		filesByHash = make(map[string]qbt.TorrentFiles, len(hashes))
+		for _, hash := range hashes {
+			if ctx.Err() != nil {
+				return filesByHash
+			}
+
+			filesPtr, singleErr := s.syncManager.GetTorrentFiles(ctx, instanceID, hash)
+			if singleErr != nil {
+				log.Trace().
+					Int("instanceID", instanceID).
+					Str("hash", hash).
+					Err(singleErr).
+					Msg("Failed to fetch torrent files with single request after batch error")
+				continue
+			}
+
+			if filesPtr == nil || len(*filesPtr) == 0 {
+				log.Warn().
+					Int("instanceID", instanceID).
+					Str("hash", hash).
+					Msg("Empty torrent files returned after batch failure fallback")
+				continue
+			}
+
+			filesByHash[hash] = *filesPtr
+		}
+	}
+
+	return filesByHash
+}
+
 func (s *Service) findBestCandidateMatch(
 	ctx context.Context,
 	candidate CrossSeedCandidate,
 	sourceRelease rls.Release,
 	sourceFiles qbt.TorrentFiles,
 	ignorePatterns []string,
+	filesByHash map[string]qbt.TorrentFiles,
 ) (*qbt.Torrent, qbt.TorrentFiles, string) {
 	var (
 		matchedTorrent *qbt.Torrent
@@ -1997,16 +2102,20 @@ func (s *Service) findBestCandidateMatch(
 		bestFileCount  int
 	)
 
+	if len(filesByHash) == 0 {
+		return nil, nil, ""
+	}
+
 	for _, torrent := range candidate.Torrents {
 		if torrent.Progress < 1.0 {
 			continue
 		}
 
-		candidateFilesPtr, err := s.syncManager.GetTorrentFiles(ctx, candidate.InstanceID, torrent.Hash)
-		if err != nil || candidateFilesPtr == nil || len(*candidateFilesPtr) == 0 {
+		hashKey := normalizeHash(torrent.Hash)
+		files, ok := filesByHash[hashKey]
+		if !ok || len(files) == 0 {
 			continue
 		}
-		files := *candidateFilesPtr
 
 		candidateRelease := s.releaseCache.Parse(torrent.Name)
 		candidateMatchType := s.getMatchType(sourceRelease, candidateRelease, sourceFiles, files, ignorePatterns)
@@ -3405,8 +3514,8 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		rootFolderKnown bool
 	}
 
-	groups := make(map[int]*contentGroup)
-	groupIndex := 0
+	groups := make([]*contentGroup, 0)
+	groupMap := make(map[string]int) // hash to group index
 	hasRootCache := make(map[string]bool)
 
 	for i := range parsed {
@@ -3414,36 +3523,23 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 
 		// Try to find an existing group this torrent belongs to
 		foundGroup := -1
-		for _, existing := range parsed[:i] {
+		for j := 0; j < i; j++ {
+			existing := &parsed[j]
 			if s.releasesMatch(current.release, existing.release, false) {
-				// Find which group this existing torrent belongs to
-				for groupID, group := range groups {
-					if group.representative.Hash == existing.torrent.Hash {
-						foundGroup = groupID
-						break
-					}
-					// Check if any duplicate in the group matches
-					if slices.Contains(group.duplicates, existing.torrent.Hash) {
-						foundGroup = groupID
-					}
-					if foundGroup != -1 {
-						break
-					}
-				}
-				if foundGroup != -1 {
-					break
-				}
+				foundGroup = groupMap[existing.torrent.Hash]
+				break
 			}
 		}
 
 		if foundGroup == -1 {
 			// Create new group with this torrent as the first member
-			groups[groupIndex] = &contentGroup{
+			group := &contentGroup{
 				representative: &current.torrent,
 				addedOn:        current.torrent.AddedOn,
 				duplicates:     []string{},
 			}
-			groupIndex++
+			groups = append(groups, group)
+			groupMap[current.torrent.Hash] = len(groups) - 1
 			continue
 		}
 
@@ -3475,6 +3571,7 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		} else {
 			group.duplicates = append(group.duplicates, current.torrent.Hash)
 		}
+		groupMap[current.torrent.Hash] = foundGroup
 	}
 
 	// Build deduplicated list from group representatives
