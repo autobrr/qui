@@ -1060,8 +1060,9 @@ class ApiClient {
     })
   }
 
-  async getTorrentFiles(instanceId: number, hash: string): Promise<TorrentFile[]> {
-    return this.request<TorrentFile[]>(`/instances/${instanceId}/torrents/${hash}/files`)
+  async getTorrentFiles(instanceId: number, hash: string, options?: { refresh?: boolean }): Promise<TorrentFile[]> {
+    const query = options?.refresh ? "?refresh=1" : ""
+    return this.request<TorrentFile[]>(`/instances/${instanceId}/torrents/${hash}/files${query}`)
   }
 
   async setTorrentFilePriority(instanceId: number, hash: string, indices: number[], priority: number): Promise<void> {
