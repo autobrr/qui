@@ -31,14 +31,9 @@ func isAdultContent(release rls.Release) bool {
 	collectionLower := strings.ToLower(release.Collection)
 
 	// Check for explicit adult indicators that are unlikely to appear in legitimate TV/movies
-	adultIndicators := []string{
-		"xxx",
-	}
-
-	for _, indicator := range adultIndicators {
-		if strings.Contains(titleLower, indicator) || strings.Contains(subtitleLower, indicator) || strings.Contains(collectionLower, indicator) {
-			return true
-		}
+	if (reAdultXXX.MatchString(release.Title) || reAdultXXX.MatchString(release.Subtitle) || reAdultXXX.MatchString(release.Collection)) &&
+		!isBenignXXXContent(release, titleLower, subtitleLower, collectionLower) {
+		return true
 	}
 
 	// Check for JAV code patterns (4 letters - 3-4 digits), but exclude if it's a valid RIAJ media code
@@ -60,6 +55,22 @@ func isAdultContent(release rls.Release) bool {
 		return true
 	}
 
+	return false
+}
+
+func isBenignXXXContent(release rls.Release, titleLower, subtitleLower, collectionLower string) bool {
+	// Avoid flagging the mainstream xXx film franchise
+	if strings.HasPrefix(titleLower, "xxx") || strings.HasPrefix(subtitleLower, "xxx") || strings.HasPrefix(collectionLower, "xxx") {
+		if release.Year == 2002 || release.Year == 2005 || release.Year == 2017 {
+			return true
+		}
+		if strings.Contains(titleLower, "xander cage") || strings.Contains(subtitleLower, "xander cage") || strings.Contains(collectionLower, "xander cage") {
+			return true
+		}
+		if strings.Contains(titleLower, "state of the union") || strings.Contains(subtitleLower, "state of the union") || strings.Contains(collectionLower, "state of the union") {
+			return true
+		}
+	}
 	return false
 }
 
