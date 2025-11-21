@@ -1237,6 +1237,7 @@ export interface CrossSeedAutomationSettings {
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
   runExternalProgramId?: number | null
+  preventReaddPreviouslyAdded: boolean
   completion?: CrossSeedCompletionSettings
   createdAt?: string
   updatedAt?: string
@@ -1255,6 +1256,7 @@ export interface CrossSeedAutomationSettingsPatch {
   sizeMismatchTolerancePercent?: number
   useCategoryFromIndexer?: boolean
   runExternalProgramId?: number | null
+  preventReaddPreviouslyAdded?: boolean
   completion?: CrossSeedCompletionSettingsPatch
 }
 
@@ -1263,6 +1265,19 @@ export interface CrossSeedAutomationStatus {
   lastRun?: CrossSeedRun | null
   nextRunAt?: string
   running: boolean
+}
+
+export interface CrossSeedObservations {
+  generatedAt: string
+  stashHits: number
+  stashMisses: number
+  deduplicatedGroups: number
+  deduplicatedDuplicates: number
+  searchTimeouts: number
+  rateLimiterWaits: number
+  rateLimiterWaitTimeMillis: number
+  activeWorkers: number
+  workerCapacity: number
 }
 
 export interface CrossSeedSearchFilters {

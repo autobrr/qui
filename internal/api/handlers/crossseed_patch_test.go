@@ -25,6 +25,7 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 		SizeMismatchTolerancePercent: 5.0,
 		UseCategoryFromIndexer:       false,
 		RunExternalProgramID:         ptrInt(42),
+		PreventReaddPreviouslyAdded:  false,
 		Completion: models.CrossSeedCompletionSettings{
 			Enabled:           false,
 			Categories:        []string{"tv"},
@@ -49,6 +50,7 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 		SizeMismatchTolerancePercent: ptrFloat(12.5),
 		UseCategoryFromIndexer:       ptrBool(true),
 		RunExternalProgramID:         optionalInt{Set: true, Value: nil},
+		PreventReaddPreviouslyAdded:  ptrBool(true),
 		Completion: &completionSettingsPatchRequest{
 			Enabled:           ptrBool(true),
 			Categories:        &[]string{"movies"},
@@ -99,6 +101,9 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 	if existing.RunExternalProgramID != nil {
 		t.Fatalf("expected runExternalProgramID to be nil")
 	}
+	if !existing.PreventReaddPreviouslyAdded {
+		t.Fatalf("expected prevent re-add flag to be true")
+	}
 	if existing.Completion.Enabled != true ||
 		len(existing.Completion.Categories) != 1 ||
 		existing.Completion.Categories[0] != "movies" {
@@ -117,10 +122,11 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 
 func TestApplyAutomationSettingsPatch_PreservesUnspecifiedFields(t *testing.T) {
 	existing := models.CrossSeedAutomationSettings{
-		Enabled:            true,
-		RunIntervalMinutes: 60,
-		Category:           stringPtr("tv"),
-		Tags:               []string{"keep"},
+		Enabled:                     true,
+		RunIntervalMinutes:          60,
+		Category:                    stringPtr("tv"),
+		Tags:                        []string{"keep"},
+		PreventReaddPreviouslyAdded: true,
 		Completion: models.CrossSeedCompletionSettings{
 			Enabled: true,
 			Tags:    []string{"keep-tag"},
@@ -151,6 +157,9 @@ func TestApplyAutomationSettingsPatch_PreservesUnspecifiedFields(t *testing.T) {
 	}
 	if existing.SizeMismatchTolerancePercent != 20 {
 		t.Fatalf("expected updated tolerance to be 20, got %.2f", existing.SizeMismatchTolerancePercent)
+	}
+	if !existing.PreventReaddPreviouslyAdded {
+		t.Fatalf("expected prevent re-add flag to remain true")
 	}
 }
 

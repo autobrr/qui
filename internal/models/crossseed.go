@@ -35,6 +35,7 @@ type CrossSeedAutomationSettings struct {
 	UseCategoryFromIndexer       bool                        `json:"useCategoryFromIndexer"`       // Use indexer name as category for cross-seeds
 	RunExternalProgramID         *int                        `json:"runExternalProgramId"`         // Optional external program to run after successful cross-seed injection
 	Completion                   CrossSeedCompletionSettings `json:"completion"`                   // Automatic search on torrent completion
+	PreventReaddPreviouslyAdded  bool                        `json:"preventReaddPreviouslyAdded"`  // Block re-adding previously cross-seeded hashes
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -78,6 +79,7 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		UseCategoryFromIndexer:       false, // Default to false - don't override categories by default
 		RunExternalProgramID:         nil,   // No external program by default
 		Completion:                   DefaultCrossSeedCompletionSettings(),
+		PreventReaddPreviouslyAdded:  true,
 		CreatedAt:                    time.Now().UTC(),
 		UpdatedAt:                    time.Now().UTC(),
 	}
@@ -230,6 +232,15 @@ type CrossSeedFeedItem struct {
 	InfoHash    *string                 `json:"infoHash,omitempty"`
 }
 
+// CrossSeedDedupCacheEntry stores representative/duplicate relationships for torrents in an instance.
+type CrossSeedDedupCacheEntry struct {
+	InstanceID         int       `json:"instanceId"`
+	TorrentHash        string    `json:"torrentHash"`
+	RepresentativeHash string    `json:"representativeHash"`
+	HasTopLevelFolder  bool      `json:"hasTopLevelFolder"`
+	LastSeenAt         time.Time `json:"lastSeenAt"`
+}
+
 // CrossSeedStore persists automation settings, runs, and feed items.
 type CrossSeedStore struct {
 	db dbinterface.Querier
@@ -246,7 +257,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		SELECT enabled, run_interval_minutes, start_paused, category,
 		       tags, ignore_patterns, target_instance_ids, target_indexer_ids,
 		       max_results_per_run, find_individual_episodes, size_mismatch_tolerance_percent,
-		       use_category_from_indexer, run_external_program_id,
+		       use_category_from_indexer, prevent_readd_hashes, run_external_program_id,
 		       completion_enabled, completion_categories, completion_tags,
 		       completion_exclude_categories, completion_exclude_tags,
 		       created_at, updated_at
@@ -278,6 +289,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&settings.FindIndividualEpisodes,
 		&settings.SizeMismatchTolerancePercent,
 		&settings.UseCategoryFromIndexer,
+		&settings.PreventReaddPreviouslyAdded,
 		&runExternalProgramID,
 		&completionEnabled,
 		&completionCategories,
@@ -387,11 +399,11 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			id, enabled, run_interval_minutes, start_paused, category,
 			tags, ignore_patterns, target_instance_ids, target_indexer_ids,
 			max_results_per_run, find_individual_episodes, size_mismatch_tolerance_percent,
-			use_category_from_indexer, run_external_program_id,
+			use_category_from_indexer, prevent_readd_hashes, run_external_program_id,
 			completion_enabled, completion_categories, completion_tags,
 			completion_exclude_categories, completion_exclude_tags
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -406,6 +418,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			find_individual_episodes = excluded.find_individual_episodes,
 			size_mismatch_tolerance_percent = excluded.size_mismatch_tolerance_percent,
 			use_category_from_indexer = excluded.use_category_from_indexer,
+			prevent_readd_hashes = excluded.prevent_readd_hashes,
 			run_external_program_id = excluded.run_external_program_id,
 			completion_enabled = excluded.completion_enabled,
 			completion_categories = excluded.completion_categories,
@@ -439,6 +452,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		settings.FindIndividualEpisodes,
 		settings.SizeMismatchTolerancePercent,
 		settings.UseCategoryFromIndexer,
+		settings.PreventReaddPreviouslyAdded,
 		runExternalProgramID,
 		settings.Completion.Enabled,
 		completionCategories,
@@ -922,6 +936,123 @@ func (s *CrossSeedStore) ListSearchRuns(ctx context.Context, instanceID, limit, 
 	}
 
 	return runs, nil
+}
+
+// GetDedupCache returns cached representative mappings for an instance keyed by normalized hash.
+func (s *CrossSeedStore) GetDedupCache(ctx context.Context, instanceID int) (map[string]CrossSeedDedupCacheEntry, error) {
+	if instanceID <= 0 {
+		return map[string]CrossSeedDedupCacheEntry{}, nil
+	}
+
+	const query = `
+		SELECT torrent_hash, representative_hash, has_top_level_folder, last_seen_at
+		FROM cross_seed_dedup_cache
+		WHERE instance_id = ?
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("get dedup cache: %w", err)
+	}
+	defer rows.Close()
+
+	entries := make(map[string]CrossSeedDedupCacheEntry)
+	for rows.Next() {
+		var (
+			entry   CrossSeedDedupCacheEntry
+			hasRoot int
+		)
+		entry.InstanceID = instanceID
+		if err := rows.Scan(&entry.TorrentHash, &entry.RepresentativeHash, &hasRoot, &entry.LastSeenAt); err != nil {
+			return nil, fmt.Errorf("scan dedup cache: %w", err)
+		}
+		entry.HasTopLevelFolder = hasRoot != 0
+		key := strings.ToLower(strings.TrimSpace(entry.TorrentHash))
+		if key == "" {
+			key = entry.TorrentHash
+		}
+		entries[key] = entry
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate dedup cache: %w", err)
+	}
+
+	return entries, nil
+}
+
+// UpsertDedupCache stores representative mappings for the provided torrents.
+func (s *CrossSeedStore) UpsertDedupCache(ctx context.Context, instanceID int, entries []CrossSeedDedupCacheEntry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	if instanceID <= 0 {
+		return fmt.Errorf("invalid instance id %d", instanceID)
+	}
+
+	const stmtSQL = `
+		INSERT INTO cross_seed_dedup_cache (instance_id, torrent_hash, representative_hash, has_top_level_folder, last_seen_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(instance_id, torrent_hash) DO UPDATE SET
+			representative_hash = excluded.representative_hash,
+			has_top_level_folder = excluded.has_top_level_folder,
+			last_seen_at = excluded.last_seen_at
+	`
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin dedup cache tx: %w", err)
+	}
+
+	for _, entry := range entries {
+		if strings.TrimSpace(entry.TorrentHash) == "" {
+			continue
+		}
+		repHash := entry.RepresentativeHash
+		if strings.TrimSpace(repHash) == "" {
+			repHash = entry.TorrentHash
+		}
+		seenAt := entry.LastSeenAt
+		if seenAt.IsZero() {
+			seenAt = time.Now().UTC()
+		}
+		if _, err := tx.ExecContext(ctx, stmtSQL,
+			instanceID,
+			entry.TorrentHash,
+			repHash,
+			boolToSQLite(entry.HasTopLevelFolder),
+			seenAt,
+		); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("upsert dedup cache: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit dedup cache tx: %w", err)
+	}
+	return nil
+}
+
+// PruneDedupCacheBefore removes cached mappings that have not been observed since the cutoff.
+func (s *CrossSeedStore) PruneDedupCacheBefore(ctx context.Context, instanceID int, cutoff time.Time) (int64, error) {
+	if instanceID <= 0 || cutoff.IsZero() {
+		return 0, nil
+	}
+
+	const query = `
+		DELETE FROM cross_seed_dedup_cache
+		WHERE instance_id = ? AND last_seen_at < ?
+	`
+
+	result, err := s.db.ExecContext(ctx, query, instanceID, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("prune dedup cache: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, nil
+	}
+	return rows, nil
 }
 
 // UpsertSearchHistory updates the last searched timestamp for a torrent on an instance.

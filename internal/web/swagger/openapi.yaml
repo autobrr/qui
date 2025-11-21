@@ -2371,6 +2371,22 @@ paths:
         '500':
           description: Failed to load automation status
 
+  /api/cross-seed/observations:
+    get:
+      tags:
+        - Cross-Seed
+      summary: Get cross-seed observability snapshot
+      description: Returns aggregated counters captured during seeded torrent search automation (stash reuse, dedup activity, limiter waits, worker usage).
+      responses:
+        '200':
+          description: Current observability metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedObservations'
+        '500':
+          description: Failed to load cross-seed observability data
+
   /api/cross-seed/runs:
     get:
       tags:
@@ -3629,6 +3645,10 @@ components:
           format: float
         useCategoryFromIndexer:
           type: boolean
+        preventReaddPreviouslyAdded:
+          type: boolean
+          description: Prevent re-adding hashes that were already injected by cross-seed
+          default: true
         runExternalProgramId:
           type: integer
           nullable: true
@@ -3674,6 +3694,10 @@ components:
           format: float
         useCategoryFromIndexer:
           type: boolean
+        preventReaddPreviouslyAdded:
+          type: boolean
+          description: Prevent re-adding torrents that were already cross-seeded
+          default: true
         runExternalProgramId:
           type: integer
           nullable: true
@@ -3719,6 +3743,38 @@ components:
           nullable: true
         running:
           type: boolean
+
+    CrossSeedObservations:
+      type: object
+      properties:
+        generatedAt:
+          type: string
+          format: date-time
+        stashHits:
+          type: integer
+          format: int64
+        stashMisses:
+          type: integer
+          format: int64
+        deduplicatedGroups:
+          type: integer
+          format: int64
+        deduplicatedDuplicates:
+          type: integer
+          format: int64
+        searchTimeouts:
+          type: integer
+          format: int64
+        rateLimiterWaits:
+          type: integer
+          format: int64
+        rateLimiterWaitTimeMillis:
+          type: integer
+          format: int64
+        activeWorkers:
+          type: integer
+        workerCapacity:
+          type: integer
 
     CrossSeedSearchSettingsPatch:
       type: object

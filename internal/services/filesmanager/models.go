@@ -33,6 +33,14 @@ type SyncInfo struct {
 	FileCount       int
 }
 
+// BatchRequest describes a batch lookup for cached torrent files.
+// Progress mirrors the caller's current torrent progress so the cache can
+// determine whether the stored snapshot is still valid for in-progress data.
+type BatchRequest struct {
+	Hash     string
+	Progress float64
+}
+
 // CacheStats provides statistics about the file cache
 type CacheStats struct {
 	TotalTorrents   int

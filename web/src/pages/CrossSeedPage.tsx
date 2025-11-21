@@ -64,6 +64,7 @@ interface GlobalCrossSeedSettings {
   useCategoryFromIndexer: boolean
   runExternalProgramId?: number | null
   ignorePatterns: string
+  preventReaddPreviouslyAdded: boolean
 }
 
 interface CompletionFormState {
@@ -97,6 +98,7 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   useCategoryFromIndexer: false,
   runExternalProgramId: null,
   ignorePatterns: "",
+  preventReaddPreviouslyAdded: true,
 }
 
 const DEFAULT_COMPLETION_SETTINGS: CrossSeedCompletionSettings = {
@@ -340,6 +342,7 @@ export function CrossSeedPage() {
         ignorePatterns: Array.isArray(settings.ignorePatterns)
           ? settings.ignorePatterns.join("\n")
           : "",
+        preventReaddPreviouslyAdded: settings.preventReaddPreviouslyAdded ?? true,
       })
       setGlobalSettingsInitialized(true)
     }
@@ -456,7 +459,8 @@ export function CrossSeedPage() {
           sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent,
           useCategoryFromIndexer: settings.useCategoryFromIndexer,
           runExternalProgramId: settings.runExternalProgramId ?? null,
-          ignorePatterns: ignorePatterns.length > 0 ? ignorePatterns.join(", ") : "",
+        ignorePatterns: ignorePatterns.length > 0 ? ignorePatterns.join(", ") : "",
+        preventReaddPreviouslyAdded: settings.preventReaddPreviouslyAdded ?? true,
         }
 
     return {
@@ -465,6 +469,7 @@ export function CrossSeedPage() {
       useCategoryFromIndexer: globalSource.useCategoryFromIndexer,
       runExternalProgramId: globalSource.runExternalProgramId,
       ignorePatterns: normalizeIgnorePatterns(globalSource.ignorePatterns),
+      preventReaddPreviouslyAdded: globalSource.preventReaddPreviouslyAdded,
     }
   }, [
     settings,
@@ -1642,6 +1647,22 @@ export function CrossSeedPage() {
                 />
                 <p className="text-xs text-muted-foreground">
                   Filters out results with sizes differing by more than this percentage. Set to 0 for exact size matching.
+                </p>
+              </div>
+              <div className="space-y-2 border-t border-border/60 pt-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="global-prevent-readd" className="font-medium">Persistent hash guard</Label>
+                    <p className="text-xs text-muted-foreground">Record every hash added by cross-seed and skip re-adding ones you already injected.</p>
+                  </div>
+                  <Switch
+                    id="global-prevent-readd"
+                    checked={globalSettings.preventReaddPreviouslyAdded}
+                    onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, preventReaddPreviouslyAdded: !!value }))}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Leave this enabled (default) to avoid looping the same releases into your clients. Disable only if you plan to repopulate or reset the persistent store manually.
                 </p>
               </div>
             </div>

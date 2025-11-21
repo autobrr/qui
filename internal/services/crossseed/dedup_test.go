@@ -24,7 +24,7 @@ func TestService_deduplicateSourceTorrents_PreservesEpisodesAlongsideSeasonPacks
 		AddedOn: 1,
 	}
 
-	deduped, duplicates := svc.deduplicateSourceTorrents(context.Background(), 1, []qbt.Torrent{seasonPack, episode})
+	deduped, duplicates := svc.deduplicateSourceTorrents(context.Background(), 1, []qbt.Torrent{seasonPack, episode}, nil)
 	require.Len(t, deduped, 2, "season pack should not eliminate individual episodes during deduplication")
 	require.Empty(t, duplicates)
 
@@ -49,7 +49,7 @@ func TestService_deduplicateSourceTorrents_PreservesEpisodesAlongsideSeasonPacks
 		},
 	}
 
-	dedupedEpisodes, duplicateMap := svc.deduplicateSourceTorrents(context.Background(), 1, duplicateEpisodes)
+	dedupedEpisodes, duplicateMap := svc.deduplicateSourceTorrents(context.Background(), 1, duplicateEpisodes, nil)
 	require.Len(t, dedupedEpisodes, 1, "exact episode duplicates should still collapse to the oldest torrent")
 	require.Equal(t, "hash-older-episode", dedupedEpisodes[0].Hash)
 	require.Contains(t, duplicateMap, "hash-older-episode")
@@ -76,7 +76,7 @@ func TestService_deduplicateSourceTorrents_PrefersRootFolders(t *testing.T) {
 		{Hash: "hash-root", Name: "Generic.Show.2025.S01E01.1080p.WEB-DL", AddedOn: 2},
 	}
 
-	deduped, _ := svc.deduplicateSourceTorrents(context.Background(), 1, torrents)
+	deduped, _ := svc.deduplicateSourceTorrents(context.Background(), 1, torrents, nil)
 	require.Len(t, deduped, 1)
 	require.Equal(t, "hash-root", deduped[0].Hash, "torrent with top-level folder should win even if newer")
 }

@@ -24,6 +24,22 @@ type CrossSeedHandler struct {
 	service *crossseed.Service
 }
 
+// GetCrossSeedObservations godoc
+// @Summary Get aggregated telemetry about cross-seed automation
+// @Description Returns counters describing seeded search performance characteristics for surfacing on the Torznab Search Cache page.
+// @Tags cross-seed
+// @Produce json
+// @Success 200 {object} crossseed.ObservationsSnapshot
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/observations [get]
+func (h *CrossSeedHandler) GetCrossSeedObservations(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.service == nil {
+		RespondError(w, http.StatusInternalServerError, "cross-seed service unavailable")
+		return
+	}
+	RespondJSON(w, http.StatusOK, h.service.ObservationsSnapshot())
+}
+
 type automationSettingsRequest struct {
 	Enabled                      bool                       `json:"enabled"`
 	RunIntervalMinutes           int                        `json:"runIntervalMinutes"`
@@ -38,7 +54,25 @@ type automationSettingsRequest struct {
 	SizeMismatchTolerancePercent float64                    `json:"sizeMismatchTolerancePercent"`
 	UseCategoryFromIndexer       bool                       `json:"useCategoryFromIndexer"`
 	RunExternalProgramID         *int                       `json:"runExternalProgramId"`
+	PreventReaddPreviouslyAdded  bool                       `json:"preventReaddPreviouslyAdded"`
+	preventReaddProvided         bool                       `json:"-"`
 	Completion                   *completionSettingsRequest `json:"completion"`
+}
+
+func (r *automationSettingsRequest) UnmarshalJSON(data []byte) error {
+	type alias automationSettingsRequest
+	var aux alias
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	*r = automationSettingsRequest(aux)
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	_, r.preventReaddProvided = raw["preventReaddPreviouslyAdded"]
+	return nil
 }
 
 type completionSettingsRequest struct {
@@ -63,6 +97,7 @@ type automationSettingsPatchRequest struct {
 	SizeMismatchTolerancePercent *float64                        `json:"sizeMismatchTolerancePercent,omitempty"`
 	UseCategoryFromIndexer       *bool                           `json:"useCategoryFromIndexer,omitempty"`
 	RunExternalProgramID         optionalInt                     `json:"runExternalProgramId"`
+	PreventReaddPreviouslyAdded  *bool                           `json:"preventReaddPreviouslyAdded,omitempty"`
 	Completion                   *completionSettingsPatchRequest `json:"completion,omitempty"`
 }
 
@@ -143,6 +178,7 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.FindIndividualEpisodes == nil &&
 		r.SizeMismatchTolerancePercent == nil &&
 		r.UseCategoryFromIndexer == nil &&
+		r.PreventReaddPreviouslyAdded == nil &&
 		!r.RunExternalProgramID.Set &&
 		(r.Completion == nil || r.Completion.isEmpty())
 }
@@ -201,6 +237,9 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	if patch.UseCategoryFromIndexer != nil {
 		settings.UseCategoryFromIndexer = *patch.UseCategoryFromIndexer
 	}
+	if patch.PreventReaddPreviouslyAdded != nil {
+		settings.PreventReaddPreviouslyAdded = *patch.PreventReaddPreviouslyAdded
+	}
 	if patch.RunExternalProgramID.Set {
 		settings.RunExternalProgramID = patch.RunExternalProgramID.Value
 	}
@@ -257,6 +296,7 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 
 	r.Route("/cross-seed", func(r chi.Router) {
 		r.Post("/apply", h.AutobrrApply)
+		r.Get("/observations", h.GetCrossSeedObservations)
 		r.Route("/torrents", func(r chi.Router) {
 			r.Get("/{instanceID}/{hash}/analyze", h.AnalyzeTorrentForSearch)
 			r.Get("/{instanceID}/{hash}/async-status", h.GetAsyncFilteringStatus)
@@ -566,6 +606,21 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		return
 	}
 
+	preventReadd := req.PreventReaddPreviouslyAdded
+	if !req.preventReaddProvided {
+		current, err := h.service.GetAutomationSettings(r.Context())
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to load current automation settings")
+			RespondError(w, http.StatusInternalServerError, "Failed to load automation settings")
+			return
+		}
+		if current != nil {
+			preventReadd = current.PreventReaddPreviouslyAdded
+		} else {
+			preventReadd = models.DefaultCrossSeedAutomationSettings().PreventReaddPreviouslyAdded
+		}
+	}
+
 	category := req.Category
 	if category != nil {
 		trimmed := strings.TrimSpace(*category)
@@ -601,6 +656,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		SizeMismatchTolerancePercent: req.SizeMismatchTolerancePercent,
 		UseCategoryFromIndexer:       req.UseCategoryFromIndexer,
 		RunExternalProgramID:         req.RunExternalProgramID,
+		PreventReaddPreviouslyAdded:  preventReadd,
 		Completion:                   completion,
 	}
 
