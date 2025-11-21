@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -94,35 +95,104 @@ func (s *Service) GetCachedFiles(ctx context.Context, instanceID int, hash strin
 	}
 
 	// Convert to qBittorrent format
-	files := make(qbt.TorrentFiles, len(cachedFiles))
-	for i, cf := range cachedFiles {
-		isSeed := false
-		if cf.IsSeed != nil {
-			isSeed = *cf.IsSeed
-		}
+	return convertCachedFiles(cachedFiles), nil
+}
 
-		files[i] = struct {
-			Availability float32 `json:"availability"`
-			Index        int     `json:"index"`
-			IsSeed       bool    `json:"is_seed,omitempty"`
-			Name         string  `json:"name"`
-			PieceRange   []int   `json:"piece_range"`
-			Priority     int     `json:"priority"`
-			Progress     float32 `json:"progress"`
-			Size         int64   `json:"size"`
-		}{
-			Availability: float32(cf.Availability),
-			Index:        cf.FileIndex,
-			IsSeed:       isSeed,
-			Name:         cf.Name,
-			PieceRange:   []int{int(cf.PieceRangeStart), int(cf.PieceRangeEnd)},
-			Priority:     cf.Priority,
-			Progress:     float32(cf.Progress),
-			Size:         cf.Size,
+// GetCachedFilesBatch retrieves cached files for multiple torrents in a single pass.
+// The returned map only contains entries for torrents with valid cache snapshots.
+func (s *Service) GetCachedFilesBatch(ctx context.Context, instanceID int, requests []BatchRequest) (map[string]qbt.TorrentFiles, error) {
+	results := make(map[string]qbt.TorrentFiles)
+	if len(requests) == 0 {
+		return results, nil
+	}
+
+	unique := make(map[string]float64, len(requests))
+	for _, req := range requests {
+		hash := strings.TrimSpace(req.Hash)
+		if hash == "" {
+			continue
+		}
+		if current, ok := unique[hash]; !ok || req.Progress > current {
+			unique[hash] = req.Progress
 		}
 	}
 
-	return files, nil
+	if len(unique) == 0 {
+		return results, nil
+	}
+
+	const activeCacheTTL = 5 * time.Minute
+	const progressThreshold = 0.01
+
+	completeHashes := make([]string, 0, len(unique))
+	activeHashes := make([]string, 0, len(unique))
+	for hash, progress := range unique {
+		if progress >= 1.0 {
+			completeHashes = append(completeHashes, hash)
+		} else {
+			activeHashes = append(activeHashes, hash)
+		}
+	}
+
+	eligible := make(map[string]struct{}, len(unique))
+	for _, hash := range completeHashes {
+		eligible[hash] = struct{}{}
+	}
+
+	if len(activeHashes) > 0 {
+		syncInfos, err := s.repo.GetSyncInfos(ctx, instanceID, activeHashes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get sync info batch: %w", err)
+		}
+
+		for _, hash := range activeHashes {
+			progress := unique[hash]
+			info, ok := syncInfos[hash]
+			if !ok {
+				continue
+			}
+
+			cacheAge := time.Since(info.LastSyncedAt)
+			if cacheAge > activeCacheTTL {
+				continue
+			}
+			if progress >= 1.0 && info.TorrentProgress < 1.0 {
+				continue
+			}
+
+			if progress < 1.0 {
+				delta := progress - info.TorrentProgress
+				if delta > progressThreshold || delta < 0 {
+					continue
+				}
+			}
+
+			eligible[hash] = struct{}{}
+		}
+	}
+
+	if len(eligible) == 0 {
+		return results, nil
+	}
+
+	lookup := make([]string, 0, len(eligible))
+	for hash := range eligible {
+		lookup = append(lookup, hash)
+	}
+
+	rows, err := s.repo.GetFilesForHashes(ctx, instanceID, lookup)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cached files batch: %w", err)
+	}
+
+	for hash, cachedFiles := range rows {
+		if len(cachedFiles) == 0 {
+			continue
+		}
+		results[hash] = convertCachedFiles(cachedFiles)
+	}
+
+	return results, nil
 }
 
 // CacheFiles stores file information in the database
@@ -223,4 +293,40 @@ func (s *Service) CleanupStaleCache(ctx context.Context, olderThan time.Duration
 // GetCacheStats returns statistics about the cache
 func (s *Service) GetCacheStats(ctx context.Context, instanceID int) (*CacheStats, error) {
 	return s.repo.GetCacheStats(ctx, instanceID)
+}
+
+func convertCachedFiles(rows []CachedFile) qbt.TorrentFiles {
+	if len(rows) == 0 {
+		return nil
+	}
+
+	files := make(qbt.TorrentFiles, len(rows))
+	for i, cf := range rows {
+		isSeed := false
+		if cf.IsSeed != nil {
+			isSeed = *cf.IsSeed
+		}
+
+		files[i] = struct {
+			Availability float32 `json:"availability"`
+			Index        int     `json:"index"`
+			IsSeed       bool    `json:"is_seed,omitempty"`
+			Name         string  `json:"name"`
+			PieceRange   []int   `json:"piece_range"`
+			Priority     int     `json:"priority"`
+			Progress     float32 `json:"progress"`
+			Size         int64   `json:"size"`
+		}{
+			Availability: float32(cf.Availability),
+			Index:        cf.FileIndex,
+			IsSeed:       isSeed,
+			Name:         cf.Name,
+			PieceRange:   []int{int(cf.PieceRangeStart), int(cf.PieceRangeEnd)},
+			Priority:     cf.Priority,
+			Progress:     float32(cf.Progress),
+			Size:         cf.Size,
+		}
+	}
+
+	return files
 }

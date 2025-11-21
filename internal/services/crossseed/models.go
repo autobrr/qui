@@ -147,6 +147,8 @@ type CrossSeedCandidate struct {
 	// Torrents: The EXISTING torrents in this instance that have matching files
 	// Multiple torrents may be listed because they can collectively or individually provide the needed data
 	Torrents []qbt.Torrent `json:"torrents"`
+	// TorrentFiles stores cached file lists keyed by torrent hash for reuse in follow-up steps.
+	TorrentFiles map[string]qbt.TorrentFiles `json:"-"`
 	// MatchType indicates the type of match:
 	//   "exact" - 100% duplicate files (same paths and sizes)
 	//   "partial-in-pack" - new torrent's files are found within existing season pack

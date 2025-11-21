@@ -26,12 +26,14 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/trackericons"
 )
 
 // FilesManager interface for caching torrent files
 type FilesManager interface {
 	GetCachedFiles(ctx context.Context, instanceID int, hash string, torrentProgress float64) (qbt.TorrentFiles, error)
+	GetCachedFilesBatch(ctx context.Context, instanceID int, requests []filesmanager.BatchRequest) (map[string]qbt.TorrentFiles, error)
 	CacheFiles(ctx context.Context, instanceID int, hash string, torrentProgress float64, files qbt.TorrentFiles) error
 	InvalidateCache(ctx context.Context, instanceID int, hash string) error
 }

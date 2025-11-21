@@ -76,8 +76,8 @@ func (s *Service) alignCrossSeedContentPaths(
 	}
 
 	sourceFiles := expectedSourceFiles
-	if currentFilesPtr, err := s.syncManager.GetTorrentFiles(ctx, instanceID, torrentHash); err == nil && currentFilesPtr != nil && len(*currentFilesPtr) > 0 {
-		sourceFiles = *currentFilesPtr
+	if currentFiles, err := s.getTorrentFilesFromStash(ctx, instanceID, torrentHash); err == nil && len(currentFiles) > 0 {
+		sourceFiles = currentFiles
 	}
 
 	sourceRoot := detectCommonRoot(sourceFiles)
