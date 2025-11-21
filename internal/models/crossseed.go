@@ -35,6 +35,7 @@ type CrossSeedAutomationSettings struct {
 	UseCategoryFromIndexer       bool                        `json:"useCategoryFromIndexer"`       // Use indexer name as category for cross-seeds
 	RunExternalProgramID         *int                        `json:"runExternalProgramId"`         // Optional external program to run after successful cross-seed injection
 	Completion                   CrossSeedCompletionSettings `json:"completion"`                   // Automatic search on torrent completion
+	PreventReaddPreviouslyAdded  bool                        `json:"preventReaddPreviouslyAdded"`  // Block re-adding previously cross-seeded hashes
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -78,6 +79,7 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		UseCategoryFromIndexer:       false, // Default to false - don't override categories by default
 		RunExternalProgramID:         nil,   // No external program by default
 		Completion:                   DefaultCrossSeedCompletionSettings(),
+		PreventReaddPreviouslyAdded:  true,
 		CreatedAt:                    time.Now().UTC(),
 		UpdatedAt:                    time.Now().UTC(),
 	}
@@ -255,7 +257,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		SELECT enabled, run_interval_minutes, start_paused, category,
 		       tags, ignore_patterns, target_instance_ids, target_indexer_ids,
 		       max_results_per_run, find_individual_episodes, size_mismatch_tolerance_percent,
-		       use_category_from_indexer, run_external_program_id,
+		       use_category_from_indexer, prevent_readd_hashes, run_external_program_id,
 		       completion_enabled, completion_categories, completion_tags,
 		       completion_exclude_categories, completion_exclude_tags,
 		       created_at, updated_at
@@ -287,6 +289,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&settings.FindIndividualEpisodes,
 		&settings.SizeMismatchTolerancePercent,
 		&settings.UseCategoryFromIndexer,
+		&settings.PreventReaddPreviouslyAdded,
 		&runExternalProgramID,
 		&completionEnabled,
 		&completionCategories,
@@ -396,11 +399,11 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			id, enabled, run_interval_minutes, start_paused, category,
 			tags, ignore_patterns, target_instance_ids, target_indexer_ids,
 			max_results_per_run, find_individual_episodes, size_mismatch_tolerance_percent,
-			use_category_from_indexer, run_external_program_id,
+			use_category_from_indexer, prevent_readd_hashes, run_external_program_id,
 			completion_enabled, completion_categories, completion_tags,
 			completion_exclude_categories, completion_exclude_tags
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -415,6 +418,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			find_individual_episodes = excluded.find_individual_episodes,
 			size_mismatch_tolerance_percent = excluded.size_mismatch_tolerance_percent,
 			use_category_from_indexer = excluded.use_category_from_indexer,
+			prevent_readd_hashes = excluded.prevent_readd_hashes,
 			run_external_program_id = excluded.run_external_program_id,
 			completion_enabled = excluded.completion_enabled,
 			completion_categories = excluded.completion_categories,
@@ -448,6 +452,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		settings.FindIndividualEpisodes,
 		settings.SizeMismatchTolerancePercent,
 		settings.UseCategoryFromIndexer,
+		settings.PreventReaddPreviouslyAdded,
 		runExternalProgramID,
 		settings.Completion.Enabled,
 		completionCategories,

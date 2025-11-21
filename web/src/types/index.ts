@@ -1237,6 +1237,7 @@ export interface CrossSeedAutomationSettings {
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
   runExternalProgramId?: number | null
+  preventReaddPreviouslyAdded: boolean
   completion?: CrossSeedCompletionSettings
   createdAt?: string
   updatedAt?: string
@@ -1255,6 +1256,7 @@ export interface CrossSeedAutomationSettingsPatch {
   sizeMismatchTolerancePercent?: number
   useCategoryFromIndexer?: boolean
   runExternalProgramId?: number | null
+  preventReaddPreviouslyAdded?: boolean
   completion?: CrossSeedCompletionSettingsPatch
 }
 

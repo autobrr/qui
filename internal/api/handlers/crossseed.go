@@ -54,6 +54,7 @@ type automationSettingsRequest struct {
 	SizeMismatchTolerancePercent float64                    `json:"sizeMismatchTolerancePercent"`
 	UseCategoryFromIndexer       bool                       `json:"useCategoryFromIndexer"`
 	RunExternalProgramID         *int                       `json:"runExternalProgramId"`
+	PreventReaddPreviouslyAdded  bool                       `json:"preventReaddPreviouslyAdded"`
 	Completion                   *completionSettingsRequest `json:"completion"`
 }
 
@@ -79,6 +80,7 @@ type automationSettingsPatchRequest struct {
 	SizeMismatchTolerancePercent *float64                        `json:"sizeMismatchTolerancePercent,omitempty"`
 	UseCategoryFromIndexer       *bool                           `json:"useCategoryFromIndexer,omitempty"`
 	RunExternalProgramID         optionalInt                     `json:"runExternalProgramId"`
+	PreventReaddPreviouslyAdded  *bool                           `json:"preventReaddPreviouslyAdded,omitempty"`
 	Completion                   *completionSettingsPatchRequest `json:"completion,omitempty"`
 }
 
@@ -159,6 +161,7 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.FindIndividualEpisodes == nil &&
 		r.SizeMismatchTolerancePercent == nil &&
 		r.UseCategoryFromIndexer == nil &&
+		r.PreventReaddPreviouslyAdded == nil &&
 		!r.RunExternalProgramID.Set &&
 		(r.Completion == nil || r.Completion.isEmpty())
 }
@@ -216,6 +219,9 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	}
 	if patch.UseCategoryFromIndexer != nil {
 		settings.UseCategoryFromIndexer = *patch.UseCategoryFromIndexer
+	}
+	if patch.PreventReaddPreviouslyAdded != nil {
+		settings.PreventReaddPreviouslyAdded = *patch.PreventReaddPreviouslyAdded
 	}
 	if patch.RunExternalProgramID.Set {
 		settings.RunExternalProgramID = patch.RunExternalProgramID.Value
@@ -618,6 +624,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		SizeMismatchTolerancePercent: req.SizeMismatchTolerancePercent,
 		UseCategoryFromIndexer:       req.UseCategoryFromIndexer,
 		RunExternalProgramID:         req.RunExternalProgramID,
+		PreventReaddPreviouslyAdded:  req.PreventReaddPreviouslyAdded,
 		Completion:                   completion,
 	}
 

@@ -72,19 +72,21 @@ func TestCrossSeedStore_SettingsRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, defaults.Enabled)
 	assert.Equal(t, 120, defaults.RunIntervalMinutes)
+	assert.True(t, defaults.PreventReaddPreviouslyAdded)
 
 	category := "TV"
 
 	updated, err := store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
-		Enabled:            true,
-		RunIntervalMinutes: 30,
-		StartPaused:        false,
-		Category:           &category,
-		Tags:               []string{"cross-seed", "automation"},
-		IgnorePatterns:     []string{"*.txt"},
-		TargetInstanceIDs:  []int{1, 2},
-		TargetIndexerIDs:   []int{11, 42},
-		MaxResultsPerRun:   25,
+		Enabled:                     true,
+		RunIntervalMinutes:          30,
+		StartPaused:                 false,
+		Category:                    &category,
+		Tags:                        []string{"cross-seed", "automation"},
+		IgnorePatterns:              []string{"*.txt"},
+		TargetInstanceIDs:           []int{1, 2},
+		TargetIndexerIDs:            []int{11, 42},
+		MaxResultsPerRun:            25,
+		PreventReaddPreviouslyAdded: false,
 		Completion: models.CrossSeedCompletionSettings{
 			Enabled:           true,
 			Categories:        []string{"tv"},
@@ -105,6 +107,7 @@ func TestCrossSeedStore_SettingsRoundTrip(t *testing.T) {
 	assert.ElementsMatch(t, []int{1, 2}, updated.TargetInstanceIDs)
 	assert.ElementsMatch(t, []int{11, 42}, updated.TargetIndexerIDs)
 	assert.Equal(t, 25, updated.MaxResultsPerRun)
+	assert.False(t, updated.PreventReaddPreviouslyAdded)
 	assert.True(t, updated.Completion.Enabled)
 	assert.ElementsMatch(t, []string{"tv"}, updated.Completion.Categories)
 	assert.ElementsMatch(t, []string{"scene"}, updated.Completion.Tags)
