@@ -40,4 +40,25 @@ func TestParseEpisodeNumber_FiltersResolutionAndYear(t *testing.T) {
 	require.Equal(t, 0, parseEpisodeNumber("1080"))
 	require.Equal(t, 0, parseEpisodeNumber("2025"))
 	require.Equal(t, 999, parseEpisodeNumber("999"))
+	require.Equal(t, 5000, parseEpisodeNumber("5000"))
+	require.Equal(t, 0, parseEpisodeNumber("5001"))
+	require.Equal(t, 0, parseEpisodeNumber("720"))
+	require.Equal(t, 0, parseEpisodeNumber("2160"))
+	require.Equal(t, 0, parseEpisodeNumber("4320"))
+	require.Equal(t, 1899, parseEpisodeNumber("1899"))
+	require.Equal(t, 0, parseEpisodeNumber("1900"))
+	require.Equal(t, 0, parseEpisodeNumber("2100"))
+	require.Equal(t, 2101, parseEpisodeNumber("2101"))
+}
+
+func TestBuildSafeSearchQuery_MovieFallback(t *testing.T) {
+	release := rls.Release{
+		Type: rls.Movie,
+	}
+
+	q := buildSafeSearchQuery("Some.Movie.2024.1080p.WEBRip.x264", release, "")
+
+	require.Equal(t, "some movie 2024", q.Query)
+	require.Nil(t, q.Season)
+	require.Nil(t, q.Episode)
 }

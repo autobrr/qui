@@ -17,6 +17,7 @@ var (
 	bracketSegment    = regexp.MustCompile(`\[[^\]]+\]`)
 	episodeAfterDash  = regexp.MustCompile(`-\s*(\d{1,4})\b`)
 	genericNumberFind = regexp.MustCompile(`\b(\d{2,4})\b`)
+	emptyParens       = regexp.MustCompile(`\(\s*\)`)
 )
 
 // buildSafeSearchQuery constructs a conservative Torznab query for TV/anime when parsing is weak.
@@ -35,9 +36,21 @@ func buildSafeSearchQuery(name string, release rls.Release, baseQuery string) Se
 		episodePtr = &ep
 	}
 
-	if strings.TrimSpace(baseQuery) != "" || release.Type == rls.Movie {
+	if strings.TrimSpace(baseQuery) != "" {
 		return SearchQuery{
 			Query:   baseQuery,
+			Season:  seasonPtr,
+			Episode: episodePtr,
+		}
+	}
+	if release.Type == rls.Movie {
+		// Fall back to a cleaned name-only query for movies with no parsed title.
+		cleanedTitle, _ := cleanAnimeTitle(name)
+		if cleanedTitle == "" {
+			cleanedTitle = strings.TrimSpace(name)
+		}
+		return SearchQuery{
+			Query:   cleanedTitle,
 			Season:  seasonPtr,
 			Episode: episodePtr,
 		}
@@ -74,7 +87,7 @@ func cleanAnimeTitle(name string) (string, int) {
 
 	working = workingLower
 	working = strings.NewReplacer(".", " ", "_", " ", "-", " ").Replace(working)
-	working = regexp.MustCompile(`\(\s*\)`).ReplaceAllString(working, " ")
+	working = emptyParens.ReplaceAllString(working, " ")
 	working = strings.TrimSpace(strings.Join(strings.Fields(working), " "))
 
 	abs := extractAbsoluteEpisode(name)
