@@ -13,6 +13,8 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/pkg/stringutils"
+
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
@@ -139,7 +141,8 @@ func TestRefreshSearchQueueCountsCooldownEligibleTorrents(t *testing.T) {
 				{Hash: "new-hash", Name: "BrandNew.Movie.1080p", Progress: 1.0},
 			},
 		},
-		releaseCache: NewReleaseCache(),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
 	now := time.Now().UTC()
@@ -170,9 +173,9 @@ func TestRefreshSearchQueueCountsCooldownEligibleTorrents(t *testing.T) {
 
 	require.Len(t, state.queue, 3)
 	require.Equal(t, 2, state.run.TotalTorrents, "only stale/new torrents should be counted")
-	require.True(t, state.skipCache[strings.ToLower("recent-hash")])
-	require.False(t, state.skipCache[strings.ToLower("stale-hash")])
-	require.False(t, state.skipCache[strings.ToLower("new-hash")])
+	require.True(t, state.skipCache[stringutils.DefaultNormalizer.Normalize("recent-hash")])
+	require.False(t, state.skipCache[stringutils.DefaultNormalizer.Normalize("stale-hash")])
+	require.False(t, state.skipCache[stringutils.DefaultNormalizer.Normalize("new-hash")])
 }
 
 func TestPropagateDuplicateSearchHistory(t *testing.T) {

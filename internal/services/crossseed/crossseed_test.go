@@ -22,6 +22,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // Helper function to create a test torrent file
@@ -1090,9 +1091,10 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 				},
 			}
 			svc := &Service{
-				instanceStore: store,
-				syncManager:   newFakeSyncManager(instance, tt.existingTorrents, nil),
-				releaseCache:  NewReleaseCache(),
+				instanceStore:    store,
+				syncManager:      newFakeSyncManager(instance, tt.existingTorrents, nil),
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
 			}
 
 			resp, err := svc.CheckWebhook(context.Background(), tt.request)
@@ -1162,8 +1164,9 @@ func TestCheckWebhook_NoInstancesAvailable(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			svc := &Service{
-				instanceStore: tt.store,
-				releaseCache:  NewReleaseCache(),
+				instanceStore:    tt.store,
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
 			}
 
 			resp, err := svc.CheckWebhook(context.Background(), tt.request)
@@ -1204,9 +1207,10 @@ func TestCheckWebhook_MultiInstanceScan(t *testing.T) {
 	}
 
 	svc := &Service{
-		instanceStore: store,
-		syncManager:   sync,
-		releaseCache:  NewReleaseCache(),
+		instanceStore:    store,
+		syncManager:      sync,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
 	tests := []struct {
@@ -1321,9 +1325,10 @@ func TestFindCandidates_NonTVDoesNotMatchUnrelatedTorrents(t *testing.T) {
 	}
 
 	svc := &Service{
-		instanceStore: store,
-		syncManager:   newFakeSyncManager(instance, torrents, files),
-		releaseCache:  NewReleaseCache(),
+		instanceStore:    store,
+		syncManager:      newFakeSyncManager(instance, torrents, files),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
 	resp, err := svc.FindCandidates(context.Background(), &FindCandidatesRequest{

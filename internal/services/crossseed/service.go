@@ -39,6 +39,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // instanceProvider captures the instance store methods the service relies on.
@@ -79,6 +80,7 @@ type Service struct {
 	// asyncFilteringCache stores async filtering state by torrent key for UI polling
 	asyncFilteringCache *ttlcache.Cache[string, *AsyncIndexerFilteringState]
 	indexerDomainCache  *ttlcache.Cache[string, string]
+	stringNormalizer    *stringutils.Normalizer[string, string]
 
 	automationStore          *models.CrossSeedStore
 	automationSettingsLoader func(context.Context) (*models.CrossSeedAutomationSettings, error)
@@ -162,6 +164,7 @@ func NewService(
 		searchResultCache:    searchCache,
 		asyncFilteringCache:  asyncFilteringCache,
 		indexerDomainCache:   indexerDomainCache,
+		stringNormalizer:     stringutils.NewDefaultNormalizer(),
 		automationStore:      automationStore,
 		jackettService:       jackettService,
 		externalProgramStore: externalProgramStore,
@@ -3361,7 +3364,7 @@ func (s *Service) resolveSelectionFromCache(cached []TorrentSearchResult, select
 }
 
 func searchResultCacheKey(instanceID int, hash string) string {
-	cleanHash := strings.ToLower(strings.TrimSpace(hash))
+	cleanHash := stringutils.DefaultNormalizer.Normalize(hash)
 	if cleanHash == "" {
 		return fmt.Sprintf("%d", instanceID)
 	}
@@ -3370,7 +3373,7 @@ func searchResultCacheKey(instanceID int, hash string) string {
 
 // asyncFilteringCacheKey generates a cache key for async filtering state
 func asyncFilteringCacheKey(instanceID int, hash string) string {
-	cleanHash := strings.ToLower(strings.TrimSpace(hash))
+	cleanHash := stringutils.DefaultNormalizer.Normalize(hash)
 	if cleanHash == "" {
 		return fmt.Sprintf("async:%d", instanceID)
 	}
@@ -3384,12 +3387,12 @@ func (s *Service) getTorrentByHash(ctx context.Context, instanceID int, hash str
 		return nil, fmt.Errorf("load torrents: %w", err)
 	}
 
-	needle := strings.ToLower(strings.TrimSpace(hash))
+	needle := stringutils.DefaultNormalizer.Normalize(hash)
 	for _, torrent := range torrents {
 		candidates := []string{
-			strings.ToLower(torrent.Hash),
-			strings.ToLower(torrent.InfohashV1),
-			strings.ToLower(torrent.InfohashV2),
+			stringutils.DefaultNormalizer.Normalize(torrent.Hash),
+			stringutils.DefaultNormalizer.Normalize(torrent.InfohashV1),
+			stringutils.DefaultNormalizer.Normalize(torrent.InfohashV2),
 		}
 
 		for _, candidate := range candidates {
@@ -3634,7 +3637,7 @@ func (s *Service) torrentHasTopLevelFolderCached(ctx context.Context, instanceID
 	if torrent == nil {
 		return false
 	}
-	hash := strings.ToLower(strings.TrimSpace(torrent.Hash))
+	hash := stringutils.DefaultNormalizer.Normalize(torrent.Hash)
 	if hash != "" {
 		if val, ok := cache[hash]; ok {
 			return val
@@ -3683,7 +3686,7 @@ func (s *Service) propagateDuplicateSearchHistory(ctx context.Context, state *se
 			continue
 		}
 		if state.skipCache != nil {
-			state.skipCache[strings.ToLower(strings.TrimSpace(dupHash))] = true
+			state.skipCache[stringutils.DefaultNormalizer.Normalize(dupHash)] = true
 		}
 	}
 }
@@ -3755,7 +3758,7 @@ func (s *Service) shouldSkipCandidate(ctx context.Context, state *searchRunState
 		return true, nil
 	}
 
-	cacheKey := strings.ToLower(strings.TrimSpace(torrent.Hash))
+	cacheKey := stringutils.DefaultNormalizer.Normalize(torrent.Hash)
 	if cacheKey != "" && state.skipCache != nil {
 		if cached, ok := state.skipCache[cacheKey]; ok {
 			return cached, nil
@@ -4795,7 +4798,7 @@ func (s *Service) getCachedIndexerDomain(indexerName string) string {
 
 // normalizeIndexerName normalizes indexer names for comparison
 func (s *Service) normalizeIndexerName(indexerName string) string {
-	normalized := strings.ToLower(strings.TrimSpace(indexerName))
+	normalized := stringutils.DefaultNormalizer.Normalize(indexerName)
 
 	// Remove common suffixes from indexer names
 	suffixes := []string{

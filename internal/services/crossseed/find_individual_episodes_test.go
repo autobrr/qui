@@ -14,6 +14,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 func TestProcessAutomationCandidatePropagatesEpisodeFlag(t *testing.T) {
@@ -50,6 +51,7 @@ func TestProcessAutomationCandidatePropagatesEpisodeFlag(t *testing.T) {
 		},
 		syncManager:         sync,
 		releaseCache:        NewReleaseCache(),
+		stringNormalizer:    stringutils.NewDefaultNormalizer(),
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil },
 	}
 

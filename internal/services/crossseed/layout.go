@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // TorrentLayout classifies how a torrent stores its payload so we can avoid
@@ -46,12 +48,12 @@ func buildArchiveExtensionSet() map[string]struct{} {
 // regular media files (.mkv/.mp4/.flac/etc.). This heuristic mirrors how scene
 // releases are structured in practice—the main payload is always the largest
 // file, and any side files (.nfo, .sfv, etc.) are tiny.
-func classifyTorrentLayout(files qbt.TorrentFiles, ignorePatterns []string) TorrentLayout {
+func classifyTorrentLayout(files qbt.TorrentFiles, ignorePatterns []string, normalizer *stringutils.Normalizer[string, string]) TorrentLayout {
 	var largestName string
 	var largestSize int64
 
 	for _, f := range files {
-		if shouldIgnoreFile(f.Name, ignorePatterns) {
+		if shouldIgnoreFile(f.Name, ignorePatterns, normalizer) {
 			continue
 		}
 		if f.Size > largestSize {

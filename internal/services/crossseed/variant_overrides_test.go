@@ -8,6 +8,8 @@ import (
 
 	"github.com/moistari/rls"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 func TestVariantOverridesReleaseVariants(t *testing.T) {
@@ -16,7 +18,7 @@ func TestVariantOverridesReleaseVariants(t *testing.T) {
 		Other:      []string{"HYBRiD REMUX"},
 	}
 
-	variants := strictVariantOverrides.releaseVariants(release)
+	variants := strictVariantOverrides.releaseVariants(&release)
 	_, hasIMAX := variants["IMAX"]
 	require.True(t, hasIMAX, "expected IMAX variant to be detected: %#v", variants)
 	_, hasHYBRID := variants["HYBRID"]
@@ -26,7 +28,7 @@ func TestVariantOverridesReleaseVariants(t *testing.T) {
 		Collection: "IMAX",
 		Other:      []string{"HYBRiD"},
 	}
-	multiVariants := strictVariantOverrides.releaseVariants(multiVariant)
+	multiVariants := strictVariantOverrides.releaseVariants(&multiVariant)
 	require.Len(t, multiVariants, 2, "expected both IMAX and HYBRID variants")
 	_, hasIMAX = multiVariants["IMAX"]
 	require.True(t, hasIMAX, "expected IMAX variant to be detected for multiVariant: %#v", multiVariants)
@@ -36,7 +38,7 @@ func TestVariantOverridesReleaseVariants(t *testing.T) {
 	compositeVariant := rls.Release{
 		Other: []string{"IMAX.HYBRiD.REMUX"},
 	}
-	compositeVariants := strictVariantOverrides.releaseVariants(compositeVariant)
+	compositeVariants := strictVariantOverrides.releaseVariants(&compositeVariant)
 	require.Len(t, compositeVariants, 1, "expected only HYBRID variant from composite entry")
 	_, hasHYBRID = compositeVariants["HYBRID"]
 	require.True(t, hasHYBRID, "expected HYBRID token to be extracted from composite entry: %#v", compositeVariants)
@@ -44,18 +46,18 @@ func TestVariantOverridesReleaseVariants(t *testing.T) {
 	tokenEdge := rls.Release{
 		Other: []string{"IMAX..HYBRID", ""},
 	}
-	tokenEdgeVariants := strictVariantOverrides.releaseVariants(tokenEdge)
+	tokenEdgeVariants := strictVariantOverrides.releaseVariants(&tokenEdge)
 	require.Len(t, tokenEdgeVariants, 1, "expected only valid HYBRID token from edge case")
 	_, hasHYBRID = tokenEdgeVariants["HYBRID"]
 	require.True(t, hasHYBRID, "expected HYBRID token to survive edge tokenization: %#v", tokenEdgeVariants)
 
 	plain := rls.Release{Collection: "", Other: []string{"READNFO"}}
-	plainVariants := strictVariantOverrides.releaseVariants(plain)
+	plainVariants := strictVariantOverrides.releaseVariants(&plain)
 	require.Empty(t, plainVariants, "expected no variants")
 }
 
 func TestReleasesMatch_StrictVariantsMustMatch(t *testing.T) {
-	s := &Service{}
+	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	base := rls.Release{
 		Title:      "The Conjuring Last Rites",
@@ -72,20 +74,20 @@ func TestReleasesMatch_StrictVariantsMustMatch(t *testing.T) {
 		Resolution: base.Resolution,
 	}
 
-	require.False(t, s.releasesMatch(base, nonVariant, false), "IMAX should not match vanilla release")
+	require.False(t, s.releasesMatch(&base, &nonVariant, false), "IMAX should not match vanilla release")
 
 	imaxCandidate := nonVariant
 	imaxCandidate.Collection = "IMAX"
-	require.True(t, s.releasesMatch(base, imaxCandidate, false), "matching IMAX releases should be compatible")
+	require.True(t, s.releasesMatch(&base, &imaxCandidate, false), "matching IMAX releases should be compatible")
 
 	hybridCandidate := nonVariant
 	hybridCandidate.Other = []string{"HYBRiD"}
-	require.False(t, s.releasesMatch(nonVariant, hybridCandidate, false), "HYBRID variant should not match vanilla release")
-	require.False(t, s.releasesMatch(hybridCandidate, nonVariant, false), "HYBRID mismatch must be symmetric")
+	require.False(t, s.releasesMatch(&nonVariant, &hybridCandidate, false), "HYBRID variant should not match vanilla release")
+	require.False(t, s.releasesMatch(&hybridCandidate, &nonVariant, false), "HYBRID mismatch must be symmetric")
 }
 
 func TestReleasesMatch_IMAXVsHybridMismatch(t *testing.T) {
-	s := &Service{}
+	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	imaxRelease := rls.Release{
 		Title:      "The Conjuring Last Rites",
@@ -102,6 +104,6 @@ func TestReleasesMatch_IMAXVsHybridMismatch(t *testing.T) {
 		Other:      []string{"HYBRiD"},
 	}
 
-	require.False(t, s.releasesMatch(imaxRelease, hybridRelease, false), "IMAX should not match HYBRID")
-	require.False(t, s.releasesMatch(hybridRelease, imaxRelease, false), "HYBRID vs IMAX mismatch must be symmetric")
+	require.False(t, s.releasesMatch(&imaxRelease, &hybridRelease, false), "IMAX should not match HYBRID")
+	require.False(t, s.releasesMatch(&hybridRelease, &imaxRelease, false), "HYBRID vs IMAX mismatch must be symmetric")
 }

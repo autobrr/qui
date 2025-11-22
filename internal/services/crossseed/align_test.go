@@ -139,10 +139,10 @@ func TestShouldRenameTorrentDisplay(t *testing.T) {
 	seasonPack := rls.Release{Series: 1, Episode: 0}
 	otherPack := rls.Release{Series: 2, Episode: 0}
 
-	require.False(t, shouldRenameTorrentDisplay(episode, seasonPack))
-	require.True(t, shouldRenameTorrentDisplay(seasonPack, episode))
-	require.True(t, shouldRenameTorrentDisplay(seasonPack, otherPack))
-	require.False(t, shouldRenameTorrentDisplay(episode, otherPack))
+	require.False(t, shouldRenameTorrentDisplay(&episode, &seasonPack))
+	require.True(t, shouldRenameTorrentDisplay(&seasonPack, &episode))
+	require.True(t, shouldRenameTorrentDisplay(&seasonPack, &otherPack))
+	require.False(t, shouldRenameTorrentDisplay(&episode, &otherPack))
 }
 
 func TestShouldAlignFilesWithCandidate(t *testing.T) {
@@ -152,8 +152,8 @@ func TestShouldAlignFilesWithCandidate(t *testing.T) {
 	seasonPack := rls.Release{Series: 1, Episode: 0}
 	otherEpisode := rls.Release{Series: 1, Episode: 3}
 
-	require.False(t, shouldAlignFilesWithCandidate(episode, seasonPack))
-	require.True(t, shouldAlignFilesWithCandidate(seasonPack, episode))
-	require.True(t, shouldAlignFilesWithCandidate(seasonPack, seasonPack))
-	require.True(t, shouldAlignFilesWithCandidate(episode, otherEpisode))
+	require.False(t, shouldAlignFilesWithCandidate(&episode, &seasonPack))
+	require.True(t, shouldAlignFilesWithCandidate(&seasonPack, &episode))
+	require.True(t, shouldAlignFilesWithCandidate(&seasonPack, &seasonPack))
+	require.True(t, shouldAlignFilesWithCandidate(&episode, &otherEpisode))
 }
