@@ -16,8 +16,10 @@ const (
 type RateLimitPriority string
 
 const (
-	RateLimitPriorityBackground  RateLimitPriority = "background"
 	RateLimitPriorityInteractive RateLimitPriority = "interactive"
+	RateLimitPriorityRSS         RateLimitPriority = "rss"
+	RateLimitPriorityCompletion  RateLimitPriority = "completion"
+	RateLimitPriorityBackground  RateLimitPriority = "background"
 )
 
 type RateLimitOptions struct {

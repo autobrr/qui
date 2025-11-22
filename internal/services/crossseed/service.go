@@ -800,6 +800,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	if searchCancel != nil {
 		defer searchCancel()
 	}
+	searchCtx = jackett.WithSearchPriority(searchCtx, jackett.RateLimitPriorityCompletion)
 
 	searchResp, err := s.SearchTorrentMatches(searchCtx, instanceID, torrent.Hash, TorrentSearchOptions{
 		IndexerIDs:             allowedIndexerIDs,
@@ -1181,7 +1182,9 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		settings = models.DefaultCrossSeedAutomationSettings()
 	}
 
-	searchResp, err := s.jackettService.Recent(ctx, 0, settings.TargetIndexerIDs)
+	searchCtx := jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityRSS)
+
+	searchResp, err := s.jackettService.Recent(searchCtx, 0, settings.TargetIndexerIDs)
 	if err != nil {
 		msg := err.Error()
 		run.ErrorMessage = &msg
@@ -4073,6 +4076,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	if searchCancel != nil {
 		defer searchCancel()
 	}
+	searchCtx = jackett.WithSearchPriority(searchCtx, jackett.RateLimitPriorityRSS)
 
 	searchResp, err := s.SearchTorrentMatches(searchCtx, state.opts.InstanceID, torrent.Hash, TorrentSearchOptions{
 		IndexerIDs:             allowedIndexerIDs,

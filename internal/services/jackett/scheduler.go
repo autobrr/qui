@@ -13,7 +13,9 @@ import (
 // searchJobPriority defines execution ordering for queued searches.
 const (
 	searchJobPriorityInteractive = 0
-	searchJobPriorityDefault     = 1
+	searchJobPriorityRSS         = 1
+	searchJobPriorityCompletion  = 2
+	searchJobPriorityBackground  = 3
 )
 
 type searchJob struct {
@@ -241,8 +243,17 @@ func (s *searchScheduler) release(indexers []*models.TorznabIndexer) {
 }
 
 func jobPriority(meta *searchContext) int {
-	if meta != nil && meta.rateLimit != nil && meta.rateLimit.Priority == RateLimitPriorityInteractive {
-		return searchJobPriorityInteractive
+	if meta != nil && meta.rateLimit != nil {
+		switch meta.rateLimit.Priority {
+		case RateLimitPriorityInteractive:
+			return searchJobPriorityInteractive
+		case RateLimitPriorityRSS:
+			return searchJobPriorityRSS
+		case RateLimitPriorityCompletion:
+			return searchJobPriorityCompletion
+		default:
+			return searchJobPriorityBackground
+		}
 	}
-	return searchJobPriorityDefault
+	return searchJobPriorityBackground
 }

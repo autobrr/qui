@@ -148,6 +148,69 @@ type searchContext struct {
 	rateLimit   *RateLimitOptions
 }
 
+type searchPriorityKey struct{}
+
+func finalizeSearchContext(ctx context.Context, meta *searchContext, fallback RateLimitPriority) *searchContext {
+	if meta == nil {
+		meta = &searchContext{}
+	}
+	priority := resolveSearchPriority(ctx, meta.rateLimit, fallback)
+	meta.rateLimit = rateLimitOptionsForPriority(priority)
+	return meta
+}
+
+func resolveSearchPriority(ctx context.Context, opts *RateLimitOptions, fallback RateLimitPriority) RateLimitPriority {
+	priority := fallback
+	if opts != nil && opts.Priority != "" {
+		priority = opts.Priority
+	}
+	if ctxPriority, ok := getSearchPriorityFromContext(ctx); ok {
+		priority = ctxPriority
+	}
+	if priority == "" {
+		return RateLimitPriorityBackground
+	}
+	return priority
+}
+
+func getSearchPriorityFromContext(ctx context.Context) (RateLimitPriority, bool) {
+	if ctx == nil {
+		return "", false
+	}
+	if value := ctx.Value(searchPriorityKey{}); value != nil {
+		if prio, ok := value.(RateLimitPriority); ok && prio != "" {
+			return prio, true
+		}
+	}
+	return "", false
+}
+
+func rateLimitOptionsForPriority(priority RateLimitPriority) *RateLimitOptions {
+	switch priority {
+	case RateLimitPriorityInteractive:
+		return &RateLimitOptions{
+			Priority:    RateLimitPriorityInteractive,
+			MinInterval: interactiveSearchMinInterval,
+			MaxWait:     interactiveSearchMaxWait,
+		}
+	case RateLimitPriorityRSS:
+		return &RateLimitOptions{
+			Priority:    RateLimitPriorityRSS,
+			MinInterval: defaultMinRequestInterval,
+		}
+	case RateLimitPriorityCompletion:
+		return &RateLimitOptions{
+			Priority:    RateLimitPriorityCompletion,
+			MinInterval: defaultMinRequestInterval,
+		}
+	default:
+		return &RateLimitOptions{
+			Priority:    RateLimitPriorityBackground,
+			MinInterval: defaultMinRequestInterval,
+		}
+	}
+}
+
 type searchCacheSignature struct {
 	Key             string
 	Fingerprint     string
@@ -195,6 +258,14 @@ type SearchCacheConfig struct {
 	TTL time.Duration
 }
 
+// WithSearchPriority annotates a context with a desired search priority for scheduling.
+func WithSearchPriority(ctx context.Context, priority RateLimitPriority) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, searchPriorityKey{}, priority)
+}
+
 // NewService creates a new Jackett service
 func NewService(indexerStore IndexerStore, opts ...ServiceOption) *Service {
 	s := &Service{
@@ -227,6 +298,7 @@ func (s *Service) executeSearch(ctx context.Context, indexers []*models.TorznabI
 // executeQueuedSearch submits the search to the scheduler so we can skip over jobs blocked by
 // indexer cooldowns or other rate-limit constraints.
 func (s *Service) executeQueuedSearch(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
+	meta = finalizeSearchContext(ctx, meta, RateLimitPriorityBackground)
 	if s.searchScheduler == nil {
 		return s.executeSearch(ctx, indexers, params, meta)
 	}
@@ -321,16 +393,11 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 	// Build search parameters
 	searchMode := searchModeForContentType(detectedType)
 	params := s.buildSearchParams(req, searchMode)
-	meta := &searchContext{
+	meta := finalizeSearchContext(ctx, &searchContext{
 		categories:  append([]int(nil), req.Categories...),
 		contentType: detectedType,
 		searchMode:  searchMode,
-		rateLimit: &RateLimitOptions{
-			Priority:    RateLimitPriorityInteractive,
-			MinInterval: interactiveSearchMinInterval,
-			MaxWait:     interactiveSearchMaxWait,
-		},
-	}
+	}, RateLimitPriorityInteractive)
 
 	cacheEnabled := s.shouldUseSearchCache()
 	cacheReadAllowed := cacheEnabled && req.CacheMode != CacheModeBypass
@@ -476,16 +543,11 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 
 	searchMode := searchModeForContentType(detectedType)
 	params := s.buildSearchParams(req, searchMode)
-	meta := &searchContext{
+	meta := finalizeSearchContext(ctx, &searchContext{
 		categories:  append([]int(nil), req.Categories...),
 		contentType: detectedType,
 		searchMode:  searchMode,
-		rateLimit: &RateLimitOptions{
-			Priority:    RateLimitPriorityInteractive,
-			MinInterval: interactiveSearchMinInterval,
-			MaxWait:     interactiveSearchMaxWait,
-		},
-	}
+	}, RateLimitPriorityInteractive)
 
 	var indexersToSearch []*models.TorznabIndexer
 	var err error
@@ -679,11 +741,13 @@ func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int) (*Sea
 		}, nil
 	}
 
-	searchTimeout := computeSearchTimeout(nil, len(indexersToSearch))
+	meta := finalizeSearchContext(ctx, nil, RateLimitPriorityBackground)
+
+	searchTimeout := computeSearchTimeout(meta, len(indexersToSearch))
 	searchCtx, cancel := timeouts.WithSearchTimeout(ctx, searchTimeout)
 	defer cancel()
 
-	results, coverage, err := s.executeQueuedSearch(searchCtx, indexersToSearch, params, nil)
+	results, coverage, err := s.executeQueuedSearch(searchCtx, indexersToSearch, params, meta)
 	deadlineErr := err != nil && errors.Is(err, context.DeadlineExceeded)
 	if err != nil && !deadlineErr {
 		return nil, err
@@ -1377,7 +1441,7 @@ func (s *Service) MapCategoriesToIndexerCapabilities(ctx context.Context, indexe
 
 func cloneRateLimitOptions(meta *searchContext) *RateLimitOptions {
 	if meta == nil || meta.rateLimit == nil {
-		return nil
+		return rateLimitOptionsForPriority(RateLimitPriorityBackground)
 	}
 	opts := *meta.rateLimit
 	return &opts
