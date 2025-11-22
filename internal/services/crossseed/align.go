@@ -383,7 +383,7 @@ func adjustPathForRootRename(path, oldRoot, newRoot string) string {
 	return path
 }
 
-func shouldRenameTorrentDisplay(newRelease, matchedRelease rls.Release) bool {
+func shouldRenameTorrentDisplay(newRelease, matchedRelease *rls.Release) bool {
 	// Keep episode torrents named after the episode even when pointing at season pack files
 	if newRelease.Series > 0 && newRelease.Episode > 0 &&
 		matchedRelease.Series > 0 && matchedRelease.Episode == 0 {
@@ -392,7 +392,7 @@ func shouldRenameTorrentDisplay(newRelease, matchedRelease rls.Release) bool {
 	return true
 }
 
-func shouldAlignFilesWithCandidate(newRelease, matchedRelease rls.Release) bool {
+func shouldAlignFilesWithCandidate(newRelease, matchedRelease *rls.Release) bool {
 	if newRelease.Series > 0 && newRelease.Episode > 0 &&
 		matchedRelease.Series > 0 && matchedRelease.Episode == 0 {
 		return false

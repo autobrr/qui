@@ -32,7 +32,7 @@ type releaseKey struct {
 
 // makeReleaseKey creates a releaseKey from a parsed release.
 // Returns the zero value if the release doesn't have identifiable metadata.
-func makeReleaseKey(r rls.Release) releaseKey {
+func makeReleaseKey(r *rls.Release) releaseKey {
 	// TV episode.
 	if r.Series > 0 && r.Episode > 0 {
 		return releaseKey{
@@ -69,9 +69,9 @@ func makeReleaseKey(r rls.Release) releaseKey {
 }
 
 // parseReleaseName safely parses release metadata when the release cache is available.
-func (s *Service) parseReleaseName(name string) rls.Release {
+func (s *Service) parseReleaseName(name string) *rls.Release {
 	if s == nil || s.releaseCache == nil {
-		return rls.Release{}
+		return &rls.Release{}
 	}
 	return s.releaseCache.Parse(name)
 }
@@ -83,7 +83,7 @@ func (k releaseKey) String() string {
 
 // releasesMatch checks if two releases are related using fuzzy matching.
 // This allows matching similar content that isn't exactly the same.
-func (s *Service) releasesMatch(source, candidate rls.Release, findIndividualEpisodes bool) bool {
+func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEpisodes bool) bool {
 	// Title should match closely but not necessarily exactly.
 	sourceTitleLower := strings.ToLower(strings.TrimSpace(source.Title))
 	candidateTitleLower := strings.ToLower(strings.TrimSpace(candidate.Title))
@@ -274,7 +274,7 @@ func joinNormalizedSlice(slice []string) string {
 }
 
 // getMatchTypeFromTitle checks if a candidate torrent has files matching what we want based on parsed title.
-func (s *Service) getMatchTypeFromTitle(targetName, candidateName string, targetRelease, candidateRelease rls.Release, candidateFiles qbt.TorrentFiles, ignorePatterns []string) string {
+func (s *Service) getMatchTypeFromTitle(targetName, candidateName string, targetRelease, candidateRelease *rls.Release, candidateFiles qbt.TorrentFiles, ignorePatterns []string) string {
 	// Build candidate release keys from actual files with enrichment.
 	candidateReleases := make(map[releaseKey]int64)
 	for _, cf := range candidateFiles {
@@ -383,7 +383,7 @@ func (s *Service) getMatchTypeFromTitle(targetName, candidateName string, target
 // getMatchType determines if files match for cross-seeding.
 // Returns "exact" for perfect match, "partial" for season pack partial matches,
 // "size" for total size match, or "" for no match.
-func (s *Service) getMatchType(sourceRelease, candidateRelease rls.Release, sourceFiles, candidateFiles qbt.TorrentFiles, ignorePatterns []string) string {
+func (s *Service) getMatchType(sourceRelease, candidateRelease *rls.Release, sourceFiles, candidateFiles qbt.TorrentFiles, ignorePatterns []string) string {
 	sourceLayout := classifyTorrentLayout(sourceFiles, ignorePatterns)
 	candidateLayout := classifyTorrentLayout(candidateFiles, ignorePatterns)
 	if sourceLayout != LayoutUnknown && candidateLayout != LayoutUnknown && sourceLayout != candidateLayout {
@@ -540,8 +540,8 @@ func (s *Service) checkPartialMatch(subset, superset map[releaseKey]int64) bool 
 
 // enrichReleaseFromTorrent enriches file release info with metadata from torrent name.
 // This fills in missing group, resolution, codec, and other metadata from the season pack.
-func enrichReleaseFromTorrent(fileRelease rls.Release, torrentRelease rls.Release) rls.Release {
-	enriched := fileRelease
+func enrichReleaseFromTorrent(fileRelease *rls.Release, torrentRelease *rls.Release) *rls.Release {
+	enriched := *fileRelease
 
 	// Fill in missing group from torrent.
 	if enriched.Group == "" && torrentRelease.Group != "" {
@@ -583,7 +583,7 @@ func enrichReleaseFromTorrent(fileRelease rls.Release, torrentRelease rls.Releas
 		enriched.Year = torrentRelease.Year
 	}
 
-	return enriched
+	return &enriched
 }
 
 // shouldIgnoreFile checks if a file should be ignored based on patterns.

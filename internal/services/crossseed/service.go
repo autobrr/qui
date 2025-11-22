@@ -1786,7 +1786,7 @@ func (s *Service) processCrossSeedCandidate(
 	torrentHash,
 	torrentName string,
 	req *CrossSeedRequest,
-	sourceRelease rls.Release,
+	sourceRelease *rls.Release,
 	sourceFiles qbt.TorrentFiles,
 ) InstanceCrossSeedResult {
 	result := InstanceCrossSeedResult{
@@ -2088,7 +2088,7 @@ func (s *Service) batchLoadCandidateFiles(ctx context.Context, instanceID int, t
 func (s *Service) findBestCandidateMatch(
 	ctx context.Context,
 	candidate CrossSeedCandidate,
-	sourceRelease rls.Release,
+	sourceRelease *rls.Release,
 	sourceFiles qbt.TorrentFiles,
 	ignorePatterns []string,
 	filesByHash map[string]qbt.TorrentFiles,
@@ -2670,7 +2670,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
 
 	// For content type detection, use the largest file if available
-	var contentDetectionRelease rls.Release = sourceRelease
+	var contentDetectionRelease *rls.Release = sourceRelease
 	if sourceFiles != nil && len(*sourceFiles) > 0 {
 		largestFile := FindLargestFile(*sourceFiles)
 		if largestFile != nil {
@@ -2927,10 +2927,10 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		// Parse music information from the source release or torrent name
 		var musicRelease rls.Release
 		if sourceRelease.Type == rls.Music && sourceRelease.Artist != "" {
-			musicRelease = sourceRelease
+			musicRelease = *sourceRelease
 		} else {
 			// Try to parse music info from torrent name
-			musicRelease = ParseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
+			musicRelease = *ParseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
 		}
 
 		if musicRelease.Artist != "" {
@@ -2980,9 +2980,9 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		var logRelease rls.Release
 		if contentInfo.IsMusic && contentDetectionRelease.Type == rls.Music {
 			// For music, create a proper music release object by parsing the torrent name as music
-			logRelease = ParseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
+			logRelease = *ParseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
 		} else {
-			logRelease = sourceRelease
+			logRelease = *sourceRelease
 		}
 
 		logEvent := log.Debug().
@@ -3512,7 +3512,7 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 	// Parse all torrents and track their releases
 	type torrentWithRelease struct {
 		torrent qbt.Torrent
-		release rls.Release
+		release *rls.Release
 	}
 
 	parsed := make([]torrentWithRelease, 0, len(torrents))
@@ -5032,7 +5032,7 @@ func uniquePositiveInts(values []int) []int {
 	return result
 }
 
-func evaluateReleaseMatch(source, candidate rls.Release) (float64, string) {
+func evaluateReleaseMatch(source, candidate *rls.Release) (float64, string) {
 	score := 1.0
 	reasons := make([]string, 0, 6)
 

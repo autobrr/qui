@@ -52,7 +52,7 @@ func normalizeVariant(value string) string {
 	return strings.ToUpper(strings.TrimSpace(value))
 }
 
-func (o variantOverrides) releaseVariants(r rls.Release) map[string]struct{} {
+func (o variantOverrides) releaseVariants(r *rls.Release) map[string]struct{} {
 	variants := make(map[string]struct{})
 
 	addVariant := func(name string) {
@@ -124,7 +124,7 @@ func variantTokens(value string) []string {
 	return tokens
 }
 
-func (o variantOverrides) variantsCompatible(source, candidate rls.Release) bool {
+func (o variantOverrides) variantsCompatible(source, candidate *rls.Release) bool {
 	sourceVariants := o.releaseVariants(source)
 	if len(sourceVariants) == 0 {
 		return true
