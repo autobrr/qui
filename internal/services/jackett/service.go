@@ -1466,7 +1466,7 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 					Str("backend", string(idx.Backend)).
 					Msg("Searching native Torznab endpoint")
 				searchFn = func() ([]Result, error) {
-					return client.SearchDirect(paramsMap)
+					return client.SearchDirect(ctx, paramsMap)
 				}
 			case models.TorznabBackendProwlarr:
 				indexerID := strings.TrimSpace(idx.IndexerID)
@@ -1492,7 +1492,7 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 					Str("torznab_indexer_id", indexerID).
 					Msg("Searching Prowlarr indexer")
 				searchFn = func() ([]Result, error) {
-					return client.Search(indexerID, paramsMap)
+					return client.Search(ctx, indexerID, paramsMap)
 				}
 			default:
 				// Jackett/Prowlarr aggregator - use stored indexer_id
@@ -1522,7 +1522,7 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 					Str("torznab_indexer_id", indexerID).
 					Msg("Searching Torznab aggregator indexer")
 				searchFn = func() ([]Result, error) {
-					return client.Search(indexerID, paramsMap)
+					return client.Search(ctx, indexerID, paramsMap)
 				}
 			}
 
