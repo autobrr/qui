@@ -341,9 +341,6 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 	// Determine debounce window: aggressive uses retry interval; non-aggressive uses global cooldown.
 	debounceWindow := s.cfg.DebounceWindow
 	if isAggressive {
-		if settings == nil {
-			settings = models.DefaultInstanceReannounceSettings(instanceID)
-		}
 		if interval := time.Duration(settings.ReannounceIntervalSeconds) * time.Second; interval > 0 {
 			debounceWindow = interval
 		}

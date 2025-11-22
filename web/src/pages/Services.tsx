@@ -27,14 +27,15 @@ export function Services() {
 
   const selectedInstanceId = useMemo(() => {
     const fromSearch = search.instanceId ? Number(search.instanceId) : undefined
-    if (fromSearch && activeInstances.some((inst) => inst.id === fromSearch)) {
+    const allInstances = instances ?? []
+    if (fromSearch && allInstances.some((inst) => inst.id === fromSearch)) {
       return fromSearch
     }
-    if (activeInstances.length > 0) {
-      return activeInstances[0]?.id
+    if (allInstances.length > 0) {
+      return allInstances[0]?.id
     }
     return undefined
-  }, [activeInstances, search.instanceId])
+  }, [instances, search.instanceId])
 
   const handleInstanceChange = (value: string) => {
     navigate({
@@ -74,7 +75,7 @@ export function Services() {
                 </div>
               </SelectTrigger>
               <SelectContent>
-                {instances.map((instance) => (
+                {(instances ?? []).map((instance) => (
                   <SelectItem key={instance.id} value={String(instance.id)}>
                     <div className="flex items-center max-w-40 gap-2">
                       <span className="truncate">{instance.name}</span>

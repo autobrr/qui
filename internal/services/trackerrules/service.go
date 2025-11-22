@@ -254,9 +254,6 @@ func limitHashBatch(hashes []string, max int) [][]string {
 
 func selectRule(torrent qbt.Torrent, rules []*models.TrackerRule, sm *qbittorrent.SyncManager) *models.TrackerRule {
 	trackerDomains := collectTrackerDomains(torrent, sm)
-	if len(trackerDomains) == 0 {
-		return nil
-	}
 
 	for _, rule := range rules {
 		if !matchesTracker(rule.TrackerPattern, trackerDomains) {

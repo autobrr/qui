@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -150,6 +151,11 @@ func (h *TrackerRuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	rule, err := h.store.Update(r.Context(), payload.toModel(instanceID, ruleID))
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			log.Error().Err(err).Int("instanceID", instanceID).Int("ruleID", ruleID).Msg("tracker rule not found for update")
+			RespondError(w, http.StatusNotFound, "Tracker rule not found")
+			return
+		}
 		log.Error().Err(err).Int("instanceID", instanceID).Int("ruleID", ruleID).Msg("failed to update tracker rule")
 		RespondError(w, http.StatusInternalServerError, "Failed to update tracker rule")
 		return
@@ -229,7 +235,7 @@ func parseInstanceID(w http.ResponseWriter, r *http.Request) (int, error) {
 	instanceID, err := strconv.Atoi(instanceIDStr)
 	if err != nil || instanceID <= 0 {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
-		return 0, err
+		return 0, fmt.Errorf("invalid instance ID: %s", instanceIDStr)
 	}
 	return instanceID, nil
 }
