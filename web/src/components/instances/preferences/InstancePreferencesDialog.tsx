@@ -5,7 +5,7 @@
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Clock, Cog, Folder, Gauge, Radar, RefreshCcw, Settings, Upload, Wifi } from "lucide-react"
+import { Clock, Cog, Folder, Gauge, Radar, Settings, Upload, Wifi } from "lucide-react"
 import { AdvancedNetworkForm } from "./AdvancedNetworkForm"
 import { ConnectionSettingsForm } from "./ConnectionSettingsForm"
 import { FileManagementForm } from "./FileManagementForm"
@@ -13,7 +13,6 @@ import { NetworkDiscoveryForm } from "./NetworkDiscoveryForm"
 import { QueueManagementForm } from "./QueueManagementForm"
 import { SeedingLimitsForm } from "./SeedingLimitsForm"
 import { SpeedLimitsForm } from "./SpeedLimitsForm"
-import { TrackerReannounceForm } from "./TrackerReannounceForm"
 
 interface InstancePreferencesDialogProps {
   open: boolean
@@ -49,7 +48,7 @@ export function InstancePreferencesDialog({
         </DialogHeader>
 
         <Tabs defaultValue={defaultTab ?? "speed"} className="w-full">
-          <TabsList className="grid w-full grid-cols-8">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="speed" className="flex items-center gap-2">
               <Gauge className="h-4 w-4" />
               <span className="hidden sm:inline">Speed</span>
@@ -77,10 +76,6 @@ export function InstancePreferencesDialog({
             <TabsTrigger value="advanced" className="flex items-center gap-2">
               <Settings className="h-4 w-4" />
               <span className="hidden sm:inline">Advanced</span>
-            </TabsTrigger>
-            <TabsTrigger value="reannounce" className="flex items-center gap-2">
-              <RefreshCcw className="h-4 w-4" />
-              <span className="hidden sm:inline">Reannounce</span>
             </TabsTrigger>
           </TabsList>
 
@@ -154,15 +149,6 @@ export function InstancePreferencesDialog({
             <AdvancedNetworkForm instanceId={instanceId} onSuccess={handleSuccess} />
           </TabsContent>
 
-          <TabsContent value="reannounce" className="space-y-4">
-            <div className="space-y-2">
-              <h3 className="text-lg font-medium">Tracker Reannounce</h3>
-              <p className="text-sm text-muted-foreground">
-                Configure how qui monitors and reannounces torrents whose trackers initially respond with errors.
-              </p>
-            </div>
-            <TrackerReannounceForm instanceId={instanceId} onSuccess={handleSuccess} />
-          </TabsContent>
         </Tabs>
       </DialogContent>
     </Dialog>

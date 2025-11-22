@@ -17,6 +17,7 @@ import { Route as AuthenticatedInstancesRouteImport } from './routes/_authentica
 import { Route as AuthenticatedInstancesInstanceIdRouteImport } from './routes/_authenticated/instances.$instanceId'
 import { Route as AuthenticatedInstancesIndexRouteImport } from './routes/_authenticated/instances.index'
 import { Route as AuthenticatedSearchRouteImport } from './routes/_authenticated/search'
+import { Route as AuthenticatedServicesRouteImport } from './routes/_authenticated/services'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoginRouteImport } from './routes/login'
@@ -44,6 +45,11 @@ const IndexRoute = IndexRouteImport.update({
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedServicesRoute = AuthenticatedServicesRouteImport.update({
+  id: '/services',
+  path: '/services',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedSearchRoute = AuthenticatedSearchRouteImport.update({
@@ -93,6 +99,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/instances': typeof AuthenticatedInstancesRouteWithChildren
   '/search': typeof AuthenticatedSearchRoute
+  '/services': typeof AuthenticatedServicesRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRoute
   '/instances/': typeof AuthenticatedInstancesIndexRoute
@@ -105,6 +112,7 @@ export interface FileRoutesByTo {
   '/cross-seed': typeof AuthenticatedCrossSeedRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/search': typeof AuthenticatedSearchRoute
+  '/services': typeof AuthenticatedServicesRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRoute
   '/instances': typeof AuthenticatedInstancesIndexRoute
@@ -120,6 +128,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/instances': typeof AuthenticatedInstancesRouteWithChildren
   '/_authenticated/search': typeof AuthenticatedSearchRoute
+  '/_authenticated/services': typeof AuthenticatedServicesRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRoute
   '/_authenticated/instances/': typeof AuthenticatedInstancesIndexRoute
@@ -135,6 +144,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/instances'
     | '/search'
+    | '/services'
     | '/settings'
     | '/instances/$instanceId'
     | '/instances/'
@@ -147,6 +157,7 @@ export interface FileRouteTypes {
     | '/cross-seed'
     | '/dashboard'
     | '/search'
+    | '/services'
     | '/settings'
     | '/instances/$instanceId'
     | '/instances'
@@ -161,6 +172,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/instances'
     | '/_authenticated/search'
+    | '/_authenticated/services'
     | '/_authenticated/settings'
     | '/_authenticated/instances/$instanceId'
     | '/_authenticated/instances/'
@@ -208,6 +220,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/services': {
+      id: '/_authenticated/services'
+      path: '/services'
+      fullPath: '/services'
+      preLoaderRoute: typeof AuthenticatedServicesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/search': {
@@ -285,6 +304,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedInstancesRoute: typeof AuthenticatedInstancesRouteWithChildren
   AuthenticatedSearchRoute: typeof AuthenticatedSearchRoute
+  AuthenticatedServicesRoute: typeof AuthenticatedServicesRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
 }
 
@@ -294,6 +314,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedInstancesRoute: AuthenticatedInstancesRouteWithChildren,
   AuthenticatedSearchRoute: AuthenticatedSearchRoute,
+  AuthenticatedServicesRoute: AuthenticatedServicesRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
 }
 

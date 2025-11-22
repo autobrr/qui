@@ -38,6 +38,7 @@ import (
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/services/trackerrules"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/pkg/sqlite3store"
 )
@@ -473,6 +474,8 @@ func (app *Application) runServer() {
 		log.Warn().Err(err).Msg("Failed to preload reannounce settings cache")
 	}
 
+	trackerRuleStore := models.NewTrackerRuleStore(db)
+
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db)
 	externalProgramStore := models.NewExternalProgramStore(db)
 	errorStore := models.NewInstanceErrorStore(db)
@@ -531,6 +534,7 @@ func (app *Application) runServer() {
 	crossSeedStore := models.NewCrossSeedStore(db)
 	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore, clientPool)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
+	trackerRuleService := trackerrules.NewService(trackerrules.DefaultConfig(), instanceStore, trackerRuleStore, syncManager)
 
 	syncManager.SetTorrentCompletionHandler(crossSeedService.HandleTorrentCompletion)
 
@@ -543,6 +547,10 @@ func (app *Application) runServer() {
 	reannounceCtx, reannounceCancel := context.WithCancel(context.Background())
 	defer reannounceCancel()
 	reannounceService.Start(reannounceCtx)
+
+	trackerRulesCtx, trackerRulesCancel := context.WithCancel(context.Background())
+	defer trackerRulesCancel()
+	trackerRuleService.Start(trackerRulesCtx)
 
 	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, backups.Config{DataDir: cfg.GetDataDir()})
@@ -627,6 +635,8 @@ func (app *Application) runServer() {
 		CrossSeedService:     crossSeedService,
 		JackettService:       jackettService,
 		TorznabIndexerStore:  torznabIndexerStore,
+		TrackerRuleStore:     trackerRuleStore,
+		TrackerRuleService:   trackerRuleService,
 	})
 
 	errorChannel := make(chan error)
