@@ -393,10 +393,15 @@ func TestServiceEnqueue_AggressiveModeSkipsDebounce(t *testing.T) {
 	require.True(t, svc.enqueue(1, "ABC", "Test", "tracker"))
 	require.Equal(t, 1, started, "should NOT start new job in conservative mode")
 
-	// 4. Try enqueue with Aggressive=True
-	svc.settingsCache.Replace(&models.InstanceReannounceSettings{InstanceID: 1, Aggressive: true, Enabled: true})
+	// 4. Try enqueue with Aggressive=True, retry interval governs cooldown
+	svc.settingsCache.Replace(&models.InstanceReannounceSettings{InstanceID: 1, Aggressive: true, Enabled: true, ReannounceIntervalSeconds: 7})
 	require.True(t, svc.enqueue(1, "ABC", "Test", "tracker"))
-	require.Equal(t, 2, started, "should start new job immediately in aggressive mode")
+	require.Equal(t, 1, started, "should respect retry interval cooldown in aggressive mode")
+
+	// 5. Advance past retry interval and ensure job starts
+	now = now.Add(10 * time.Second)
+	require.True(t, svc.enqueue(1, "ABC", "Test", "tracker"))
+	require.Equal(t, 2, started, "should start new job after retry interval in aggressive mode")
 }
 
 func newTestServiceForDebounce(window time.Duration, now func() time.Time) *Service {
