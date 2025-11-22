@@ -283,6 +283,20 @@ func (r *RateLimiter) recordLocked(indexerID int, ts time.Time) {
 	r.pruneLocked(state, ts)
 }
 
+// NextWait returns the amount of time the caller would need to wait before a request could be made
+// against the provided indexer using the supplied options. This is a non-blocking helper used by
+// the job scheduler to decide if a request can run immediately.
+func (r *RateLimiter) NextWait(indexer *models.TorznabIndexer, opts *RateLimitOptions) time.Duration {
+	if indexer == nil {
+		return 0
+	}
+	cfg := r.resolveOptions(opts)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	now := time.Now()
+	return r.computeWaitLocked(indexer, now, cfg.MinInterval)
+}
+
 func derefLimit(limit *int) int {
 	if limit == nil {
 		return 0

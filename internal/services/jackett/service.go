@@ -66,6 +66,7 @@ type Service struct {
 	indexerStore           IndexerStore
 	releaseParser          *releases.Parser
 	rateLimiter            *RateLimiter
+	searchScheduler        *searchScheduler
 	rateLimiterRestoreOnce sync.Once
 	persistedCooldowns     map[int]time.Time
 	persistedCooldownsMu   sync.RWMutex
@@ -200,6 +201,7 @@ func NewService(indexerStore IndexerStore, opts ...ServiceOption) *Service {
 		indexerStore:       indexerStore,
 		releaseParser:      releases.NewDefaultParser(),
 		rateLimiter:        NewRateLimiter(defaultMinRequestInterval),
+		searchScheduler:    newSearchScheduler(),
 		persistedCooldowns: make(map[int]time.Time),
 		searchCacheTTL:     defaultSearchCacheTTL,
 		searchCacheEnabled: true,
@@ -209,6 +211,9 @@ func NewService(indexerStore IndexerStore, opts ...ServiceOption) *Service {
 			opt(s)
 		}
 	}
+	if s.searchScheduler != nil {
+		s.searchScheduler.rateLimiter = s.rateLimiter
+	}
 	return s
 }
 
@@ -217,6 +222,15 @@ func (s *Service) executeSearch(ctx context.Context, indexers []*models.TorznabI
 		return s.searchExecutor(ctx, indexers, params, meta)
 	}
 	return s.searchMultipleIndexers(ctx, indexers, params, meta)
+}
+
+// executeQueuedSearch submits the search to the scheduler so we can skip over jobs blocked by
+// indexer cooldowns or other rate-limit constraints.
+func (s *Service) executeQueuedSearch(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
+	if s.searchScheduler == nil {
+		return s.executeSearch(ctx, indexers, params, meta)
+	}
+	return s.searchScheduler.Submit(ctx, indexers, params, meta, s.executeSearch)
 }
 
 // WithTorrentCache wires a torrent payload cache into the service.
@@ -360,7 +374,7 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 	searchCtx, cancel := timeouts.WithSearchTimeout(ctx, searchTimeout)
 	defer cancel()
 
-	allResults, networkCoverage, err := s.executeSearch(searchCtx, indexersToSearch, params, meta)
+	allResults, networkCoverage, err := s.executeQueuedSearch(searchCtx, indexersToSearch, params, meta)
 	deadlineErr := err != nil && errors.Is(err, context.DeadlineExceeded)
 	if deadlineErr {
 		log.Warn().
@@ -561,7 +575,7 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 	searchCtx, cancel := timeouts.WithSearchTimeout(ctx, searchTimeout)
 	defer cancel()
 
-	allResults, networkCoverage, err := s.executeSearch(searchCtx, indexersToSearch, params, meta)
+	allResults, networkCoverage, err := s.executeQueuedSearch(searchCtx, indexersToSearch, params, meta)
 	deadlineErr := err != nil && errors.Is(err, context.DeadlineExceeded)
 	if err != nil && !deadlineErr {
 		return nil, err
@@ -669,7 +683,7 @@ func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int) (*Sea
 	searchCtx, cancel := timeouts.WithSearchTimeout(ctx, searchTimeout)
 	defer cancel()
 
-	results, coverage, err := s.executeSearch(searchCtx, indexersToSearch, params, nil)
+	results, coverage, err := s.executeQueuedSearch(searchCtx, indexersToSearch, params, nil)
 	deadlineErr := err != nil && errors.Is(err, context.DeadlineExceeded)
 	if err != nil && !deadlineErr {
 		return nil, err
