@@ -2243,10 +2243,16 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 		return nil, fmt.Errorf("%w: instance %d not found", ErrInvalidRequest, instanceID)
 	}
 
-	sourceTorrent, err := s.getTorrentByHash(ctx, instanceID, hash)
+	torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{
+		Hashes: []string{hash},
+	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load torrents: %w", err)
 	}
+	if len(torrents) == 0 {
+		return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
+	}
+	sourceTorrent := &torrents[0]
 	if sourceTorrent.Progress < 1.0 {
 		return nil, fmt.Errorf("%w: torrent %s is not fully downloaded (progress %.2f)", ErrTorrentNotComplete, sourceTorrent.Name, sourceTorrent.Progress)
 	}
@@ -2631,10 +2637,16 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		return nil, fmt.Errorf("%w: instance %d not found", ErrInvalidRequest, instanceID)
 	}
 
-	sourceTorrent, err := s.getTorrentByHash(ctx, instanceID, hash)
+	torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{
+		Hashes: []string{hash},
+	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load torrents: %w", err)
 	}
+	if len(torrents) == 0 {
+		return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
+	}
+	sourceTorrent := &torrents[0]
 	if sourceTorrent.Progress < 1.0 {
 		return nil, fmt.Errorf("%w: torrent %s is not fully downloaded (progress %.2f)", ErrTorrentNotComplete, sourceTorrent.Name, sourceTorrent.Progress)
 	}
@@ -3159,8 +3171,14 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 		return nil, fmt.Errorf("%w: no selections provided", ErrInvalidRequest)
 	}
 
-	if _, err := s.getTorrentByHash(ctx, instanceID, hash); err != nil {
+	torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{
+		Hashes: []string{hash},
+	})
+	if err != nil {
 		return nil, err
+	}
+	if len(torrents) == 0 {
+		return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
 	}
 
 	cachedSelections := s.getCachedSearchResults(instanceID, hash)
@@ -3358,32 +3376,6 @@ func asyncFilteringCacheKey(instanceID int, hash string) string {
 		return fmt.Sprintf("async:%d", instanceID)
 	}
 	return fmt.Sprintf("async:%d:%s", instanceID, cleanHash)
-}
-
-// getTorrentByHash retrieves a torrent by matching any known hash variant.
-func (s *Service) getTorrentByHash(ctx context.Context, instanceID int, hash string) (*qbt.Torrent, error) {
-	torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll})
-	if err != nil {
-		return nil, fmt.Errorf("load torrents: %w", err)
-	}
-
-	needle := stringutils.DefaultNormalizer.Normalize(hash)
-	for _, torrent := range torrents {
-		candidates := []string{
-			stringutils.DefaultNormalizer.Normalize(torrent.Hash),
-			stringutils.DefaultNormalizer.Normalize(torrent.InfohashV1),
-			stringutils.DefaultNormalizer.Normalize(torrent.InfohashV2),
-		}
-
-		for _, candidate := range candidates {
-			if candidate != "" && candidate == needle {
-				t := torrent
-				return &t, nil
-			}
-		}
-	}
-
-	return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
 }
 
 func (s *Service) searchRunLoop(ctx context.Context, state *searchRunState) {
@@ -4374,10 +4366,16 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 		Msg("[CROSSSEED-FILTER] Starting indexer content filtering")
 
 	// Get the source torrent being searched for
-	sourceTorrent, err := s.getTorrentByHash(ctx, instanceID, hash)
+	torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{
+		Hashes: []string{hash},
+	})
 	if err != nil {
 		return indexerIDs, nil, nil, err
 	}
+	if len(torrents) == 0 {
+		return indexerIDs, nil, nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
+	}
+	sourceTorrent := &torrents[0]
 
 	log.Debug().
 		Str("sourceTorrentName", sourceTorrent.Name).
