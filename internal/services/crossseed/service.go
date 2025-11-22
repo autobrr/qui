@@ -51,10 +51,10 @@ type instanceProvider interface {
 // qbittorrentSync exposes the sync manager functionality needed by the service.
 type qbittorrentSync interface {
 	GetTorrents(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
-	// GetTorrentFilesBatch returns files keyed by the provided hashes (normalized by callers).
-	// The returned map uses the same hash strings that were requested; missing entries indicate
-	// per-hash fetch failures or absent torrents.
+	// GetTorrentFilesBatch returns files keyed by the provided hashes (canonicalized by the sync manager).
+	// The returned map uses normalized hashes; missing entries indicate per-hash fetch failures or absent torrents.
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
+	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
 	GetTorrentProperties(ctx context.Context, instanceID int, hash string) (*qbt.TorrentProperties, error)
 	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error
 	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
@@ -94,6 +94,9 @@ type Service struct {
 	automationWake   chan struct{}
 	runActive        atomic.Bool
 
+	// Cached torrent file metadata for repeated analyze/search calls.
+	torrentFilesCache *ttlcache.Cache[string, qbt.TorrentFiles]
+
 	searchMu     sync.RWMutex
 	searchCancel context.CancelFunc
 	searchState  *searchRunState
@@ -104,6 +107,20 @@ type Service struct {
 	// test hooks
 	crossSeedInvoker    func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
 	torrentDownloadFunc func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
+}
+
+type automationInstanceSnapshot struct {
+	instance *models.Instance
+	torrents []qbt.Torrent
+}
+
+type automationSnapshots struct {
+	instances map[int]*automationInstanceSnapshot
+}
+
+type automationContext struct {
+	snapshots      *automationSnapshots
+	candidateCache map[string]*FindCandidatesResponse
 }
 
 const (
@@ -154,6 +171,8 @@ func NewService(
 		SetDefaultTTL(searchResultCacheTTL)) // Use same TTL as search results
 	indexerDomainCache := ttlcache.New(ttlcache.Options[string, string]{}.
 		SetDefaultTTL(indexerDomainCacheTTL))
+	contentFilesCache := ttlcache.New(ttlcache.Options[string, qbt.TorrentFiles]{}.
+		SetDefaultTTL(5 * time.Minute))
 
 	return &Service{
 		instanceStore:        instanceStore,
@@ -170,6 +189,7 @@ func NewService(
 		clientPool:           clientPool,
 		automationWake:       make(chan struct{}, 1),
 		domainMappings:       initializeDomainMappings(),
+		torrentFilesCache:    contentFilesCache,
 	}
 }
 
@@ -1181,6 +1201,11 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		indexerInfo = make(map[int]jackett.EnabledIndexerInfo) // Empty map as fallback
 	}
 
+	autoCtx := &automationContext{
+		snapshots:      s.buildAutomationSnapshots(ctx, settings.TargetInstanceIDs),
+		candidateCache: make(map[string]*FindCandidatesResponse),
+	}
+
 	processed := 0
 	var runErr error
 
@@ -1206,7 +1231,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 			continue
 		}
 
-		status, infoHash, procErr := s.processAutomationCandidate(ctx, run, settings, result, opts, indexerInfo)
+		status, infoHash, procErr := s.processAutomationCandidate(ctx, run, settings, autoCtx, result, opts, indexerInfo)
 		if procErr != nil {
 			if runErr == nil {
 				runErr = procErr
@@ -1256,7 +1281,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 	return run, runErr
 }
 
-func (s *Service) processAutomationCandidate(ctx context.Context, run *models.CrossSeedRun, settings *models.CrossSeedAutomationSettings, result jackett.SearchResult, opts AutomationRunOptions, indexerInfo map[int]jackett.EnabledIndexerInfo) (models.CrossSeedFeedItemStatus, *string, error) {
+func (s *Service) processAutomationCandidate(ctx context.Context, run *models.CrossSeedRun, settings *models.CrossSeedAutomationSettings, autoCtx *automationContext, result jackett.SearchResult, opts AutomationRunOptions, indexerInfo map[int]jackett.EnabledIndexerInfo) (models.CrossSeedFeedItemStatus, *string, error) {
 	sourceIndexer := result.Indexer
 	if resolved := jackett.GetIndexerNameFromInfo(indexerInfo, result.IndexerID); resolved != "" {
 		sourceIndexer = resolved
@@ -1272,7 +1297,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		findReq.TargetInstanceIDs = append([]int(nil), settings.TargetInstanceIDs...)
 	}
 
-	candidatesResp, err := s.FindCandidates(ctx, findReq)
+	candidatesResp, err := s.findCandidatesWithAutomationContext(ctx, findReq, autoCtx)
 	if err != nil {
 		run.TorrentsFailed++
 		return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("find candidates: %w", err)
@@ -1434,10 +1459,126 @@ func (s *Service) markFeedItem(ctx context.Context, result jackett.SearchResult,
 	}
 }
 
+func (s *Service) buildAutomationSnapshots(ctx context.Context, targetInstanceIDs []int) *automationSnapshots {
+	if s == nil || s.instanceStore == nil || s.syncManager == nil {
+		return nil
+	}
+
+	snapshots := &automationSnapshots{
+		instances: make(map[int]*automationInstanceSnapshot),
+	}
+
+	instanceIDs := normalizeInstanceIDs(targetInstanceIDs)
+	if len(instanceIDs) == 0 {
+		instances, err := s.instanceStore.List(ctx)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to list instances for automation snapshot")
+			return nil
+		}
+		for _, inst := range instances {
+			if inst == nil {
+				continue
+			}
+			instanceIDs = append(instanceIDs, inst.ID)
+			snapshots.instances[inst.ID] = &automationInstanceSnapshot{
+				instance: inst,
+			}
+		}
+	}
+
+	for _, instanceID := range instanceIDs {
+		snap := snapshots.instances[instanceID]
+		if snap == nil {
+			instance, err := s.instanceStore.Get(ctx, instanceID)
+			if err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get instance for automation snapshot")
+				continue
+			}
+			snap = &automationInstanceSnapshot{instance: instance}
+			snapshots.instances[instanceID] = snap
+		}
+
+		torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll})
+		if err != nil {
+			log.Warn().
+				Err(err).
+				Int("instanceID", instanceID).
+				Str("instanceName", snap.instance.Name).
+				Msg("Failed to get torrents for automation snapshot, skipping")
+			continue
+		}
+		snap.torrents = torrents
+	}
+
+	if len(snapshots.instances) == 0 {
+		return nil
+	}
+
+	return snapshots
+}
+
+func (s *Service) automationCacheKey(name string, findIndividual bool) string {
+	if s == nil || s.releaseCache == nil || s.stringNormalizer == nil {
+		return ""
+	}
+
+	release := s.releaseCache.Parse(name)
+	title := s.stringNormalizer.Normalize(release.Title)
+	group := strings.ToUpper(strings.TrimSpace(release.Group))
+	source := strings.ToUpper(strings.TrimSpace(release.Source))
+	resolution := strings.ToUpper(strings.TrimSpace(release.Resolution))
+	collection := strings.ToUpper(strings.TrimSpace(release.Collection))
+
+	return fmt.Sprintf("%s|%d|%d|%d|%d|%s|%s|%s|%s|%t",
+		title,
+		release.Type,
+		release.Series,
+		release.Episode,
+		release.Year,
+		group,
+		source,
+		resolution,
+		collection,
+		findIndividual)
+}
+
+func (s *Service) findCandidatesWithAutomationContext(ctx context.Context, req *FindCandidatesRequest, autoCtx *automationContext) (*FindCandidatesResponse, error) {
+	if autoCtx == nil {
+		return s.findCandidates(ctx, req, nil)
+	}
+
+	if autoCtx.candidateCache == nil {
+		autoCtx.candidateCache = make(map[string]*FindCandidatesResponse)
+	}
+
+	cacheKey := s.automationCacheKey(req.TorrentName, req.FindIndividualEpisodes)
+	if cacheKey != "" {
+		if cached, ok := autoCtx.candidateCache[cacheKey]; ok {
+			return cached, nil
+		}
+	}
+
+	resp, err := s.findCandidates(ctx, req, autoCtx.snapshots)
+	if err != nil {
+		return nil, err
+	}
+
+	if cacheKey != "" {
+		autoCtx.candidateCache[cacheKey] = resp
+	}
+	return resp, nil
+}
+
 // FindCandidates finds ALL existing torrents across instances that match a title string
 // Input: Just a torrent NAME (string) - the torrent doesn't exist yet
 // Output: All existing torrents that have related content based on release name parsing
 func (s *Service) FindCandidates(ctx context.Context, req *FindCandidatesRequest) (*FindCandidatesResponse, error) {
+	return s.findCandidates(ctx, req, nil)
+}
+
+func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest, snapshots *automationSnapshots) (*FindCandidatesResponse, error) {
+	start := time.Now()
+
 	if req.TorrentName == "" {
 		return nil, fmt.Errorf("torrent_name is required")
 	}
@@ -1451,17 +1592,21 @@ func (s *Service) FindCandidates(ctx context.Context, req *FindCandidatesRequest
 	}
 
 	// Determine which instances to search
-	var searchInstanceIDs []int
-	if len(req.TargetInstanceIDs) > 0 {
-		searchInstanceIDs = req.TargetInstanceIDs
-	} else {
-		// Search all instances
-		allInstances, err := s.instanceStore.List(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list instances: %w", err)
-		}
-		for _, inst := range allInstances {
-			searchInstanceIDs = append(searchInstanceIDs, inst.ID)
+	searchInstanceIDs := normalizeInstanceIDs(req.TargetInstanceIDs)
+	if len(searchInstanceIDs) == 0 {
+		if snapshots != nil && len(snapshots.instances) > 0 {
+			for instanceID := range snapshots.instances {
+				searchInstanceIDs = append(searchInstanceIDs, instanceID)
+			}
+		} else {
+			// Search all instances
+			allInstances, err := s.instanceStore.List(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list instances: %w", err)
+			}
+			for _, inst := range allInstances {
+				searchInstanceIDs = append(searchInstanceIDs, inst.ID)
+			}
 		}
 	}
 
@@ -1474,24 +1619,41 @@ func (s *Service) FindCandidates(ctx context.Context, req *FindCandidatesRequest
 
 	// Search ALL instances for torrents that match the title
 	for _, instanceID := range searchInstanceIDs {
-		instance, err := s.instanceStore.Get(ctx, instanceID)
-		if err != nil {
-			log.Warn().
-				Int("instanceID", instanceID).
-				Err(err).
-				Msg("Failed to get instance info, skipping")
-			continue
+		var (
+			instance *models.Instance
+			torrents []qbt.Torrent
+		)
+
+		if snapshots != nil {
+			if snap := snapshots.instances[instanceID]; snap != nil {
+				instance = snap.instance
+				torrents = snap.torrents
+			}
 		}
 
-		// Get all torrents from this instance
-		torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll})
-		if err != nil {
-			log.Warn().
-				Int("instanceID", instanceID).
-				Str("instanceName", instance.Name).
-				Err(err).
-				Msg("Failed to get torrents from instance, skipping")
-			continue
+		if instance == nil {
+			var err error
+			instance, err = s.instanceStore.Get(ctx, instanceID)
+			if err != nil {
+				log.Warn().
+					Int("instanceID", instanceID).
+					Err(err).
+					Msg("Failed to get instance info, skipping")
+				continue
+			}
+		}
+
+		if torrents == nil {
+			var err error
+			torrents, err = s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll})
+			if err != nil {
+				log.Warn().
+					Int("instanceID", instanceID).
+					Str("instanceName", instance.Name).
+					Err(err).
+					Msg("Failed to get torrents from instance, skipping")
+				continue
+			}
 		}
 
 		torrentByHash := make(map[string]qbt.Torrent, len(torrents))
@@ -1589,6 +1751,17 @@ func (s *Service) FindCandidates(ctx context.Context, req *FindCandidatesRequest
 		Int("instancesSearched", len(searchInstanceIDs)).
 		Int("totalMatches", totalCandidates).
 		Msg("Found existing torrents matching title")
+
+	elapsed := time.Since(start)
+	if elapsed > 200*time.Millisecond {
+		log.Debug().
+			Str("targetTitle", req.TorrentName).
+			Str("sourceIndexer", req.SourceIndexer).
+			Int("instancesSearched", len(searchInstanceIDs)).
+			Int("totalMatches", totalCandidates).
+			Dur("elapsed", elapsed).
+			Msg("FindCandidates completed")
+	}
 
 	return response, nil
 }
@@ -1799,35 +1972,32 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Check if torrent already exists
-	existingTorrents, err := s.syncManager.GetTorrents(ctx, candidate.InstanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll})
+	existingTorrent, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, []string{torrentHash})
 	if err != nil {
 		result.Message = fmt.Sprintf("Failed to check existing torrents: %v", err)
 		return result
 	}
 
-	// Check by hash (v1 or v2)
-	for _, existing := range existingTorrents {
-		if existing.Hash == torrentHash || existing.InfohashV1 == torrentHash || existing.InfohashV2 == torrentHash {
-			result.Success = false
-			result.Status = "exists"
-			result.Message = "Torrent already exists in this instance"
-			result.MatchedTorrent = &MatchedTorrent{
-				Hash:     existing.Hash,
-				Name:     existing.Name,
-				Progress: existing.Progress,
-				Size:     existing.Size,
-			}
-
-			log.Debug().
-				Int("instanceID", candidate.InstanceID).
-				Str("instanceName", candidate.InstanceName).
-				Str("torrentHash", torrentHash).
-				Str("existingHash", existing.Hash).
-				Str("existingName", existing.Name).
-				Msg("Cross-seed apply skipped: torrent already exists in instance")
-
-			return result
+	if exists && existingTorrent != nil {
+		result.Success = false
+		result.Status = "exists"
+		result.Message = "Torrent already exists in this instance"
+		result.MatchedTorrent = &MatchedTorrent{
+			Hash:     existingTorrent.Hash,
+			Name:     existingTorrent.Name,
+			Progress: existingTorrent.Progress,
+			Size:     existingTorrent.Size,
 		}
+
+		log.Debug().
+			Int("instanceID", candidate.InstanceID).
+			Str("instanceName", candidate.InstanceName).
+			Str("torrentHash", torrentHash).
+			Str("existingHash", existingTorrent.Hash).
+			Str("existingName", existingTorrent.Name).
+			Msg("Cross-seed apply skipped: torrent already exists in instance")
+
+		return result
 	}
 
 	candidateFilesByHash := s.batchLoadCandidateFiles(ctx, candidate.InstanceID, candidate.Torrents)
@@ -2001,8 +2171,52 @@ func (s *Service) processCrossSeedCandidate(
 }
 
 func normalizeHash(hash string) string {
-	// qBittorrent file lookups and batch maps use uppercase-trimmed hashes to keep keying consistent.
-	return strings.ToUpper(strings.TrimSpace(hash))
+	return strings.ToLower(strings.TrimSpace(hash))
+}
+
+func cacheKeyForTorrentFiles(instanceID int, hash string) string {
+	if hash == "" {
+		return ""
+	}
+	return fmt.Sprintf("%d|%s", instanceID, normalizeHash(hash))
+}
+
+func cloneTorrentFiles(files qbt.TorrentFiles) qbt.TorrentFiles {
+	if len(files) == 0 {
+		return nil
+	}
+	cloned := make(qbt.TorrentFiles, len(files))
+	copy(cloned, files)
+	return cloned
+}
+
+func (s *Service) getTorrentFilesCached(ctx context.Context, instanceID int, hash string) (qbt.TorrentFiles, error) {
+	key := cacheKeyForTorrentFiles(instanceID, hash)
+	if key == "" {
+		return nil, fmt.Errorf("%w: torrent hash is required", ErrInvalidRequest)
+	}
+
+	if s.torrentFilesCache != nil {
+		if cached, ok := s.torrentFilesCache.Get(key); ok {
+			return cloneTorrentFiles(cached), nil
+		}
+	}
+
+	filesMap, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{hash})
+	if err != nil {
+		return nil, err
+	}
+
+	files, ok := filesMap[normalizeHash(hash)]
+	if !ok {
+		return nil, fmt.Errorf("torrent files not found for hash %s", hash)
+	}
+
+	if s.torrentFilesCache != nil {
+		_ = s.torrentFilesCache.Set(key, cloneTorrentFiles(files), ttlcache.DefaultTTL)
+	}
+
+	return files, nil
 }
 
 func matchTypePriority(matchType string) int {
@@ -2270,13 +2484,9 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 	}
 
 	// Get files to find the largest file for better content type detection
-	filesMap, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{hash})
+	sourceFiles, err := s.getTorrentFilesCached(ctx, instanceID, hash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrent files: %w", err)
-	}
-	sourceFiles, ok := filesMap[hash]
-	if !ok {
-		return nil, fmt.Errorf("torrent files not found for hash %s", hash)
 	}
 
 	// Parse and detect content type
@@ -2629,6 +2839,8 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		return nil, fmt.Errorf("%w: torrent hash is required", ErrInvalidRequest)
 	}
 
+	normalizedHash := normalizeHash(hash)
+
 	instance, err := s.instanceStore.Get(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("load instance: %w", err)
@@ -2656,7 +2868,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrent files: %w", err)
 	}
-	sourceFiles, ok := filesMap[hash]
+	sourceFiles, ok := filesMap[normalizedHash]
 	if !ok {
 		return nil, fmt.Errorf("torrent files not found for hash %s", hash)
 	}
@@ -3515,17 +3727,21 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 
 	// Batch fetch all torrent files to determine root folders
 	hashes := make([]string, 0, len(torrents))
+	normalizedHashes := make([]string, 0, len(torrents))
 	for _, t := range torrents {
 		hashes = append(hashes, t.Hash)
+		normalizedHashes = append(normalizedHashes, normalizeHash(t.Hash))
 	}
 	if len(hashes) > 0 && s.syncManager != nil {
 		filesMap, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
 		if err == nil {
-			for _, hash := range hashes {
-				normHash := stringutils.DefaultNormalizer.Normalize(hash)
+			for _, hash := range normalizedHashes {
+				if hash == "" {
+					continue
+				}
 				if filesPtr, ok := filesMap[hash]; ok && len(filesPtr) > 0 {
 					hasRoot := detectCommonRoot(filesPtr) != ""
-					hasRootCache[normHash] = hasRoot
+					hasRootCache[hash] = hasRoot
 				}
 			}
 		} else {
@@ -3559,11 +3775,11 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		}
 
 		group := groups[foundGroup]
-		normHash := stringutils.DefaultNormalizer.Normalize(current.torrent.Hash)
+		normHash := normalizeHash(current.torrent.Hash)
 		currentHasRoot := hasRootCache[normHash]
 		groupHasRoot := group.hasRootFolder
 		if !group.rootFolderKnown {
-			groupNormHash := stringutils.DefaultNormalizer.Normalize(group.representative.Hash)
+			groupNormHash := normalizeHash(group.representative.Hash)
 			groupHasRoot = hasRootCache[groupNormHash]
 			group.hasRootFolder = groupHasRoot
 			group.rootFolderKnown = true

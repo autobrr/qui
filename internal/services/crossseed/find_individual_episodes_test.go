@@ -92,7 +92,7 @@ func TestProcessAutomationCandidatePropagatesEpisodeFlag(t *testing.T) {
 		UploadVolumeFactor:   1.0,
 	}
 
-	status, _, err := service.processAutomationCandidate(ctx, run, settings, result, AutomationRunOptions{}, map[int]jackett.EnabledIndexerInfo{})
+	status, _, err := service.processAutomationCandidate(ctx, run, settings, nil, result, AutomationRunOptions{}, map[int]jackett.EnabledIndexerInfo{})
 	require.NoError(t, err)
 	require.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
 	require.NotNil(t, captured)
@@ -228,6 +228,10 @@ func (f *episodeSyncManager) GetTorrentFilesBatch(_ context.Context, instanceID 
 		}
 	}
 	return result, nil
+}
+
+func (*episodeSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+	return nil, false, nil
 }
 
 func (f *episodeSyncManager) GetTorrentProperties(_ context.Context, instanceID int, hash string) (*qbt.TorrentProperties, error) {

@@ -146,6 +146,10 @@ func (c *candidateSelectionSyncManager) GetTorrentFilesBatch(ctx context.Context
 	return result, nil
 }
 
+func (*candidateSelectionSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+	return nil, false, nil
+}
+
 func (c *candidateSelectionSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
 	return fmt.Errorf("not implemented")
 }

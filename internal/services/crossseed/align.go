@@ -47,6 +47,8 @@ func (s *Service) alignCrossSeedContentPaths(
 		return
 	}
 
+	canonicalHash := normalizeHash(torrentHash)
+
 	trimmedSourceName := strings.TrimSpace(sourceTorrentName)
 	trimmedMatchedName := strings.TrimSpace(matchedTorrent.Name)
 	if shouldRenameTorrentDisplay(sourceRelease, matchedRelease) && trimmedMatchedName != "" && trimmedSourceName != trimmedMatchedName {
@@ -78,7 +80,7 @@ func (s *Service) alignCrossSeedContentPaths(
 	sourceFiles := expectedSourceFiles
 	filesMap, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{torrentHash})
 	if err == nil {
-		if currentFiles, ok := filesMap[torrentHash]; ok && len(currentFiles) > 0 {
+		if currentFiles, ok := filesMap[canonicalHash]; ok && len(currentFiles) > 0 {
 			sourceFiles = currentFiles
 		}
 	}

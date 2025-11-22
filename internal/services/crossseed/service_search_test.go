@@ -233,6 +233,10 @@ func (f *queueTestSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, _ 
 	return map[string]qbt.TorrentFiles{}, nil
 }
 
+func (*queueTestSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+	return nil, false, nil
+}
+
 func (*queueTestSyncManager) GetTorrentProperties(context.Context, int, string) (*qbt.TorrentProperties, error) {
 	return nil, nil
 }

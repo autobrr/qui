@@ -1432,6 +1432,29 @@ func (f *fakeSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes 
 	return result, nil
 }
 
+func (f *fakeSyncManager) HasTorrentByAnyHash(_ context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
+	if torrents, ok := f.all[instanceID]; ok {
+		targets := make(map[string]struct{}, len(hashes))
+		for _, h := range hashes {
+			if normalized := normalizeHash(h); normalized != "" {
+				targets[normalized] = struct{}{}
+			}
+		}
+		for i := range torrents {
+			t := torrents[i]
+			for _, candidate := range []string{t.Hash, t.InfohashV1, t.InfohashV2} {
+				if candidate == "" {
+					continue
+				}
+				if _, ok := targets[normalizeHash(candidate)]; ok {
+					return &t, true, nil
+				}
+			}
+		}
+	}
+	return nil, false, nil
+}
+
 func (f *fakeSyncManager) GetTorrentProperties(_ context.Context, _ int, _ string) (*qbt.TorrentProperties, error) {
 	return nil, fmt.Errorf("GetTorrentProperties not implemented in fakeSyncManager")
 }

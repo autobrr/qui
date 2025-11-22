@@ -82,5 +82,5 @@ func TestService_deduplicateSourceTorrents_PrefersRootFolders(t *testing.T) {
 
 	deduped, _ := svc.deduplicateSourceTorrents(context.Background(), 1, torrents)
 	require.Len(t, deduped, 1)
-	require.Equal(t, "hash-flat", deduped[0].Hash, "prefer oldest torrent")
+	require.Equal(t, "hash-root", deduped[0].Hash, "prefer torrent with root folder")
 }
