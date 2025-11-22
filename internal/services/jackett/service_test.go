@@ -1436,8 +1436,7 @@ func TestProwlarrYearParameterWorkaround(t *testing.T) {
 			maps.Copy(inputParams, tt.inputParams)
 
 			// Call the actual service method to apply the workaround
-			ctx := context.Background()
-			service.applyProwlarrWorkaround(ctx, indexer, inputParams)
+			service.applyProwlarrWorkaround(indexer, inputParams)
 
 			// Assert expected parameter values
 			for key, expectedValue := range tt.expected {

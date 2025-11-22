@@ -2,6 +2,7 @@ package jackett
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -9,8 +10,42 @@ import (
 )
 
 const (
-	defaultMinRequestInterval = 2 * time.Second
+	defaultMinRequestInterval = 60 * time.Second
 )
+
+type RateLimitPriority string
+
+const (
+	RateLimitPriorityBackground  RateLimitPriority = "background"
+	RateLimitPriorityInteractive RateLimitPriority = "interactive"
+)
+
+type RateLimitOptions struct {
+	Priority    RateLimitPriority
+	MinInterval time.Duration
+	MaxWait     time.Duration
+}
+
+type RateLimitWaitError struct {
+	IndexerID   int
+	IndexerName string
+	Wait        time.Duration
+	MaxWait     time.Duration
+	Priority    RateLimitPriority
+}
+
+func (e *RateLimitWaitError) Error() string {
+	indexer := fmt.Sprintf("indexer %d", e.IndexerID)
+	if e.IndexerName != "" {
+		indexer = fmt.Sprintf("%s (%d)", e.IndexerName, e.IndexerID)
+	}
+	return fmt.Sprintf("%s blocked by torznab rate limit: requires %s wait but maximum allowed is %s", indexer, e.Wait, e.MaxWait)
+}
+
+func (e *RateLimitWaitError) Is(target error) bool {
+	_, ok := target.(*RateLimitWaitError)
+	return ok
+}
 
 type indexerRateState struct {
 	lastRequest    time.Time
@@ -35,20 +70,32 @@ func NewRateLimiter(minInterval time.Duration) *RateLimiter {
 	}
 }
 
-func (r *RateLimiter) BeforeRequest(ctx context.Context, indexer *models.TorznabIndexer) error {
+func (r *RateLimiter) BeforeRequest(ctx context.Context, indexer *models.TorznabIndexer, opts *RateLimitOptions) error {
 	if indexer == nil {
 		return nil
 	}
+
+	cfg := r.resolveOptions(opts)
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	for {
 		now := time.Now()
-		wait := r.computeWaitLocked(indexer, now)
+		wait := r.computeWaitLocked(indexer, now, cfg.MinInterval)
 		if wait <= 0 {
 			r.recordLocked(indexer.ID, now)
 			return nil
+		}
+
+		if cfg.MaxWait > 0 && wait > cfg.MaxWait {
+			return &RateLimitWaitError{
+				IndexerID:   indexer.ID,
+				IndexerName: indexer.Name,
+				Wait:        wait,
+				MaxWait:     cfg.MaxWait,
+				Priority:    cfg.Priority,
+			}
 		}
 
 		timer := time.NewTimer(wait)
@@ -140,7 +187,10 @@ func (r *RateLimiter) GetCooldownIndexers() map[int]time.Time {
 	return cooldowns
 }
 
-func (r *RateLimiter) computeWaitLocked(indexer *models.TorznabIndexer, now time.Time) time.Duration {
+func (r *RateLimiter) computeWaitLocked(indexer *models.TorznabIndexer, now time.Time, minInterval time.Duration) time.Duration {
+	if minInterval <= 0 {
+		minInterval = r.minInterval
+	}
 	state := r.getStateLocked(indexer.ID)
 	r.pruneLocked(state, now)
 
@@ -150,8 +200,8 @@ func (r *RateLimiter) computeWaitLocked(indexer *models.TorznabIndexer, now time
 		wait = state.cooldownUntil.Sub(now)
 	}
 
-	if r.minInterval > 0 && !state.lastRequest.IsZero() {
-		next := state.lastRequest.Add(r.minInterval)
+	if minInterval > 0 && !state.lastRequest.IsZero() {
+		next := state.lastRequest.Add(minInterval)
 		if next.After(now) {
 			delay := next.Sub(now)
 			if delay > wait {
@@ -241,4 +291,29 @@ func derefLimit(limit *int) int {
 		return 0
 	}
 	return *limit
+}
+
+func (r *RateLimiter) resolveOptions(opts *RateLimitOptions) RateLimitOptions {
+	cfg := RateLimitOptions{
+		Priority:    RateLimitPriorityBackground,
+		MinInterval: r.minInterval,
+	}
+
+	if opts != nil {
+		if opts.Priority != "" {
+			cfg.Priority = opts.Priority
+		}
+		if opts.MinInterval > 0 {
+			cfg.MinInterval = opts.MinInterval
+		}
+		if opts.MaxWait > 0 {
+			cfg.MaxWait = opts.MaxWait
+		}
+	}
+
+	if cfg.MinInterval <= 0 {
+		cfg.MinInterval = defaultMinRequestInterval
+	}
+
+	return cfg
 }
