@@ -121,14 +121,13 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
     })
   }
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const persistSettings = (nextSettings: InstanceReannounceSettings, successMessage = "Settings saved successfully.") => {
     if (!instance) {
       toast.error("Instance missing", { description: "Please close and reopen the dialog." })
       return
     }
-    const sanitized = sanitizeSettings(settings)
 
+    const sanitized = sanitizeSettings(nextSettings)
     const payload: Partial<InstanceFormData> = {
       name: instance.name,
       host: instance.host,
@@ -145,7 +144,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
       { id: instanceId, data: payload },
       {
         onSuccess: () => {
-          toast.success("Tracker monitoring updated", { description: "Settings saved successfully." })
+          toast.success("Tracker monitoring updated", { description: successMessage })
           onSuccess?.()
         },
         onError: (error) => {
@@ -153,6 +152,20 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
         },
       },
     )
+  }
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    persistSettings(settings)
+  }
+
+  const handleToggleEnabled = (enabled: boolean) => {
+    const nextSettings = { ...settings, enabled }
+    setSettings(nextSettings)
+
+    if (!enabled) {
+      persistSettings(nextSettings, "Monitoring disabled")
+    }
   }
 
   const activityQuery = useQuery({
@@ -189,9 +202,9 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
 
   return (
     <form onSubmit={handleSubmit}>
-      <Card className="w-full border-none shadow-none bg-transparent p-0">
-        <CardHeader className="px-0 pt-0 pb-0 space-y-4">
-          <div className="flex items-start justify-between gap-4">
+      <Card className="w-full">
+        <CardHeader className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
             <div className="space-y-1">
               <CardTitle className="text-lg font-semibold">Automatic Tracker Reannounce</CardTitle>
               <CardDescription>
@@ -199,20 +212,21 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                 Background scan runs every {GLOBAL_SCAN_INTERVAL_SECONDS} seconds.
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2 bg-muted/40 p-2 rounded-lg border border-border/40">
+            <div className="flex items-center gap-2 bg-muted/40 p-2 rounded-lg border border-border/40 shrink-0">
               <Label htmlFor="tracker-monitoring" className="font-medium text-sm cursor-pointer">
                 {settings.enabled ? "Enabled" : "Disabled"}
               </Label>
               <Switch
                 id="tracker-monitoring"
                 checked={settings.enabled}
-                onCheckedChange={(enabled) => setSettings((prev) => ({ ...prev, enabled }))}
+                onCheckedChange={handleToggleEnabled}
+                disabled={isUpdating}
               />
             </div>
           </div>
         </CardHeader>
 
-        <CardContent className="px-0 pb-0">
+        <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <div className="flex items-center justify-between mb-4">
               <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
@@ -269,11 +283,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                               <Info className="h-4 w-4 text-muted-foreground cursor-help" />
                             </TooltipTrigger>
                             <TooltipContent className="max-w-[300px]">
-                              <p>
-                                Normally, we wait 2 minutes between attempts to be polite. 
-                                Enable this to skip that cooldown and let the next 7s scan retry immediately if the torrent is still stalled. 
-                                Per-torrent retries inside each attempt still follow the Retry Interval.
-                              </p>
+                              <p>Skip the normal cooldown between scans. Uses the Retry Interval for back-to-back attempts; be mindful of tracker rate limits.</p>
                             </TooltipContent>
                           </Tooltip>
                         </div>
@@ -485,7 +495,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                     <p className="text-sm text-muted-foreground">Loading activity...</p>
                  </div>
               ) : activityEvents.length === 0 ? (
-                <div className="h-[300px] flex flex-col items-center justify-center border rounded-lg bg-muted/10 text-center p-6">
+                <div className="h-[300px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/10 text-center p-6">
                   <p className="text-sm text-muted-foreground">No activity recorded yet.</p>
                   {activityEnabled && (
                     <p className="text-xs text-muted-foreground/60 mt-1">

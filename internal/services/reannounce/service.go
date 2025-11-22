@@ -336,13 +336,26 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 		return true
 	}
 
-	// Check debounce window if Aggressive mode is disabled
 	settings := s.getSettings(baseCtx, instanceID)
 	isAggressive := settings != nil && settings.Aggressive
+	// Determine debounce window: aggressive uses retry interval; non-aggressive uses global cooldown.
+	debounceWindow := s.cfg.DebounceWindow
+	if isAggressive {
+		if settings == nil {
+			settings = models.DefaultInstanceReannounceSettings(instanceID)
+		}
+		if interval := time.Duration(settings.ReannounceIntervalSeconds) * time.Second; interval > 0 {
+			debounceWindow = interval
+		}
+	}
 
-	if !isAggressive && !job.lastCompleted.IsZero() {
-		if elapsed := now.Sub(job.lastCompleted); elapsed < s.cfg.DebounceWindow {
-			s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, "debounced during cooldown window")
+	if !job.lastCompleted.IsZero() && debounceWindow > 0 {
+		if elapsed := now.Sub(job.lastCompleted); elapsed < debounceWindow {
+			reason := "debounced during cooldown window"
+			if isAggressive {
+				reason = "debounced during retry interval window"
+			}
+			s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, reason)
 			return true
 		}
 	}
