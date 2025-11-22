@@ -3513,6 +3513,26 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 	groupMap := make(map[string]int) // hash to group index
 	hasRootCache := make(map[string]bool)
 
+	// Batch fetch all torrent files to determine root folders
+	hashes := make([]string, 0, len(torrents))
+	for _, t := range torrents {
+		hashes = append(hashes, t.Hash)
+	}
+	if len(hashes) > 0 && s.syncManager != nil {
+		filesMap, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+		if err == nil {
+			for _, hash := range hashes {
+				normHash := stringutils.DefaultNormalizer.Normalize(hash)
+				if filesPtr, ok := filesMap[hash]; ok && len(filesPtr) > 0 {
+					hasRoot := detectCommonRoot(filesPtr) != ""
+					hasRootCache[normHash] = hasRoot
+				}
+			}
+		} else {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to batch fetch torrent files for deduplication")
+		}
+	}
+
 	for i := range parsed {
 		current := &parsed[i]
 
@@ -3539,10 +3559,12 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		}
 
 		group := groups[foundGroup]
-		currentHasRoot := s.torrentHasTopLevelFolderCached(ctx, instanceID, &current.torrent, hasRootCache)
+		normHash := stringutils.DefaultNormalizer.Normalize(current.torrent.Hash)
+		currentHasRoot := hasRootCache[normHash]
 		groupHasRoot := group.hasRootFolder
 		if !group.rootFolderKnown {
-			groupHasRoot = s.torrentHasTopLevelFolderCached(ctx, instanceID, group.representative, hasRootCache)
+			groupNormHash := stringutils.DefaultNormalizer.Normalize(group.representative.Hash)
+			groupHasRoot = hasRootCache[groupNormHash]
 			group.hasRootFolder = groupHasRoot
 			group.rootFolderKnown = true
 		}
@@ -3603,38 +3625,6 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 	}
 
 	return deduplicated, duplicateMap
-}
-
-func (s *Service) torrentHasTopLevelFolderCached(ctx context.Context, instanceID int, torrent *qbt.Torrent, cache map[string]bool) bool {
-	if torrent == nil {
-		return false
-	}
-	hash := stringutils.DefaultNormalizer.Normalize(torrent.Hash)
-	if hash != "" {
-		if val, ok := cache[hash]; ok {
-			return val
-		}
-	}
-	hasRoot := s.torrentHasTopLevelFolder(ctx, instanceID, torrent)
-	if hash != "" {
-		cache[hash] = hasRoot
-	}
-	return hasRoot
-}
-
-func (s *Service) torrentHasTopLevelFolder(ctx context.Context, instanceID int, torrent *qbt.Torrent) bool {
-	if s == nil || s.syncManager == nil || torrent == nil {
-		return false
-	}
-	filesMap, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{torrent.Hash})
-	if err != nil {
-		return false
-	}
-	filesPtr, ok := filesMap[torrent.Hash]
-	if !ok || len(filesPtr) == 0 {
-		return false
-	}
-	return detectCommonRoot(filesPtr) != ""
 }
 
 func (s *Service) propagateDuplicateSearchHistory(ctx context.Context, state *searchRunState, representativeHash string, processedAt time.Time) {
