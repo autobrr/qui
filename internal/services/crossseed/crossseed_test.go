@@ -1403,40 +1403,31 @@ func newFakeSyncManager(instance *models.Instance, torrents []qbt.Torrent, files
 	}
 }
 
-func (f *fakeSyncManager) GetAllTorrents(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+func (f *fakeSyncManager) GetTorrents(_ context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
 	if torrents, ok := f.all[instanceID]; ok {
 		return torrents, nil
 	}
 	return nil, fmt.Errorf("instance %d not found", instanceID)
 }
 
-func (f *fakeSyncManager) GetTorrentFiles(_ context.Context, _ int, hash string) (*qbt.TorrentFiles, error) {
+func (f *fakeSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 	if len(f.files) == 0 {
 		return nil, fmt.Errorf("files not configured")
 	}
-	normalized := normalizeHash(hash)
-	files, ok := f.files[normalized]
-	if !ok {
-		if files, ok = f.files[strings.ToLower(hash)]; !ok {
-			if files, ok = f.files[hash]; !ok {
-				return nil, fmt.Errorf("files not found for hash %s", hash)
-			}
-		}
-	}
-	if !ok {
-		return nil, fmt.Errorf("files not found for hash %s", hash)
-	}
-	copyFiles := make(qbt.TorrentFiles, len(files))
-	copy(copyFiles, files)
-	return &copyFiles, nil
-}
-
-func (f *fakeSyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 	result := make(map[string]qbt.TorrentFiles, len(hashes))
 	for _, h := range hashes {
-		if files, _ := f.GetTorrentFiles(ctx, instanceID, h); files != nil {
-			result[normalizeHash(h)] = *files
+		normalized := normalizeHash(h)
+		files, ok := f.files[normalized]
+		if !ok {
+			if files, ok = f.files[strings.ToLower(h)]; !ok {
+				if files, ok = f.files[h]; !ok {
+					continue
+				}
+			}
 		}
+		copyFiles := make(qbt.TorrentFiles, len(files))
+		copy(copyFiles, files)
+		result[normalized] = copyFiles
 	}
 	return result, nil
 }

@@ -223,26 +223,14 @@ type queueTestSyncManager struct {
 	torrents []qbt.Torrent
 }
 
-func (f *queueTestSyncManager) GetAllTorrents(_ context.Context, _ int) ([]qbt.Torrent, error) {
+func (f *queueTestSyncManager) GetTorrents(_ context.Context, _ int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
 	copied := make([]qbt.Torrent, len(f.torrents))
 	copy(copied, f.torrents)
 	return copied, nil
 }
 
-func (*queueTestSyncManager) GetTorrentFiles(context.Context, int, string) (*qbt.TorrentFiles, error) {
-	return nil, nil
-}
-
-func (f *queueTestSyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
-	result := make(map[string]qbt.TorrentFiles, len(hashes))
-	for _, h := range hashes {
-		files, err := f.GetTorrentFiles(ctx, instanceID, h)
-		if err != nil || files == nil || len(*files) == 0 {
-			continue
-		}
-		result[normalizeHash(h)] = *files
-	}
-	return result, nil
+func (f *queueTestSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	return map[string]qbt.TorrentFiles{}, nil
 }
 
 func (*queueTestSyncManager) GetTorrentProperties(context.Context, int, string) (*qbt.TorrentProperties, error) {

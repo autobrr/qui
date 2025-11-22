@@ -76,8 +76,11 @@ func (s *Service) alignCrossSeedContentPaths(
 	}
 
 	sourceFiles := expectedSourceFiles
-	if currentFilesPtr, err := s.syncManager.GetTorrentFiles(ctx, instanceID, torrentHash); err == nil && currentFilesPtr != nil && len(*currentFilesPtr) > 0 {
-		sourceFiles = *currentFilesPtr
+	filesMap, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{torrentHash})
+	if err == nil {
+		if currentFiles, ok := filesMap[torrentHash]; ok && len(currentFiles) > 0 {
+			sourceFiles = currentFiles
+		}
 	}
 
 	sourceRoot := detectCommonRoot(sourceFiles)
@@ -181,7 +184,7 @@ func (s *Service) waitForTorrentAvailability(ctx context.Context, instanceID int
 			}
 		}
 
-		torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
+		torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll})
 		if err == nil {
 			for _, t := range torrents {
 				if t.Hash == hash || t.InfohashV1 == hash || t.InfohashV2 == hash {

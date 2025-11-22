@@ -117,7 +117,7 @@ type candidateSelectionSyncManager struct {
 	files map[string]qbt.TorrentFiles
 }
 
-func (c *candidateSelectionSyncManager) GetAllTorrents(context.Context, int) ([]qbt.Torrent, error) {
+func (c *candidateSelectionSyncManager) GetTorrents(context.Context, int, qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 

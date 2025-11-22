@@ -206,7 +206,7 @@ func newEpisodeSyncManager() *episodeSyncManager {
 	}
 }
 
-func (f *episodeSyncManager) GetAllTorrents(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+func (f *episodeSyncManager) GetTorrents(_ context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
 	list := f.torrents[instanceID]
 	if list == nil {
 		return nil, fmt.Errorf("instance %d has no torrents", instanceID)
@@ -216,22 +216,15 @@ func (f *episodeSyncManager) GetAllTorrents(_ context.Context, instanceID int) (
 	return copied, nil
 }
 
-func (f *episodeSyncManager) GetTorrentFiles(_ context.Context, instanceID int, hash string) (*qbt.TorrentFiles, error) {
-	if instFiles, ok := f.files[instanceID]; ok {
-		if files, ok := instFiles[strings.ToLower(hash)]; ok {
-			cp := make(qbt.TorrentFiles, len(files))
-			copy(cp, files)
-			return &cp, nil
-		}
-	}
-	return &qbt.TorrentFiles{}, nil
-}
-
-func (f *episodeSyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+func (f *episodeSyncManager) GetTorrentFilesBatch(_ context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 	result := make(map[string]qbt.TorrentFiles, len(hashes))
-	for _, h := range hashes {
-		if files, _ := f.GetTorrentFiles(ctx, instanceID, h); files != nil {
-			result[normalizeHash(h)] = *files
+	if instFiles, ok := f.files[instanceID]; ok {
+		for _, h := range hashes {
+			if files, ok := instFiles[strings.ToLower(h)]; ok {
+				cp := make(qbt.TorrentFiles, len(files))
+				copy(cp, files)
+				result[normalizeHash(h)] = cp
+			}
 		}
 	}
 	return result, nil

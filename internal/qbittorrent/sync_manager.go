@@ -201,6 +201,18 @@ func (sm *SyncManager) GetErrorStore() *models.InstanceErrorStore {
 	return sm.clientPool.GetErrorStore()
 }
 
+// GetTorrents gets torrents with the specified filter options
+func (sm *SyncManager) GetTorrents(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+	// Get client and sync manager
+	_, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get torrents with filters
+	return syncManager.GetTorrents(filter), nil
+}
+
 // GetInstanceWebAPIVersion returns the qBittorrent web API version for the provided instance.
 func (sm *SyncManager) GetInstanceWebAPIVersion(ctx context.Context, instanceID int) (string, error) {
 	if sm == nil || sm.clientPool == nil {

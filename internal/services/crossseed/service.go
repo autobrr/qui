@@ -50,11 +50,10 @@ type instanceProvider interface {
 
 // qbittorrentSync exposes the sync manager functionality needed by the service.
 type qbittorrentSync interface {
-	GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
+	GetTorrents(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
 	// GetTorrentFilesBatch returns files keyed by the provided hashes (normalized by callers).
 	// The returned map uses the same hash strings that were requested; missing entries indicate
 	// per-hash fetch failures or absent torrents.
-	GetTorrentFiles(ctx context.Context, instanceID int, hash string) (*qbt.TorrentFiles, error)
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	GetTorrentProperties(ctx context.Context, instanceID int, hash string) (*qbt.TorrentProperties, error)
 	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error
@@ -1485,7 +1484,7 @@ func (s *Service) FindCandidates(ctx context.Context, req *FindCandidatesRequest
 		}
 
 		// Get all torrents from this instance
-		torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
+		torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll})
 		if err != nil {
 			log.Warn().
 				Int("instanceID", instanceID).
@@ -1800,7 +1799,7 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Check if torrent already exists
-	existingTorrents, err := s.syncManager.GetAllTorrents(ctx, candidate.InstanceID)
+	existingTorrents, err := s.syncManager.GetTorrents(ctx, candidate.InstanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll})
 	if err != nil {
 		result.Message = fmt.Sprintf("Failed to check existing torrents: %v", err)
 		return result
@@ -2055,34 +2054,7 @@ func (s *Service) batchLoadCandidateFiles(ctx context.Context, instanceID int, t
 			Int("hashCount", len(hashes)).
 			Err(err).
 			Msg("Failed to batch load torrent files for candidate selection")
-
-		// Fallback: try single-torrent fetches so file-level validation still runs
-		filesByHash = make(map[string]qbt.TorrentFiles, len(hashes))
-		for _, hash := range hashes {
-			if ctx.Err() != nil {
-				return filesByHash
-			}
-
-			filesPtr, singleErr := s.syncManager.GetTorrentFiles(ctx, instanceID, hash)
-			if singleErr != nil {
-				log.Trace().
-					Int("instanceID", instanceID).
-					Str("hash", hash).
-					Err(singleErr).
-					Msg("Failed to fetch torrent files with single request after batch error")
-				continue
-			}
-
-			if filesPtr == nil || len(*filesPtr) == 0 {
-				log.Warn().
-					Int("instanceID", instanceID).
-					Str("hash", hash).
-					Msg("Empty torrent files returned after batch failure fallback")
-				continue
-			}
-
-			filesByHash[hash] = *filesPtr
-		}
+		return nil
 	}
 
 	return filesByHash
@@ -2292,17 +2264,21 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 	}
 
 	// Get files to find the largest file for better content type detection
-	sourceFiles, err := s.syncManager.GetTorrentFiles(ctx, instanceID, hash)
+	filesMap, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{hash})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrent files: %w", err)
+	}
+	sourceFiles, ok := filesMap[hash]
+	if !ok {
+		return nil, fmt.Errorf("torrent files not found for hash %s", hash)
 	}
 
 	// Parse and detect content type
 	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
 	contentDetectionRelease := sourceRelease
 
-	if sourceFiles != nil && len(*sourceFiles) > 0 {
-		largestFile := FindLargestFile(*sourceFiles)
+	if len(sourceFiles) > 0 {
+		largestFile := FindLargestFile(sourceFiles)
 		if largestFile != nil {
 			largestFileRelease := s.releaseCache.Parse(largestFile.Name)
 			largestFileRelease = enrichReleaseFromTorrent(largestFileRelease, sourceRelease)
@@ -2664,9 +2640,13 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	// Get files to find the largest file for better content type detection
-	sourceFiles, err := s.syncManager.GetTorrentFiles(ctx, instanceID, hash)
+	filesMap, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{hash})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrent files: %w", err)
+	}
+	sourceFiles, ok := filesMap[hash]
+	if !ok {
+		return nil, fmt.Errorf("torrent files not found for hash %s", hash)
 	}
 
 	// Parse both torrent name and largest file for content detection
@@ -2674,8 +2654,8 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	// For content type detection, use the largest file if available
 	var contentDetectionRelease *rls.Release = sourceRelease
-	if sourceFiles != nil && len(*sourceFiles) > 0 {
-		largestFile := FindLargestFile(*sourceFiles)
+	if len(sourceFiles) > 0 {
+		largestFile := FindLargestFile(sourceFiles)
 		if largestFile != nil {
 			largestFileRelease := s.releaseCache.Parse(largestFile.Name)
 			// Use the largest file for content type detection, but enrich with torrent metadata
@@ -3115,9 +3095,9 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		}, nil
 	}
 
-	if sourceFiles != nil {
-		sourceInfo.TotalFiles = len(*sourceFiles)
-		sourceInfo.FileCount = len(*sourceFiles)
+	if len(sourceFiles) > 0 {
+		sourceInfo.TotalFiles = len(sourceFiles)
+		sourceInfo.FileCount = len(sourceFiles)
 	}
 
 	sort.SliceStable(scored, func(i, j int) bool {
@@ -3382,7 +3362,7 @@ func asyncFilteringCacheKey(instanceID int, hash string) string {
 
 // getTorrentByHash retrieves a torrent by matching any known hash variant.
 func (s *Service) getTorrentByHash(ctx context.Context, instanceID int, hash string) (*qbt.Torrent, error) {
-	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
+	torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll})
 	if err != nil {
 		return nil, fmt.Errorf("load torrents: %w", err)
 	}
@@ -3654,11 +3634,15 @@ func (s *Service) torrentHasTopLevelFolder(ctx context.Context, instanceID int, 
 	if s == nil || s.syncManager == nil || torrent == nil {
 		return false
 	}
-	filesPtr, err := s.syncManager.GetTorrentFiles(ctx, instanceID, torrent.Hash)
-	if err != nil || filesPtr == nil || len(*filesPtr) == 0 {
+	filesMap, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{torrent.Hash})
+	if err != nil {
 		return false
 	}
-	return detectCommonRoot(*filesPtr) != ""
+	filesPtr, ok := filesMap[torrent.Hash]
+	if !ok || len(filesPtr) == 0 {
+		return false
+	}
+	return detectCommonRoot(filesPtr) != ""
 }
 
 func (s *Service) propagateDuplicateSearchHistory(ctx context.Context, state *searchRunState, representativeHash string, processedAt time.Time) {
@@ -3692,7 +3676,7 @@ func (s *Service) propagateDuplicateSearchHistory(ctx context.Context, state *se
 }
 
 func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState) error {
-	torrents, err := s.syncManager.GetAllTorrents(ctx, state.opts.InstanceID)
+	torrents, err := s.syncManager.GetTorrents(ctx, state.opts.InstanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll})
 	if err != nil {
 		return fmt.Errorf("list torrents: %w", err)
 	}
@@ -5137,7 +5121,7 @@ func (s *Service) waitForTorrentRecheck(ctx context.Context, instanceID int, tor
 		}
 
 		// Get current torrents
-		torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
+		torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll})
 		if err != nil {
 			log.Warn().
 				Err(err).
