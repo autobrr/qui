@@ -3541,6 +3541,21 @@ func (sm *SyncManager) SetAppPreferences(ctx context.Context, instanceID int, pr
 	return nil
 }
 
+// GetDirectoryContentCtx lists folders inside a directory (for autocomplete).
+func (sm *SyncManager) GetDirectoryContentCtx(ctx context.Context, instanceID int, dirPath string) ([]string, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	content, err := client.GetDirectoryContentCtx(ctx, dirPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get directory contents: %w", err)
+	}
+
+	return content, nil
+}
+
 // AddPeersToTorrents adds peers to the specified torrents
 func (sm *SyncManager) AddPeersToTorrents(ctx context.Context, instanceID int, hashes []string, peers []string) error {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)

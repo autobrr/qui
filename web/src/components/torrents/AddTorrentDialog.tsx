@@ -36,6 +36,7 @@ import {
   TooltipTrigger
 } from "@/components/ui/tooltip"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
+import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
 import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
 import { api } from "@/lib/api"
 import { cn } from '@/lib/utils'
@@ -585,6 +586,34 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       await mutation.mutateAsync({ ...value, tags: allTags })
     },
   })
+
+  const setSavePath = useCallback((path: string) => {
+    form.setFieldValue("savePath", path)
+  }, [form])
+
+  const setTempPath = useCallback((path: string) => {
+    form.setFieldValue("tempPath", path)
+  }, [form])
+
+  const { 
+    suggestions: saveSuggestions, 
+    handleInputChange: handleSaveInputChange, 
+    handleSelect: handleSaveInputSelect, 
+    handleKeyDown: handleSaveKeyDown, 
+    highlightedIndex: saveHighlightedIndex, 
+    showSuggestions: showSaveSuggestions, 
+    inputRef: savePathInputRef 
+  } = usePathAutocomplete(setSavePath, instanceId);
+
+  const { 
+    suggestions: tempSuggestions, 
+    handleInputChange: handleTempInputChange, 
+    handleSelect: handleTempInputSelect, 
+    handleKeyDown: handleTempKeyDown, 
+    highlightedIndex: tempHighlightedIndex, 
+    showSuggestions: showTempSuggestions, 
+    inputRef: tempPathInputRef 
+  } = usePathAutocomplete(setTempPath, instanceId);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const existingFiles = form.getFieldValue("torrentFiles") || []
@@ -1233,11 +1262,41 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                                 <Label htmlFor="savePath">Save Path</Label>
                                 <Input
                                   id="savePath"
+                                  ref={savePathInputRef}
                                   placeholder={preferences?.save_path || "Leave empty for default"}
+                                  spellCheck={false}
                                   value={field.state.value}
                                   onBlur={field.handleBlur}
-                                  onChange={(e) => field.handleChange(e.target.value)}
+                                  onKeyDown={handleSaveKeyDown}
+                                  onChange={(e) => {
+                                    field.handleChange(e.target.value)
+                                    handleSaveInputChange(e.target.value)
+                                  }}
                                 />
+
+                                {showSaveSuggestions && saveSuggestions.length > 0 && (
+                                  <div className="z-50 mt-1 w-full rounded-md border bg-popover text-popover-foreground shadow-md">
+                                    <div className="max-h-55 overflow-auto pt-1 pb-1 w-full">
+                                      {saveSuggestions.map((entry, idx) => (
+                                        <button
+                                          key={entry}
+                                          type="button"
+                                          className={
+                                            cn("w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex items-center",
+                                            saveHighlightedIndex === idx
+                                            ? "bg-accent text-accent-foreground"
+                                            : "hover:bg-accent/70",
+                                          )}
+                                          onMouseDown={(e) => e.preventDefault()}
+                                          onClick={() => handleSaveInputSelect(entry)}
+                                        >
+                                          <span className="truncate">{entry}</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
                                 <p className="text-xs text-muted-foreground">
                                   Manual save path (TMM disabled)
                                 </p>
@@ -1272,10 +1331,41 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                                       <Label htmlFor="tempPath">Temporary Download Path</Label>
                                       <Input
                                         id="tempPath"
+                                        ref={tempPathInputRef}
                                         placeholder={preferences?.temp_path || "Leave empty for default"}
+                                        spellCheck={false}
                                         value={field.state.value}
                                         onBlur={field.handleBlur}
-                                        onChange={(e) => field.handleChange(e.target.value)} />
+                                        onKeyDown={handleTempKeyDown}
+                                        onChange={(e) => {
+                                          field.handleChange(e.target.value)
+                                          handleTempInputChange(e.target.value)
+                                        }} 
+                                      />
+                                        
+                                      {showTempSuggestions && tempSuggestions.length > 0 && (
+                                        <div className="z-50 mt-1 w-full rounded-md border bg-popover text-popover-foreground shadow-md">
+                                          <div className="max-h-55 overflow-auto pt-1 pb-1 w-full">
+                                            {tempSuggestions.map((entry, idx) => (
+                                              <button
+                                                key={entry}
+                                                type="button"
+                                                className={
+                                                  cn("w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex items-center",
+                                                  tempHighlightedIndex === idx
+                                                  ? "bg-accent text-accent-foreground"
+                                                  : "hover:bg-accent/70",
+                                                )}
+                                                onMouseDown={(e) => e.preventDefault()}
+                                                onClick={() => handleTempInputSelect(entry)}
+                                              >
+                                                <span className="truncate">{entry}</span>
+                                              </button>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+
                                       <p className="text-xs text-muted-foreground">
                                         Torrents will be downloaded here before moving to save path
                                       </p>

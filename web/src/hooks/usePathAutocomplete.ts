@@ -1,0 +1,154 @@
+import { useState, useCallback, useEffect, useRef } from "react";
+
+export function usePathAutocomplete(
+  onSuggestionSelect: (path: string) => void,
+  instanceId: number
+) {
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [inputValue, setInputValue] = useState("");
+  const [highlightedIndex, setHighlightedIndex] = useState<number>(-1); // -1 = none
+
+  const cache = useRef<Map<string, string[]>>(new Map());
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const getParentPath = useCallback((path: string) => {
+    const trimmed = path.trim();
+    if (!trimmed || trimmed === "/") return "/";
+
+    if (trimmed.endsWith("/")) return trimmed;
+
+    const lastSlash = trimmed.lastIndexOf("/");
+    return lastSlash === 0 ? "/" : trimmed.slice(0, lastSlash + 1);
+  }, []);
+
+  const getFilterTerm = useCallback((path: string) => {
+    const trimmed = path.trim();
+    if (!trimmed || trimmed.endsWith("/")) return "";
+    const lastSlash = trimmed.lastIndexOf("/");
+    return trimmed.slice(lastSlash + 1);
+  }, []);
+
+  const fetchDirectoryContent = useCallback(
+    async (dirPath: string) => {
+      if (!dirPath || dirPath === "") return [];
+
+      const normalized = dirPath.startsWith("/") ? dirPath : `/${dirPath}`;
+      const key = normalized.endsWith("/") ? normalized : `${normalized}/`;
+
+      if (cache.current.has(key)) {
+        return cache.current.get(key);
+      }
+
+      setLoading(true);
+      try {
+        const response = await fetch(
+          `/api/instances/${instanceId}/getDirectoryContent?dirPath=${encodeURIComponent(key)}`
+        );
+
+        if (!response.ok) throw new Error("Failed to fetch directory");
+
+        const data: string[] = await response.json();
+
+        cache.current.set(key, data);
+        return data;
+      } catch {
+        return [];
+      } finally {
+        setLoading(false);
+      }
+    },
+    [instanceId]
+  );
+
+  useEffect(() => {
+    if (!inputValue?.trim()) {
+      setSuggestions([]);
+      setHighlightedIndex(-1);
+      return;
+    }
+
+    const parentPath = getParentPath(inputValue);
+    const filterTerm = getFilterTerm(inputValue).toLowerCase();
+
+    const load = async () => {
+      const entries = (await fetchDirectoryContent(parentPath)) ?? [];
+
+      const filtered = filterTerm? entries.filter((e) => e.toLowerCase().includes(filterTerm)): entries;
+
+      setSuggestions(filtered);
+      setHighlightedIndex(filtered.length > 0 ? 0 : -1); // auto-highlight first
+    };
+
+    load();
+  }, [inputValue, fetchDirectoryContent, getFilterTerm, getParentPath]);
+
+  const selectSuggestion = useCallback(
+    (entry: string) => {
+      setInputValue(entry);
+      onSuggestionSelect(entry);
+      setSuggestions([]);
+      setHighlightedIndex(-1);
+      inputRef.current?.focus();
+    },
+    [onSuggestionSelect]
+  );
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (!suggestions.length) return;
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setHighlightedIndex((prev) => (prev + 1) % suggestions.length);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setHighlightedIndex((prev) =>
+          prev <= 0 ? suggestions.length - 1 : prev - 1
+        );
+      } else if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        if (highlightedIndex >= 0 && highlightedIndex < suggestions.length) {
+          selectSuggestion(suggestions[highlightedIndex]);
+        } else if (suggestions.length === 1) {
+          selectSuggestion(suggestions[0]);
+        }
+      } else if (e.key === "Escape") {
+        setSuggestions([]);
+        setHighlightedIndex(-1);
+      }
+    },
+    [suggestions, highlightedIndex, selectSuggestion]
+  );
+
+  const handleInputChange = useCallback((value: string) => {
+    setInputValue(value);
+    setHighlightedIndex(-1);
+  }, []);
+
+  const handleSelect = useCallback(
+    (entry: string) => {
+      selectSuggestion(entry);
+    },
+    [selectSuggestion]
+  );
+
+  const suggestionEqualsInput = (entry: string) => {
+    return (
+      suggestions.length === 1 && suggestions.filter((s) => s === entry.toLowerCase())
+    );
+  };
+  const showSuggestions = suggestions.length > 0 && getFilterTerm(inputValue) && !suggestionEqualsInput(inputValue);
+
+  return {
+    suggestions,
+    loading,
+    inputValue,
+    handleInputChange,
+    handleSelect,
+    handleKeyDown,
+    highlightedIndex,
+    showSuggestions,
+    inputRef,
+  };
+}

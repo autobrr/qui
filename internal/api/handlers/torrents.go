@@ -1778,3 +1778,36 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 	w.Header().Set("X-Data-Source", "fresh")
 	RespondJSON(w, http.StatusOK, response)
 }
+
+func (h *TorrentsHandler) GetDirectoryContent(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		log.Error().Err(err).Msg("Invalid instance ID")
+		http.Error(w, "Invalid instance ID", http.StatusBadRequest)
+		return
+	}
+
+	dirPath := r.URL.Query().Get("dirPath")
+	if dirPath == "" {
+		log.Error().Err(err).Msg("Invalid directory path")
+		http.Error(w, "Invalid directory path", http.StatusBadRequest)
+		return
+	}
+
+	prefs, err := h.syncManager.GetDirectoryContentCtx(r.Context(), instanceID, dirPath)
+	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getDirectoryContent") {
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get directory contents")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(prefs); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode directory contents response")
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
+}
