@@ -1623,7 +1623,7 @@ export function InstanceBackups() {
                             >
                               <Undo2 className="h-4 w-4" />
                             </Button>
-                            {run.archivePath ? (
+                            {run.status === "success" && run.torrentCount > 0 ? (
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button variant="ghost" size="icon" aria-label="Download backup">
