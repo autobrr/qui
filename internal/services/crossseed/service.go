@@ -3698,7 +3698,7 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 
 	// Parse all torrents and track their releases
 	type torrentWithRelease struct {
-		torrent qbt.Torrent
+		torrent *qbt.Torrent
 		release *rls.Release
 	}
 
@@ -3706,7 +3706,7 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 	for _, torrent := range torrents {
 		release := s.releaseCache.Parse(torrent.Name)
 		parsed = append(parsed, torrentWithRelease{
-			torrent: torrent,
+			torrent: &torrent,
 			release: release,
 		})
 	}
@@ -3760,7 +3760,7 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		if !exists {
 			// Create new group with this torrent as the first member
 			group = &contentGroup{
-				representative: &current.torrent,
+				representative: current.torrent,
 				addedOn:        current.torrent.AddedOn,
 				duplicates:     []string{},
 			}
@@ -3794,7 +3794,7 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 
 		if promoteCurrent {
 			group.duplicates = append(group.duplicates, group.representative.Hash)
-			group.representative = &current.torrent
+			group.representative = current.torrent
 			group.addedOn = current.torrent.AddedOn
 			group.hasRootFolder = currentHasRoot
 			group.rootFolderKnown = true
