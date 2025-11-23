@@ -377,7 +377,7 @@ export interface SortedPeersResponse extends TorrentPeersResponse {
   sorted_peers?: SortedPeer[]
 }
 
-export type BackupRunKind = "manual" | "hourly" | "daily" | "weekly" | "monthly"
+export type BackupRunKind = "manual" | "hourly" | "daily" | "weekly" | "monthly" | "import"
 
 export type BackupRunStatus = "pending" | "running" | "success" | "failed" | "canceled"
 

@@ -124,6 +124,7 @@ const runKindLabels: Record<BackupRunKind, string> = {
   daily: "Daily",
   weekly: "Weekly",
   monthly: "Monthly",
+  import: "Import",
 }
 
 const statusVariants: Record<BackupRunStatus, "default" | "secondary" | "destructive" | "outline"> = {
@@ -1467,7 +1468,12 @@ export function InstanceBackups() {
           </DialogContent>
         </Dialog>
 
-        <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <Dialog open={importDialogOpen} onOpenChange={(open) => {
+          setImportDialogOpen(open)
+          if (!open) {
+            setImportFile(null)
+          }
+        }}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Import backup manifest</DialogTitle>
