@@ -8,12 +8,13 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
-	gojackett "github.com/kylesanderson/go-jackett"
+	gojackett "github.com/autobrr/qui/pkg/gojackett"
 )
 
 // Config holds the options for constructing a Client.
@@ -22,6 +23,12 @@ type Config struct {
 	APIKey     string
 	Timeout    int
 	HTTPClient *http.Client
+}
+
+// TorznabError represents a Torznab error response
+type TorznabError struct {
+	Code    string `xml:"code,attr"`
+	Message string `xml:",chardata"`
 }
 
 // Client provides a minimal Prowlarr API wrapper suitable for Torznab-style access.
@@ -131,7 +138,24 @@ func (c *Client) SearchIndexer(ctx context.Context, indexerID string, params map
 		return rss, fmt.Errorf("prowlarr returned status %d", resp.StatusCode)
 	}
 
-	if err := xml.NewDecoder(resp.Body).Decode(&rss); err != nil {
+	// Read the response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return rss, fmt.Errorf("failed to read prowlarr response: %w", err)
+	}
+
+	// Check if the response is an error
+	bodyStr := strings.TrimSpace(string(body))
+	if strings.HasPrefix(bodyStr, "<error") {
+		var torznabErr TorznabError
+		if err := xml.Unmarshal(body, &torznabErr); err != nil {
+			return rss, fmt.Errorf("failed to decode torznab error response: %w", err)
+		}
+		return rss, fmt.Errorf("torznab error %s: %s", torznabErr.Code, torznabErr.Message)
+	}
+
+	// Decode the RSS response
+	if err := xml.Unmarshal(body, &rss); err != nil {
 		return rss, fmt.Errorf("failed to decode prowlarr response: %w", err)
 	}
 

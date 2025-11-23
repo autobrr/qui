@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	gojackett "github.com/kylesanderson/go-jackett"
+	gojackett "github.com/autobrr/qui/pkg/gojackett"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/prowlarr"

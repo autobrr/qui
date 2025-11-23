@@ -10,6 +10,7 @@ require (
 	github.com/anacrolix/torrent v1.59.1
 	github.com/autobrr/autobrr v1.68.0
 	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251123070056-da58b6063850
+	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/coreos/go-oidc/v3 v3.16.0
 	github.com/creativeprojects/go-selfupdate v1.5.1
 	github.com/expr-lang/expr v1.17.6
@@ -17,7 +18,6 @@ require (
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/hashicorp/go-version v1.7.0
 	github.com/keygen-sh/machineid v1.1.1
-	github.com/kylesanderson/go-jackett v0.0.0-20251103071502-c403eee359f6
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/mat/besticon/v3 v3.21.0
 	github.com/moistari/rls v0.6.0
@@ -48,7 +48,6 @@ require (
 	github.com/anacrolix/missinggo v1.3.0 // indirect
 	github.com/anacrolix/missinggo/v2 v2.10.0 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
-	github.com/avast/retry-go v3.0.0+incompatible // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
