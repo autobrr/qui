@@ -1832,7 +1832,7 @@ export function InstanceBackups() {
                     <TableBody>
                       {filteredManifestItems.length > 0 ? (
                         filteredManifestItems.map(item => (
-                          <TableRow key={item.hash + item.archivePath}>
+                          <TableRow key={item.hash}>
                             <TableCell className="font-medium !max-w-md truncate">{item.name}</TableCell>
                             <TableCell>{item.category ?? "—"}</TableCell>
                             <TableCell className="max-w-sm truncate">{item.tags && item.tags.length > 0 ? item.tags.join(", ") : "—"}</TableCell>
