@@ -3723,6 +3723,7 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 
 	groups := make([]*contentGroup, 0)
 	groupMap := make(map[string]int) // hash to group index
+	contentKeyMap := make(map[*rls.Release]*contentGroup)
 	hasRootCache := make(map[string]bool)
 
 	// Batch fetch all torrent files to determine root folders
@@ -3752,29 +3753,25 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 	for i := range parsed {
 		current := &parsed[i]
 
-		// Try to find an existing group this torrent belongs to
-		foundGroup := -1
-		for j := 0; j < i; j++ {
-			existing := &parsed[j]
-			if s.releasesMatch(current.release, existing.release, false) {
-				foundGroup = groupMap[existing.torrent.Hash]
-				break
-			}
-		}
+		// Use the cached release pointer as the grouping key (stable for identical releases)
+		key := current.release
 
-		if foundGroup == -1 {
+		group, exists := contentKeyMap[key]
+		if !exists {
 			// Create new group with this torrent as the first member
-			group := &contentGroup{
+			group = &contentGroup{
 				representative: &current.torrent,
 				addedOn:        current.torrent.AddedOn,
 				duplicates:     []string{},
 			}
 			groups = append(groups, group)
 			groupMap[current.torrent.Hash] = len(groups) - 1
+			contentKeyMap[key] = group
 			continue
 		}
 
-		group := groups[foundGroup]
+		// Add to existing group
+		groupMap[current.torrent.Hash] = groupMap[group.representative.Hash]
 		normHash := normalizeHash(current.torrent.Hash)
 		currentHasRoot := hasRootCache[normHash]
 		groupHasRoot := group.hasRootFolder
@@ -3804,7 +3801,6 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		} else {
 			group.duplicates = append(group.duplicates, current.torrent.Hash)
 		}
-		groupMap[current.torrent.Hash] = foundGroup
 	}
 
 	// Build deduplicated list from group representatives
