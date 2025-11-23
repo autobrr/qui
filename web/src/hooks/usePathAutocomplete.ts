@@ -5,7 +5,6 @@ export function usePathAutocomplete(
   instanceId: number
 ) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState<number>(-1); // -1 = none
 
@@ -40,7 +39,6 @@ export function usePathAutocomplete(
         return cache.current.get(key);
       }
 
-      setLoading(true);
       try {
         const response = await fetch(
           `/api/instances/${instanceId}/getDirectoryContent?dirPath=${encodeURIComponent(key)}`
@@ -54,8 +52,6 @@ export function usePathAutocomplete(
         return data;
       } catch {
         return [];
-      } finally {
-        setLoading(false);
       }
     },
     [instanceId]
@@ -98,24 +94,32 @@ export function usePathAutocomplete(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (!suggestions.length) return;
 
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setHighlightedIndex((prev) => (prev + 1) % suggestions.length);
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setHighlightedIndex((prev) =>
-          prev <= 0 ? suggestions.length - 1 : prev - 1
-        );
-      } else if (e.key === "Enter" || e.key === "Tab") {
-        e.preventDefault();
-        if (highlightedIndex >= 0 && highlightedIndex < suggestions.length) {
-          selectSuggestion(suggestions[highlightedIndex]);
-        } else if (suggestions.length === 1) {
-          selectSuggestion(suggestions[0]);
-        }
-      } else if (e.key === "Escape") {
-        setSuggestions([]);
-        setHighlightedIndex(-1);
+      switch(e.key) {
+        case "ArrowDown":
+          e.preventDefault();
+          setHighlightedIndex((prev) => (prev + 1) % suggestions.length);
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          setHighlightedIndex((prev) =>
+            prev <= 0 ? suggestions.length - 1 : prev - 1
+          );
+          break;
+        case "Enter":
+        case "Tab":
+          e.preventDefault();
+          if (highlightedIndex >= 0 && highlightedIndex < suggestions.length) {
+            selectSuggestion(suggestions[highlightedIndex]);
+          } else if (suggestions.length === 1) {
+            selectSuggestion(suggestions[0]);
+          }
+          break;
+        case "Escape":
+          setSuggestions([]);
+          setHighlightedIndex(-1);
+          break;
+        default:
+          return
       }
     },
     [suggestions, highlightedIndex, selectSuggestion]
@@ -133,16 +137,10 @@ export function usePathAutocomplete(
     [selectSuggestion]
   );
 
-  const suggestionEqualsInput = (entry: string) => {
-    return (
-      suggestions.length === 1 && suggestions.filter((s) => s === entry.toLowerCase())
-    );
-  };
-  const showSuggestions = suggestions.length > 0 && getFilterTerm(inputValue) && !suggestionEqualsInput(inputValue);
+  const showSuggestions = suggestions.length > 0;
 
   return {
     suggestions,
-    loading,
     inputValue,
     handleInputChange,
     handleSelect,
