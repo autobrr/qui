@@ -195,22 +195,22 @@ func (s *Service) CacheFilesBatch(ctx context.Context, instanceID int, files map
 
 		now := time.Now()
 		cacheKey := newCacheKey(instanceID, hash)
-		shouldLog := false
+		//shouldLog := false
 
 		s.mu.Lock()
 		if last, ok := s.lastCacheLog[cacheKey]; !ok || now.Sub(last) >= cacheLogThrottle {
 			s.lastCacheLog[cacheKey] = now
-			shouldLog = true
+			//shouldLog = true
 		}
 		s.mu.Unlock()
 
-		if shouldLog {
-			log.Trace().
-				Int("instanceID", instanceID).
-				Str("hash", hash).
-				Int("fileCount", len(torrentFiles)).
-				Msg("Cached torrent files")
-		}
+		//if shouldLog {
+		//	log.Trace().
+		//		Int("instanceID", instanceID).
+		//		Str("hash", hash).
+		//		Int("fileCount", len(torrentFiles)).
+		//		Msg("Cached torrent files")
+		//}
 	}
 
 	return nil
