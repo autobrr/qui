@@ -38,16 +38,14 @@ type routeKey struct {
 }
 
 var undocumentedRoutes = map[routeKey]struct{}{
-	{Method: http.MethodGet, Path: "/api/auth/validate"}:                                                            {},
-	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/backups/run"}:                                      {},
-	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs"}:                                      {},
-	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/backups/runs"}:                                   {},
-	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/backups/runs/{runId}"}:                           {},
-	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs/{runId}/download"}:                     {},
-	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs/{runId}/items/{torrentHash}/download"}: {},
-	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs/{runId}/manifest"}:                     {},
-	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/settings"}:                                  {},
-	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/backups/settings"}:                                  {},
+	{Method: http.MethodGet, Path: "/api/auth/validate"}:                                        {},
+	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/backups/run"}:                  {},
+	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs"}:                  {},
+	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/backups/runs"}:               {},
+	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/backups/runs/{runId}"}:       {},
+	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs/{runId}/manifest"}: {},
+	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/settings"}:              {},
+	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/backups/settings"}:              {},
 }
 
 func TestAllEndpointsDocumented(t *testing.T) {
