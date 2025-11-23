@@ -1198,18 +1198,6 @@ func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int,
 		return map[string]qbt.TorrentFiles{}, nil
 	}
 
-	progressByHash := make(map[string]float64, len(normalized.canonical))
-	if torrents := client.getTorrentsByHashes(normalized.lookup); len(torrents) > 0 {
-		for i := range torrents {
-			t := torrents[i]
-			canonicalHash := canonicalizeHash(t.Hash)
-			if canonicalHash == "" {
-				continue
-			}
-			progressByHash[canonicalHash] = float64(t.Progress)
-		}
-	}
-
 	filesByHash := make(map[string]qbt.TorrentFiles, len(normalized.canonical))
 	hashesToFetch := normalized.canonical
 	cacheHits := 0
@@ -1223,7 +1211,10 @@ func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int,
 				Msg("Failed to load cached torrent files in batch")
 		} else {
 			for hash, files := range cached {
-				filesByHash[hash] = files
+				// Clone cached slices to avoid aliasing across callers.
+				cloned := make(qbt.TorrentFiles, len(files))
+				copy(cloned, files)
+				filesByHash[hash] = cloned
 			}
 			hashesToFetch = missing
 			cacheHits = len(filesByHash)
@@ -1250,6 +1241,10 @@ func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int,
 			requestHash = canonicalHash
 		}
 
+		// Capture per-iteration values for goroutine to avoid closure races.
+		ch := canonicalHash
+		rh := requestHash
+
 		g.Go(func() error {
 			release, acquireErr := sm.acquireFileFetchSlot(gctx, instanceID)
 			if acquireErr != nil {
@@ -1257,33 +1252,32 @@ func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int,
 			}
 			defer release()
 
-			files, fetchErr := client.GetFilesInformationCtx(gctx, requestHash)
+			files, fetchErr := client.GetFilesInformationCtx(gctx, rh)
 			if fetchErr != nil {
 				if errors.Is(fetchErr, context.Canceled) || errors.Is(fetchErr, context.DeadlineExceeded) {
 					return fetchErr
 				}
 				mu.Lock()
-				fetchErrors = append(fetchErrors, fmt.Errorf("fetch torrent files %s: %w", requestHash, fetchErr))
+				fetchErrors = append(fetchErrors, fmt.Errorf("fetch torrent files %s: %w", rh, fetchErr))
 				mu.Unlock()
 				return nil
 			}
 
 			if files == nil {
 				mu.Lock()
-				fetchErrors = append(fetchErrors, fmt.Errorf("fetch torrent files %s: empty response", requestHash))
+				fetchErrors = append(fetchErrors, fmt.Errorf("fetch torrent files %s: empty response", rh))
 				mu.Unlock()
 				return nil
 			}
 
-			if fm := sm.getFilesManager(); fm != nil {
-				mu.Lock()
-				filesByHash[canonicalHash] = *files
-				mu.Unlock()
-			} else {
-				mu.Lock()
-				filesByHash[canonicalHash] = *files
-				mu.Unlock()
-			}
+			// Clone the slice so later fetches cannot mutate the stored entry if the
+			// client reuses backing arrays across calls.
+			copied := make(qbt.TorrentFiles, len(*files))
+			copy(copied, *files)
+
+			mu.Lock()
+			filesByHash[ch] = copied
+			mu.Unlock()
 			return nil
 		})
 	}
@@ -1295,10 +1289,12 @@ func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int,
 	// Cache all newly fetched files in batch
 	if fm := sm.getFilesManager(); fm != nil && len(hashesToFetch) > 0 {
 		fetchedFiles := make(map[string]qbt.TorrentFiles)
-		for _, hash := range hashesToFetch {
-			canonicalHash := canonicalizeHash(hash)
+		for _, canonicalHash := range hashesToFetch {
 			if files, ok := filesByHash[canonicalHash]; ok {
-				fetchedFiles[canonicalHash] = files
+				// Cache a clone to keep cache entries isolated.
+				cloned := make(qbt.TorrentFiles, len(files))
+				copy(cloned, files)
+				fetchedFiles[canonicalHash] = cloned
 			}
 		}
 		if len(fetchedFiles) > 0 {

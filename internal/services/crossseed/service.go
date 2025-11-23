@@ -2198,6 +2198,10 @@ func (s *Service) getTorrentFilesCached(ctx context.Context, instanceID int, has
 
 	if s.torrentFilesCache != nil {
 		if cached, ok := s.torrentFilesCache.Get(key); ok {
+			log.Trace().
+				Int("instanceID", instanceID).
+				Str("hash", normalizeHash(hash)).
+				Msg("Using cached torrent files")
 			return cloneTorrentFiles(cached), nil
 		}
 	}
@@ -2215,6 +2219,11 @@ func (s *Service) getTorrentFilesCached(ctx context.Context, instanceID int, has
 	if s.torrentFilesCache != nil {
 		_ = s.torrentFilesCache.Set(key, cloneTorrentFiles(files), ttlcache.DefaultTTL)
 	}
+
+	log.Trace().
+		Int("instanceID", instanceID).
+		Str("hash", normalizeHash(hash)).
+		Msg("Fetched torrent files from qbittorrent")
 
 	return files, nil
 }

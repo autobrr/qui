@@ -213,11 +213,14 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 		filesByHash[f.TorrentHash] = append(filesByHash[f.TorrentHash], f)
 	}
 
-	// Collect all unique strings to intern (all hashes + all file names)
-	allStrings := make([]string, 0, len(filesByHash)+len(files))
+	// Collect all unique strings to intern (all hashes + all file names).
+	// Preserve hash insertion order explicitly so we can map IDs back correctly.
+	hashOrder := make([]string, 0, len(filesByHash))
 	for hash := range filesByHash {
-		allStrings = append(allStrings, hash)
+		hashOrder = append(hashOrder, hash)
 	}
+	allStrings := make([]string, 0, len(hashOrder)+len(files))
+	allStrings = append(allStrings, hashOrder...)
 	for _, f := range files {
 		allStrings = append(allStrings, f.Name)
 	}
@@ -239,19 +242,28 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 		return fmt.Errorf("failed to intern strings: %w", err)
 	}
 
-	hashIDMap := make(map[string]int64)
-	nameIDIndex := len(filesByHash)
-	for hash := range filesByHash {
-		hashIDMap[hash] = allIDs[len(hashIDMap)]
+	valueToID := make(map[string]int64, len(allStrings))
+	for i, value := range allStrings {
+		valueToID[value] = allIDs[i]
+	}
+
+	hashIDMap := make(map[string]int64, len(hashOrder))
+	for _, hash := range hashOrder {
+		hashIDMap[hash] = valueToID[hash]
 	}
 
 	// Collect all file rows to batch insert
 	var allRows []fileRow
 	for hash, fileGroup := range filesByHash {
-		hashID := hashIDMap[hash]
+		hashID, ok := hashIDMap[hash]
+		if !ok {
+			return fmt.Errorf("missing interned ID for hash %s", hash)
+		}
 		for _, f := range fileGroup {
-			nameID := allIDs[nameIDIndex]
-			nameIDIndex++
+			nameID, ok := valueToID[f.Name]
+			if !ok {
+				return fmt.Errorf("missing interned ID for file %s", f.Name)
+			}
 
 			var isSeed interface{}
 			if f.IsSeed != nil {

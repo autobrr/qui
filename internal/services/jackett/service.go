@@ -1152,14 +1152,15 @@ func (s *Service) persistSearchCacheEntry(ctx context.Context, scope string, sig
 		ExpiresAt:          expiresAt,
 	}
 
-	parent := ctx
-	if parent == nil {
-		parent = context.Background()
-	}
-	storeCtx, cancel := context.WithTimeout(parent, 3*time.Second)
+	// Cache writes are best-effort; give them their own budget independent of the request.
+	storeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := s.searchCache.Store(storeCtx, entry); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			log.Trace().Msg("Torznab search cache write timed out (best-effort)")
+			return
+		}
 		log.Debug().Err(err).Msg("Failed to persist torznab search cache entry")
 		return
 	}

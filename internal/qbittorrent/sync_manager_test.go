@@ -3,6 +3,7 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -80,8 +81,6 @@ func TestGetTorrentFilesBatch_NormalizesAndCaches(t *testing.T) {
 	require.Len(t, fm.cacheCalls, 1)
 	require.Equal(t, cacheCall{hash: "def456", progress: 0.0}, fm.cacheCalls[0])
 
-	require.Len(t, client.requestedHashes, 1)
-	require.Equal(t, []string{"ABC123", "abc123", "Def456", "def456", "DEF456"}, client.requestedHashes[0])
 	require.Equal(t, []string{"Def456"}, client.fileRequests)
 }
 
@@ -117,6 +116,89 @@ func TestHasTorrentByAnyHash(t *testing.T) {
 	require.Equal(t, "second", torrent.Name)
 }
 
+func TestGetTorrentFilesBatch_IsolatesClientSliceReuse(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	client := &sliceReusingTorrentFilesClient{
+		shared: qbt.TorrentFiles{
+			{
+				Name: "initial.mkv",
+				Size: 1,
+			},
+		},
+		labels: map[string]string{
+			"hash-a": "file-a.mkv",
+			"hash-b": "file-b.mkv",
+		},
+	}
+
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return client, nil
+		},
+	}
+
+	filesByHash, err := sm.GetTorrentFilesBatch(ctx, 1, []string{"hash-a", "hash-b"})
+	require.NoError(t, err)
+
+	require.Len(t, filesByHash, 2)
+	require.Contains(t, filesByHash, "hash-a")
+	require.Contains(t, filesByHash, "hash-b")
+
+	require.Equal(t, "file-a.mkv", filesByHash["hash-a"][0].Name)
+	require.Equal(t, "file-b.mkv", filesByHash["hash-b"][0].Name)
+
+	// Mutating the client's shared slice after the fact must not affect returned slices.
+	client.mu.Lock()
+	client.shared[0].Name = "mutated.mkv"
+	client.mu.Unlock()
+
+	require.Equal(t, "file-a.mkv", filesByHash["hash-a"][0].Name)
+	require.Equal(t, "file-b.mkv", filesByHash["hash-b"][0].Name)
+}
+
+func TestGetTorrentFilesBatch_IsolatesCacheSliceReuse(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	shared := qbt.TorrentFiles{
+		{
+			Name: "cached-a.mkv",
+			Size: 1,
+		},
+	}
+
+	fm := &aliasingFilesManager{
+		cached: map[string]qbt.TorrentFiles{
+			"abc123": shared,
+		},
+	}
+
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			// Should not be called when cache is hit, but provide a stub to satisfy provider.
+			return &stubTorrentFilesClient{}, nil
+		},
+	}
+	sm.SetFilesManager(fm)
+
+	filesByHash, err := sm.GetTorrentFilesBatch(ctx, 1, []string{"abc123"})
+	require.NoError(t, err)
+
+	files, ok := filesByHash["abc123"]
+	require.True(t, ok)
+	require.Len(t, files, 1)
+	require.Equal(t, "cached-a.mkv", files[0].Name)
+
+	// Mutating the cached slice after the fact must not affect the returned slice.
+	fm.cached["abc123"][0].Name = "mutated.mkv"
+
+	require.Equal(t, "cached-a.mkv", files[0].Name)
+}
+
 type stubTorrentFilesClient struct {
 	torrents        []qbt.Torrent
 	filesByHash     map[string]qbt.TorrentFiles
@@ -139,6 +221,47 @@ func (c *stubTorrentFilesClient) GetFilesInformationCtx(ctx context.Context, has
 	copied := make(qbt.TorrentFiles, len(files))
 	copy(copied, files)
 	return &copied, nil
+}
+
+type sliceReusingTorrentFilesClient struct {
+	mu              sync.Mutex
+	shared          qbt.TorrentFiles
+	labels          map[string]string
+	requestedHashes [][]string
+	fileRequests    []string
+}
+
+func (c *sliceReusingTorrentFilesClient) getTorrentsByHashes(hashes []string) []qbt.Torrent {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	copied := append([]string(nil), hashes...)
+	c.requestedHashes = append(c.requestedHashes, copied)
+	return nil
+}
+
+func (c *sliceReusingTorrentFilesClient) GetFilesInformationCtx(ctx context.Context, hash string) (*qbt.TorrentFiles, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	label, ok := c.labels[hash]
+	if !ok {
+		return nil, fmt.Errorf("no files for hash %s", hash)
+	}
+
+	c.fileRequests = append(c.fileRequests, hash)
+
+	if len(c.shared) == 0 {
+		c.shared = qbt.TorrentFiles{
+			{
+				Name: label,
+				Size: 1,
+			},
+		}
+	} else {
+		c.shared[0].Name = label
+	}
+
+	return &c.shared, nil
 }
 
 type cacheCall struct {
@@ -190,6 +313,49 @@ func (fm *stubFilesManager) CacheFilesBatch(_ context.Context, _ int, files map[
 }
 
 func (*stubFilesManager) InvalidateCache(context.Context, int, string) error {
+	return nil
+}
+
+type aliasingFilesManager struct {
+	cached     map[string]qbt.TorrentFiles
+	lastHashes []string
+}
+
+func (fm *aliasingFilesManager) GetCachedFiles(context.Context, int, string) (qbt.TorrentFiles, error) {
+	return nil, nil
+}
+
+func (fm *aliasingFilesManager) GetCachedFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, []string, error) {
+	fm.lastHashes = append([]string(nil), hashes...)
+
+	cached := make(map[string]qbt.TorrentFiles, len(hashes))
+	missing := make([]string, 0, len(hashes))
+
+	for _, hash := range hashes {
+		if files, ok := fm.cached[hash]; ok {
+			// Intentionally do not clone here to simulate a cache that returns shared slices.
+			cached[hash] = files
+		} else {
+			missing = append(missing, hash)
+		}
+	}
+
+	return cached, missing, nil
+}
+
+func (fm *aliasingFilesManager) CacheFiles(_ context.Context, _ int, hash string, files qbt.TorrentFiles) error {
+	fm.cached[hash] = files
+	return nil
+}
+
+func (fm *aliasingFilesManager) CacheFilesBatch(_ context.Context, _ int, files map[string]qbt.TorrentFiles) error {
+	for hash, torrentFiles := range files {
+		fm.cached[hash] = torrentFiles
+	}
+	return nil
+}
+
+func (*aliasingFilesManager) InvalidateCache(context.Context, int, string) error {
 	return nil
 }
 
