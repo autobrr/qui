@@ -193,7 +193,7 @@ export function columnFilterToExpr(filter: ColumnFilter): string | null {
       const numericValue1 = Number(filter.value)
       const numericValue2 = Number(filter.value2)
       if (isNaN(numericValue1) || isNaN(numericValue2)) {
-        console.warn(`Invalid numeric values for size column ${filter.columnId}`)
+        console.warn(`Invalid numeric values for speed column ${filter.columnId}`)
         return null
       }
       const bytesValue1 = convertSizeToBytes(numericValue1, filter.speedUnit)
@@ -493,7 +493,7 @@ export function filterSearchResult(result: TorznabSearchResult, filter: ColumnFi
 
     return selectedValues.some(val => {
       if (val === "true") return factor === 0
-      if (val === "false") return factor > 0
+      if (val === "false") return factor === 1
       const numVal = Number(val)
       if (!isNaN(numVal)) {
         return factor === numVal

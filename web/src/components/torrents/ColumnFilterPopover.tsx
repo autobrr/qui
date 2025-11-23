@@ -169,7 +169,7 @@ function ValueInput({
         />
         <Select
           value={unit.value as string}
-          onValueChange={(v) => unit.onChange(v as SizeUnit)}
+          onValueChange={(v) => unit.onChange(v as SpeedUnit)}
         >
           <SelectTrigger className="w-24">
             <SelectValue />
