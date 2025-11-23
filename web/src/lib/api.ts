@@ -371,6 +371,16 @@ class ApiClient {
     })
   }
 
+  async importBackupManifest(instanceId: number, manifestFile: File): Promise<BackupRun> {
+    const formData = new FormData()
+    formData.append("manifest", manifestFile)
+
+    return this.request<BackupRun>(`/instances/${instanceId}/backups/import`, {
+      method: "POST",
+      body: formData,
+    })
+  }
+
   async previewRestore(
     instanceId: number,
     runId: number,

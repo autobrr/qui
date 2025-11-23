@@ -64,6 +64,7 @@ import {
   useDeleteAllBackupRuns,
   useDeleteBackupRun,
   useExecuteRestore,
+  useImportBackupManifest,
   usePreviewRestore,
   useTriggerBackup,
   useUpdateBackupSettings
@@ -231,6 +232,7 @@ export function InstanceBackups() {
   const deleteAllRuns = useDeleteAllBackupRuns(instanceId ?? 0)
   const previewRestore = usePreviewRestore(instanceId ?? 0)
   const executeRestore = useExecuteRestore(instanceId ?? 0)
+  const importManifest = useImportBackupManifest(instanceId ?? 0)
   const { formatDate } = useDateTimeFormatters()
 
   const [formState, setFormState] = useState<SettingsFormState | null>(null)
@@ -250,6 +252,9 @@ export function InstanceBackups() {
   const [restorePlanError, setRestorePlanError] = useState<string | null>(null)
   const [restoreResult, setRestoreResult] = useState<RestoreResult | null>(null)
   const [restoreExcludedHashes, setRestoreExcludedHashes] = useState<string[]>([])
+
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
 
   const backupHistoryRef = useRef<HTMLDivElement>(null)
 
@@ -894,6 +899,9 @@ export function InstanceBackups() {
                     <Button onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
                       <ArrowDownToLine className="mr-2 h-4 w-4" /> Run manual backup
                     </Button>
+                    <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+                      <FileText className="mr-2 h-4 w-4" /> Import manifest
+                    </Button>
                     <Button
                       variant="outline"
                       onClick={handleSave}
@@ -1456,6 +1464,60 @@ export function InstanceBackups() {
                 ) : null}
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Import backup manifest</DialogTitle>
+              <DialogDescription>
+                Upload a backup manifest file to import backup metadata into this instance.
+                The manifest should be a JSON file exported from another Qui instance.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="manifest-file">Manifest file</Label>
+                <Input
+                  id="manifest-file"
+                  type="file"
+                  accept=".json"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    setImportFile(file || null)
+                  }}
+                />
+                {importFile && (
+                  <p className="text-sm text-muted-foreground">
+                    Selected: {importFile.name} ({(importFile.size / 1024).toFixed(1)} KB)
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (!importFile) return
+
+                  try {
+                    await importManifest.mutateAsync(importFile)
+                    toast.success("Manifest imported successfully")
+                    setImportDialogOpen(false)
+                    setImportFile(null)
+                  } catch (error) {
+                    toast.error("Failed to import manifest")
+                    console.error("Import error:", error)
+                  }
+                }}
+                disabled={!importFile || importManifest.isPending}
+              >
+                {importManifest.isPending ? "Importing..." : "Import"}
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
 
