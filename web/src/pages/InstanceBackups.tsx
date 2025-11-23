@@ -29,12 +29,11 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog"
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
@@ -198,6 +197,7 @@ export function InstanceBackups() {
 
   // Pagination state
   const [backupsPage, setBackupsPage] = useState(1)
+  const [downloadFormat, setDownloadFormat] = useState("zip")
 
   const { data: settings, isLoading: settingsLoading } = useBackupSettings(instanceId ?? 0, { enabled: shouldLoadData })
 
@@ -1618,19 +1618,69 @@ export function InstanceBackups() {
                               <Undo2 className="h-4 w-4" />
                             </Button>
                             {run.archivePath ? (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                asChild
-                                aria-label="Download backup"
-                              >
-                                <a
-                                  href={api.getBackupDownloadUrl(instanceId!, run.id)}
-                                  rel="noreferrer"
-                                >
-                                  <Download className="h-4 w-4" />
-                                </a>
-                              </Button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" aria-label="Download backup">
+                                    <Download className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "zip")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      Download as ZIP
+                                    </a>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.gz")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      Download as TAR.GZ
+                                    </a>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.zst")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      Download as TAR.ZST
+                                    </a>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.br")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      Download as TAR.BR
+                                    </a>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.xz")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      Download as TAR.XZ
+                                    </a>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      Download as TAR
+                                    </a>
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             ) : (
                               <Button variant="ghost" size="icon" disabled aria-label="Download unavailable">
                                 <Download className="h-4 w-4" />

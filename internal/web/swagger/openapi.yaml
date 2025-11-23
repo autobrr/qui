@@ -3008,6 +3008,109 @@ paths:
         '500':
           description: Failed to execute restore
 
+  /api/instances/{instanceID}/backups/runs/{runId}/download:
+    get:
+      tags:
+        - Backups
+      summary: Download backup archive
+      description: Download the backup archive for the specified backup run in the requested format.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Backup run ID
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - zip
+              - tar.gz
+              - tar.zst
+              - tar.br
+              - tar.xz
+              - tar
+            default: zip
+          description: Archive format to download. Defaults to zip.
+      responses:
+        '200':
+          description: Backup archive downloaded successfully
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+                description: ZIP archive containing the backup
+            application/gzip:
+              schema:
+                type: string
+                format: binary
+                description: GZIP compressed TAR archive
+            application/zstd:
+              schema:
+                type: string
+                format: binary
+                description: Zstandard compressed TAR archive
+            application/x-brotli:
+              schema:
+                type: string
+                format: binary
+                description: Brotli compressed TAR archive
+            application/x-xz:
+              schema:
+                type: string
+                format: binary
+                description: XZ compressed TAR archive
+            application/x-tar:
+              schema:
+                type: string
+                format: binary
+                description: Uncompressed TAR archive
+        '400':
+          description: Invalid format parameter
+        '404':
+          description: Backup run not found or not available for download
+        '500':
+          description: Failed to generate backup archive
+
+  /api/instances/{instanceID}/backups/runs/{runId}/items/{torrentHash}/download:
+    get:
+      tags:
+        - Backups
+      summary: Download torrent file from backup
+      description: Download a specific torrent file from the backup archive.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Backup run ID
+        - name: torrentHash
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Torrent hash
+      responses:
+        '200':
+          description: Torrent file downloaded successfully
+          content:
+            application/x-bittorrent:
+              schema:
+                type: string
+                format: binary
+                description: Torrent file
+        '404':
+          description: Backup run or torrent not found
+        '500':
+          description: Failed to retrieve torrent file
+
   /health:
     get:
       tags:

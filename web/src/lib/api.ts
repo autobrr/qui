@@ -410,8 +410,12 @@ class ApiClient {
     })
   }
 
-  getBackupDownloadUrl(instanceId: number, runId: number): string {
-    return withBasePath(`/api/instances/${instanceId}/backups/runs/${runId}/download`)
+  getBackupDownloadUrl(instanceId: number, runId: number, format?: string): string {
+    const url = new URL(withBasePath(`/api/instances/${instanceId}/backups/runs/${runId}/download`), window.location.origin)
+    if (format && format !== 'zip') {
+      url.searchParams.set('format', format)
+    }
+    return url.toString()
   }
 
   getBackupTorrentDownloadUrl(instanceId: number, runId: number, torrentHash: string): string {

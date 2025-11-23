@@ -15,19 +15,39 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
+	"archive/tar"
 	"archive/zip"
 
+	kgzip "github.com/klauspost/compress/gzip"
+
+	"github.com/andybalholm/brotli"
 	"github.com/go-chi/chi/v5"
+	"github.com/klauspost/compress/zstd"
+	"github.com/ulikunitz/xz"
 
 	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/torrentname"
 )
 
+var registerCompressorOnce sync.Once
+
+func init() {
+	// Note: klauspost deflate compressor registration removed due to conflicts with default registration
+	// The standard library's zip package already registers a deflate compressor
+}
+
 type BackupsHandler struct {
 	service *backups.Service
 }
+
+type nopCloser struct {
+	io.Writer
+}
+
+func (nopCloser) Close() error { return nil }
 
 func NewBackupsHandler(service *backups.Service) *BackupsHandler {
 	return &BackupsHandler{service: service}
@@ -275,6 +295,9 @@ func (h *BackupsHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, manifest)
 }
 
+// DownloadRun downloads a backup archive.
+// Query parameters:
+//   - format: compression format (zip, tar.gz, tar.zst, tar.br, tar.xz, tar) - defaults to zip
 func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -315,76 +338,221 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set headers for zip download
-	filename := fmt.Sprintf("qui-backup_instance-%d_%s_%s.zip", instanceID, strings.ToLower(string(run.Kind)), run.RequestedAt.Format("2006-01-02_15-04-05"))
-	w.Header().Set("Content-Type", "application/zip")
+	// Parse format parameter
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		format = "zip"
+	}
+	supportedFormats := map[string]bool{
+		"zip":     true,
+		"tar.gz":  true,
+		"tar.zst": true,
+		"tar.br":  true,
+		"tar.xz":  true,
+		"tar":     true,
+	}
+	if !supportedFormats[format] {
+		RespondError(w, http.StatusBadRequest, "Unsupported format. Supported: zip, tar.gz, tar.zst, tar.br, tar.lz4, tar.xz, tar")
+		return
+	}
+
+	// Set headers based on format
+	var contentType, extension string
+	switch format {
+	case "zip":
+		contentType = "application/zip"
+		extension = "zip"
+	case "tar.gz":
+		contentType = "application/gzip"
+		extension = "tar.gz"
+	case "tar.zst":
+		contentType = "application/zstd"
+		extension = "tar.zst"
+	case "tar.br":
+		contentType = "application/x-brotli"
+		extension = "tar.br"
+	case "tar.xz":
+		contentType = "application/x-xz"
+		extension = "tar.xz"
+	case "tar":
+		contentType = "application/x-tar"
+		extension = "tar"
+	}
+	filename := fmt.Sprintf("qui-backup_instance-%d_%s_%s.%s", instanceID, strings.ToLower(string(run.Kind)), run.RequestedAt.Format("2006-01-02_15-04-05"), extension)
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
 
-	// Create zip writer
-	zipWriter := zip.NewWriter(w)
-	defer zipWriter.Close()
+	if format == "zip" {
+		// Create zip writer
+		zipWriter := zip.NewWriter(w)
+		defer zipWriter.Close()
 
-	// Add manifest to zip
-	manifestData, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		RespondError(w, http.StatusInternalServerError, "Failed to marshal manifest")
-		return
-	}
-
-	manifestHeader := &zip.FileHeader{
-		Name:   "manifest.json",
-		Method: zip.Deflate,
-	}
-	manifestHeader.Modified = run.RequestedAt
-	manifestWriter, err := zipWriter.CreateHeader(manifestHeader)
-	if err != nil {
-		RespondError(w, http.StatusInternalServerError, "Failed to create manifest entry")
-		return
-	}
-	if _, err := manifestWriter.Write(manifestData); err != nil {
-		RespondError(w, http.StatusInternalServerError, "Failed to write manifest")
-		return
-	}
-
-	// Add torrent files to zip
-	for _, item := range manifest.Items {
-		if item.TorrentBlob == "" {
-			continue
-		}
-
-		torrentPath := filepath.Join(h.service.DataDir(), item.TorrentBlob)
-		file, err := os.Open(torrentPath)
+		// Add manifest to zip
+		manifestData, err := json.MarshalIndent(manifest, "", "  ")
 		if err != nil {
-			// Skip missing files
-			continue
+			RespondError(w, http.StatusInternalServerError, "Failed to marshal manifest")
+			return
 		}
 
-		header := &zip.FileHeader{
-			Name:   item.ArchivePath,
+		manifestHeader := &zip.FileHeader{
+			Name:   "manifest.json",
 			Method: zip.Deflate,
 		}
-		header.Modified = run.RequestedAt
-
-		writer, err := zipWriter.CreateHeader(header)
+		manifestHeader.Modified = run.RequestedAt
+		manifestWriter, err := zipWriter.CreateHeader(manifestHeader)
 		if err != nil {
-			file.Close()
-			RespondError(w, http.StatusInternalServerError, "Failed to create zip entry")
+			RespondError(w, http.StatusInternalServerError, "Failed to create manifest entry")
+			return
+		}
+		if _, err := manifestWriter.Write(manifestData); err != nil {
+			RespondError(w, http.StatusInternalServerError, "Failed to write manifest")
 			return
 		}
 
-		if _, err := io.Copy(writer, file); err != nil {
+		// Add torrent files to zip
+		for _, item := range manifest.Items {
+			if item.TorrentBlob == "" {
+				continue
+			}
+
+			torrentPath := filepath.Join(h.service.DataDir(), item.TorrentBlob)
+			file, err := os.Open(torrentPath)
+			if err != nil {
+				// Skip missing files
+				continue
+			}
+
+			header := &zip.FileHeader{
+				Name:   item.ArchivePath,
+				Method: zip.Deflate,
+			}
+			header.Modified = run.RequestedAt
+
+			writer, err := zipWriter.CreateHeader(header)
+			if err != nil {
+				file.Close()
+				RespondError(w, http.StatusInternalServerError, "Failed to create zip entry")
+				return
+			}
+
+			if _, err := io.Copy(writer, file); err != nil {
+				file.Close()
+				RespondError(w, http.StatusInternalServerError, "Failed to write torrent to zip")
+				return
+			}
+
 			file.Close()
-			RespondError(w, http.StatusInternalServerError, "Failed to write torrent to zip")
+		}
+
+		// Close zip writer to finalize
+		if err := zipWriter.Close(); err != nil {
+			RespondError(w, http.StatusInternalServerError, "Failed to finalize zip")
+			return
+		}
+	} else {
+		// Handle tar-based formats
+		var compressor io.WriteCloser
+		var err error
+		switch format {
+		case "tar.gz":
+			compressor, err = kgzip.NewWriterLevel(w, kgzip.DefaultCompression)
+		case "tar.zst":
+			compressor, err = zstd.NewWriter(w)
+		case "tar.br":
+			compressor = brotli.NewWriter(w)
+		case "tar.xz":
+			compressor, err = xz.NewWriter(w)
+		case "tar":
+			compressor = &nopCloser{w}
+		default:
+			RespondError(w, http.StatusInternalServerError, "Unsupported format")
+			return
+		}
+		if err != nil {
+			RespondError(w, http.StatusInternalServerError, "Failed to create compressor")
+			return
+		}
+		if err != nil {
+			RespondError(w, http.StatusInternalServerError, "Failed to create compressor")
+			return
+		}
+		defer compressor.Close()
+
+		tarWriter := tar.NewWriter(compressor)
+		defer tarWriter.Close()
+
+		// Add manifest to tar
+		manifestData, err := json.MarshalIndent(manifest, "", "  ")
+		if err != nil {
+			RespondError(w, http.StatusInternalServerError, "Failed to marshal manifest")
 			return
 		}
 
-		file.Close()
-	}
+		manifestHeader := &tar.Header{
+			Name:    "manifest.json",
+			Size:    int64(len(manifestData)),
+			Mode:    0644,
+			ModTime: run.RequestedAt,
+		}
+		if err := tarWriter.WriteHeader(manifestHeader); err != nil {
+			RespondError(w, http.StatusInternalServerError, "Failed to write manifest header")
+			return
+		}
+		if _, err := tarWriter.Write(manifestData); err != nil {
+			RespondError(w, http.StatusInternalServerError, "Failed to write manifest")
+			return
+		}
 
-	// Close zip writer to finalize
-	if err := zipWriter.Close(); err != nil {
-		RespondError(w, http.StatusInternalServerError, "Failed to finalize zip")
-		return
+		// Add torrent files to tar
+		for _, item := range manifest.Items {
+			if item.TorrentBlob == "" {
+				continue
+			}
+
+			torrentPath := filepath.Join(h.service.DataDir(), item.TorrentBlob)
+			file, err := os.Open(torrentPath)
+			if err != nil {
+				// Skip missing files
+				continue
+			}
+			defer file.Close()
+
+			stat, err := file.Stat()
+			if err != nil {
+				file.Close()
+				continue
+			}
+
+			header := &tar.Header{
+				Name:    item.ArchivePath,
+				Size:    stat.Size(),
+				Mode:    0644,
+				ModTime: run.RequestedAt,
+			}
+			if err := tarWriter.WriteHeader(header); err != nil {
+				file.Close()
+				RespondError(w, http.StatusInternalServerError, "Failed to write tar header")
+				return
+			}
+
+			if _, err := io.Copy(tarWriter, file); err != nil {
+				file.Close()
+				RespondError(w, http.StatusInternalServerError, "Failed to write torrent to tar")
+				return
+			}
+
+			file.Close()
+		}
+
+		// Close writers
+		if err := tarWriter.Close(); err != nil {
+			RespondError(w, http.StatusInternalServerError, "Failed to finalize tar")
+			return
+		}
+		if err := compressor.Close(); err != nil {
+			RespondError(w, http.StatusInternalServerError, "Failed to finalize compression")
+			return
+		}
 	}
 }
 
