@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 
+	"archive/zip"
+
 	"github.com/go-chi/chi/v5"
 
 	"github.com/autobrr/qui/internal/backups"
@@ -301,26 +303,89 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if run.ArchivePath == nil || *run.ArchivePath == "" {
-		RespondError(w, http.StatusNotFound, "Backup archive not available")
+	if run.Status != models.BackupRunStatusSuccess {
+		RespondError(w, http.StatusNotFound, "Backup not available")
 		return
 	}
 
-	absolutePath := filepath.Join(h.service.DataDir(), *run.ArchivePath)
-	file, err := os.Open(absolutePath)
+	// Load manifest
+	manifest, err := h.service.LoadManifest(r.Context(), runID)
 	if err != nil {
-		if os.IsNotExist(err) {
-			RespondError(w, http.StatusNotFound, "Backup archive missing")
+		RespondError(w, http.StatusInternalServerError, "Failed to load backup manifest")
+		return
+	}
+
+	// Set headers for zip download
+	filename := fmt.Sprintf("qui-backup_instance-%d_%s_%s.zip", instanceID, strings.ToLower(string(run.Kind)), run.RequestedAt.Format("2006-01-02_15-04-05"))
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
+
+	// Create zip writer
+	zipWriter := zip.NewWriter(w)
+	defer zipWriter.Close()
+
+	// Add manifest to zip
+	manifestData, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		RespondError(w, http.StatusInternalServerError, "Failed to marshal manifest")
+		return
+	}
+
+	manifestHeader := &zip.FileHeader{
+		Name:   "manifest.json",
+		Method: zip.Deflate,
+	}
+	manifestHeader.Modified = run.RequestedAt
+	manifestWriter, err := zipWriter.CreateHeader(manifestHeader)
+	if err != nil {
+		RespondError(w, http.StatusInternalServerError, "Failed to create manifest entry")
+		return
+	}
+	if _, err := manifestWriter.Write(manifestData); err != nil {
+		RespondError(w, http.StatusInternalServerError, "Failed to write manifest")
+		return
+	}
+
+	// Add torrent files to zip
+	for _, item := range manifest.Items {
+		if item.TorrentBlob == "" {
+			continue
+		}
+
+		torrentPath := filepath.Join(h.service.DataDir(), item.TorrentBlob)
+		file, err := os.Open(torrentPath)
+		if err != nil {
+			// Skip missing files
+			continue
+		}
+
+		header := &zip.FileHeader{
+			Name:   item.ArchivePath,
+			Method: zip.Deflate,
+		}
+		header.Modified = run.RequestedAt
+
+		writer, err := zipWriter.CreateHeader(header)
+		if err != nil {
+			file.Close()
+			RespondError(w, http.StatusInternalServerError, "Failed to create zip entry")
 			return
 		}
-		RespondError(w, http.StatusInternalServerError, "Failed to open backup archive")
+
+		if _, err := io.Copy(writer, file); err != nil {
+			file.Close()
+			RespondError(w, http.StatusInternalServerError, "Failed to write torrent to zip")
+			return
+		}
+
+		file.Close()
+	}
+
+	// Close zip writer to finalize
+	if err := zipWriter.Close(); err != nil {
+		RespondError(w, http.StatusInternalServerError, "Failed to finalize zip")
 		return
 	}
-	defer file.Close()
-
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", "attachment; filename=\""+filepath.Base(absolutePath)+"\"")
-	http.ServeContent(w, r, filepath.Base(absolutePath), run.RequestedAt, file)
 }
 
 func (h *BackupsHandler) DownloadTorrentBlob(w http.ResponseWriter, r *http.Request) {

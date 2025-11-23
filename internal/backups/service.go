@@ -4,7 +4,6 @@
 package backups
 
 import (
-	"archive/zip"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -443,7 +442,6 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 		_ = s.store.UpdateRunMetadata(ctx, j.runID, func(run *models.BackupRun) error {
 			run.Status = models.BackupRunStatusSuccess
 			run.CompletedAt = &now
-			run.ArchivePath = &result.archiveRelPath
 			if result.manifestRelPath != nil {
 				run.ManifestPath = result.manifestRelPath
 			}
@@ -473,7 +471,6 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 }
 
 type backupResult struct {
-	archiveRelPath  string
 	manifestRelPath *string
 	totalBytes      int64
 	torrentCount    int
@@ -558,32 +555,9 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		slug = fmt.Sprintf("instance-%d", j.instanceID)
 	}
 
-	archiveName := fmt.Sprintf("qui-backup_%s_%s_%s.zip", slug, j.kind, timestamp)
-	archiveAbsPath := filepath.Join(baseAbs, archiveName)
-	archiveRelPath := filepath.Join(baseRel, archiveName)
-
-	manifestFileName := fmt.Sprintf("%s_manifest.json", strings.TrimSuffix(archiveName, ".zip"))
+	manifestFileName := fmt.Sprintf("qui-backup_%s_%s_%s_manifest.json", slug, j.kind, timestamp)
 	manifestAbsPath := filepath.Join(baseAbs, manifestFileName)
 	manifestRelPath := filepath.Join(baseRel, manifestFileName)
-
-	archiveFile, err := os.Create(archiveAbsPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create archive: %w", err)
-	}
-	defer func() {
-		_ = archiveFile.Close()
-	}()
-	cleanupArchive := true
-	defer func() {
-		if cleanupArchive {
-			_ = os.Remove(archiveAbsPath)
-		}
-	}()
-
-	zipWriter := zip.NewWriter(archiveFile)
-	defer func() {
-		_ = zipWriter.Close()
-	}()
 
 	items := make([]models.BackupItem, 0, len(torrents))
 	manifestItems := make([]ManifestItem, 0, len(torrents))
@@ -676,20 +650,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 			blobRelPath = &rel
 		}
 
-		header := &zip.FileHeader{
-			Name:   uniquePath,
-			Method: zip.Deflate,
-		}
-		header.Modified = s.now()
-
-		writer, err := zipWriter.CreateHeader(header)
-		if err != nil {
-			return nil, fmt.Errorf("create zip entry: %w", err)
-		}
-
-		if _, err := writer.Write(data); err != nil {
-			return nil, fmt.Errorf("write zip entry: %w", err)
-		}
+		// Note: Removed zip header creation for streaming interface
 
 		totalBytes += int64(len(data))
 
@@ -765,37 +726,13 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		return nil, fmt.Errorf("marshal manifest: %w", err)
 	}
 
-	manifestHeader := &zip.FileHeader{
-		Name:   "manifest.json",
-		Method: zip.Deflate,
-	}
-	manifestHeader.Modified = s.now()
-	manifestWriter, err := zipWriter.CreateHeader(manifestHeader)
-	if err != nil {
-		return nil, fmt.Errorf("create manifest entry: %w", err)
-	}
-	if _, err := manifestWriter.Write(manifestData); err != nil {
-		return nil, fmt.Errorf("write manifest entry: %w", err)
-	}
-
-	if err := zipWriter.Close(); err != nil {
-		return nil, fmt.Errorf("finalize archive: %w", err)
-	}
-
-	if err := archiveFile.Close(); err != nil {
-		return nil, fmt.Errorf("close archive: %w", err)
-	}
-
 	manifestPointer := &manifestRelPath
 	if err := os.WriteFile(manifestAbsPath, manifestData, 0o644); err != nil {
 		log.Warn().Err(err).Str("path", manifestAbsPath).Msg("Failed to write manifest to disk")
 		manifestPointer = nil
 	}
 
-	cleanupArchive = false
-
 	return &backupResult{
-		archiveRelPath:  archiveRelPath,
 		manifestRelPath: manifestPointer,
 		totalBytes:      totalBytes,
 		torrentCount:    len(manifestItems),
