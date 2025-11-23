@@ -24,6 +24,24 @@ type Repository struct {
 // Use a conservative batch size to stay under SQLite parameter limits (900 default).
 const maxBatchItems = 800
 
+// Use a conservative batch size for file inserts to stay under SQLite parameter limits (999 default).
+const fileBatchSize = 80
+
+// fileRow represents a single row to insert into torrent_files_cache
+type fileRow struct {
+	instanceID      int
+	hashID          int64
+	fileIndex       int
+	nameID          int64
+	size            int64
+	progress        float64
+	priority        int
+	isSeed          interface{}
+	pieceRangeStart int64
+	pieceRangeEnd   int64
+	availability    float64
+}
+
 // NewRepository creates a new files repository
 func NewRepository(db dbinterface.Querier) *Repository {
 	return &Repository{db: db}
@@ -227,6 +245,8 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 		hashIDMap[hash] = allIDs[len(hashIDMap)]
 	}
 
+	// Collect all file rows to batch insert
+	var allRows []fileRow
 	for hash, fileGroup := range filesByHash {
 		hashID := hashIDMap[hash]
 		for _, f := range fileGroup {
@@ -238,38 +258,83 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 				isSeed = *f.IsSeed
 			}
 
-			_, err = tx.ExecContext(ctx, `
-				INSERT INTO torrent_files_cache 
-				(instance_id, torrent_hash_id, file_index, name_id, size, progress, priority, 
-				 is_seed, piece_range_start, piece_range_end, availability, cached_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-				ON CONFLICT(instance_id, torrent_hash_id, file_index) DO UPDATE SET
-					name_id = excluded.name_id,
-					size = excluded.size,
-					progress = excluded.progress,
-					priority = excluded.priority,
-					is_seed = excluded.is_seed,
-					piece_range_start = excluded.piece_range_start,
-					piece_range_end = excluded.piece_range_end,
-					availability = excluded.availability,
-					cached_at = excluded.cached_at
-			`,
-				f.InstanceID,
-				hashID,
-				f.FileIndex,
-				nameID,
-				f.Size,
-				f.Progress,
-				f.Priority,
-				isSeed,
-				f.PieceRangeStart,
-				f.PieceRangeEnd,
-				f.Availability,
-				time.Now(),
+			allRows = append(allRows, fileRow{
+				instanceID:      f.InstanceID,
+				hashID:          hashID,
+				fileIndex:       f.FileIndex,
+				nameID:          nameID,
+				size:            f.Size,
+				progress:        f.Progress,
+				priority:        f.Priority,
+				isSeed:          isSeed,
+				pieceRangeStart: f.PieceRangeStart,
+				pieceRangeEnd:   f.PieceRangeEnd,
+				availability:    f.Availability,
+			})
+		}
+	}
+
+	// Pre-build the full query for full batches
+	queryTemplate := `
+			INSERT INTO torrent_files_cache 
+			(instance_id, torrent_hash_id, file_index, name_id, size, progress, priority, 
+			 is_seed, piece_range_start, piece_range_end, availability, cached_at)
+			VALUES %s
+			ON CONFLICT(instance_id, torrent_hash_id, file_index) DO UPDATE SET
+				name_id = excluded.name_id,
+				size = excluded.size,
+				progress = excluded.progress,
+				priority = excluded.priority,
+				is_seed = excluded.is_seed,
+				piece_range_start = excluded.piece_range_start,
+				piece_range_end = excluded.piece_range_end,
+				availability = excluded.availability,
+				cached_at = excluded.cached_at
+		`
+	fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 12, fileBatchSize)
+	t := time.Now()
+
+	// Pre-allocate args slice to reuse across batches
+	args := make([]interface{}, 0, fileBatchSize*12)
+
+	// Batch insert files
+	for i := 0; i < len(allRows); i += fileBatchSize {
+		end := i + fileBatchSize
+		if end > len(allRows) {
+			end = len(allRows)
+		}
+		batch := allRows[i:end]
+
+		// Reset args for this batch
+		args = args[:0]
+		var query string
+		if len(batch) == fileBatchSize {
+			query = fullBatchQuery
+		} else {
+			// Build query for partial final batch
+			query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 12, len(batch))
+		}
+
+		for _, row := range batch {
+			args = append(args,
+				row.instanceID,
+				row.hashID,
+				row.fileIndex,
+				row.nameID,
+				row.size,
+				row.progress,
+				row.priority,
+				row.isSeed,
+				row.pieceRangeStart,
+				row.pieceRangeEnd,
+				row.availability,
+				t,
 			)
-			if err != nil {
-				return fmt.Errorf("failed to insert file %d for hash %s: %w", f.FileIndex, hash, err)
-			}
+		}
+
+		_, err = tx.ExecContext(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("failed to batch insert files: %w", err)
 		}
 	}
 
