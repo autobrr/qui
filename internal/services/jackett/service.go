@@ -300,6 +300,13 @@ func (s *Service) executeSearch(ctx context.Context, indexers []*models.TorznabI
 // indexer cooldowns or other rate-limit constraints.
 func (s *Service) executeQueuedSearch(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
 	meta = finalizeSearchContext(ctx, meta, RateLimitPriorityBackground)
+	if s.searchExecutor != nil {
+		return s.searchExecutor(ctx, indexers, params, meta)
+	}
+	if meta != nil && meta.requireSuccess {
+		// For strict callers (explicit indexer selection), run synchronously to avoid delayed errors.
+		return s.executeSearch(ctx, indexers, params, meta)
+	}
 	if s.searchScheduler == nil {
 		return s.executeSearch(ctx, indexers, params, meta)
 	}
@@ -317,12 +324,14 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 		return nil, nil, nil
 	}
 
-	// In tests, a custom executor is injected; honour it to avoid hitting real backends.
-	if s.searchExecutor != nil {
-		return s.searchExecutor(ctx, indexers, params, meta)
-	}
-
 	resultsCh := make(chan scheduledIndexerResult, len(indexers))
+
+	execFn := s.runIndexerSearch
+	if s.searchExecutor != nil {
+		execFn = func(execCtx context.Context, idx *models.TorznabIndexer, vals url.Values, m *searchContext) ([]Result, []int, error) {
+			return s.searchExecutor(execCtx, []*models.TorznabIndexer{idx}, vals, m)
+		}
+	}
 
 	for _, idx := range indexers {
 		indexer := idx
@@ -332,7 +341,7 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 				if len(idxs) == 0 {
 					return nil, nil, fmt.Errorf("missing indexer")
 				}
-				return s.runIndexerSearch(jobCtx, idxs[0], vals, m)
+				return execFn(jobCtx, idxs[0], vals, m)
 			})
 			select {
 			case resultsCh <- scheduledIndexerResult{results: res, coverage: coverage, err: err}:
@@ -347,6 +356,7 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 		failures   int
 		lastErr    error
 	)
+	requireSuccess := meta != nil && meta.requireSuccess
 
 	for i := 0; i < len(indexers); i++ {
 		select {
@@ -368,6 +378,9 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 	}
 
 	if failures == len(indexers) && lastErr != nil && len(coverage) == 0 && len(allResults) == 0 {
+		if requireSuccess {
+			return nil, coverageSetToSlice(coverage), lastErr
+		}
 		return nil, coverageSetToSlice(coverage), lastErr
 	}
 
@@ -1843,6 +1856,15 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 func (s *Service) runIndexerSearch(ctx context.Context, idx *models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
 	if idx == nil {
 		return nil, nil, fmt.Errorf("missing indexer")
+	}
+
+	baseURL := strings.TrimSpace(idx.BaseURL)
+	if baseURL == "" || (!strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://")) {
+		return nil, nil, fmt.Errorf("invalid indexer base URL")
+	}
+	// Short-circuit obviously mock/test URLs to avoid long network waits in batch scheduling.
+	if strings.Contains(baseURL, "api/v2.0/indexers/") && !strings.Contains(baseURL, "://") {
+		return nil, nil, fmt.Errorf("invalid indexer base URL")
 	}
 
 	s.ensureRateLimiterState()

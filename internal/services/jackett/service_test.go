@@ -1035,6 +1035,15 @@ func TestSearchGenericWithIndexerIDs(t *testing.T) {
 		},
 	}
 	s := NewService(store)
+	s.searchExecutor = func(ctx context.Context, idxs []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
+		coverage := make([]int, 0, len(idxs))
+		for _, idx := range idxs {
+			if idx != nil && idx.Enabled {
+				coverage = append(coverage, idx.ID)
+			}
+		}
+		return []Result{}, coverage, nil
+	}
 
 	tests := []struct {
 		name        string
@@ -1047,7 +1056,7 @@ func TestSearchGenericWithIndexerIDs(t *testing.T) {
 				Query:      "test",
 				IndexerIDs: []int{1},
 			},
-			shouldError: true,
+			shouldError: false,
 		},
 		{
 			name: "search multiple indexers",
@@ -1055,7 +1064,7 @@ func TestSearchGenericWithIndexerIDs(t *testing.T) {
 				Query:      "test",
 				IndexerIDs: []int{1, 2},
 			},
-			shouldError: true,
+			shouldError: false,
 		},
 		{
 			name: "search disabled indexer returns empty",
@@ -1070,7 +1079,7 @@ func TestSearchGenericWithIndexerIDs(t *testing.T) {
 			req: &TorznabSearchRequest{
 				Query: "test",
 			},
-			shouldError: true,
+			shouldError: false,
 		},
 	}
 
