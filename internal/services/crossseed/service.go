@@ -2228,6 +2228,67 @@ func (s *Service) getTorrentFilesCached(ctx context.Context, instanceID int, has
 	return files, nil
 }
 
+func (s *Service) selectContentDetectionRelease(torrentName string, sourceRelease *rls.Release, files qbt.TorrentFiles) (*rls.Release, bool) {
+	if sourceRelease == nil {
+		return &rls.Release{}, false
+	}
+	if len(files) == 0 || s == nil || s.releaseCache == nil {
+		return sourceRelease, false
+	}
+
+	largestFile := FindLargestFile(files)
+	if largestFile == nil {
+		return sourceRelease, false
+	}
+
+	largestRelease := s.releaseCache.Parse(largestFile.Name)
+	largestRelease = enrichReleaseFromTorrent(largestRelease, sourceRelease)
+	if largestRelease.Type == rls.Unknown {
+		return sourceRelease, false
+	}
+
+	normalizer := s.stringNormalizer
+	if normalizer == nil {
+		normalizer = stringutils.NewDefaultNormalizer()
+	}
+
+	sourceTitle := strings.ToLower(strings.TrimSpace(sourceRelease.Title))
+	fileTitle := strings.ToLower(strings.TrimSpace(largestRelease.Title))
+	if normalizer != nil {
+		sourceTitle = normalizer.Normalize(sourceRelease.Title)
+		fileTitle = normalizer.Normalize(largestRelease.Title)
+	}
+
+	titleMismatch := sourceTitle != "" && fileTitle != "" && sourceTitle != fileTitle &&
+		!strings.Contains(sourceTitle, fileTitle) && !strings.Contains(fileTitle, sourceTitle)
+
+	sourceContent := DetermineContentType(sourceRelease)
+	fileContent := DetermineContentType(largestRelease)
+	contentMismatch := sourceContent.ContentType != "" && sourceContent.ContentType != "unknown" &&
+		fileContent.ContentType != "" && fileContent.ContentType != "unknown" &&
+		sourceContent.ContentType != fileContent.ContentType
+
+	if titleMismatch || contentMismatch {
+		log.Warn().
+			Str("torrentName", torrentName).
+			Str("largestFile", largestFile.Name).
+			Str("fileContentType", fileContent.ContentType).
+			Str("torrentContentType", sourceContent.ContentType).
+			Bool("titleMismatch", titleMismatch).
+			Msg("[CROSSSEED-SEARCH] Largest file looked unrelated, falling back to torrent metadata for content detection")
+		return sourceRelease, false
+	}
+
+	log.Debug().
+		Str("torrentName", torrentName).
+		Str("largestFile", largestFile.Name).
+		Str("fileContentType", fileContent.ContentType).
+		Str("torrentContentType", sourceContent.ContentType).
+		Msg("[CROSSSEED-SEARCH] Using largest file for content type detection")
+
+	return largestRelease, true
+}
+
 func matchTypePriority(matchType string) int {
 	switch matchType {
 	case "exact":
@@ -2500,18 +2561,7 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 
 	// Parse and detect content type
 	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
-	contentDetectionRelease := sourceRelease
-
-	if len(sourceFiles) > 0 {
-		largestFile := FindLargestFile(sourceFiles)
-		if largestFile != nil {
-			largestFileRelease := s.releaseCache.Parse(largestFile.Name)
-			largestFileRelease = enrichReleaseFromTorrent(largestFileRelease, sourceRelease)
-			if largestFileRelease.Type != rls.Unknown {
-				contentDetectionRelease = largestFileRelease
-			}
-		}
-	}
+	contentDetectionRelease, _ := s.selectContentDetectionRelease(sourceTorrent.Name, sourceRelease, sourceFiles)
 
 	// Use unified content type detection
 	contentInfo := DetermineContentType(contentDetectionRelease)
@@ -2884,29 +2934,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	// Parse both torrent name and largest file for content detection
 	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
-
-	// For content type detection, use the largest file if available
-	var contentDetectionRelease *rls.Release = sourceRelease
-	if len(sourceFiles) > 0 {
-		largestFile := FindLargestFile(sourceFiles)
-		if largestFile != nil {
-			largestFileRelease := s.releaseCache.Parse(largestFile.Name)
-			// Use the largest file for content type detection, but enrich with torrent metadata
-			largestFileRelease = enrichReleaseFromTorrent(largestFileRelease, sourceRelease)
-
-			// Use largest file release for content type if it's more specific than torrent name
-			if largestFileRelease.Type != rls.Unknown {
-				contentDetectionRelease = largestFileRelease
-
-				log.Debug().
-					Str("torrentName", sourceTorrent.Name).
-					Str("largestFile", largestFile.Name).
-					Str("fileContentType", largestFileRelease.Type.String()).
-					Str("torrentContentType", sourceRelease.Type.String()).
-					Msg("[CROSSSEED-SEARCH] Using largest file for content type detection")
-			}
-		}
-	}
+	contentDetectionRelease, _ := s.selectContentDetectionRelease(sourceTorrent.Name, sourceRelease, sourceFiles)
 
 	// Use unified content type detection with expanded categories for search
 	contentInfo := DetermineContentType(contentDetectionRelease)
