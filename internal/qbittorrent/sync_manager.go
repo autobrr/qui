@@ -34,13 +34,13 @@ import (
 
 // FilesManager interface for caching torrent files
 type FilesManager interface {
-	GetCachedFiles(ctx context.Context, instanceID int, hash string, torrentProgress float64) (qbt.TorrentFiles, error)
+	GetCachedFiles(ctx context.Context, instanceID int, hash string) (qbt.TorrentFiles, error)
 	// GetCachedFilesBatch returns cached files for a set of torrents and the hashes that were missing/stale.
-	// Callers must pass hashes (and the keys in torrentProgress) already trimmed/normalized (e.g. lowercase hex)
+	// Callers must pass hashes already trimmed/normalized (e.g. lowercase hex)
 	// because implementations treat the provided keys as-is when populating lookups and cache metadata.
-	GetCachedFilesBatch(ctx context.Context, instanceID int, hashes []string, torrentProgress map[string]float64) (map[string]qbt.TorrentFiles, []string, error)
-	CacheFiles(ctx context.Context, instanceID int, hash string, torrentProgress float64, files qbt.TorrentFiles) error
-	CacheFilesBatch(ctx context.Context, instanceID int, torrentProgress map[string]float64, files map[string]qbt.TorrentFiles) error
+	GetCachedFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, []string, error)
+	CacheFiles(ctx context.Context, instanceID int, hash string, files qbt.TorrentFiles) error
+	CacheFilesBatch(ctx context.Context, instanceID int, files map[string]qbt.TorrentFiles) error
 	InvalidateCache(ctx context.Context, instanceID int, hash string) error
 }
 
@@ -1205,7 +1205,7 @@ func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int,
 	cacheHits := 0
 
 	if fm := sm.getFilesManager(); fm != nil {
-		if cached, missing, cacheErr := fm.GetCachedFilesBatch(ctx, instanceID, normalized.canonical, progressByHash); cacheErr != nil {
+		if cached, missing, cacheErr := fm.GetCachedFilesBatch(ctx, instanceID, normalized.canonical); cacheErr != nil {
 			log.Warn().
 				Err(cacheErr).
 				Int("instanceID", instanceID).
@@ -1292,7 +1292,7 @@ func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int,
 			}
 		}
 		if len(fetchedFiles) > 0 {
-			if err := fm.CacheFilesBatch(ctx, instanceID, progressByHash, fetchedFiles); err != nil {
+			if err := fm.CacheFilesBatch(ctx, instanceID, fetchedFiles); err != nil {
 				log.Warn().
 					Err(err).
 					Int("instanceID", instanceID).

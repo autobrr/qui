@@ -78,7 +78,7 @@ func TestGetTorrentFilesBatch_NormalizesAndCaches(t *testing.T) {
 
 	require.ElementsMatch(t, []string{"abc123", "def456"}, fm.lastHashes)
 	require.Len(t, fm.cacheCalls, 1)
-	require.Equal(t, cacheCall{hash: "def456", progress: 0.5}, fm.cacheCalls[0])
+	require.Equal(t, cacheCall{hash: "def456", progress: 0.0}, fm.cacheCalls[0])
 
 	require.Len(t, client.requestedHashes, 1)
 	require.Equal(t, []string{"ABC123", "abc123", "Def456", "def456", "DEF456"}, client.requestedHashes[0])
@@ -152,11 +152,11 @@ type stubFilesManager struct {
 	cacheCalls []cacheCall
 }
 
-func (fm *stubFilesManager) GetCachedFiles(context.Context, int, string, float64) (qbt.TorrentFiles, error) {
+func (fm *stubFilesManager) GetCachedFiles(context.Context, int, string) (qbt.TorrentFiles, error) {
 	return nil, nil
 }
 
-func (fm *stubFilesManager) GetCachedFilesBatch(_ context.Context, _ int, hashes []string, _ map[string]float64) (map[string]qbt.TorrentFiles, []string, error) {
+func (fm *stubFilesManager) GetCachedFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, []string, error) {
 	fm.lastHashes = append([]string(nil), hashes...)
 
 	cached := make(map[string]qbt.TorrentFiles, len(hashes))
@@ -175,16 +175,15 @@ func (fm *stubFilesManager) GetCachedFilesBatch(_ context.Context, _ int, hashes
 	return cached, missing, nil
 }
 
-func (fm *stubFilesManager) CacheFiles(_ context.Context, _ int, hash string, torrentProgress float64, files qbt.TorrentFiles) error {
-	fm.cacheCalls = append(fm.cacheCalls, cacheCall{hash: hash, progress: torrentProgress})
+func (fm *stubFilesManager) CacheFiles(_ context.Context, _ int, hash string, files qbt.TorrentFiles) error {
+	fm.cacheCalls = append(fm.cacheCalls, cacheCall{hash: hash, progress: 0.0})
 	fm.cached[hash] = files
 	return nil
 }
 
-func (fm *stubFilesManager) CacheFilesBatch(_ context.Context, _ int, torrentProgress map[string]float64, files map[string]qbt.TorrentFiles) error {
+func (fm *stubFilesManager) CacheFilesBatch(_ context.Context, _ int, files map[string]qbt.TorrentFiles) error {
 	for hash, torrentFiles := range files {
-		progress := torrentProgress[hash]
-		fm.cacheCalls = append(fm.cacheCalls, cacheCall{hash: hash, progress: progress})
+		fm.cacheCalls = append(fm.cacheCalls, cacheCall{hash: hash, progress: 0.0})
 		fm.cached[hash] = torrentFiles
 	}
 	return nil

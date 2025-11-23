@@ -11,7 +11,7 @@ import (
 	"github.com/autobrr/qui/internal/database"
 )
 
-func TestGetCachedFiles_RefreshesWhenTorrentCompletes(t *testing.T) {
+func TestCacheFilesAndGetCachedFiles(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -49,9 +49,11 @@ func TestGetCachedFiles_RefreshesWhenTorrentCompletes(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, svc.CacheFiles(ctx, 1, "hash", 0.5, files))
+	require.NoError(t, svc.CacheFiles(ctx, 1, "hash", files))
 
-	cached, err := svc.GetCachedFiles(ctx, 1, "hash", 1.0)
+	cached, err := svc.GetCachedFiles(ctx, 1, "hash")
 	require.NoError(t, err)
-	require.Nil(t, cached, "cache should be invalidated once progress reaches 100%%")
+	require.NotNil(t, cached, "cache should be available")
+	require.Len(t, cached, 1)
+	require.Equal(t, "example.mkv", cached[0].Name)
 }

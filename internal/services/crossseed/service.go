@@ -87,7 +87,6 @@ type Service struct {
 
 	// External program execution
 	externalProgramStore *models.ExternalProgramStore
-	clientPool           *qbittorrent.ClientPool
 
 	automationMu     sync.Mutex
 	automationCancel context.CancelFunc
@@ -162,7 +161,6 @@ func NewService(
 	automationStore *models.CrossSeedStore,
 	jackettService *jackett.Service,
 	externalProgramStore *models.ExternalProgramStore,
-	clientPool *qbittorrent.ClientPool,
 ) *Service {
 	searchCache := ttlcache.New(ttlcache.Options[string, []TorrentSearchResult]{}.
 		SetDefaultTTL(searchResultCacheTTL))
@@ -186,7 +184,6 @@ func NewService(
 		automationStore:      automationStore,
 		jackettService:       jackettService,
 		externalProgramStore: externalProgramStore,
-		clientPool:           clientPool,
 		automationWake:       make(chan struct{}, 1),
 		domainMappings:       initializeDomainMappings(),
 		torrentFilesCache:    contentFilesCache,
@@ -5789,29 +5786,14 @@ func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, to
 			Str("programName", program.Name).
 			Msg("Executing external program for cross-seed injection")
 
-		// Get qBittorrent client and torrent data
-		client, err := s.clientPool.GetClient(context.Background(), instanceID)
+		// Get torrent data from sync manager
+		targetTorrent, found, err := s.syncManager.HasTorrentByAnyHash(context.Background(), instanceID, []string{torrentHash})
 		if err != nil {
-			log.Error().Err(err).Int("instanceId", instanceID).Msg("Failed to get qBittorrent client for external program execution")
+			log.Error().Err(err).Int("instanceId", instanceID).Str("torrentHash", torrentHash).Msg("Failed to get torrent for external program execution")
 			return
 		}
 
-		torrents, err := client.GetTorrents(qbt.TorrentFilterOptions{})
-		if err != nil {
-			log.Error().Err(err).Str("torrentHash", torrentHash).Msg("Failed to get torrents for external program execution")
-			return
-		}
-
-		// Find the target torrent
-		var targetTorrent *qbt.Torrent
-		for i := range torrents {
-			if strings.EqualFold(torrents[i].Hash, torrentHash) {
-				targetTorrent = &torrents[i]
-				break
-			}
-		}
-
-		if targetTorrent == nil {
+		if !found || targetTorrent == nil {
 			log.Error().Str("torrentHash", torrentHash).Msg("Torrent not found for external program execution")
 			return
 		}

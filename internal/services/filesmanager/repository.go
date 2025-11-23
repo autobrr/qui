@@ -496,71 +496,144 @@ func (r *Repository) UpsertSyncInfoBatch(ctx context.Context, infos []SyncInfo) 
 	return tx.Commit()
 }
 
-// DeleteSyncInfo removes sync metadata for a torrent
-func (r *Repository) DeleteSyncInfo(ctx context.Context, instanceID int, hash string) (err error) {
+// DeleteTorrentCache removes all cache data for multiple torrents (both files and sync info)
+func (r *Repository) DeleteTorrentCache(ctx context.Context, instanceID int, hashes []string) error {
+	if len(hashes) == 0 {
+		return nil
+	}
+
+	hashes = dedupeHashes(hashes)
+	if len(hashes) == 0 {
+		return nil
+	}
+
 	// Start a transaction
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("DeleteSyncInfo: failed to begin transaction: %w", err)
+		return fmt.Errorf("DeleteTorrentCache: failed to begin transaction: %w", err)
 	}
 	defer func() {
 		if rollErr := tx.Rollback(); rollErr != nil && !errors.Is(rollErr, sql.ErrTxDone) && err == nil {
-			err = fmt.Errorf("DeleteSyncInfo: rollback failed: %w", rollErr)
+			err = fmt.Errorf("DeleteTorrentCache: rollback failed: %w", rollErr)
 		}
 	}()
 
-	// Get the hash ID without creating it if it doesn't exist
-	hashIDs, err := dbinterface.GetStringID(ctx, tx, hash)
+	// Get hash IDs for all hashes
+	hashIDs, err := dbinterface.GetStringID(ctx, tx, hashes...)
 	if err != nil {
-		return fmt.Errorf("DeleteSyncInfo: failed to get torrent_hash ID: %w", err)
+		return fmt.Errorf("DeleteTorrentCache: failed to get torrent_hash IDs: %w", err)
 	}
 
-	// If the hash doesn't exist in the string pool, there's nothing to delete
-	if len(hashIDs) == 0 || !hashIDs[0].Valid {
+	// Filter out invalid hashes
+	validHashIDs := make([]int64, 0, len(hashIDs))
+	for _, id := range hashIDs {
+		if id.Valid {
+			validHashIDs = append(validHashIDs, id.Int64)
+		}
+	}
+
+	if len(validHashIDs) == 0 {
+		// No valid hashes to delete
 		if commitErr := tx.Commit(); commitErr != nil {
-			return fmt.Errorf("DeleteSyncInfo: commit failed when torrent hash missing: %w", commitErr)
+			return fmt.Errorf("DeleteTorrentCache: commit failed when no valid hashes: %w", commitErr)
 		}
 		return nil
 	}
 
-	if _, err = tx.ExecContext(ctx, `DELETE FROM torrent_files_sync WHERE instance_id = ? AND torrent_hash_id = ?`, instanceID, hashIDs[0].Int64); err != nil {
-		return fmt.Errorf("DeleteSyncInfo: failed to delete sync info: %w", err)
+	// Delete files for all valid hashes
+	for _, batch := range chunkInts(validHashIDs, maxBatchItems) {
+		args := make([]any, 0, len(batch)+1)
+		args = append(args, instanceID)
+		for _, id := range batch {
+			args = append(args, id)
+		}
+
+		query := fmt.Sprintf(`DELETE FROM torrent_files_cache WHERE instance_id = ? AND torrent_hash_id IN (%s)`, buildPlaceholders(len(batch)))
+		if _, err = tx.ExecContext(ctx, query, args...); err != nil {
+			return fmt.Errorf("DeleteTorrentCache: failed to delete cached files: %w", err)
+		}
+	}
+
+	// Delete sync info for all valid hashes
+	for _, batch := range chunkInts(validHashIDs, maxBatchItems) {
+		args := make([]any, 0, len(batch)+1)
+		args = append(args, instanceID)
+		for _, id := range batch {
+			args = append(args, id)
+		}
+
+		query := fmt.Sprintf(`DELETE FROM torrent_files_sync WHERE instance_id = ? AND torrent_hash_id IN (%s)`, buildPlaceholders(len(batch)))
+		if _, err = tx.ExecContext(ctx, query, args...); err != nil {
+			return fmt.Errorf("DeleteTorrentCache: failed to delete sync info: %w", err)
+		}
 	}
 
 	if commitErr := tx.Commit(); commitErr != nil {
-		return fmt.Errorf("DeleteSyncInfo: commit failed: %w", commitErr)
+		return fmt.Errorf("DeleteTorrentCache: commit failed: %w", commitErr)
 	}
 
 	return nil
 }
 
-// DeleteOldCache removes cache entries older than the specified time
-func (r *Repository) DeleteOldCache(ctx context.Context, olderThan time.Time) (int, error) {
+// DeleteCacheForRemovedTorrents removes cache entries for torrents that no longer exist
+func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instanceID int, currentHashes []string) (int, error) {
+	if len(currentHashes) == 0 {
+		// If no current hashes provided, don't delete anything to be safe
+		return 0, nil
+	}
+
+	// Deduplicate current hashes
+	currentHashes = dedupeHashes(currentHashes)
+	if len(currentHashes) == 0 {
+		return 0, nil
+	}
+
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
-	// First delete from files cache
-	filesQuery := `
-		DELETE FROM torrent_files_cache 
-		WHERE (instance_id, torrent_hash_id) IN (
-			SELECT instance_id, torrent_hash_id 
-			FROM torrent_files_sync 
-			WHERE last_synced_at < ?
-		)
-	`
-	result, err := tx.ExecContext(ctx, filesQuery, olderThan)
+	// Create a temporary table for current hashes
+	_, err = tx.ExecContext(ctx, `CREATE TEMP TABLE current_hashes (hash TEXT PRIMARY KEY)`)
 	if err != nil {
-		return 0, fmt.Errorf("failed to delete old files: %w", err)
+		return 0, fmt.Errorf("failed to create temp table: %w", err)
 	}
 
-	// Then delete from sync info
-	syncQuery := `DELETE FROM torrent_files_sync WHERE last_synced_at < ?`
-	_, err = tx.ExecContext(ctx, syncQuery, olderThan)
+	// Insert current hashes into temp table
+	for _, hash := range currentHashes {
+		_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO current_hashes (hash) VALUES (?)`, hash)
+		if err != nil {
+			return 0, fmt.Errorf("failed to insert hash into temp table: %w", err)
+		}
+	}
+
+	// Delete files for torrents not in current hashes
+	result, err := tx.ExecContext(ctx, `
+		DELETE FROM torrent_files_cache 
+		WHERE instance_id = ? AND torrent_hash_id NOT IN (
+			SELECT id FROM strings WHERE value IN (SELECT hash FROM current_hashes)
+		)
+	`, instanceID)
 	if err != nil {
-		return 0, fmt.Errorf("failed to delete old sync info: %w", err)
+		return 0, fmt.Errorf("failed to delete files for removed torrents: %w", err)
+	}
+
+	// Delete sync info for torrents not in current hashes
+	_, err = tx.ExecContext(ctx, `
+		DELETE FROM torrent_files_sync 
+		WHERE instance_id = ? AND torrent_hash_id NOT IN (
+			SELECT id FROM strings WHERE value IN (SELECT hash FROM current_hashes)
+		)
+	`, instanceID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete sync info for removed torrents: %w", err)
+	}
+
+	// Drop the temporary table
+	_, err = tx.ExecContext(ctx, `DROP TABLE current_hashes`)
+	if err != nil {
+		return 0, fmt.Errorf("failed to drop temp table: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -645,6 +718,21 @@ func chunkHashes(hashes []string, size int) [][]string {
 			end = len(hashes)
 		}
 		chunks = append(chunks, hashes[start:end])
+	}
+	return chunks
+}
+
+func chunkInts(ints []int64, size int) [][]int64 {
+	if size <= 0 || len(ints) == 0 {
+		return nil
+	}
+	var chunks [][]int64
+	for start := 0; start < len(ints); start += size {
+		end := start + size
+		if end > len(ints) {
+			end = len(ints)
+		}
+		chunks = append(chunks, ints[start:end])
 	}
 	return chunks
 }
