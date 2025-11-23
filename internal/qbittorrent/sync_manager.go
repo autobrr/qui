@@ -335,6 +335,7 @@ func (sm *SyncManager) validateTorrentsExist(client *Client, hashes []string, op
 func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID int, limit, offset int, sort, order, search string, filters FilterOptions) (*TorrentResponse, error) {
 	// Always get fresh data from sync manager for real-time updates
 	var filteredTorrents []qbt.Torrent
+	var allTorrentsForCounts []qbt.Torrent
 	var err error
 
 	// Get client and sync manager
@@ -455,6 +456,10 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		torrentFilterOptions.Reverse = (order == "desc")
 
 		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
+
+		// Save all torrents for counts before applying manual filters
+		allTorrentsForCounts = make([]qbt.Torrent, len(filteredTorrents))
+		copy(allTorrentsForCounts, filteredTorrents)
 
 		// Apply manual filtering for multiple selections
 		if trackerHealthSupported && needsTrackerHydration {
@@ -588,7 +593,12 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	// Calculate counts from ALL torrents (not filtered) for sidebar
 	// This uses the same cached data, so it's very fast
-	allTorrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
+	var allTorrents []qbt.Torrent
+	if useManualFiltering {
+		allTorrents = allTorrentsForCounts
+	} else {
+		allTorrents = syncManager.GetTorrents(qbt.TorrentFilterOptions{})
+	}
 
 	useSubcategories = resolveUseSubcategories(supportsSubcategories, mainData, categories)
 

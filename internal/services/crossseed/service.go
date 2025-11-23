@@ -1645,7 +1645,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 
 		if torrents == nil {
 			var err error
-			torrents, err = s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll})
+			torrents, err = s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterCompleted})
 			if err != nil {
 				log.Warn().
 					Int("instanceID", instanceID).
@@ -3874,7 +3874,19 @@ func (s *Service) propagateDuplicateSearchHistory(ctx context.Context, state *se
 }
 
 func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState) error {
-	torrents, err := s.syncManager.GetTorrents(ctx, state.opts.InstanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll})
+	filterOpts := qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll}
+
+	// Apply category filter if only one category is specified
+	if len(state.opts.Categories) == 1 {
+		filterOpts.Category = state.opts.Categories[0]
+	}
+
+	// Apply tag filter if only one tag is specified
+	if len(state.opts.Tags) == 1 {
+		filterOpts.Tag = state.opts.Tags[0]
+	}
+
+	torrents, err := s.syncManager.GetTorrents(ctx, state.opts.InstanceID, filterOpts)
 	if err != nil {
 		return fmt.Errorf("list torrents: %w", err)
 	}
@@ -5326,7 +5338,7 @@ func (s *Service) waitForTorrentRecheck(ctx context.Context, instanceID int, tor
 		}
 
 		// Get current torrents
-		torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll})
+		torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Hashes: []string{torrentHash}})
 		if err != nil {
 			log.Warn().
 				Err(err).
@@ -5337,21 +5349,15 @@ func (s *Service) waitForTorrentRecheck(ctx context.Context, instanceID int, tor
 		}
 
 		// Find the torrent
-		var torrent *qbt.Torrent
-		for _, t := range torrents {
-			if t.Hash == torrentHash || t.InfohashV1 == torrentHash || t.InfohashV2 == torrentHash {
-				torrent = &t
-				break
-			}
-		}
-
-		if torrent == nil {
+		if len(torrents) == 0 {
 			log.Warn().
 				Int("instanceID", instanceID).
 				Str("torrentHash", torrentHash).
 				Msg("Torrent not found after adding")
 			return nil
 		}
+
+		torrent := &torrents[0]
 
 		// Check if torrent is still checking
 		isChecking := torrent.State == qbt.TorrentStateCheckingDl ||

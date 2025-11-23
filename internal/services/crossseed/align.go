@@ -186,14 +186,10 @@ func (s *Service) waitForTorrentAvailability(ctx context.Context, instanceID int
 			}
 		}
 
-		torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll})
-		if err == nil {
-			for _, t := range torrents {
-				if t.Hash == hash || t.InfohashV1 == hash || t.InfohashV2 == hash {
-					return true
-				}
-			}
-		} else {
+		torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Hashes: []string{hash}})
+		if err == nil && len(torrents) > 0 {
+			return true
+		} else if err != nil {
 			log.Debug().
 				Err(err).
 				Int("instanceID", instanceID).
