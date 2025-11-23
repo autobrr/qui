@@ -517,6 +517,15 @@ func (app *Application) runServer() {
 		if cacheTTL < jackett.MinSearchCacheTTL {
 			cacheTTL = jackett.MinSearchCacheTTL
 		}
+
+		if rebased, err := torznabSearchCache.RebaseTTL(context.Background(), int(cacheTTL/time.Minute)); err != nil {
+			log.Warn().Err(err).Msg("Failed to rebase torznab search cache TTL to persisted settings")
+		} else if rebased > 0 {
+			log.Info().
+				Int64("updatedRows", rebased).
+				Float64("ttlHours", cacheTTL.Hours()).
+				Msg("Rebased torznab search cache entries to persisted TTL")
+		}
 	}
 	jackettService := jackett.NewService(
 		torznabIndexerStore,

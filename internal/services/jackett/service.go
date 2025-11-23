@@ -57,6 +57,7 @@ type searchCacheStore interface {
 	Stats(ctx context.Context) (*models.TorznabSearchCacheStats, error)
 	RecentSearches(ctx context.Context, scope string, limit int) ([]*models.TorznabRecentSearch, error)
 	UpdateSettings(ctx context.Context, ttlMinutes int) (*models.TorznabSearchCacheSettings, error)
+	RebaseTTL(ctx context.Context, ttlMinutes int) (int64, error)
 }
 
 var _ searchCacheStore = (*models.TorznabSearchCacheStore)(nil)
@@ -533,6 +534,21 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 			Msg("Torznab search deadline exceeded")
 	}
 	if err != nil && !deadlineErr {
+		if len(cachedResults) > 0 && cachedPortion != nil {
+			log.Warn().
+				Err(err).
+				Int("indexers_requested", len(indexersToSearch)).
+				Int("cached_results", len(cachedResults)).
+				Msg("Returning cached torznab search results after search failure")
+			results, total := paginateSearchResults(cachedResults, req.Offset, req.Limit)
+			resp := &SearchResponse{
+				Results: results,
+				Total:   total,
+				Partial: true,
+			}
+			resp.Cache = cachedPortion.metadata(searchCacheSourceCache)
+			return resp, nil
+		}
 		return nil, err
 	}
 	partial := deadlineErr && len(allResults) > 0
@@ -724,6 +740,21 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 	allResults, networkCoverage, err := s.executeQueuedSearch(searchCtx, indexersToSearch, params, meta)
 	deadlineErr := err != nil && errors.Is(err, context.DeadlineExceeded)
 	if err != nil && !deadlineErr {
+		if len(cachedResults) > 0 && cachedPortion != nil {
+			log.Warn().
+				Err(err).
+				Int("indexers_requested", len(indexersToSearch)).
+				Int("cached_results", len(cachedResults)).
+				Msg("Returning cached torznab search results after search failure")
+			results, total := paginateSearchResults(cachedResults, req.Offset, req.Limit)
+			resp := &SearchResponse{
+				Results: results,
+				Total:   total,
+				Partial: true,
+			}
+			resp.Cache = cachedPortion.metadata(searchCacheSourceCache)
+			return resp, nil
+		}
 		return nil, err
 	}
 	partial := deadlineErr && len(allResults) > 0
@@ -1406,13 +1437,28 @@ func (s *Service) UpdateSearchCacheSettings(ctx context.Context, ttlMinutes int)
 		return nil, fmt.Errorf("ttlMinutes must be at least %d", MinSearchCacheTTLMinutes)
 	}
 
+	currentTTLMinutes := int(s.searchCacheTTL / time.Minute)
+	newTTL := time.Duration(ttlMinutes) * time.Minute
+
 	settings, err := s.searchCache.UpdateSettings(ctx, ttlMinutes)
 	if err != nil {
 		return nil, err
 	}
 
-	s.searchCacheTTL = time.Duration(ttlMinutes) * time.Minute
+	s.searchCacheTTL = newTTL
 	s.searchCacheEnabled = true
+
+	if currentTTLMinutes != ttlMinutes {
+		if _, err := s.searchCache.RebaseTTL(ctx, ttlMinutes); err != nil {
+			return nil, fmt.Errorf("rebase torznab search cache ttl: %w", err)
+		}
+		if _, err := s.searchCache.CleanupExpired(ctx); err != nil {
+			log.Warn().Err(err).Msg("Cleanup after torznab search cache ttl rebase failed")
+		}
+		s.searchCacheCleanupMu.Lock()
+		s.nextSearchCacheCleanup = time.Time{}
+		s.searchCacheCleanupMu.Unlock()
+	}
 
 	return settings, nil
 }

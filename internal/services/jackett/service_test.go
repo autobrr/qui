@@ -423,9 +423,10 @@ func TestSelectCacheEntryForCoveragePrefersMostCoverage(t *testing.T) {
 }
 
 type fakeSearchCache struct {
-	fetchFn func(context.Context, string) (*models.TorznabSearchCacheEntry, bool, error)
-	findFn  func(context.Context, string, string) ([]*models.TorznabSearchCacheEntry, error)
-	storeFn func(context.Context, *models.TorznabSearchCacheEntry) error
+	fetchFn  func(context.Context, string) (*models.TorznabSearchCacheEntry, bool, error)
+	findFn   func(context.Context, string, string) ([]*models.TorznabSearchCacheEntry, error)
+	storeFn  func(context.Context, *models.TorznabSearchCacheEntry) error
+	rebaseFn func(context.Context, int) (int64, error)
 }
 
 func (f *fakeSearchCache) Fetch(ctx context.Context, key string) (*models.TorznabSearchCacheEntry, bool, error) {
@@ -461,6 +462,121 @@ func (f *fakeSearchCache) Flush(context.Context) (int64, error) {
 
 func (f *fakeSearchCache) InvalidateByIndexerIDs(context.Context, []int) (int64, error) {
 	return 0, nil
+}
+
+func (f *fakeSearchCache) Stats(context.Context) (*models.TorznabSearchCacheStats, error) {
+	return &models.TorznabSearchCacheStats{}, nil
+}
+
+func (f *fakeSearchCache) RecentSearches(context.Context, string, int) ([]*models.TorznabRecentSearch, error) {
+	return nil, nil
+}
+
+func (f *fakeSearchCache) UpdateSettings(_ context.Context, ttlMinutes int) (*models.TorznabSearchCacheSettings, error) {
+	return &models.TorznabSearchCacheSettings{TTLMinutes: ttlMinutes}, nil
+}
+
+func (f *fakeSearchCache) RebaseTTL(ctx context.Context, ttlMinutes int) (int64, error) {
+	if f.rebaseFn != nil {
+		return f.rebaseFn(ctx, ttlMinutes)
+	}
+	return 0, nil
+}
+
+func TestSearchGenericFallsBackToCacheOnError(t *testing.T) {
+	store := &mockTorznabIndexerStore{
+		indexers: []*models.TorznabIndexer{
+			{ID: 1, Name: "First", Enabled: true},
+			{ID: 2, Name: "Second", Enabled: true},
+		},
+	}
+	s := NewService(store)
+	s.searchCacheEnabled = true
+	s.searchCacheTTL = time.Hour
+
+	cachePayload, err := json.Marshal(&SearchResponse{
+		Results: []SearchResult{
+			{Title: "Cached Result", IndexerID: 1, Indexer: "First"},
+		},
+		Total: 1,
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal cache payload: %v", err)
+	}
+
+	s.searchCache = &fakeSearchCache{
+		fetchFn: func(context.Context, string) (*models.TorznabSearchCacheEntry, bool, error) {
+			return &models.TorznabSearchCacheEntry{
+				ID:                 1,
+				CacheKey:           "cache-key",
+				Scope:              searchCacheScopeGeneral,
+				Query:              "batman begins 1080p",
+				Categories:         []int{CategoryMovies},
+				IndexerIDs:         []int{1},
+				RequestFingerprint: "fp",
+				ResponseData:       cachePayload,
+				TotalResults:       1,
+				CachedAt:           time.Now().Add(-30 * time.Minute),
+				LastUsedAt:         time.Now().Add(-30 * time.Minute),
+				ExpiresAt:          time.Now().Add(30 * time.Minute),
+			}, true, nil
+		},
+	}
+
+	s.searchExecutor = func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error) {
+		return nil, nil, errors.New("rate limited")
+	}
+
+	req := &TorznabSearchRequest{Query: "batman begins 1080p"}
+
+	resp, err := s.SearchGeneric(context.Background(), req)
+	if err != nil {
+		t.Fatalf("SearchGeneric returned error: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected response")
+	}
+	if resp.Cache == nil || resp.Cache.Source != searchCacheSourceCache {
+		t.Fatalf("expected cache metadata from cache source, got %+v", resp.Cache)
+	}
+	if resp.Total != 1 || len(resp.Results) != 1 {
+		t.Fatalf("expected cached result only, got %+v", resp.Results)
+	}
+	if !resp.Partial {
+		t.Fatalf("expected partial response when falling back to cache after failure")
+	}
+}
+
+func TestUpdateSearchCacheSettingsSetsTTLBeforeRebase(t *testing.T) {
+	t.Parallel()
+
+	store := &mockTorznabIndexerStore{}
+	service := NewService(store)
+	service.searchCacheEnabled = true
+	service.searchCacheTTL = 24 * time.Hour
+
+	var observedTTL time.Duration
+	cache := &fakeSearchCache{
+		rebaseFn: func(_ context.Context, ttlMinutes int) (int64, error) {
+			observedTTL = service.searchCacheTTL
+			if ttlMinutes != 2880 {
+				t.Fatalf("expected ttlMinutes to be 2880, got %d", ttlMinutes)
+			}
+			return 0, nil
+		},
+	}
+	service.searchCache = cache
+
+	if _, err := service.UpdateSearchCacheSettings(context.Background(), 2880); err != nil {
+		t.Fatalf("UpdateSearchCacheSettings returned error: %v", err)
+	}
+
+	if observedTTL != 48*time.Hour {
+		t.Fatalf("expected searchCacheTTL to be updated before rebase, got %s", observedTTL)
+	}
+	if service.searchCacheTTL != 48*time.Hour {
+		t.Fatalf("expected final searchCacheTTL to be 48h, got %s", service.searchCacheTTL)
+	}
 }
 
 func TestSearchCachesAfterDeadlineWhenCoverageComplete(t *testing.T) {
@@ -561,18 +677,6 @@ func TestSearchCachesPartialCoverageAfterDeadline(t *testing.T) {
 	if !slices.Equal(stored.IndexerIDs, []int{1, 2}) {
 		t.Fatalf("stored coverage mismatch: %+v", stored.IndexerIDs)
 	}
-}
-
-func (f *fakeSearchCache) Stats(context.Context) (*models.TorznabSearchCacheStats, error) {
-	return nil, nil
-}
-
-func (f *fakeSearchCache) RecentSearches(context.Context, string, int) ([]*models.TorznabRecentSearch, error) {
-	return nil, nil
-}
-
-func (f *fakeSearchCache) UpdateSettings(context.Context, int) (*models.TorznabSearchCacheSettings, error) {
-	return nil, nil
 }
 
 func TestBuildSearchParams(t *testing.T) {
