@@ -5,8 +5,11 @@ package crossseed
 
 import (
 	"strings"
+	"time"
 
 	"github.com/moistari/rls"
+
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // variantOverrides lists release tags that must match on both torrents for
@@ -22,12 +25,19 @@ type variantOverrides struct {
 // strictVariantOverrides contains the current curated set of strict tags.
 //
 // Edit these slices to add more variants that should match exactly.
-var strictVariantOverrides = newVariantOverrides(
-	[]string{"IMAX"},   // IMAX releases behave like a unique master
-	[]string{"HYBRID"}, // HYBRID encodes differ notably from vanilla releases
-	nil,
-	nil,
+var (
+	variantNormalizer      = stringutils.NewNormalizer(5*time.Minute, transformToUpper)
+	strictVariantOverrides = newVariantOverrides(
+		[]string{"IMAX"},   // IMAX releases behave like a unique master
+		[]string{"HYBRID"}, // HYBRID encodes differ notably from vanilla releases
+		nil,
+		nil,
+	)
 )
+
+func transformToUpper(s string) string {
+	return strings.ToUpper(strings.TrimSpace(s))
+}
 
 func newVariantOverrides(collection, other, edition, cut []string) variantOverrides {
 	return variantOverrides{
@@ -49,7 +59,7 @@ func normalizeVariantSlice(values []string) []string {
 }
 
 func normalizeVariant(value string) string {
-	return strings.ToUpper(strings.TrimSpace(value))
+	return variantNormalizer.Normalize(value)
 }
 
 func (o variantOverrides) releaseVariants(r *rls.Release) map[string]struct{} {
