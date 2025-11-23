@@ -12,20 +12,18 @@ export function usePathAutocomplete(
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const getParentPath = useCallback((path: string) => {
-    const trimmed = path.trim();
-    if (!trimmed || trimmed === "/") return "/";
+    if (!path || path.trim() === "/") return "/";
 
-    if (trimmed.endsWith("/")) return trimmed;
+    if (path.endsWith("/")) return path;
 
-    const lastSlash = trimmed.lastIndexOf("/");
-    return lastSlash === 0 ? "/" : trimmed.slice(0, lastSlash + 1);
+    const lastSlash = path.lastIndexOf("/");
+    return lastSlash === 0 ? "/" : path.slice(0, lastSlash + 1);
   }, []);
 
   const getFilterTerm = useCallback((path: string) => {
-    const trimmed = path.trim();
-    if (!trimmed || trimmed.endsWith("/")) return "";
-    const lastSlash = trimmed.lastIndexOf("/");
-    return trimmed.slice(lastSlash + 1);
+    if (!path || path.endsWith("/")) return "";
+    const lastSlash = path.lastIndexOf("/");
+    return path.slice(lastSlash + 1);
   }, []);
 
   const fetchDirectoryContent = useCallback(
