@@ -1788,13 +1788,12 @@ func (h *TorrentsHandler) GetDirectoryContent(w http.ResponseWriter, r *http.Req
 	}
 
 	dirPath := r.URL.Query().Get("dirPath")
-	if dirPath == "" {
-		log.Error().Err(err).Msg("Invalid directory path")
+	if strings.TrimSpace(dirPath) == "" {
 		http.Error(w, "Invalid directory path", http.StatusBadRequest)
 		return
 	}
 
-	prefs, err := h.syncManager.GetDirectoryContentCtx(r.Context(), instanceID, dirPath)
+	response, err := h.syncManager.GetDirectoryContentCtx(r.Context(), instanceID, dirPath)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getDirectoryContent") {
 			return
@@ -1804,10 +1803,5 @@ func (h *TorrentsHandler) GetDirectoryContent(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(prefs); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode directory contents response")
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
-	}
+	RespondJSON(w, http.StatusOK, response)
 }
