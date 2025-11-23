@@ -471,6 +471,19 @@ export function Search() {
     setInstanceMenuOpen(false)
   }, [persistSelectedInstanceId, setInstanceMenuOpen])
 
+  const applyIndexerSelectionFromSuggestion = useCallback((indexerIds: number[]) => {
+    if (!indexerIds || indexerIds.length === 0 || indexers.length === 0) {
+      return
+    }
+
+    const enabled = new Set(indexers.map(idx => idx.id))
+    const filtered = indexerIds.filter(id => enabled.has(id))
+    if (filtered.length === 0) {
+      return
+    }
+    setSelectedIndexers(new Set(filtered))
+  }, [indexers])
+
   const toggleIndexer = (id: number) => {
     setSelectedIndexers(prev => {
       const newSelected = new Set(prev)
@@ -649,10 +662,24 @@ export function Search() {
 
   const shouldShowSuggestions = queryFocused && suggestionMatches.length > 0
 
+  const cacheBadge = useMemo(() => {
+    if (!cacheMetadata) {
+      return { label: '', variant: 'outline' as const }
+    }
+    if (cacheMetadata.source === 'hybrid') {
+      return { label: 'Cache + live', variant: 'secondary' as const }
+    }
+    if (cacheMetadata.hit) {
+      return { label: 'Cache hit', variant: 'secondary' as const }
+    }
+    return { label: 'Live fetch', variant: 'outline' as const }
+  }, [cacheMetadata])
+
   const handleSuggestionClick = useCallback((search: TorznabRecentSearch) => {
     setQuery(search.query)
     const derivedType = inferSearchTypeFromCategories(search.categories) ?? 'auto'
     setSearchType(derivedType)
+    applyIndexerSelectionFromSuggestion(search.indexerIds)
     const rafId = requestAnimationFrame(() => {
       queryInputRef.current?.focus()
     })
@@ -664,7 +691,7 @@ export function Search() {
       return
     }
     void runSearch({ queryOverride: normalized, searchTypeOverride: derivedType })
-  }, [runSearch, validateSearchInputs])
+  }, [applyIndexerSelectionFromSuggestion, runSearch, validateSearchInputs])
 
   const handleDownload = (result: TorznabSearchResult) => {
     window.open(result.downloadUrl, '_blank')
@@ -1223,16 +1250,18 @@ export function Search() {
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Badge
-                        variant={cacheMetadata?.hit ? 'secondary' : 'outline'}
+                        variant={cacheBadge.variant}
                         className={!cacheMetadata ? 'invisible' : ''}
                       >
-                        {cacheMetadata?.hit ? 'Cache hit' : 'Live fetch'}
+                        {cacheBadge.label}
                       </Badge>
                     </TooltipTrigger>
                     {cacheMetadata && (
                       <TooltipContent>
                         <p className="text-xs">
                           Cached {formatCacheTimestamp(cacheMetadata.cachedAt)} · Expires {formatCacheTimestamp(cacheMetadata.expiresAt)}
+                          <br />
+                          Source: {cacheMetadata.source} · Scope: {cacheMetadata.scope}
                         </p>
                       </TooltipContent>
                     )}

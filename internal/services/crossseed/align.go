@@ -47,6 +47,8 @@ func (s *Service) alignCrossSeedContentPaths(
 		return
 	}
 
+	canonicalHash := normalizeHash(torrentHash)
+
 	trimmedSourceName := strings.TrimSpace(sourceTorrentName)
 	trimmedMatchedName := strings.TrimSpace(matchedTorrent.Name)
 	if shouldRenameTorrentDisplay(sourceRelease, matchedRelease) && trimmedMatchedName != "" && trimmedSourceName != trimmedMatchedName {
@@ -76,8 +78,11 @@ func (s *Service) alignCrossSeedContentPaths(
 	}
 
 	sourceFiles := expectedSourceFiles
-	if currentFilesPtr, err := s.syncManager.GetTorrentFiles(ctx, instanceID, torrentHash); err == nil && currentFilesPtr != nil && len(*currentFilesPtr) > 0 {
-		sourceFiles = *currentFilesPtr
+	filesMap, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{torrentHash})
+	if err == nil {
+		if currentFiles, ok := filesMap[canonicalHash]; ok && len(currentFiles) > 0 {
+			sourceFiles = currentFiles
+		}
 	}
 
 	sourceRoot := detectCommonRoot(sourceFiles)
@@ -181,14 +186,10 @@ func (s *Service) waitForTorrentAvailability(ctx context.Context, instanceID int
 			}
 		}
 
-		torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
-		if err == nil {
-			for _, t := range torrents {
-				if t.Hash == hash || t.InfohashV1 == hash || t.InfohashV2 == hash {
-					return true
-				}
-			}
-		} else {
+		torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Hashes: []string{hash}})
+		if err == nil && len(torrents) > 0 {
+			return true
+		} else if err != nil {
 			log.Debug().
 				Err(err).
 				Int("instanceID", instanceID).
@@ -383,7 +384,7 @@ func adjustPathForRootRename(path, oldRoot, newRoot string) string {
 	return path
 }
 
-func shouldRenameTorrentDisplay(newRelease, matchedRelease rls.Release) bool {
+func shouldRenameTorrentDisplay(newRelease, matchedRelease *rls.Release) bool {
 	// Keep episode torrents named after the episode even when pointing at season pack files
 	if newRelease.Series > 0 && newRelease.Episode > 0 &&
 		matchedRelease.Series > 0 && matchedRelease.Episode == 0 {
@@ -392,7 +393,7 @@ func shouldRenameTorrentDisplay(newRelease, matchedRelease rls.Release) bool {
 	return true
 }
 
-func shouldAlignFilesWithCandidate(newRelease, matchedRelease rls.Release) bool {
+func shouldAlignFilesWithCandidate(newRelease, matchedRelease *rls.Release) bool {
 	if newRelease.Series > 0 && newRelease.Episode > 0 &&
 		matchedRelease.Series > 0 && matchedRelease.Episode == 0 {
 		return false

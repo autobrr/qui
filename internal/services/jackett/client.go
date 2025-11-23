@@ -101,12 +101,12 @@ type Result struct {
 }
 
 // SearchAll searches across all indexers when supported by the backend
-func (c *Client) SearchAll(params map[string]string) ([]Result, error) {
+func (c *Client) SearchAll(ctx context.Context, params map[string]string) ([]Result, error) {
 	switch c.backend {
 	case models.TorznabBackendJackett:
-		return c.Search("all", params)
+		return c.Search(ctx, "all", params)
 	case models.TorznabBackendNative:
-		return c.SearchDirect(params)
+		return c.SearchDirect(ctx, params)
 	default:
 		return nil, fmt.Errorf("search all not supported for backend %s", c.backend)
 	}
@@ -114,13 +114,17 @@ func (c *Client) SearchAll(params map[string]string) ([]Result, error) {
 
 // SearchDirect searches a direct Torznab endpoint (not through Jackett/Prowlarr aggregator)
 // Uses the native SearchDirectCtx method from go-jackett library
-func (c *Client) SearchDirect(params map[string]string) ([]Result, error) {
+func (c *Client) SearchDirect(ctx context.Context, params map[string]string) ([]Result, error) {
 	if c.jackett == nil {
 		return nil, fmt.Errorf("direct search not supported for backend %s", c.backend)
 	}
 	query := params["q"]
 
-	rss, err := c.jackett.SearchDirectCtx(context.Background(), query, params)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	rss, err := c.jackett.SearchDirectCtx(ctx, query, params)
 	if err != nil {
 		return nil, fmt.Errorf("direct search failed: %w", err)
 	}
@@ -129,17 +133,21 @@ func (c *Client) SearchDirect(params map[string]string) ([]Result, error) {
 }
 
 // Search performs a search on a specific indexer or "all"
-func (c *Client) Search(indexer string, params map[string]string) ([]Result, error) {
+func (c *Client) Search(ctx context.Context, indexer string, params map[string]string) ([]Result, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	switch c.backend {
 	case models.TorznabBackendProwlarr:
-		return c.searchProwlarr(indexer, params)
+		return c.searchProwlarr(ctx, indexer, params)
 	case models.TorznabBackendNative:
-		return c.SearchDirect(params)
+		return c.SearchDirect(ctx, params)
 	default:
 		if c.jackett == nil {
 			return nil, fmt.Errorf("jackett client not configured for backend %s", c.backend)
 		}
-		rss, err := c.jackett.GetTorrentsCtx(context.Background(), indexer, params)
+		rss, err := c.jackett.GetTorrentsCtx(ctx, indexer, params)
 		if err != nil {
 			return nil, fmt.Errorf("search failed: %w", err)
 		}
@@ -147,12 +155,12 @@ func (c *Client) Search(indexer string, params map[string]string) ([]Result, err
 	}
 }
 
-func (c *Client) searchProwlarr(indexerID string, params map[string]string) ([]Result, error) {
+func (c *Client) searchProwlarr(ctx context.Context, indexerID string, params map[string]string) ([]Result, error) {
 	if c.prowlarr == nil {
 		return nil, fmt.Errorf("prowlarr client not configured")
 	}
 
-	rss, err := c.prowlarr.SearchIndexer(context.Background(), indexerID, params)
+	rss, err := c.prowlarr.SearchIndexer(ctx, indexerID, params)
 	if err != nil {
 		return nil, fmt.Errorf("prowlarr search failed: %w", err)
 	}

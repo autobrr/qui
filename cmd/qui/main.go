@@ -529,7 +529,7 @@ func (app *Application) runServer() {
 
 	// Initialize cross-seed automation store and service
 	crossSeedStore := models.NewCrossSeedStore(db)
-	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore, clientPool)
+	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 
 	syncManager.SetTorrentCompletionHandler(crossSeedService.HandleTorrentCompletion)

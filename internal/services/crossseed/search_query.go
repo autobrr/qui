@@ -24,7 +24,7 @@ var (
 // It tries to preserve parsed season/episode from rls, but when parsing fails (common for anime
 // absolute numbering), it cleans the torrent name and extracts an absolute episode number to
 // avoid blasting the full filename at indexers.
-func buildSafeSearchQuery(name string, release rls.Release, baseQuery string) SearchQuery {
+func buildSafeSearchQuery(name string, release *rls.Release, baseQuery string) SearchQuery {
 	// If rls already gave us structured series/episode info, keep it.
 	var seasonPtr, episodePtr *int
 	if release.Series > 0 {

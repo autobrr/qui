@@ -112,11 +112,15 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
   }
 
   const handleTest = async (id: number) => {
+    updateIndexerTestState(id, "testing", undefined)
     try {
       await api.testTorznabIndexer(id)
+      updateIndexerTestState(id, "ok", undefined)
       toast.success("Connection test successful")
     } catch (error) {
-      toast.error("Connection test failed")
+      const errorMsg = error instanceof Error ? error.message : "Connection test failed"
+      updateIndexerTestState(id, "error", errorMsg)
+      toast.error(errorMsg)
     }
   }
 
@@ -126,34 +130,52 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
       return
     }
 
-    let successCount = 0
-    let failCount = 0
-    const results: { name: string; success: boolean; error?: string }[] = []
+    const toastId = toast.loading(`Testing ${indexersToTest.length} indexers...`)
+    // mark all as in-flight immediately to avoid stale status while we fire requests
+    indexersToTest.forEach(idx => updateIndexerTestState(idx.id, "testing", undefined))
 
-    toast.info(`Testing ${indexersToTest.length} indexers...`)
+    const results = await Promise.all(
+      indexersToTest.map(async (indexer) => {
+        try {
+          await api.testTorznabIndexer(indexer.id)
+          updateIndexerTestState(indexer.id, "ok", undefined)
+          return { name: indexer.name, success: true as const }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error)
+          updateIndexerTestState(indexer.id, "error", errorMsg)
+          console.error(`Failed to test ${indexer.name}:`, error)
+          return { name: indexer.name, success: false as const, error: errorMsg }
+        }
+      })
+    )
 
-    for (const indexer of indexersToTest) {
-      try {
-        await api.testTorznabIndexer(indexer.id)
-        successCount++
-        results.push({ name: indexer.name, success: true })
-      } catch (error) {
-        failCount++
-        const errorMsg = error instanceof Error ? error.message : String(error)
-        results.push({ name: indexer.name, success: false, error: errorMsg })
-        console.error(`Failed to test ${indexer.name}:`, error)
-      }
-    }
-
-    await loadIndexers()
+    const successCount = results.filter(r => r.success).length
+    const failCount = results.length - successCount
 
     if (failCount === 0) {
-      toast.success(`All ${successCount} indexers tested successfully`)
+      toast.success(`All ${successCount} indexers tested successfully`, { id: toastId })
     } else {
-      toast.warning(`${successCount} passed, ${failCount} failed`)
+      toast.warning(`${successCount} passed, ${failCount} failed`, { id: toastId })
       const failedNames = results.filter((result) => !result.success).map((result) => result.name).join(", ")
       toast.error(`Failed indexers: ${failedNames}`)
     }
+  }
+
+  const updateIndexerTestState = (id: number, status: string, errorMsg?: string) => {
+    const now = new Date().toISOString()
+    setIndexers(prev =>
+      prev.map(idx => {
+        if (idx.id !== id) {
+          return idx
+        }
+        return {
+          ...idx,
+          last_test_status: status,
+          last_test_error: errorMsg,
+          last_test_at: now
+        }
+      })
+    )
   }
 
   const handleDialogClose = () => {

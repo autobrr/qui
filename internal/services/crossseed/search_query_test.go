@@ -11,7 +11,7 @@ func TestBuildSafeSearchQuery_AnimeAbsolute(t *testing.T) {
 	name := "[Fansub] Example Show - 1140 (1080p) [EEC80774]"
 	release := rls.Release{Type: rls.Unknown}
 
-	q := buildSafeSearchQuery(name, release, "")
+	q := buildSafeSearchQuery(name, &release, "")
 
 	require.Equal(t, "example show 1140", q.Query)
 	require.Nil(t, q.Season)
@@ -27,7 +27,7 @@ func TestBuildSafeSearchQuery_KeepsParsedTitle(t *testing.T) {
 		Episode: 2,
 	}
 
-	q := buildSafeSearchQuery("Some.Show.S01E02.mkv", release, release.Title)
+	q := buildSafeSearchQuery("Some.Show.S01E02.mkv", &release, release.Title)
 
 	require.Equal(t, "Some Show", q.Query)
 	require.NotNil(t, q.Season)
@@ -56,7 +56,7 @@ func TestBuildSafeSearchQuery_MovieFallback(t *testing.T) {
 		Type: rls.Movie,
 	}
 
-	q := buildSafeSearchQuery("Some.Movie.2024.1080p.WEBRip.x264", release, "")
+	q := buildSafeSearchQuery("Some.Movie.2024.1080p.WEBRip.x264", &release, "")
 
 	require.Equal(t, "some movie 2024", q.Query)
 	require.Nil(t, q.Season)

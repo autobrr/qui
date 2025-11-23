@@ -150,7 +150,7 @@ func TestEnrichReleaseFromTorrent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fileRelease := rls.ParseString(tt.fileName)
 			torrentRelease := rls.ParseString(tt.torrentName)
-			enriched := enrichReleaseFromTorrent(fileRelease, torrentRelease)
+			enriched := enrichReleaseFromTorrent(&fileRelease, &torrentRelease)
 
 			switch tt.checkField {
 			case "Group":

@@ -17,6 +17,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/jackett"
 )
 
 // CrossSeedHandler handles cross-seed API endpoints
@@ -406,7 +407,8 @@ func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	response, err := h.service.SearchTorrentMatches(r.Context(), instanceID, hash, opts)
+	ctx := jackett.WithSearchPriority(r.Context(), jackett.RateLimitPriorityInteractive)
+	response, err := h.service.SearchTorrentMatches(ctx, instanceID, hash, opts)
 	if err != nil {
 		status := mapCrossSeedErrorStatus(err)
 		log.Error().

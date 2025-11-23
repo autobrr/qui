@@ -214,7 +214,10 @@ func (s *Service) scanInstances(ctx context.Context) {
 }
 
 func (s *Service) scanInstance(ctx context.Context, instanceID int, settings *models.InstanceReannounceSettings) {
-	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
+	torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{
+		Filter: qbt.TorrentFilterStalled,
+	})
+
 	if err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Msg("reannounce: failed to fetch torrents")
 		return
@@ -247,7 +250,9 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 		return nil
 	}
 
-	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
+	torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{
+		Filter: qbt.TorrentFilterStalled,
+	})
 	if err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Msg("reannounce: failed to fetch torrents for snapshot")
 		return nil

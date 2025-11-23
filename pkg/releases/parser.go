@@ -15,12 +15,12 @@ const defaultParserTTL = 5 * time.Minute
 
 // Parser caches rls parsing results so we do not repeatedly parse the same release names.
 type Parser struct {
-	cache *ttlcache.Cache[string, rls.Release]
+	cache *ttlcache.Cache[string, *rls.Release]
 }
 
 // NewParser returns a parser with the provided TTL for cached entries.
 func NewParser(ttl time.Duration) *Parser {
-	cache := ttlcache.New(ttlcache.Options[string, rls.Release]{}.
+	cache := ttlcache.New(ttlcache.Options[string, *rls.Release]{}.
 		SetDefaultTTL(ttl))
 	return &Parser{cache: cache}
 }
@@ -31,13 +31,13 @@ func NewDefaultParser() *Parser {
 }
 
 // Parse returns the parsed release metadata for name.
-func (p *Parser) Parse(name string) rls.Release {
+func (p *Parser) Parse(name string) *rls.Release {
 	if p == nil {
-		return rls.Release{}
+		return &rls.Release{}
 	}
 	key := strings.TrimSpace(name)
 	if key == "" {
-		return rls.Release{}
+		return &rls.Release{}
 	}
 
 	if cached, ok := p.cache.Get(key); ok {
@@ -45,8 +45,8 @@ func (p *Parser) Parse(name string) rls.Release {
 	}
 
 	release := rls.ParseString(key)
-	p.cache.Set(key, release, ttlcache.DefaultTTL)
-	return release
+	p.cache.Set(key, &release, ttlcache.DefaultTTL)
+	return &release
 }
 
 // Clear removes a cached entry.

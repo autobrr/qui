@@ -2,6 +2,7 @@ package jackett
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -17,7 +18,7 @@ func TestRateLimiterRespectsCooldown(t *testing.T) {
 	limiter.SetCooldown(indexer.ID, time.Now().Add(cooldown))
 
 	start := time.Now()
-	if err := limiter.BeforeRequest(context.Background(), indexer); err != nil {
+	if err := limiter.BeforeRequest(context.Background(), indexer, nil); err != nil {
 		t.Fatalf("BeforeRequest returned error: %v", err)
 	}
 	elapsed := time.Since(start)
@@ -63,5 +64,32 @@ func TestRateLimiterIsInCooldown(t *testing.T) {
 	inCooldown, _ = limiter.IsInCooldown(1)
 	if inCooldown {
 		t.Fatalf("expected cooldown to expire")
+	}
+}
+
+func TestRateLimiterMaxWaitBudget(t *testing.T) {
+	limiter := NewRateLimiter(50 * time.Millisecond)
+	indexer := &models.TorznabIndexer{ID: 1, Name: "Test"}
+
+	limiter.RecordRequest(indexer.ID, time.Now())
+
+	opts := &RateLimitOptions{
+		Priority:    RateLimitPriorityInteractive,
+		MinInterval: 50 * time.Millisecond,
+		MaxWait:     10 * time.Millisecond,
+	}
+
+	err := limiter.BeforeRequest(context.Background(), indexer, opts)
+	if err == nil {
+		t.Fatalf("expected RateLimitWaitError when required wait exceeds MaxWait")
+	}
+
+	var waitErr *RateLimitWaitError
+	if !errors.As(err, &waitErr) {
+		t.Fatalf("expected RateLimitWaitError, got %v", err)
+	}
+
+	if waitErr.Wait <= waitErr.MaxWait {
+		t.Fatalf("expected wait to exceed max wait, got wait %v max %v", waitErr.Wait, waitErr.MaxWait)
 	}
 }

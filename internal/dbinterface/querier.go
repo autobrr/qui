@@ -31,3 +31,11 @@ type Querier interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (TxQuerier, error)
 }
+
+// DeferForeignKeyChecks defers foreign key constraint checks for the given transaction
+// until the end of the transaction. This allows operations that would normally violate
+// foreign key constraints due to ordering.
+func DeferForeignKeyChecks(tx TxQuerier) error {
+	_, err := tx.ExecContext(context.Background(), "PRAGMA defer_foreign_keys = ON;")
+	return err
+}
