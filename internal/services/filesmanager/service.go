@@ -7,7 +7,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"runtime"
 	"sync"
 	"time"
 
@@ -131,84 +130,111 @@ func (s *Service) GetCachedFilesBatch(ctx context.Context, instanceID int, hashe
 	return results, missing, nil
 }
 
-// CacheFiles stores file information in the database
-func (s *Service) CacheFiles(ctx context.Context, instanceID int, hash string, torrentProgress float64, files qbt.TorrentFiles) error {
-	if len(files) == 0 {
-		return nil
-	}
+// CacheFilesBatch stores file information for multiple torrents in the database
+func (s *Service) CacheFilesBatch(ctx context.Context, instanceID int, torrentProgress map[string]float64, files map[string]qbt.TorrentFiles) error {
+	var allCachedFiles []CachedFile
+	var allSyncInfos []SyncInfo
 
-	// Convert to cache format
-	cachedFiles := make([]CachedFile, len(files))
-	for i, f := range files {
-		pieceStart, pieceEnd := int64(0), int64(0)
-		if len(f.PieceRange) >= 2 {
-			pieceStart = int64(f.PieceRange[0])
-			pieceEnd = int64(f.PieceRange[1])
+	for hash, torrentFiles := range files {
+		if len(torrentFiles) == 0 {
+			continue
 		}
 
-		isSeed := f.IsSeed
-		cachedFiles[i] = CachedFile{
+		progress, ok := torrentProgress[hash]
+		if !ok {
+			progress = 0.0
+		}
+
+		// Convert to cache format
+		cachedFiles := make([]CachedFile, len(torrentFiles))
+		for i, f := range torrentFiles {
+			pieceStart, pieceEnd := int64(0), int64(0)
+			if len(f.PieceRange) >= 2 {
+				pieceStart = int64(f.PieceRange[0])
+				pieceEnd = int64(f.PieceRange[1])
+			}
+
+			isSeed := f.IsSeed
+			cachedFiles[i] = CachedFile{
+				InstanceID:      instanceID,
+				TorrentHash:     hash,
+				FileIndex:       f.Index,
+				Name:            f.Name,
+				Size:            f.Size,
+				Progress:        float64(f.Progress),
+				Priority:        f.Priority,
+				IsSeed:          &isSeed,
+				PieceRangeStart: pieceStart,
+				PieceRangeEnd:   pieceEnd,
+				Availability:    float64(f.Availability),
+			}
+		}
+
+		allCachedFiles = append(allCachedFiles, cachedFiles...)
+
+		// Collect sync metadata
+		syncInfo := SyncInfo{
 			InstanceID:      instanceID,
 			TorrentHash:     hash,
-			FileIndex:       f.Index,
-			Name:            f.Name,
-			Size:            f.Size,
-			Progress:        float64(f.Progress),
-			Priority:        f.Priority,
-			IsSeed:          &isSeed,
-			PieceRangeStart: pieceStart,
-			PieceRangeEnd:   pieceEnd,
-			Availability:    float64(f.Availability),
+			LastSyncedAt:    time.Now(),
+			TorrentProgress: progress,
+			FileCount:       len(torrentFiles),
+		}
+		allSyncInfos = append(allSyncInfos, syncInfo)
+	}
+
+	if len(allCachedFiles) > 0 {
+		// Store all files in database in one batch
+		if err := s.repo.UpsertFiles(ctx, allCachedFiles); err != nil {
+			return fmt.Errorf("failed to cache files: %w", err)
 		}
 	}
 
-	// Store in database
-	if err := s.repo.UpsertFiles(ctx, cachedFiles); err != nil {
-		return fmt.Errorf("failed to cache files: %w", err)
-	}
-
-	// Update sync metadata
-	syncInfo := SyncInfo{
-		InstanceID:      instanceID,
-		TorrentHash:     hash,
-		LastSyncedAt:    time.Now(),
-		TorrentProgress: torrentProgress,
-		FileCount:       len(files),
-	}
-
-	if err := s.repo.UpsertSyncInfo(ctx, syncInfo); err != nil {
-		return fmt.Errorf("failed to update sync info: %w", err)
-	}
-
-	source := "unknown"
-	if pc, _, _, ok := runtime.Caller(1); ok {
-		if fn := runtime.FuncForPC(pc); fn != nil {
-			source = fn.Name()
+	if len(allSyncInfos) > 0 {
+		// Update all sync metadata in one batch
+		if err := s.repo.UpsertSyncInfoBatch(ctx, allSyncInfos); err != nil {
+			return fmt.Errorf("failed to update sync info: %w", err)
 		}
 	}
 
-	now := time.Now()
-	cacheKey := newCacheKey(instanceID, hash)
-	shouldLog := false
+	// Log each torrent individually
+	for hash, torrentFiles := range files {
+		if len(torrentFiles) == 0 {
+			continue
+		}
 
-	s.mu.Lock()
-	if last, ok := s.lastCacheLog[cacheKey]; !ok || now.Sub(last) >= cacheLogThrottle {
-		s.lastCacheLog[cacheKey] = now
-		shouldLog = true
-	}
-	s.mu.Unlock()
+		progress, ok := torrentProgress[hash]
+		if !ok {
+			progress = 0.0
+		}
 
-	if shouldLog {
-		log.Trace().
-			Int("instanceID", instanceID).
-			Str("hash", hash).
-			Int("fileCount", len(files)).
-			Float64("progress", torrentProgress).
-			Str("source", source).
-			Msg("Cached torrent files")
+		now := time.Now()
+		cacheKey := newCacheKey(instanceID, hash)
+		shouldLog := false
+
+		s.mu.Lock()
+		if last, ok := s.lastCacheLog[cacheKey]; !ok || now.Sub(last) >= cacheLogThrottle {
+			s.lastCacheLog[cacheKey] = now
+			shouldLog = true
+		}
+		s.mu.Unlock()
+
+		if shouldLog {
+			log.Trace().
+				Int("instanceID", instanceID).
+				Str("hash", hash).
+				Int("fileCount", len(torrentFiles)).
+				Float64("progress", progress).
+				Msg("Cached torrent files")
+		}
 	}
 
 	return nil
+}
+
+// CacheFiles stores file information in the database
+func (s *Service) CacheFiles(ctx context.Context, instanceID int, hash string, torrentProgress float64, files qbt.TorrentFiles) error {
+	return s.CacheFilesBatch(ctx, instanceID, map[string]float64{hash: torrentProgress}, map[string]qbt.TorrentFiles{hash: files})
 }
 
 // InvalidateCache removes cached file information for a torrent

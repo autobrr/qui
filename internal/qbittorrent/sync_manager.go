@@ -40,6 +40,7 @@ type FilesManager interface {
 	// because implementations treat the provided keys as-is when populating lookups and cache metadata.
 	GetCachedFilesBatch(ctx context.Context, instanceID int, hashes []string, torrentProgress map[string]float64) (map[string]qbt.TorrentFiles, []string, error)
 	CacheFiles(ctx context.Context, instanceID int, hash string, torrentProgress float64, files qbt.TorrentFiles) error
+	CacheFilesBatch(ctx context.Context, instanceID int, torrentProgress map[string]float64, files map[string]qbt.TorrentFiles) error
 	InvalidateCache(ctx context.Context, instanceID int, hash string) error
 }
 
@@ -1265,25 +1266,40 @@ func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int,
 			}
 
 			if fm := sm.getFilesManager(); fm != nil {
-				progress := progressByHash[canonicalHash]
-				if err := fm.CacheFiles(gctx, instanceID, canonicalHash, progress, *files); err != nil {
-					log.Warn().
-						Err(err).
-						Int("instanceID", instanceID).
-						Str("hash", canonicalHash).
-						Msg("Failed to cache torrent files after fetch")
-				}
+				mu.Lock()
+				filesByHash[canonicalHash] = *files
+				mu.Unlock()
+			} else {
+				mu.Lock()
+				filesByHash[canonicalHash] = *files
+				mu.Unlock()
 			}
-
-			mu.Lock()
-			filesByHash[canonicalHash] = *files
-			mu.Unlock()
 			return nil
 		})
 	}
 
 	if err := g.Wait(); err != nil {
 		return filesByHash, err
+	}
+
+	// Cache all newly fetched files in batch
+	if fm := sm.getFilesManager(); fm != nil && len(hashesToFetch) > 0 {
+		fetchedFiles := make(map[string]qbt.TorrentFiles)
+		for _, hash := range hashesToFetch {
+			canonicalHash := canonicalizeHash(hash)
+			if files, ok := filesByHash[canonicalHash]; ok {
+				fetchedFiles[canonicalHash] = files
+			}
+		}
+		if len(fetchedFiles) > 0 {
+			if err := fm.CacheFilesBatch(ctx, instanceID, progressByHash, fetchedFiles); err != nil {
+				log.Warn().
+					Err(err).
+					Int("instanceID", instanceID).
+					Int("cached", len(fetchedFiles)).
+					Msg("Failed to cache torrent files batch after fetch")
+			}
+		}
 	}
 
 	if len(fetchErrors) > 0 {

@@ -181,6 +181,15 @@ func (fm *stubFilesManager) CacheFiles(_ context.Context, _ int, hash string, to
 	return nil
 }
 
+func (fm *stubFilesManager) CacheFilesBatch(_ context.Context, _ int, torrentProgress map[string]float64, files map[string]qbt.TorrentFiles) error {
+	for hash, torrentFiles := range files {
+		progress := torrentProgress[hash]
+		fm.cacheCalls = append(fm.cacheCalls, cacheCall{hash: hash, progress: progress})
+		fm.cached[hash] = torrentFiles
+	}
+	return nil
+}
+
 func (*stubFilesManager) InvalidateCache(context.Context, int, string) error {
 	return nil
 }

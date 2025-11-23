@@ -189,16 +189,19 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 		return nil
 	}
 
-	hash := files[0].TorrentHash
-	instanceID := files[0].InstanceID
+	// Group files by torrent hash
+	filesByHash := make(map[string][]CachedFile)
+	for _, f := range files {
+		filesByHash[f.TorrentHash] = append(filesByHash[f.TorrentHash], f)
+	}
 
-	for i, f := range files[1:] {
-		if f.TorrentHash != hash {
-			return fmt.Errorf("UpsertFiles: mismatched torrent hash at index %d (expected %s, got %s)", i+1, hash, f.TorrentHash)
-		}
-		if f.InstanceID != instanceID {
-			return fmt.Errorf("UpsertFiles: mismatched instance ID at index %d (expected %d, got %d)", i+1, instanceID, f.InstanceID)
-		}
+	// Collect all unique strings to intern (all hashes + all file names)
+	allStrings := make([]string, 0, len(filesByHash)+len(files))
+	for hash := range filesByHash {
+		allStrings = append(allStrings, hash)
+	}
+	for _, f := range files {
+		allStrings = append(allStrings, f.Name)
 	}
 
 	// Begin transaction for atomic upsert of all files
@@ -208,60 +211,61 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 	}
 	defer tx.Rollback()
 
-	// Collect all unique strings to intern (hash + all file names)
-	allStrings := make([]string, 0, 1+len(files))
-	allStrings = append(allStrings, hash)
-	for _, f := range files {
-		allStrings = append(allStrings, f.Name)
-	}
-
 	// Batch intern all strings
 	allIDs, err := dbinterface.InternStrings(ctx, tx, allStrings...)
 	if err != nil {
 		return fmt.Errorf("failed to intern strings: %w", err)
 	}
 
-	hashID := allIDs[0]
+	hashIDMap := make(map[string]int64)
+	nameIDIndex := len(filesByHash)
+	for hash := range filesByHash {
+		hashIDMap[hash] = allIDs[len(hashIDMap)]
+	}
 
-	for i, f := range files {
-		nameID := allIDs[1+i]
+	for hash, fileGroup := range filesByHash {
+		hashID := hashIDMap[hash]
+		for _, f := range fileGroup {
+			nameID := allIDs[nameIDIndex]
+			nameIDIndex++
 
-		var isSeed interface{}
-		if f.IsSeed != nil {
-			isSeed = *f.IsSeed
-		}
+			var isSeed interface{}
+			if f.IsSeed != nil {
+				isSeed = *f.IsSeed
+			}
 
-		_, err = tx.ExecContext(ctx, `
-			INSERT INTO torrent_files_cache 
-			(instance_id, torrent_hash_id, file_index, name_id, size, progress, priority, 
-			 is_seed, piece_range_start, piece_range_end, availability, cached_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(instance_id, torrent_hash_id, file_index) DO UPDATE SET
-				name_id = excluded.name_id,
-				size = excluded.size,
-				progress = excluded.progress,
-				priority = excluded.priority,
-				is_seed = excluded.is_seed,
-				piece_range_start = excluded.piece_range_start,
-				piece_range_end = excluded.piece_range_end,
-				availability = excluded.availability,
-				cached_at = excluded.cached_at
-		`,
-			f.InstanceID,
-			hashID,
-			f.FileIndex,
-			nameID,
-			f.Size,
-			f.Progress,
-			f.Priority,
-			isSeed,
-			f.PieceRangeStart,
-			f.PieceRangeEnd,
-			f.Availability,
-			time.Now(),
-		)
-		if err != nil {
-			return fmt.Errorf("failed to insert file %d: %w", f.FileIndex, err)
+			_, err = tx.ExecContext(ctx, `
+				INSERT INTO torrent_files_cache 
+				(instance_id, torrent_hash_id, file_index, name_id, size, progress, priority, 
+				 is_seed, piece_range_start, piece_range_end, availability, cached_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT(instance_id, torrent_hash_id, file_index) DO UPDATE SET
+					name_id = excluded.name_id,
+					size = excluded.size,
+					progress = excluded.progress,
+					priority = excluded.priority,
+					is_seed = excluded.is_seed,
+					piece_range_start = excluded.piece_range_start,
+					piece_range_end = excluded.piece_range_end,
+					availability = excluded.availability,
+					cached_at = excluded.cached_at
+			`,
+				f.InstanceID,
+				hashID,
+				f.FileIndex,
+				nameID,
+				f.Size,
+				f.Progress,
+				f.Priority,
+				isSeed,
+				f.PieceRangeStart,
+				f.PieceRangeEnd,
+				f.Availability,
+				time.Now(),
+			)
+			if err != nil {
+				return fmt.Errorf("failed to insert file %d for hash %s: %w", f.FileIndex, hash, err)
+			}
 		}
 	}
 
@@ -435,6 +439,58 @@ func (r *Repository) UpsertSyncInfo(ctx context.Context, info SyncInfo) error {
 
 	if err != nil {
 		return err
+	}
+
+	return tx.Commit()
+}
+
+// UpsertSyncInfoBatch inserts or updates sync metadata for multiple torrents
+func (r *Repository) UpsertSyncInfoBatch(ctx context.Context, infos []SyncInfo) error {
+	if len(infos) == 0 {
+		return nil
+	}
+
+	// Start a transaction
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("UpsertSyncInfoBatch: failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Collect all hashes to intern
+	hashes := make([]string, len(infos))
+	for i, info := range infos {
+		hashes[i] = info.TorrentHash
+	}
+
+	// Batch intern all hashes
+	hashIDs, err := dbinterface.InternStrings(ctx, tx, hashes...)
+	if err != nil {
+		return fmt.Errorf("UpsertSyncInfoBatch: failed to intern torrent_hashes: %w", err)
+	}
+
+	for i, info := range infos {
+		hashID := hashIDs[i]
+
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO torrent_files_sync 
+			(instance_id, torrent_hash_id, last_synced_at, torrent_progress, file_count)
+			VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT(instance_id, torrent_hash_id) DO UPDATE SET
+				last_synced_at = excluded.last_synced_at,
+				torrent_progress = excluded.torrent_progress,
+				file_count = excluded.file_count
+		`,
+			info.InstanceID,
+			hashID,
+			info.LastSyncedAt,
+			info.TorrentProgress,
+			info.FileCount,
+		)
+
+		if err != nil {
+			return fmt.Errorf("UpsertSyncInfoBatch: failed to upsert sync info for %s: %w", info.TorrentHash, err)
+		}
 	}
 
 	return tx.Commit()
