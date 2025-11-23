@@ -95,12 +95,10 @@ class ApiClient {
     endpoint: string,
     options?: RequestInit
   ): Promise<T> {
-    const isFormData = options?.body instanceof FormData
-
     const response = await fetch(`${API_BASE}${endpoint}`, {
       ...options,
       headers: {
-        ...(isFormData ? {} : { "Content-Type": "application/json" }),
+        "Content-Type": "application/json",
         ...options?.headers,
       },
       credentials: "include",
@@ -377,10 +375,19 @@ class ApiClient {
     const formData = new FormData()
     formData.append("manifest", manifestFile)
 
-    return this.request<BackupRun>(`/instances/${instanceId}/backups/import`, {
+    const response = await fetch(`${API_BASE}/instances/${instanceId}/backups/import`, {
       method: "POST",
       body: formData,
+      credentials: "include",
     })
+
+    if (!response.ok) {
+      const errorMessage = await this.extractErrorMessage(response)
+      this.handleAuthError(response.status, `/instances/${instanceId}/backups/import`, errorMessage)
+      throw new Error(errorMessage)
+    }
+
+    return response.json()
   }
 
   async previewRestore(
