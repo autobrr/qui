@@ -211,6 +211,10 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 	}
 	defer tx.Rollback()
 
+	if err := dbinterface.DeferForeignKeyChecks(tx); err != nil {
+		return fmt.Errorf("failed to defer foreign keys: %w", err)
+	}
+
 	// Batch intern all strings
 	allIDs, err := dbinterface.InternStrings(ctx, tx, allStrings...)
 	if err != nil {

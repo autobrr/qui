@@ -1174,7 +1174,7 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	// All string_pool references use ON DELETE RESTRICT which would prevent deletion
 	// even when there are no actual references. Deferring allows the transaction to
 	// complete and verify constraints at commit time rather than immediately.
-	if _, err := tx.ExecContext(ctx, "PRAGMA defer_foreign_keys = ON"); err != nil {
+	if err := dbinterface.DeferForeignKeyChecks(tx); err != nil {
 		return 0, fmt.Errorf("failed to defer foreign keys: %w", err)
 	}
 
