@@ -837,6 +837,14 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 	// SQLite SQLITE_MAX_VARIABLE_NUMBER is typically 32766 on modern systems
 	// but default is 999. Use 90 items * 10 params = 900 to stay safe
 	const chunkSize = 90
+
+	// Pre-build the query template for full chunks to avoid repeated string building in hot path
+	queryTemplate := `INSERT INTO instance_backup_items (
+		run_id, torrent_hash_id, name_id, category_id, size_bytes, 
+		archive_rel_path_id, infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id
+	) VALUES %s`
+	fullQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 10, chunkSize)
+
 	for i := 0; i < len(items); i += chunkSize {
 		end := i + chunkSize
 		if end > len(items) {
@@ -844,12 +852,11 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 		}
 		chunk := items[i:end]
 
-		// Build multi-row INSERT
-		queryTemplate := `INSERT INTO instance_backup_items (
-			run_id, torrent_hash_id, name_id, category_id, size_bytes, 
-			archive_rel_path_id, infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id
-		) VALUES %s`
-		query := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 10, len(chunk))
+		// Use pre-built query for full chunks, build new one only for smaller final chunk
+		query := fullQuery
+		if len(chunk) < chunkSize {
+			query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 10, len(chunk))
+		}
 
 		args := make([]any, 0, len(chunk)*10)
 		for _, item := range chunk {

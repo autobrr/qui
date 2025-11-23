@@ -76,6 +76,10 @@ func InternStrings(ctx context.Context, tx TxQuerier, values ...string) ([]int64
 	// SQLite has SQLITE_MAX_VARIABLE_NUMBER limit (default 999)
 	// Process in chunks to avoid hitting this limit
 
+	// Pre-build the query template for full chunks to avoid repeated string building in hot path
+	queryTemplate := "INSERT OR IGNORE INTO string_pool (value) VALUES %s"
+	fullQuery := BuildQueryWithPlaceholders(queryTemplate, 1, maxParams)
+
 	for i := 0; i < len(valuesList); i += maxParams {
 		end := i + maxParams
 		if end > len(valuesList) {
@@ -89,9 +93,11 @@ func InternStrings(ctx context.Context, tx TxQuerier, values ...string) ([]int64
 			args[j] = v
 		}
 
-		// Build bulk insert query
-		queryTemplate := "INSERT OR IGNORE INTO string_pool (value) VALUES %s"
-		query := BuildQueryWithPlaceholders(queryTemplate, 1, len(chunk))
+		// Use pre-built query for full chunks, build new one only for smaller final chunk
+		query := fullQuery
+		if len(chunk) < maxParams {
+			query = BuildQueryWithPlaceholders(queryTemplate, 1, len(chunk))
+		}
 
 		_, err := tx.ExecContext(ctx, query, args...)
 		if err != nil {
