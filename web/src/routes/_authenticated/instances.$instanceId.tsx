@@ -8,7 +8,7 @@ import { useLayoutRoute } from "@/contexts/LayoutRouteContext"
 import { useInstances } from "@/hooks/useInstances"
 import { createFileRoute, Navigate } from "@tanstack/react-router"
 import { Power } from "lucide-react"
-import { useLayoutEffect, lazy } from "react"
+import { useLayoutEffect, lazy, Suspense } from "react"
 import { z } from "zod"
 
 const Torrents = lazy(() => import("@/pages/Torrents").then(m => ({ default: m.Torrents })))
@@ -86,12 +86,14 @@ function InstanceTorrents() {
   }
 
   return (
-    <Torrents
-      instanceId={instanceIdNumber}
-      instanceName={instanceDisplayName}
-      search={search}
-      onSearchChange={handleSearchChange}
-    />
+    <Suspense fallback={<div className="p-6">Loading torrents...</div>}>
+      <Torrents
+        instanceId={instanceIdNumber}
+        instanceName={instanceDisplayName}
+        search={search}
+        onSearchChange={handleSearchChange}
+      />
+    </Suspense>
   )
 }
 
