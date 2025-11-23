@@ -1524,10 +1524,10 @@ func (s *Service) automationCacheKey(name string, findIndividual bool) string {
 
 	release := s.releaseCache.Parse(name)
 	title := s.stringNormalizer.Normalize(release.Title)
-	group := strings.ToUpper(strings.TrimSpace(release.Group))
-	source := strings.ToUpper(strings.TrimSpace(release.Source))
-	resolution := strings.ToUpper(strings.TrimSpace(release.Resolution))
-	collection := strings.ToUpper(strings.TrimSpace(release.Collection))
+	group := s.stringNormalizer.Normalize(release.Group)
+	source := s.stringNormalizer.Normalize(release.Source)
+	resolution := s.stringNormalizer.Normalize(release.Resolution)
+	collection := s.stringNormalizer.Normalize(release.Collection)
 
 	return fmt.Sprintf("%s|%d|%d|%d|%d|%s|%s|%s|%s|%t",
 		title,
