@@ -818,12 +818,19 @@ func (s *TorznabIndexerStore) SetCapabilities(ctx context.Context, indexerID int
 			return fmt.Errorf("failed to intern capability strings: %w", err)
 		}
 
-		// Insert capabilities
+		// Build bulk insert query
+		queryTemplate := "INSERT INTO torznab_indexer_capabilities (indexer_id, capability_type_id) VALUES %s"
+		query := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 2, len(capIDs))
+
+		// Build args
+		args := make([]any, 0, len(capIDs)*2)
 		for _, capID := range capIDs {
-			_, err = tx.ExecContext(ctx, "INSERT INTO torznab_indexer_capabilities (indexer_id, capability_type_id) VALUES (?, ?)", indexerID, capID)
-			if err != nil {
-				return fmt.Errorf("failed to insert capability: %w", err)
-			}
+			args = append(args, indexerID, capID)
+		}
+
+		_, err = tx.ExecContext(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("failed to insert capabilities: %w", err)
 		}
 	}
 
@@ -903,11 +910,19 @@ func (s *TorznabIndexerStore) SetCategories(ctx context.Context, indexerID int, 
 			return fmt.Errorf("failed to intern category names: %w", err)
 		}
 
+		// Build bulk insert query
+		queryTemplate := "INSERT INTO torznab_indexer_categories (indexer_id, category_id, category_name_id, parent_category_id) VALUES %s"
+		query := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 4, len(ordered))
+
+		// Build args
+		args := make([]any, 0, len(ordered)*4)
 		for i, cat := range ordered {
-			_, err = tx.ExecContext(ctx, "INSERT INTO torznab_indexer_categories (indexer_id, category_id, category_name_id, parent_category_id) VALUES (?, ?, ?, ?)", indexerID, cat.CategoryID, nameIDs[i], cat.ParentCategory)
-			if err != nil {
-				return fmt.Errorf("failed to insert category: %w", err)
-			}
+			args = append(args, indexerID, cat.CategoryID, nameIDs[i], cat.ParentCategory)
+		}
+
+		_, err = tx.ExecContext(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("failed to insert categories: %w", err)
 		}
 	}
 

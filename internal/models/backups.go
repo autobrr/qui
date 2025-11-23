@@ -845,16 +845,14 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 		chunk := items[i:end]
 
 		// Build multi-row INSERT
+		queryTemplate := `INSERT INTO instance_backup_items (
+			run_id, torrent_hash_id, name_id, category_id, size_bytes, 
+			archive_rel_path_id, infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id
+		) VALUES %s`
+		query := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 10, len(chunk))
+
 		args := make([]any, 0, len(chunk)*10)
-		var sb strings.Builder
-		sb.Grow(len(chunk) * 42) // Pre-allocate: each row is "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?), " = ~42 chars
-
-		for j, item := range chunk {
-			if j > 0 {
-				sb.WriteString(", ")
-			}
-			sb.WriteString("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-
+		for _, item := range chunk {
 			// Get IDs from the stringToID map for required fields
 			torrentHashID := stringToID[item.TorrentHash]
 			nameID := stringToID[item.Name]
@@ -872,11 +870,6 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 				getID(item.TorrentBlobPath),
 			)
 		}
-
-		query := `INSERT INTO instance_backup_items (
-			run_id, torrent_hash_id, name_id, category_id, size_bytes, 
-			archive_rel_path_id, infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id
-		) VALUES ` + sb.String()
 
 		_, err = tx.ExecContext(ctx, query, args...)
 		if err != nil {

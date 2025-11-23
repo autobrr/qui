@@ -89,19 +89,11 @@ func InternStrings(ctx context.Context, tx TxQuerier, values ...string) ([]int64
 			args[j] = v
 		}
 
-		// Build placeholder patterns once
-		var sb strings.Builder
-		const queryPrefix = "INSERT OR IGNORE INTO string_pool (value) VALUES "
-		sb.Grow(len(queryPrefix) + (len(chunk) * 4) + 1) // preallocate
-		sb.WriteString(queryPrefix)
-		for j := range chunk {
-			if j > 0 {
-				sb.WriteString(",")
-			}
-			sb.WriteString("(?)")
-		}
+		// Build bulk insert query
+		queryTemplate := "INSERT OR IGNORE INTO string_pool (value) VALUES %s"
+		query := BuildQueryWithPlaceholders(queryTemplate, 1, len(chunk))
 
-		_, err := tx.ExecContext(ctx, sb.String(), args...)
+		_, err := tx.ExecContext(ctx, query, args...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to batch insert strings: %w", err)
 		}

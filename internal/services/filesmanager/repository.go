@@ -538,28 +538,34 @@ func (r *Repository) UpsertSyncInfoBatch(ctx context.Context, infos []SyncInfo) 
 		return fmt.Errorf("UpsertSyncInfoBatch: failed to intern torrent_hashes: %w", err)
 	}
 
+	// Build bulk upsert query
+	queryTemplate := `
+		INSERT INTO torrent_files_sync 
+		(instance_id, torrent_hash_id, last_synced_at, torrent_progress, file_count)
+		VALUES %s
+		ON CONFLICT(instance_id, torrent_hash_id) DO UPDATE SET
+			last_synced_at = excluded.last_synced_at,
+			torrent_progress = excluded.torrent_progress,
+			file_count = excluded.file_count
+	`
+	query := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 5, len(infos))
+
+	// Build args
+	args := make([]any, 0, len(infos)*5)
 	for i, info := range infos {
 		hashID := hashIDs[i]
-
-		_, err = tx.ExecContext(ctx, `
-			INSERT INTO torrent_files_sync 
-			(instance_id, torrent_hash_id, last_synced_at, torrent_progress, file_count)
-			VALUES (?, ?, ?, ?, ?)
-			ON CONFLICT(instance_id, torrent_hash_id) DO UPDATE SET
-				last_synced_at = excluded.last_synced_at,
-				torrent_progress = excluded.torrent_progress,
-				file_count = excluded.file_count
-		`,
+		args = append(args,
 			info.InstanceID,
 			hashID,
 			info.LastSyncedAt,
 			info.TorrentProgress,
 			info.FileCount,
 		)
+	}
 
-		if err != nil {
-			return fmt.Errorf("UpsertSyncInfoBatch: failed to upsert sync info for %s: %w", info.TorrentHash, err)
-		}
+	_, err = tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("UpsertSyncInfoBatch: failed to upsert sync info: %w", err)
 	}
 
 	return tx.Commit()
@@ -670,11 +676,17 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 	}
 
 	// Insert current hashes into temp table
-	for _, hash := range currentHashes {
-		_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO current_hashes (hash) VALUES (?)`, hash)
-		if err != nil {
-			return 0, fmt.Errorf("failed to insert hash into temp table: %w", err)
-		}
+	queryTemplate := `INSERT OR IGNORE INTO current_hashes (hash) VALUES %s`
+	query := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 1, len(currentHashes))
+
+	args := make([]any, len(currentHashes))
+	for i, hash := range currentHashes {
+		args[i] = hash
+	}
+
+	_, err = tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to insert hashes into temp table: %w", err)
 	}
 
 	// Delete files for torrents not in current hashes
