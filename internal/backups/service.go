@@ -639,14 +639,24 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 
 		if blobRelPath == nil && s.cacheDir != "" {
 			sum := sha256.Sum256(data)
-			blobName := hex.EncodeToString(sum[:]) + ".torrent"
-			absBlob := filepath.Join(s.cacheDir, blobName)
+			hash := hex.EncodeToString(sum[:])
+			blobName := hash + ".torrent"
+			subdir := ""
+			if len(hash) >= 6 {
+				subdir = hash[0:2] + "/" + hash[2:4] + "/" + hash[4:6]
+			}
+			absBlob := filepath.Join(s.cacheDir, subdir, blobName)
 			if _, err := os.Stat(absBlob); errors.Is(err, os.ErrNotExist) {
+				if subdir != "" {
+					if err := os.MkdirAll(filepath.Dir(absBlob), 0o755); err != nil {
+						return nil, fmt.Errorf("create torrent cache subdir: %w", err)
+					}
+				}
 				if err := os.WriteFile(absBlob, data, 0o644); err != nil && !errors.Is(err, os.ErrExist) {
 					return nil, fmt.Errorf("cache torrent blob: %w", err)
 				}
 			}
-			rel := filepath.ToSlash(filepath.Join("backups", "torrents", blobName))
+			rel := filepath.ToSlash(filepath.Join("backups", "torrents", subdir, blobName))
 			blobRelPath = &rel
 		}
 
