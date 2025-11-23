@@ -17,6 +17,7 @@ export function usePathAutocomplete(
     if (path.endsWith("/")) return path;
 
     const lastSlash = path.lastIndexOf("/");
+    if (lastSlash === -1) return "/";
     return lastSlash === 0 ? "/" : path.slice(0, lastSlash + 1);
   }, []);
 
@@ -37,10 +38,16 @@ export function usePathAutocomplete(
         return cache.current.get(key);
       }
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 600000); // 10min
+
       try {
         const response = await fetch(
-          `/api/instances/${instanceId}/getDirectoryContent?dirPath=${encodeURIComponent(key)}`
+          `/api/instances/${instanceId}/getDirectoryContent?dirPath=${encodeURIComponent(key)}`,
+          { signal: controller.signal }
         );
+
+        clearTimeout(timeoutId);
 
         if (!response.ok) throw new Error("Failed to fetch directory");
 
@@ -65,8 +72,12 @@ export function usePathAutocomplete(
     const parentPath = getParentPath(inputValue);
     const filterTerm = getFilterTerm(inputValue).toLowerCase();
 
+    let cancelled = false;
+
     const load = async () => {
       const entries = (await fetchDirectoryContent(parentPath)) ?? [];
+
+      if (cancelled) return;
 
       const filtered = filterTerm? entries.filter((e) => e.toLowerCase().includes(filterTerm)): entries;
 
@@ -75,6 +86,9 @@ export function usePathAutocomplete(
     };
 
     load();
+    return () => {
+      cancelled = true;
+    };
   }, [inputValue, fetchDirectoryContent, getFilterTerm, getParentPath]);
 
   const selectSuggestion = useCallback(
