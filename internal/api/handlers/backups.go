@@ -388,6 +388,48 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *BackupsHandler) ImportManifest(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	// Parse multipart form
+	if err := r.ParseMultipartForm(32 << 20); err != nil { // 32MB max
+		RespondError(w, http.StatusBadRequest, "Failed to parse multipart form")
+		return
+	}
+
+	file, _, err := r.FormFile("manifest")
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Manifest file is required")
+		return
+	}
+	defer file.Close()
+
+	manifestData, err := io.ReadAll(file)
+	if err != nil {
+		RespondError(w, http.StatusInternalServerError, "Failed to read manifest file")
+		return
+	}
+
+	// Get requestedBy from context or use default
+	requestedBy := "api-import"
+	if user := r.Context().Value("user"); user != nil {
+		// TODO: extract username from context if available
+		requestedBy = "user"
+	}
+
+	run, err := h.service.ImportManifest(r.Context(), instanceID, manifestData, requestedBy)
+	if err != nil {
+		RespondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to import manifest: %v", err))
+		return
+	}
+
+	RespondJSON(w, http.StatusCreated, run)
+}
+
 func (h *BackupsHandler) DownloadTorrentBlob(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {

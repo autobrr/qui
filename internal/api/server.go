@@ -410,6 +410,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					r.Route("/backups", func(r chi.Router) {
 						r.Get("/settings", backupsHandler.GetSettings)
 						r.Put("/settings", backupsHandler.UpdateSettings)
+						r.Post("/import", backupsHandler.ImportManifest)
 						r.Post("/run", backupsHandler.TriggerBackup)
 						r.Get("/runs", backupsHandler.ListRuns)
 						r.Delete("/runs", backupsHandler.DeleteAllRuns)

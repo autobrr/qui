@@ -1192,6 +1192,107 @@ func (s *Service) LoadManifest(ctx context.Context, runID int64) (*Manifest, err
 	return manifest, nil
 }
 
+func (s *Service) ImportManifest(ctx context.Context, instanceID int, manifestData []byte, requestedBy string) (*models.BackupRun, error) {
+	var manifest Manifest
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		return nil, fmt.Errorf("failed to parse manifest: %w", err)
+	}
+
+	// Create a backup run record for the import
+	run := &models.BackupRun{
+		InstanceID:   instanceID,
+		Kind:         models.BackupRunKind(manifest.Kind),
+		Status:       models.BackupRunStatusSuccess, // Mark as success since we're importing completed data
+		RequestedBy:  requestedBy,
+		RequestedAt:  manifest.GeneratedAt,
+		CompletedAt:  &manifest.GeneratedAt,
+		TotalBytes:   0, // We'll calculate this
+		TorrentCount: manifest.TorrentCount,
+		Categories:   manifest.Categories,
+		Tags:         manifest.Tags,
+	}
+
+	if err := s.store.CreateRun(ctx, run); err != nil {
+		return nil, fmt.Errorf("failed to create import run: %w", err)
+	}
+
+	// Convert manifest items to backup items
+	items := make([]models.BackupItem, 0, len(manifest.Items))
+	var totalBytes int64
+
+	for _, item := range manifest.Items {
+		backupItem := models.BackupItem{
+			RunID:       run.ID,
+			TorrentHash: item.Hash,
+			Name:        item.Name,
+			SizeBytes:   item.SizeBytes,
+		}
+
+		if item.Category != nil {
+			backupItem.Category = item.Category
+		}
+
+		if item.ArchivePath != "" {
+			backupItem.ArchiveRelPath = &item.ArchivePath
+		}
+
+		if item.InfoHashV1 != nil {
+			backupItem.InfoHashV1 = item.InfoHashV1
+		}
+
+		if item.InfoHashV2 != nil {
+			backupItem.InfoHashV2 = item.InfoHashV2
+		}
+
+		if len(item.Tags) > 0 {
+			tagsStr := strings.Join(item.Tags, ",")
+			backupItem.Tags = &tagsStr
+		}
+
+		if item.TorrentBlob != "" {
+			// Check if the torrent file exists at the expected path
+			blobAbsPath := filepath.Join(s.cfg.DataDir, item.TorrentBlob)
+			if _, err := os.Stat(blobAbsPath); err == nil {
+				// File exists, use it
+				backupItem.TorrentBlobPath = &item.TorrentBlob
+			} else {
+				// File doesn't exist, try to download it from qBittorrent
+				if s.syncManager != nil {
+					if data, _, _, err := s.syncManager.ExportTorrent(ctx, instanceID, item.Hash); err == nil {
+						// Successfully downloaded, cache it
+						if s.cacheDir != "" {
+							if err := os.WriteFile(blobAbsPath, data, 0o644); err == nil {
+								backupItem.TorrentBlobPath = &item.TorrentBlob
+							}
+						}
+					}
+				}
+			}
+		}
+
+		items = append(items, backupItem)
+		totalBytes += item.SizeBytes
+	}
+
+	// Insert the items
+	if len(items) > 0 {
+		if err := s.store.InsertItems(ctx, run.ID, items); err != nil {
+			return nil, fmt.Errorf("failed to insert backup items: %w", err)
+		}
+	}
+
+	// Update the run with total bytes
+	run.TotalBytes = totalBytes
+	if err := s.store.UpdateRunMetadata(ctx, run.ID, func(r *models.BackupRun) error {
+		r.TotalBytes = totalBytes
+		return nil
+	}); err != nil {
+		log.Warn().Err(err).Int64("runID", run.ID).Msg("Failed to update total bytes for imported run")
+	}
+
+	return run, nil
+}
+
 // DataDir returns the base data directory used for backups.
 func (s *Service) DataDir() string {
 	return s.cfg.DataDir
