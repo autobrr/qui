@@ -3,16 +3,14 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { ColumnFilter, DurationUnit, SizeUnit, SpeedUnit } from "@/components/torrents/ColumnFilterPopover"
+import type { ColumnType, DurationUnit, FilterOperation, SizeUnit, SpeedUnit } from "@/lib/column-constants"
 import {
   BOOLEAN_COLUMNS,
   BOOLEAN_OPERATIONS,
-  type ColumnType,
   DATE_COLUMNS,
   DATE_OPERATIONS,
   DURATION_COLUMNS,
   ENUM_COLUMNS,
-  type FilterOperation,
   NUMERIC_COLUMNS,
   NUMERIC_OPERATIONS,
   PERCENTAGE_COLUMNS,
@@ -20,7 +18,21 @@ import {
   SPEED_COLUMNS,
   STRING_OPERATIONS
 } from "@/lib/column-constants"
-import type { Torrent, CrossInstanceTorrent } from "@/types"
+import type { CrossInstanceTorrent, Torrent, TorznabSearchResult } from "@/types"
+
+export interface ColumnFilter {
+  columnId: string
+  operation: FilterOperation
+  value: string
+  value2?: string
+  sizeUnit?: SizeUnit
+  sizeUnit2?: SizeUnit
+  speedUnit?: SpeedUnit
+  speedUnit2?: SpeedUnit
+  durationUnit?: DurationUnit
+  durationUnit2?: DurationUnit
+  caseSensitive?: boolean
+}
 
 const COLUMN_TO_QB_FIELD: Partial<Record<keyof (Torrent & CrossInstanceTorrent), string>> = {
   name: "Name",
@@ -94,7 +106,7 @@ function escapeExprValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")
 }
 
-function convertSizeToBytes(value: number, unit: SizeUnit | SpeedUnit): number {
+export function convertSizeToBytes(value: number, unit: SizeUnit | SpeedUnit): number {
   const k = 1024
   const unitMultipliers: Record<SizeUnit | SpeedUnit, number> = {
     B: 1,
@@ -371,5 +383,150 @@ export function getOperations(columnType: ColumnType) {
       return BOOLEAN_OPERATIONS
     default:
       return STRING_OPERATIONS
+  }
+}
+
+export function filterSearchResult(result: TorznabSearchResult, filter: ColumnFilter, categoryMap: Map<number, string>): boolean {
+  const { columnId, operation, value, value2, caseSensitive } = filter
+
+  let itemValue: string | number | boolean | Date | undefined
+
+  switch (columnId) {
+    case "title":
+      itemValue = result.title
+      break
+    case "indexer":
+      itemValue = result.indexer
+      break
+    case "size":
+      itemValue = result.size
+      break
+    case "seeders":
+      itemValue = result.seeders
+      break
+    case "category":
+      itemValue = categoryMap.get(result.categoryId) || result.categoryName || ""
+      break
+    case "source":
+      itemValue = result.source || ""
+      break
+    case "collection":
+      itemValue = result.collection || ""
+      break
+    case "group":
+      itemValue = result.group || ""
+      break
+    case "published":
+      itemValue = result.publishDate
+      break
+    case "freeleech":
+      itemValue = result.downloadVolumeFactor === 0
+      break
+    default:
+      return true
+  }
+
+  if (itemValue === undefined || itemValue === null) {
+    return false
+  }
+
+  if (columnId === "size" || columnId === "seeders") {
+    const numValue = Number(itemValue)
+    let compareValue1 = Number(value)
+    let compareValue2 = value2 ? Number(value2) : 0
+
+    if (columnId === "size" && filter.sizeUnit) {
+      compareValue1 = convertSizeToBytes(compareValue1, filter.sizeUnit)
+      if (value2 && filter.sizeUnit2) {
+        compareValue2 = convertSizeToBytes(compareValue2, filter.sizeUnit2)
+      } else if (value2) {
+        compareValue2 = convertSizeToBytes(compareValue2, filter.sizeUnit)
+      }
+    }
+
+    if (isNaN(compareValue1)) return true
+
+    switch (operation) {
+      case "eq": return numValue === compareValue1
+      case "ne": return numValue !== compareValue1
+      case "gt": return numValue > compareValue1
+      case "ge": return numValue >= compareValue1
+      case "lt": return numValue < compareValue1
+      case "le": return numValue <= compareValue1
+      case "between":
+        if (isNaN(compareValue2)) return true
+        return numValue >= compareValue1 && numValue <= compareValue2
+      default: return true
+    }
+  }
+
+  if (columnId === "published") {
+    const dateValue = new Date(itemValue as string).getTime()
+    const compareDate1 = new Date(value).getTime()
+
+    if (isNaN(compareDate1)) return true
+
+    switch (operation) {
+      case "eq":
+        const d1 = new Date(dateValue)
+        const d2 = new Date(compareDate1)
+        return d1.getFullYear() === d2.getFullYear() &&
+          d1.getMonth() === d2.getMonth() &&
+          d1.getDate() === d2.getDate()
+      case "gt": return dateValue > compareDate1
+      case "lt": return dateValue < compareDate1
+      case "between":
+        const compareDate2 = new Date(value2 || "").getTime()
+        if (isNaN(compareDate2)) return true
+        return dateValue >= compareDate1 && dateValue <= compareDate2
+      default: return true
+    }
+  }
+
+  if (columnId === "freeleech") {
+    const factor = result.downloadVolumeFactor
+    const selectedValues = value.split(",")
+
+    if (selectedValues.length === 0 || (selectedValues.length === 1 && selectedValues[0] === "")) {
+      return true
+    }
+
+    return selectedValues.some(val => {
+      if (val === "true") return factor === 0
+      if (val === "false") return factor > 0
+      const numVal = Number(val)
+      if (!isNaN(numVal)) {
+        return factor === numVal
+      }
+      return false
+    })
+  }
+
+  const strValue = String(itemValue)
+  const strFilter = value
+
+  if (value.includes(",") && (operation === "eq" || operation === "contains")) {
+    const selectedValues = value.split(",")
+    const a = caseSensitive ? strValue : strValue.toLowerCase()
+
+    return selectedValues.some(val => {
+      const b = caseSensitive ? val : val.toLowerCase()
+      if (operation === "eq") return a === b
+      if (operation === "contains") return a.includes(b)
+      return false
+    })
+  }
+
+  const a = caseSensitive ? strValue : strValue.toLowerCase()
+  const b = caseSensitive ? strFilter : strFilter.toLowerCase()
+
+  switch (operation) {
+    case "eq": return a === b
+    case "ne": return a !== b
+    case "contains": return a.includes(b)
+    case "notContains": return !a.includes(b)
+    case "startsWith": return a.startsWith(b)
+    case "endsWith": return a.endsWith(b)
+    default: return true
   }
 }
