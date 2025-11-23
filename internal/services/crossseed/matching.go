@@ -86,6 +86,10 @@ func (k releaseKey) String() string {
 // releasesMatch checks if two releases are related using fuzzy matching.
 // This allows matching similar content that isn't exactly the same.
 func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEpisodes bool) bool {
+	if source == candidate {
+		return true
+	}
+
 	// Title should match closely but not necessarily exactly.
 	sourceTitleLower := s.stringNormalizer.Normalize(source.Title)
 	candidateTitleLower := s.stringNormalizer.Normalize(candidate.Title)
