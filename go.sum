@@ -63,6 +63,8 @@ github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251030185713-77d0b1c8908d h1:/
 github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251030185713-77d0b1c8908d/go.mod h1:mGH+UlSzkZOpTx9hezpL9dnKakskLzOsNfngl2E1ZE0=
 github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251123050858-0d98e4fbae56 h1:eFqPY+01Xiu/mc7Rz+II+XGu4laHGc1rmDPqYzAB+KU=
 github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251123050858-0d98e4fbae56/go.mod h1:mGH+UlSzkZOpTx9hezpL9dnKakskLzOsNfngl2E1ZE0=
+github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251123070056-da58b6063850 h1:gcca4/oKI2WI+ZP8MGcnzY6AI0ho/dL4YHIu9p+9B1A=
+github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251123070056-da58b6063850/go.mod h1:mGH+UlSzkZOpTx9hezpL9dnKakskLzOsNfngl2E1ZE0=
 github.com/avast/retry-go v3.0.0+incompatible h1:4SOWQ7Qs+oroOTQOYnAHqelpCO0biHSxpiH9JdtuBj0=
 github.com/avast/retry-go v3.0.0+incompatible/go.mod h1:XtSnn+n/sHqQIpZ10K1qAevBhOOCWBLXXy3hyiqqBrY=
 github.com/benbjohnson/immutable v0.2.0/go.mod h1:uc6OHo6PN2++n98KHLxW8ef4W42ylHiQSENghE1ezxI=

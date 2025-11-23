@@ -9,7 +9,7 @@ require (
 	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/anacrolix/torrent v1.59.1
 	github.com/autobrr/autobrr v1.68.0
-	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251123050858-0d98e4fbae56
+	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251123070056-da58b6063850
 	github.com/coreos/go-oidc/v3 v3.16.0
 	github.com/creativeprojects/go-selfupdate v1.5.1
 	github.com/expr-lang/expr v1.17.6
