@@ -29,6 +29,13 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog"
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -197,7 +204,6 @@ export function InstanceBackups() {
 
   // Pagination state
   const [backupsPage, setBackupsPage] = useState(1)
-  const [downloadFormat, setDownloadFormat] = useState("zip")
 
   const { data: settings, isLoading: settingsLoading } = useBackupSettings(instanceId ?? 0, { enabled: shouldLoadData })
 
@@ -923,7 +929,7 @@ export function InstanceBackups() {
           </CardContent>
         </Card>
 
-        <Dialog open={restoreDialogOpen} onOpenChange={(open) => {
+        <Dialog open={restoreDialogOpen} onOpenChange={(open: boolean) => {
           if (!open) {
             closeRestoreDialog()
           }
@@ -1468,7 +1474,7 @@ export function InstanceBackups() {
           </DialogContent>
         </Dialog>
 
-        <Dialog open={importDialogOpen} onOpenChange={(open) => {
+        <Dialog open={importDialogOpen} onOpenChange={(open: boolean) => {
           setImportDialogOpen(open)
           if (!open) {
             setImportFile(null)
@@ -1748,7 +1754,7 @@ export function InstanceBackups() {
           </Card>
         </div>
 
-        <Dialog open={manifestOpen} onOpenChange={(open) => {
+        <Dialog open={manifestOpen} onOpenChange={(open: boolean) => {
           setManifestOpen(open)
           if (!open) {
             setManifestRunId(undefined)
