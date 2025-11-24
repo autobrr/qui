@@ -550,9 +550,12 @@ func (r *Repository) UpsertSyncInfoBatch(ctx context.Context, infos []SyncInfo) 
 		return fmt.Errorf("UpsertSyncInfoBatch: failed to intern torrent_hashes: %w", err)
 	}
 
-	// Build bulk upsert query
+	// Batch size for sync info inserts (5 placeholders per row, keep under SQLite's 999 limit)
+	const syncBatchSize = 150
+
+	// Build bulk upsert query template
 	queryTemplate := `
-		INSERT INTO torrent_files_sync 
+		INSERT INTO torrent_files_sync
 		(instance_id, torrent_hash_id, last_synced_at, torrent_progress, file_count)
 		VALUES %s
 		ON CONFLICT(instance_id, torrent_hash_id) DO UPDATE SET
@@ -560,24 +563,46 @@ func (r *Repository) UpsertSyncInfoBatch(ctx context.Context, infos []SyncInfo) 
 			torrent_progress = excluded.torrent_progress,
 			file_count = excluded.file_count
 	`
-	query := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 5, len(infos))
 
-	// Build args
-	args := make([]any, 0, len(infos)*5)
-	for i, info := range infos {
-		hashID := hashIDs[i]
-		args = append(args,
-			info.InstanceID,
-			hashID,
-			info.LastSyncedAt,
-			info.TorrentProgress,
-			info.FileCount,
-		)
-	}
+	// Pre-build the full query for full batches
+	fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 5, syncBatchSize)
 
-	_, err = tx.ExecContext(ctx, query, args...)
-	if err != nil {
-		return fmt.Errorf("UpsertSyncInfoBatch: failed to upsert sync info: %w", err)
+	// Pre-allocate args slice to reuse across batches
+	args := make([]interface{}, 0, syncBatchSize*5)
+
+	// Batch insert sync infos
+	for i := 0; i < len(infos); i += syncBatchSize {
+		end := i + syncBatchSize
+		if end > len(infos) {
+			end = len(infos)
+		}
+		batch := infos[i:end]
+
+		// Reset args for this batch
+		args = args[:0]
+		var query string
+		if len(batch) == syncBatchSize {
+			query = fullBatchQuery
+		} else {
+			// Build query for partial final batch
+			query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 5, len(batch))
+		}
+
+		for j, info := range batch {
+			hashID := hashIDs[i+j]
+			args = append(args,
+				info.InstanceID,
+				hashID,
+				info.LastSyncedAt,
+				info.TorrentProgress,
+				info.FileCount,
+			)
+		}
+
+		_, err = tx.ExecContext(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("UpsertSyncInfoBatch: failed to upsert sync info batch: %w", err)
+		}
 	}
 
 	return tx.Commit()
@@ -687,18 +712,38 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 		return 0, fmt.Errorf("failed to create temp table: %w", err)
 	}
 
-	// Insert current hashes into temp table
+	// Insert current hashes into temp table in batches
 	queryTemplate := `INSERT OR IGNORE INTO current_hashes (hash) VALUES %s`
-	query := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 1, len(currentHashes))
+	const hashBatchSize = 900 // Keep under SQLite's 999 variable limit
+	fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 1, hashBatchSize)
 
-	args := make([]any, len(currentHashes))
-	for i, hash := range currentHashes {
-		args[i] = hash
-	}
+	args := make([]any, 0, hashBatchSize)
 
-	_, err = tx.ExecContext(ctx, query, args...)
-	if err != nil {
-		return 0, fmt.Errorf("failed to insert hashes into temp table: %w", err)
+	for i := 0; i < len(currentHashes); i += hashBatchSize {
+		end := i + hashBatchSize
+		if end > len(currentHashes) {
+			end = len(currentHashes)
+		}
+		batch := currentHashes[i:end]
+
+		// Reset args for this batch
+		args = args[:0]
+		var query string
+		if len(batch) == hashBatchSize {
+			query = fullBatchQuery
+		} else {
+			// Build query for partial final batch
+			query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 1, len(batch))
+		}
+
+		for _, hash := range batch {
+			args = append(args, hash)
+		}
+
+		_, err = tx.ExecContext(ctx, query, args...)
+		if err != nil {
+			return 0, fmt.Errorf("failed to insert hashes batch into temp table: %w", err)
+		}
 	}
 
 	// Delete files for torrents not in current hashes
