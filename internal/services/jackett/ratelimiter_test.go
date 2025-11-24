@@ -75,8 +75,8 @@ func TestRateLimiterMaxWaitBudget(t *testing.T) {
 
 	opts := &RateLimitOptions{
 		Priority:    RateLimitPriorityInteractive,
-		MinInterval: 50 * time.Millisecond,
-		MaxWait:     10 * time.Millisecond,
+		MinInterval: 150 * time.Millisecond,
+		MaxWait:     5 * time.Millisecond,
 	}
 
 	err := limiter.BeforeRequest(context.Background(), indexer, opts)

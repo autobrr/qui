@@ -13,6 +13,13 @@ const (
 	defaultMinRequestInterval = 60 * time.Second
 )
 
+var priorityMultipliers = map[RateLimitPriority]float64{
+	RateLimitPriorityInteractive: 0.1,
+	RateLimitPriorityRSS:         0.5,
+	RateLimitPriorityCompletion:  0.7,
+	RateLimitPriorityBackground:  1.0,
+}
+
 type RateLimitPriority string
 
 const (
@@ -50,16 +57,17 @@ func (e *RateLimitWaitError) Is(target error) bool {
 }
 
 type indexerRateState struct {
-	lastRequest    time.Time
-	cooldownUntil  time.Time
-	hourlyRequests []time.Time
-	dailyRequests  []time.Time
+	lastRequest    time.Duration
+	cooldownUntil  time.Duration
+	hourlyRequests []time.Duration
+	dailyRequests  []time.Duration
 }
 
 type RateLimiter struct {
 	mu          sync.Mutex
 	minInterval time.Duration
 	states      map[int]*indexerRateState
+	startTime   time.Time
 }
 
 func NewRateLimiter(minInterval time.Duration) *RateLimiter {
@@ -69,6 +77,7 @@ func NewRateLimiter(minInterval time.Duration) *RateLimiter {
 	return &RateLimiter{
 		minInterval: minInterval,
 		states:      make(map[int]*indexerRateState),
+		startTime:   time.Now(),
 	}
 }
 
@@ -83,7 +92,7 @@ func (r *RateLimiter) BeforeRequest(ctx context.Context, indexer *models.Torznab
 	defer r.mu.Unlock()
 
 	for {
-		now := time.Now()
+		now := time.Since(r.startTime)
 		wait := r.computeWaitLocked(indexer, now, cfg.MinInterval)
 		if wait <= 0 {
 			r.recordLocked(indexer.ID, now)
@@ -119,10 +128,13 @@ func (r *RateLimiter) RecordRequest(indexerID int, ts time.Time) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	var dur time.Duration
 	if ts.IsZero() {
-		ts = time.Now()
+		dur = time.Since(r.startTime)
+	} else {
+		dur = ts.Sub(r.startTime)
 	}
-	r.recordLocked(indexerID, ts)
+	r.recordLocked(indexerID, dur)
 }
 
 func (r *RateLimiter) SetCooldown(indexerID int, until time.Time) {
@@ -130,8 +142,9 @@ func (r *RateLimiter) SetCooldown(indexerID int, until time.Time) {
 	defer r.mu.Unlock()
 
 	state := r.getStateLocked(indexerID)
-	if until.After(state.cooldownUntil) {
-		state.cooldownUntil = until
+	cooldownDur := until.Sub(r.startTime)
+	if cooldownDur > state.cooldownUntil {
+		state.cooldownUntil = cooldownDur
 	}
 }
 
@@ -147,8 +160,9 @@ func (r *RateLimiter) LoadCooldowns(cooldowns map[int]time.Time) {
 			continue
 		}
 		state := r.getStateLocked(indexerID)
-		if until.After(state.cooldownUntil) {
-			state.cooldownUntil = until
+		cooldownDur := until.Sub(r.startTime)
+		if cooldownDur > state.cooldownUntil {
+			state.cooldownUntil = cooldownDur
 		}
 	}
 }
@@ -158,7 +172,7 @@ func (r *RateLimiter) ClearCooldown(indexerID int) {
 	defer r.mu.Unlock()
 
 	state := r.getStateLocked(indexerID)
-	state.cooldownUntil = time.Time{}
+	state.cooldownUntil = 0
 }
 
 // IsInCooldown checks if an indexer is currently in cooldown without blocking
@@ -167,9 +181,9 @@ func (r *RateLimiter) IsInCooldown(indexerID int) (bool, time.Time) {
 	defer r.mu.Unlock()
 
 	state := r.getStateLocked(indexerID)
-	now := time.Now()
-	if !state.cooldownUntil.IsZero() && state.cooldownUntil.After(now) {
-		return true, state.cooldownUntil
+	now := time.Since(r.startTime)
+	if state.cooldownUntil > 0 && state.cooldownUntil > now {
+		return true, r.startTime.Add(state.cooldownUntil)
 	}
 	return false, time.Time{}
 }
@@ -180,16 +194,16 @@ func (r *RateLimiter) GetCooldownIndexers() map[int]time.Time {
 	defer r.mu.Unlock()
 
 	cooldowns := make(map[int]time.Time)
-	now := time.Now()
+	now := time.Since(r.startTime)
 	for indexerID, state := range r.states {
-		if !state.cooldownUntil.IsZero() && state.cooldownUntil.After(now) {
-			cooldowns[indexerID] = state.cooldownUntil
+		if state.cooldownUntil > 0 && state.cooldownUntil > now {
+			cooldowns[indexerID] = r.startTime.Add(state.cooldownUntil)
 		}
 	}
 	return cooldowns
 }
 
-func (r *RateLimiter) computeWaitLocked(indexer *models.TorznabIndexer, now time.Time, minInterval time.Duration) time.Duration {
+func (r *RateLimiter) computeWaitLocked(indexer *models.TorznabIndexer, now time.Duration, minInterval time.Duration) time.Duration {
 	if minInterval <= 0 {
 		minInterval = r.minInterval
 	}
@@ -198,14 +212,14 @@ func (r *RateLimiter) computeWaitLocked(indexer *models.TorznabIndexer, now time
 
 	var wait time.Duration
 
-	if !state.cooldownUntil.IsZero() && state.cooldownUntil.After(now) {
-		wait = state.cooldownUntil.Sub(now)
+	if state.cooldownUntil > 0 && state.cooldownUntil > now {
+		wait = state.cooldownUntil - now
 	}
 
-	if minInterval > 0 && !state.lastRequest.IsZero() {
-		next := state.lastRequest.Add(minInterval)
-		if next.After(now) {
-			delay := next.Sub(now)
+	if minInterval > 0 && state.lastRequest >= 0 {
+		next := state.lastRequest + minInterval
+		if next > now {
+			delay := next - now
 			if delay > wait {
 				wait = delay
 			}
@@ -215,9 +229,9 @@ func (r *RateLimiter) computeWaitLocked(indexer *models.TorznabIndexer, now time
 	if limit := derefLimit(indexer.HourlyRequestLimit); limit > 0 {
 		if len(state.hourlyRequests) >= limit {
 			oldest := state.hourlyRequests[0]
-			readyAt := oldest.Add(time.Hour)
-			if readyAt.After(now) {
-				delay := readyAt.Sub(now)
+			readyAt := oldest + time.Hour
+			if readyAt > now {
+				delay := readyAt - now
 				if delay > wait {
 					wait = delay
 				}
@@ -228,9 +242,9 @@ func (r *RateLimiter) computeWaitLocked(indexer *models.TorznabIndexer, now time
 	if limit := derefLimit(indexer.DailyRequestLimit); limit > 0 {
 		if len(state.dailyRequests) >= limit {
 			oldest := state.dailyRequests[0]
-			readyAt := oldest.Add(24 * time.Hour)
-			if readyAt.After(now) {
-				delay := readyAt.Sub(now)
+			readyAt := oldest + 24*time.Hour
+			if readyAt > now {
+				delay := readyAt - now
 				if delay > wait {
 					wait = delay
 				}
@@ -241,43 +255,43 @@ func (r *RateLimiter) computeWaitLocked(indexer *models.TorznabIndexer, now time
 	return wait
 }
 
-func (r *RateLimiter) pruneLocked(state *indexerRateState, now time.Time) {
-	cutoffHour := now.Add(-1 * time.Hour)
-	cutoffDay := now.Add(-24 * time.Hour)
+func (r *RateLimiter) pruneLocked(state *indexerRateState, now time.Duration) {
+	cutoffHour := now - 1*time.Hour
+	cutoffDay := now - 24*time.Hour
 
 	idx := 0
 	for _, ts := range state.hourlyRequests {
-		if ts.After(cutoffHour) {
+		if ts > cutoffHour {
 			break
 		}
 		idx++
 	}
 	if idx > 0 {
-		state.hourlyRequests = append([]time.Time(nil), state.hourlyRequests[idx:]...)
+		state.hourlyRequests = state.hourlyRequests[idx:]
 	}
 
 	idx = 0
 	for _, ts := range state.dailyRequests {
-		if ts.After(cutoffDay) {
+		if ts > cutoffDay {
 			break
 		}
 		idx++
 	}
 	if idx > 0 {
-		state.dailyRequests = append([]time.Time(nil), state.dailyRequests[idx:]...)
+		state.dailyRequests = state.dailyRequests[idx:]
 	}
 }
 
 func (r *RateLimiter) getStateLocked(indexerID int) *indexerRateState {
 	state, ok := r.states[indexerID]
 	if !ok {
-		state = &indexerRateState{}
+		state = &indexerRateState{lastRequest: -1}
 		r.states[indexerID] = state
 	}
 	return state
 }
 
-func (r *RateLimiter) recordLocked(indexerID int, ts time.Time) {
+func (r *RateLimiter) recordLocked(indexerID int, ts time.Duration) {
 	state := r.getStateLocked(indexerID)
 	state.lastRequest = ts
 	state.hourlyRequests = append(state.hourlyRequests, ts)
@@ -295,18 +309,8 @@ func (r *RateLimiter) NextWait(indexer *models.TorznabIndexer, opts *RateLimitOp
 	cfg := r.resolveOptions(opts)
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	now := time.Now()
+	now := time.Since(r.startTime)
 	return r.computeWaitLocked(indexer, now, cfg.MinInterval)
-}
-
-func derefLimit(limit *int) int {
-	if limit == nil {
-		return 0
-	}
-	if *limit < 0 {
-		return 0
-	}
-	return *limit
 }
 
 func (r *RateLimiter) resolveOptions(opts *RateLimitOptions) RateLimitOptions {
@@ -331,5 +335,19 @@ func (r *RateLimiter) resolveOptions(opts *RateLimitOptions) RateLimitOptions {
 		cfg.MinInterval = defaultMinRequestInterval
 	}
 
+	if multiplier, ok := priorityMultipliers[cfg.Priority]; ok {
+		cfg.MinInterval = time.Duration(float64(cfg.MinInterval) * multiplier)
+	}
+
 	return cfg
+}
+
+func derefLimit(limit *int) int {
+	if limit == nil {
+		return 0
+	}
+	if *limit < 0 {
+		return 0
+	}
+	return *limit
 }
