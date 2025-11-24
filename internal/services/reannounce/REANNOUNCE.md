@@ -8,9 +8,9 @@ qui never spams trackers. While a tracker is still updating or waiting for a res
 
 ## Quick Start
 
-1. Go to **Settings > Instances** (or click the cogwheel on an instance card).
-2. Open the **Tracker Reannounce** tab.
-3. Toggle **Enabled** to turn it on.
+1. Go to **Services** in the main navigation.
+2. Select an instance from the dropdown.
+3. In the **Tracker Reannounce** section, toggle **Enabled** to turn it on.
 4. Click **Save Changes**.
 
 That’s it! qui will now monitor stalled torrents in the background.
@@ -39,8 +39,8 @@ By default, qui waits about **2 minutes** between reannounce attempts for the sa
 This is especially useful on trackers that are slow to register new uploads. Some sites take a moment before they recognize a new torrent, which can cause initial stalls—Quick Retry helps work around this automatically.
 
 ## Activity Log
-To see what’s happening:
-1. Go to the **Tracker Reannounce** tab.
-2. Click **Activity Log**.
+To see what's happening:
+1. Go to **Services** and select your instance.
+2. Click the **Activity Log** tab in the Tracker Reannounce section.
 
 You will see a real-time feed of every torrent checked, whether the reannounce succeeded, failed, or was skipped (e.g., because the tracker is actually working fine).
