@@ -1202,7 +1202,9 @@ func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int,
 	hashesToFetch := normalized.canonical
 	cacheHits := 0
 
-	if fm := sm.getFilesManager(); fm != nil {
+	forceRefresh := forceFilesRefresh(ctx)
+
+	if fm := sm.getFilesManager(); fm != nil && !forceRefresh {
 		if cached, missing, cacheErr := fm.GetCachedFilesBatch(ctx, instanceID, normalized.canonical); cacheErr != nil {
 			log.Warn().
 				Err(cacheErr).

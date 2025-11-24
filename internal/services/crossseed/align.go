@@ -10,6 +10,8 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 type fileRenameInstruction struct {
@@ -78,7 +80,8 @@ func (s *Service) alignCrossSeedContentPaths(
 	}
 
 	sourceFiles := expectedSourceFiles
-	filesMap, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{torrentHash})
+	refreshCtx := qbittorrent.WithForceFilesRefresh(ctx)
+	filesMap, err := s.syncManager.GetTorrentFilesBatch(refreshCtx, instanceID, []string{torrentHash})
 	if err == nil {
 		if currentFiles, ok := filesMap[canonicalHash]; ok && len(currentFiles) > 0 {
 			sourceFiles = currentFiles
