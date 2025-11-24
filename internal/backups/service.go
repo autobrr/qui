@@ -1034,25 +1034,47 @@ func (s *Service) cleanupRunFiles(ctx context.Context, runIDs []int64) error {
 		return nil
 	}
 
+	// Get all runs in one query
+	runs, err := s.store.GetRuns(ctx, runIDs)
+	if err != nil {
+		return err
+	}
+
+	// Create a map for quick lookup
+	runMap := make(map[int64]*models.BackupRun)
+	for _, run := range runs {
+		if run != nil {
+			runMap[run.ID] = run
+		}
+	}
+
+	// Get all items for all runs in one query
+	items, err := s.store.ListItemsForRuns(ctx, runIDs)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to list backup items for cleanup")
+		items = nil
+	}
+
 	var filesToDelete []string
 	var itemsToCleanup []*models.BackupItem
 
 	for _, runID := range runIDs {
-		run, err := s.store.GetRun(ctx, runID)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			log.Warn().Err(err).Int64("runID", runID).Msg("Failed to lookup run for cleanup")
+		run, exists := runMap[runID]
+		if !exists {
+			// Run was already deleted or not found
 			continue
 		}
 
-		items, err := s.store.ListItems(ctx, runID)
-		if err != nil {
-			log.Warn().Err(err).Int64("runID", runID).Msg("Failed to list backup items for cleanup")
-		} else {
-			itemsToCleanup = append(itemsToCleanup, items...)
+		// Collect items for this run
+		var runItems []*models.BackupItem
+		if items != nil {
+			for _, item := range items {
+				if item.RunID == runID {
+					runItems = append(runItems, item)
+				}
+			}
 		}
+		itemsToCleanup = append(itemsToCleanup, runItems...)
 
 		if run.ManifestPath != nil {
 			manifestPath := filepath.Join(s.cfg.DataDir, *run.ManifestPath)
@@ -1062,14 +1084,15 @@ func (s *Service) cleanupRunFiles(ctx context.Context, runIDs []int64) error {
 			archivePath := filepath.Join(s.cfg.DataDir, *run.ArchivePath)
 			filesToDelete = append(filesToDelete, archivePath)
 		}
-
-		if err := s.store.CleanupRun(ctx, runID); err != nil {
-			log.Warn().Err(err).Int64("runID", runID).Msg("Failed to cleanup run from database")
-		}
 	}
 
 	// Delete files in parallel
 	s.deleteFilesParallel(ctx, filesToDelete)
+
+	// Batch cleanup all runs in database
+	if err := s.store.CleanupRuns(ctx, runIDs); err != nil {
+		log.Warn().Err(err).Msg("Failed to cleanup runs from database")
+	}
 
 	s.cleanupTorrentBlobs(ctx, itemsToCleanup)
 
@@ -1414,41 +1437,41 @@ func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing [
 			log.Warn().Err(err).Int("downloaded", successCount).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Msg("Failed to download missing torrent blob from client")
 			// TODO: Torznab search fallback is disabled due to API changes
 			/*
-			// Attempt Torznab search fallback for missing torrents
-			if s.jackettSvc != nil {
-				ctx := context.Background()
-				searchReq := &jackett.TorznabSearchRequest{
-					Query: mt.name, // Search by torrent name
-					Limit: 10,      // Get multiple results to find the right one
-				}
+				// Attempt Torznab search fallback for missing torrents
+				if s.jackettSvc != nil {
+					ctx := context.Background()
+					searchReq := &jackett.TorznabSearchRequest{
+						Query: mt.name, // Search by torrent name
+						Limit: 10,      // Get multiple results to find the right one
+					}
 
-				searchResp, searchErr := s.jackettSvc.SearchGeneric(ctx, searchReq)
-				if searchErr != nil {
-					log.Warn().Err(searchErr).Int64("runID", runID).Str("hash", mt.hash).Str("name", mt.name).Msg("Torznab search failed")
-				} else if len(searchResp.Results) > 0 {
-					// Look for a result that matches our infohash or name
-					var matchingResult *jackett.SearchResult
-					for _, result := range searchResp.Results {
-						// Check if this result has the infohash we want
-						// TODO: If InfoHashV1/InfoHashV2 are populated from RSS, check them here
+					searchResp, searchErr := s.jackettSvc.SearchGeneric(ctx, searchReq)
+					if searchErr != nil {
+						log.Warn().Err(searchErr).Int64("runID", runID).Str("hash", mt.hash).Str("name", mt.name).Msg("Torznab search failed")
+					} else if len(searchResp.Results) > 0 {
+						// Look for a result that matches our infohash or name
+						var matchingResult *jackett.SearchResult
+						for _, result := range searchResp.Results {
+							// Check if this result has the infohash we want
+							// TODO: If InfoHashV1/InfoHashV2 are populated from RSS, check them here
 
-						// For now, prefer exact name matches, then partial matches
-						if result.Title == mt.name {
-							matchingResult = &result
-							break // Exact match, use this one
-						} else if strings.Contains(strings.ToLower(result.Title), strings.ToLower(mt.name)) && matchingResult == nil {
-							matchingResult = &result // Partial match, keep looking for exact
+							// For now, prefer exact name matches, then partial matches
+							if result.Title == mt.name {
+								matchingResult = &result
+								break // Exact match, use this one
+							} else if strings.Contains(strings.ToLower(result.Title), strings.ToLower(mt.name)) && matchingResult == nil {
+								matchingResult = &result // Partial match, keep looking for exact
+							}
 						}
-					}
 
-					// If no good name match, take the first result as a last resort
-					if matchingResult == nil && len(searchResp.Results) > 0 {
-						matchingResult = &searchResp.Results[0]
-						log.Warn().Int64("runID", runID).Str("hash", mt.hash).Str("name", mt.name).Str("fallbackTitle", matchingResult.Title).Msg("No good name match found, using first result as fallback")
-					}
+						// If no good name match, take the first result as a last resort
+						if matchingResult == nil && len(searchResp.Results) > 0 {
+							matchingResult = &searchResp.Results[0]
+							log.Warn().Int64("runID", runID).Str("hash", mt.hash).Str("name", mt.name).Str("fallbackTitle", matchingResult.Title).Msg("No good name match found, using first result as fallback")
+						}
 
-					if matchingResult != nil {
-						log.Info().Int64("runID", runID).Str("hash", mt.hash).Str("name", mt.name).Str("title", matchingResult.Title).Str("indexer", matchingResult.Indexer).Msg("Found potential torrent match via Torznab search, downloading")
+						if matchingResult != nil {
+							log.Info().Int64("runID", runID).Str("hash", mt.hash).Str("name", mt.name).Str("title", matchingResult.Title).Str("indexer", matchingResult.Indexer).Msg("Found potential torrent match via Torznab search, downloading")
 			*/
 			s.updateProgress(runID, i+1)
 		}
@@ -1543,7 +1566,7 @@ func (s *Service) cleanupTorrentBlobs(ctx context.Context, items []*models.Backu
 	}
 
 	seen := make(map[string]struct{})
-	var blobsToDelete []string
+	var uniqueBlobs []string
 
 	for _, item := range items {
 		if item == nil || item.TorrentBlobPath == nil {
@@ -1559,11 +1582,35 @@ func (s *Service) cleanupTorrentBlobs(ctx context.Context, items []*models.Backu
 		}
 
 		seen[rel] = struct{}{}
+		uniqueBlobs = append(uniqueBlobs, rel)
+	}
 
-		count, err := s.store.CountBlobReferences(ctx, rel)
-		if err != nil {
-			log.Warn().Err(err).Str("blob", rel).Msg("Failed to count torrent blob references")
-			continue
+	if len(uniqueBlobs) == 0 {
+		return
+	}
+
+	// Batch count references for all blobs
+	refCounts, err := s.store.CountBlobReferencesBatch(ctx, uniqueBlobs)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to count torrent blob references")
+		// Fall back to individual counts if batch fails
+		refCounts = make(map[string]int)
+		for _, blob := range uniqueBlobs {
+			count, err := s.store.CountBlobReferences(ctx, blob)
+			if err != nil {
+				log.Warn().Err(err).Str("blob", blob).Msg("Failed to count torrent blob references")
+				continue
+			}
+			refCounts[blob] = count
+		}
+	}
+
+	var blobsToDelete []string
+
+	for _, rel := range uniqueBlobs {
+		count, exists := refCounts[rel]
+		if !exists {
+			count = 0 // If not in map, assume 0 references
 		}
 		if count > 0 {
 			continue
