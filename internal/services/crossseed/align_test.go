@@ -50,6 +50,50 @@ func TestBuildFileRenamePlan_MovieRelease(t *testing.T) {
 		plan[0].newPath)
 }
 
+func TestBuildFileRenamePlan_SidecarMultiExt(t *testing.T) {
+	t.Parallel()
+
+	sourceFiles := qbt.TorrentFiles{
+		{
+			Name: "Show.Name.S01E01.1080p.WEB.H264-GRP/Show.Name.S01E01.1080p.WEB.H264-GRP.mkv",
+			Size: 10,
+		},
+		{
+			Name: "Show.Name.S01E01.1080p.WEB.H264-GRP/Show.Name.S01E01.1080p.WEB.H264-GRP.mkv.nfo",
+			Size: 1,
+		},
+	}
+	candidateFiles := qbt.TorrentFiles{
+		{
+			Name: "Show Name S01E01 1080p WEB H264-GRP/Show Name S01E01 1080p WEB H264-GRP.mkv",
+			Size: 10,
+		},
+		{
+			Name: "Show Name S01E01 1080p WEB H264-GRP/Show Name S01E01 1080p WEB H264-GRP.nfo",
+			Size: 1,
+		},
+	}
+
+	plan, unmatched := buildFileRenamePlan(sourceFiles, candidateFiles)
+
+	require.Empty(t, unmatched, "sidecar with intermediate video extension should be mappable")
+	require.Len(t, plan, 2)
+
+	require.Equal(t,
+		"Show.Name.S01E01.1080p.WEB.H264-GRP/Show.Name.S01E01.1080p.WEB.H264-GRP.mkv",
+		plan[0].oldPath)
+	require.Equal(t,
+		"Show Name S01E01 1080p WEB H264-GRP/Show Name S01E01 1080p WEB H264-GRP.mkv",
+		plan[0].newPath)
+
+	require.Equal(t,
+		"Show.Name.S01E01.1080p.WEB.H264-GRP/Show.Name.S01E01.1080p.WEB.H264-GRP.mkv.nfo",
+		plan[1].oldPath)
+	require.Equal(t,
+		"Show Name S01E01 1080p WEB H264-GRP/Show Name S01E01 1080p WEB H264-GRP.nfo",
+		plan[1].newPath)
+}
+
 func TestBuildFileRenamePlan_SingleFile(t *testing.T) {
 	t.Parallel()
 

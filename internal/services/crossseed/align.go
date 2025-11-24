@@ -325,6 +325,19 @@ func normalizeFileKey(path string) string {
 		base = base[:dot]
 	}
 
+	// For sidecar files like .nfo/.srt/.sub/.idx/.sfv/.txt, ignore an
+	// intermediate video extension (e.g. ".mkv" in "name.mkv.nfo") so that
+	// "Name.mkv.nfo" and "Name.nfo" normalize to the same key.
+	if ext == "nfo" || ext == "srt" || ext == "sub" || ext == "idx" || ext == "sfv" || ext == "txt" {
+		if dot := strings.LastIndex(base, "."); dot >= 0 && dot < len(base)-1 {
+			videoExt := strings.ToLower(base[dot+1:])
+			switch videoExt {
+			case "mkv", "mp4", "avi", "ts", "m2ts", "mov", "mpg", "mpeg":
+				base = base[:dot]
+			}
+		}
+	}
+
 	var b strings.Builder
 	for _, r := range base {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
