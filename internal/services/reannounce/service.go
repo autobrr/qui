@@ -263,6 +263,7 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 
 	now := s.currentTime()
 	instJobs := s.j[instanceID]
+	debounceWindow := s.effectiveDebounceWindow(settings)
 
 	var result []MonitoredTorrent
 	for _, torrent := range torrents {
@@ -286,7 +287,7 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 			if job, ok := instJobs[hashUpper]; ok {
 				if job.isRunning {
 					state = MonitoredTorrentStateReannouncing
-				} else if !job.lastCompleted.IsZero() && now.Sub(job.lastCompleted) < s.cfg.DebounceWindow {
+				} else if !job.lastCompleted.IsZero() && now.Sub(job.lastCompleted) < debounceWindow {
 					state = MonitoredTorrentStateCooldown
 				}
 			}
@@ -343,13 +344,7 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 
 	settings := s.getSettings(baseCtx, instanceID)
 	isAggressive := settings != nil && settings.Aggressive
-	// Determine debounce window: aggressive uses retry interval; non-aggressive uses global cooldown.
-	debounceWindow := s.cfg.DebounceWindow
-	if isAggressive {
-		if interval := time.Duration(settings.ReannounceIntervalSeconds) * time.Second; interval > 0 {
-			debounceWindow = interval
-		}
-	}
+	debounceWindow := s.effectiveDebounceWindow(settings)
 
 	if !job.lastCompleted.IsZero() && debounceWindow > 0 {
 		if elapsed := now.Sub(job.lastCompleted); elapsed < debounceWindow {
@@ -810,6 +805,17 @@ func (s *Service) currentTime() time.Time {
 		return s.now()
 	}
 	return time.Now()
+}
+
+// effectiveDebounceWindow returns the debounce duration to use for cooldown checks.
+// aggressive mode uses the retry interval; otherwise the global debounce window applies.
+func (s *Service) effectiveDebounceWindow(settings *models.InstanceReannounceSettings) time.Duration {
+	if settings != nil && settings.Aggressive {
+		if interval := time.Duration(settings.ReannounceIntervalSeconds) * time.Second; interval > 0 {
+			return interval
+		}
+	}
+	return s.cfg.DebounceWindow
 }
 
 func (s *Service) extractTrackerDomain(trackerURL string) string {
