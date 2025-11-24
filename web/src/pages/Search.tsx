@@ -120,6 +120,14 @@ export function Search() {
   const blurTimeoutRef = useRef<number | null>(null)
   const rafIdRef = useRef<number | null>(null)
   const { formatDate } = useDateTimeFormatters()
+  const closeSuggestions = useCallback(() => {
+    if (blurTimeoutRef.current !== null) {
+      window.clearTimeout(blurTimeoutRef.current)
+      blurTimeoutRef.current = null
+    }
+    setQueryFocused(false)
+    queryInputRef.current?.blur()
+  }, [])
   const persistSelectedInstanceId = useCallback((instanceId: number | null) => {
     setSelectedInstanceId(instanceId)
     if (typeof window === 'undefined') {
@@ -509,6 +517,7 @@ export function Search() {
     if (!validateSearchInputs()) {
       return
     }
+    closeSuggestions()
     await runSearch()
   }
 
@@ -680,18 +689,13 @@ export function Search() {
     const derivedType = inferSearchTypeFromCategories(search.categories) ?? 'auto'
     setSearchType(derivedType)
     applyIndexerSelectionFromSuggestion(search.indexerIds)
-    const rafId = requestAnimationFrame(() => {
-      queryInputRef.current?.focus()
-    })
-    rafIdRef.current = rafId
     const normalized = search.query.trim()
     if (!validateSearchInputs(normalized)) {
-      cancelAnimationFrame(rafId)
-      rafIdRef.current = null
       return
     }
+    closeSuggestions()
     void runSearch({ queryOverride: normalized, searchTypeOverride: derivedType })
-  }, [applyIndexerSelectionFromSuggestion, runSearch, validateSearchInputs])
+  }, [applyIndexerSelectionFromSuggestion, closeSuggestions, runSearch, validateSearchInputs])
 
   const handleDownload = (result: TorznabSearchResult) => {
     window.open(result.downloadUrl, '_blank')
