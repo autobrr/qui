@@ -293,7 +293,7 @@ func (w *indexerWorker) run(done chan<- workerResult) {
 				}
 			}()
 
-			if task.ctx.Err() != nil {
+			if !task.isRSS && task.ctx.Err() != nil {
 				task.respCh <- workerResult{jobID: task.jobID, indexer: w.indexerID, err: task.ctx.Err()}
 				done <- workerResult{jobID: task.jobID, indexer: w.indexerID}
 				return

@@ -111,15 +111,20 @@ func (r *RateLimiter) BeforeRequest(ctx context.Context, indexer *models.Torznab
 
 		timer := time.NewTimer(wait)
 		r.mu.Unlock()
-		select {
-		case <-ctx.Done():
-			if !timer.Stop() {
-				<-timer.C
+		if cfg.Priority == RateLimitPriorityRSS {
+			<-timer.C
+			r.mu.Lock()
+		} else {
+			select {
+			case <-ctx.Done():
+				if !timer.Stop() {
+					<-timer.C
+				}
+				r.mu.Lock()
+				return ctx.Err()
+			case <-timer.C:
+				r.mu.Lock()
 			}
-			r.mu.Lock()
-			return ctx.Err()
-		case <-timer.C:
-			r.mu.Lock()
 		}
 	}
 }

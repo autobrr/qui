@@ -511,8 +511,8 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 		baseCtx = context.Background()
 		log.Debug().Dur("search_timeout", searchTimeout).Msg("RSS search using scheduler with dedicated timeout")
 	}
-	searchCtx, cancel := timeouts.WithSearchTimeout(baseCtx, searchTimeout)
-	defer cancel()
+	searchCtx, _ := timeouts.WithSearchTimeout(baseCtx, searchTimeout)
+	// Note: do not cancel for async searches, as it would cancel immediately when the function returns
 
 	resultCallback := func(allResults []Result, networkCoverage []int, err error) {
 		deadlineErr := err != nil && errors.Is(err, context.DeadlineExceeded)
@@ -658,16 +658,12 @@ func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int, callb
 	meta := finalizeSearchContext(ctx, nil, RateLimitPriorityBackground)
 
 	searchTimeout := computeSearchTimeout(meta, len(indexersToSearch))
-	searchCtx, cancel := timeouts.WithSearchTimeout(ctx, searchTimeout)
-	defer cancel()
+	searchCtx, _ := timeouts.WithSearchTimeout(ctx, searchTimeout)
+	// Note: do not cancel for async searches, as it would cancel immediately when the function returns
 
 	resultCallback := func(results []Result, coverage []int, err error) {
 		deadlineErr := err != nil && errors.Is(err, context.DeadlineExceeded)
-		if err != nil && !deadlineErr {
-			callback(nil, err)
-			return
-		}
-		partial := deadlineErr && len(results) > 0
+		partial := (deadlineErr && len(results) > 0) || (err != nil && !deadlineErr)
 		if partial && len(coverage) == len(indexersToSearch) {
 			partial = false
 		}
@@ -683,7 +679,7 @@ func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int, callb
 				Int("indexers_requested", len(indexersToSearch)).
 				Int("results_collected", len(searchResults)).
 				Dur("timeout", searchTimeout).
-				Msg("Recent search returning partial results due to deadline")
+				Msg("Recent search returning partial results")
 		}
 		callback(resp, nil)
 	}
