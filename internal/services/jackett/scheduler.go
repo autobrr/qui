@@ -175,6 +175,11 @@ func (s *searchScheduler) Submit(ctx context.Context, indexers []*models.Torznab
 				return
 			case res := <-respCh:
 				if res.err != nil {
+					// Rate limit wait is treated as a skip so a single blocked indexer
+					// does not fail the whole scheduled search.
+					if _, isWait := asRateLimitWaitError(res.err); isWait {
+						continue
+					}
 					failures++
 					lastErr = res.err
 					continue

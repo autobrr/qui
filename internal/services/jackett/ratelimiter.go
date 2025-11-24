@@ -98,17 +98,20 @@ func (r *RateLimiter) BeforeRequest(ctx context.Context, indexer *models.Torznab
 	cfg := r.resolveOptions(opts)
 
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	for {
 		now := time.Since(r.startTime)
 		wait := r.computeWaitLocked(indexer, now, cfg.MinInterval)
 		if wait <= 0 {
 			r.recordLocked(indexer.ID, now)
+			r.mu.Unlock()
 			return nil
 		}
 
 		if cfg.MaxWait > 0 && wait > cfg.MaxWait {
+			// Treat large waits as a short-lived cooldown so schedulers can skip instead of retrying.
+			r.setCooldownLocked(indexer.ID, wait)
+			r.mu.Unlock()
 			return &RateLimitWaitError{
 				IndexerID:   indexer.ID,
 				IndexerName: indexer.Name,
@@ -125,11 +128,21 @@ func (r *RateLimiter) BeforeRequest(ctx context.Context, indexer *models.Torznab
 			if !timer.Stop() {
 				<-timer.C
 			}
-			r.mu.Lock()
+			// Lock was released before waiting; return with it unlocked.
 			return ctx.Err()
 		case <-timer.C:
-			r.mu.Lock()
+			// Lock is re-acquired at top of loop
 		}
+		r.mu.Lock()
+	}
+}
+
+// setCooldownLocked sets a cooldown relative to r.startTime; caller must hold r.mu.
+func (r *RateLimiter) setCooldownLocked(indexerID int, wait time.Duration) {
+	state := r.getStateLocked(indexerID)
+	resumeAt := time.Since(r.startTime) + wait
+	if resumeAt > state.cooldownUntil {
+		state.cooldownUntil = resumeAt
 	}
 }
 

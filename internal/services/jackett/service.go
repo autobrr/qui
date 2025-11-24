@@ -345,7 +345,7 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 	for _, idx := range indexers {
 		if resumeAt, inCooldown := cooldownIndexers[idx.ID]; inCooldown {
 			localResumeAt := resumeAt.In(time.Local)
-			log.Warn().
+			log.Info().
 				Int("indexer_id", idx.ID).
 				Str("indexer", idx.Name).
 				Time("resume_at", localResumeAt).
@@ -356,7 +356,7 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 	}
 
 	if len(availableIndexers) == 0 {
-		log.Warn().
+		log.Info().
 			Int("indexers_requested", len(indexers)).
 			Msg("Skipping scheduled torznab search because all indexers are rate-limited")
 		resultCallback(nil, nil, nil)
