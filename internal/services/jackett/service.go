@@ -325,7 +325,9 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 		return nil, nil, nil
 	}
 
-	resultsCh := make(chan scheduledIndexerResult, len(indexers))
+	log.Debug().
+		Int("indexers", len(indexers)).
+		Msg("Scheduling torznab search with scheduler")
 
 	execFn := s.runIndexerSearch
 	if s.searchExecutor != nil {
@@ -334,58 +336,17 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 		}
 	}
 
-	for _, idx := range indexers {
-		indexer := idx
-		jobParams := cloneValues(params)
-		go func() {
-			res, coverage, err := s.searchScheduler.Submit(ctx, []*models.TorznabIndexer{indexer}, jobParams, meta, func(jobCtx context.Context, idxs []*models.TorznabIndexer, vals url.Values, m *searchContext) ([]Result, []int, error) {
-				if len(idxs) == 0 {
-					return nil, nil, fmt.Errorf("missing indexer")
-				}
-				return execFn(jobCtx, idxs[0], vals, m)
-			})
-			select {
-			case resultsCh <- scheduledIndexerResult{results: res, coverage: coverage, err: err}:
-			case <-ctx.Done():
-			}
-		}()
-	}
-
-	var (
-		allResults []Result
-		coverage   = make(map[int]struct{})
-		failures   int
-		lastErr    error
-	)
-	requireSuccess := meta != nil && meta.requireSuccess
-
-	for i := 0; i < len(indexers); i++ {
-		select {
-		case <-ctx.Done():
-			return allResults, coverageSetToSlice(coverage), ctx.Err()
-		case res := <-resultsCh:
-			if res.err != nil {
-				failures++
-				lastErr = res.err
-				continue
-			}
-			for _, id := range res.coverage {
-				coverage[id] = struct{}{}
-			}
-			if len(res.results) > 0 {
-				allResults = append(allResults, res.results...)
-			}
+	results, coverage, err := s.searchScheduler.Submit(ctx, indexers, params, meta, func(jobCtx context.Context, idxs []*models.TorznabIndexer, vals url.Values, m *searchContext) ([]Result, []int, error) {
+		if len(idxs) == 0 {
+			return nil, nil, fmt.Errorf("missing indexer")
 		}
+		return execFn(jobCtx, idxs[0], vals, m)
+	}, nil, nil)
+	if err != nil {
+		return results, coverage, err
 	}
 
-	if failures == len(indexers) && lastErr != nil && len(coverage) == 0 && len(allResults) == 0 {
-		if requireSuccess {
-			return nil, coverageSetToSlice(coverage), lastErr
-		}
-		return nil, coverageSetToSlice(coverage), lastErr
-	}
-
-	return allResults, coverageSetToSlice(coverage), nil
+	return results, coverage, nil
 }
 
 // WithTorrentCache wires a torrent payload cache into the service.
@@ -521,8 +482,15 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 	}
 
 	// Search selected indexers (defaults to all enabled when none specified)
+	baseCtx := ctx
 	searchTimeout := computeSearchTimeout(meta, len(indexersToSearch))
-	searchCtx, cancel := timeouts.WithSearchTimeout(ctx, searchTimeout)
+	if meta != nil && meta.rateLimit != nil && meta.rateLimit.Priority == RateLimitPriorityRSS {
+		// Keep RSS automation bounded but not tied to the HTTP request lifetime; use adaptive timeout without extra rate-limit budget.
+		searchTimeout = timeouts.AdaptiveSearchTimeout(len(indexersToSearch))
+		baseCtx = context.Background()
+		log.Debug().Dur("search_timeout", searchTimeout).Msg("RSS search using scheduler with dedicated timeout")
+	}
+	searchCtx, cancel := timeouts.WithSearchTimeout(baseCtx, searchTimeout)
 	defer cancel()
 
 	allResults, networkCoverage, err := s.executeQueuedSearch(searchCtx, indexersToSearch, params, meta)
