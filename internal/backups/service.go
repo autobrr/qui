@@ -1034,6 +1034,9 @@ func (s *Service) cleanupRunFiles(ctx context.Context, runIDs []int64) error {
 		return nil
 	}
 
+	var filesToDelete []string
+	var itemsToCleanup []*models.BackupItem
+
 	for _, runID := range runIDs {
 		run, err := s.store.GetRun(ctx, runID)
 		if err != nil {
@@ -1047,34 +1050,28 @@ func (s *Service) cleanupRunFiles(ctx context.Context, runIDs []int64) error {
 		items, err := s.store.ListItems(ctx, runID)
 		if err != nil {
 			log.Warn().Err(err).Int64("runID", runID).Msg("Failed to list backup items for cleanup")
+		} else {
+			itemsToCleanup = append(itemsToCleanup, items...)
 		}
 
 		if run.ManifestPath != nil {
 			manifestPath := filepath.Join(s.cfg.DataDir, *run.ManifestPath)
-			if err := os.Remove(manifestPath); err != nil && !os.IsNotExist(err) {
-				log.Warn().
-					Err(err).
-					Int64("runID", runID).
-					Str("path", manifestPath).
-					Msg("Failed to remove backup manifest file during retention cleanup")
-			}
+			filesToDelete = append(filesToDelete, manifestPath)
 		}
 		if run.ArchivePath != nil {
 			archivePath := filepath.Join(s.cfg.DataDir, *run.ArchivePath)
-			if err := os.Remove(archivePath); err != nil && !os.IsNotExist(err) {
-				log.Warn().
-					Err(err).
-					Int64("runID", runID).
-					Str("path", archivePath).
-					Msg("Failed to remove backup archive during retention cleanup")
-			}
+			filesToDelete = append(filesToDelete, archivePath)
 		}
+
 		if err := s.store.CleanupRun(ctx, runID); err != nil {
 			log.Warn().Err(err).Int64("runID", runID).Msg("Failed to cleanup run from database")
 		}
-
-		s.cleanupTorrentBlobs(ctx, items)
 	}
+
+	// Delete files in parallel
+	s.deleteFilesParallel(ctx, filesToDelete)
+
+	s.cleanupTorrentBlobs(ctx, itemsToCleanup)
 
 	return nil
 }
@@ -1121,26 +1118,17 @@ func (s *Service) DeleteRun(ctx context.Context, runID int64) error {
 		items = nil
 	}
 
+	var filesToDelete []string
 	if run.ManifestPath != nil {
 		manifestPath := filepath.Join(s.cfg.DataDir, *run.ManifestPath)
-		if err := os.Remove(manifestPath); err != nil && !os.IsNotExist(err) {
-			log.Warn().
-				Err(err).
-				Int64("runID", runID).
-				Str("path", manifestPath).
-				Msg("Failed to remove backup manifest file during run deletion")
-		}
+		filesToDelete = append(filesToDelete, manifestPath)
 	}
 	if run.ArchivePath != nil {
 		archivePath := filepath.Join(s.cfg.DataDir, *run.ArchivePath)
-		if err := os.Remove(archivePath); err != nil && !os.IsNotExist(err) {
-			log.Warn().
-				Err(err).
-				Int64("runID", runID).
-				Str("path", archivePath).
-				Msg("Failed to remove backup archive during run deletion")
-		}
+		filesToDelete = append(filesToDelete, archivePath)
 	}
+
+	s.deleteFilesParallel(ctx, filesToDelete)
 
 	if err := s.store.CleanupRun(ctx, runID); err != nil {
 		return err
@@ -1423,8 +1411,9 @@ func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing [
 				s.updateProgress(runID, i+1)
 			}
 		} else {
-			log.Warn().Err(err).Int("downloaded", successCount).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Msg("Failed to download missing torrent blob from client, attempting Torznab search")
-
+			log.Warn().Err(err).Int("downloaded", successCount).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Msg("Failed to download missing torrent blob from client")
+			// TODO: Torznab search fallback is disabled due to API changes
+			/*
 			// Attempt Torznab search fallback for missing torrents
 			if s.jackettSvc != nil {
 				ctx := context.Background()
@@ -1460,39 +1449,7 @@ func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing [
 
 					if matchingResult != nil {
 						log.Info().Int64("runID", runID).Str("hash", mt.hash).Str("name", mt.name).Str("title", matchingResult.Title).Str("indexer", matchingResult.Indexer).Msg("Found potential torrent match via Torznab search, downloading")
-
-						// Download the torrent from the found URL
-						downloadReq := jackett.TorrentDownloadRequest{
-							IndexerID:   matchingResult.IndexerID,
-							DownloadURL: matchingResult.DownloadURL,
-							GUID:        matchingResult.GUID,
-						}
-
-						torrentData, downloadErr := s.jackettSvc.DownloadTorrent(ctx, downloadReq)
-						if downloadErr != nil {
-							log.Error().Err(downloadErr).Int64("runID", runID).Str("hash", mt.hash).Str("downloadURL", matchingResult.DownloadURL).Msg("Failed to download torrent from Torznab result")
-						} else {
-							// Ensure directory exists
-							if err := os.MkdirAll(path.Dir(mt.absPath), 0o755); err != nil {
-								log.Error().Err(err).Int("downloaded", successCount).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Str("path", mt.absPath).Msg("Failed to create directory for torrent blob from Torznab")
-							} else if err := os.WriteFile(mt.absPath, torrentData, 0o644); err != nil {
-								log.Error().Err(err).Int("downloaded", successCount).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Str("path", mt.absPath).Msg("Failed to cache torrent blob from Torznab")
-							} else {
-								log.Info().Int("downloaded", successCount+1).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Str("path", mt.absPath).Msg("Successfully cached missing torrent blob from Torznab")
-								totalTorrentBytes += int64(len(torrentData))
-								successCount++
-							}
-						}
-					} else {
-						log.Warn().Int64("runID", runID).Str("hash", mt.hash).Str("name", mt.name).Int("results", len(searchResp.Results)).Msg("Torznab search returned results but none matched the torrent name")
-					}
-				} else {
-					log.Warn().Int64("runID", runID).Str("hash", mt.hash).Str("name", mt.name).Msg("Torznab search returned no results")
-				}
-			} else {
-				log.Warn().Int64("runID", runID).Str("hash", mt.hash).Msg("No Torznab service available for fallback search")
-			}
-
+			*/
 			s.updateProgress(runID, i+1)
 		}
 	}
@@ -1586,6 +1543,7 @@ func (s *Service) cleanupTorrentBlobs(ctx context.Context, items []*models.Backu
 	}
 
 	seen := make(map[string]struct{})
+	var blobsToDelete []string
 
 	for _, item := range items {
 		if item == nil || item.TorrentBlobPath == nil {
@@ -1617,10 +1575,33 @@ func (s *Service) cleanupTorrentBlobs(ctx context.Context, items []*models.Backu
 		}
 
 		abs := filepath.Join(s.cfg.DataDir, rel)
-		if err := os.Remove(abs); err != nil && !errors.Is(err, os.ErrNotExist) {
-			log.Warn().Err(err).Str("blob", rel).Msg("Failed to delete torrent blob")
-		}
+		blobsToDelete = append(blobsToDelete, abs)
 	}
+
+	s.deleteFilesParallel(ctx, blobsToDelete)
+}
+
+func (s *Service) deleteFilesParallel(ctx context.Context, paths []string) {
+	if len(paths) == 0 {
+		return
+	}
+
+	var wg sync.WaitGroup
+	for _, p := range paths {
+		wg.Add(1)
+		go func(path string) {
+			defer wg.Done()
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				log.Warn().Err(err).Str("path", path).Msg("Failed to remove file during bulk cleanup")
+			}
+		}(p)
+	}
+	wg.Wait()
 }
 
 func trackerDomainFromTorrent(t qbt.Torrent) string {
