@@ -26,6 +26,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/torrentname"
 )
 
@@ -49,12 +50,14 @@ type BackupProgress struct {
 
 type missingTorrent struct {
 	hash    string
+	name    string
 	absPath string
 }
 
 type Service struct {
 	store       *models.BackupStore
 	syncManager *qbittorrent.SyncManager
+	jackettSvc  *jackett.Service
 	cfg         Config
 	cacheDir    string
 
@@ -102,7 +105,7 @@ type ManifestItem struct {
 	TorrentBlob string   `json:"torrentBlob,omitempty"`
 }
 
-func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager, cfg Config) *Service {
+func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager, jackettSvc interface{}, cfg Config) *Service {
 	if cfg.WorkerCount <= 0 {
 		cfg.WorkerCount = 1
 	}
@@ -118,9 +121,17 @@ func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager,
 		}
 	}
 
+	var jackettService *jackett.Service
+	if jackettSvc != nil {
+		if _, ok := jackettSvc.(*jackett.Service); ok {
+			//jackettService = svc
+		}
+	}
+
 	return &Service{
 		store:       store,
 		syncManager: syncManager,
+		jackettSvc:  jackettService,
 		cfg:         cfg,
 		cacheDir:    cacheDir,
 		jobs:        make(chan job, cfg.WorkerCount*2),
@@ -1301,7 +1312,7 @@ func (s *Service) ImportManifest(ctx context.Context, instanceID int, manifestDa
 		if item.TorrentBlob != "" {
 			// Mark for background processing - don't check existence here to avoid blocking
 			backupItem.TorrentBlobPath = &item.TorrentBlob
-			missing = append(missing, missingTorrent{hash: item.Hash, absPath: path.Join(s.cfg.DataDir, item.TorrentBlob)})
+			missing = append(missing, missingTorrent{hash: item.Hash, name: item.Name, absPath: path.Join(s.cfg.DataDir, item.TorrentBlob)})
 		}
 
 		items = append(items, backupItem)
@@ -1384,11 +1395,10 @@ func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing [
 	var totalTorrentBytes int64
 	for i, mt := range missing {
 		// Check if file already exists
-		if _, err := os.Stat(mt.absPath); err == nil {
-			log.Trace().Int("current", i+1).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Str("path", mt.absPath).Msg("Torrent blob already exists, skipping download")
-			if info, statErr := os.Stat(mt.absPath); statErr == nil {
-				totalTorrentBytes += info.Size()
-			}
+		if info, err := os.Stat(mt.absPath); err == nil {
+			sz := info.Size()
+			log.Trace().Int("current", i+1).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Str("path", mt.absPath).Int64("size", sz).Msg("Torrent blob already exists, skipping download")
+			totalTorrentBytes += sz
 			successCount++
 			s.updateProgress(runID, i+1)
 			continue
@@ -1413,7 +1423,76 @@ func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing [
 				s.updateProgress(runID, i+1)
 			}
 		} else {
-			log.Error().Err(err).Int("downloaded", successCount).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Msg("Failed to download missing torrent blob")
+			log.Warn().Err(err).Int("downloaded", successCount).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Msg("Failed to download missing torrent blob from client, attempting Torznab search")
+
+			// Attempt Torznab search fallback for missing torrents
+			if s.jackettSvc != nil {
+				ctx := context.Background()
+				searchReq := &jackett.TorznabSearchRequest{
+					Query: mt.name, // Search by torrent name
+					Limit: 10,      // Get multiple results to find the right one
+				}
+
+				searchResp, searchErr := s.jackettSvc.SearchGeneric(ctx, searchReq)
+				if searchErr != nil {
+					log.Warn().Err(searchErr).Int64("runID", runID).Str("hash", mt.hash).Str("name", mt.name).Msg("Torznab search failed")
+				} else if len(searchResp.Results) > 0 {
+					// Look for a result that matches our infohash or name
+					var matchingResult *jackett.SearchResult
+					for _, result := range searchResp.Results {
+						// Check if this result has the infohash we want
+						// TODO: If InfoHashV1/InfoHashV2 are populated from RSS, check them here
+
+						// For now, prefer exact name matches, then partial matches
+						if result.Title == mt.name {
+							matchingResult = &result
+							break // Exact match, use this one
+						} else if strings.Contains(strings.ToLower(result.Title), strings.ToLower(mt.name)) && matchingResult == nil {
+							matchingResult = &result // Partial match, keep looking for exact
+						}
+					}
+
+					// If no good name match, take the first result as a last resort
+					if matchingResult == nil && len(searchResp.Results) > 0 {
+						matchingResult = &searchResp.Results[0]
+						log.Warn().Int64("runID", runID).Str("hash", mt.hash).Str("name", mt.name).Str("fallbackTitle", matchingResult.Title).Msg("No good name match found, using first result as fallback")
+					}
+
+					if matchingResult != nil {
+						log.Info().Int64("runID", runID).Str("hash", mt.hash).Str("name", mt.name).Str("title", matchingResult.Title).Str("indexer", matchingResult.Indexer).Msg("Found potential torrent match via Torznab search, downloading")
+
+						// Download the torrent from the found URL
+						downloadReq := jackett.TorrentDownloadRequest{
+							IndexerID:   matchingResult.IndexerID,
+							DownloadURL: matchingResult.DownloadURL,
+							GUID:        matchingResult.GUID,
+						}
+
+						torrentData, downloadErr := s.jackettSvc.DownloadTorrent(ctx, downloadReq)
+						if downloadErr != nil {
+							log.Error().Err(downloadErr).Int64("runID", runID).Str("hash", mt.hash).Str("downloadURL", matchingResult.DownloadURL).Msg("Failed to download torrent from Torznab result")
+						} else {
+							// Ensure directory exists
+							if err := os.MkdirAll(path.Dir(mt.absPath), 0o755); err != nil {
+								log.Error().Err(err).Int("downloaded", successCount).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Str("path", mt.absPath).Msg("Failed to create directory for torrent blob from Torznab")
+							} else if err := os.WriteFile(mt.absPath, torrentData, 0o644); err != nil {
+								log.Error().Err(err).Int("downloaded", successCount).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Str("path", mt.absPath).Msg("Failed to cache torrent blob from Torznab")
+							} else {
+								log.Info().Int("downloaded", successCount+1).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Str("path", mt.absPath).Msg("Successfully cached missing torrent blob from Torznab")
+								totalTorrentBytes += int64(len(torrentData))
+								successCount++
+							}
+						}
+					} else {
+						log.Warn().Int64("runID", runID).Str("hash", mt.hash).Str("name", mt.name).Int("results", len(searchResp.Results)).Msg("Torznab search returned results but none matched the torrent name")
+					}
+				} else {
+					log.Warn().Int64("runID", runID).Str("hash", mt.hash).Str("name", mt.name).Msg("Torznab search returned no results")
+				}
+			} else {
+				log.Warn().Int64("runID", runID).Str("hash", mt.hash).Msg("No Torznab service available for fallback search")
+			}
+
 			s.updateProgress(runID, i+1)
 		}
 	}

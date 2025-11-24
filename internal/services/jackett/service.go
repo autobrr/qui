@@ -2515,6 +2515,8 @@ func (s *Service) convertResults(results []Result) []SearchResult {
 			DownloadVolumeFactor: r.DownloadVolumeFactor,
 			UploadVolumeFactor:   r.UploadVolumeFactor,
 			GUID:                 r.GUID,
+			InfoHashV1:           extractInfoHashFromAttributes(r.Attributes),
+			InfoHashV2:           "", // InfoHashV2 not typically in extended attributes
 			IMDbID:               r.Imdb,
 			TVDbID:               s.parseTVDbID(r),
 			Source:               source,
@@ -2584,6 +2586,7 @@ var (
 	tvdbIdentifierPattern = regexp.MustCompile(`(?i)(?:tvdb|thetvdb|tvdb:)[^\d]*([0-9]+)`)
 	tvdbAttributeKeys     = []string{"tvdb", "tvdbid", "tvdb_id"}
 	tvdbDigitsOnlyPattern = regexp.MustCompile(`\A[0-9]+\z`)
+	infohashAttributeKeys = []string{"infohash", "info_hash", "hash"}
 )
 
 func parseTVDbNumericIDFromString(value string) string {
@@ -2627,6 +2630,26 @@ func extractTVDbIDFromAttributes(attrs map[string]string) string {
 		if value, ok := attrs[key]; ok {
 			if id := parseTVDbNumericIDFromString(value); id != "" {
 				return id
+			}
+		}
+	}
+
+	return ""
+}
+
+func extractInfoHashFromAttributes(attrs map[string]string) string {
+	if len(attrs) == 0 {
+		return ""
+	}
+
+	for _, key := range infohashAttributeKeys {
+		if value, ok := attrs[key]; ok {
+			// Validate that it's a valid hex string (40 chars for SHA1, 64 for SHA256)
+			value = strings.TrimSpace(strings.ToLower(value))
+			if len(value) == 40 || len(value) == 64 {
+				if _, err := hex.DecodeString(value); err == nil {
+					return value
+				}
 			}
 		}
 	}

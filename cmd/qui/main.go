@@ -545,7 +545,7 @@ func (app *Application) runServer() {
 	reannounceService.Start(reannounceCtx)
 
 	backupStore := models.NewBackupStore(db)
-	backupService := backups.NewService(backupStore, syncManager, backups.Config{DataDir: cfg.GetDataDir()})
+	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir()})
 	backupService.Start(context.Background())
 	defer backupService.Stop()
 
