@@ -1024,7 +1024,7 @@ func (h *CrossSeedHandler) WebhookCheck(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	response, err := h.service.CheckWebhook(context.WithoutCancel(r.Context()), &req)
+	response, err := h.service.CheckWebhook(r.Context(), &req)
 	if err != nil {
 		switch {
 		case errors.Is(err, crossseed.ErrInvalidWebhookRequest):
