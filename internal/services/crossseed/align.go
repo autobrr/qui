@@ -91,8 +91,10 @@ func (s *Service) alignCrossSeedContentPaths(
 	sourceRoot := detectCommonRoot(sourceFiles)
 	targetRoot := detectCommonRoot(candidateFiles)
 
+	plan, unmatched := buildFileRenamePlan(sourceFiles, candidateFiles)
+
 	rootRenamed := false
-	if sourceRoot != "" && targetRoot != "" && sourceRoot != targetRoot {
+	if len(plan) == 0 && sourceRoot != "" && targetRoot != "" && sourceRoot != targetRoot {
 		if err := s.syncManager.RenameTorrentFolder(ctx, instanceID, torrentHash, sourceRoot, targetRoot); err != nil {
 			log.Warn().
 				Err(err).
@@ -112,7 +114,6 @@ func (s *Service) alignCrossSeedContentPaths(
 		}
 	}
 
-	plan, unmatched := buildFileRenamePlan(sourceFiles, candidateFiles)
 	if len(plan) == 0 {
 		if len(unmatched) > 0 {
 			log.Debug().
@@ -126,21 +127,16 @@ func (s *Service) alignCrossSeedContentPaths(
 
 	renamed := 0
 	for _, instr := range plan {
-		oldPath := instr.oldPath
-		if rootRenamed {
-			oldPath = adjustPathForRootRename(oldPath, sourceRoot, targetRoot)
-		}
-
-		if oldPath == instr.newPath || oldPath == "" || instr.newPath == "" {
+		if instr.oldPath == instr.newPath || instr.oldPath == "" || instr.newPath == "" {
 			continue
 		}
 
-		if err := s.syncManager.RenameTorrentFile(ctx, instanceID, torrentHash, oldPath, instr.newPath); err != nil {
+		if err := s.syncManager.RenameTorrentFile(ctx, instanceID, torrentHash, instr.oldPath, instr.newPath); err != nil {
 			log.Warn().
 				Err(err).
 				Int("instanceID", instanceID).
 				Str("torrentHash", torrentHash).
-				Str("from", oldPath).
+				Str("from", instr.oldPath).
 				Str("to", instr.newPath).
 				Msg("Failed to rename cross-seed file to match existing torrent")
 			continue
