@@ -2094,17 +2094,15 @@ func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, ope
 	}
 
 	sm.syncDebounceMu.Lock()
+	defer sm.syncDebounceMu.Unlock()
+
 	if sm.debouncedSyncTimers == nil {
 		sm.debouncedSyncTimers = make(map[int]*time.Timer)
 	}
 
 	if existing, ok := sm.debouncedSyncTimers[instanceID]; ok {
-		if !existing.Stop() {
-			// Timer already fired or is running; let it clean up map entry.
-		}
-		existing.Reset(delay)
-		sm.syncDebounceMu.Unlock()
-		return
+		// Best-effort stop; if the timer has already fired, we let its callback run once.
+		existing.Stop()
 	}
 
 	var timer *time.Timer
@@ -2112,7 +2110,6 @@ func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, ope
 		sm.runDebouncedSync(instanceID, client, operation, timer)
 	})
 	sm.debouncedSyncTimers[instanceID] = timer
-	sm.syncDebounceMu.Unlock()
 }
 
 func (sm *SyncManager) runDebouncedSync(instanceID int, client *Client, operation string, timer *time.Timer) {
