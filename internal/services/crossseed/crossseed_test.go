@@ -22,6 +22,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // Helper function to create a test torrent file
@@ -1090,9 +1091,10 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 				},
 			}
 			svc := &Service{
-				instanceStore: store,
-				syncManager:   newFakeSyncManager(instance, tt.existingTorrents, nil),
-				releaseCache:  NewReleaseCache(),
+				instanceStore:    store,
+				syncManager:      newFakeSyncManager(instance, tt.existingTorrents, nil),
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
 			}
 
 			resp, err := svc.CheckWebhook(context.Background(), tt.request)
@@ -1162,8 +1164,9 @@ func TestCheckWebhook_NoInstancesAvailable(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			svc := &Service{
-				instanceStore: tt.store,
-				releaseCache:  NewReleaseCache(),
+				instanceStore:    tt.store,
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
 			}
 
 			resp, err := svc.CheckWebhook(context.Background(), tt.request)
@@ -1204,9 +1207,10 @@ func TestCheckWebhook_MultiInstanceScan(t *testing.T) {
 	}
 
 	svc := &Service{
-		instanceStore: store,
-		syncManager:   sync,
-		releaseCache:  NewReleaseCache(),
+		instanceStore:    store,
+		syncManager:      sync,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
 	tests := []struct {
@@ -1321,9 +1325,10 @@ func TestFindCandidates_NonTVDoesNotMatchUnrelatedTorrents(t *testing.T) {
 	}
 
 	svc := &Service{
-		instanceStore: store,
-		syncManager:   newFakeSyncManager(instance, torrents, files),
-		releaseCache:  NewReleaseCache(),
+		instanceStore:    store,
+		syncManager:      newFakeSyncManager(instance, torrents, files),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
 	resp, err := svc.FindCandidates(context.Background(), &FindCandidatesRequest{
@@ -1398,42 +1403,56 @@ func newFakeSyncManager(instance *models.Instance, torrents []qbt.Torrent, files
 	}
 }
 
-func (f *fakeSyncManager) GetAllTorrents(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+func (f *fakeSyncManager) GetTorrents(_ context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
 	if torrents, ok := f.all[instanceID]; ok {
 		return torrents, nil
 	}
 	return nil, fmt.Errorf("instance %d not found", instanceID)
 }
 
-func (f *fakeSyncManager) GetTorrentFiles(_ context.Context, _ int, hash string) (*qbt.TorrentFiles, error) {
+func (f *fakeSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 	if len(f.files) == 0 {
 		return nil, fmt.Errorf("files not configured")
 	}
-	normalized := normalizeHash(hash)
-	files, ok := f.files[normalized]
-	if !ok {
-		if files, ok = f.files[strings.ToLower(hash)]; !ok {
-			if files, ok = f.files[hash]; !ok {
-				return nil, fmt.Errorf("files not found for hash %s", hash)
+	result := make(map[string]qbt.TorrentFiles, len(hashes))
+	for _, h := range hashes {
+		normalized := normalizeHash(h)
+		files, ok := f.files[normalized]
+		if !ok {
+			if files, ok = f.files[strings.ToLower(h)]; !ok {
+				if files, ok = f.files[h]; !ok {
+					continue
+				}
+			}
+		}
+		copyFiles := make(qbt.TorrentFiles, len(files))
+		copy(copyFiles, files)
+		result[normalized] = copyFiles
+	}
+	return result, nil
+}
+
+func (f *fakeSyncManager) HasTorrentByAnyHash(_ context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
+	if torrents, ok := f.all[instanceID]; ok {
+		targets := make(map[string]struct{}, len(hashes))
+		for _, h := range hashes {
+			if normalized := normalizeHash(h); normalized != "" {
+				targets[normalized] = struct{}{}
+			}
+		}
+		for i := range torrents {
+			t := torrents[i]
+			for _, candidate := range []string{t.Hash, t.InfohashV1, t.InfohashV2} {
+				if candidate == "" {
+					continue
+				}
+				if _, ok := targets[normalizeHash(candidate)]; ok {
+					return &t, true, nil
+				}
 			}
 		}
 	}
-	if !ok {
-		return nil, fmt.Errorf("files not found for hash %s", hash)
-	}
-	copyFiles := make(qbt.TorrentFiles, len(files))
-	copy(copyFiles, files)
-	return &copyFiles, nil
-}
-
-func (f *fakeSyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
-	result := make(map[string]qbt.TorrentFiles, len(hashes))
-	for _, h := range hashes {
-		if files, _ := f.GetTorrentFiles(ctx, instanceID, h); files != nil {
-			result[normalizeHash(h)] = *files
-		}
-	}
-	return result, nil
+	return nil, false, nil
 }
 
 func (f *fakeSyncManager) GetTorrentProperties(_ context.Context, _ int, _ string) (*qbt.TorrentProperties, error) {

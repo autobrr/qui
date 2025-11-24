@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/jackett"
 )
 
 // CrossSeedHandler handles cross-seed API endpoints
@@ -406,7 +408,8 @@ func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	response, err := h.service.SearchTorrentMatches(r.Context(), instanceID, hash, opts)
+	ctx := jackett.WithSearchPriority(context.WithoutCancel(r.Context()), jackett.RateLimitPriorityInteractive)
+	response, err := h.service.SearchTorrentMatches(ctx, instanceID, hash, opts)
 	if err != nil {
 		status := mapCrossSeedErrorStatus(err)
 		log.Error().
@@ -441,7 +444,7 @@ func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	response, err := h.service.AutobrrApply(r.Context(), &req)
+	response, err := h.service.AutobrrApply(context.WithoutCancel(r.Context()), &req)
 	if err != nil {
 		status := mapCrossSeedErrorStatus(err)
 		log.Error().Err(err).Msg("Failed to apply autobrr torrent")
@@ -496,7 +499,7 @@ func (h *CrossSeedHandler) ApplyTorrentSearchResults(w http.ResponseWriter, r *h
 		return
 	}
 
-	response, err := h.service.ApplyTorrentSearchResults(r.Context(), instanceID, hash, &req)
+	response, err := h.service.ApplyTorrentSearchResults(context.WithoutCancel(r.Context()), instanceID, hash, &req)
 	if err != nil {
 		status := mapCrossSeedErrorStatus(err)
 		log.Error().
@@ -747,7 +750,7 @@ func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	run, err := h.service.RunAutomation(r.Context(), crossseed.AutomationRunOptions{
+	run, err := h.service.RunAutomation(context.WithoutCancel(r.Context()), crossseed.AutomationRunOptions{
 		RequestedBy: "api",
 		Mode:        models.CrossSeedRunModeManual,
 		DryRun:      req.DryRun,
@@ -863,7 +866,7 @@ func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	run, err := h.service.StartSearchRun(r.Context(), crossseed.SearchRunOptions{
+	run, err := h.service.StartSearchRun(context.WithoutCancel(r.Context()), crossseed.SearchRunOptions{
 		InstanceID:      req.InstanceID,
 		Categories:      req.Categories,
 		Tags:            req.Tags,
