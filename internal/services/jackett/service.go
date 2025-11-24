@@ -199,16 +199,19 @@ func rateLimitOptionsForPriority(priority RateLimitPriority) *RateLimitOptions {
 		return &RateLimitOptions{
 			Priority:    RateLimitPriorityRSS,
 			MinInterval: defaultMinRequestInterval,
+			MaxWait:     rssMaxWait,
 		}
 	case RateLimitPriorityCompletion:
 		return &RateLimitOptions{
 			Priority:    RateLimitPriorityCompletion,
 			MinInterval: defaultMinRequestInterval,
+			MaxWait:     completionMaxWait,
 		}
 	default:
 		return &RateLimitOptions{
 			Priority:    RateLimitPriorityBackground,
 			MinInterval: defaultMinRequestInterval,
+			MaxWait:     backgroundMaxWait,
 		}
 	}
 }
@@ -332,6 +335,34 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 		resultCallback(nil, nil, nil)
 		return nil
 	}
+
+	s.ensureRateLimiterState()
+	cooldownIndexers := s.rateLimiter.GetCooldownIndexers()
+	availableIndexers := make([]*models.TorznabIndexer, 0, len(indexers))
+
+	// Skip indexers already in cooldown; letting them enqueue would block the scheduler while
+	// RSS-priority workers sleep inside the rate limiter, delaying results for healthy indexers.
+	for _, idx := range indexers {
+		if resumeAt, inCooldown := cooldownIndexers[idx.ID]; inCooldown {
+			localResumeAt := resumeAt.In(time.Local)
+			log.Warn().
+				Int("indexer_id", idx.ID).
+				Str("indexer", idx.Name).
+				Time("resume_at", localResumeAt).
+				Msg("Skipping rate-limited indexer for scheduled search")
+			continue
+		}
+		availableIndexers = append(availableIndexers, idx)
+	}
+
+	if len(availableIndexers) == 0 {
+		log.Warn().
+			Int("indexers_requested", len(indexers)).
+			Msg("Skipping scheduled torznab search because all indexers are rate-limited")
+		resultCallback(nil, nil, nil)
+		return nil
+	}
+	indexers = availableIndexers
 
 	log.Debug().
 		Int("indexers", len(indexers)).
@@ -1394,7 +1425,9 @@ func computeSearchTimeout(meta *searchContext, indexerCount int) time.Duration {
 	waitBudget := defaultMinRequestInterval
 	if meta != nil && meta.rateLimit != nil {
 		waitBudget = meta.rateLimit.MinInterval
-		if meta.rateLimit.MaxWait > waitBudget {
+		// When we set a MaxWait we will skip indexers that exceed it, so budget only that
+		// smaller window to avoid over-long overall timeouts.
+		if meta.rateLimit.MaxWait > 0 {
 			waitBudget = meta.rateLimit.MaxWait
 		}
 	}

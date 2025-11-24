@@ -20,6 +20,15 @@ var priorityMultipliers = map[RateLimitPriority]float64{
 	RateLimitPriorityBackground:  1.0,
 }
 
+const (
+	// Keep RSS responsive; we’ll skip indexers that need more than this wait.
+	rssMaxWait = 15 * time.Second
+	// Completion tasks can tolerate a bit more waiting than RSS but still should not stall.
+	completionMaxWait = 30 * time.Second
+	// Background jobs are least urgent; allow more wait before skipping.
+	backgroundMaxWait = 45 * time.Second
+)
+
 type RateLimitPriority string
 
 const (
@@ -111,20 +120,15 @@ func (r *RateLimiter) BeforeRequest(ctx context.Context, indexer *models.Torznab
 
 		timer := time.NewTimer(wait)
 		r.mu.Unlock()
-		if cfg.Priority == RateLimitPriorityRSS {
-			<-timer.C
-			r.mu.Lock()
-		} else {
-			select {
-			case <-ctx.Done():
-				if !timer.Stop() {
-					<-timer.C
-				}
-				r.mu.Lock()
-				return ctx.Err()
-			case <-timer.C:
-				r.mu.Lock()
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
 			}
+			r.mu.Lock()
+			return ctx.Err()
+		case <-timer.C:
+			r.mu.Lock()
 		}
 	}
 }
