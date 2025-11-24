@@ -138,6 +138,9 @@ func TestGetTorrentFilesBatch_IsolatesClientSliceReuse(t *testing.T) {
 		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
 			return client, nil
 		},
+		// Use a single concurrent fetch to avoid a race between the test client
+		// mutating its shared slice and GetTorrentFilesBatch copying from it.
+		fileFetchMaxConcurrent: 1,
 	}
 
 	filesByHash, err := sm.GetTorrentFilesBatch(ctx, 1, []string{"hash-a", "hash-b"})
