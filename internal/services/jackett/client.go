@@ -15,6 +15,7 @@ import (
 
 	gojackett "github.com/autobrr/qui/pkg/gojackett"
 
+	"github.com/autobrr/qui/internal/buildinfo"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/prowlarr"
 )
@@ -57,6 +58,8 @@ func NewClient(baseURL, apiKey string, backend models.TorznabBackend, timeoutSec
 			APIKey:     apiKey,
 			Timeout:    timeoutSeconds,
 			HTTPClient: httpClient,
+			UserAgent:  buildinfo.UserAgent,
+			Version:    buildinfo.Version,
 		})
 	case models.TorznabBackendNative:
 		c.jackett = gojackett.NewClient(gojackett.Config{
@@ -454,9 +457,11 @@ func DiscoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 	defer cancel()
 
 	prowlarrClient := prowlarr.NewClient(prowlarr.Config{
-		Host:    baseURL,
-		APIKey:  apiKey,
-		Timeout: 15,
+		Host:      baseURL,
+		APIKey:    apiKey,
+		Timeout:   15,
+		UserAgent: buildinfo.UserAgent,
+		Version:   buildinfo.Version,
 	})
 
 	pIndexers, prowlarrErr := prowlarrClient.GetIndexers(ctx)

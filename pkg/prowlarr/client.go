@@ -23,6 +23,8 @@ type Config struct {
 	APIKey     string
 	Timeout    int
 	HTTPClient *http.Client
+	UserAgent  string
+	Version    string
 }
 
 // TorznabError represents a Torznab error response
@@ -36,6 +38,8 @@ type Client struct {
 	host       string
 	apiKey     string
 	httpClient *http.Client
+	userAgent  string
+	version    string
 }
 
 // NewClient constructs a new Client using the provided configuration.
@@ -50,10 +54,21 @@ func NewClient(cfg Config) *Client {
 		client = &http.Client{Timeout: timeout}
 	}
 
+	ua := strings.TrimSpace(cfg.UserAgent)
+	if ua == "" {
+		ua = "qui"
+	}
+	version := strings.TrimSpace(cfg.Version)
+	if version != "" && !strings.Contains(ua, version) {
+		ua = fmt.Sprintf("%s/%s", ua, version)
+	}
+
 	return &Client{
 		host:       strings.TrimRight(cfg.Host, "/"),
 		apiKey:     cfg.APIKey,
 		httpClient: client,
+		userAgent:  ua,
+		version:    version,
 	}
 }
 
@@ -127,6 +142,7 @@ func (c *Client) SearchIndexer(ctx context.Context, indexerID string, params map
 		return rss, fmt.Errorf("failed to build prowlarr request: %w", err)
 	}
 	req.URL.RawQuery = query.Encode()
+	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -183,6 +199,7 @@ func (c *Client) GetIndexers(ctx context.Context) ([]Indexer, error) {
 	if c.apiKey != "" {
 		req.Header.Set("X-Api-Key", c.apiKey)
 	}
+	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -230,6 +247,7 @@ func (c *Client) GetIndexer(ctx context.Context, indexerID int) (*IndexerDetail,
 	if c.apiKey != "" {
 		req.Header.Set("X-Api-Key", c.apiKey)
 	}
+	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
