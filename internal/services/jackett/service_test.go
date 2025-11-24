@@ -528,11 +528,31 @@ func TestSearchGenericFallsBackToCacheOnError(t *testing.T) {
 	}
 
 	req := &TorznabSearchRequest{Query: "batman begins 1080p"}
-
-	resp, err := s.SearchGeneric(context.Background(), req)
-	if err != nil {
-		t.Fatalf("SearchGeneric returned error: %v", err)
+	respCh := make(chan *SearchResponse, 1)
+	errCh := make(chan error, 1)
+	req.OnAllComplete = func(resp *SearchResponse, err error) {
+		if err != nil {
+			errCh <- err
+		} else {
+			respCh <- resp
+		}
 	}
+
+	searchErr := s.SearchGeneric(context.Background(), req)
+	if searchErr != nil {
+		t.Fatalf("SearchGeneric returned error: %v", searchErr)
+	}
+
+	var resp *SearchResponse
+	select {
+	case resp = <-respCh:
+		// continue
+	case err := <-errCh:
+		t.Fatalf("SearchGeneric callback returned error: %v", err)
+	case <-time.After(1 * time.Second):
+		t.Fatal("SearchGeneric timed out")
+	}
+
 	if resp == nil {
 		t.Fatal("expected response")
 	}
@@ -612,10 +632,31 @@ func TestSearchCachesAfterDeadlineWhenCoverageComplete(t *testing.T) {
 	}
 
 	req := &TorznabSearchRequest{Query: "Example", Categories: []int{CategoryTV}}
-	resp, err := service.Search(context.Background(), req)
-	if err != nil {
-		t.Fatalf("Search returned error: %v", err)
+	respCh := make(chan *SearchResponse, 1)
+	errCh := make(chan error, 1)
+	req.OnAllComplete = func(resp *SearchResponse, err error) {
+		if err != nil {
+			errCh <- err
+		} else {
+			respCh <- resp
+		}
 	}
+
+	searchErr := service.Search(context.Background(), req)
+	if searchErr != nil {
+		t.Fatalf("Search returned error: %v", searchErr)
+	}
+
+	var resp *SearchResponse
+	select {
+	case resp = <-respCh:
+		// continue
+	case err := <-errCh:
+		t.Fatalf("Search callback returned error: %v", err)
+	case <-time.After(1 * time.Second):
+		t.Fatal("Search timed out")
+	}
+
 	if resp == nil {
 		t.Fatal("expected response")
 	}
@@ -661,10 +702,31 @@ func TestSearchCachesPartialCoverageAfterDeadline(t *testing.T) {
 	}
 
 	req := &TorznabSearchRequest{Query: "Example", Categories: []int{CategoryTV}}
-	resp, err := service.Search(context.Background(), req)
-	if err != nil {
-		t.Fatalf("Search returned error: %v", err)
+	respCh := make(chan *SearchResponse, 1)
+	errCh := make(chan error, 1)
+	req.OnAllComplete = func(resp *SearchResponse, err error) {
+		if err != nil {
+			errCh <- err
+		} else {
+			respCh <- resp
+		}
 	}
+
+	searchErr := service.Search(context.Background(), req)
+	if searchErr != nil {
+		t.Fatalf("Search returned error: %v", searchErr)
+	}
+
+	var resp *SearchResponse
+	select {
+	case resp = <-respCh:
+		// continue
+	case err := <-errCh:
+		t.Fatalf("Search callback returned error: %v", err)
+	case <-time.After(1 * time.Second):
+		t.Fatal("Search timed out")
+	}
+
 	if resp == nil {
 		t.Fatal("expected response")
 	}
@@ -1025,7 +1087,8 @@ func TestSearchAutoDetectCategories(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := s.Search(context.Background(), tt.req)
+			tt.req.OnAllComplete = func(*SearchResponse, error) {}
+			err := s.Search(context.Background(), tt.req)
 			// Error expected since no indexers configured
 			if err == nil || err.Error() != "query is required" {
 				// Check that categories were set
@@ -1071,11 +1134,31 @@ func TestSearchGenericAutoDetectCategories(t *testing.T) {
 	store := &mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{}}
 	s := NewService(store)
 	req := &TorznabSearchRequest{Query: "Breaking Bad S01"}
-
-	resp, err := s.SearchGeneric(context.Background(), req)
-	if err != nil {
-		t.Fatalf("SearchGeneric returned error: %v", err)
+	respCh := make(chan *SearchResponse, 1)
+	errCh := make(chan error, 1)
+	req.OnAllComplete = func(resp *SearchResponse, err error) {
+		if err != nil {
+			errCh <- err
+		} else {
+			respCh <- resp
+		}
 	}
+
+	searchErr := s.SearchGeneric(context.Background(), req)
+	if searchErr != nil {
+		t.Fatalf("SearchGeneric returned error: %v", searchErr)
+	}
+
+	var resp *SearchResponse
+	select {
+	case resp = <-respCh:
+		// continue
+	case err := <-errCh:
+		t.Fatalf("SearchGeneric callback returned error: %v", err)
+	case <-time.After(1 * time.Second):
+		t.Fatal("SearchGeneric timed out")
+	}
+
 	if resp == nil {
 		t.Fatalf("expected response, got nil")
 	}
@@ -1116,10 +1199,31 @@ func TestSearchWithLimit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp, err := s.Search(context.Background(), tt.req)
-			if err != nil {
-				t.Fatalf("Search() error = %v", err)
+			respCh := make(chan *SearchResponse, 1)
+			errCh := make(chan error, 1)
+			tt.req.OnAllComplete = func(resp *SearchResponse, err error) {
+				if err != nil {
+					errCh <- err
+				} else {
+					respCh <- resp
+				}
 			}
+
+			searchErr := s.Search(context.Background(), tt.req)
+			if searchErr != nil {
+				t.Fatalf("Search() error = %v", searchErr)
+			}
+
+			var resp *SearchResponse
+			select {
+			case resp = <-respCh:
+				// continue
+			case err := <-errCh:
+				t.Fatalf("Search callback error = %v", err)
+			case <-time.After(1 * time.Second):
+				t.Fatal("Search timed out")
+			}
+
 			if resp.Total != tt.expectedTotal {
 				t.Errorf("Total = %d, want %d", resp.Total, tt.expectedTotal)
 			}
@@ -1189,15 +1293,35 @@ func TestSearchGenericWithIndexerIDs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp, err := s.SearchGeneric(context.Background(), tt.req)
-			if tt.shouldError && err == nil {
+			respCh := make(chan *SearchResponse, 1)
+			errCh := make(chan error, 1)
+			tt.req.OnAllComplete = func(resp *SearchResponse, err error) {
+				if err != nil {
+					errCh <- err
+				} else {
+					respCh <- resp
+				}
+			}
+
+			searchErr := s.SearchGeneric(context.Background(), tt.req)
+			if tt.shouldError && searchErr == nil {
 				t.Error("SearchGeneric() expected error, got nil")
 			}
-			if !tt.shouldError && err != nil {
-				t.Errorf("SearchGeneric() unexpected error = %v", err)
+			if !tt.shouldError && searchErr != nil {
+				t.Errorf("SearchGeneric() unexpected error = %v", searchErr)
 			}
-			if !tt.shouldError && resp == nil {
-				t.Error("SearchGeneric() returned nil response")
+			if !tt.shouldError {
+				var resp *SearchResponse
+				select {
+				case resp = <-respCh:
+					if resp == nil {
+						t.Error("SearchGeneric() returned nil response")
+					}
+				case err := <-errCh:
+					t.Errorf("SearchGeneric() callback error = %v", err)
+				case <-time.After(1 * time.Second):
+					t.Fatal("SearchGeneric timed out")
+				}
 			}
 		})
 	}
@@ -1216,11 +1340,31 @@ func TestSearchRespectsRequestedIndexerIDs(t *testing.T) {
 		Query:      "Example.Show.S01",
 		IndexerIDs: []int{999}, // request an indexer that does not exist/enabled
 	}
-
-	resp, err := s.Search(context.Background(), req)
-	if err != nil {
-		t.Fatalf("Search() error = %v", err)
+	respCh := make(chan *SearchResponse, 1)
+	errCh := make(chan error, 1)
+	req.OnAllComplete = func(resp *SearchResponse, err error) {
+		if err != nil {
+			errCh <- err
+		} else {
+			respCh <- resp
+		}
 	}
+
+	searchErr := s.Search(context.Background(), req)
+	if searchErr != nil {
+		t.Fatalf("Search() error = %v", searchErr)
+	}
+
+	var resp *SearchResponse
+	select {
+	case resp = <-respCh:
+		// continue
+	case err := <-errCh:
+		t.Fatalf("Search callback error = %v", err)
+	case <-time.After(1 * time.Second):
+		t.Fatal("Search timed out")
+	}
+
 	if resp == nil {
 		t.Fatal("expected response, got nil")
 	}

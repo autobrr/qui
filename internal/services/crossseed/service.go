@@ -238,6 +238,7 @@ type SearchRunOptions struct {
 	CategoryOverride       *string
 	TagsOverride           []string
 	IgnorePatterns         []string
+	SpecificHashes         []string
 }
 
 // SearchSettingsPatch captures optional updates to seeded search defaults.
@@ -691,13 +692,19 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		return
 	}
 
-	if err := s.executeCompletionSearch(ctx, instanceID, &torrent, settings); err != nil {
+	_, err = s.StartSearchRun(ctx, SearchRunOptions{
+		InstanceID:      instanceID,
+		SpecificHashes:  []string{torrent.Hash},
+		RequestedBy:     "completion",
+		IntervalSeconds: 0,
+	})
+	if err != nil {
 		log.Warn().
 			Err(err).
 			Int("instanceID", instanceID).
 			Str("hash", torrent.Hash).
 			Str("name", torrent.Name).
-			Msg("[CROSSSEED-COMPLETION] Failed to run completion search")
+			Msg("[CROSSSEED-COMPLETION] Failed to start completion search run")
 	}
 }
 
@@ -921,7 +928,7 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 	opts.TagsOverride = normalizeStringSlice(opts.TagsOverride)
 
 	s.searchMu.Lock()
-	if s.searchCancel != nil {
+	if s.searchCancel != nil && len(opts.SpecificHashes) == 0 {
 		s.searchMu.Unlock()
 		return nil, ErrSearchRunActive
 	}
@@ -1181,7 +1188,16 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 
 	searchCtx := jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityRSS)
 
-	searchResp, err := s.jackettService.Recent(searchCtx, 0, settings.TargetIndexerIDs)
+	var searchResp *jackett.SearchResponse
+	respCh := make(chan *jackett.SearchResponse, 1)
+	errCh := make(chan error, 1)
+	err := s.jackettService.Recent(searchCtx, 0, settings.TargetIndexerIDs, func(resp *jackett.SearchResponse, err error) {
+		if err != nil {
+			errCh <- err
+		} else {
+			respCh <- resp
+		}
+	})
 	if err != nil {
 		msg := err.Error()
 		run.ErrorMessage = &msg
@@ -1192,6 +1208,31 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 			run = updated
 		}
 		return run, err
+	}
+
+	select {
+	case searchResp = <-respCh:
+		// continue
+	case err := <-errCh:
+		msg := err.Error()
+		run.ErrorMessage = &msg
+		run.Status = models.CrossSeedRunStatusFailed
+		completed := time.Now().UTC()
+		run.CompletedAt = &completed
+		if updated, updateErr := s.automationStore.UpdateRun(ctx, run); updateErr == nil {
+			run = updated
+		}
+		return run, err
+	case <-time.After(5 * time.Minute): // reasonable timeout
+		msg := "Recent search timed out"
+		run.ErrorMessage = &msg
+		run.Status = models.CrossSeedRunStatusFailed
+		completed := time.Now().UTC()
+		run.CompletedAt = &completed
+		if updated, updateErr := s.automationStore.UpdateRun(ctx, run); updateErr == nil {
+			run = updated
+		}
+		return run, fmt.Errorf("recent search timed out")
 	}
 
 	// Pre-fetch all indexer info (names and domains) for performance
@@ -3256,9 +3297,28 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		logEvent.Msg("[CROSSSEED-SEARCH] Applied RLS-based content type filtering")
 	}
 
-	searchResp, err := s.jackettService.Search(ctx, searchReq)
+	var searchResp *jackett.SearchResponse
+	respCh := make(chan *jackett.SearchResponse, 1)
+	errCh := make(chan error, 1)
+	searchReq.OnAllComplete = func(resp *jackett.SearchResponse, err error) {
+		if err != nil {
+			errCh <- err
+		} else {
+			respCh <- resp
+		}
+	}
+	err = s.jackettService.Search(ctx, searchReq)
 	if err != nil {
 		return nil, wrapCrossSeedSearchError(err)
+	}
+
+	select {
+	case searchResp = <-respCh:
+		// continue
+	case err := <-errCh:
+		return nil, wrapCrossSeedSearchError(err)
+	case <-time.After(5 * time.Minute):
+		return nil, wrapCrossSeedSearchError(fmt.Errorf("search timed out"))
 	}
 
 	searchResults := searchResp.Results
@@ -3918,6 +3978,21 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 	// Deduplicate source torrents to avoid searching the same content multiple times
 	// when cross-seeds exist in the source instance
 	deduplicated, duplicates := s.deduplicateSourceTorrents(ctx, state.opts.InstanceID, filtered)
+
+	// Filter to specific hashes if provided
+	if len(state.opts.SpecificHashes) > 0 {
+		hashSet := make(map[string]bool, len(state.opts.SpecificHashes))
+		for _, h := range state.opts.SpecificHashes {
+			hashSet[strings.ToUpper(h)] = true
+		}
+		specific := make([]qbt.Torrent, 0, len(deduplicated))
+		for _, torrent := range deduplicated {
+			if hashSet[strings.ToUpper(torrent.Hash)] {
+				specific = append(specific, torrent)
+			}
+		}
+		deduplicated = specific
+	}
 
 	state.queue = deduplicated
 	state.index = 0

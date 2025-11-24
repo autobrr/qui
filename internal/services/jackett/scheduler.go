@@ -28,7 +28,7 @@ type workerTask struct {
 	exec    func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error)
 	ctx     context.Context
 	respCh  chan workerResult
-	onStart func(jobID uint64, indexerID int)
+	onStart func(jobID uint64, indexerID int) context.Context
 	onDone  func(jobID uint64, indexerID int, err error)
 	isRSS   bool
 }
@@ -111,9 +111,10 @@ func newSearchScheduler() *searchScheduler {
 }
 
 // Submit enqueues all indexer tasks for this search and waits for all to finish.
-func (s *searchScheduler) Submit(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext, exec func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error), onReady func(jobID uint64, indexerID int), onComplete func(jobID uint64, indexerID int, err error)) ([]Result, []int, error) {
+func (s *searchScheduler) Submit(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext, exec func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error), onReady func(jobID uint64, indexerID int) context.Context, onComplete func(jobID uint64, indexerID int, err error), resultCallback func([]Result, []int, error)) error {
 	if len(indexers) == 0 {
-		return nil, nil, nil
+		resultCallback(nil, nil, nil)
+		return nil
 	}
 
 	jobID := s.nextJobID()
@@ -147,48 +148,57 @@ func (s *searchScheduler) Submit(ctx context.Context, indexers []*models.Torznab
 	}
 
 	if len(tasks) == 0 {
-		return nil, nil, nil
+		resultCallback(nil, nil, nil)
+		return nil
 	}
-	defer s.clearPendingRSS(tasks)
 
 	select {
 	case s.submitCh <- tasks:
 	case <-ctx.Done():
-		return nil, nil, ctx.Err()
+		resultCallback(nil, nil, ctx.Err())
+		return ctx.Err()
 	}
 
-	var (
-		results  []Result
-		coverage []int
-		failures int
-		lastErr  error
-	)
+	go func() {
+		var (
+			results  []Result
+			coverage []int
+			failures int
+			lastErr  error
+		)
 
-	for i := 0; i < len(tasks); i++ {
-		select {
-		case <-ctx.Done():
-			return results, coverage, ctx.Err()
-		case res := <-respCh:
-			if res.err != nil {
-				failures++
-				lastErr = res.err
-				continue
-			}
-			if len(res.coverage) > 0 {
-				coverage = append(coverage, res.coverage...)
-			}
-			if len(res.results) > 0 {
-				results = append(results, res.results...)
+		for i := 0; i < len(tasks); i++ {
+			select {
+			case <-ctx.Done():
+				safeInvokeResultCallback(resultCallback, results, coverage, ctx.Err())
+				s.clearPendingRSS(tasks)
+				return
+			case res := <-respCh:
+				if res.err != nil {
+					failures++
+					lastErr = res.err
+					continue
+				}
+				if len(res.coverage) > 0 {
+					coverage = append(coverage, res.coverage...)
+				}
+				if len(res.results) > 0 {
+					results = append(results, res.results...)
+				}
 			}
 		}
-	}
 
-	if failures == len(tasks) && lastErr != nil && len(results) == 0 {
+		if failures == len(tasks) && lastErr != nil && len(results) == 0 {
+			s.clearPendingRSS(tasks)
+			safeInvokeResultCallback(resultCallback, nil, coverage, lastErr)
+			return
+		}
+
 		s.clearPendingRSS(tasks)
-		return nil, coverage, lastErr
-	}
+		safeInvokeResultCallback(resultCallback, results, coverageSetToSlice(sliceToSet(coverage)), nil)
+	}()
 
-	return results, coverageSetToSlice(sliceToSet(coverage)), nil
+	return nil
 }
 
 func (s *searchScheduler) loop() {
@@ -288,8 +298,11 @@ func (w *indexerWorker) run(done chan<- workerResult) {
 				done <- workerResult{jobID: task.jobID, indexer: w.indexerID}
 				return
 			}
-			safeInvokeStart(task.onStart, task.jobID, w.indexerID)
-			results, coverage, err := task.exec(task.ctx, []*models.TorznabIndexer{task.indexer}, task.params, task.meta)
+			searchCtx := safeInvokeStart(task.onStart, task.jobID, w.indexerID)
+			if searchCtx == nil {
+				searchCtx = task.ctx
+			}
+			results, coverage, err := task.exec(searchCtx, []*models.TorznabIndexer{task.indexer}, task.params, task.meta)
 			safeInvokeDone(task.onDone, task.jobID, w.indexerID, err)
 			task.respCh <- workerResult{
 				jobID:    task.jobID,
@@ -355,14 +368,14 @@ func (s *searchScheduler) clearPendingRSS(tasks []workerTask) {
 	}
 }
 
-func safeInvokeStart(fn func(jobID uint64, indexerID int), jobID uint64, indexerID int) {
+func safeInvokeStart(fn func(jobID uint64, indexerID int) context.Context, jobID uint64, indexerID int) context.Context {
 	if fn == nil {
-		return
+		return nil
 	}
 	defer func() {
 		_ = recover()
 	}()
-	fn(jobID, indexerID)
+	return fn(jobID, indexerID)
 }
 
 func safeInvokeDone(fn func(jobID uint64, indexerID int, err error), jobID uint64, indexerID int, err error) {
@@ -373,4 +386,14 @@ func safeInvokeDone(fn func(jobID uint64, indexerID int, err error), jobID uint6
 		_ = recover()
 	}()
 	fn(jobID, indexerID, err)
+}
+
+func safeInvokeResultCallback(fn func([]Result, []int, error), results []Result, coverage []int, err error) {
+	if fn == nil {
+		return
+	}
+	defer func() {
+		_ = recover()
+	}()
+	fn(results, coverage, err)
 }
