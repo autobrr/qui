@@ -3932,7 +3932,7 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 }
 
 // deduplicateSourceTorrents removes duplicate torrents from the search queue by keeping only
-// the best representative of each unique content group. It now prefers torrents that already
+// the best representative of each unique content group. It prefers torrents that already
 // have a top-level folder (so subsequent cross-seeds inherit cleaner layouts) and falls back to
 // the oldest torrent when folder layout is identical. This prevents searching the same content
 // multiple times when cross-seeds exist in the source instance.
@@ -3951,72 +3951,134 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		return torrents, map[string][]string{}
 	}
 
+	// Parse all torrents and track their releases
+	type torrentWithRelease struct {
+		torrent         qbt.Torrent
+		release         *rls.Release
+		normalizedTitle string
+	}
+
+	parsed := make([]torrentWithRelease, 0, len(torrents))
+	for _, torrent := range torrents {
+		release := s.releaseCache.Parse(torrent.Name)
+		normalizedTitle := s.stringNormalizer.Normalize(release.Title)
+		parsed = append(parsed, torrentWithRelease{
+			torrent:         torrent,
+			release:         release,
+			normalizedTitle: normalizedTitle,
+		})
+	}
+
+	// Pre-group by normalized title for faster lookup
+	titleGroups := make(map[string][]int) // normalized title -> indices in parsed
+	for i, item := range parsed {
+		if item.normalizedTitle != "" {
+			titleGroups[item.normalizedTitle] = append(titleGroups[item.normalizedTitle], i)
+		}
+	}
+
 	// Group torrents by matching content
 	// We'll track the preferred torrent (folder-aware, then oldest) for each unique content group
 	type contentGroup struct {
-		representative  *qbt.Torrent
-		addedOn         int64
-		duplicates      []string // Track duplicate names for logging
-		hasRootFolder   bool
-		rootFolderKnown bool
+		representativeIdx int // index into parsed slice
+		addedOn           int64
+		duplicates        []string // Track duplicate names for logging
+		hasRootFolder     bool
+		rootFolderKnown   bool
 	}
 
 	groups := make([]*contentGroup, 0)
 	groupMap := make(map[string]int) // hash to group index
-	contentKeyMap := make(map[*rls.Release]*contentGroup)
 	hasRootCache := make(map[string]bool)
+	releasesMatchCache := make(map[string]bool) // cache releasesMatch results
 
-	// Batch fetch all torrent files to determine root folders
-	hashes := make([]string, 0, len(torrents))
-	normalizedHashes := make([]string, 0, len(torrents))
-	for _, t := range torrents {
-		hashes = append(hashes, t.Hash)
-		normalizedHashes = append(normalizedHashes, normalizeHash(t.Hash))
+	// Pre-populate hasRootCache for all torrents to avoid individual fetches
+	torrentHashes := make([]string, 0, len(parsed))
+	for _, item := range parsed {
+		torrentHashes = append(torrentHashes, item.torrent.Hash)
 	}
 
-	if len(hashes) > 0 && s.syncManager != nil {
-		filesMap, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+	if len(torrentHashes) > 0 && s.syncManager != nil {
+		filesMap, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, torrentHashes)
 		if err == nil {
-			for _, hash := range normalizedHashes {
-				if hash == "" {
-					continue
-				}
-				if filesPtr, ok := filesMap[hash]; ok && len(filesPtr) > 0 {
-					hasRoot := detectCommonRoot(filesPtr) != ""
-					hasRootCache[hash] = hasRoot
+			for _, item := range parsed {
+				normHash := normalizeHash(item.torrent.Hash)
+				if files, exists := filesMap[normHash]; exists && len(files) > 0 {
+					hasRoot := detectCommonRoot(files) != ""
+					hasRootCache[normHash] = hasRoot
+				} else {
+					hasRootCache[normHash] = false
 				}
 			}
 		} else {
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to batch fetch torrent files for deduplication")
+			// Pre-populate cache with false for all torrents
+			for _, item := range parsed {
+				hasRootCache[normalizeHash(item.torrent.Hash)] = false
+			}
+		}
+	} else {
+		// No sync manager, pre-populate cache with false
+		for _, item := range parsed {
+			hasRootCache[normalizeHash(item.torrent.Hash)] = false
 		}
 	}
 
-	for i := range torrents {
-		current := &torrents[i]
-		release := s.releaseCache.Parse(current.Name)
+	// Helper to get cache key for releasesMatch
+	getMatchCacheKey := func(idx1, idx2 int) string {
+		if idx1 < idx2 {
+			return fmt.Sprintf("%d:%d", idx1, idx2)
+		}
+		return fmt.Sprintf("%d:%d", idx2, idx1)
+	}
 
-		group, exists := contentKeyMap[release]
-		if !exists {
+	for i := range parsed {
+		current := &parsed[i]
+
+		// Try to find an existing group this torrent belongs to
+		// First check only torrents with the same normalized title for efficiency
+		foundGroup := -1
+		candidateIndices := titleGroups[current.normalizedTitle]
+
+		for _, candidateIdx := range candidateIndices {
+			if candidateIdx >= i {
+				// Only check against previous torrents (already processed)
+				continue
+			}
+
+			// Check cache first
+			cacheKey := getMatchCacheKey(i, candidateIdx)
+			matches, cached := releasesMatchCache[cacheKey]
+			if !cached {
+				candidate := &parsed[candidateIdx]
+				matches = s.releasesMatch(current.release, candidate.release, false)
+				releasesMatchCache[cacheKey] = matches
+			}
+
+			if matches {
+				foundGroup = groupMap[parsed[candidateIdx].torrent.Hash]
+				break
+			}
+		}
+
+		if foundGroup == -1 {
 			// Create new group with this torrent as the first member
-			group = &contentGroup{
-				representative: current,
-				addedOn:        current.AddedOn,
-				duplicates:     []string{},
+			group := &contentGroup{
+				representativeIdx: i,
+				addedOn:           current.torrent.AddedOn,
+				duplicates:        []string{},
 			}
 			groups = append(groups, group)
-			groupMap[current.Hash] = len(groups) - 1
-			contentKeyMap[release] = group
+			groupMap[current.torrent.Hash] = len(groups) - 1
 			continue
 		}
 
-		// Add to existing group
-		groupMap[current.Hash] = groupMap[group.representative.Hash]
-		normHash := normalizeHash(current.Hash)
-		currentHasRoot := hasRootCache[normHash]
+		group := groups[foundGroup]
+		currentHasRoot := s.torrentHasTopLevelFolderCached(current.torrent.Hash, hasRootCache)
 		groupHasRoot := group.hasRootFolder
 		if !group.rootFolderKnown {
-			groupNormHash := normalizeHash(group.representative.Hash)
-			groupHasRoot = hasRootCache[groupNormHash]
+			rep := &parsed[group.representativeIdx]
+			groupHasRoot = s.torrentHasTopLevelFolderCached(rep.torrent.Hash, hasRootCache)
 			group.hasRootFolder = groupHasRoot
 			group.rootFolderKnown = true
 		}
@@ -4026,20 +4088,22 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		case currentHasRoot && !groupHasRoot:
 			promoteCurrent = true
 		case currentHasRoot == groupHasRoot:
-			if current.AddedOn < group.addedOn {
+			if current.torrent.AddedOn < group.addedOn {
 				promoteCurrent = true
 			}
 		}
 
 		if promoteCurrent {
-			group.duplicates = append(group.duplicates, group.representative.Hash)
-			group.representative = current
-			group.addedOn = current.AddedOn
+			rep := &parsed[group.representativeIdx]
+			group.duplicates = append(group.duplicates, rep.torrent.Hash)
+			group.representativeIdx = i
+			group.addedOn = current.torrent.AddedOn
 			group.hasRootFolder = currentHasRoot
 			group.rootFolderKnown = true
 		} else {
-			group.duplicates = append(group.duplicates, current.Hash)
+			group.duplicates = append(group.duplicates, current.torrent.Hash)
 		}
+		groupMap[current.torrent.Hash] = foundGroup
 	}
 
 	// Build deduplicated list from group representatives
@@ -4047,13 +4111,14 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 	totalDuplicates := 0
 
 	for _, group := range groups {
-		deduplicated = append(deduplicated, *group.representative)
+		rep := &parsed[group.representativeIdx]
+		deduplicated = append(deduplicated, rep.torrent)
 		if len(group.duplicates) > 0 {
 			totalDuplicates += len(group.duplicates)
 			log.Trace().
-				Str("representative", group.representative.Name).
-				Str("representativeHash", group.representative.Hash).
-				Int64("addedOn", group.representative.AddedOn).
+				Str("representative", rep.torrent.Name).
+				Str("representativeHash", rep.torrent.Hash).
+				Int64("addedOn", rep.torrent.AddedOn).
 				Int("duplicateCount", len(group.duplicates)).
 				Strs("duplicateHashes", group.duplicates).
 				Msg("[CROSSSEED-DEDUP] Grouped duplicate content, keeping preferred representative")
@@ -4072,10 +4137,17 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		if len(group.duplicates) == 0 {
 			continue
 		}
-		duplicateMap[group.representative.Hash] = append([]string(nil), group.duplicates...)
+		rep := &parsed[group.representativeIdx]
+		duplicateMap[rep.torrent.Hash] = append([]string(nil), group.duplicates...)
 	}
 
 	return deduplicated, duplicateMap
+}
+
+// torrentHasTopLevelFolderCached checks if a torrent has a top-level folder from pre-populated cache
+func (s *Service) torrentHasTopLevelFolderCached(hash string, cache map[string]bool) bool {
+	normHash := normalizeHash(hash)
+	return cache[normHash] // Cache is pre-populated, so this should always exist
 }
 
 func (s *Service) propagateDuplicateSearchHistory(ctx context.Context, state *searchRunState, representativeHash string, processedAt time.Time) {

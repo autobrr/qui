@@ -170,8 +170,8 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 
 	// Group tags should match for proper cross-seeding compatibility.
 	// Different release groups often have different encoding settings and file structures.
-	sourceGroup := strings.ToUpper(strings.TrimSpace(source.Group))
-	candidateGroup := strings.ToUpper(strings.TrimSpace(candidate.Group))
+	sourceGroup := s.stringNormalizer.Normalize((source.Group))
+	candidateGroup := s.stringNormalizer.Normalize((candidate.Group))
 
 	// Only enforce group matching if the source has a group tag
 	if sourceGroup != "" {
@@ -183,22 +183,22 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	// If source has no group, we don't care about candidate's group
 
 	// Source must match if both are present (WEB-DL vs BluRay produce different files)
-	sourceSource := strings.ToUpper(strings.TrimSpace(source.Source))
-	candidateSource := strings.ToUpper(strings.TrimSpace(candidate.Source))
+	sourceSource := s.stringNormalizer.Normalize((source.Source))
+	candidateSource := s.stringNormalizer.Normalize((candidate.Source))
 	if sourceSource != "" && candidateSource != "" && sourceSource != candidateSource {
 		return false
 	}
 
 	// Resolution must match if both are present (1080p vs 2160p are different files)
-	sourceRes := strings.ToUpper(strings.TrimSpace(source.Resolution))
-	candidateRes := strings.ToUpper(strings.TrimSpace(candidate.Resolution))
+	sourceRes := s.stringNormalizer.Normalize((source.Resolution))
+	candidateRes := s.stringNormalizer.Normalize((candidate.Resolution))
 	if sourceRes != "" && candidateRes != "" && sourceRes != candidateRes {
 		return false
 	}
 
 	// Collection must match if both are present (NF vs AMZN vs Criterion are different sources)
-	sourceCollection := strings.ToUpper(strings.TrimSpace(source.Collection))
-	candidateCollection := strings.ToUpper(strings.TrimSpace(candidate.Collection))
+	sourceCollection := s.stringNormalizer.Normalize((source.Collection))
+	candidateCollection := s.stringNormalizer.Normalize((candidate.Collection))
 	if sourceCollection != "" && candidateCollection != "" && sourceCollection != candidateCollection {
 		return false
 	}
@@ -231,8 +231,8 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	}
 
 	// Channels must match if both are present (5.1 vs 7.1 are different audio tracks)
-	sourceChannels := strings.ToUpper(strings.TrimSpace(source.Channels))
-	candidateChannels := strings.ToUpper(strings.TrimSpace(candidate.Channels))
+	sourceChannels := s.stringNormalizer.Normalize((source.Channels))
+	candidateChannels := s.stringNormalizer.Normalize((candidate.Channels))
 	if sourceChannels != "" && candidateChannels != "" && sourceChannels != candidateChannels {
 		return false
 	}
