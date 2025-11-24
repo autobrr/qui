@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect } from "react"
-import type { ColumnFilter } from "@/components/torrents/ColumnFilterPopover"
+import type { ColumnFilter } from "@/lib/column-filter-utils"
+import { useEffect, useState } from "react"
 
 export function usePersistedColumnFilters(instanceId: number) {
   const storageKey = `qui-column-filters-${instanceId}`

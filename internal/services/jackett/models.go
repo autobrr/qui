@@ -4,6 +4,7 @@
 package jackett
 
 import (
+	"context"
 	"time"
 )
 
@@ -35,9 +36,13 @@ type TorznabSearchRequest struct {
 	IndexerIDs []int `json:"indexer_ids,omitempty"`
 	// CacheMode controls cache behaviour (""=default, "bypass" = skip cache)
 	CacheMode string `json:"cache_mode,omitempty"`
+	// OnReady is called when a search job for an indexer is about to start
+	OnReady func(jobID uint64, indexerID int) context.Context `json:"-"`
+	// OnComplete is called when a search job for an indexer completes
+	OnComplete func(jobID uint64, indexerID int, err error) `json:"-"`
+	// OnAllComplete is called when all search jobs complete with the final results
+	OnAllComplete func(*SearchResponse, error) `json:"-"`
 }
-
-// SearchResponse represents the response from a Torznab search
 type SearchResponse struct {
 	Results []SearchResult       `json:"results"`
 	Total   int                  `json:"total"`
