@@ -16,6 +16,7 @@ require (
 	github.com/expr-lang/expr v1.17.6
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.2.3
+	github.com/google/pprof v0.0.0-20250317173921-a4b03ec1a45e
 	github.com/hashicorp/go-version v1.7.0
 	github.com/keygen-sh/machineid v1.1.1
 	github.com/lithammer/fuzzysearch v1.1.8
