@@ -99,6 +99,26 @@ export type FilterOperation =
   | "startsWith"
   | "endsWith"
 
+export type SizeUnit =
+  "B"
+  | "KiB"
+  | "MiB"
+  | "GiB"
+  | "TiB"
+
+export type SpeedUnit =
+  "B/s"
+  | "KiB/s"
+  | "MiB/s"
+  | "GiB/s"
+  | "TiB/s"
+
+export type DurationUnit =
+  "seconds"
+  | "minutes"
+  | "hours"
+  | "days"
+
 export const NUMERIC_OPERATIONS: { value: FilterOperation; label: string }[] = [
   { value: "eq", label: "Equal to" },
   { value: "ne", label: "Not equal to" },

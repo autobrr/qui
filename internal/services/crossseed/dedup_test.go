@@ -6,11 +6,14 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 func TestService_deduplicateSourceTorrents_PreservesEpisodesAlongsideSeasonPacks(t *testing.T) {
 	svc := &Service{
-		releaseCache: NewReleaseCache(),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
 	seasonPack := qbt.Torrent{
@@ -67,8 +70,9 @@ func TestService_deduplicateSourceTorrents_PrefersRootFolders(t *testing.T) {
 	}
 
 	svc := &Service{
-		releaseCache: NewReleaseCache(),
-		syncManager:  &fakeSyncManager{files: files},
+		releaseCache:     NewReleaseCache(),
+		syncManager:      &fakeSyncManager{files: files},
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
 	torrents := []qbt.Torrent{
@@ -78,5 +82,5 @@ func TestService_deduplicateSourceTorrents_PrefersRootFolders(t *testing.T) {
 
 	deduped, _ := svc.deduplicateSourceTorrents(context.Background(), 1, torrents)
 	require.Len(t, deduped, 1)
-	require.Equal(t, "hash-root", deduped[0].Hash, "torrent with top-level folder should win even if newer")
+	require.Equal(t, "hash-root", deduped[0].Hash, "prefer torrent with root folder")
 }

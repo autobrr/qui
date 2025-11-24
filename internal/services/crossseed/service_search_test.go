@@ -13,6 +13,8 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/pkg/stringutils"
+
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
@@ -139,7 +141,8 @@ func TestRefreshSearchQueueCountsCooldownEligibleTorrents(t *testing.T) {
 				{Hash: "new-hash", Name: "BrandNew.Movie.1080p", Progress: 1.0},
 			},
 		},
-		releaseCache: NewReleaseCache(),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
 	now := time.Now().UTC()
@@ -170,9 +173,9 @@ func TestRefreshSearchQueueCountsCooldownEligibleTorrents(t *testing.T) {
 
 	require.Len(t, state.queue, 3)
 	require.Equal(t, 2, state.run.TotalTorrents, "only stale/new torrents should be counted")
-	require.True(t, state.skipCache[strings.ToLower("recent-hash")])
-	require.False(t, state.skipCache[strings.ToLower("stale-hash")])
-	require.False(t, state.skipCache[strings.ToLower("new-hash")])
+	require.True(t, state.skipCache[stringutils.DefaultNormalizer.Normalize("recent-hash")])
+	require.False(t, state.skipCache[stringutils.DefaultNormalizer.Normalize("stale-hash")])
+	require.False(t, state.skipCache[stringutils.DefaultNormalizer.Normalize("new-hash")])
 }
 
 func TestPropagateDuplicateSearchHistory(t *testing.T) {
@@ -220,26 +223,18 @@ type queueTestSyncManager struct {
 	torrents []qbt.Torrent
 }
 
-func (f *queueTestSyncManager) GetAllTorrents(_ context.Context, _ int) ([]qbt.Torrent, error) {
+func (f *queueTestSyncManager) GetTorrents(_ context.Context, _ int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
 	copied := make([]qbt.Torrent, len(f.torrents))
 	copy(copied, f.torrents)
 	return copied, nil
 }
 
-func (*queueTestSyncManager) GetTorrentFiles(context.Context, int, string) (*qbt.TorrentFiles, error) {
-	return nil, nil
+func (f *queueTestSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	return map[string]qbt.TorrentFiles{}, nil
 }
 
-func (f *queueTestSyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
-	result := make(map[string]qbt.TorrentFiles, len(hashes))
-	for _, h := range hashes {
-		files, err := f.GetTorrentFiles(ctx, instanceID, h)
-		if err != nil || files == nil || len(*files) == 0 {
-			continue
-		}
-		result[normalizeHash(h)] = *files
-	}
-	return result, nil
+func (*queueTestSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+	return nil, false, nil
 }
 
 func (*queueTestSyncManager) GetTorrentProperties(context.Context, int, string) (*qbt.TorrentProperties, error) {

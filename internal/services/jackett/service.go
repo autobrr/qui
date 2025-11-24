@@ -57,6 +57,7 @@ type searchCacheStore interface {
 	Stats(ctx context.Context) (*models.TorznabSearchCacheStats, error)
 	RecentSearches(ctx context.Context, scope string, limit int) ([]*models.TorznabRecentSearch, error)
 	UpdateSettings(ctx context.Context, ttlMinutes int) (*models.TorznabSearchCacheSettings, error)
+	RebaseTTL(ctx context.Context, ttlMinutes int) (int64, error)
 }
 
 var _ searchCacheStore = (*models.TorznabSearchCacheStore)(nil)
@@ -66,6 +67,7 @@ type Service struct {
 	indexerStore           IndexerStore
 	releaseParser          *releases.Parser
 	rateLimiter            *RateLimiter
+	searchScheduler        *searchScheduler
 	rateLimiterRestoreOnce sync.Once
 	persistedCooldowns     map[int]time.Time
 	persistedCooldownsMu   sync.RWMutex
@@ -73,6 +75,7 @@ type Service struct {
 	searchCache            searchCacheStore
 	searchCacheTTL         time.Duration
 	searchCacheEnabled     bool
+	searchCacheConfigMu    sync.RWMutex
 	searchExecutor         func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error)
 
 	searchCacheCleanupMu    sync.Mutex
@@ -90,6 +93,9 @@ const (
 	defaultSearchCacheTTL    = 24 * time.Hour
 	storeOperationTimeout    = 5 * time.Second
 	minSearchCacheTTL        = defaultSearchCacheTTL
+
+	interactiveSearchMinInterval = 10 * time.Second
+	interactiveSearchMaxWait     = 10 * time.Second
 
 	searchCacheCleanupInterval  = 6 * time.Hour
 	torrentCacheCleanupInterval = 6 * time.Hour
@@ -138,9 +144,77 @@ func (p *cachedSearchPortion) metadata(source string) *SearchCacheMetadata {
 
 // searchContext carries additional metadata about the current Torznab search.
 type searchContext struct {
-	categories  []int
-	contentType contentType
-	searchMode  string
+	categories     []int
+	contentType    contentType
+	searchMode     string
+	rateLimit      *RateLimitOptions
+	requireSuccess bool
+}
+
+type searchPriorityKey struct{}
+
+func finalizeSearchContext(ctx context.Context, meta *searchContext, fallback RateLimitPriority) *searchContext {
+	if meta == nil {
+		meta = &searchContext{}
+	}
+	priority := resolveSearchPriority(ctx, meta.rateLimit, fallback)
+	meta.rateLimit = rateLimitOptionsForPriority(priority)
+	return meta
+}
+
+func resolveSearchPriority(ctx context.Context, opts *RateLimitOptions, fallback RateLimitPriority) RateLimitPriority {
+	priority := fallback
+	if opts != nil && opts.Priority != "" {
+		priority = opts.Priority
+	}
+	if ctxPriority, ok := getSearchPriorityFromContext(ctx); ok {
+		priority = ctxPriority
+	}
+	if priority == "" {
+		return RateLimitPriorityBackground
+	}
+	return priority
+}
+
+func getSearchPriorityFromContext(ctx context.Context) (RateLimitPriority, bool) {
+	if ctx == nil {
+		return "", false
+	}
+	if value := ctx.Value(searchPriorityKey{}); value != nil {
+		if prio, ok := value.(RateLimitPriority); ok && prio != "" {
+			return prio, true
+		}
+	}
+	return "", false
+}
+
+func rateLimitOptionsForPriority(priority RateLimitPriority) *RateLimitOptions {
+	switch priority {
+	case RateLimitPriorityInteractive:
+		return &RateLimitOptions{
+			Priority:    RateLimitPriorityInteractive,
+			MinInterval: interactiveSearchMinInterval,
+			MaxWait:     interactiveSearchMaxWait,
+		}
+	case RateLimitPriorityRSS:
+		return &RateLimitOptions{
+			Priority:    RateLimitPriorityRSS,
+			MinInterval: defaultMinRequestInterval,
+			MaxWait:     rssMaxWait,
+		}
+	case RateLimitPriorityCompletion:
+		return &RateLimitOptions{
+			Priority:    RateLimitPriorityCompletion,
+			MinInterval: defaultMinRequestInterval,
+			MaxWait:     completionMaxWait,
+		}
+	default:
+		return &RateLimitOptions{
+			Priority:    RateLimitPriorityBackground,
+			MinInterval: defaultMinRequestInterval,
+			MaxWait:     backgroundMaxWait,
+		}
+	}
 }
 
 type searchCacheSignature struct {
@@ -190,12 +264,22 @@ type SearchCacheConfig struct {
 	TTL time.Duration
 }
 
+// WithSearchPriority annotates a context with a desired search priority for scheduling.
+func WithSearchPriority(ctx context.Context, priority RateLimitPriority) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, searchPriorityKey{}, priority)
+}
+
 // NewService creates a new Jackett service
 func NewService(indexerStore IndexerStore, opts ...ServiceOption) *Service {
+	rl := NewRateLimiter(defaultMinRequestInterval)
 	s := &Service{
 		indexerStore:       indexerStore,
 		releaseParser:      releases.NewDefaultParser(),
-		rateLimiter:        NewRateLimiter(defaultMinRequestInterval),
+		rateLimiter:        rl,
+		searchScheduler:    newSearchScheduler(rl),
 		persistedCooldowns: make(map[int]time.Time),
 		searchCacheTTL:     defaultSearchCacheTTL,
 		searchCacheEnabled: true,
@@ -213,6 +297,83 @@ func (s *Service) executeSearch(ctx context.Context, indexers []*models.TorznabI
 		return s.searchExecutor(ctx, indexers, params, meta)
 	}
 	return s.searchMultipleIndexers(ctx, indexers, params, meta)
+}
+
+// executeQueuedSearch submits the search to the scheduler so we can skip over jobs blocked by
+// indexer cooldowns or other rate-limit constraints.
+func (s *Service) executeQueuedSearch(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext, onReady func(jobID uint64, indexerID int) context.Context, onComplete func(jobID uint64, indexerID int, err error), resultCallback func([]Result, []int, error)) error {
+	meta = finalizeSearchContext(ctx, meta, RateLimitPriorityBackground)
+	if s.searchExecutor != nil {
+		// For synchronous executor, call it and callback immediately
+		results, coverage, err := s.searchExecutor(ctx, indexers, params, meta)
+		resultCallback(results, coverage, err)
+		return nil
+	}
+	if meta != nil && meta.requireSuccess {
+		// For strict callers (explicit indexer selection), run synchronously to avoid delayed errors.
+		results, coverage, err := s.executeSearch(ctx, indexers, params, meta)
+		resultCallback(results, coverage, err)
+		return nil
+	}
+	if s.searchScheduler == nil {
+		results, coverage, err := s.executeSearch(ctx, indexers, params, meta)
+		resultCallback(results, coverage, err)
+		return nil
+	}
+	return s.searchIndexersWithScheduler(ctx, indexers, params, meta, onReady, onComplete, resultCallback)
+}
+
+func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext, onReady func(jobID uint64, indexerID int) context.Context, onComplete func(jobID uint64, indexerID int, err error), resultCallback func([]Result, []int, error)) error {
+	if len(indexers) == 0 {
+		resultCallback(nil, nil, nil)
+		return nil
+	}
+
+	s.ensureRateLimiterState()
+	cooldownIndexers := s.rateLimiter.GetCooldownIndexers()
+	availableIndexers := make([]*models.TorznabIndexer, 0, len(indexers))
+
+	// Skip indexers already in cooldown; letting them enqueue would block the scheduler while
+	// RSS-priority workers sleep inside the rate limiter, delaying results for healthy indexers.
+	for _, idx := range indexers {
+		if resumeAt, inCooldown := cooldownIndexers[idx.ID]; inCooldown {
+			localResumeAt := resumeAt.In(time.Local)
+			log.Info().
+				Int("indexer_id", idx.ID).
+				Str("indexer", idx.Name).
+				Time("resume_at", localResumeAt).
+				Msg("Skipping rate-limited indexer for scheduled search")
+			continue
+		}
+		availableIndexers = append(availableIndexers, idx)
+	}
+
+	if len(availableIndexers) == 0 {
+		log.Info().
+			Int("indexers_requested", len(indexers)).
+			Msg("Skipping scheduled torznab search because all indexers are rate-limited")
+		resultCallback(nil, nil, nil)
+		return nil
+	}
+	indexers = availableIndexers
+
+	log.Debug().
+		Int("indexers", len(indexers)).
+		Msg("Scheduling torznab search with scheduler")
+
+	execFn := s.runIndexerSearch
+	if s.searchExecutor != nil {
+		execFn = func(execCtx context.Context, idx *models.TorznabIndexer, vals url.Values, m *searchContext) ([]Result, []int, error) {
+			return s.searchExecutor(execCtx, []*models.TorznabIndexer{idx}, vals, m)
+		}
+	}
+
+	return s.searchScheduler.Submit(ctx, indexers, params, meta, func(jobCtx context.Context, idxs []*models.TorznabIndexer, vals url.Values, m *searchContext) ([]Result, []int, error) {
+		if len(idxs) == 0 {
+			return nil, nil, fmt.Errorf("missing indexer")
+		}
+		return execFn(jobCtx, idxs[0], vals, m)
+	}, onReady, onComplete, resultCallback)
 }
 
 // WithTorrentCache wires a torrent payload cache into the service.
@@ -260,13 +421,23 @@ func (s *Service) GetIndexerName(ctx context.Context, id int) string {
 }
 
 // Search searches enabled Torznab indexers with intelligent category detection
-func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*SearchResponse, error) {
+func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) error {
+	return s.performSearch(ctx, req, searchCacheScopeCrossSeed)
+}
+
+// SearchGeneric performs a general Torznab search across specified or all enabled indexers
+func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) error {
+	return s.performSearch(ctx, req, searchCacheScopeGeneral)
+}
+
+// performSearch is the shared implementation for Search and SearchGeneric
+func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, cacheScope string) error {
 	// Validate request - require either query or advanced parameters
 	hasAdvancedParams := req.IMDbID != "" || req.TVDbID != "" || req.Artist != "" || req.Album != "" ||
 		req.Year > 0 || req.Season != nil || req.Episode != nil
 
 	if req.Query == "" && !hasAdvancedParams {
-		return nil, fmt.Errorf("query or advanced parameters (imdb_id, tvdb_id, artist, album, year, season, episode) are required")
+		return fmt.Errorf("query or advanced parameters (imdb_id, tvdb_id, artist, album, year, season, episode) are required")
 	}
 
 	var detectedType contentType
@@ -296,18 +467,19 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 
 	indexersToSearch, err := s.resolveIndexerSelection(ctx, req.IndexerIDs)
 	if err != nil {
-		return nil, fmt.Errorf("resolve indexer selection: %w", err)
+		return fmt.Errorf("resolve indexer selection: %w", err)
 	}
 
 	requestedIndexerIDs := collectIndexerIDs(indexersToSearch)
 	// Build search parameters
 	searchMode := searchModeForContentType(detectedType)
 	params := s.buildSearchParams(req, searchMode)
-	meta := &searchContext{
-		categories:  append([]int(nil), req.Categories...),
-		contentType: detectedType,
-		searchMode:  searchMode,
-	}
+	meta := finalizeSearchContext(ctx, &searchContext{
+		categories:     append([]int(nil), req.Categories...),
+		contentType:    detectedType,
+		searchMode:     searchMode,
+		requireSuccess: len(req.IndexerIDs) > 0,
+	}, RateLimitPriorityInteractive)
 
 	cacheEnabled := s.shouldUseSearchCache()
 	cacheReadAllowed := cacheEnabled && req.CacheMode != CacheModeBypass
@@ -315,16 +487,18 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 	var cachedPortion *cachedSearchPortion
 	var cachedResults []SearchResult
 	var cachedIndexerCoverage []int
-	scope := searchCacheScopeCrossSeed
 	if cacheEnabled {
-		cacheSig = s.buildSearchCacheSignature(scope, req, detectedType, searchMode, requestedIndexerIDs)
+		cacheSig = s.buildSearchCacheSignature(cacheScope, req, detectedType, searchMode, requestedIndexerIDs)
 		if cacheReadAllowed {
-			if portion, complete := s.loadCachedSearchPortion(ctx, cacheSig, scope, req, requestedIndexerIDs, true); portion != nil {
+			if portion, complete := s.loadCachedSearchPortion(ctx, cacheSig, cacheScope, req, requestedIndexerIDs, true); portion != nil {
 				if complete {
 					results, total := portion.paginate(req.Offset, req.Limit)
 					response := &SearchResponse{Results: results, Total: total}
 					response.Cache = portion.metadata(searchCacheSourceCache)
-					return response, nil
+					if req.OnAllComplete != nil {
+						req.OnAllComplete(response, nil)
+					}
+					return nil
 				}
 				cachedPortion = portion
 				cachedResults = append([]SearchResult(nil), portion.results...)
@@ -341,252 +515,124 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 			results, total := paginateSearchResults(cachedResults, req.Offset, req.Limit)
 			resp := &SearchResponse{Results: results, Total: total}
 			resp.Cache = cachedPortion.metadata(searchCacheSourceCache)
-			return resp, nil
+			if req.OnAllComplete != nil {
+				req.OnAllComplete(resp, nil)
+			}
+			return nil
 		}
-		return &SearchResponse{Results: []SearchResult{}, Total: 0}, nil
+		if req.OnAllComplete != nil {
+			req.OnAllComplete(&SearchResponse{Results: []SearchResult{}, Total: 0}, nil)
+		}
+		return nil
 	}
 
 	// Search selected indexers (defaults to all enabled when none specified)
-	searchTimeout := timeouts.AdaptiveSearchTimeout(len(indexersToSearch))
-	searchCtx, cancel := timeouts.WithSearchTimeout(ctx, searchTimeout)
-	defer cancel()
+	baseCtx := ctx
+	searchTimeout := computeSearchTimeout(meta, len(indexersToSearch))
+	if meta != nil && meta.rateLimit != nil && meta.rateLimit.Priority == RateLimitPriorityRSS {
+		// Keep RSS automation bounded but not tied to the HTTP request lifetime; use adaptive timeout without extra rate-limit budget.
+		searchTimeout = timeouts.AdaptiveSearchTimeout(len(indexersToSearch))
+		baseCtx = context.Background()
+		log.Debug().Dur("search_timeout", searchTimeout).Msg("RSS search using scheduler with dedicated timeout")
+	}
+	searchCtx, _ := timeouts.WithSearchTimeout(baseCtx, searchTimeout)
+	// Note: do not cancel for async searches, as it would cancel immediately when the function returns
 
-	allResults, networkCoverage, err := s.executeSearch(searchCtx, indexersToSearch, params, meta)
-	deadlineErr := err != nil && errors.Is(err, context.DeadlineExceeded)
-	if err != nil && !deadlineErr {
-		return nil, err
-	}
-	partial := deadlineErr && len(allResults) > 0
-	if partial && len(networkCoverage) == len(indexersToSearch) {
-		partial = false
-	}
-	effectiveCoverage := mergeIndexerCoverage(cachedIndexerCoverage, networkCoverage)
-
-	networkConverted := s.convertResults(allResults)
-	combined := make([]SearchResult, 0, len(cachedResults)+len(networkConverted))
-	if len(cachedResults) > 0 {
-		combined = append(combined, cachedResults...)
-	}
-	combined = append(combined, networkConverted...)
-	combined = dedupeSearchResults(combined)
-	sortSearchResults(combined)
-	pageResults, total := paginateSearchResults(combined, req.Offset, req.Limit)
-
-	response := &SearchResponse{
-		Results: pageResults,
-		Total:   total,
-		Partial: partial,
-	}
-	if cachedPortion != nil && len(cachedResults) > 0 {
-		response.Cache = cachedPortion.metadata(searchCacheSourceHybrid)
-	}
-	fullSearchResponse := &SearchResponse{
-		Results: combined,
-		Total:   total,
-		Partial: partial,
-	}
-	if partial {
-		log.Debug().
-			Int("indexers_requested", len(indexersToSearch)).
-			Int("results_collected", len(allResults)).
-			Dur("timeout", searchTimeout).
-			Msg("Torznab search returning partial results due to deadline")
-	}
-
-	if cacheEnabled && cacheSig != nil && cacheReadAllowed && len(networkCoverage) > 0 {
-		now := time.Now().UTC()
-		if response.Cache == nil {
-			s.annotateSearchResponse(response, scope, false, now, now.Add(s.searchCacheTTL), nil)
+	resultCallback := func(allResults []Result, networkCoverage []int, err error) {
+		deadlineErr := err != nil && errors.Is(err, context.DeadlineExceeded)
+		if deadlineErr {
+			log.Warn().
+				Dur("timeout", searchTimeout).
+				Int("indexers_requested", len(indexersToSearch)).
+				Msg("Torznab search deadline exceeded")
 		}
-		coverageToPersist := effectiveCoverage
-		if len(coverageToPersist) == 0 {
-			coverageToPersist = networkCoverage
-		}
-		coverageToPersist = intersectIndexerIDs(coverageToPersist, requestedIndexerIDs)
-		if len(coverageToPersist) > 0 {
-			s.persistSearchCacheEntry(ctx, scope, cacheSig, req, coverageToPersist, fullSearchResponse, now)
-		}
-	}
-
-	return response, nil
-}
-
-// SearchGeneric performs a general Torznab search across specified or all enabled indexers
-func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) (*SearchResponse, error) {
-	// Validate request - require either query or advanced parameters
-	hasAdvancedParams := req.IMDbID != "" || req.TVDbID != "" || req.Artist != "" || req.Album != "" ||
-		req.Year > 0 || req.Season != nil || req.Episode != nil
-
-	if req.Query == "" && !hasAdvancedParams {
-		return nil, fmt.Errorf("query or advanced parameters (imdb_id, tvdb_id, artist, album, year, season, episode) are required")
-	}
-
-	var detectedType contentType
-	if len(req.Categories) == 0 {
-		detectedType = s.detectContentType(req)
-		req.Categories = getCategoriesForContentType(detectedType)
-
-		log.Debug().
-			Str("query", req.Query).
-			Int("content_type", int(detectedType)).
-			Ints("categories", req.Categories).
-			Msg("Auto-detected content type and categories for general search")
-	} else {
-		// When categories are provided, try to infer content type from categories
-		detectedType = detectContentTypeFromCategories(req.Categories)
-		if detectedType == contentTypeUnknown {
-			// Fallback to query-based detection
-			detectedType = s.detectContentType(req)
-		}
-		log.Debug().
-			Str("query", req.Query).
-			Ints("categories", req.Categories).
-			Int("inferred_content_type", int(detectedType)).
-			Msg("Using provided categories with inferred content type for general search")
-	}
-
-	searchMode := searchModeForContentType(detectedType)
-	params := s.buildSearchParams(req, searchMode)
-	meta := &searchContext{
-		categories:  append([]int(nil), req.Categories...),
-		contentType: detectedType,
-		searchMode:  searchMode,
-	}
-
-	var indexersToSearch []*models.TorznabIndexer
-	var err error
-
-	// If specific indexer IDs requested, get those
-	if len(req.IndexerIDs) > 0 {
-		for _, id := range req.IndexerIDs {
-			indexer, err := s.indexerStore.Get(ctx, id)
-			if err != nil {
+		if err != nil && !deadlineErr {
+			if len(cachedResults) > 0 && cachedPortion != nil {
 				log.Warn().
 					Err(err).
-					Int("indexer_id", id).
-					Msg("Failed to get indexer")
-				continue
-			}
-			if indexer.Enabled {
-				indexersToSearch = append(indexersToSearch, indexer)
-			}
-		}
-	} else {
-		// Search all enabled indexers
-		indexersToSearch, err = s.indexerStore.ListEnabled(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get enabled indexers: %w", err)
-		}
-	}
-
-	if len(indexersToSearch) == 0 {
-		return &SearchResponse{
-			Results: []SearchResult{},
-			Total:   0,
-		}, nil
-	}
-
-	requestedIndexerIDs := collectIndexerIDs(indexersToSearch)
-	cacheEnabled := s.shouldUseSearchCache()
-	cacheReadAllowed := cacheEnabled && req.CacheMode != CacheModeBypass
-	var cacheSig *searchCacheSignature
-	var cachedPortion *cachedSearchPortion
-	var cachedResults []SearchResult
-	var cachedIndexerCoverage []int
-	scope := searchCacheScopeGeneral
-	if cacheEnabled {
-		cacheSig = s.buildSearchCacheSignature(scope, req, detectedType, searchMode, requestedIndexerIDs)
-		if cacheReadAllowed {
-			if portion, complete := s.loadCachedSearchPortion(ctx, cacheSig, scope, req, requestedIndexerIDs, true); portion != nil {
-				if complete {
-					results, total := portion.paginate(req.Offset, req.Limit)
-					resp := &SearchResponse{Results: results, Total: total}
-					resp.Cache = portion.metadata(searchCacheSourceCache)
-					return resp, nil
+					Int("indexers_requested", len(indexersToSearch)).
+					Int("cached_results", len(cachedResults)).
+					Msg("Returning cached torznab search results after search failure")
+				results, total := paginateSearchResults(cachedResults, req.Offset, req.Limit)
+				resp := &SearchResponse{
+					Results: results,
+					Total:   total,
+					Partial: true,
 				}
-				cachedPortion = portion
-				cachedResults = append([]SearchResult(nil), portion.results...)
-				cachedIndexerCoverage = append([]int(nil), portion.indexerIDs...)
+				resp.Cache = cachedPortion.metadata(searchCacheSourceCache)
+				if req.OnAllComplete != nil {
+					req.OnAllComplete(resp, nil)
+				}
+				return
+			}
+			if req.OnAllComplete != nil {
+				req.OnAllComplete(nil, err)
+			}
+			return
+		}
+		partial := deadlineErr && len(allResults) > 0
+		if partial && len(networkCoverage) == len(indexersToSearch) {
+			partial = false
+		}
+		effectiveCoverage := mergeIndexerCoverage(cachedIndexerCoverage, networkCoverage)
+
+		networkConverted := s.convertResults(allResults)
+		combined := make([]SearchResult, 0, len(cachedResults)+len(networkConverted))
+		if len(cachedResults) > 0 {
+			combined = append(combined, cachedResults...)
+		}
+		combined = append(combined, networkConverted...)
+		combined = dedupeSearchResults(combined)
+		sortSearchResults(combined)
+		pageResults, total := paginateSearchResults(combined, req.Offset, req.Limit)
+
+		response := &SearchResponse{
+			Results: pageResults,
+			Total:   total,
+			Partial: partial,
+		}
+		if cachedPortion != nil && len(cachedResults) > 0 {
+			response.Cache = cachedPortion.metadata(searchCacheSourceHybrid)
+		}
+		fullSearchResponse := &SearchResponse{
+			Results: combined,
+			Total:   total,
+			Partial: partial,
+		}
+		if partial {
+			log.Debug().
+				Int("indexers_requested", len(indexersToSearch)).
+				Int("results_collected", len(allResults)).
+				Dur("timeout", searchTimeout).
+				Msg("Torznab search returning partial results due to deadline")
+		}
+
+		if cacheEnabled && cacheSig != nil && len(networkCoverage) > 0 {
+			now := time.Now().UTC()
+			ttl := s.cacheTTL()
+			if response.Cache == nil && ttl > 0 {
+				s.annotateSearchResponse(response, cacheScope, false, now, now.Add(ttl), nil)
+			}
+			coverageToPersist := effectiveCoverage
+			if len(coverageToPersist) == 0 {
+				coverageToPersist = networkCoverage
+			}
+			coverageToPersist = intersectIndexerIDs(coverageToPersist, requestedIndexerIDs)
+			if len(coverageToPersist) > 0 {
+				s.persistSearchCacheEntry(ctx, cacheScope, cacheSig, req, coverageToPersist, fullSearchResponse, now)
 			}
 		}
-	}
-	if len(cachedIndexerCoverage) > 0 {
-		indexersToSearch = excludeIndexers(indexersToSearch, cachedIndexerCoverage)
-	}
 
-	if len(indexersToSearch) == 0 {
-		if len(cachedResults) > 0 && cachedPortion != nil {
-			results, total := paginateSearchResults(cachedResults, req.Offset, req.Limit)
-			resp := &SearchResponse{Results: results, Total: total}
-			resp.Cache = cachedPortion.metadata(searchCacheSourceCache)
-			return resp, nil
-		}
-		return &SearchResponse{Results: []SearchResult{}, Total: 0}, nil
-	}
-
-	// Search remaining indexers
-	searchTimeout := timeouts.AdaptiveSearchTimeout(len(indexersToSearch))
-	searchCtx, cancel := timeouts.WithSearchTimeout(ctx, searchTimeout)
-	defer cancel()
-
-	allResults, networkCoverage, err := s.executeSearch(searchCtx, indexersToSearch, params, meta)
-	deadlineErr := err != nil && errors.Is(err, context.DeadlineExceeded)
-	if err != nil && !deadlineErr {
-		return nil, err
-	}
-	partial := deadlineErr && len(allResults) > 0
-	if partial && len(networkCoverage) == len(indexersToSearch) {
-		partial = false
-	}
-	effectiveCoverage := mergeIndexerCoverage(cachedIndexerCoverage, networkCoverage)
-
-	allConverted := s.convertResults(allResults)
-	combined := make([]SearchResult, 0, len(cachedResults)+len(allConverted))
-	if len(cachedResults) > 0 {
-		combined = append(combined, cachedResults...)
-	}
-	combined = append(combined, allConverted...)
-	combined = dedupeSearchResults(combined)
-	sortSearchResults(combined)
-	pageResults, total := paginateSearchResults(combined, req.Offset, req.Limit)
-
-	response := &SearchResponse{
-		Results: pageResults,
-		Total:   total,
-		Partial: partial,
-	}
-	if cachedPortion != nil && len(cachedResults) > 0 {
-		response.Cache = cachedPortion.metadata(searchCacheSourceHybrid)
-	}
-	fullGenericResponse := &SearchResponse{
-		Results: combined,
-		Total:   total,
-		Partial: partial,
-	}
-	if partial {
-		log.Debug().
-			Int("indexers_requested", len(indexersToSearch)).
-			Int("results_collected", len(allResults)).
-			Dur("timeout", searchTimeout).
-			Msg("General Torznab search returning partial results due to deadline")
-	}
-
-	if cacheEnabled && cacheSig != nil && cacheReadAllowed && len(networkCoverage) > 0 {
-		now := time.Now().UTC()
-		if response.Cache == nil {
-			s.annotateSearchResponse(response, scope, false, now, now.Add(s.searchCacheTTL), nil)
-		}
-		coverageToPersist := effectiveCoverage
-		if len(coverageToPersist) == 0 {
-			coverageToPersist = networkCoverage
-		}
-		coverageToPersist = intersectIndexerIDs(coverageToPersist, requestedIndexerIDs)
-		if len(coverageToPersist) > 0 {
-			s.persistSearchCacheEntry(ctx, scope, cacheSig, req, coverageToPersist, fullGenericResponse, now)
+		if req.OnAllComplete != nil {
+			req.OnAllComplete(response, nil)
 		}
 	}
 
-	return response, nil
+	err = s.executeQueuedSearch(searchCtx, indexersToSearch, params, meta, req.OnReady, req.OnComplete, resultCallback)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // GetIndexers retrieves all configured Torznab indexers
@@ -614,7 +660,7 @@ func (s *Service) GetIndexers(ctx context.Context) (*IndexersResponse, error) {
 }
 
 // Recent fetches the latest releases across selected indexers without a search query.
-func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int) (*SearchResponse, error) {
+func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int, callback func(*SearchResponse, error)) error {
 	params := url.Values{}
 	params.Set("t", "search")
 	if limit > 0 {
@@ -623,44 +669,51 @@ func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int) (*Sea
 
 	indexersToSearch, err := s.resolveIndexerSelection(ctx, indexerIDs)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if len(indexersToSearch) == 0 {
-		return &SearchResponse{
+		callback(&SearchResponse{
 			Results: []SearchResult{},
 			Total:   0,
-		}, nil
+		}, nil)
+		return nil
 	}
 
-	searchTimeout := timeouts.AdaptiveSearchTimeout(len(indexersToSearch))
-	searchCtx, cancel := timeouts.WithSearchTimeout(ctx, searchTimeout)
-	defer cancel()
+	meta := finalizeSearchContext(ctx, nil, RateLimitPriorityBackground)
 
-	results, coverage, err := s.executeSearch(searchCtx, indexersToSearch, params, nil)
-	deadlineErr := err != nil && errors.Is(err, context.DeadlineExceeded)
-	if err != nil && !deadlineErr {
-		return nil, err
-	}
-	partial := deadlineErr && len(results) > 0
-	if partial && len(coverage) == len(indexersToSearch) {
-		partial = false
-	}
-	searchResults := s.convertResults(results)
+	searchTimeout := computeSearchTimeout(meta, len(indexersToSearch))
+	searchCtx, _ := timeouts.WithSearchTimeout(ctx, searchTimeout)
+	// Note: do not cancel for async searches, as it would cancel immediately when the function returns
 
-	resp := &SearchResponse{
-		Results: searchResults,
-		Total:   len(searchResults),
-		Partial: partial,
+	resultCallback := func(results []Result, coverage []int, err error) {
+		deadlineErr := err != nil && errors.Is(err, context.DeadlineExceeded)
+		partial := (deadlineErr && len(results) > 0) || (err != nil && !deadlineErr)
+		if partial && len(coverage) == len(indexersToSearch) {
+			partial = false
+		}
+		searchResults := s.convertResults(results)
+
+		resp := &SearchResponse{
+			Results: searchResults,
+			Total:   len(searchResults),
+			Partial: partial,
+		}
+		if partial {
+			log.Warn().
+				Int("indexers_requested", len(indexersToSearch)).
+				Int("results_collected", len(searchResults)).
+				Dur("timeout", searchTimeout).
+				Msg("Recent search returning partial results")
+		}
+		callback(resp, nil)
 	}
-	if partial {
-		log.Warn().
-			Int("indexers_requested", len(indexersToSearch)).
-			Int("results_collected", len(searchResults)).
-			Dur("timeout", searchTimeout).
-			Msg("Recent search returning partial results due to deadline")
+
+	err = s.executeQueuedSearch(searchCtx, indexersToSearch, params, meta, nil, nil, resultCallback)
+	if err != nil {
+		return err
 	}
-	return resp, nil
+	return nil
 }
 
 // DownloadTorrent fetches the raw torrent bytes for a specific indexer result.
@@ -742,7 +795,29 @@ func collectIndexerIDs(indexers []*models.TorznabIndexer) []int {
 }
 
 func (s *Service) shouldUseSearchCache() bool {
-	return s != nil && s.searchCacheEnabled && s.searchCache != nil && s.searchCacheTTL > 0
+	if s == nil || s.searchCache == nil {
+		return false
+	}
+	enabled, ttl := s.cacheConfig()
+	return enabled && ttl > 0
+}
+
+// cacheConfig returns the current cache enabled flag and TTL under lock.
+func (s *Service) cacheConfig() (bool, time.Duration) {
+	if s == nil {
+		return false, 0
+	}
+	s.searchCacheConfigMu.RLock()
+	enabled := s.searchCacheEnabled
+	ttl := s.searchCacheTTL
+	s.searchCacheConfigMu.RUnlock()
+	return enabled, ttl
+}
+
+// cacheTTL returns the current cache TTL under lock.
+func (s *Service) cacheTTL() time.Duration {
+	_, ttl := s.cacheConfig()
+	return ttl
 }
 
 func (s *Service) buildSearchCacheSignature(scope string, req *TorznabSearchRequest, detectedType contentType, searchMode string, indexerIDs []int) *searchCacheSignature {
@@ -927,7 +1002,11 @@ func (s *Service) persistSearchCacheEntry(ctx context.Context, scope string, sig
 	}
 
 	cachedAt = cachedAt.UTC()
-	expiresAt := cachedAt.Add(s.searchCacheTTL)
+	ttl := s.cacheTTL()
+	if ttl <= 0 {
+		return
+	}
+	expiresAt := cachedAt.Add(ttl)
 
 	// Marshal a copy without cache metadata to keep stored payload slim
 	cachePayload := SearchResponse{
@@ -958,10 +1037,15 @@ func (s *Service) persistSearchCacheEntry(ctx context.Context, scope string, sig
 		ExpiresAt:          expiresAt,
 	}
 
-	storeCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	// Cache writes are best-effort; give them their own budget independent of the request.
+	storeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := s.searchCache.Store(storeCtx, entry); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			log.Trace().Msg("Torznab search cache write timed out (best-effort)")
+			return
+		}
 		log.Debug().Err(err).Msg("Failed to persist torznab search cache entry")
 		return
 	}
@@ -981,27 +1065,6 @@ func canonicalizeIntSlice(values []int) []int {
 	slices.Sort(normalized)
 	normalized = slices.Compact(normalized)
 	return normalized
-}
-
-func containsAllIndexerIDs(superset []int, subset []int) bool {
-	if len(subset) == 0 {
-		return true
-	}
-	if len(superset) == 0 {
-		return false
-	}
-
-	set := make(map[int]struct{}, len(superset))
-	for _, id := range superset {
-		set[id] = struct{}{}
-	}
-
-	for _, id := range subset {
-		if _, ok := set[id]; !ok {
-			return false
-		}
-	}
-	return true
 }
 
 func filterResultsByIndexerIDs(results []SearchResult, allowed []int) []SearchResult {
@@ -1070,24 +1133,6 @@ func intersectIndexerIDs(a, b []int) []int {
 	}
 	slices.Sort(out)
 	return slices.Compact(out)
-}
-
-func differenceIndexerIDs(all []int, remove []int) []int {
-	if len(remove) == 0 {
-		return append([]int(nil), all...)
-	}
-	removeSet := make(map[int]struct{}, len(remove))
-	for _, id := range remove {
-		removeSet[id] = struct{}{}
-	}
-	result := make([]int, 0, len(all))
-	for _, id := range all {
-		if _, ok := removeSet[id]; ok {
-			continue
-		}
-		result = append(result, id)
-	}
-	return result
 }
 
 func excludeIndexers(indexers []*models.TorznabIndexer, exclude []int) []*models.TorznabIndexer {
@@ -1206,12 +1251,14 @@ func (s *Service) InvalidateSearchCache(ctx context.Context, indexerIDs []int) (
 
 // GetSearchCacheStats returns summary stats for the cache table.
 func (s *Service) GetSearchCacheStats(ctx context.Context) (*models.TorznabSearchCacheStats, error) {
+	enabled, ttl := s.cacheConfig()
+
 	stats := &models.TorznabSearchCacheStats{
-		Enabled:    s.searchCacheEnabled,
-		TTLMinutes: int(s.searchCacheTTL / time.Minute),
+		Enabled:    enabled,
+		TTLMinutes: int(ttl / time.Minute),
 	}
 
-	if !s.shouldUseSearchCache() {
+	if s.searchCache == nil || !enabled || ttl <= 0 {
 		return stats, nil
 	}
 
@@ -1246,13 +1293,35 @@ func (s *Service) UpdateSearchCacheSettings(ctx context.Context, ttlMinutes int)
 		return nil, fmt.Errorf("ttlMinutes must be at least %d", MinSearchCacheTTLMinutes)
 	}
 
+	newTTL := time.Duration(ttlMinutes) * time.Minute
+
+	// Snapshot current TTL under lock
+	s.searchCacheConfigMu.RLock()
+	currentTTLMinutes := int(s.searchCacheTTL / time.Minute)
+	s.searchCacheConfigMu.RUnlock()
+
 	settings, err := s.searchCache.UpdateSettings(ctx, ttlMinutes)
 	if err != nil {
 		return nil, err
 	}
 
-	s.searchCacheTTL = time.Duration(ttlMinutes) * time.Minute
+	// Persist new config in memory after backing store succeeds
+	s.searchCacheConfigMu.Lock()
+	s.searchCacheTTL = newTTL
 	s.searchCacheEnabled = true
+	s.searchCacheConfigMu.Unlock()
+
+	if currentTTLMinutes != ttlMinutes {
+		if _, err := s.searchCache.RebaseTTL(ctx, ttlMinutes); err != nil {
+			return nil, fmt.Errorf("rebase torznab search cache ttl: %w", err)
+		}
+		if _, err := s.searchCache.CleanupExpired(ctx); err != nil {
+			log.Warn().Err(err).Msg("Cleanup after torznab search cache ttl rebase failed")
+		}
+		s.searchCacheCleanupMu.Lock()
+		s.nextSearchCacheCleanup = time.Time{}
+		s.searchCacheCleanupMu.Unlock()
+	}
 
 	return settings, nil
 }
@@ -1364,6 +1433,248 @@ func (s *Service) MapCategoriesToIndexerCapabilities(ctx context.Context, indexe
 	return mappedCategories
 }
 
+func cloneRateLimitOptions(meta *searchContext) *RateLimitOptions {
+	if meta == nil || meta.rateLimit == nil {
+		return rateLimitOptionsForPriority(RateLimitPriorityBackground)
+	}
+	opts := *meta.rateLimit
+	return &opts
+}
+
+func asRateLimitWaitError(err error) (*RateLimitWaitError, bool) {
+	var waitErr *RateLimitWaitError
+	if errors.As(err, &waitErr) {
+		return waitErr, true
+	}
+	return nil, false
+}
+
+func computeSearchTimeout(meta *searchContext, indexerCount int) time.Duration {
+	timeout := timeouts.AdaptiveSearchTimeout(indexerCount)
+	waitBudget := defaultMinRequestInterval
+	if meta != nil && meta.rateLimit != nil {
+		waitBudget = meta.rateLimit.MinInterval
+		// When we set a MaxWait we will skip indexers that exceed it, so budget only that
+		// smaller window to avoid over-long overall timeouts.
+		if meta.rateLimit.MaxWait > 0 {
+			waitBudget = meta.rateLimit.MaxWait
+		}
+	}
+	if waitBudget > 0 {
+		timeout += waitBudget
+	}
+	return timeout
+}
+
+func validateIndexerBaseURL(idx *models.TorznabIndexer) error {
+	if idx == nil {
+		return fmt.Errorf("missing indexer")
+	}
+
+	baseURL := strings.TrimSpace(idx.BaseURL)
+	if baseURL == "" || (!strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://")) {
+		return fmt.Errorf("invalid indexer base URL")
+	}
+	if strings.Contains(baseURL, "api/v2.0/indexers/") && !strings.Contains(baseURL, "://") {
+		return fmt.Errorf("invalid indexer base URL")
+	}
+	return nil
+}
+
+type indexerExecResult struct {
+	results []Result
+	id      int
+	skipped bool
+	err     error
+}
+
+type indexerExecOptions struct {
+	rateLimitOpts     *RateLimitOptions
+	handleWaitError   bool
+	logSearchActivity bool
+	logWaitError      bool
+}
+
+func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabIndexer, params url.Values, meta *searchContext, opts indexerExecOptions) indexerExecResult {
+	if idx == nil {
+		return indexerExecResult{err: fmt.Errorf("missing indexer")}
+	}
+
+	if opts.rateLimitOpts == nil {
+		opts.rateLimitOpts = cloneRateLimitOptions(meta)
+	}
+
+	apiKey, err := s.indexerStore.GetDecryptedAPIKey(idx)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("indexer_id", idx.ID).
+			Str("indexer", idx.Name).
+			Msg("Failed to decrypt API key")
+		return indexerExecResult{id: idx.ID, err: err}
+	}
+
+	client := NewClient(idx.BaseURL, apiKey, idx.Backend, idx.TimeoutSeconds)
+
+	paramsMap := make(map[string]string)
+	for key, values := range params {
+		if len(values) > 0 {
+			paramsMap[key] = values[0]
+		}
+	}
+
+	s.applyProwlarrWorkaround(idx, paramsMap)
+
+	var searchFn func() ([]Result, error)
+	switch idx.Backend {
+	case models.TorznabBackendNative:
+		if s.applyIndexerRestrictions(ctx, client, idx, "", meta, paramsMap) {
+			return indexerExecResult{id: idx.ID, skipped: true}
+		}
+
+		if opts.logSearchActivity {
+			log.Debug().
+				Int("indexer_id", idx.ID).
+				Str("indexer_name", idx.Name).
+				Str("base_url", idx.BaseURL).
+				Str("backend", string(idx.Backend)).
+				Msg("Searching native Torznab endpoint")
+		}
+
+		searchFn = func() ([]Result, error) {
+			return client.SearchDirect(ctx, paramsMap)
+		}
+	case models.TorznabBackendProwlarr:
+		indexerID := strings.TrimSpace(idx.IndexerID)
+		if indexerID == "" {
+			log.Warn().
+				Int("indexer_id", idx.ID).
+				Str("indexer", idx.Name).
+				Str("backend", string(idx.Backend)).
+				Msg("Skipping prowlarr indexer without numeric identifier")
+			return indexerExecResult{id: idx.ID, err: fmt.Errorf("missing prowlarr indexer identifier")}
+		}
+
+		if s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap) {
+			return indexerExecResult{id: idx.ID, skipped: true}
+		}
+
+		if opts.logSearchActivity {
+			log.Debug().
+				Int("indexer_id", idx.ID).
+				Str("indexer_name", idx.Name).
+				Str("backend", string(idx.Backend)).
+				Str("torznab_indexer_id", indexerID).
+				Msg("Searching Prowlarr indexer")
+		}
+
+		searchFn = func() ([]Result, error) {
+			return client.Search(ctx, indexerID, paramsMap)
+		}
+	default:
+		indexerID := idx.IndexerID
+		if indexerID == "" {
+			indexerID = extractIndexerIDFromURL(idx.BaseURL, idx.Name)
+		}
+		if strings.TrimSpace(indexerID) == "" {
+			log.Warn().
+				Int("indexer_id", idx.ID).
+				Str("indexer", idx.Name).
+				Str("backend", string(idx.Backend)).
+				Msg("Skipping indexer without resolved identifier")
+			return indexerExecResult{id: idx.ID, err: fmt.Errorf("missing indexer identifier")}
+		}
+
+		if s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap) {
+			return indexerExecResult{id: idx.ID, skipped: true}
+		}
+
+		if opts.logSearchActivity {
+			log.Debug().
+				Int("indexer_id", idx.ID).
+				Str("indexer_name", idx.Name).
+				Str("backend", string(idx.Backend)).
+				Str("torznab_indexer_id", indexerID).
+				Msg("Searching Torznab aggregator indexer")
+		}
+
+		searchFn = func() ([]Result, error) {
+			return client.Search(ctx, indexerID, paramsMap)
+		}
+	}
+
+	if err := s.rateLimiter.BeforeRequest(ctx, idx, opts.rateLimitOpts); err != nil {
+		if waitErr, ok := asRateLimitWaitError(err); ok && opts.handleWaitError {
+			if opts.logWaitError {
+				log.Warn().
+					Int("indexer_id", idx.ID).
+					Str("indexer", idx.Name).
+					Dur("required_wait", waitErr.Wait).
+					Dur("max_wait", waitErr.MaxWait).
+					Str("priority", string(waitErr.Priority)).
+					Msg("Skipping torznab indexer due to wait budget")
+			}
+			return indexerExecResult{id: 0, err: waitErr, skipped: true}
+		}
+		return indexerExecResult{id: idx.ID, err: err}
+	}
+
+	start := time.Now()
+	results, err := searchFn()
+	latencyMs := int(time.Since(start).Milliseconds())
+	if recErr := s.indexerStore.RecordLatency(ctx, idx.ID, "search", latencyMs, err == nil); recErr != nil {
+		log.Debug().Err(recErr).Int("indexer_id", idx.ID).Msg("Failed to record torznab latency")
+	}
+
+	if opts.logSearchActivity {
+		log.Debug().
+			Int("indexer_id", idx.ID).
+			Str("indexer", idx.Name).
+			Int("result_count", len(results)).
+			Int("latency_ms", latencyMs).
+			Interface("search_params", paramsMap).
+			Msg("Search completed")
+	}
+
+	if err != nil {
+		if cooldown, reason := detectRateLimit(err); reason {
+			s.handleRateLimit(ctx, idx, cooldown, err)
+		}
+		log.Warn().
+			Err(err).
+			Int("indexer_id", idx.ID).
+			Str("indexer", idx.Name).
+			Msg("Failed to search indexer")
+
+		if strings.Contains(strings.ToLower(err.Error()), "429") ||
+			strings.Contains(strings.ToLower(err.Error()), "rate limit") ||
+			strings.Contains(strings.ToLower(err.Error()), "too many requests") {
+			backendLabel := strings.TrimSpace(string(idx.Backend))
+			if backendLabel == "" {
+				backendLabel = "indexer"
+			}
+			enhancedErr := fmt.Errorf("%s search failed: backend returned status 429 for indexer %s (ID: %d). Rate limiting is active for this indexer", backendLabel, idx.Name, idx.ID)
+			return indexerExecResult{id: idx.ID, err: enhancedErr}
+		}
+
+		return indexerExecResult{id: idx.ID, err: err}
+	}
+
+	for i := range results {
+		results[i].IndexerID = idx.ID
+		if idx.Backend == models.TorznabBackendProwlarr {
+			results[i].Tracker = idx.Name
+		} else if strings.TrimSpace(results[i].Tracker) == "" {
+			results[i].Tracker = idx.Name
+		}
+	}
+
+	return indexerExecResult{
+		results: results,
+		id:      idx.ID,
+	}
+}
+
 // searchMultipleIndexers searches multiple indexers in parallel and aggregates results.
 // The returned coverage slice contains indexer IDs that completed successfully (even if zero results).
 func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
@@ -1371,6 +1682,7 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 	// Filter out rate-limited indexers before starting the search
 	availableIndexers := make([]*models.TorznabIndexer, 0, len(indexers))
 	cooldownIndexers := s.rateLimiter.GetCooldownIndexers()
+	rateLimitOpts := cloneRateLimitOptions(meta)
 
 	for _, indexer := range indexers {
 		if resumeAt, inCooldown := cooldownIndexers[indexer.ID]; inCooldown {
@@ -1402,13 +1714,7 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 		return nil, nil, fmt.Errorf("no indexers available for search")
 	}
 
-	type indexerResult struct {
-		results []Result
-		id      int
-		err     error
-	}
-
-	resultsChan := make(chan indexerResult, len(availableIndexers))
+	resultsChan := make(chan indexerExecResult, len(availableIndexers))
 
 	for _, indexer := range availableIndexers {
 		s.clearPersistedCooldown(indexer.ID)
@@ -1421,168 +1727,16 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 						Int("indexer_id", idx.ID).
 						Str("indexer", idx.Name).
 						Msg("Recovered from panic in indexer search")
-					resultsChan <- indexerResult{id: idx.ID, err: err}
+					resultsChan <- indexerExecResult{id: idx.ID, err: err}
 				}
 			}()
 
-			// Get decrypted API key
-			apiKey, err := s.indexerStore.GetDecryptedAPIKey(idx)
-			if err != nil {
-				log.Warn().
-					Err(err).
-					Int("indexer_id", idx.ID).
-					Str("indexer", idx.Name).
-					Msg("Failed to decrypt API key")
-				resultsChan <- indexerResult{id: idx.ID, err: err}
-				return
-			}
-
-			// Create client for this indexer
-			client := NewClient(idx.BaseURL, apiKey, idx.Backend, idx.TimeoutSeconds)
-
-			// Convert url.Values to map[string]string (take first value for each key)
-			paramsMap := make(map[string]string)
-			for key, values := range params {
-				if len(values) > 0 {
-					paramsMap[key] = values[0]
-				}
-			}
-
-			// Apply Prowlarr workaround for year parameter
-			s.applyProwlarrWorkaround(ctx, idx, paramsMap)
-
-			var searchFn func() ([]Result, error)
-			switch idx.Backend {
-			case models.TorznabBackendNative:
-				if s.applyIndexerRestrictions(ctx, client, idx, "", meta, paramsMap) {
-					resultsChan <- indexerResult{id: idx.ID}
-					return
-				}
-
-				log.Debug().
-					Int("indexer_id", idx.ID).
-					Str("indexer_name", idx.Name).
-					Str("base_url", idx.BaseURL).
-					Str("backend", string(idx.Backend)).
-					Msg("Searching native Torznab endpoint")
-				searchFn = func() ([]Result, error) {
-					return client.SearchDirect(paramsMap)
-				}
-			case models.TorznabBackendProwlarr:
-				indexerID := strings.TrimSpace(idx.IndexerID)
-				if indexerID == "" {
-					log.Warn().
-						Int("indexer_id", idx.ID).
-						Str("indexer", idx.Name).
-						Str("backend", string(idx.Backend)).
-						Msg("Skipping prowlarr indexer without numeric identifier")
-					resultsChan <- indexerResult{id: idx.ID, err: fmt.Errorf("missing prowlarr indexer identifier")}
-					return
-				}
-
-				if s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap) {
-					resultsChan <- indexerResult{id: idx.ID}
-					return
-				}
-
-				log.Debug().
-					Int("indexer_id", idx.ID).
-					Str("indexer_name", idx.Name).
-					Str("backend", string(idx.Backend)).
-					Str("torznab_indexer_id", indexerID).
-					Msg("Searching Prowlarr indexer")
-				searchFn = func() ([]Result, error) {
-					return client.Search(indexerID, paramsMap)
-				}
-			default:
-				// Jackett/Prowlarr aggregator - use stored indexer_id
-				indexerID := idx.IndexerID
-				if indexerID == "" {
-					indexerID = extractIndexerIDFromURL(idx.BaseURL, idx.Name)
-				}
-				if strings.TrimSpace(indexerID) == "" {
-					log.Warn().
-						Int("indexer_id", idx.ID).
-						Str("indexer", idx.Name).
-						Str("backend", string(idx.Backend)).
-						Msg("Skipping indexer without resolved identifier")
-					resultsChan <- indexerResult{id: idx.ID, err: fmt.Errorf("missing indexer identifier")}
-					return
-				}
-
-				if s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap) {
-					resultsChan <- indexerResult{id: idx.ID}
-					return
-				}
-
-				log.Debug().
-					Int("indexer_id", idx.ID).
-					Str("indexer_name", idx.Name).
-					Str("backend", string(idx.Backend)).
-					Str("torznab_indexer_id", indexerID).
-					Msg("Searching Torznab aggregator indexer")
-				searchFn = func() ([]Result, error) {
-					return client.Search(indexerID, paramsMap)
-				}
-			}
-
-			if err := s.rateLimiter.BeforeRequest(ctx, idx); err != nil {
-				resultsChan <- indexerResult{id: idx.ID, err: err}
-				return
-			}
-
-			start := time.Now()
-			results, err := searchFn()
-			latencyMs := int(time.Since(start).Milliseconds())
-			if recErr := s.indexerStore.RecordLatency(ctx, idx.ID, "search", latencyMs, err == nil); recErr != nil {
-				log.Debug().Err(recErr).Int("indexer_id", idx.ID).Msg("Failed to record torznab latency")
-			}
-
-			// Debug log search results
-			log.Debug().
-				Int("indexer_id", idx.ID).
-				Str("indexer", idx.Name).
-				Int("result_count", len(results)).
-				Int("latency_ms", latencyMs).
-				Interface("search_params", paramsMap).
-				Msg("Search completed")
-
-			if err != nil {
-				if cooldown, reason := detectRateLimit(err); reason {
-					s.handleRateLimit(ctx, idx, cooldown, err)
-				}
-				log.Warn().
-					Err(err).
-					Int("indexer_id", idx.ID).
-					Str("indexer", idx.Name).
-					Msg("Failed to search indexer")
-
-				// Enhance rate limit error messages with indexer context
-				if strings.Contains(strings.ToLower(err.Error()), "429") ||
-					strings.Contains(strings.ToLower(err.Error()), "rate limit") ||
-					strings.Contains(strings.ToLower(err.Error()), "too many requests") {
-					backendLabel := strings.TrimSpace(string(idx.Backend))
-					if backendLabel == "" {
-						backendLabel = "indexer"
-					}
-					enhancedErr := fmt.Errorf("%s search failed: backend returned status 429 for indexer %s (ID: %d). Rate limiting is active for this indexer", backendLabel, idx.Name, idx.ID)
-					resultsChan <- indexerResult{id: idx.ID, err: enhancedErr}
-				} else {
-					resultsChan <- indexerResult{id: idx.ID, err: err}
-				}
-				return
-			}
-
-			for i := range results {
-				results[i].IndexerID = idx.ID
-				if idx.Backend == models.TorznabBackendProwlarr {
-					results[i].Tracker = idx.Name
-				} else if strings.TrimSpace(results[i].Tracker) == "" {
-					results[i].Tracker = idx.Name
-				}
-			}
-
-			resultsChan <- indexerResult{results: results, id: idx.ID}
+			resultsChan <- s.executeIndexerSearch(ctx, idx, params, meta, indexerExecOptions{
+				rateLimitOpts:     rateLimitOpts,
+				handleWaitError:   true,
+				logSearchActivity: true,
+				logWaitError:      true,
+			})
 		}(indexer)
 	}
 
@@ -1620,6 +1774,12 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 
 	// Only return error if ALL non-timeout indexers failed
 	nonTimeoutIndexers := len(availableIndexers) - timeouts
+	log.Debug().
+		Int("indexers_requested", len(availableIndexers)).
+		Int("indexers_failed", failures).
+		Int("indexers_timed_out", timeouts).
+		Int("non_timeout_indexers", nonTimeoutIndexers).
+		Msg("Torznab search result counters")
 	if nonTimeoutIndexers > 0 && failures == nonTimeoutIndexers {
 		return nil, coverageSetToSlice(coverage), fmt.Errorf("all %d indexers failed (last error: %w)", nonTimeoutIndexers, lastErr)
 	}
@@ -1634,7 +1794,42 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 			Msg("Some indexers failed or timed out during torznab search")
 	}
 
+	log.Debug().
+		Int("indexers_requested", len(indexers)).
+		Int("indexers_successful", successes).
+		Int("indexers_failed", failures).
+		Int("indexers_timed_out", timeouts).
+		Msg("Torznab search completion summary")
+
 	return allResults, coverageSetToSlice(coverage), nil
+}
+
+// runIndexerSearch executes a search against a single indexer.
+func (s *Service) runIndexerSearch(ctx context.Context, idx *models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
+	if idx == nil {
+		return nil, nil, fmt.Errorf("missing indexer")
+	}
+
+	if err := validateIndexerBaseURL(idx); err != nil {
+		return nil, nil, err
+	}
+
+	s.ensureRateLimiterState()
+	s.clearPersistedCooldown(idx.ID)
+
+	result := s.executeIndexerSearch(ctx, idx, params, meta, indexerExecOptions{
+		rateLimitOpts: cloneRateLimitOptions(meta),
+	})
+	if result.err != nil {
+		return nil, nil, result.err
+	}
+	if result.skipped {
+		return nil, nil, nil
+	}
+	if result.id == 0 {
+		return result.results, nil, nil
+	}
+	return result.results, []int{result.id}, nil
 }
 
 func coverageSetToSlice(set map[int]struct{}) []int {
@@ -1795,14 +1990,14 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 }
 
 func (s *Service) applyCapabilitySpecificParams(idx *models.TorznabIndexer, meta *searchContext, params map[string]string) {
-	if meta == nil || len(idx.Capabilities) == 0 {
+	if meta == nil || len(idx.Capabilities) == 0 || len(params) == 0 {
 		return
 	}
 }
 
 // applyProwlarrWorkaround applies the Prowlarr year parameter workaround to search parameters.
 // It always moves the year parameter into the search query for Prowlarr indexers.
-func (s *Service) applyProwlarrWorkaround(ctx context.Context, idx *models.TorznabIndexer, params map[string]string) {
+func (s *Service) applyProwlarrWorkaround(idx *models.TorznabIndexer, params map[string]string) {
 	if idx.Backend != models.TorznabBackendProwlarr {
 		return
 	}
@@ -1954,6 +2149,17 @@ func deriveParentCategory(cat int) int {
 		return cat
 	}
 	return (cat / 100) * 100
+}
+
+func cloneValues(vals url.Values) url.Values {
+	if len(vals) == 0 {
+		return url.Values{}
+	}
+	out := make(url.Values, len(vals))
+	for k, v := range vals {
+		out[k] = append([]string(nil), v...)
+	}
+	return out
 }
 
 // buildSearchParams builds URL parameters from a TorznabSearchRequest

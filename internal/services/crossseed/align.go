@@ -10,6 +10,8 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 type fileRenameInstruction struct {
@@ -47,6 +49,8 @@ func (s *Service) alignCrossSeedContentPaths(
 		return
 	}
 
+	canonicalHash := normalizeHash(torrentHash)
+
 	trimmedSourceName := strings.TrimSpace(sourceTorrentName)
 	trimmedMatchedName := strings.TrimSpace(matchedTorrent.Name)
 	if shouldRenameTorrentDisplay(sourceRelease, matchedRelease) && trimmedMatchedName != "" && trimmedSourceName != trimmedMatchedName {
@@ -76,15 +80,21 @@ func (s *Service) alignCrossSeedContentPaths(
 	}
 
 	sourceFiles := expectedSourceFiles
-	if currentFilesPtr, err := s.syncManager.GetTorrentFiles(ctx, instanceID, torrentHash); err == nil && currentFilesPtr != nil && len(*currentFilesPtr) > 0 {
-		sourceFiles = *currentFilesPtr
+	refreshCtx := qbittorrent.WithForceFilesRefresh(ctx)
+	filesMap, err := s.syncManager.GetTorrentFilesBatch(refreshCtx, instanceID, []string{torrentHash})
+	if err == nil {
+		if currentFiles, ok := filesMap[canonicalHash]; ok && len(currentFiles) > 0 {
+			sourceFiles = currentFiles
+		}
 	}
 
 	sourceRoot := detectCommonRoot(sourceFiles)
 	targetRoot := detectCommonRoot(candidateFiles)
 
+	plan, unmatched := buildFileRenamePlan(sourceFiles, candidateFiles)
+
 	rootRenamed := false
-	if sourceRoot != "" && targetRoot != "" && sourceRoot != targetRoot {
+	if len(plan) == 0 && sourceRoot != "" && targetRoot != "" && sourceRoot != targetRoot {
 		if err := s.syncManager.RenameTorrentFolder(ctx, instanceID, torrentHash, sourceRoot, targetRoot); err != nil {
 			log.Warn().
 				Err(err).
@@ -104,7 +114,6 @@ func (s *Service) alignCrossSeedContentPaths(
 		}
 	}
 
-	plan, unmatched := buildFileRenamePlan(sourceFiles, candidateFiles)
 	if len(plan) == 0 {
 		if len(unmatched) > 0 {
 			log.Debug().
@@ -118,21 +127,16 @@ func (s *Service) alignCrossSeedContentPaths(
 
 	renamed := 0
 	for _, instr := range plan {
-		oldPath := instr.oldPath
-		if rootRenamed {
-			oldPath = adjustPathForRootRename(oldPath, sourceRoot, targetRoot)
-		}
-
-		if oldPath == instr.newPath || oldPath == "" || instr.newPath == "" {
+		if instr.oldPath == instr.newPath || instr.oldPath == "" || instr.newPath == "" {
 			continue
 		}
 
-		if err := s.syncManager.RenameTorrentFile(ctx, instanceID, torrentHash, oldPath, instr.newPath); err != nil {
+		if err := s.syncManager.RenameTorrentFile(ctx, instanceID, torrentHash, instr.oldPath, instr.newPath); err != nil {
 			log.Warn().
 				Err(err).
 				Int("instanceID", instanceID).
 				Str("torrentHash", torrentHash).
-				Str("from", oldPath).
+				Str("from", instr.oldPath).
 				Str("to", instr.newPath).
 				Msg("Failed to rename cross-seed file to match existing torrent")
 			continue
@@ -181,14 +185,10 @@ func (s *Service) waitForTorrentAvailability(ctx context.Context, instanceID int
 			}
 		}
 
-		torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
-		if err == nil {
-			for _, t := range torrents {
-				if t.Hash == hash || t.InfohashV1 == hash || t.InfohashV2 == hash {
-					return true
-				}
-			}
-		} else {
+		torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Hashes: []string{hash}})
+		if err == nil && len(torrents) > 0 {
+			return true
+		} else if err != nil {
 			log.Debug().
 				Err(err).
 				Int("instanceID", instanceID).
@@ -325,6 +325,19 @@ func normalizeFileKey(path string) string {
 		base = base[:dot]
 	}
 
+	// For sidecar files like .nfo/.srt/.sub/.idx/.sfv/.txt, ignore an
+	// intermediate video extension (e.g. ".mkv" in "name.mkv.nfo") so that
+	// "Name.mkv.nfo" and "Name.nfo" normalize to the same key.
+	if ext == "nfo" || ext == "srt" || ext == "sub" || ext == "idx" || ext == "sfv" || ext == "txt" {
+		if dot := strings.LastIndex(base, "."); dot >= 0 && dot < len(base)-1 {
+			videoExt := strings.ToLower(base[dot+1:])
+			switch videoExt {
+			case "mkv", "mp4", "avi", "ts", "m2ts", "mov", "mpg", "mpeg":
+				base = base[:dot]
+			}
+		}
+	}
+
 	var b strings.Builder
 	for _, r := range base {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
@@ -383,7 +396,7 @@ func adjustPathForRootRename(path, oldRoot, newRoot string) string {
 	return path
 }
 
-func shouldRenameTorrentDisplay(newRelease, matchedRelease rls.Release) bool {
+func shouldRenameTorrentDisplay(newRelease, matchedRelease *rls.Release) bool {
 	// Keep episode torrents named after the episode even when pointing at season pack files
 	if newRelease.Series > 0 && newRelease.Episode > 0 &&
 		matchedRelease.Series > 0 && matchedRelease.Episode == 0 {
@@ -392,7 +405,7 @@ func shouldRenameTorrentDisplay(newRelease, matchedRelease rls.Release) bool {
 	return true
 }
 
-func shouldAlignFilesWithCandidate(newRelease, matchedRelease rls.Release) bool {
+func shouldAlignFilesWithCandidate(newRelease, matchedRelease *rls.Release) bool {
 	if newRelease.Series > 0 && newRelease.Episode > 0 &&
 		matchedRelease.Series > 0 && matchedRelease.Episode == 0 {
 		return false
