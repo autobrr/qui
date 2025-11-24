@@ -25,7 +25,7 @@ type ContentTypeInfo struct {
 }
 
 // isAdultContent checks if a release appears to be adult/pornographic content
-func isAdultContent(release rls.Release) bool {
+func isAdultContent(release *rls.Release) bool {
 	titleLower := strings.ToLower(release.Title)
 	subtitleLower := strings.ToLower(release.Subtitle)
 	collectionLower := strings.ToLower(release.Collection)
@@ -58,7 +58,7 @@ func isAdultContent(release rls.Release) bool {
 	return false
 }
 
-func isBenignXXXContent(release rls.Release, titleLower, subtitleLower, collectionLower string) bool {
+func isBenignXXXContent(release *rls.Release, titleLower, subtitleLower, collectionLower string) bool {
 	// Avoid flagging the mainstream xXx film franchise
 	if strings.HasPrefix(titleLower, "xxx") || strings.HasPrefix(subtitleLower, "xxx") || strings.HasPrefix(collectionLower, "xxx") {
 		if release.Year == 2002 || release.Year == 2005 || release.Year == 2017 {
@@ -140,7 +140,7 @@ func detectRIAJMediaType(title string) string {
 }
 
 // DetermineContentType analyzes a release and returns comprehensive content type information
-func DetermineContentType(release rls.Release) ContentTypeInfo {
+func DetermineContentType(release *rls.Release) ContentTypeInfo {
 	release = normalizeReleaseTypeForContent(release)
 	var info ContentTypeInfo
 
@@ -158,7 +158,7 @@ func DetermineContentType(release rls.Release) ContentTypeInfo {
 				newTitle = strings.TrimSpace(newTitle)
 				if newTitle != "" {
 					newRelease := rls.ParseString(newTitle)
-					altInfo := DetermineContentType(newRelease)
+					altInfo := DetermineContentType(&newRelease)
 					if altInfo.ContentType != "adult" {
 						return altInfo
 					}
@@ -302,24 +302,25 @@ func DetermineContentType(release rls.Release) ContentTypeInfo {
 // normalizeReleaseTypeForContent inspects parsed metadata to correct obvious
 // misclassifications (e.g. video torrents parsed as music because of dash-separated
 // folder names such as BDMV/STREAM paths).
-func normalizeReleaseTypeForContent(release rls.Release) rls.Release {
-	if release.Type != rls.Music {
-		return release
+func normalizeReleaseTypeForContent(release *rls.Release) *rls.Release {
+	normalized := *release
+	if normalized.Type != rls.Music {
+		return &normalized
 	}
 
-	if looksLikeVideoRelease(release) {
+	if looksLikeVideoRelease(&normalized) {
 		// Preserve episode metadata when present so TV content keeps season info.
-		if release.Series > 0 || release.Episode > 0 {
-			release.Type = rls.Episode
+		if normalized.Series > 0 || normalized.Episode > 0 {
+			normalized.Type = rls.Episode
 		} else {
-			release.Type = rls.Movie
+			normalized.Type = rls.Movie
 		}
 	}
 
-	return release
+	return &normalized
 }
 
-func looksLikeVideoRelease(release rls.Release) bool {
+func looksLikeVideoRelease(release *rls.Release) bool {
 	if release.Resolution != "" {
 		return true
 	}
@@ -431,7 +432,7 @@ func OptimizeContentTypeForIndexers(basicInfo ContentTypeInfo, indexerCategories
 
 // ParseMusicReleaseFromTorrentName extracts music-specific metadata from torrent name
 // First tries RLS's built-in parsing, then falls back to manual "Artist - Album" format parsing
-func ParseMusicReleaseFromTorrentName(baseRelease rls.Release, torrentName string) rls.Release {
+func ParseMusicReleaseFromTorrentName(baseRelease *rls.Release, torrentName string) *rls.Release {
 	// First, try RLS's built-in parsing on the torrent name directly
 	// This can handle complex release names like "Artist-Album-Edition-Source-Year-GROUP"
 	torrentRelease := rls.ParseString(torrentName)
@@ -444,11 +445,11 @@ func ParseMusicReleaseFromTorrentName(baseRelease rls.Release, torrentName strin
 		if baseRelease.Type == rls.Music {
 			musicRelease.Type = rls.Music
 		}
-		return musicRelease
+		return &musicRelease
 	}
 
 	// Fallback: use our manual parsing approach for simpler names
-	musicRelease := baseRelease
+	musicRelease := *baseRelease
 	musicRelease.Type = rls.Music // Ensure it's marked as music
 
 	cleanName := torrentName
@@ -479,7 +480,7 @@ func ParseMusicReleaseFromTorrentName(baseRelease rls.Release, torrentName strin
 		musicRelease.Title = strings.TrimSpace(strings.Join(parts[1:], " - "))
 	}
 
-	return musicRelease
+	return &musicRelease
 }
 
 // ParseTorrentName extracts the name and info hash from torrent bytes using anacrolix/torrent

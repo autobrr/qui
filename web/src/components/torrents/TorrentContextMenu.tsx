@@ -255,21 +255,6 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
         <ContextMenuItem onClick={() => onTorrentSelect?.(torrent)}>
           View Details
         </ContextMenuItem>
-        {onFilterChange && (
-          <ContextMenuItem
-            onClick={handleFilterCrossSeeds}
-            disabled={isPending || isFilteringCrossSeeds || count > 1}
-            title={count > 1 ? "Cross-seed filtering only works with a single selected torrent" : undefined}
-          >
-            <GitBranch className="mr-2 h-4 w-4" />
-            {count > 1 ? (
-              <span className="text-muted-foreground">Filter Cross-Seeds (single selection only)</span>
-            ) : (
-              <>Filter Cross-Seeds</>
-            )}
-            {isFilteringCrossSeeds && <span className="ml-1 text-xs text-muted-foreground">...</span>}
-          </ContextMenuItem>
-        )}
         <ContextMenuSeparator />
         <ContextMenuItem
           onClick={() => onAction(TORRENT_ACTIONS.RESUME, hashes)}
@@ -344,7 +329,22 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
             Search Cross-Seeds
           </ContextMenuItem>
         )}
-        {canCrossSeedSearch && <ContextMenuSeparator />}
+        {onFilterChange && (
+          <ContextMenuItem
+            onClick={handleFilterCrossSeeds}
+            disabled={isPending || isFilteringCrossSeeds || count > 1}
+            title={count > 1 ? "Cross-seed filtering only works with a single selected torrent" : undefined}
+          >
+            <GitBranch className="mr-2 h-4 w-4" />
+            {count > 1 ? (
+              <span className="text-muted-foreground">Filter Cross-Seeds (single selection only)</span>
+            ) : (
+              <>Filter Cross-Seeds</>
+            )}
+            {isFilteringCrossSeeds && <span className="ml-1 text-xs text-muted-foreground">...</span>}
+          </ContextMenuItem>
+        )}
+        {(canCrossSeedSearch || onFilterChange) && <ContextMenuSeparator />}
         <ContextMenuItem
           onClick={() => onPrepareTags("add", hashes, torrents)}
           disabled={isPending}

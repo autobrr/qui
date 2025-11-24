@@ -104,13 +104,41 @@ func (h *JackettHandler) CrossSeedSearch(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Search for cross-seeds
-	response, err := h.service.Search(r.Context(), &req)
+	respCh := make(chan *jackett.SearchResponse, 1)
+	errCh := make(chan error, 1)
+	req.OnAllComplete = func(resp *jackett.SearchResponse, err error) {
+		if err != nil {
+			errCh <- err
+		} else {
+			respCh <- resp
+		}
+	}
+	err := h.service.Search(r.Context(), &req)
 	if err != nil {
 		log.Error().
 			Err(err).
 			Str("query", req.Query).
 			Msg("Failed to search Jackett for cross-seeds")
 		RespondError(w, http.StatusInternalServerError, "Failed to search for cross-seeds")
+		return
+	}
+
+	var response *jackett.SearchResponse
+	select {
+	case response = <-respCh:
+		// continue
+	case err := <-errCh:
+		log.Error().
+			Err(err).
+			Str("query", req.Query).
+			Msg("Failed to search Jackett for cross-seeds")
+		RespondError(w, http.StatusInternalServerError, "Failed to search for cross-seeds")
+		return
+	case <-time.After(5 * time.Minute):
+		log.Error().
+			Str("query", req.Query).
+			Msg("Cross-seed search timed out")
+		RespondError(w, http.StatusInternalServerError, "Search timed out")
 		return
 	}
 
@@ -147,13 +175,41 @@ func (h *JackettHandler) Search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Perform search
-	response, err := h.service.SearchGeneric(r.Context(), &req)
+	respCh := make(chan *jackett.SearchResponse, 1)
+	errCh := make(chan error, 1)
+	req.OnAllComplete = func(resp *jackett.SearchResponse, err error) {
+		if err != nil {
+			errCh <- err
+		} else {
+			respCh <- resp
+		}
+	}
+	err := h.service.SearchGeneric(r.Context(), &req)
 	if err != nil {
 		log.Error().
 			Err(err).
 			Str("query", req.Query).
 			Msg("Failed to search Jackett")
 		RespondError(w, http.StatusInternalServerError, "Failed to search")
+		return
+	}
+
+	var response *jackett.SearchResponse
+	select {
+	case response = <-respCh:
+		// continue
+	case err := <-errCh:
+		log.Error().
+			Err(err).
+			Str("query", req.Query).
+			Msg("Failed to search Jackett")
+		RespondError(w, http.StatusInternalServerError, "Failed to search")
+		return
+	case <-time.After(5 * time.Minute):
+		log.Error().
+			Str("query", req.Query).
+			Msg("Search timed out")
+		RespondError(w, http.StatusInternalServerError, "Search timed out")
 		return
 	}
 
@@ -601,12 +657,16 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 
 	// Run a lightweight search via the service to validate connectivity
 	// Use CacheModeBypass to prevent test searches from cluttering recent search history
-	_, err = h.service.SearchGeneric(r.Context(), &jackett.TorznabSearchRequest{
+	testReq := &jackett.TorznabSearchRequest{
 		Query:      "test",
 		Limit:      1,
 		IndexerIDs: []int{id},
 		CacheMode:  jackett.CacheModeBypass,
-	})
+		OnAllComplete: func(*jackett.SearchResponse, error) {
+			// Ignore results for connectivity test
+		},
+	}
+	err = h.service.SearchGeneric(r.Context(), testReq)
 
 	// Update test status in database
 	if err != nil {

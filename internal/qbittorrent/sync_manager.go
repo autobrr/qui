@@ -34,13 +34,23 @@ import (
 
 // FilesManager interface for caching torrent files
 type FilesManager interface {
-	GetCachedFiles(ctx context.Context, instanceID int, hash string, torrentProgress float64) (qbt.TorrentFiles, error)
+	GetCachedFiles(ctx context.Context, instanceID int, hash string) (qbt.TorrentFiles, error)
 	// GetCachedFilesBatch returns cached files for a set of torrents and the hashes that were missing/stale.
-	// Callers must pass hashes (and the keys in torrentProgress) already trimmed/normalized (e.g. lowercase hex)
+	// Callers must pass hashes already trimmed/normalized (e.g. lowercase hex)
 	// because implementations treat the provided keys as-is when populating lookups and cache metadata.
-	GetCachedFilesBatch(ctx context.Context, instanceID int, hashes []string, torrentProgress map[string]float64) (map[string]qbt.TorrentFiles, []string, error)
-	CacheFiles(ctx context.Context, instanceID int, hash string, torrentProgress float64, files qbt.TorrentFiles) error
+	GetCachedFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, []string, error)
+	CacheFiles(ctx context.Context, instanceID int, hash string, files qbt.TorrentFiles) error
+	CacheFilesBatch(ctx context.Context, instanceID int, files map[string]qbt.TorrentFiles) error
 	InvalidateCache(ctx context.Context, instanceID int, hash string) error
+}
+
+type torrentFilesClient interface {
+	getTorrentsByHashes(hashes []string) []qbt.Torrent
+	GetFilesInformationCtx(ctx context.Context, hash string) (*qbt.TorrentFiles, error)
+}
+
+type torrentLookup interface {
+	GetTorrent(hash string) (qbt.Torrent, bool)
 }
 
 // TorrentCompletionHandler is invoked when a torrent transitions to a completed state.
@@ -137,6 +147,19 @@ type SyncManager struct {
 	clientPool   *ClientPool
 	exprCache    *ttlcache.Cache[string, *vm.Program]
 	filesManager atomic.Value // stores FilesManager interface value
+
+	// Providers used for testing and specialized flows; nil defaults to live clients.
+	torrentFilesClientProvider func(ctx context.Context, instanceID int) (torrentFilesClient, error)
+	torrentLookupProvider      func(ctx context.Context, instanceID int) (torrentLookup, error)
+
+	syncDebounceMu        sync.Mutex
+	debouncedSyncTimers   map[int]*time.Timer
+	syncDebounceDelay     time.Duration
+	syncDebounceMinJitter time.Duration
+
+	fileFetchSemMu         sync.Mutex
+	fileFetchSem           map[int]chan struct{}
+	fileFetchMaxConcurrent int
 }
 
 // ResumeWhenCompleteOptions configure resume monitoring behavior.
@@ -158,8 +181,13 @@ type OptimisticTorrentUpdate struct {
 // NewSyncManager creates a new sync manager
 func NewSyncManager(clientPool *ClientPool) *SyncManager {
 	sm := &SyncManager{
-		clientPool: clientPool,
-		exprCache:  ttlcache.New(ttlcache.Options[string, *vm.Program]{}.SetDefaultTTL(5 * time.Minute)),
+		clientPool:             clientPool,
+		exprCache:              ttlcache.New(ttlcache.Options[string, *vm.Program]{}.SetDefaultTTL(5 * time.Minute)),
+		debouncedSyncTimers:    make(map[int]*time.Timer),
+		syncDebounceDelay:      200 * time.Millisecond,
+		syncDebounceMinJitter:  10 * time.Millisecond,
+		fileFetchSem:           make(map[int]chan struct{}),
+		fileFetchMaxConcurrent: 16,
 	}
 	return sm
 }
@@ -177,6 +205,38 @@ func (sm *SyncManager) getFilesManager() FilesManager {
 		return nil
 	}
 	return v.(FilesManager)
+}
+
+func (sm *SyncManager) getTorrentFilesClient(ctx context.Context, instanceID int) (torrentFilesClient, error) {
+	if sm == nil {
+		return nil, fmt.Errorf("sync manager unavailable")
+	}
+
+	if sm.torrentFilesClientProvider != nil {
+		return sm.torrentFilesClientProvider(ctx, instanceID)
+	}
+
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
+}
+
+func (sm *SyncManager) getTorrentLookup(ctx context.Context, instanceID int) (torrentLookup, error) {
+	if sm == nil {
+		return nil, fmt.Errorf("sync manager unavailable")
+	}
+
+	if sm.torrentLookupProvider != nil {
+		return sm.torrentLookupProvider(ctx, instanceID)
+	}
+
+	_, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	return syncManager, nil
 }
 
 // SetTorrentCompletionHandler registers a callback for torrent completion events across all clients.
@@ -199,6 +259,18 @@ func (sm *SyncManager) InvalidateFileCache(ctx context.Context, instanceID int, 
 // GetErrorStore returns the error store for recording errors
 func (sm *SyncManager) GetErrorStore() *models.InstanceErrorStore {
 	return sm.clientPool.GetErrorStore()
+}
+
+// GetTorrents gets torrents with the specified filter options
+func (sm *SyncManager) GetTorrents(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+	// Get client and sync manager
+	_, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get torrents with filters
+	return syncManager.GetTorrents(filter), nil
 }
 
 // GetInstanceWebAPIVersion returns the qBittorrent web API version for the provided instance.
@@ -263,6 +335,7 @@ func (sm *SyncManager) validateTorrentsExist(client *Client, hashes []string, op
 func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID int, limit, offset int, sort, order, search string, filters FilterOptions) (*TorrentResponse, error) {
 	// Always get fresh data from sync manager for real-time updates
 	var filteredTorrents []qbt.Torrent
+	var allTorrentsForCounts []qbt.Torrent
 	var err error
 
 	// Get client and sync manager
@@ -383,6 +456,10 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		torrentFilterOptions.Reverse = (order == "desc")
 
 		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
+
+		// Save all torrents for counts before applying manual filters
+		allTorrentsForCounts = make([]qbt.Torrent, len(filteredTorrents))
+		copy(allTorrentsForCounts, filteredTorrents)
 
 		// Apply manual filtering for multiple selections
 		if trackerHealthSupported && needsTrackerHydration {
@@ -516,7 +593,12 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	// Calculate counts from ALL torrents (not filtered) for sidebar
 	// This uses the same cached data, so it's very fast
-	allTorrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
+	var allTorrents []qbt.Torrent
+	if useManualFiltering {
+		allTorrents = allTorrentsForCounts
+	} else {
+		allTorrents = syncManager.GetTorrents(qbt.TorrentFilterOptions{})
+	}
 
 	useSubcategories = resolveUseSubcategories(supportsSubcategories, mainData, categories)
 
@@ -1104,39 +1186,40 @@ func (sm *SyncManager) GetTorrentPeers(ctx context.Context, instanceID int, hash
 //   - Cached entries are returned first; only cache misses are fetched concurrently. Empty/whitespace hashes
 //     are ignored defensively.
 func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
-	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	start := time.Now()
+
+	client, err := sm.getTorrentFilesClient(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
 
-	requested := dedupeHashes(hashes)
-	if len(requested) == 0 {
+	normalized := normalizeHashes(hashes)
+	if len(normalized.canonical) == 0 {
 		return map[string]qbt.TorrentFiles{}, nil
 	}
 
-	progressByHash := make(map[string]float64, len(requested))
-	if torrents := client.getTorrentsByHashes(requested); len(torrents) > 0 {
-		for i := range torrents {
-			t := torrents[i]
-			progressByHash[strings.TrimSpace(t.Hash)] = float64(t.Progress)
-		}
-	}
+	filesByHash := make(map[string]qbt.TorrentFiles, len(normalized.canonical))
+	hashesToFetch := normalized.canonical
+	cacheHits := 0
 
-	filesByHash := make(map[string]qbt.TorrentFiles, len(requested))
-	hashesToFetch := requested
+	forceRefresh := forceFilesRefresh(ctx)
 
-	if fm := sm.getFilesManager(); fm != nil {
-		if cached, missing, cacheErr := fm.GetCachedFilesBatch(ctx, instanceID, requested, progressByHash); cacheErr != nil {
+	if fm := sm.getFilesManager(); fm != nil && !forceRefresh {
+		if cached, missing, cacheErr := fm.GetCachedFilesBatch(ctx, instanceID, normalized.canonical); cacheErr != nil {
 			log.Warn().
 				Err(cacheErr).
 				Int("instanceID", instanceID).
-				Int("hashes", len(requested)).
+				Int("hashes", len(normalized.canonical)).
 				Msg("Failed to load cached torrent files in batch")
 		} else {
 			for hash, files := range cached {
-				filesByHash[hash] = files
+				// Clone cached slices to avoid aliasing across callers.
+				cloned := make(qbt.TorrentFiles, len(files))
+				copy(cloned, files)
+				filesByHash[hash] = cloned
 			}
 			hashesToFetch = missing
+			cacheHits = len(filesByHash)
 		}
 	}
 
@@ -1151,43 +1234,51 @@ func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int,
 	var fetchErrors []error
 
 	for _, hash := range hashesToFetch {
-		h := strings.TrimSpace(hash)
-		if h == "" {
+		canonicalHash := canonicalizeHash(hash)
+		if canonicalHash == "" {
 			continue
 		}
+		requestHash := normalized.canonicalToPreferred[canonicalHash]
+		if requestHash == "" {
+			requestHash = canonicalHash
+		}
+
+		// Capture per-iteration values for goroutine to avoid closure races.
+		ch := canonicalHash
+		rh := requestHash
 
 		g.Go(func() error {
-			files, fetchErr := client.GetFilesInformationCtx(gctx, h)
+			release, acquireErr := sm.acquireFileFetchSlot(gctx, instanceID)
+			if acquireErr != nil {
+				return acquireErr
+			}
+			defer release()
+
+			files, fetchErr := client.GetFilesInformationCtx(gctx, rh)
 			if fetchErr != nil {
 				if errors.Is(fetchErr, context.Canceled) || errors.Is(fetchErr, context.DeadlineExceeded) {
 					return fetchErr
 				}
 				mu.Lock()
-				fetchErrors = append(fetchErrors, fmt.Errorf("fetch torrent files %s: %w", h, fetchErr))
+				fetchErrors = append(fetchErrors, fmt.Errorf("fetch torrent files %s: %w", rh, fetchErr))
 				mu.Unlock()
 				return nil
 			}
 
 			if files == nil {
 				mu.Lock()
-				fetchErrors = append(fetchErrors, fmt.Errorf("fetch torrent files %s: empty response", h))
+				fetchErrors = append(fetchErrors, fmt.Errorf("fetch torrent files %s: empty response", rh))
 				mu.Unlock()
 				return nil
 			}
 
-			if fm := sm.getFilesManager(); fm != nil {
-				progress := progressByHash[h]
-				if err := fm.CacheFiles(gctx, instanceID, h, progress, *files); err != nil {
-					log.Warn().
-						Err(err).
-						Int("instanceID", instanceID).
-						Str("hash", h).
-						Msg("Failed to cache torrent files after fetch")
-				}
-			}
+			// Clone the slice so later fetches cannot mutate the stored entry if the
+			// client reuses backing arrays across calls.
+			copied := make(qbt.TorrentFiles, len(*files))
+			copy(copied, *files)
 
 			mu.Lock()
-			filesByHash[h] = *files
+			filesByHash[ch] = copied
 			mu.Unlock()
 			return nil
 		})
@@ -1197,12 +1288,50 @@ func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int,
 		return filesByHash, err
 	}
 
+	// Cache all newly fetched files in batch
+	if fm := sm.getFilesManager(); fm != nil && len(hashesToFetch) > 0 {
+		fetchedFiles := make(map[string]qbt.TorrentFiles)
+		for _, canonicalHash := range hashesToFetch {
+			if files, ok := filesByHash[canonicalHash]; ok {
+				// Cache a clone to keep cache entries isolated.
+				cloned := make(qbt.TorrentFiles, len(files))
+				copy(cloned, files)
+				fetchedFiles[canonicalHash] = cloned
+			}
+		}
+		if len(fetchedFiles) > 0 {
+			if err := fm.CacheFilesBatch(ctx, instanceID, fetchedFiles); err != nil {
+				log.Warn().
+					Err(err).
+					Int("instanceID", instanceID).
+					Int("cached", len(fetchedFiles)).
+					Msg("Failed to cache torrent files batch after fetch")
+			}
+		}
+	}
+
 	if len(fetchErrors) > 0 {
 		log.Debug().
 			Int("instanceID", instanceID).
 			Int("missing", len(fetchErrors)).
-			Int("requested", len(requested)).
+			Int("requested", len(normalized.canonical)).
 			Msg("Completed batch torrent file fetch with partial failures")
+	}
+
+	elapsed := time.Since(start)
+	if elapsed > 200*time.Millisecond {
+		fetchedCount := len(filesByHash) - cacheHits
+		if fetchedCount < 0 {
+			fetchedCount = 0
+		}
+		log.Debug().
+			Int("instanceID", instanceID).
+			Int("requested", len(normalized.canonical)).
+			Int("cacheHits", cacheHits).
+			Int("fetched", fetchedCount).
+			Int("fetchErrors", len(fetchErrors)).
+			Dur("elapsed", elapsed).
+			Msg("GetTorrentFilesBatch completed")
 	}
 
 	return filesByHash, nil
@@ -1210,7 +1339,7 @@ func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int,
 
 // GetTorrentFiles gets files information for a specific torrent
 func (sm *SyncManager) GetTorrentFiles(ctx context.Context, instanceID int, hash string) (*qbt.TorrentFiles, error) {
-	normalizedHash := strings.TrimSpace(hash)
+	normalizedHash := canonicalizeHash(hash)
 	filesByHash, err := sm.GetTorrentFilesBatch(ctx, instanceID, []string{normalizedHash})
 	if err != nil {
 		return nil, err
@@ -1221,6 +1350,33 @@ func (sm *SyncManager) GetTorrentFiles(ctx context.Context, instanceID int, hash
 		return nil, nil
 	}
 	return &files, nil
+}
+
+// HasTorrentByAnyHash returns the first torrent whose hash or infohash variant matches any of the provided hashes.
+// Hash comparisons are case-insensitive and trimmed.
+func (sm *SyncManager) HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
+	lookup, err := sm.getTorrentLookup(ctx, instanceID)
+	if err != nil {
+		return nil, false, err
+	}
+
+	normalized := normalizeHashes(hashes)
+	if len(normalized.canonical) == 0 {
+		return nil, false, nil
+	}
+
+	for _, variant := range normalized.lookup {
+		torrent, ok := lookup.GetTorrent(variant)
+		if !ok {
+			continue
+		}
+
+		if matchesAnyHash(torrent, normalized.canonicalSet) {
+			return &torrent, true, nil
+		}
+	}
+
+	return nil, false, nil
 }
 
 func fileFetchConcurrency(requestCount int) int {
@@ -1241,21 +1397,74 @@ func fileFetchConcurrency(requestCount int) int {
 	return limit
 }
 
-func dedupeHashes(hashes []string) []string {
-	seen := make(map[string]struct{}, len(hashes))
-	unique := make([]string, 0, len(hashes))
-	for _, h := range hashes {
-		h = strings.TrimSpace(h)
-		if h == "" {
-			continue
-		}
-		if _, ok := seen[h]; ok {
-			continue
-		}
-		seen[h] = struct{}{}
-		unique = append(unique, h)
+type normalizedHashes struct {
+	canonical            []string
+	canonicalSet         map[string]struct{}
+	canonicalToPreferred map[string]string
+	lookup               []string
+}
+
+func canonicalizeHash(hash string) string {
+	return strings.ToLower(strings.TrimSpace(hash))
+}
+
+func normalizeHashes(hashes []string) normalizedHashes {
+	result := normalizedHashes{
+		canonical:            make([]string, 0, len(hashes)),
+		canonicalSet:         make(map[string]struct{}, len(hashes)),
+		canonicalToPreferred: make(map[string]string, len(hashes)),
+		lookup:               make([]string, 0, len(hashes)),
 	}
-	return unique
+
+	seenLookup := make(map[string]struct{}, len(hashes)*2)
+
+	for _, hash := range hashes {
+		trimmed := strings.TrimSpace(hash)
+		canonical := canonicalizeHash(trimmed)
+		if canonical == "" {
+			continue
+		}
+
+		if _, exists := result.canonicalSet[canonical]; !exists {
+			result.canonicalSet[canonical] = struct{}{}
+			result.canonical = append(result.canonical, canonical)
+			result.canonicalToPreferred[canonical] = trimmed
+		}
+
+		for _, variant := range []string{trimmed, canonical, strings.ToUpper(trimmed)} {
+			if variant == "" {
+				continue
+			}
+			if _, ok := seenLookup[variant]; ok {
+				continue
+			}
+			seenLookup[variant] = struct{}{}
+			result.lookup = append(result.lookup, variant)
+		}
+	}
+
+	return result
+}
+
+func matchesAnyHash(torrent qbt.Torrent, targetSet map[string]struct{}) bool {
+	if len(targetSet) == 0 {
+		return false
+	}
+
+	for _, candidate := range []string{
+		torrent.Hash,
+		torrent.InfohashV1,
+		torrent.InfohashV2,
+	} {
+		if candidate == "" {
+			continue
+		}
+		if _, ok := targetSet[canonicalizeHash(candidate)]; ok {
+			return true
+		}
+	}
+
+	return false
 }
 
 // ExportTorrent returns the raw .torrent data along with a display name suggestion
@@ -1872,33 +2081,116 @@ func (sm *SyncManager) applyOptimisticCacheUpdate(instanceID int, hashes []strin
 	client.applyOptimisticCacheUpdate(hashes, action, payload)
 }
 
-// syncAfterModification performs a background sync after a modification operation
+// syncAfterModification performs a background sync after a modification operation.
+// Calls are debounced per instance to avoid excessive syncs during bursts of mutations.
 func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, operation string) {
-	go func() {
-		ctx := context.Background()
+	if sm == nil {
+		return
+	}
 
-		// If no client provided, get one
-		if client == nil {
-			if sm.clientPool == nil {
-				log.Warn().Int("instanceID", instanceID).Str("operation", operation).Msg("Client pool is nil, skipping sync")
-				return
-			}
-			var err error
-			client, err = sm.clientPool.GetClient(ctx, instanceID)
-			if err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Str("operation", operation).Msg("Failed to get client for sync")
-				return
-			}
-		}
+	delay := sm.syncDebounceDelay
+	if delay <= 0 {
+		delay = 200 * time.Millisecond
+	}
 
-		if syncManager := client.GetSyncManager(); syncManager != nil {
-			// Small delay to let qBittorrent process the command
-			time.Sleep(10 * time.Millisecond)
-			if err := syncManager.Sync(ctx); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Str("operation", operation).Msg("Failed to sync after modification")
-			}
+	sm.syncDebounceMu.Lock()
+	defer sm.syncDebounceMu.Unlock()
+
+	if sm.debouncedSyncTimers == nil {
+		sm.debouncedSyncTimers = make(map[int]*time.Timer)
+	}
+
+	if existing, ok := sm.debouncedSyncTimers[instanceID]; ok {
+		// Best-effort stop; if the timer has already fired, we let its callback run once.
+		existing.Stop()
+	}
+
+	var timer *time.Timer
+	timer = time.AfterFunc(delay, func() {
+		sm.runDebouncedSync(instanceID, client, operation, timer)
+	})
+	sm.debouncedSyncTimers[instanceID] = timer
+}
+
+func (sm *SyncManager) runDebouncedSync(instanceID int, client *Client, operation string, timer *time.Timer) {
+	defer sm.clearDebouncedSyncTimer(instanceID, timer)
+
+	ctx := context.Background()
+
+	c := client
+	if c == nil {
+		if sm.clientPool == nil {
+			log.Warn().Int("instanceID", instanceID).Str("operation", operation).Msg("Client pool is nil, skipping sync")
+			return
 		}
-	}()
+		var err error
+		c, err = sm.clientPool.GetClient(ctx, instanceID)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Str("operation", operation).Msg("Failed to get client for sync")
+			return
+		}
+	}
+
+	if syncManager := c.GetSyncManager(); syncManager != nil {
+		// Small delay to let qBittorrent process the command
+		jitter := sm.syncDebounceMinJitter
+		if jitter <= 0 {
+			jitter = 10 * time.Millisecond
+		}
+		time.Sleep(jitter)
+		if err := syncManager.Sync(ctx); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Str("operation", operation).Msg("Failed to sync after modification")
+		}
+	}
+}
+
+func (sm *SyncManager) clearDebouncedSyncTimer(instanceID int, timer *time.Timer) {
+	sm.syncDebounceMu.Lock()
+	defer sm.syncDebounceMu.Unlock()
+
+	current := sm.debouncedSyncTimers[instanceID]
+	if current == timer {
+		delete(sm.debouncedSyncTimers, instanceID)
+	}
+}
+
+func (sm *SyncManager) acquireFileFetchSlot(ctx context.Context, instanceID int) (func(), error) {
+	if sm == nil {
+		return func() {}, nil
+	}
+
+	sem := sm.getFileFetchSemaphore(instanceID)
+	select {
+	case sem <- struct{}{}:
+		return func() {
+			select {
+			case <-sem:
+			default:
+			}
+		}, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (sm *SyncManager) getFileFetchSemaphore(instanceID int) chan struct{} {
+	sm.fileFetchSemMu.Lock()
+	defer sm.fileFetchSemMu.Unlock()
+
+	if sm.fileFetchSem == nil {
+		sm.fileFetchSem = make(map[int]chan struct{})
+	}
+	if sem, ok := sm.fileFetchSem[instanceID]; ok {
+		return sem
+	}
+
+	limit := sm.fileFetchMaxConcurrent
+	if limit <= 0 {
+		limit = 16
+	}
+	sem := make(chan struct{}, limit)
+	sm.fileFetchSem[instanceID] = sem
+	return sem
 }
 
 // ResumeWhenComplete monitors the provided hashes and resumes torrents once data is 100% complete.
