@@ -13,7 +13,9 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -43,6 +45,11 @@ type BackupProgress struct {
 	Current    int
 	Total      int
 	Percentage float64
+}
+
+type missingTorrent struct {
+	hash    string
+	absPath string
 }
 
 type Service struct {
@@ -566,7 +573,13 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	var totalBytes int64
 
 	// Initialize progress tracking
-	s.setProgress(j.runID, 0, len(torrents))
+	s.progressMu.Lock()
+	s.progress[j.runID] = &BackupProgress{
+		Total:      len(torrents),
+		Current:    0,
+		Percentage: 0,
+	}
+	s.progressMu.Unlock()
 
 	for idx, torrent := range torrents {
 		select {
@@ -645,10 +658,10 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 			if len(hash) >= 6 {
 				subdir = hash[0:2] + "/" + hash[2:4] + "/" + hash[4:6]
 			}
-			absBlob := filepath.Join(s.cacheDir, subdir, blobName)
+			absBlob := path.Join(s.cacheDir, subdir, blobName)
 			if _, err := os.Stat(absBlob); errors.Is(err, os.ErrNotExist) {
 				if subdir != "" {
-					if err := os.MkdirAll(filepath.Dir(absBlob), 0o755); err != nil {
+					if err := os.MkdirAll(path.Dir(absBlob), 0o755); err != nil {
 						return nil, fmt.Errorf("create torrent cache subdir: %w", err)
 					}
 				}
@@ -718,7 +731,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		manifestItems = append(manifestItems, manifestItem)
 
 		// Update progress after processing each torrent
-		s.setProgress(j.runID, idx+1, len(torrents))
+		s.updateProgress(j.runID, idx+1)
 	}
 
 	manifest := Manifest{
@@ -857,19 +870,15 @@ func (s *Service) clearInstance(instanceID int, runID int64) {
 	s.progressMu.Unlock()
 }
 
-func (s *Service) setProgress(runID int64, current, total int) {
-	percentage := 0.0
-	if total > 0 {
-		percentage = float64(current) / float64(total) * 100.0
-	}
-
+// updateProgress updates the progress for a run
+func (s *Service) updateProgress(runID int64, current int) {
 	s.progressMu.Lock()
-	s.progress[runID] = &BackupProgress{
-		Current:    current,
-		Total:      total,
-		Percentage: percentage,
+	defer s.progressMu.Unlock()
+	if p := s.progress[runID]; p != nil {
+		p.Current = current
+		p.Percentage = float64(current) / float64(p.Total) * 100
+		log.Trace().Int64("runID", runID).Int("current", current).Int("total", p.Total).Float64("percentage", p.Percentage).Msg("Updated progress")
 	}
-	s.progressMu.Unlock()
 }
 
 func (s *Service) GetProgress(runID int64) *BackupProgress {
@@ -1203,34 +1212,64 @@ func (s *Service) LoadManifest(ctx context.Context, runID int64) (*Manifest, err
 }
 
 func (s *Service) ImportManifest(ctx context.Context, instanceID int, manifestData []byte, requestedBy string) (*models.BackupRun, error) {
+	log.Info().Int("instanceID", instanceID).Str("requestedBy", requestedBy).Int("dataSize", len(manifestData)).Str("dataDir", s.cfg.DataDir).Msg("Starting manifest import")
+
+	// Normalize DataDir for Windows Git Bash paths
+	if runtime.GOOS == "windows" && strings.HasPrefix(s.cfg.DataDir, "/c/") {
+		s.cfg.DataDir = "C:" + strings.ReplaceAll(strings.TrimPrefix(s.cfg.DataDir, "/c"), "/", "\\")
+		log.Info().Str("normalizedDataDir", s.cfg.DataDir).Msg("Normalized DataDir for Windows")
+	}
+
 	var manifest Manifest
 	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		log.Error().Err(err).Msg("Failed to parse manifest JSON")
 		return nil, fmt.Errorf("failed to parse manifest: %w", err)
 	}
+
+	log.Info().Int("manifestItemCount", len(manifest.Items)).Int("manifestTorrentCount", manifest.TorrentCount).Msg("Manifest parsed successfully")
 
 	// Create a backup run record for the import
 	run := &models.BackupRun{
 		InstanceID:   instanceID,
 		Kind:         models.BackupRunKind(manifest.Kind),
-		Status:       models.BackupRunStatusSuccess, // Mark as success since we're importing completed data
+		Status:       models.BackupRunStatusRunning, // Start as running, will complete after downloads
 		RequestedBy:  requestedBy,
 		RequestedAt:  manifest.GeneratedAt,
-		CompletedAt:  &manifest.GeneratedAt,
-		TotalBytes:   0, // We'll calculate this
-		TorrentCount: manifest.TorrentCount,
+		CompletedAt:  nil, // Will set when downloads complete
+		TotalBytes:   0,   // We'll calculate this
+		TorrentCount: 0,   // We'll calculate this
 		Categories:   manifest.Categories,
 		Tags:         manifest.Tags,
 	}
 
+	log.Info().Int("instanceID", instanceID).Str("kind", string(run.Kind)).Msg("Creating backup run for import")
+
 	if err := s.store.CreateRun(ctx, run); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to create import run")
 		return nil, fmt.Errorf("failed to create import run: %w", err)
 	}
+
+	log.Info().Int64("runID", run.ID).Msg("Backup run created successfully")
 
 	// Convert manifest items to backup items
 	items := make([]models.BackupItem, 0, len(manifest.Items))
 	var totalBytes int64
 
-	for _, item := range manifest.Items {
+	var missing []missingTorrent
+
+	log.Info().Int("totalItems", len(manifest.Items)).Msg("Starting to process manifest items")
+
+	for i, item := range manifest.Items {
+		// Skip items with invalid required fields
+		if strings.TrimSpace(item.Hash) == "" || strings.TrimSpace(item.Name) == "" {
+			continue
+		}
+
+		// Log progress every 100 items
+		if i > 0 && i%100 == 0 {
+			log.Info().Int("processed", i).Int("total", len(manifest.Items)).Int("validSoFar", len(items)).Msg("Processing manifest items progress")
+		}
+
 		backupItem := models.BackupItem{
 			RunID:       run.ID,
 			TorrentHash: item.Hash,
@@ -1260,47 +1299,163 @@ func (s *Service) ImportManifest(ctx context.Context, instanceID int, manifestDa
 		}
 
 		if item.TorrentBlob != "" {
-			// Check if the torrent file exists at the expected path
-			blobAbsPath := filepath.Join(s.cfg.DataDir, item.TorrentBlob)
-			if _, err := os.Stat(blobAbsPath); err == nil {
-				// File exists, use it
-				backupItem.TorrentBlobPath = &item.TorrentBlob
-			} else {
-				// File doesn't exist, try to download it from qBittorrent
-				if s.syncManager != nil {
-					if data, _, _, err := s.syncManager.ExportTorrent(ctx, instanceID, item.Hash); err == nil {
-						// Successfully downloaded, cache it
-						if s.cacheDir != "" {
-							if err := os.WriteFile(blobAbsPath, data, 0o644); err == nil {
-								backupItem.TorrentBlobPath = &item.TorrentBlob
-							}
-						}
-					}
-				}
-			}
+			// Mark for background processing - don't check existence here to avoid blocking
+			backupItem.TorrentBlobPath = &item.TorrentBlob
+			missing = append(missing, missingTorrent{hash: item.Hash, absPath: path.Join(s.cfg.DataDir, item.TorrentBlob)})
 		}
 
 		items = append(items, backupItem)
 		totalBytes += item.SizeBytes
 	}
 
+	log.Info().Int("validItems", len(items)).Int64("totalBytes", totalBytes).Msg("Finished processing manifest items")
+
+	// Validate that we have valid items if the manifest claimed to have any
+	if len(items) == 0 && len(manifest.Items) > 0 {
+		log.Error().Int("manifestItems", len(manifest.Items)).Msg("Manifest contains items but none are valid")
+		return nil, fmt.Errorf("manifest contains %d items but none are valid (missing required hash or name)", len(manifest.Items))
+	}
+
 	// Insert the items
 	if len(items) > 0 {
+		log.Info().Int("itemCount", len(items)).Int64("runID", run.ID).Msg("Inserting backup items into database")
 		if err := s.store.InsertItems(ctx, run.ID, items); err != nil {
+			log.Error().Err(err).Int64("runID", run.ID).Msg("Failed to insert backup items")
 			return nil, fmt.Errorf("failed to insert backup items: %w", err)
+		}
+		log.Info().Int("insertedItems", len(items)).Int64("runID", run.ID).Msg("Successfully inserted backup items")
+	}
+
+	// Start background download of missing torrents
+	if len(missing) > 0 {
+		log.Info().Int("missingCount", len(missing)).Msg("Starting background download of missing torrent blobs")
+		s.progressMu.Lock()
+		s.progress[run.ID] = &BackupProgress{
+			Current: 0,
+			Total:   len(missing),
+		}
+		s.progressMu.Unlock()
+		log.Info().Int64("runID", run.ID).Int("total", len(missing)).Msg("Initialized import progress")
+		go s.downloadMissingTorrents(run.ID, instanceID, missing)
+	} else {
+		// No missing torrents, mark as completed immediately
+		now := s.now()
+		run.Status = models.BackupRunStatusSuccess
+		run.CompletedAt = &now
+		if err := s.store.UpdateRunMetadata(ctx, run.ID, func(r *models.BackupRun) error {
+			r.Status = models.BackupRunStatusSuccess
+			r.CompletedAt = &now
+			return nil
+		}); err != nil {
+			log.Warn().Err(err).Int64("runID", run.ID).Msg("Failed to mark import run as completed")
 		}
 	}
 
-	// Update the run with total bytes
-	run.TotalBytes = totalBytes
+	// Update the run with total bytes and torrent count
+	run.TotalBytes = 0 // Imports don't have archive files, so no total bytes
+	run.TorrentCount = len(items)
+	log.Info().Int64("runID", run.ID).Int("torrentCount", len(items)).Msg("Updating backup run metadata")
 	if err := s.store.UpdateRunMetadata(ctx, run.ID, func(r *models.BackupRun) error {
-		r.TotalBytes = totalBytes
+		r.TotalBytes = 0
+		r.TorrentCount = len(items)
 		return nil
 	}); err != nil {
-		log.Warn().Err(err).Int64("runID", run.ID).Msg("Failed to update total bytes for imported run")
+		log.Warn().Err(err).Int64("runID", run.ID).Msg("Failed to update total bytes and torrent count for imported run")
+	} else {
+		log.Info().Int64("runID", run.ID).Msg("Successfully updated backup run metadata")
 	}
 
+	log.Info().Int64("runID", run.ID).Msg("Manifest import completed successfully")
 	return run, nil
+}
+
+// downloadMissingTorrents downloads torrent blobs in the background for imported manifests
+func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing []missingTorrent) {
+	if s.syncManager == nil {
+		log.Warn().Int64("runID", runID).Msg("No sync manager available for background torrent downloads")
+		s.markImportComplete(runID)
+		return
+	}
+
+	total := len(missing)
+	log.Info().Int("total", total).Int64("runID", runID).Int("instanceID", instanceID).Msg("Starting background download of missing torrent blobs")
+
+	successCount := 0
+	var totalTorrentBytes int64
+	for i, mt := range missing {
+		// Check if file already exists
+		if _, err := os.Stat(mt.absPath); err == nil {
+			log.Trace().Int("current", i+1).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Str("path", mt.absPath).Msg("Torrent blob already exists, skipping download")
+			if info, statErr := os.Stat(mt.absPath); statErr == nil {
+				totalTorrentBytes += info.Size()
+			}
+			successCount++
+			s.updateProgress(runID, i+1)
+			continue
+		}
+
+		log.Trace().Int("current", i+1).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Str("path", mt.absPath).Msg("Downloading missing torrent blob in background")
+		ctx := context.Background() // Use background context since import is complete
+		if data, _, _, err := s.syncManager.ExportTorrent(ctx, instanceID, mt.hash); err == nil {
+			// Ensure directory exists
+			if err := os.MkdirAll(path.Dir(mt.absPath), 0o755); err != nil {
+				log.Error().Err(err).Int("downloaded", successCount).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Str("path", mt.absPath).Msg("Failed to create directory for torrent blob")
+				s.updateProgress(runID, i+1)
+				continue
+			}
+			if err := os.WriteFile(mt.absPath, data, 0o644); err == nil {
+				log.Trace().Int("downloaded", successCount+1).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Str("path", mt.absPath).Msg("Successfully cached missing torrent blob")
+				totalTorrentBytes += int64(len(data))
+				successCount++
+				s.updateProgress(runID, i+1)
+			} else {
+				log.Error().Err(err).Int("downloaded", successCount).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Str("path", mt.absPath).Msg("Failed to cache missing torrent blob")
+				s.updateProgress(runID, i+1)
+			}
+		} else {
+			log.Error().Err(err).Int("downloaded", successCount).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Msg("Failed to download missing torrent blob")
+			s.updateProgress(runID, i+1)
+		}
+	}
+
+	log.Info().Int("completed", successCount).Int("total", total).Int64("runID", runID).Msg("Completed background download of missing torrent blobs")
+
+	log.Info().Int64("totalTorrentBytes", totalTorrentBytes).Int64("runID", runID).Msg("Calculated total torrent file bytes")
+
+	// Update run metadata with actual torrent file sizes
+	ctx := context.Background()
+	if err := s.store.UpdateRunMetadata(ctx, runID, func(r *models.BackupRun) error {
+		r.TotalBytes = totalTorrentBytes
+		return nil
+	}); err != nil {
+		log.Error().Err(err).Int64("runID", runID).Msg("Failed to update run with torrent file sizes")
+	} else {
+		log.Info().Int64("runID", runID).Int64("totalBytes", totalTorrentBytes).Msg("Updated run metadata with torrent file sizes")
+	}
+
+	s.markImportComplete(runID)
+}
+
+// markImportComplete marks an import run as completed and cleans up progress
+func (s *Service) markImportComplete(runID int64) {
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	// Update run status in database
+	if err := s.store.UpdateRunMetadata(ctx, runID, func(r *models.BackupRun) error {
+		r.Status = models.BackupRunStatusSuccess
+		r.CompletedAt = &now
+		return nil
+	}); err != nil {
+		log.Error().Err(err).Int64("runID", runID).Msg("Failed to mark import run as completed")
+	} else {
+		log.Info().Int64("runID", runID).Msg("Marked import run as completed")
+	}
+
+	// Clean up progress
+	s.progressMu.Lock()
+	delete(s.progress, runID)
+	s.progressMu.Unlock()
 }
 
 // DataDir returns the base data directory used for backups.
