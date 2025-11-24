@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, lazyRouteComponent } from "@tanstack/react-router"
 
 export const Route = createFileRoute("/_authenticated/backups")({
-  component: () => import("@/pages/InstanceBackups").then(m => ({ default: m.InstanceBackups })),
+  component: lazyRouteComponent(() => import("@/pages/InstanceBackups"), "InstanceBackups"),
 })

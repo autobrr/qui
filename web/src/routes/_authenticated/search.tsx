@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, lazyRouteComponent } from "@tanstack/react-router"
 
 export const Route = createFileRoute("/_authenticated/search")({
-  component: () => import("@/pages/Search").then(m => ({ default: m.Search })),
+  component: lazyRouteComponent(() => import("@/pages/Search"), "Search"),
 })

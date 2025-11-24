@@ -101,6 +101,7 @@ export function Sidebar() {
                 key={item.href}
                 to={item.href}
                 params={item.params}
+                preload="intent"
                 className={cn(
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
                   isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -130,6 +131,7 @@ export function Sidebar() {
                     key={instance.id}
                     to="/instances/$instanceId"
                     params={{ instanceId: instance.id.toString() }}
+                    preload="intent"
                     className={cn(
                       "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
                       isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"

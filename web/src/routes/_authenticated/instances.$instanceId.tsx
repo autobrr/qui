@@ -6,12 +6,12 @@
 import { Button } from "@/components/ui/button"
 import { useLayoutRoute } from "@/contexts/LayoutRouteContext"
 import { useInstances } from "@/hooks/useInstances"
-import { createFileRoute, Navigate } from "@tanstack/react-router"
+import { createFileRoute, lazyRouteComponent, Navigate } from "@tanstack/react-router"
 import { Power } from "lucide-react"
-import { useLayoutEffect, lazy, Suspense } from "react"
+import { useLayoutEffect } from "react"
 import { z } from "zod"
 
-const Torrents = lazy(() => import("@/pages/Torrents").then(m => ({ default: m.Torrents })))
+const Torrents = lazyRouteComponent(() => import("@/pages/Torrents"), "Torrents")
 
 const instanceSearchSchema = z.object({
   modal: z.enum(["add-torrent", "create-torrent", "tasks"]).optional(),
@@ -86,14 +86,12 @@ function InstanceTorrents() {
   }
 
   return (
-    <Suspense fallback={<div className="p-6">Loading torrents...</div>}>
-      <Torrents
-        instanceId={instanceIdNumber}
-        instanceName={instanceDisplayName}
-        search={search}
-        onSearchChange={handleSearchChange}
-      />
-    </Suspense>
+    <Torrents
+      instanceId={instanceIdNumber}
+      instanceName={instanceDisplayName}
+      search={search}
+      onSearchChange={handleSearchChange}
+    />
   )
 }
 

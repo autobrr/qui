@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { Dashboard } from "@/pages/Dashboard"
 import { createFileRoute } from "@tanstack/react-router"
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
-  component: () => import("@/pages/Dashboard").then(m => ({ default: m.Dashboard })),
+  component: Dashboard,
 })
