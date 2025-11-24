@@ -213,7 +213,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                     <Info className="h-4 w-4 text-muted-foreground cursor-help" />
                   </TooltipTrigger>
                   <TooltipContent className="max-w-[300px]">
-                    <p>qBittorrent doesn't retry failed announces quickly—when a tracker is slow to register a new upload or returns an error, you may be stuck waiting. qui handles this automatically while never spamming trackers.</p>
+                    <p>qBittorrent doesn't retry failed announces quickly. When a tracker is slow to register a new upload or returns an error, you may be stuck waiting. qui handles this automatically while never spamming trackers.</p>
                   </TooltipContent>
                 </Tooltip>
               </div>
