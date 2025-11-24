@@ -32,6 +32,8 @@ import (
 	"github.com/autobrr/autobrr/pkg/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
@@ -67,45 +69,108 @@ type qbittorrentSync interface {
 	SetTags(ctx context.Context, instanceID int, hashes []string, tags string) error
 }
 
-// Service provides cross-seed functionality
-type Service struct {
-	instanceStore instanceProvider
-	syncManager   qbittorrentSync
-	filesManager  *filesmanager.Service
-	releaseCache  *ReleaseCache
-	// searchResultCache stores the most recent search results per torrent hash so that
-	// apply requests can be validated without trusting client-provided URLs.
-	searchResultCache *ttlcache.Cache[string, []TorrentSearchResult]
-	// asyncFilteringCache stores async filtering state by torrent key for UI polling
-	asyncFilteringCache *ttlcache.Cache[string, *AsyncIndexerFilteringState]
-	indexerDomainCache  *ttlcache.Cache[string, string]
-	stringNormalizer    *stringutils.Normalizer[string, string]
+// ServiceMetrics contains Prometheus metrics for the cross-seed service
+type ServiceMetrics struct {
+	FindCandidatesDuration    prometheus.Histogram
+	FindCandidatesTotal       prometheus.Counter
+	CrossSeedDuration         prometheus.Histogram
+	CrossSeedTotal            prometheus.Counter
+	CrossSeedSuccessRate      *prometheus.CounterVec
+	CacheHitRate              prometheus.Gauge
+	ActiveAsyncOperations     prometheus.Gauge
+	TorrentFilesCacheSize     prometheus.Gauge
+	SearchResultCacheSize     prometheus.Gauge
+	AsyncFilteringCacheSize   prometheus.Gauge
+	IndexerDomainCacheSize    prometheus.Gauge
+	ReleaseCacheParseDuration prometheus.Histogram
+	GetMatchTypeDuration      prometheus.Histogram
+	GetMatchTypeCalls         prometheus.Counter
+	GetMatchTypeNoMatch       prometheus.Counter
+	GetMatchTypeExactMatch    prometheus.Counter
+	GetMatchTypePartialMatch  prometheus.Counter
+	GetMatchTypeSizeMatch     prometheus.Counter
+}
 
-	automationStore          *models.CrossSeedStore
-	automationSettingsLoader func(context.Context) (*models.CrossSeedAutomationSettings, error)
-	jackettService           *jackett.Service
-
-	// External program execution
-	externalProgramStore *models.ExternalProgramStore
-
-	automationMu     sync.Mutex
-	automationCancel context.CancelFunc
-	automationWake   chan struct{}
-	runActive        atomic.Bool
-
-	// Cached torrent file metadata for repeated analyze/search calls.
-	torrentFilesCache *ttlcache.Cache[string, qbt.TorrentFiles]
-
-	searchMu     sync.RWMutex
-	searchCancel context.CancelFunc
-	searchState  *searchRunState
-
-	// domainMappings provides static mappings between tracker domains and indexer domains
-	domainMappings map[string][]string
-
-	// test hooks
-	crossSeedInvoker    func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
-	torrentDownloadFunc func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
+// NewServiceMetrics creates and registers Prometheus metrics for the cross-seed service
+func NewServiceMetrics() *ServiceMetrics {
+	return &ServiceMetrics{
+		FindCandidatesDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "qui_crossseed_find_candidates_duration_seconds",
+			Help:    "Time spent finding cross-seed candidates",
+			Buckets: prometheus.DefBuckets,
+		}),
+		FindCandidatesTotal: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "qui_crossseed_find_candidates_total",
+			Help: "Total number of find candidates requests",
+		}),
+		CrossSeedDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "qui_crossseed_cross_seed_duration_seconds",
+			Help:    "Time spent performing cross-seed operations",
+			Buckets: prometheus.DefBuckets,
+		}),
+		CrossSeedTotal: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "qui_crossseed_cross_seed_total",
+			Help: "Total number of cross-seed operations",
+		}),
+		CrossSeedSuccessRate: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "qui_crossseed_success_total",
+			Help: "Total number of successful cross-seed operations by status",
+		}, []string{"status"}),
+		CacheHitRate: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "qui_crossseed_cache_hit_rate",
+			Help: "Cache hit rate for various caches (0.0 to 1.0)",
+		}),
+		ActiveAsyncOperations: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "qui_crossseed_active_async_operations",
+			Help: "Number of active async filtering operations",
+		}),
+		TorrentFilesCacheSize: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "qui_crossseed_torrent_files_cache_size",
+			Help: "Number of entries in torrent files cache",
+		}),
+		SearchResultCacheSize: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "qui_crossseed_search_result_cache_size",
+			Help: "Number of entries in search result cache",
+		}),
+		AsyncFilteringCacheSize: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "qui_crossseed_async_filtering_cache_size",
+			Help: "Number of entries in async filtering cache",
+		}),
+		IndexerDomainCacheSize: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "qui_crossseed_indexer_domain_cache_size",
+			Help: "Number of entries in indexer domain cache",
+		}),
+		ReleaseCacheParseDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "qui_crossseed_release_parse_duration_seconds",
+			Help:    "Time spent parsing release names",
+			Buckets: []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0},
+		}),
+		GetMatchTypeDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "qui_crossseed_get_match_type_duration_seconds",
+			Help:    "Time spent determining file match types",
+			Buckets: prometheus.DefBuckets,
+		}),
+		GetMatchTypeCalls: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "qui_crossseed_get_match_type_calls_total",
+			Help: "Total number of getMatchType calls",
+		}),
+		GetMatchTypeNoMatch: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "qui_crossseed_get_match_type_no_match_total",
+			Help: "Total number of getMatchType calls that resulted in no match",
+		}),
+		GetMatchTypeExactMatch: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "qui_crossseed_get_match_type_exact_match_total",
+			Help: "Total number of getMatchType calls that resulted in exact match",
+		}),
+		GetMatchTypePartialMatch: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "qui_crossseed_get_match_type_partial_match_total",
+			Help: "Total number of getMatchType calls that resulted in partial match",
+		}),
+		GetMatchTypeSizeMatch: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "qui_crossseed_get_match_type_size_match_total",
+			Help: "Total number of getMatchType calls that resulted in size match",
+		}),
+	}
 }
 
 type automationInstanceSnapshot struct {
@@ -153,6 +218,50 @@ func initializeDomainMappings() map[string][]string {
 	}
 }
 
+// Service provides cross-seed functionality
+type Service struct {
+	instanceStore instanceProvider
+	syncManager   qbittorrentSync
+	filesManager  *filesmanager.Service
+	releaseCache  *ReleaseCache
+	// searchResultCache stores the most recent search results per torrent hash so that
+	// apply requests can be validated without trusting client-provided URLs.
+	searchResultCache *ttlcache.Cache[string, []TorrentSearchResult]
+	// asyncFilteringCache stores async filtering state by torrent key for UI polling
+	asyncFilteringCache *ttlcache.Cache[string, *AsyncIndexerFilteringState]
+	indexerDomainCache  *ttlcache.Cache[string, string]
+	stringNormalizer    *stringutils.Normalizer[string, string]
+
+	automationStore          *models.CrossSeedStore
+	automationSettingsLoader func(context.Context) (*models.CrossSeedAutomationSettings, error)
+	jackettService           *jackett.Service
+
+	// External program execution
+	externalProgramStore *models.ExternalProgramStore
+
+	automationMu     sync.Mutex
+	automationCancel context.CancelFunc
+	automationWake   chan struct{}
+	runActive        atomic.Bool
+
+	// Cached torrent file metadata for repeated analyze/search calls.
+	torrentFilesCache *ttlcache.Cache[string, qbt.TorrentFiles]
+
+	searchMu     sync.RWMutex
+	searchCancel context.CancelFunc
+	searchState  *searchRunState
+
+	// domainMappings provides static mappings between tracker domains and indexer domains
+	domainMappings map[string][]string
+
+	// Metrics for monitoring service health and performance
+	metrics *ServiceMetrics
+
+	// test hooks
+	crossSeedInvoker    func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
+	torrentDownloadFunc func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
+}
+
 // NewService creates a new cross-seed service
 func NewService(
 	instanceStore *models.InstanceStore,
@@ -187,7 +296,42 @@ func NewService(
 		automationWake:       make(chan struct{}, 1),
 		domainMappings:       initializeDomainMappings(),
 		torrentFilesCache:    contentFilesCache,
+		metrics:              NewServiceMetrics(),
 	}
+}
+
+// HealthCheck performs comprehensive health checks on the cross-seed service
+func (s *Service) HealthCheck(ctx context.Context) error {
+	// Check if we can list instances
+	_, err := s.instanceStore.List(ctx)
+	if err != nil {
+		return fmt.Errorf("instance store health check failed: %w", err)
+	}
+
+	// Check if caches are accessible
+	if s.searchResultCache == nil || s.asyncFilteringCache == nil || s.indexerDomainCache == nil {
+		return errors.New("cache initialization failed")
+	}
+
+	// Check release cache
+	if s.releaseCache == nil {
+		return errors.New("release cache initialization failed")
+	}
+
+	// Check if automation settings can be loaded
+	if s.automationSettingsLoader != nil {
+		_, err := s.automationSettingsLoader(ctx)
+		if err != nil {
+			return fmt.Errorf("automation settings loader failed: %w", err)
+		}
+	}
+
+	// Check Jackett service connectivity (if configured)
+	if s.jackettService != nil {
+		// We could add a lightweight check here if Jackett service has a health check method
+	}
+
+	return nil
 }
 
 // ErrAutomationRunning indicates a cross-seed automation run is already in progress.
