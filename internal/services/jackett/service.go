@@ -323,12 +323,6 @@ func (s *Service) executeQueuedSearch(ctx context.Context, indexers []*models.To
 	return s.searchIndexersWithScheduler(ctx, indexers, params, meta, onReady, onComplete, resultCallback)
 }
 
-type scheduledIndexerResult struct {
-	results  []Result
-	coverage []int
-	err      error
-}
-
 func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext, onReady func(jobID uint64, indexerID int) context.Context, onComplete func(jobID uint64, indexerID int, err error), resultCallback func([]Result, []int, error)) error {
 	if len(indexers) == 0 {
 		resultCallback(nil, nil, nil)
@@ -615,8 +609,9 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 
 		if cacheEnabled && cacheSig != nil && len(networkCoverage) > 0 {
 			now := time.Now().UTC()
-			if response.Cache == nil {
-				s.annotateSearchResponse(response, cacheScope, false, now, now.Add(s.searchCacheTTL), nil)
+			ttl := s.cacheTTL()
+			if response.Cache == nil && ttl > 0 {
+				s.annotateSearchResponse(response, cacheScope, false, now, now.Add(ttl), nil)
 			}
 			coverageToPersist := effectiveCoverage
 			if len(coverageToPersist) == 0 {
@@ -1471,6 +1466,215 @@ func computeSearchTimeout(meta *searchContext, indexerCount int) time.Duration {
 	return timeout
 }
 
+func validateIndexerBaseURL(idx *models.TorznabIndexer) error {
+	if idx == nil {
+		return fmt.Errorf("missing indexer")
+	}
+
+	baseURL := strings.TrimSpace(idx.BaseURL)
+	if baseURL == "" || (!strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://")) {
+		return fmt.Errorf("invalid indexer base URL")
+	}
+	if strings.Contains(baseURL, "api/v2.0/indexers/") && !strings.Contains(baseURL, "://") {
+		return fmt.Errorf("invalid indexer base URL")
+	}
+	return nil
+}
+
+type indexerExecResult struct {
+	results []Result
+	id      int
+	skipped bool
+	err     error
+}
+
+type indexerExecOptions struct {
+	rateLimitOpts     *RateLimitOptions
+	handleWaitError   bool
+	logSearchActivity bool
+	logWaitError      bool
+}
+
+func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabIndexer, params url.Values, meta *searchContext, opts indexerExecOptions) indexerExecResult {
+	if idx == nil {
+		return indexerExecResult{err: fmt.Errorf("missing indexer")}
+	}
+
+	if opts.rateLimitOpts == nil {
+		opts.rateLimitOpts = cloneRateLimitOptions(meta)
+	}
+
+	apiKey, err := s.indexerStore.GetDecryptedAPIKey(idx)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("indexer_id", idx.ID).
+			Str("indexer", idx.Name).
+			Msg("Failed to decrypt API key")
+		return indexerExecResult{id: idx.ID, err: err}
+	}
+
+	client := NewClient(idx.BaseURL, apiKey, idx.Backend, idx.TimeoutSeconds)
+
+	paramsMap := make(map[string]string)
+	for key, values := range params {
+		if len(values) > 0 {
+			paramsMap[key] = values[0]
+		}
+	}
+
+	s.applyProwlarrWorkaround(idx, paramsMap)
+
+	var searchFn func() ([]Result, error)
+	switch idx.Backend {
+	case models.TorznabBackendNative:
+		if s.applyIndexerRestrictions(ctx, client, idx, "", meta, paramsMap) {
+			return indexerExecResult{id: idx.ID, skipped: true}
+		}
+
+		if opts.logSearchActivity {
+			log.Debug().
+				Int("indexer_id", idx.ID).
+				Str("indexer_name", idx.Name).
+				Str("base_url", idx.BaseURL).
+				Str("backend", string(idx.Backend)).
+				Msg("Searching native Torznab endpoint")
+		}
+
+		searchFn = func() ([]Result, error) {
+			return client.SearchDirect(ctx, paramsMap)
+		}
+	case models.TorznabBackendProwlarr:
+		indexerID := strings.TrimSpace(idx.IndexerID)
+		if indexerID == "" {
+			log.Warn().
+				Int("indexer_id", idx.ID).
+				Str("indexer", idx.Name).
+				Str("backend", string(idx.Backend)).
+				Msg("Skipping prowlarr indexer without numeric identifier")
+			return indexerExecResult{id: idx.ID, err: fmt.Errorf("missing prowlarr indexer identifier")}
+		}
+
+		if s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap) {
+			return indexerExecResult{id: idx.ID, skipped: true}
+		}
+
+		if opts.logSearchActivity {
+			log.Debug().
+				Int("indexer_id", idx.ID).
+				Str("indexer_name", idx.Name).
+				Str("backend", string(idx.Backend)).
+				Str("torznab_indexer_id", indexerID).
+				Msg("Searching Prowlarr indexer")
+		}
+
+		searchFn = func() ([]Result, error) {
+			return client.Search(ctx, indexerID, paramsMap)
+		}
+	default:
+		indexerID := idx.IndexerID
+		if indexerID == "" {
+			indexerID = extractIndexerIDFromURL(idx.BaseURL, idx.Name)
+		}
+		if strings.TrimSpace(indexerID) == "" {
+			log.Warn().
+				Int("indexer_id", idx.ID).
+				Str("indexer", idx.Name).
+				Str("backend", string(idx.Backend)).
+				Msg("Skipping indexer without resolved identifier")
+			return indexerExecResult{id: idx.ID, err: fmt.Errorf("missing indexer identifier")}
+		}
+
+		if s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap) {
+			return indexerExecResult{id: idx.ID, skipped: true}
+		}
+
+		if opts.logSearchActivity {
+			log.Debug().
+				Int("indexer_id", idx.ID).
+				Str("indexer_name", idx.Name).
+				Str("backend", string(idx.Backend)).
+				Str("torznab_indexer_id", indexerID).
+				Msg("Searching Torznab aggregator indexer")
+		}
+
+		searchFn = func() ([]Result, error) {
+			return client.Search(ctx, indexerID, paramsMap)
+		}
+	}
+
+	if err := s.rateLimiter.BeforeRequest(ctx, idx, opts.rateLimitOpts); err != nil {
+		if waitErr, ok := asRateLimitWaitError(err); ok && opts.handleWaitError {
+			if opts.logWaitError {
+				log.Warn().
+					Int("indexer_id", idx.ID).
+					Str("indexer", idx.Name).
+					Dur("required_wait", waitErr.Wait).
+					Dur("max_wait", waitErr.MaxWait).
+					Str("priority", string(waitErr.Priority)).
+					Msg("Skipping torznab indexer due to wait budget")
+			}
+			return indexerExecResult{id: 0, err: waitErr, skipped: true}
+		}
+		return indexerExecResult{id: idx.ID, err: err}
+	}
+
+	start := time.Now()
+	results, err := searchFn()
+	latencyMs := int(time.Since(start).Milliseconds())
+	if recErr := s.indexerStore.RecordLatency(ctx, idx.ID, "search", latencyMs, err == nil); recErr != nil {
+		log.Debug().Err(recErr).Int("indexer_id", idx.ID).Msg("Failed to record torznab latency")
+	}
+
+	if opts.logSearchActivity {
+		log.Debug().
+			Int("indexer_id", idx.ID).
+			Str("indexer", idx.Name).
+			Int("result_count", len(results)).
+			Int("latency_ms", latencyMs).
+			Interface("search_params", paramsMap).
+			Msg("Search completed")
+	}
+
+	if err != nil {
+		if cooldown, reason := detectRateLimit(err); reason {
+			s.handleRateLimit(ctx, idx, cooldown, err)
+		}
+		log.Warn().
+			Err(err).
+			Int("indexer_id", idx.ID).
+			Str("indexer", idx.Name).
+			Msg("Failed to search indexer")
+
+		if strings.Contains(strings.ToLower(err.Error()), "429") ||
+			strings.Contains(strings.ToLower(err.Error()), "rate limit") ||
+			strings.Contains(strings.ToLower(err.Error()), "too many requests") {
+			backendLabel := strings.TrimSpace(string(idx.Backend))
+			if backendLabel == "" {
+				backendLabel = "indexer"
+			}
+			enhancedErr := fmt.Errorf("%s search failed: backend returned status 429 for indexer %s (ID: %d). Rate limiting is active for this indexer", backendLabel, idx.Name, idx.ID)
+			return indexerExecResult{id: idx.ID, err: enhancedErr}
+		}
+
+		return indexerExecResult{id: idx.ID, err: err}
+	}
+
+	for i := range results {
+		results[i].IndexerID = idx.ID
+		if idx.Backend == models.TorznabBackendProwlarr {
+			results[i].Tracker = idx.Name
+		} else if strings.TrimSpace(results[i].Tracker) == "" {
+			results[i].Tracker = idx.Name
+		}
+	}
+
+	return indexerExecResult{
+		results: results,
+		id:      idx.ID,
+	}
+}
+
 // searchMultipleIndexers searches multiple indexers in parallel and aggregates results.
 // The returned coverage slice contains indexer IDs that completed successfully (even if zero results).
 func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
@@ -1510,13 +1714,7 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 		return nil, nil, fmt.Errorf("no indexers available for search")
 	}
 
-	type indexerResult struct {
-		results []Result
-		id      int
-		err     error
-	}
-
-	resultsChan := make(chan indexerResult, len(availableIndexers))
+	resultsChan := make(chan indexerExecResult, len(availableIndexers))
 
 	for _, indexer := range availableIndexers {
 		s.clearPersistedCooldown(indexer.ID)
@@ -1529,179 +1727,16 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 						Int("indexer_id", idx.ID).
 						Str("indexer", idx.Name).
 						Msg("Recovered from panic in indexer search")
-					resultsChan <- indexerResult{id: idx.ID, err: err}
+					resultsChan <- indexerExecResult{id: idx.ID, err: err}
 				}
 			}()
 
-			// Get decrypted API key
-			apiKey, err := s.indexerStore.GetDecryptedAPIKey(idx)
-			if err != nil {
-				log.Warn().
-					Err(err).
-					Int("indexer_id", idx.ID).
-					Str("indexer", idx.Name).
-					Msg("Failed to decrypt API key")
-				resultsChan <- indexerResult{id: idx.ID, err: err}
-				return
-			}
-
-			// Create client for this indexer
-			client := NewClient(idx.BaseURL, apiKey, idx.Backend, idx.TimeoutSeconds)
-
-			// Convert url.Values to map[string]string (take first value for each key)
-			paramsMap := make(map[string]string)
-			for key, values := range params {
-				if len(values) > 0 {
-					paramsMap[key] = values[0]
-				}
-			}
-
-			// Apply Prowlarr workaround for year parameter
-			s.applyProwlarrWorkaround(idx, paramsMap)
-
-			var searchFn func() ([]Result, error)
-			switch idx.Backend {
-			case models.TorznabBackendNative:
-				if s.applyIndexerRestrictions(ctx, client, idx, "", meta, paramsMap) {
-					resultsChan <- indexerResult{id: idx.ID}
-					return
-				}
-
-				log.Debug().
-					Int("indexer_id", idx.ID).
-					Str("indexer_name", idx.Name).
-					Str("base_url", idx.BaseURL).
-					Str("backend", string(idx.Backend)).
-					Msg("Searching native Torznab endpoint")
-				searchFn = func() ([]Result, error) {
-					return client.SearchDirect(ctx, paramsMap)
-				}
-			case models.TorznabBackendProwlarr:
-				indexerID := strings.TrimSpace(idx.IndexerID)
-				if indexerID == "" {
-					log.Warn().
-						Int("indexer_id", idx.ID).
-						Str("indexer", idx.Name).
-						Str("backend", string(idx.Backend)).
-						Msg("Skipping prowlarr indexer without numeric identifier")
-					resultsChan <- indexerResult{id: idx.ID, err: fmt.Errorf("missing prowlarr indexer identifier")}
-					return
-				}
-
-				if s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap) {
-					resultsChan <- indexerResult{id: idx.ID}
-					return
-				}
-
-				log.Debug().
-					Int("indexer_id", idx.ID).
-					Str("indexer_name", idx.Name).
-					Str("backend", string(idx.Backend)).
-					Str("torznab_indexer_id", indexerID).
-					Msg("Searching Prowlarr indexer")
-				searchFn = func() ([]Result, error) {
-					return client.Search(ctx, indexerID, paramsMap)
-				}
-			default:
-				// Jackett/Prowlarr aggregator - use stored indexer_id
-				indexerID := idx.IndexerID
-				if indexerID == "" {
-					indexerID = extractIndexerIDFromURL(idx.BaseURL, idx.Name)
-				}
-				if strings.TrimSpace(indexerID) == "" {
-					log.Warn().
-						Int("indexer_id", idx.ID).
-						Str("indexer", idx.Name).
-						Str("backend", string(idx.Backend)).
-						Msg("Skipping indexer without resolved identifier")
-					resultsChan <- indexerResult{id: idx.ID, err: fmt.Errorf("missing indexer identifier")}
-					return
-				}
-
-				if s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap) {
-					resultsChan <- indexerResult{id: idx.ID}
-					return
-				}
-
-				log.Debug().
-					Int("indexer_id", idx.ID).
-					Str("indexer_name", idx.Name).
-					Str("backend", string(idx.Backend)).
-					Str("torznab_indexer_id", indexerID).
-					Msg("Searching Torznab aggregator indexer")
-				searchFn = func() ([]Result, error) {
-					return client.Search(ctx, indexerID, paramsMap)
-				}
-			}
-
-			if err := s.rateLimiter.BeforeRequest(ctx, idx, rateLimitOpts); err != nil {
-				if waitErr, ok := asRateLimitWaitError(err); ok {
-					log.Warn().
-						Int("indexer_id", idx.ID).
-						Str("indexer", idx.Name).
-						Dur("required_wait", waitErr.Wait).
-						Dur("max_wait", waitErr.MaxWait).
-						Str("priority", string(waitErr.Priority)).
-						Msg("Skipping torznab indexer due to wait budget")
-					resultsChan <- indexerResult{id: 0, err: waitErr}
-					return
-				}
-				resultsChan <- indexerResult{id: idx.ID, err: err}
-				return
-			}
-
-			start := time.Now()
-			results, err := searchFn()
-			latencyMs := int(time.Since(start).Milliseconds())
-			if recErr := s.indexerStore.RecordLatency(ctx, idx.ID, "search", latencyMs, err == nil); recErr != nil {
-				log.Debug().Err(recErr).Int("indexer_id", idx.ID).Msg("Failed to record torznab latency")
-			}
-
-			// Debug log search results
-			log.Debug().
-				Int("indexer_id", idx.ID).
-				Str("indexer", idx.Name).
-				Int("result_count", len(results)).
-				Int("latency_ms", latencyMs).
-				Interface("search_params", paramsMap).
-				Msg("Search completed")
-
-			if err != nil {
-				if cooldown, reason := detectRateLimit(err); reason {
-					s.handleRateLimit(ctx, idx, cooldown, err)
-				}
-				log.Warn().
-					Err(err).
-					Int("indexer_id", idx.ID).
-					Str("indexer", idx.Name).
-					Msg("Failed to search indexer")
-
-				// Enhance rate limit error messages with indexer context
-				if strings.Contains(strings.ToLower(err.Error()), "429") ||
-					strings.Contains(strings.ToLower(err.Error()), "rate limit") ||
-					strings.Contains(strings.ToLower(err.Error()), "too many requests") {
-					backendLabel := strings.TrimSpace(string(idx.Backend))
-					if backendLabel == "" {
-						backendLabel = "indexer"
-					}
-					enhancedErr := fmt.Errorf("%s search failed: backend returned status 429 for indexer %s (ID: %d). Rate limiting is active for this indexer", backendLabel, idx.Name, idx.ID)
-					resultsChan <- indexerResult{id: idx.ID, err: enhancedErr}
-				} else {
-					resultsChan <- indexerResult{id: idx.ID, err: err}
-				}
-				return
-			}
-
-			for i := range results {
-				results[i].IndexerID = idx.ID
-				if idx.Backend == models.TorznabBackendProwlarr {
-					results[i].Tracker = idx.Name
-				} else if strings.TrimSpace(results[i].Tracker) == "" {
-					results[i].Tracker = idx.Name
-				}
-			}
-
-			resultsChan <- indexerResult{results: results, id: idx.ID}
+			resultsChan <- s.executeIndexerSearch(ctx, idx, params, meta, indexerExecOptions{
+				rateLimitOpts:     rateLimitOpts,
+				handleWaitError:   true,
+				logSearchActivity: true,
+				logWaitError:      true,
+			})
 		}(indexer)
 	}
 
@@ -1775,135 +1810,26 @@ func (s *Service) runIndexerSearch(ctx context.Context, idx *models.TorznabIndex
 		return nil, nil, fmt.Errorf("missing indexer")
 	}
 
-	baseURL := strings.TrimSpace(idx.BaseURL)
-	if baseURL == "" || (!strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://")) {
-		return nil, nil, fmt.Errorf("invalid indexer base URL")
-	}
-	// Short-circuit obviously mock/test URLs to avoid long network waits in batch scheduling.
-	if strings.Contains(baseURL, "api/v2.0/indexers/") && !strings.Contains(baseURL, "://") {
-		return nil, nil, fmt.Errorf("invalid indexer base URL")
+	if err := validateIndexerBaseURL(idx); err != nil {
+		return nil, nil, err
 	}
 
 	s.ensureRateLimiterState()
 	s.clearPersistedCooldown(idx.ID)
 
-	apiKey, err := s.indexerStore.GetDecryptedAPIKey(idx)
-	if err != nil {
-		log.Warn().
-			Err(err).
-			Int("indexer_id", idx.ID).
-			Str("indexer", idx.Name).
-			Msg("Failed to decrypt API key")
-		return nil, nil, err
+	result := s.executeIndexerSearch(ctx, idx, params, meta, indexerExecOptions{
+		rateLimitOpts: cloneRateLimitOptions(meta),
+	})
+	if result.err != nil {
+		return nil, nil, result.err
 	}
-
-	client := NewClient(idx.BaseURL, apiKey, idx.Backend, idx.TimeoutSeconds)
-
-	// Convert url.Values to map[string]string
-	paramsMap := make(map[string]string)
-	for key, values := range params {
-		if len(values) > 0 {
-			paramsMap[key] = values[0]
-		}
+	if result.skipped {
+		return nil, nil, nil
 	}
-
-	// Apply Prowlarr workaround for year parameter
-	s.applyProwlarrWorkaround(idx, paramsMap)
-
-	var searchFn func() ([]Result, error)
-	switch idx.Backend {
-	case models.TorznabBackendNative:
-		if s.applyIndexerRestrictions(ctx, client, idx, "", meta, paramsMap) {
-			return nil, nil, nil
-		}
-		searchFn = func() ([]Result, error) {
-			return client.SearchDirect(ctx, paramsMap)
-		}
-	case models.TorznabBackendProwlarr:
-		indexerID := strings.TrimSpace(idx.IndexerID)
-		if indexerID == "" {
-			log.Warn().
-				Int("indexer_id", idx.ID).
-				Str("indexer", idx.Name).
-				Str("backend", string(idx.Backend)).
-				Msg("Skipping prowlarr indexer without numeric identifier")
-			return nil, nil, fmt.Errorf("missing prowlarr indexer identifier")
-		}
-
-		if s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap) {
-			return nil, nil, nil
-		}
-
-		searchFn = func() ([]Result, error) {
-			return client.Search(ctx, indexerID, paramsMap)
-		}
-	default:
-		indexerID := idx.IndexerID
-		if indexerID == "" {
-			indexerID = extractIndexerIDFromURL(idx.BaseURL, idx.Name)
-		}
-		if strings.TrimSpace(indexerID) == "" {
-			log.Warn().
-				Int("indexer_id", idx.ID).
-				Str("indexer", idx.Name).
-				Str("backend", string(idx.Backend)).
-				Msg("Skipping indexer without resolved identifier")
-			return nil, nil, fmt.Errorf("missing indexer identifier")
-		}
-
-		if s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap) {
-			return nil, nil, nil
-		}
-
-		searchFn = func() ([]Result, error) {
-			return client.Search(ctx, indexerID, paramsMap)
-		}
+	if result.id == 0 {
+		return result.results, nil, nil
 	}
-
-	if err := s.rateLimiter.BeforeRequest(ctx, idx, cloneRateLimitOptions(meta)); err != nil {
-		return nil, nil, err
-	}
-
-	start := time.Now()
-	results, err := searchFn()
-	latencyMs := int(time.Since(start).Milliseconds())
-	if recErr := s.indexerStore.RecordLatency(ctx, idx.ID, "search", latencyMs, err == nil); recErr != nil {
-		log.Debug().Err(recErr).Int("indexer_id", idx.ID).Msg("Failed to record torznab latency")
-	}
-
-	if err != nil {
-		if cooldown, reason := detectRateLimit(err); reason {
-			s.handleRateLimit(ctx, idx, cooldown, err)
-		}
-		log.Warn().
-			Err(err).
-			Int("indexer_id", idx.ID).
-			Str("indexer", idx.Name).
-			Msg("Failed to search indexer")
-
-		if strings.Contains(strings.ToLower(err.Error()), "429") ||
-			strings.Contains(strings.ToLower(err.Error()), "rate limit") ||
-			strings.Contains(strings.ToLower(err.Error()), "too many requests") {
-			backendLabel := strings.TrimSpace(string(idx.Backend))
-			if backendLabel == "" {
-				backendLabel = "indexer"
-			}
-			enhancedErr := fmt.Errorf("%s search failed: backend returned status 429 for indexer %s (ID: %d). Rate limiting is active for this indexer", backendLabel, idx.Name, idx.ID)
-			return nil, nil, enhancedErr
-		}
-		return nil, nil, err
-	}
-
-	for i := range results {
-		results[i].IndexerID = idx.ID
-		if idx.Backend == models.TorznabBackendProwlarr {
-			results[i].Tracker = idx.Name
-		} else if strings.TrimSpace(results[i].Tracker) == "" {
-			results[i].Tracker = idx.Name
-		}
-	}
-
-	return results, []int{idx.ID}, nil
+	return result.results, []int{result.id}, nil
 }
 
 func coverageSetToSlice(set map[int]struct{}) []int {
