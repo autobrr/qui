@@ -75,6 +75,7 @@ type Service struct {
 	searchCache            searchCacheStore
 	searchCacheTTL         time.Duration
 	searchCacheEnabled     bool
+	searchCacheConfigMu    sync.RWMutex
 	searchExecutor         func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error)
 
 	searchCacheCleanupMu    sync.Mutex
@@ -799,7 +800,29 @@ func collectIndexerIDs(indexers []*models.TorznabIndexer) []int {
 }
 
 func (s *Service) shouldUseSearchCache() bool {
-	return s != nil && s.searchCacheEnabled && s.searchCache != nil && s.searchCacheTTL > 0
+	if s == nil || s.searchCache == nil {
+		return false
+	}
+	enabled, ttl := s.cacheConfig()
+	return enabled && ttl > 0
+}
+
+// cacheConfig returns the current cache enabled flag and TTL under lock.
+func (s *Service) cacheConfig() (bool, time.Duration) {
+	if s == nil {
+		return false, 0
+	}
+	s.searchCacheConfigMu.RLock()
+	enabled := s.searchCacheEnabled
+	ttl := s.searchCacheTTL
+	s.searchCacheConfigMu.RUnlock()
+	return enabled, ttl
+}
+
+// cacheTTL returns the current cache TTL under lock.
+func (s *Service) cacheTTL() time.Duration {
+	_, ttl := s.cacheConfig()
+	return ttl
 }
 
 func (s *Service) buildSearchCacheSignature(scope string, req *TorznabSearchRequest, detectedType contentType, searchMode string, indexerIDs []int) *searchCacheSignature {
@@ -984,7 +1007,11 @@ func (s *Service) persistSearchCacheEntry(ctx context.Context, scope string, sig
 	}
 
 	cachedAt = cachedAt.UTC()
-	expiresAt := cachedAt.Add(s.searchCacheTTL)
+	ttl := s.cacheTTL()
+	if ttl <= 0 {
+		return
+	}
+	expiresAt := cachedAt.Add(ttl)
 
 	// Marshal a copy without cache metadata to keep stored payload slim
 	cachePayload := SearchResponse{
@@ -1229,12 +1256,14 @@ func (s *Service) InvalidateSearchCache(ctx context.Context, indexerIDs []int) (
 
 // GetSearchCacheStats returns summary stats for the cache table.
 func (s *Service) GetSearchCacheStats(ctx context.Context) (*models.TorznabSearchCacheStats, error) {
+	enabled, ttl := s.cacheConfig()
+
 	stats := &models.TorznabSearchCacheStats{
-		Enabled:    s.searchCacheEnabled,
-		TTLMinutes: int(s.searchCacheTTL / time.Minute),
+		Enabled:    enabled,
+		TTLMinutes: int(ttl / time.Minute),
 	}
 
-	if !s.shouldUseSearchCache() {
+	if s.searchCache == nil || !enabled || ttl <= 0 {
 		return stats, nil
 	}
 
@@ -1269,16 +1298,23 @@ func (s *Service) UpdateSearchCacheSettings(ctx context.Context, ttlMinutes int)
 		return nil, fmt.Errorf("ttlMinutes must be at least %d", MinSearchCacheTTLMinutes)
 	}
 
-	currentTTLMinutes := int(s.searchCacheTTL / time.Minute)
 	newTTL := time.Duration(ttlMinutes) * time.Minute
+
+	// Snapshot current TTL under lock
+	s.searchCacheConfigMu.RLock()
+	currentTTLMinutes := int(s.searchCacheTTL / time.Minute)
+	s.searchCacheConfigMu.RUnlock()
 
 	settings, err := s.searchCache.UpdateSettings(ctx, ttlMinutes)
 	if err != nil {
 		return nil, err
 	}
 
+	// Persist new config in memory after backing store succeeds
+	s.searchCacheConfigMu.Lock()
 	s.searchCacheTTL = newTTL
 	s.searchCacheEnabled = true
+	s.searchCacheConfigMu.Unlock()
 
 	if currentTTLMinutes != ttlMinutes {
 		if _, err := s.searchCache.RebaseTTL(ctx, ttlMinutes); err != nil {

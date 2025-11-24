@@ -222,9 +222,9 @@ func (s *searchScheduler) loop() {
 			select {
 			case batch := <-s.submitCh:
 				s.enqueueTasks(batch)
-				// Keep coalescing window open until timer fires.
 			case res := <-s.completeCh:
 				s.markWorkerFree(res.indexer)
+				s.dispatchTasks()
 			case <-s.stopCh:
 				s.stopAllWorkers()
 				return
@@ -241,11 +241,10 @@ func (s *searchScheduler) loop() {
 			coalesce = time.After(dispatchCoalesceDelay)
 		case res := <-s.completeCh:
 			s.markWorkerFree(res.indexer)
+			s.dispatchTasks()
 		case <-s.stopCh:
 			s.stopAllWorkers()
 			return
-		default:
-			s.dispatchTasks()
 		}
 	}
 }
@@ -266,24 +265,40 @@ func (s *searchScheduler) enqueueTasks(tasks []workerTask) {
 func (s *searchScheduler) dispatchTasks() {
 	for {
 		s.mu.Lock()
-		if len(s.taskQueue) == 0 {
+		n := len(s.taskQueue)
+		if n == 0 {
 			s.mu.Unlock()
 			return
 		}
-		item := heap.Pop(&s.taskQueue).(*taskItem)
-		s.mu.Unlock()
-		worker := s.getWorker(item.task.indexer)
-		if worker == nil {
-			continue
-		}
-		select {
-		case worker.tasks <- item.task:
-		default:
-			// worker queue full; requeue and continue to try other tasks
-			s.mu.Lock()
-			heap.Push(&s.taskQueue, item)
+
+		skipped := make([]*taskItem, 0, n)
+		dispatched := false
+
+		for i := 0; i < n; i++ {
+			item := heap.Pop(&s.taskQueue).(*taskItem)
 			s.mu.Unlock()
-			continue
+
+			worker := s.getWorker(item.task.indexer)
+			if worker != nil {
+				select {
+				case worker.tasks <- item.task:
+					dispatched = true
+				default:
+					skipped = append(skipped, item)
+				}
+			}
+
+			s.mu.Lock()
+		}
+
+		for _, item := range skipped {
+			heap.Push(&s.taskQueue, item)
+		}
+		s.mu.Unlock()
+
+		if !dispatched {
+			// All workers were full; wait for a completion signal before retrying.
+			return
 		}
 	}
 }
