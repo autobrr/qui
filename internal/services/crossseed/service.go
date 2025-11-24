@@ -1379,6 +1379,16 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 			run = updated
 		}
 		return run, fmt.Errorf("recent search timed out")
+	case <-ctx.Done():
+		msg := "Context cancelled"
+		run.ErrorMessage = &msg
+		run.Status = models.CrossSeedRunStatusFailed
+		completed := time.Now().UTC()
+		run.CompletedAt = &completed
+		if updated, updateErr := s.automationStore.UpdateRun(ctx, run); updateErr == nil {
+			run = updated
+		}
+		return run, ctx.Err()
 	}
 
 	// Pre-fetch all indexer info (names and domains) for performance
