@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -443,7 +444,7 @@ func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	response, err := h.service.AutobrrApply(r.Context(), &req)
+	response, err := h.service.AutobrrApply(context.WithoutCancel(r.Context()), &req)
 	if err != nil {
 		status := mapCrossSeedErrorStatus(err)
 		log.Error().Err(err).Msg("Failed to apply autobrr torrent")
@@ -498,7 +499,7 @@ func (h *CrossSeedHandler) ApplyTorrentSearchResults(w http.ResponseWriter, r *h
 		return
 	}
 
-	response, err := h.service.ApplyTorrentSearchResults(r.Context(), instanceID, hash, &req)
+	response, err := h.service.ApplyTorrentSearchResults(context.WithoutCancel(r.Context()), instanceID, hash, &req)
 	if err != nil {
 		status := mapCrossSeedErrorStatus(err)
 		log.Error().
@@ -749,7 +750,7 @@ func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	run, err := h.service.RunAutomation(r.Context(), crossseed.AutomationRunOptions{
+	run, err := h.service.RunAutomation(context.WithoutCancel(r.Context()), crossseed.AutomationRunOptions{
 		RequestedBy: "api",
 		Mode:        models.CrossSeedRunModeManual,
 		DryRun:      req.DryRun,
@@ -865,7 +866,7 @@ func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	run, err := h.service.StartSearchRun(r.Context(), crossseed.SearchRunOptions{
+	run, err := h.service.StartSearchRun(context.WithoutCancel(r.Context()), crossseed.SearchRunOptions{
 		InstanceID:      req.InstanceID,
 		Categories:      req.Categories,
 		Tags:            req.Tags,
@@ -1023,7 +1024,7 @@ func (h *CrossSeedHandler) WebhookCheck(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	response, err := h.service.CheckWebhook(r.Context(), &req)
+	response, err := h.service.CheckWebhook(context.WithoutCancel(r.Context()), &req)
 	if err != nil {
 		switch {
 		case errors.Is(err, crossseed.ErrInvalidWebhookRequest):
