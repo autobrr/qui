@@ -1211,6 +1211,8 @@ func (s *Service) automationLoop(ctx context.Context) {
 				} else if errors.Is(err, ErrNoTargetInstancesConfigured) {
 					log.Info().Msg("Skipping cross-seed automation run: no target instances configured")
 					s.waitTimer(ctx, timer, 5*time.Minute)
+				} else if errors.Is(err, context.Canceled) {
+					log.Debug().Msg("Cross-seed automation run canceled (context canceled)")
 				} else {
 					log.Warn().Err(err).Msg("Cross-seed automation run failed")
 				}
@@ -1367,7 +1369,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 			run = updated
 		}
 		return run, err
-	case <-time.After(5 * time.Minute): // reasonable timeout
+	case <-time.After(10 * time.Minute): // generous timeout for RSS automation
 		msg := "Recent search timed out"
 		run.ErrorMessage = &msg
 		run.Status = models.CrossSeedRunStatusFailed
@@ -3861,7 +3863,9 @@ func (s *Service) searchRunLoop(ctx context.Context, state *searchRunState) {
 		s.setCurrentCandidate(state, candidate)
 
 		if err := s.processSearchCandidate(ctx, state, candidate); err != nil {
-			state.lastError = err
+			if !errors.Is(err, context.Canceled) {
+				state.lastError = err
+			}
 		}
 
 		if interval > 0 {
