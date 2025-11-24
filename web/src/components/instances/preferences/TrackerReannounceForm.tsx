@@ -293,7 +293,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                               <Info className="h-4 w-4 text-muted-foreground cursor-help" />
                             </TooltipTrigger>
                             <TooltipContent className="max-w-[300px]">
-                              <p>Use the Retry Interval as the cooldown between scans instead of the default 2 minutes. Useful on trackers that are slow to register new uploads. qui always waits while a tracker is updating—it never spams.</p>
+                              <p>Use the Retry Interval as the cooldown between scans instead of the default 2 minutes. Useful on trackers that are slow to register new uploads. qui always waits while a tracker is updating and never spams.</p>
                             </TooltipContent>
                           </Tooltip>
                         </div>
