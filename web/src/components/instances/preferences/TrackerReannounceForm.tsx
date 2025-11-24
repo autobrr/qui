@@ -206,7 +206,17 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
         <CardHeader className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
             <div className="space-y-1">
-              <CardTitle className="text-lg font-semibold">Automatic Tracker Reannounce</CardTitle>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-lg font-semibold">Automatic Tracker Reannounce</CardTitle>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-[300px]">
+                    <p>qBittorrent doesn't retry failed announces quickly—when a tracker is slow to register a new upload or returns an error, you may be stuck waiting. qui handles this automatically while never spamming trackers.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <CardDescription>
                 qui monitors <strong>stalled</strong> torrents and reannounces them if trackers report "unregistered" or errors.
                 Background scan runs every {GLOBAL_SCAN_INTERVAL_SECONDS} seconds.
@@ -258,7 +268,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                         id="reannounce-interval"
                         label="Retry Interval"
                         description="Seconds between retries"
-                        tooltip="How often to retry inside a single reannounce attempt (up to 3 tries). Aggressive Mode only removes the 2-minute cooldown between scans; this interval still applies. Minimum 5 seconds."
+                        tooltip="How often to retry inside a single reannounce attempt (up to 3 tries). With Quick Retry enabled, this also becomes the cooldown between scans. Minimum 5 seconds."
                         min={MIN_INTERVAL}
                         value={settings.reannounceIntervalSeconds}
                         onChange={(value) => setSettings((prev) => ({ ...prev, reannounceIntervalSeconds: value }))}
@@ -277,22 +287,22 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                     <div className="flex items-center justify-between rounded-lg border border-border/60 p-3 bg-muted/20">
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-2">
-                          <Label htmlFor="aggressive-mode" className="text-base">Aggressive Mode</Label>
+                          <Label htmlFor="quick-retry" className="text-base">Quick Retry</Label>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Info className="h-4 w-4 text-muted-foreground cursor-help" />
                             </TooltipTrigger>
                             <TooltipContent className="max-w-[300px]">
-                              <p>Skip the normal cooldown between scans. Uses the Retry Interval for back-to-back attempts; be mindful of tracker rate limits.</p>
+                              <p>Use the Retry Interval as the cooldown between scans instead of the default 2 minutes. Useful on trackers that are slow to register new uploads. qui always waits while a tracker is updating—it never spams.</p>
                             </TooltipContent>
                           </Tooltip>
                         </div>
                         <p className="text-sm text-muted-foreground">
-                          Skip the 2-minute cooldown between scans (Retry Interval still applies)
+                          Use Retry Interval for cooldown instead of 2 minutes
                         </p>
                       </div>
                       <Switch
-                        id="aggressive-mode"
+                        id="quick-retry"
                         checked={settings.aggressive}
                         onCheckedChange={(aggressive) => setSettings((prev) => ({ ...prev, aggressive }))}
                       />
