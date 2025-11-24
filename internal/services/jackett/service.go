@@ -273,11 +273,12 @@ func WithSearchPriority(ctx context.Context, priority RateLimitPriority) context
 
 // NewService creates a new Jackett service
 func NewService(indexerStore IndexerStore, opts ...ServiceOption) *Service {
+	rl := NewRateLimiter(defaultMinRequestInterval)
 	s := &Service{
 		indexerStore:       indexerStore,
 		releaseParser:      releases.NewDefaultParser(),
-		rateLimiter:        NewRateLimiter(defaultMinRequestInterval),
-		searchScheduler:    newSearchScheduler(),
+		rateLimiter:        rl,
+		searchScheduler:    newSearchScheduler(rl),
 		persistedCooldowns: make(map[int]time.Time),
 		searchCacheTTL:     defaultSearchCacheTTL,
 		searchCacheEnabled: true,
@@ -286,9 +287,6 @@ func NewService(indexerStore IndexerStore, opts ...ServiceOption) *Service {
 		if opt != nil {
 			opt(s)
 		}
-	}
-	if s.searchScheduler != nil {
-		s.searchScheduler.rateLimiter = s.rateLimiter
 	}
 	return s
 }

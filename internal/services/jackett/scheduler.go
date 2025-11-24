@@ -45,6 +45,7 @@ type indexerWorker struct {
 	indexerID   int
 	tasks       chan workerTask
 	rateLimiter *RateLimiter
+	stopCh      chan struct{}
 }
 
 type taskItem struct {
@@ -97,13 +98,19 @@ type searchScheduler struct {
 	taskSeq uint64
 }
 
-func newSearchScheduler() *searchScheduler {
+const dispatchCoalesceDelay = 5 * time.Millisecond
+
+func newSearchScheduler(rl *RateLimiter) *searchScheduler {
+	if rl == nil {
+		rl = NewRateLimiter(defaultMinRequestInterval)
+	}
 	s := &searchScheduler{
-		workers:    make(map[int]*indexerWorker),
-		pendingRSS: make(map[int]struct{}),
-		submitCh:   make(chan []workerTask, 128),
-		completeCh: make(chan workerResult, 128),
-		stopCh:     make(chan struct{}),
+		workers:     make(map[int]*indexerWorker),
+		pendingRSS:  make(map[int]struct{}),
+		rateLimiter: rl,
+		submitCh:    make(chan []workerTask, 128),
+		completeCh:  make(chan workerResult, 128),
+		stopCh:      make(chan struct{}),
 	}
 	heap.Init(&s.taskQueue)
 	go s.loop()
@@ -121,16 +128,17 @@ func (s *searchScheduler) Submit(ctx context.Context, indexers []*models.Torznab
 	respCh := make(chan workerResult, len(indexers))
 	tasks := make([]workerTask, 0, len(indexers))
 	for _, idx := range indexers {
+		if idx == nil {
+			continue
+		}
 		if meta != nil && meta.rateLimit != nil && meta.rateLimit.Priority == RateLimitPriorityRSS {
-			if idx != nil {
-				s.mu.Lock()
-				if _, exists := s.pendingRSS[idx.ID]; exists {
-					s.mu.Unlock()
-					continue
-				}
-				s.pendingRSS[idx.ID] = struct{}{}
+			s.mu.Lock()
+			if _, exists := s.pendingRSS[idx.ID]; exists {
 				s.mu.Unlock()
+				continue
 			}
+			s.pendingRSS[idx.ID] = struct{}{}
+			s.mu.Unlock()
 		}
 		tasks = append(tasks, workerTask{
 			jobID:   jobID,
@@ -207,25 +215,37 @@ func (s *searchScheduler) Submit(ctx context.Context, indexers []*models.Torznab
 }
 
 func (s *searchScheduler) loop() {
+	var coalesce <-chan time.Time
+
 	for {
-		s.dispatchTasks()
+		if coalesce != nil {
+			select {
+			case batch := <-s.submitCh:
+				s.enqueueTasks(batch)
+				// Keep coalescing window open until timer fires.
+			case res := <-s.completeCh:
+				s.markWorkerFree(res.indexer)
+			case <-s.stopCh:
+				s.stopAllWorkers()
+				return
+			case <-coalesce:
+				coalesce = nil
+				s.dispatchTasks()
+			}
+			continue
+		}
 
 		select {
 		case batch := <-s.submitCh:
 			s.enqueueTasks(batch)
+			coalesce = time.After(dispatchCoalesceDelay)
 		case res := <-s.completeCh:
 			s.markWorkerFree(res.indexer)
 		case <-s.stopCh:
+			s.stopAllWorkers()
 			return
 		default:
-			select {
-			case batch := <-s.submitCh:
-				s.enqueueTasks(batch)
-			case res := <-s.completeCh:
-				s.markWorkerFree(res.indexer)
-			case <-s.stopCh:
-				return
-			}
+			s.dispatchTasks()
 		}
 	}
 }
@@ -259,11 +279,21 @@ func (s *searchScheduler) dispatchTasks() {
 		select {
 		case worker.tasks <- item.task:
 		default:
-			// worker queue full; requeue and stop dispatching
+			// worker queue full; requeue and continue to try other tasks
 			s.mu.Lock()
 			heap.Push(&s.taskQueue, item)
 			s.mu.Unlock()
-			return
+			continue
+		}
+	}
+}
+
+func (s *searchScheduler) stopAllWorkers() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, w := range s.workers {
+		if w.stopCh != nil {
+			close(w.stopCh)
 		}
 	}
 }
@@ -281,6 +311,7 @@ func (s *searchScheduler) getWorker(indexer *models.TorznabIndexer) *indexerWork
 		indexerID:   indexer.ID,
 		tasks:       make(chan workerTask, 8),
 		rateLimiter: s.rateLimiter,
+		stopCh:      make(chan struct{}),
 	}
 	s.workers[indexer.ID] = w
 	go w.run(s.completeCh)
@@ -288,36 +319,41 @@ func (s *searchScheduler) getWorker(indexer *models.TorznabIndexer) *indexerWork
 }
 
 func (w *indexerWorker) run(done chan<- workerResult) {
-	for task := range w.tasks {
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					err := fmt.Errorf("scheduler worker panic: %v", r)
-					task.respCh <- workerResult{jobID: task.jobID, indexer: w.indexerID, err: err}
-					done <- workerResult{jobID: task.jobID, indexer: w.indexerID}
-				}
-			}()
+	for {
+		select {
+		case <-w.stopCh:
+			return
+		case task := <-w.tasks:
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						err := fmt.Errorf("scheduler worker panic: %v", r)
+						task.respCh <- workerResult{jobID: task.jobID, indexer: w.indexerID, err: err}
+						done <- workerResult{jobID: task.jobID, indexer: w.indexerID}
+					}
+				}()
 
-			if !task.isRSS && task.ctx.Err() != nil {
-				task.respCh <- workerResult{jobID: task.jobID, indexer: w.indexerID, err: task.ctx.Err()}
+				if !task.isRSS && task.ctx.Err() != nil {
+					task.respCh <- workerResult{jobID: task.jobID, indexer: w.indexerID, err: task.ctx.Err()}
+					done <- workerResult{jobID: task.jobID, indexer: w.indexerID}
+					return
+				}
+				searchCtx := safeInvokeStart(task.onStart, task.jobID, w.indexerID)
+				if searchCtx == nil {
+					searchCtx = task.ctx
+				}
+				results, coverage, err := task.exec(searchCtx, []*models.TorznabIndexer{task.indexer}, task.params, task.meta)
+				safeInvokeDone(task.onDone, task.jobID, w.indexerID, err)
+				task.respCh <- workerResult{
+					jobID:    task.jobID,
+					indexer:  w.indexerID,
+					results:  results,
+					coverage: coverage,
+					err:      err,
+				}
 				done <- workerResult{jobID: task.jobID, indexer: w.indexerID}
-				return
-			}
-			searchCtx := safeInvokeStart(task.onStart, task.jobID, w.indexerID)
-			if searchCtx == nil {
-				searchCtx = task.ctx
-			}
-			results, coverage, err := task.exec(searchCtx, []*models.TorznabIndexer{task.indexer}, task.params, task.meta)
-			safeInvokeDone(task.onDone, task.jobID, w.indexerID, err)
-			task.respCh <- workerResult{
-				jobID:    task.jobID,
-				indexer:  w.indexerID,
-				results:  results,
-				coverage: coverage,
-				err:      err,
-			}
-			done <- workerResult{jobID: task.jobID, indexer: w.indexerID}
-		}()
+			}()
+		}
 	}
 }
 

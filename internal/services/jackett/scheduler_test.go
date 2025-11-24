@@ -16,7 +16,7 @@ import (
 )
 
 func TestSearchScheduler_BasicFunctionality(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 	defer func() { s.stopCh <- struct{}{} }()
 
 	var executed atomic.Bool
@@ -49,27 +49,29 @@ func TestSearchScheduler_BasicFunctionality(t *testing.T) {
 }
 
 func TestSearchScheduler_PriorityOrdering(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 	defer func() { s.stopCh <- struct{}{} }()
 
-	var executedTasks []string
+	var executedTasks []RateLimitPriority
 	var execMu sync.Mutex
 	done := make(chan struct{})
 
 	exec := func(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
 		execMu.Lock()
 		defer execMu.Unlock()
-		executedTasks = append(executedTasks, indexers[0].Name)
+		if meta != nil && meta.rateLimit != nil {
+			executedTasks = append(executedTasks, meta.rateLimit.Priority)
+		}
 		return []Result{{Title: "test"}}, []int{1}, nil
 	}
 
-	indexer1 := &models.TorznabIndexer{ID: 1, Name: "background"}
-	indexer2 := &models.TorznabIndexer{ID: 2, Name: "interactive"}
+	// Use the same indexer to force contention on a single worker so priority ordering is deterministic.
+	indexer := &models.TorznabIndexer{ID: 1, Name: "shared"}
 
 	var completed int32
 
 	// Submit background priority first
-	err1 := s.Submit(context.Background(), []*models.TorznabIndexer{indexer1}, nil,
+	err1 := s.Submit(context.Background(), []*models.TorznabIndexer{indexer}, nil,
 		&searchContext{rateLimit: &RateLimitOptions{Priority: RateLimitPriorityBackground}}, exec, nil, nil,
 		func(results []Result, coverage []int, err error) {
 			assert.NoError(t, err)
@@ -79,7 +81,7 @@ func TestSearchScheduler_PriorityOrdering(t *testing.T) {
 		})
 
 	// Submit interactive priority second
-	err2 := s.Submit(context.Background(), []*models.TorznabIndexer{indexer2}, nil,
+	err2 := s.Submit(context.Background(), []*models.TorznabIndexer{indexer}, nil,
 		&searchContext{rateLimit: &RateLimitOptions{Priority: RateLimitPriorityInteractive}}, exec, nil, nil,
 		func(results []Result, coverage []int, err error) {
 			assert.NoError(t, err)
@@ -98,12 +100,12 @@ func TestSearchScheduler_PriorityOrdering(t *testing.T) {
 
 	// Interactive should execute before background due to higher priority (lower number)
 	require.Len(t, executedTasks, 2)
-	assert.Equal(t, "interactive", executedTasks[0])
-	assert.Equal(t, "background", executedTasks[1])
+	assert.Equal(t, RateLimitPriorityInteractive, executedTasks[0])
+	assert.Equal(t, RateLimitPriorityBackground, executedTasks[1])
 }
 
 func TestSearchScheduler_WorkerQueueCapacity(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 	defer func() { s.stopCh <- struct{}{} }()
 
 	// Create a slow-executing function to fill worker queues
@@ -153,7 +155,7 @@ func TestSearchScheduler_WorkerQueueCapacity(t *testing.T) {
 }
 
 func TestSearchScheduler_ContextCancellation(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 	defer func() { s.stopCh <- struct{}{} }()
 
 	var started atomic.Bool
@@ -198,7 +200,7 @@ func TestSearchScheduler_ContextCancellation(t *testing.T) {
 }
 
 func TestSearchScheduler_WorkerPanicRecovery(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 	defer func() { s.stopCh <- struct{}{} }()
 
 	var executions atomic.Int32
@@ -244,7 +246,7 @@ func TestSearchScheduler_WorkerPanicRecovery(t *testing.T) {
 }
 
 func TestSearchScheduler_RSSDeduplication(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 	defer func() { s.stopCh <- struct{}{} }()
 
 	var executions atomic.Int32
@@ -291,7 +293,7 @@ func TestSearchScheduler_RSSDeduplication(t *testing.T) {
 }
 
 func TestSearchScheduler_EmptySubmission(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 	defer func() { s.stopCh <- struct{}{} }()
 
 	exec := func(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
@@ -312,7 +314,7 @@ func TestSearchScheduler_EmptySubmission(t *testing.T) {
 }
 
 func TestSearchScheduler_NilIndexerHandling(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 	defer func() { s.stopCh <- struct{}{} }()
 
 	exec := func(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
@@ -333,7 +335,7 @@ func TestSearchScheduler_NilIndexerHandling(t *testing.T) {
 }
 
 func TestSearchScheduler_ConcurrentSubmissions(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 	defer func() { s.stopCh <- struct{}{} }()
 
 	var executions atomic.Int32
@@ -378,7 +380,7 @@ func TestSearchScheduler_ConcurrentSubmissions(t *testing.T) {
 }
 
 func TestSearchScheduler_CallbackPanicRecovery(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 	defer func() { s.stopCh <- struct{}{} }()
 
 	exec := func(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
@@ -414,7 +416,7 @@ func TestSearchScheduler_CallbackPanicRecovery(t *testing.T) {
 }
 
 func TestSearchScheduler_OnStartOnDoneCallbacks(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 	defer func() { s.stopCh <- struct{}{} }()
 
 	var onStartCalled, onDoneCalled atomic.Bool
@@ -461,7 +463,7 @@ func TestSearchScheduler_OnStartOnDoneCallbacks(t *testing.T) {
 }
 
 func TestSearchScheduler_CallbackPanicInOnStartOnDone(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 	defer func() { s.stopCh <- struct{}{} }()
 
 	exec := func(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
@@ -492,7 +494,7 @@ func TestSearchScheduler_CallbackPanicInOnStartOnDone(t *testing.T) {
 }
 
 func TestSearchScheduler_MultipleIndexersPerSubmission(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 	defer func() { s.stopCh <- struct{}{} }()
 
 	var executedIndexers []string
@@ -563,7 +565,7 @@ func TestSearchScheduler_HeapOrderingCorrectness(t *testing.T) {
 }
 
 func TestSearchScheduler_StopFunctionality(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 
 	exec := func(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
 		time.Sleep(50 * time.Millisecond)
@@ -617,7 +619,7 @@ func TestSearchScheduler_RateLimitPriorityMapping(t *testing.T) {
 }
 
 func TestSearchScheduler_JobAndTaskIDGeneration(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 	defer func() { s.stopCh <- struct{}{} }()
 
 	// Test sequential ID generation
@@ -647,7 +649,7 @@ func TestSearchScheduler_CoverageSetToSlice(t *testing.T) {
 }
 
 func TestSearchScheduler_PendingRSSClearing(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 	defer func() { s.stopCh <- struct{}{} }()
 
 	// Manually add pending RSS
@@ -674,7 +676,7 @@ func TestSearchScheduler_PendingRSSClearing(t *testing.T) {
 }
 
 func TestSearchScheduler_WorkerCreationAndReuse(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 	defer func() { s.stopCh <- struct{}{} }()
 
 	indexer1 := &models.TorznabIndexer{ID: 1, Name: "indexer1"}
@@ -702,7 +704,7 @@ func TestSearchScheduler_WorkerCreationAndReuse(t *testing.T) {
 }
 
 func TestSearchScheduler_DispatchTasks_EmptyQueue(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 	defer func() { s.stopCh <- struct{}{} }()
 
 	// Empty queue should return immediately
@@ -712,7 +714,7 @@ func TestSearchScheduler_DispatchTasks_EmptyQueue(t *testing.T) {
 }
 
 func TestSearchScheduler_DispatchTasks_WithTasks(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 	defer func() { s.stopCh <- struct{}{} }()
 
 	var executed atomic.Bool
@@ -740,7 +742,7 @@ func TestSearchScheduler_DispatchTasks_WithTasks(t *testing.T) {
 }
 
 func TestSearchScheduler_ConcurrentAccessSafety(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 	defer func() { s.stopCh <- struct{}{} }()
 
 	var executions atomic.Int32
@@ -784,7 +786,7 @@ func TestSearchScheduler_ConcurrentAccessSafety(t *testing.T) {
 }
 
 func TestSearchScheduler_MemoryLeaks_NoWorkerCleanup(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 	defer func() { s.stopCh <- struct{}{} }()
 
 	var completed int32
@@ -820,7 +822,7 @@ func TestSearchScheduler_MemoryLeaks_NoWorkerCleanup(t *testing.T) {
 }
 
 func TestSearchScheduler_ErrorPropagation(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 	defer func() { s.stopCh <- struct{}{} }()
 
 	expectedErr := errors.New("test error")
@@ -846,7 +848,7 @@ func TestSearchScheduler_ErrorPropagation(t *testing.T) {
 }
 
 func TestSearchScheduler_PartialFailures(t *testing.T) {
-	s := newSearchScheduler()
+	s := newSearchScheduler(nil)
 	defer func() { s.stopCh <- struct{}{} }()
 
 	var callCount atomic.Int32
