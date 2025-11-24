@@ -818,11 +818,37 @@ func (s *TorznabIndexerStore) SetCapabilities(ctx context.Context, indexerID int
 			return fmt.Errorf("failed to intern capability strings: %w", err)
 		}
 
-		// Insert capabilities
-		for _, capID := range capIDs {
-			_, err = tx.ExecContext(ctx, "INSERT INTO torznab_indexer_capabilities (indexer_id, capability_type_id) VALUES (?, ?)", indexerID, capID)
+		// Build bulk insert query
+		queryTemplate := "INSERT INTO torznab_indexer_capabilities (indexer_id, capability_type_id) VALUES %s"
+		const capabilityBatchSize = 200 // Keep under SQLite's 999 variable limit (200 * 2 = 400 placeholders)
+		fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 2, capabilityBatchSize)
+
+		// Batch insert capabilities
+		args := make([]interface{}, 0, capabilityBatchSize*2)
+		for i := 0; i < len(capIDs); i += capabilityBatchSize {
+			end := i + capabilityBatchSize
+			if end > len(capIDs) {
+				end = len(capIDs)
+			}
+			batch := capIDs[i:end]
+
+			// Reset args for this batch
+			args = args[:0]
+			var query string
+			if len(batch) == capabilityBatchSize {
+				query = fullBatchQuery
+			} else {
+				// Build query for partial final batch
+				query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 2, len(batch))
+			}
+
+			for _, capID := range batch {
+				args = append(args, indexerID, capID)
+			}
+
+			_, err = tx.ExecContext(ctx, query, args...)
 			if err != nil {
-				return fmt.Errorf("failed to insert capability: %w", err)
+				return fmt.Errorf("failed to insert capabilities batch: %w", err)
 			}
 		}
 	}
@@ -903,10 +929,38 @@ func (s *TorznabIndexerStore) SetCategories(ctx context.Context, indexerID int, 
 			return fmt.Errorf("failed to intern category names: %w", err)
 		}
 
-		for i, cat := range ordered {
-			_, err = tx.ExecContext(ctx, "INSERT INTO torznab_indexer_categories (indexer_id, category_id, category_name_id, parent_category_id) VALUES (?, ?, ?, ?)", indexerID, cat.CategoryID, nameIDs[i], cat.ParentCategory)
+		// Build bulk insert query
+		queryTemplate := "INSERT INTO torznab_indexer_categories (indexer_id, category_id, category_name_id, parent_category_id) VALUES %s"
+		const categoryBatchSize = 200 // Keep under SQLite's 999 variable limit (200 * 4 = 800 placeholders)
+		fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 4, categoryBatchSize)
+
+		// Batch insert categories
+		args := make([]interface{}, 0, categoryBatchSize*4)
+		for i := 0; i < len(ordered); i += categoryBatchSize {
+			end := i + categoryBatchSize
+			if end > len(ordered) {
+				end = len(ordered)
+			}
+			batch := ordered[i:end]
+
+			// Reset args for this batch
+			args = args[:0]
+			var query string
+			if len(batch) == categoryBatchSize {
+				query = fullBatchQuery
+			} else {
+				// Build query for partial final batch
+				query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 4, len(batch))
+			}
+
+			for j, cat := range batch {
+				nameID := nameIDs[i+j]
+				args = append(args, indexerID, cat.CategoryID, nameID, cat.ParentCategory)
+			}
+
+			_, err = tx.ExecContext(ctx, query, args...)
 			if err != nil {
-				return fmt.Errorf("failed to insert category: %w", err)
+				return fmt.Errorf("failed to insert categories batch: %w", err)
 			}
 		}
 	}

@@ -517,6 +517,15 @@ func (app *Application) runServer() {
 		if cacheTTL < jackett.MinSearchCacheTTL {
 			cacheTTL = jackett.MinSearchCacheTTL
 		}
+
+		if rebased, err := torznabSearchCache.RebaseTTL(context.Background(), int(cacheTTL/time.Minute)); err != nil {
+			log.Warn().Err(err).Msg("Failed to rebase torznab search cache TTL to persisted settings")
+		} else if rebased > 0 {
+			log.Info().
+				Int64("updatedRows", rebased).
+				Float64("ttlHours", cacheTTL.Hours()).
+				Msg("Rebased torznab search cache entries to persisted TTL")
+		}
 	}
 	jackettService := jackett.NewService(
 		torznabIndexerStore,
@@ -529,7 +538,7 @@ func (app *Application) runServer() {
 
 	// Initialize cross-seed automation store and service
 	crossSeedStore := models.NewCrossSeedStore(db)
-	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore, clientPool)
+	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 
 	syncManager.SetTorrentCompletionHandler(crossSeedService.HandleTorrentCompletion)
