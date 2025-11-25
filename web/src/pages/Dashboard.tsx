@@ -23,6 +23,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedAccordionState } from "@/hooks/usePersistedAccordionState"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
@@ -127,6 +128,7 @@ function InstanceCard({
     data: qbittorrentAppInfo,
     versionInfo: qbittorrentVersionInfo,
   } = useQBittorrentAppInfo(instance.id)
+  const { preferences } = useInstancePreferences(instance.id, { enabled: instance.connected })
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit] = useSpeedUnits()
   const appVersion = qbittorrentAppInfo?.version || qbittorrentVersionInfo?.appVersion || ""
@@ -152,7 +154,10 @@ function InstanceCard({
   const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : Ban
   const connectionStatusIconClass = hasConnectionStatus? isConnectable? "text-green-500": isFirewalled? "text-amber-500": "text-destructive": ""
 
-  const connectionStatusTooltip = connectionStatusDisplay ? (isConnectable ? "Connectable" : connectionStatusDisplay) : ""
+  const listenPort = preferences?.listen_port
+  const connectionStatusTooltip = connectionStatusDisplay
+    ? `${isConnectable ? "Connectable" : connectionStatusDisplay}${listenPort ? `. Port: ${listenPort}` : ""}`
+    : ""
 
   // Determine if settings button should show
   const showSettingsButton = instance.connected && !isFirstLoad && !hasDecryptionOrRecentErrors

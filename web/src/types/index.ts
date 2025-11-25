@@ -85,6 +85,38 @@ export interface InstanceError {
   occurredAt: string
 }
 
+export interface TrackerRule {
+  id: number
+  instanceId: number
+  name: string
+  trackerPattern: string
+  trackerDomains?: string[]
+  category?: string
+  tag?: string
+  uploadLimitKiB?: number
+  downloadLimitKiB?: number
+  ratioLimit?: number
+  seedingTimeLimitMinutes?: number
+  enabled: boolean
+  sortOrder: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface TrackerRuleInput {
+  name: string
+  trackerPattern?: string
+  trackerDomains?: string[]
+  category?: string
+  tag?: string
+  uploadLimitKiB?: number
+  downloadLimitKiB?: number
+  ratioLimit?: number
+  seedingTimeLimitMinutes?: number
+  enabled?: boolean
+  sortOrder?: number
+}
+
 export interface InstanceResponse extends Instance {
   connected: boolean
   hasDecryptionError: boolean
@@ -724,6 +756,8 @@ export interface AppPreferences {
   category_changed_tmm_enabled: boolean
   save_path_changed_tmm_enabled: boolean
   use_category_paths_in_manual_mode: boolean
+  // Subcategory behavior
+  use_subcategories?: boolean
 
   // Torrent behavior
   torrent_changed_tmm_enabled: boolean

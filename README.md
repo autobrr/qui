@@ -35,7 +35,8 @@ A fast, modern web interface for qBittorrent. Supports managing multiple qBittor
 - **Base URL Support**: Serve from a subdirectory (e.g., `/qui/`) for reverse proxy setups
 - **OIDC Single Sign-On**: Authenticate through your OpenID Connect provider
 - **External Programs**: Launch custom scripts from the torrent context menu ([guide](internal/api/handlers/EXTERNAL_PROGRAMS.md))
-- **Tracker Reannounce**: Proactively reannounce torrents with unregistered or error status ([guide](internal/services/reannounce/REANNOUNCE.md))
+- **Tracker Reannounce**: Automatically fix stalled torrents when qBittorrent doesn't retry fast enough ([info](internal/services/reannounce/REANNOUNCE.md))
+- **Tracker Rules**: Apply per-tracker speed limits, ratio caps, and seeding time limits automatically ([info](internal/services/trackerrules/TRACKER_RULES.md))
 
 
 
