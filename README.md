@@ -10,15 +10,19 @@ A fast, modern web interface for qBittorrent. Supports managing multiple qBittor
 
 - [Features](#features)
 - [Installation](#installation)
+- [Docker](#docker)
+- [Updating](#updating)
 - [Configuration](#configuration)
-- [API](#api)
-- [Metrics](#metrics)
+  - [Base URL](#base-url-configuration)
+  - [OpenID Connect (OIDC)](#openid-connect-oidc)
+  - [CLI Commands](#cli-commands)
+- [Backups & Restore Modes](#backups--restore-modes)
+- [Cross-Seed](#cross-seed)
+- [Reverse Proxy for External Applications](#reverse-proxy-for-external-applications)
 - [External Programs](#external-programs)
 - [Tracker Icons](#tracker-icons)
-- [Reverse Proxy for External Applications](#reverse-proxy-for-external-applications)
-- [Cross Seed](#cross-seed)
-- [Docker](#docker)
-- [Base URL Configuration](#base-url-configuration)
+- [API](#api)
+- [Metrics](#metrics)
 - [qBittorrent Version Compatibility](#qbittorrent-version-compatibility)
 - [Community](#community)
 - [Support Development](#support-development)
@@ -37,8 +41,9 @@ A fast, modern web interface for qBittorrent. Supports managing multiple qBittor
 - **External Programs**: Launch custom scripts from the torrent context menu ([guide](internal/api/handlers/EXTERNAL_PROGRAMS.md))
 - **Tracker Reannounce**: Automatically fix stalled torrents when qBittorrent doesn't retry fast enough ([info](internal/services/reannounce/REANNOUNCE.md))
 - **Tracker Rules**: Apply per-tracker speed limits, ratio caps, and seeding time limits automatically ([info](internal/services/trackerrules/TRACKER_RULES.md))
-
-
+- **Backups & Restore**: Scheduled snapshots with incremental, overwrite, and complete restore modes ([info](#backups--restore-modes))
+- **Cross-Seed**: Automatically find and add matching torrents across trackers with autobrr webhook integration ([info](#cross-seed))
+- **Reverse Proxy**: Transparent qBittorrent proxy for external apps like autobrr, Sonarr, and Radarr—no credential sharing needed ([info](#reverse-proxy-for-external-applications))
 
 ## Installation
 
@@ -121,6 +126,42 @@ wget -O installer.sh https://get.autobrr.com/qui/whatbox && chmod +x installer.s
 3. Add your qBittorrent instance(s)
 4. Start managing your torrents
 
+## Docker
+
+```bash
+# Using Docker Compose
+docker compose up -d
+
+# Or standalone
+docker run -d \
+  -p 7476:7476 \
+  -v $(pwd)/config:/config \
+  ghcr.io/autobrr/qui:latest
+```
+
+### Unraid
+
+Our release workflow builds multi-architecture images (`linux/amd64`, `linux/arm64`, and friends) and publishes them to `ghcr.io/autobrr/qui`, so the container should work on Unraid out of the box.
+
+**Deploy from the Docker tab**
+- Open **Docker → Add Container**
+- Set **Name** to `qui`
+- Set **Repository** to `ghcr.io/autobrr/qui:latest`
+- Keep the default **Network Type** (`bridge` works for most setups)
+- Add a port mapping: **Host port** `7476` → **Container port** `7476`
+- Add a path mapping: **Container Path** `/config` → **Host Path** `/mnt/user/appdata/qui`
+- (Optional) add environment variables for advanced settings (e.g., `QUI__BASE_URL`, `QUI__LOG_LEVEL`, `TZ`)
+- Click **Apply** to pull the image and start the container
+
+The `/config` mount stores `config.toml`, the SQLite database, and logs. Point it at your preferred appdata share so settings persist across upgrades.
+
+If the app logs to stdout, check logs via Docker → qui → Logs; if it writes to files, they'll be under /config.
+
+**Updating**
+- Use Unraid's **Check for Updates** action to pull a newer `latest` image
+- If you pinned a specific version tag, edit the repository field to the new tag when you're ready to upgrade
+- Restart the container if needed after the image update so the new binary is loaded
+
 ## Updating
 
 qui includes a built-in update command that automatically downloads and installs the latest release:
@@ -169,6 +210,38 @@ QUI__METRICS_BASIC_AUTH_USERS=user:hash  # Optional: basic auth for metrics (bcr
 
 When `logPath` is set the server writes to disk using size-based rotation. Adjust `logMaxSize` and `logMaxBackups` in `config.toml` or the corresponding environment variables shown above to control the rotation thresholds and retention.
 
+### Base URL Configuration
+
+If you need to serve qui from a subdirectory (e.g., `https://example.com/qui/`), you can configure the base URL:
+
+**Using Environment Variable**
+```bash
+QUI__BASE_URL=/qui/ ./qui
+```
+
+**Using Configuration File**
+
+Edit your `config.toml`:
+```toml
+baseUrl = "/qui/"
+```
+
+**With Nginx Reverse Proxy**
+```nginx
+# Redirect /qui to /qui/ for proper SPA routing
+location = /qui {
+    return 301 /qui/;
+}
+
+location /qui/ {
+    proxy_pass http://localhost:7476/qui/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
 ### OpenID Connect (OIDC)
 
 Set `QUI__OIDC_ENABLED=true` to hand authentication off to an external identity provider. The built-in login screen automatically offers an "Sign in with OIDC" button when the backend detects a valid OIDC configuration.
@@ -192,25 +265,9 @@ QUI__OIDC_DISABLE_BUILT_IN_LOGIN=true
 
 You can set the same options in `config.toml` using the `oidc*` keys generated by `qui generate-config`.
 
-## Backups & Restore Modes
+### CLI Commands
 
-qui can take scheduled or ad-hoc snapshots of a qBittorrent instance. Each snapshot includes the torrent archive, tags, categories (with save paths), and cached `.torrent` blobs so that you can recreate the original state later.
-
-Once backups are enabled for an instance the backlog UI exposes a **Restore** action for each run. Restores support three distinct modes:
-
-- Incremental – safest option. Creates any categories, tags, or torrents that are missing from the live instance but never modifies or removes existing data. Use this when you just want to seed new items into an active qBittorrent without touching what is already there.
-- Overwrite – performs the incremental work **and** updates existing resources to match the snapshot (e.g. adjusts category save paths or rewrites per-torrent categories/tags). It still refuses to delete anything. This works well when your live instance has drifted but you do not want to prune it.
-- Complete – full reconciliation. Runs the overwrite steps and then deletes categories, tags, and torrents that are not present in the snapshot. This is ideal when you need to roll an instance back to an earlier point in time, but it should only be used when you are certain the snapshot is authoritative.
-
-Every restore begins with a dry-run preview so you can inspect planned changes. Unsupported differences (such as mismatched infohashes or file sizes) are surfaced as warnings; they require manual follow-up regardless of mode.
-
-### Importing Backups
-
-Downloaded backups can be imported into any qui instance. Useful for migrating to a new server or recovering after data loss. Click **Import** on the Backups page and select the backup file. All export formats are supported.
-
-## CLI Commands
-
-### Generate Configuration File
+#### Generate Configuration File
 
 Create a default configuration file without starting the server:
 
@@ -225,7 +282,7 @@ Create a default configuration file without starting the server:
 ./qui generate-config --config-dir /path/to/myconfig.toml
 ```
 
-### User Management
+#### User Management
 
 Create and manage user accounts from the command line:
 
@@ -253,7 +310,7 @@ printf "password" | ./qui change-password --username admin
 ```
 
 **Notes:**
-- Only one user account is allowed in the system  
+- Only one user account is allowed in the system
 - Passwords must be at least 8 characters long
 - Interactive prompts use secure input (passwords are masked)
 - Supports piped input for automation and scripting
@@ -264,7 +321,7 @@ printf "password" | ./qui change-password --username admin
 - Linux/macOS: `~/.config/qui/config.toml`
 - Windows: `%APPDATA%\qui\config.toml`
 
-### Update Command
+#### Update Command
 
 Keep your qui installation up-to-date:
 
@@ -273,7 +330,7 @@ Keep your qui installation up-to-date:
 ./qui update
 ```
 
-### Command Line Flags
+#### Command Line Flags
 
 ```bash
 # Specify config directory (config.toml will be created inside)
@@ -283,213 +340,21 @@ Keep your qui installation up-to-date:
 ./qui serve --data-dir /path/to/data/
 ```
 
-## API
+## Backups & Restore Modes
 
-### Documentation
+qui can take scheduled or ad-hoc snapshots of a qBittorrent instance. Each snapshot includes the torrent archive, tags, categories (with save paths), and cached `.torrent` blobs so that you can recreate the original state later.
 
-Interactive API documentation is available at `/api/docs` using Swagger UI. You can explore all endpoints, view request/response schemas, and test API calls directly from your browser.
+Once backups are enabled for an instance the backlog UI exposes a **Restore** action for each run. Restores support three distinct modes:
 
-### API Keys
+- Incremental – safest option. Creates any categories, tags, or torrents that are missing from the live instance but never modifies or removes existing data. Use this when you just want to seed new items into an active qBittorrent without touching what is already there.
+- Overwrite – performs the incremental work **and** updates existing resources to match the snapshot (e.g. adjusts category save paths or rewrites per-torrent categories/tags). It still refuses to delete anything. This works well when your live instance has drifted but you do not want to prune it.
+- Complete – full reconciliation. Runs the overwrite steps and then deletes categories, tags, and torrents that are not present in the snapshot. This is ideal when you need to roll an instance back to an earlier point in time, but it should only be used when you are certain the snapshot is authoritative.
 
-API keys allow programmatic access to qui without using session cookies. Create and manage them in Settings → API Keys.
+Every restore begins with a dry-run preview so you can inspect planned changes. Unsupported differences (such as mismatched infohashes or file sizes) are surfaced as warnings; they require manual follow-up regardless of mode.
 
-Include your API key in the `X-API-Key` header:
+### Importing Backups
 
-```bash
-curl -H "X-API-Key: YOUR_API_KEY_HERE" \
-  http://localhost:7476/api/instances
-```
-
-**Security Notes:**
-- API keys are shown only once when created - save them securely
-- Each key can be individually revoked without affecting others
-- Keys have the same permissions as the main user account
-
-## Metrics
-
-Prometheus metrics can be enabled to monitor your qBittorrent instances. When enabled, metrics are served on a **separate port** (default: 9074) with **no authentication required** for easier monitoring setup.
-
-### Enable Metrics
-
-Metrics are **disabled by default**. Enable them via configuration file or environment variable:
-
-**Config file (`config.toml`):**
-```toml
-metricsEnabled = true
-metricsHost = "127.0.0.1"  # Bind to localhost only (recommended for security)
-metricsPort = 9074         # Standard Prometheus port range
-# metricsBasicAuthUsers = "user:$2y$10$bcrypt_hash_here"  # Optional: basic auth
-```
-
-**Environment variables:**
-```bash
-QUI__METRICS_ENABLED=true
-QUI__METRICS_HOST=0.0.0.0    # Optional: bind to all interfaces if needed
-QUI__METRICS_PORT=9074       # Optional: custom port
-QUI__METRICS_BASIC_AUTH_USERS="user:$2y$10$hash"  # Optional: basic auth
-```
-
-### Available Metrics
-- **Torrent counts** by status (downloading, seeding, paused, error)
-- **Transfer speeds** (upload/download bytes per second)  
-- **Instance connection status**
-
-### Prometheus Configuration
-
-Configure Prometheus to scrape the dedicated metrics port (no authentication required):
-
-```yaml
-scrape_configs:
-  - job_name: 'qui'
-    static_configs:
-      - targets: ['localhost:9074']
-    metrics_path: /metrics
-    scrape_interval: 30s
-    #basic_auth:
-      #username: prometheus
-      #password: yourpassword
-```
-
-All metrics are labeled with `instance_id` and `instance_name` for multi-instance monitoring.
-
-## External Programs
-
-The torrent context menu can launch local scripts or applications through configurable "external programs". To keep that power feature safe, define an allow list in `config.toml` so only trusted paths can be executed:
-
-```toml
-externalProgramAllowList = [
-  "/usr/local/bin/sonarr",
-  "/home/user/bin"  # Directories allow any executable inside them
-]
-```
-
-Leave the list empty to keep the previous behaviour (any path accepted). The allow list lives exclusively in `config.toml`, which the web UI cannot edit, so you retain control over what binaries are exposed.
-
-## Tracker Icons
-
-Cached icons live in your data directory under `tracker-icons/` (next to `qui.db`). Icons are stored as normalised 16×16 PNGs; anything larger than 1 024×1 024 is rejected, so resize first if you are supplying files manually. qui automatically attempts to download a favicon the first time it encounters a tracker host, caching the result for future sessions. After a failed download it waits 30 minutes before retrying the same host, and the next retry is triggered automatically the next time that host appears in your tracker list.
-
-### Add icons manually
-
-- Copy PNGs named after each tracker host (e.g. `tracker.example.com.png`) into the `tracker-icons/` directory. Files are served as-is, so trimming or resizing is up to you, but matching the built-in size (16×16) keeps them crisp and avoids extra scaling.
-
-### Preload a bundle of icons
-
-If you already have a library of icons (for example, exported from another installation) you can preload them via a mapping file placed alongside the directory: `tracker-icons/preload.json`, `tracker-icons/preload.js`, `tracker-icons/tracker-icons.json`, `tracker-icons/tracker-icons.js`, or `tracker-icons/tracker-icons.txt`.
-
-- The file can be either a plain JSON object or a snippet exported as `const trackerIcons = { ... };`.
-- Keys must be the real tracker hostnames (e.g. `tracker.example.org`). If you include a `www.*` host, qui automatically mirrors the icon to the bare hostname when missing.
-- On startup qui decodes each data URL, normalises the image to 16×16, and writes the PNG to `<host>.png`.
-
-  ```json
-  {
-    "tracker.example.org": "data:image/png;base64,AAA...",
-    "www.tracker.org": "data:image/png;base64,BBB..."
-  }
-  ```
-
-  ```js
-  const trackerIcons = {
-    "tracker.example.org": "data:image/png;base64,CCC...",
-    "www.tracker.org": "data:image/png;base64,DDD..."
-  };
-  ```
-
-- Example: [Audionut/add-trackers](https://github.com/Audionut/add-trackers/blob/8db05c0e822f9b3afa46ca784644c4e7e400c92b/ptp-add-filter-all-releases-anut.js#L768)
-
-## Reverse Proxy for External Applications
-
-qui includes a built-in reverse proxy that allows external applications like autobrr, Sonarr, Radarr, and other tools to connect to your qBittorrent instances **without needing qBittorrent credentials**. qui handles authentication transparently, making integration seamless.
-
-### How It Works
-
-The reverse proxy feature:
-- **Handles authentication automatically** - qui manages the qBittorrent login using your configured credentials
-- **Isolates clients** - Each client gets its own API key
-- **Provides transparent access** - Clients see qui as if it were qBittorrent directly
-- **Reduces login thrash** - qui maintains a shared cookie jar and session, so your automation tools stop racing to re-authenticate against qBittorrent. That means fewer failed logins, less load on qBittorrent, and faster announce races because downstream apps reuse the live session instead of waiting for new tokens.
-
-For a detailed list of the qBittorrent API endpoints served directly from qui's proxy (rather than forwarded upstream), see [internal/proxy/INTERCEPTED_ENDPOINTS.md](internal/proxy/INTERCEPTED_ENDPOINTS.md).
-
-### Setup Instructions
-
-#### 1. Create a Client Proxy API Key
-
-1. Open qui in your browser
-2. Go to **Settings → Client Proxy Keys**
-3. Click **"Create Client API Key"** 
-4. Enter a name for the client (e.g., "Sonarr")
-5. Choose the qBittorrent instance you want to proxy
-6. Click **"Create Client API Key"**
-7. **Copy the generated proxy url immediately** - it's only shown once
-
-#### 2. Configure Your External Application
-
-Use qui as the qBittorrent host with the special proxy URL format:
-
-**Complete URL example:**
-```
-http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz
-```
-
-#### Application-Specifics
-
-**Sonarr / Radarr**
-- Go to `Settings → Download Clients`
-- Select `Show Advanced`
-- Add a new **qBittorrent** client
-- Set the host and port of qui
-- Add URL Base (`/proxy/...`) - remember to include /qui/ if you use custom baseurl
-- Click **Test** and then **Save** once the test succeeds
-
-**autobrr**
-- Open `Settings → Download Clients`
-- Add **qBittorrent** (or edit an existing one)
-- Enter the full url like: `http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz`
-- Leave username/password blank and press **Test**
-- Leave basic auth blank since qui handles that
-
-For cross-seed integration with autobrr, see the [Cross-Seed](#cross-seed) section below.
-
-**cross-seed**
-- Open cross-seed config file
-- Add or edit the `torrentClients` section.
-- Append the full url following the documentation
-- `torrentClients: ["qbittorrent:http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz"],`
-- Save the config file and restart cross-seed
-
-**Upload Assistant**
-- Open the Upload Assistant config file
-- Add or edit `qui_proxy_url` under the qBitTorrent client settings.
-- Append the full url like `"qui_proxy_url": "http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz",`
-- All other auth type can remain unchanged
-- Save the config file
-
-### Supported Applications
-
-This reverse proxy will work with any application that supports qBittorrent's Web API.
-
-### Security Features
-
-- **API Key Authentication** - Each client requires a unique key
-- **Instance Isolation** - Keys are tied to specific qBittorrent instances
-- **Usage Tracking** - Monitor which clients are accessing your instances
-- **Revocation** - Disable access instantly by deleting the API key
-- **No Credential Exposure** - qBittorrent passwords never leave qui
-
-### Troubleshooting
-
-**Connection Refused Error:**
-- Ensure qui is listening on all interfaces: `QUI__HOST=0.0.0.0 ./qui serve`
-- Check that the port is accessible from your external application
-
-**Authentication Errors:**  
-- Verify the Client API Key is correct and hasn't been deleted
-- Ensure the key is mapped to the correct qBittorrent instance
-
-**Version String Errors:**
-- This was a common issue that's now resolved with the new proxy implementation
-- Try regenerating the Client API Key if you still see version parsing errors
+Downloaded backups can be imported into any qui instance. Useful for migrating to a new server or recovering after data loss. Click **Import** on the Backups page and select the backup file. All export formats are supported.
 
 ## Cross-Seed
 
@@ -593,15 +458,15 @@ Click **Save** to create the external filter.
 
 #### Apply Endpoint
 
-When `/api/cross-seed/webhook/check` returns `200 OK`, autobrr can hand the torrent file directly to qui via a **Webhook action** that calls `POST /api/cross-seed/apply`. If the webhook returns `202 Accepted`, autobrr’s retry logic should keep polling `/api/cross-seed/webhook/check` until it transitions to `200 OK` (or `404` if the match disappears); only then should you enqueue `/api/cross-seed/apply`.
+When `/api/cross-seed/webhook/check` returns `200 OK`, autobrr can hand the torrent file directly to qui via a **Webhook action** that calls `POST /api/cross-seed/apply`. If the webhook returns `202 Accepted`, autobrr's retry logic should keep polling `/api/cross-seed/webhook/check` until it transitions to `200 OK` (or `404` if the match disappears); only then should you enqueue `/api/cross-seed/apply`.
 
 **Action setup in autobrr**
 
-In **Settings → Actions** (or from the filter’s Actions tab), create a new action:
+In **Settings → Actions** (or from the filter's Actions tab), create a new action:
 
 - **Action Type:** `Webhook`
 - **Name:** `qui cross-seed` (or any name you prefer)
-- **Endpoint:**  
+- **Endpoint:**
   For autobrr, use a query parameter because webhook actions cannot set custom headers:
   ```text
   http://localhost:7476/api/cross-seed/apply?apikey=YOUR_QUI_API_KEY
@@ -627,7 +492,7 @@ To run in global mode (any instance with a complete match), drop the `instanceId
 }
 ```
 
-Optionally, you can include additional fields supported by qui’s `AutobrrApplyRequest`:
+Optionally, you can include additional fields supported by qui's `AutobrrApplyRequest`:
 
 ```json
 {
@@ -637,9 +502,9 @@ Optionally, you can include additional fields supported by qui’s `AutobrrApply
 }
 ```
 
-When this action runs after a successful `/api/cross-seed/webhook/check`, autobrr posts the torrent to `/api/cross-seed/apply`. qui then decodes the torrent, re-validates it by finding 100% complete matching torrents on the targeted instances, aligns the new torrent’s naming and file layout with the existing one, and finally adds it using the same cross-seed pipeline as manual apply.
+When this action runs after a successful `/api/cross-seed/webhook/check`, autobrr posts the torrent to `/api/cross-seed/apply`. qui then decodes the torrent, re-validates it by finding 100% complete matching torrents on the targeted instances, aligns the new torrent's naming and file layout with the existing one, and finally adds it using the same cross-seed pipeline as manual apply.
 
-If you omit `category`, qui reuses the category (and AutoTMM/save path) from the matched, already-seeding torrent so the cross-seed lands alongside the original files. If you omit `tags`, qui copies the matched torrent’s tags and then appends a `cross-seed` tag by default; you can optionally include `category` (e.g., `"TV"`) and `tags` (e.g., `["autobrr", "cross-seed"]`) in the payload to override those defaults, and `cross-seed` is still added unless you set `addCrossSeedTag` to `false`.
+If you omit `category`, qui reuses the category (and AutoTMM/save path) from the matched, already-seeding torrent so the cross-seed lands alongside the original files. If you omit `tags`, qui copies the matched torrent's tags and then appends a `cross-seed` tag by default; you can optionally include `category` (e.g., `"TV"`) and `tags` (e.g., `["autobrr", "cross-seed"]`) in the payload to override those defaults, and `cross-seed` is still added unless you set `addCrossSeedTag` to `false`.
 
 Cross-seeded torrents are first added paused with hash checking skipped (`skip_checking=true`) so qBittorrent can immediately reuse existing data; if that add fails, qui retries without `skip_checking` to let qBittorrent run a full recheck. After adding, qui polls the torrent state: if qBittorrent reports ~100% complete, qui automatically resumes it; if progress stays lower (for example because optional files like samples or subtitles are missing), it remains paused so you can review it manually.
 
@@ -657,72 +522,213 @@ Ignore patterns apply to RSS automation, `/cross-seed/webhook/check`, `/cross-se
 
 These settings affect both the webhook endpoint and qui's other cross-seed features.
 
-## Docker
+## Reverse Proxy for External Applications
 
-```bash
-# Using Docker Compose
-docker compose up -d
+qui includes a built-in reverse proxy that allows external applications like autobrr, Sonarr, Radarr, and other tools to connect to your qBittorrent instances **without needing qBittorrent credentials**. qui handles authentication transparently, making integration seamless.
 
-# Or standalone
-docker run -d \
-  -p 7476:7476 \
-  -v $(pwd)/config:/config \
-  ghcr.io/autobrr/qui:latest
+### How It Works
+
+The reverse proxy feature:
+- **Handles authentication automatically** - qui manages the qBittorrent login using your configured credentials
+- **Isolates clients** - Each client gets its own API key
+- **Provides transparent access** - Clients see qui as if it were qBittorrent directly
+- **Reduces login thrash** - qui maintains a shared cookie jar and session, so your automation tools stop racing to re-authenticate against qBittorrent. That means fewer failed logins, less load on qBittorrent, and faster announce races because downstream apps reuse the live session instead of waiting for new tokens.
+
+For a detailed list of the qBittorrent API endpoints served directly from qui's proxy (rather than forwarded upstream), see [internal/proxy/INTERCEPTED_ENDPOINTS.md](internal/proxy/INTERCEPTED_ENDPOINTS.md).
+
+### Setup Instructions
+
+#### 1. Create a Client Proxy API Key
+
+1. Open qui in your browser
+2. Go to **Settings → Client Proxy Keys**
+3. Click **"Create Client API Key"**
+4. Enter a name for the client (e.g., "Sonarr")
+5. Choose the qBittorrent instance you want to proxy
+6. Click **"Create Client API Key"**
+7. **Copy the generated proxy url immediately** - it's only shown once
+
+#### 2. Configure Your External Application
+
+Use qui as the qBittorrent host with the special proxy URL format:
+
+**Complete URL example:**
+```
+http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz
 ```
 
-### Unraid
+#### Application-Specifics
 
-Our release workflow builds multi-architecture images (`linux/amd64`, `linux/arm64`, and friends) and publishes them to `ghcr.io/autobrr/qui`, so the container should work on Unraid out of the box.
+**Sonarr / Radarr**
+- Go to `Settings → Download Clients`
+- Select `Show Advanced`
+- Add a new **qBittorrent** client
+- Set the host and port of qui
+- Add URL Base (`/proxy/...`) - remember to include /qui/ if you use custom baseurl
+- Click **Test** and then **Save** once the test succeeds
 
-**Deploy from the Docker tab**
-- Open **Docker → Add Container**
-- Set **Name** to `qui`
-- Set **Repository** to `ghcr.io/autobrr/qui:latest`
-- Keep the default **Network Type** (`bridge` works for most setups)
-- Add a port mapping: **Host port** `7476` → **Container port** `7476`
-- Add a path mapping: **Container Path** `/config` → **Host Path** `/mnt/user/appdata/qui`
-- (Optional) add environment variables for advanced settings (e.g., `QUI__BASE_URL`, `QUI__LOG_LEVEL`, `TZ`)
-- Click **Apply** to pull the image and start the container
+**autobrr**
+- Open `Settings → Download Clients`
+- Add **qBittorrent** (or edit an existing one)
+- Enter the full url like: `http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz`
+- Leave username/password blank and press **Test**
+- Leave basic auth blank since qui handles that
 
-The `/config` mount stores `config.toml`, the SQLite database, and logs. Point it at your preferred appdata share so settings persist across upgrades.
+For cross-seed integration with autobrr, see the [Cross-Seed](#cross-seed) section above.
 
-If the app logs to stdout, check logs via Docker → qui → Logs; if it writes to files, they’ll be under /config.
+**cross-seed**
+- Open cross-seed config file
+- Add or edit the `torrentClients` section.
+- Append the full url following the documentation
+- `torrentClients: ["qbittorrent:http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz"],`
+- Save the config file and restart cross-seed
 
-**Updating**
-- Use Unraid's **Check for Updates** action to pull a newer `latest` image
-- If you pinned a specific version tag, edit the repository field to the new tag when you're ready to upgrade
-- Restart the container if needed after the image update so the new binary is loaded
+**Upload Assistant**
+- Open the Upload Assistant config file
+- Add or edit `qui_proxy_url` under the qBitTorrent client settings.
+- Append the full url like `"qui_proxy_url": "http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz",`
+- All other auth type can remain unchanged
+- Save the config file
 
-## Base URL Configuration
+### Supported Applications
 
-If you need to serve qui from a subdirectory (e.g., `https://example.com/qui/`), you can configure the base URL:
+This reverse proxy will work with any application that supports qBittorrent's Web API.
 
-### Using Environment Variable
-```bash
-QUI__BASE_URL=/qui/ ./qui
-```
+### Security Features
 
-### Using Configuration File
-Edit your `config.toml`:
+- **API Key Authentication** - Each client requires a unique key
+- **Instance Isolation** - Keys are tied to specific qBittorrent instances
+- **Usage Tracking** - Monitor which clients are accessing your instances
+- **Revocation** - Disable access instantly by deleting the API key
+- **No Credential Exposure** - qBittorrent passwords never leave qui
+
+### Troubleshooting
+
+**Connection Refused Error:**
+- Ensure qui is listening on all interfaces: `QUI__HOST=0.0.0.0 ./qui serve`
+- Check that the port is accessible from your external application
+
+**Authentication Errors:**
+- Verify the Client API Key is correct and hasn't been deleted
+- Ensure the key is mapped to the correct qBittorrent instance
+
+**Version String Errors:**
+- This was a common issue that's now resolved with the new proxy implementation
+- Try regenerating the Client API Key if you still see version parsing errors
+
+## External Programs
+
+The torrent context menu can launch local scripts or applications through configurable "external programs". To keep that power feature safe, define an allow list in `config.toml` so only trusted paths can be executed:
+
 ```toml
-baseUrl = "/qui/"
+externalProgramAllowList = [
+  "/usr/local/bin/sonarr",
+  "/home/user/bin"  # Directories allow any executable inside them
+]
 ```
 
-### With Nginx Reverse Proxy
-```nginx
-# Redirect /qui to /qui/ for proper SPA routing
-location = /qui {
-    return 301 /qui/;
-}
+Leave the list empty to keep the previous behaviour (any path accepted). The allow list lives exclusively in `config.toml`, which the web UI cannot edit, so you retain control over what binaries are exposed.
 
-location /qui/ {
-    proxy_pass http://localhost:7476/qui/;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-}
+## Tracker Icons
+
+Cached icons live in your data directory under `tracker-icons/` (next to `qui.db`). Icons are stored as normalised 16×16 PNGs; anything larger than 1 024×1 024 is rejected, so resize first if you are supplying files manually. qui automatically attempts to download a favicon the first time it encounters a tracker host, caching the result for future sessions. After a failed download it waits 30 minutes before retrying the same host, and the next retry is triggered automatically the next time that host appears in your tracker list.
+
+### Add icons manually
+
+- Copy PNGs named after each tracker host (e.g. `tracker.example.com.png`) into the `tracker-icons/` directory. Files are served as-is, so trimming or resizing is up to you, but matching the built-in size (16×16) keeps them crisp and avoids extra scaling.
+
+### Preload a bundle of icons
+
+If you already have a library of icons (for example, exported from another installation) you can preload them via a mapping file placed alongside the directory: `tracker-icons/preload.json`, `tracker-icons/preload.js`, `tracker-icons/tracker-icons.json`, `tracker-icons/tracker-icons.js`, or `tracker-icons/tracker-icons.txt`.
+
+- The file can be either a plain JSON object or a snippet exported as `const trackerIcons = { ... };`.
+- Keys must be the real tracker hostnames (e.g. `tracker.example.org`). If you include a `www.*` host, qui automatically mirrors the icon to the bare hostname when missing.
+- On startup qui decodes each data URL, normalises the image to 16×16, and writes the PNG to `<host>.png`.
+
+  ```json
+  {
+    "tracker.example.org": "data:image/png;base64,AAA...",
+    "www.tracker.org": "data:image/png;base64,BBB..."
+  }
+  ```
+
+  ```js
+  const trackerIcons = {
+    "tracker.example.org": "data:image/png;base64,CCC...",
+    "www.tracker.org": "data:image/png;base64,DDD..."
+  };
+  ```
+
+- Example: [Audionut/add-trackers](https://github.com/Audionut/add-trackers/blob/8db05c0e822f9b3afa46ca784644c4e7e400c92b/ptp-add-filter-all-releases-anut.js#L768)
+
+## API
+
+### Documentation
+
+Interactive API documentation is available at `/api/docs` using Swagger UI. You can explore all endpoints, view request/response schemas, and test API calls directly from your browser.
+
+### API Keys
+
+API keys allow programmatic access to qui without using session cookies. Create and manage them in Settings → API Keys.
+
+Include your API key in the `X-API-Key` header:
+
+```bash
+curl -H "X-API-Key: YOUR_API_KEY_HERE" \
+  http://localhost:7476/api/instances
 ```
+
+**Security Notes:**
+- API keys are shown only once when created - save them securely
+- Each key can be individually revoked without affecting others
+- Keys have the same permissions as the main user account
+
+## Metrics
+
+Prometheus metrics can be enabled to monitor your qBittorrent instances. When enabled, metrics are served on a **separate port** (default: 9074) with **no authentication required** for easier monitoring setup.
+
+### Enable Metrics
+
+Metrics are **disabled by default**. Enable them via configuration file or environment variable:
+
+**Config file (`config.toml`):**
+```toml
+metricsEnabled = true
+metricsHost = "127.0.0.1"  # Bind to localhost only (recommended for security)
+metricsPort = 9074         # Standard Prometheus port range
+# metricsBasicAuthUsers = "user:$2y$10$bcrypt_hash_here"  # Optional: basic auth
+```
+
+**Environment variables:**
+```bash
+QUI__METRICS_ENABLED=true
+QUI__METRICS_HOST=0.0.0.0    # Optional: bind to all interfaces if needed
+QUI__METRICS_PORT=9074       # Optional: custom port
+QUI__METRICS_BASIC_AUTH_USERS="user:$2y$10$hash"  # Optional: basic auth
+```
+
+### Available Metrics
+- **Torrent counts** by status (downloading, seeding, paused, error)
+- **Transfer speeds** (upload/download bytes per second)
+- **Instance connection status**
+
+### Prometheus Configuration
+
+Configure Prometheus to scrape the dedicated metrics port (no authentication required):
+
+```yaml
+scrape_configs:
+  - job_name: 'qui'
+    static_configs:
+      - targets: ['localhost:9074']
+    metrics_path: /metrics
+    scrape_interval: 30s
+    #basic_auth:
+      #username: prometheus
+      #password: yourpassword
+```
+
+All metrics are labeled with `instance_id` and `instance_name` for multi-instance monitoring.
 
 ## qBittorrent Version Compatibility
 
