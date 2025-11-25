@@ -29,6 +29,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
@@ -99,9 +100,17 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId)
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
+  const preferences = metadata?.preferences
 
   const isLoadingTagsData = isMetadataLoading && availableTags.length === 0
   const isLoadingCategoriesData = isMetadataLoading && Object.keys(availableCategories).length === 0
+
+  // Get capabilities to check subcategory support
+  const { data: capabilities } = useInstanceCapabilities(instanceId)
+  const supportsSubcategories = capabilities?.supportsSubcategories ?? false
+  const allowSubcategories = Boolean(
+    supportsSubcategories && (preferences?.use_subcategories ?? false)
+  )
 
   // Use the shared torrent actions hook
   const {
@@ -658,6 +667,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         isPending={isPending}
         initialCategory={getCommonCategory(selectedTorrents)}
         isLoadingCategories={isLoadingCategoriesData}
+        useSubcategories={allowSubcategories}
       />
 
       {/* Set Location Dialog */}

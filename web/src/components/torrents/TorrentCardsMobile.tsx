@@ -57,6 +57,7 @@ import {
   Folder,
   FolderOpen,
   Gauge,
+  GitBranch,
   Info,
   ListTodo,
   Loader2,
@@ -66,7 +67,6 @@ import {
   Plus,
   Radio,
   Search,
-  GitBranch,
   Settings2,
   Sprout,
   Tag,
@@ -80,10 +80,10 @@ import { RemoveTagsDialog, SetCategoryDialog, SetLocationDialog, SetTagsDialog }
 // import { createPortal } from 'react-dom'
 // Columns dropdown removed on mobile
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
+import { useCrossSeedFilter } from "@/hooks/useCrossSeedFilter"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata.ts"
 import { usePersistedCompactViewState, type ViewMode } from "@/hooks/usePersistedCompactViewState"
-import { useCrossSeedFilter } from "@/hooks/useCrossSeedFilter"
 import { api } from "@/lib/api"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
@@ -315,7 +315,7 @@ interface TorrentCardsMobileProps {
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
-  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[]) => void
+  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[], useSubcategories?: boolean) => void
   onFilterChange?: (filters: TorrentFilters) => void
   canCrossSeedSearch?: boolean
   onCrossSeedSearch?: (torrent: Torrent) => void
@@ -1067,6 +1067,7 @@ export function TorrentCardsMobile({
   const { data: metadata } = useInstanceMetadata(instanceId)
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
+  const preferences = metadata?.preferences
 
   const debouncedSearch = useDebounce(globalFilter, 1000)
   const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string }
@@ -1170,6 +1171,7 @@ export function TorrentCardsMobile({
     categories,
     tags,
     stats,
+    useSubcategories: backendUseSubcategories,
 
     isLoading,
     isLoadingMore,
@@ -1185,14 +1187,18 @@ export function TorrentCardsMobile({
   const { data: capabilities } = useInstanceCapabilities(instanceId)
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
   const supportsTorrentCreation = capabilities?.supportsTorrentCreation ?? true
+  const supportsSubcategories = capabilities?.supportsSubcategories ?? false
+  const allowSubcategories = Boolean(
+    supportsSubcategories && (preferences?.use_subcategories ?? false)
+  )
 
   // Call the callback when filtered data updates
   useEffect(() => {
     if (onFilteredDataUpdate && torrents && totalCount !== undefined && !isLoading) {
-      onFilteredDataUpdate(torrents, totalCount, counts, categories, tags)
+      onFilteredDataUpdate(torrents, totalCount, counts, categories, tags, backendUseSubcategories)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalCount, isLoading, torrents.length, counts, categories, tags, onFilteredDataUpdate]) // Update when data changes
+  }, [totalCount, isLoading, torrents.length, counts, categories, tags, backendUseSubcategories, onFilteredDataUpdate]) // Update when data changes
 
   // Calculate the effective selection count for display
   const effectiveSelectionCount = useMemo(() => {
@@ -2147,6 +2153,7 @@ export function TorrentCardsMobile({
         onConfirm={handleSetCategoryWrapper}
         isPending={isPending}
         initialCategory={getCommonCategory(actionTorrents)}
+        useSubcategories={allowSubcategories}
       />
 
       {/* Remove Tags dialog */}

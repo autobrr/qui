@@ -2948,6 +2948,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         isPending={isPending}
         initialCategory={getCommonCategory(contextTorrents)}
         isLoadingCategories={isLoadingCategories}
+        useSubcategories={allowSubcategories}
       />
 
       {/* Create and Assign Category Dialog */}

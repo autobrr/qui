@@ -28,11 +28,12 @@ import { pathsToTreeView } from "@/components/ui/file-tree-utils"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import type { Torrent } from "@/types"
+import type { Category, Torrent } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { Loader2, Plus, X } from "lucide-react"
 import type { ChangeEvent, KeyboardEvent } from "react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { buildCategoryTree, type CategoryNode } from "./CategoryTree"
 
 interface SetTagsDialogProps {
   open: boolean
@@ -549,12 +550,13 @@ export const SetTagsDialog = memo(function SetTagsDialog({
 interface SetCategoryDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  availableCategories: Record<string, unknown>
+  availableCategories: Record<string, Category>
   hashCount: number
   onConfirm: (category: string) => void
   isPending?: boolean
   initialCategory?: string
   isLoadingCategories?: boolean
+  useSubcategories?: boolean
 }
 
 interface SetLocationDialogProps {
@@ -1073,6 +1075,7 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
   isPending = false,
   initialCategory = "",
   isLoadingCategories = false,
+  useSubcategories = false,
 }: SetCategoryDialogProps) {
   const [categoryInput, setCategoryInput] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
@@ -1100,11 +1103,67 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
     onOpenChange(false)
   }, [onOpenChange])
 
-  // Filter categories based on search
+  // Filter categories based on search, with subcategory support
   const categoryList = Object.keys(availableCategories || {}).sort()
-  const filteredCategories = searchQuery.trim()
-    ? categoryList.filter(cat => cat.toLowerCase().includes(searchQuery.toLowerCase()))
-    : categoryList
+
+  const filteredCategories = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+
+    if (useSubcategories) {
+      const tree = buildCategoryTree(availableCategories || {}, {})
+      const shouldIncludeCache = new Map<CategoryNode, boolean>()
+
+      const shouldIncludeNode = (node: CategoryNode): boolean => {
+        const cached = shouldIncludeCache.get(node)
+        if (cached !== undefined) {
+          return cached
+        }
+
+        const nodeMatches = query === "" || node.name.toLowerCase().includes(query)
+        if (nodeMatches) {
+          shouldIncludeCache.set(node, true)
+          return true
+        }
+
+        for (const child of node.children) {
+          if (shouldIncludeNode(child)) {
+            shouldIncludeCache.set(node, true)
+            return true
+          }
+        }
+
+        shouldIncludeCache.set(node, false)
+        return false
+      }
+
+      const flattened: Array<{ name: string; displayName: string; level: number }> = []
+
+      const visitNodes = (nodes: CategoryNode[]) => {
+        for (const node of nodes) {
+          if (shouldIncludeNode(node)) {
+            flattened.push({
+              name: node.name,
+              displayName: node.displayName,
+              level: node.level,
+            })
+            visitNodes(node.children)
+          }
+        }
+      }
+
+      visitNodes(tree)
+      return flattened
+    }
+
+    const names = categoryList
+    const namesFiltered = query ? names.filter(cat => cat.toLowerCase().includes(query)) : names
+
+    return namesFiltered.map((name) => ({
+      name,
+      displayName: name,
+      level: 0,
+    }))
+  }, [availableCategories, categoryList, searchQuery, useSubcategories])
 
   const shouldUseVirtualization = filteredCategories.length > 50
 
@@ -1190,12 +1249,18 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
                       >
                         <button
                           type="button"
-                          onClick={() => setCategoryInput(category)}
+                          onClick={() => setCategoryInput(category.name)}
                           className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
-                            categoryInput === category ? "bg-accent" : ""
+                            categoryInput === category.name ? "bg-accent" : ""
                           }`}
+                          title={category.name}
                         >
-                          <span className="text-sm">{category}</span>
+                          <span
+                            className="text-sm"
+                            style={category.level > 0 ? { paddingLeft: category.level * 12 } : undefined}
+                          >
+                            {category.displayName}
+                          </span>
                         </button>
                       </div>
                     )
@@ -1206,14 +1271,20 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
                 <div>
                   {filteredCategories.map((category) => (
                     <button
-                      key={category}
+                      key={category.name}
                       type="button"
-                      onClick={() => setCategoryInput(category)}
+                      onClick={() => setCategoryInput(category.name)}
                       className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
-                        categoryInput === category ? "bg-accent" : ""
+                        categoryInput === category.name ? "bg-accent" : ""
                       }`}
+                      title={category.name}
                     >
-                      <span className="text-sm">{category}</span>
+                      <span
+                        className="text-sm"
+                        style={category.level > 0 ? { paddingLeft: category.level * 12 } : undefined}
+                      >
+                        {category.displayName}
+                      </span>
                     </button>
                   ))}
                 </div>
