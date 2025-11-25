@@ -48,7 +48,7 @@ Tracker domains can be matched in three ways:
 
 Separate multiple patterns with commas, semicolons, or pipes:
 
-```
+```text
 tracker1.com,tracker2.org|tracker3.net
 ```
 

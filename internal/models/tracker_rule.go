@@ -255,15 +255,23 @@ func (s *TrackerRuleStore) Update(ctx context.Context, rule *TrackerRule) (*Trac
 
 	rule.TrackerPattern = normalizeTrackerPattern(rule.TrackerPattern, rule.TrackerDomains)
 
-	if _, err := s.db.ExecContext(ctx, `
+	res, err := s.db.ExecContext(ctx, `
 		UPDATE tracker_rules
 		SET name = ?, tracker_pattern = ?, category = ?, tag = ?, upload_limit_kib = ?, download_limit_kib = ?,
 		    ratio_limit = ?, seeding_time_limit_minutes = ?, enabled = ?, sort_order = ?
 		WHERE id = ? AND instance_id = ?
 	`, rule.Name, rule.TrackerPattern, nullableString(rule.Category), nullableString(rule.Tag),
 		nullableInt64(rule.UploadLimitKiB), nullableInt64(rule.DownloadLimitKiB), nullableFloat64(rule.RatioLimit),
-		nullableInt64(rule.SeedingTimeLimitMinutes), boolToInt(rule.Enabled), rule.SortOrder, rule.ID, rule.InstanceID); err != nil {
+		nullableInt64(rule.SeedingTimeLimitMinutes), boolToInt(rule.Enabled), rule.SortOrder, rule.ID, rule.InstanceID)
+	if err != nil {
 		return nil, err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if rows == 0 {
+		return nil, sql.ErrNoRows
 	}
 
 	return s.Get(ctx, rule.ID)
