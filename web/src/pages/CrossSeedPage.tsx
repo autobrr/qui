@@ -1518,31 +1518,34 @@ export function CrossSeedPage() {
         </CardContent>
         <CardFooter className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  onClick={handleStartSearchRun}
-                  disabled={startSearchRunDisabled}
-                  className="disabled:cursor-not-allowed disabled:pointer-events-auto"
-                >
-                  {startSearchRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Rocket className="mr-2 h-4 w-4" />}
-                  Start run
-                </Button>
-              </TooltipTrigger>
-              {startSearchRunDisabledReason && (
-                <TooltipContent align="start" className="max-w-xs text-xs">
-                  {startSearchRunDisabledReason}
-                </TooltipContent>
-              )}
-            </Tooltip>
-            <Button
-              variant="outline"
-              onClick={() => cancelSearchRunMutation.mutate()}
-              disabled={!searchRunning || cancelSearchRunMutation.isPending}
-            >
-              {cancelSearchRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
-              Cancel
-            </Button>
+            {searchRunning ? (
+              <Button
+                variant="outline"
+                onClick={() => cancelSearchRunMutation.mutate()}
+                disabled={cancelSearchRunMutation.isPending}
+              >
+                {cancelSearchRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
+                Cancel
+              </Button>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={handleStartSearchRun}
+                    disabled={startSearchRunDisabled}
+                    className="disabled:cursor-not-allowed disabled:pointer-events-auto"
+                  >
+                    {startSearchRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Rocket className="mr-2 h-4 w-4" />}
+                    Start run
+                  </Button>
+                </TooltipTrigger>
+                {startSearchRunDisabledReason && (
+                  <TooltipContent align="start" className="max-w-xs text-xs">
+                    {startSearchRunDisabledReason}
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            )}
           </div>
         </CardFooter>
           </Card>
