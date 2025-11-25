@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Logo } from "@/components/ui/Logo"
 import { Separator } from "@/components/ui/separator"
 import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { UpdateBanner } from "@/components/ui/UpdateBanner"
 import { useAuth } from "@/hooks/useAuth"
 import { useTheme } from "@/hooks/useTheme"
@@ -18,14 +19,18 @@ import { Link, useLocation } from "@tanstack/react-router"
 import {
   Archive,
   Copyright,
-  Github,
   GitBranch,
+  Github,
   HardDrive,
   Home,
+  Loader2,
   LogOut,
+  Rss,
   Search,
+  SearchCode,
   Settings
 } from "lucide-react"
+import { useMemo } from "react"
 
 interface NavItem {
   title: string
@@ -74,6 +79,45 @@ export function Sidebar() {
   })
   const activeInstances = instances?.filter(instance => instance.isActive) ?? []
   const hasConfiguredInstances = (instances?.length ?? 0) > 0
+
+  // Cross-seed status for instance indicators
+  const { data: crossSeedStatus } = useQuery({
+    queryKey: ["cross-seed", "status"],
+    queryFn: () => api.getCrossSeedStatus(),
+    refetchInterval: 30_000,
+    staleTime: 10_000,
+  })
+
+  const { data: crossSeedSearchStatus } = useQuery({
+    queryKey: ["cross-seed", "search-status"],
+    queryFn: () => api.getCrossSeedSearchStatus(),
+    refetchInterval: 5_000,
+    staleTime: 3_000,
+  })
+
+  // Derive cross-seed state per instance
+  const crossSeedInstanceState = useMemo(() => {
+    const rssEnabled = crossSeedStatus?.settings?.enabled ?? false
+    const rssRunning = crossSeedStatus?.running ?? false
+    const rssTargetIds = crossSeedStatus?.settings?.targetInstanceIds ?? []
+    const searchRunning = crossSeedSearchStatus?.running ?? false
+    const searchInstanceId = crossSeedSearchStatus?.run?.instanceId
+
+    const state: Record<number, { rssEnabled?: boolean; rssRunning?: boolean; searchRunning?: boolean }> = {}
+
+    for (const id of rssTargetIds) {
+      state[id] = { rssEnabled, rssRunning }
+    }
+
+    if (searchRunning && searchInstanceId) {
+      state[searchInstanceId] = {
+        ...state[searchInstanceId],
+        searchRunning: true,
+      }
+    }
+
+    return state
+  }, [crossSeedStatus, crossSeedSearchStatus])
 
   const appVersion = getAppVersion()
 
@@ -124,6 +168,9 @@ export function Sidebar() {
               {activeInstances.map((instance) => {
                 const instancePath = `/instances/${instance.id}`
                 const isActive = location.pathname === instancePath || location.pathname.startsWith(`${instancePath}/`)
+                const csState = crossSeedInstanceState[instance.id]
+                const hasRss = csState?.rssEnabled || csState?.rssRunning
+                const hasSearch = csState?.searchRunning
 
                 return (
                   <Link
@@ -137,12 +184,51 @@ export function Sidebar() {
                   >
                     <HardDrive className="h-4 w-4 flex-shrink-0" />
                     <span className="truncate max-w-36" title={instance.name}>{instance.name}</span>
-                    <span
-                      className={cn(
-                        "ml-auto h-2 w-2 rounded-full",
-                        instance.connected ? "bg-green-500" : "bg-red-500"
+                    <span className="ml-auto flex items-center gap-1.5">
+                      {hasRss && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="flex items-center">
+                              {csState?.rssRunning ? (
+                                <Loader2 className={cn(
+                                  "h-3 w-3 animate-spin",
+                                  isActive ? "text-sidebar-primary-foreground/70" : "text-sidebar-foreground/70"
+                                )} />
+                              ) : (
+                                <Rss className={cn(
+                                  "h-3 w-3",
+                                  isActive ? "text-sidebar-primary-foreground/70" : "text-sidebar-foreground/70"
+                                )} />
+                              )}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="text-xs">
+                            RSS {csState?.rssRunning ? "running" : "enabled"}
+                          </TooltipContent>
+                        </Tooltip>
                       )}
-                    />
+                      {hasSearch && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="flex items-center">
+                              <SearchCode className={cn(
+                                "h-3 w-3",
+                                isActive ? "text-sidebar-primary-foreground/70" : "text-sidebar-foreground/70"
+                              )} />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="text-xs">
+                            Seeded search running
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                      <span
+                        className={cn(
+                          "h-2 w-2 rounded-full flex-shrink-0",
+                          instance.connected ? "bg-green-500" : "bg-red-500"
+                        )}
+                      />
+                    </span>
                   </Link>
                 )
               })}
