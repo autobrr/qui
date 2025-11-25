@@ -297,7 +297,7 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 
 		result = append(result, MonitoredTorrent{
 			InstanceID:        instanceID,
-			Hash:              strings.ToLower(hashUpper),
+			Hash:              hashUpper,
 			TorrentName:       torrent.Name,
 			Trackers:          trackers,
 			TimeActiveSeconds: torrent.TimeActive,
@@ -529,6 +529,10 @@ func (s *Service) torrentMeetsCriteria(torrent qbt.Torrent, settings *models.Ins
 	}
 
 	if settings.MaxAgeSeconds > 0 && torrent.TimeActive > int64(settings.MaxAgeSeconds) {
+		return false
+	}
+
+	if settings.InitialWaitSeconds > 0 && torrent.TimeActive < int64(settings.InitialWaitSeconds) {
 		return false
 	}
 

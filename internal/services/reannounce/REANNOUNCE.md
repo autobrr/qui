@@ -25,7 +25,7 @@ That’s it! qui will now monitor stalled torrents in the background.
 ### Monitoring Scope
 You can choose which torrents to monitor:
 
-* **Monitor All Stalled Torrents (Default)**: Checks every stalled torrent.
+* **Monitor All Stalled Torrents**: Checks every stalled torrent.
   * Use **Exclusions** below to ignore specific Categories, Tags, or Trackers (e.g., ignore "public" trackers).
 * **Custom Filter (Monitor All Disabled)**:
   * Only checks torrents that match your **Include** rules.

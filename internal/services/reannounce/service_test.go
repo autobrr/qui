@@ -109,6 +109,26 @@ func TestTorrentMeetsCriteria_IncludeExcludeLogic(t *testing.T) {
 			want:    false,
 		},
 		{
+			name: "Initial Wait Not Met",
+			settings: models.InstanceReannounceSettings{
+				Enabled:            true,
+				MonitorAll:         true,
+				InitialWaitSeconds: 15,
+			},
+			torrent: qbt.Torrent{TimeActive: 10, State: qbt.TorrentStateStalledUp},
+			want:    false,
+		},
+		{
+			name: "Initial Wait Met",
+			settings: models.InstanceReannounceSettings{
+				Enabled:            true,
+				MonitorAll:         true,
+				InitialWaitSeconds: 15,
+			},
+			torrent: qbt.Torrent{TimeActive: 20, State: qbt.TorrentStateStalledUp},
+			want:    true,
+		},
+		{
 			name: "Monitor All - No Exclusions",
 			settings: models.InstanceReannounceSettings{
 				Enabled:    true,
