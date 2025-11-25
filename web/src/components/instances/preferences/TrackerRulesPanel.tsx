@@ -21,6 +21,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { api } from "@/lib/api"
+import { cn } from "@/lib/utils"
 import type { TrackerRule, TrackerRuleInput } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Clock, Loader2, Pencil, Plus, RefreshCw, Scale, Trash2 } from "lucide-react"
@@ -44,6 +45,7 @@ const emptyFormState: FormState = {
   ratioLimit: undefined,
   seedingTimeLimitMinutes: undefined,
   isDefault: false,
+  enabled: true,
 }
 
 export function TrackerRulesPanel({ instanceId }: TrackerRulesPanelProps) {
@@ -102,6 +104,16 @@ export function TrackerRulesPanel({ instanceId }: TrackerRulesPanelProps) {
     },
   })
 
+  const toggleEnabled = useMutation({
+    mutationFn: (rule: TrackerRule) => api.updateTrackerRule(instanceId, rule.id, { ...rule, enabled: !rule.enabled }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["tracker-rules", instanceId] })
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to toggle rule")
+    },
+  })
+
   const applyRules = useMutation({
     mutationFn: () => api.applyTrackerRules(instanceId),
     onSuccess: () => {
@@ -137,6 +149,7 @@ export function TrackerRulesPanel({ instanceId }: TrackerRulesPanelProps) {
       ratioLimit: rule.ratioLimit,
       seedingTimeLimitMinutes: rule.seedingTimeLimitMinutes,
       isDefault: rule.isDefault,
+      enabled: rule.enabled,
       sortOrder: rule.sortOrder,
     })
     setDialogOpen(true)
@@ -250,15 +263,29 @@ export function TrackerRulesPanel({ instanceId }: TrackerRulesPanelProps) {
                 return (
                   <div
                     key={rule.id}
-                    className="rounded-lg border-dashed border bg-muted/40 p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4"
+                    className={cn(
+                      "rounded-lg border-dashed border bg-muted/40 p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4",
+                      !rule.enabled && "opacity-60"
+                    )}
                   >
                     <div className="space-y-1.5 flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className="font-medium truncate">{rule.name}</span>
+                          <Switch
+                            checked={rule.enabled}
+                            onCheckedChange={() => toggleEnabled.mutate(rule)}
+                            disabled={toggleEnabled.isPending}
+                            className="shrink-0"
+                          />
+                          <span className={cn("font-medium truncate", !rule.enabled && "text-muted-foreground")}>{rule.name}</span>
                           {rule.isDefault && (
                             <Badge variant="secondary" className="shrink-0">
                               Default
+                            </Badge>
+                          )}
+                          {!rule.enabled && (
+                            <Badge variant="outline" className="shrink-0 text-muted-foreground">
+                              Disabled
                             </Badge>
                           )}
                         </div>
@@ -389,16 +416,29 @@ export function TrackerRulesPanel({ instanceId }: TrackerRulesPanelProps) {
               </div>
             </div>
 
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div>
-                <Label htmlFor="rule-default">Default rule</Label>
-                <p className="text-sm text-muted-foreground">Applies when no other rule matches.</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <Label htmlFor="rule-enabled">Enabled</Label>
+                  <p className="text-sm text-muted-foreground">Rule is active and will be applied.</p>
+                </div>
+                <Switch
+                  id="rule-enabled"
+                  checked={formState.enabled ?? true}
+                  onCheckedChange={(checked) => setFormState(prev => ({ ...prev, enabled: checked }))}
+                />
               </div>
-              <Switch
-                id="rule-default"
-                checked={formState.isDefault ?? false}
-                onCheckedChange={(checked) => setFormState(prev => ({ ...prev, isDefault: checked }))}
-              />
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <Label htmlFor="rule-default">Default rule</Label>
+                  <p className="text-sm text-muted-foreground">Applies when no other rule matches.</p>
+                </div>
+                <Switch
+                  id="rule-default"
+                  checked={formState.isDefault ?? false}
+                  onCheckedChange={(checked) => setFormState(prev => ({ ...prev, isDefault: checked }))}
+                />
+              </div>
             </div>
 
             <DialogFooter>

@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS tracker_rules (
     ratio_limit REAL,
     seeding_time_limit_minutes INTEGER,
     is_default INTEGER NOT NULL DEFAULT 0,
+    enabled INTEGER NOT NULL DEFAULT 1,
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP

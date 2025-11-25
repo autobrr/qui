@@ -98,6 +98,7 @@ export interface TrackerRule {
   ratioLimit?: number
   seedingTimeLimitMinutes?: number
   isDefault: boolean
+  enabled: boolean
   sortOrder: number
   createdAt?: string
   updatedAt?: string
@@ -114,6 +115,7 @@ export interface TrackerRuleInput {
   ratioLimit?: number
   seedingTimeLimitMinutes?: number
   isDefault?: boolean
+  enabled?: boolean
   sortOrder?: number
 }
 

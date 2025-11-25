@@ -26,6 +26,7 @@ type TrackerRule struct {
 	RatioLimit              *float64  `json:"ratioLimit,omitempty"`
 	SeedingTimeLimitMinutes *int64    `json:"seedingTimeLimitMinutes,omitempty"`
 	IsDefault               bool      `json:"isDefault"`
+	Enabled                 bool      `json:"enabled"`
 	SortOrder               int       `json:"sortOrder"`
 	CreatedAt               time.Time `json:"createdAt"`
 	UpdatedAt               time.Time `json:"updatedAt"`
@@ -82,7 +83,7 @@ func normalizeTrackerPattern(pattern string, domains []string) string {
 func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) ([]*TrackerRule, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, instance_id, name, tracker_pattern, category, tag, upload_limit_kib, download_limit_kib,
-		       ratio_limit, seeding_time_limit_minutes, is_default, sort_order, created_at, updated_at
+		       ratio_limit, seeding_time_limit_minutes, is_default, enabled, sort_order, created_at, updated_at
 		FROM tracker_rules
 		WHERE instance_id = ?
 		ORDER BY sort_order ASC, id ASC
@@ -112,6 +113,7 @@ func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) (
 			&ratio,
 			&seeding,
 			&rule.IsDefault,
+			&rule.Enabled,
 			&rule.SortOrder,
 			&rule.CreatedAt,
 			&rule.UpdatedAt,
@@ -149,7 +151,7 @@ func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) (
 func (s *TrackerRuleStore) Get(ctx context.Context, id int) (*TrackerRule, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, name, tracker_pattern, category, tag, upload_limit_kib, download_limit_kib,
-		       ratio_limit, seeding_time_limit_minutes, is_default, sort_order, created_at, updated_at
+		       ratio_limit, seeding_time_limit_minutes, is_default, enabled, sort_order, created_at, updated_at
 		FROM tracker_rules
 		WHERE id = ?
 	`, id)
@@ -172,6 +174,7 @@ func (s *TrackerRuleStore) Get(ctx context.Context, id int) (*TrackerRule, error
 		&ratio,
 		&seeding,
 		&rule.IsDefault,
+		&rule.Enabled,
 		&rule.SortOrder,
 		&rule.CreatedAt,
 		&rule.UpdatedAt,
@@ -236,12 +239,12 @@ func (s *TrackerRuleStore) Create(ctx context.Context, rule *TrackerRule) (*Trac
 
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO tracker_rules
-			(instance_id, name, tracker_pattern, category, tag, upload_limit_kib, download_limit_kib, ratio_limit, seeding_time_limit_minutes, is_default, sort_order)
+			(instance_id, name, tracker_pattern, category, tag, upload_limit_kib, download_limit_kib, ratio_limit, seeding_time_limit_minutes, is_default, enabled, sort_order)
 		VALUES
-			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, rule.InstanceID, rule.Name, rule.TrackerPattern, nullableString(rule.Category), nullableString(rule.Tag),
 		nullableInt64(rule.UploadLimitKiB), nullableInt64(rule.DownloadLimitKiB), nullableFloat64(rule.RatioLimit),
-		nullableInt64(rule.SeedingTimeLimitMinutes), boolToInt(rule.IsDefault), sortOrder)
+		nullableInt64(rule.SeedingTimeLimitMinutes), boolToInt(rule.IsDefault), boolToInt(rule.Enabled), sortOrder)
 	if err != nil {
 		return nil, err
 	}
@@ -276,11 +279,11 @@ func (s *TrackerRuleStore) Update(ctx context.Context, rule *TrackerRule) (*Trac
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE tracker_rules
 		SET name = ?, tracker_pattern = ?, category = ?, tag = ?, upload_limit_kib = ?, download_limit_kib = ?,
-		    ratio_limit = ?, seeding_time_limit_minutes = ?, is_default = ?, sort_order = ?
+		    ratio_limit = ?, seeding_time_limit_minutes = ?, is_default = ?, enabled = ?, sort_order = ?
 		WHERE id = ? AND instance_id = ?
 	`, rule.Name, rule.TrackerPattern, nullableString(rule.Category), nullableString(rule.Tag),
 		nullableInt64(rule.UploadLimitKiB), nullableInt64(rule.DownloadLimitKiB), nullableFloat64(rule.RatioLimit),
-		nullableInt64(rule.SeedingTimeLimitMinutes), boolToInt(rule.IsDefault), rule.SortOrder, rule.ID, rule.InstanceID); err != nil {
+		nullableInt64(rule.SeedingTimeLimitMinutes), boolToInt(rule.IsDefault), boolToInt(rule.Enabled), rule.SortOrder, rule.ID, rule.InstanceID); err != nil {
 		return nil, err
 	}
 

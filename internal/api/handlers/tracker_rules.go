@@ -42,6 +42,7 @@ type TrackerRulePayload struct {
 	RatioLimit              *float64 `json:"ratioLimit"`
 	SeedingTimeLimitMinutes *int64   `json:"seedingTimeLimitMinutes"`
 	IsDefault               bool     `json:"isDefault"`
+	Enabled                 *bool    `json:"enabled"`
 	SortOrder               *int     `json:"sortOrder"`
 }
 
@@ -65,6 +66,10 @@ func (p *TrackerRulePayload) toModel(instanceID int, id int) *models.TrackerRule
 		RatioLimit:              p.RatioLimit,
 		SeedingTimeLimitMinutes: p.SeedingTimeLimitMinutes,
 		IsDefault:               p.IsDefault,
+		Enabled:                 true,
+	}
+	if p.Enabled != nil {
+		rule.Enabled = *p.Enabled
 	}
 	if p.SortOrder != nil {
 		rule.SortOrder = *p.SortOrder
