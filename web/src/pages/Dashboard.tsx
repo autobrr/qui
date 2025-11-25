@@ -1092,7 +1092,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                     <SortIcon column="downloaded" />
                   </button>
                 </TableHead>
-                <TableHead className="text-right hidden sm:table-cell">
+                <TableHead className="text-right">
                   <button
                     onClick={() => handleSort("ratio")}
                     className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
@@ -1101,7 +1101,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                     <SortIcon column="ratio" />
                   </button>
                 </TableHead>
-                <TableHead className="text-right hidden sm:table-cell">
+                <TableHead className="text-right">
                   <button
                     onClick={() => handleSort("count")}
                     className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
@@ -1150,10 +1150,10 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                     <TableCell className="text-right font-semibold">
                       {formatBytes(downloaded)}
                     </TableCell>
-                    <TableCell className="text-right font-semibold hidden sm:table-cell" style={{ color: ratioColor }}>
+                    <TableCell className="text-right font-semibold" style={{ color: ratioColor }}>
                       {isInfiniteRatio ? "∞" : ratio.toFixed(2)}
                     </TableCell>
-                    <TableCell className="text-right hidden sm:table-cell">
+                    <TableCell className="text-right">
                       {count}
                     </TableCell>
                     <TableCell className="text-right hidden lg:table-cell font-semibold">
