@@ -250,6 +250,15 @@ export function getLinuxTracker(hash: string): string {
   }
   return `https://${LINUX_TRACKERS[hashSum % LINUX_TRACKERS.length]}/announce`
 }
+
+// Generate deterministic Linux tracker domain based on hash (without URL prefix/suffix)
+export function getLinuxTrackerDomain(hash: string): string {
+  let hashSum = 0
+  for (let i = 0; i < Math.min(12, hash.length); i++) {
+    hashSum += hash.charCodeAt(i) * (i + 4)
+  }
+  return LINUX_TRACKERS[hashSum % LINUX_TRACKERS.length]
+}
 // Generate deterministic count value based on name for UI display
 export function getLinuxCount(name: string, max: number = 50): number {
   let hashSum = 0

@@ -33,7 +33,7 @@ import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, Tor
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { Activity, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Minus, Plus, Rabbit, RefreshCcw, Turtle, Upload, Zap } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import {
   DropdownMenu,
@@ -45,7 +45,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
-import { useIncognitoMode } from "@/lib/incognito"
+import { getLinuxTrackerDomain, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import type { TrackerTransferStats } from "@/types"
 
@@ -57,6 +57,66 @@ interface DashboardInstanceStats {
   altSpeedEnabled: boolean
   isLoading: boolean
   error: unknown
+}
+
+// Shared hook for computing global stats across all instances
+function useGlobalStats(statsData: DashboardInstanceStats[]) {
+  return useMemo(() => {
+    const connected = statsData.filter(({ instance }) => instance?.connected).length
+    const totalTorrents = statsData.reduce((sum, { torrentCounts }) =>
+      sum + (torrentCounts?.total || 0), 0)
+    const activeTorrents = statsData.reduce((sum, { torrentCounts }) =>
+      sum + (torrentCounts?.status?.active || 0), 0)
+    const totalDownload = statsData.reduce((sum, { stats }) =>
+      sum + (stats?.totalDownloadSpeed || 0), 0)
+    const totalUpload = statsData.reduce((sum, { stats }) =>
+      sum + (stats?.totalUploadSpeed || 0), 0)
+    const totalErrors = statsData.reduce((sum, { torrentCounts }) =>
+      sum + (torrentCounts?.status?.errored || 0), 0)
+    const totalSize = statsData.reduce((sum, { stats }) =>
+      sum + (stats?.totalSize || 0), 0)
+    const totalRemainingSize = statsData.reduce((sum, { stats }) =>
+      sum + (stats?.totalRemainingSize || 0), 0)
+    const totalSeedingSize = statsData.reduce((sum, { stats }) =>
+      sum + (stats?.totalSeedingSize || 0), 0)
+    const downloadingTorrents = statsData.reduce((sum, { stats }) =>
+      sum + (stats?.downloading || 0), 0)
+    const seedingTorrents = statsData.reduce((sum, { stats }) =>
+      sum + (stats?.seeding || 0), 0)
+
+    // Calculate server stats
+    const alltimeDl = statsData.reduce((sum, { serverState }) =>
+      sum + (serverState?.alltime_dl || 0), 0)
+    const alltimeUl = statsData.reduce((sum, { serverState }) =>
+      sum + (serverState?.alltime_ul || 0), 0)
+    const totalPeers = statsData.reduce((sum, { serverState }) =>
+      sum + (serverState?.total_peer_connections || 0), 0)
+
+    // Calculate global ratio
+    let globalRatio = 0
+    if (alltimeDl > 0) {
+      globalRatio = alltimeUl / alltimeDl
+    }
+
+    return {
+      connected,
+      total: statsData.length,
+      totalTorrents,
+      activeTorrents,
+      totalDownload,
+      totalUpload,
+      totalErrors,
+      totalSize,
+      totalRemainingSize,
+      totalSeedingSize,
+      downloadingTorrents,
+      seedingTorrents,
+      alltimeDl,
+      alltimeUl,
+      globalRatio,
+      totalPeers,
+    }
+  }, [statsData])
 }
 
 // Optimized hook to get all instance stats using shared TorrentResponse cache
@@ -466,32 +526,7 @@ function InstanceCard({
 
 function MobileGlobalStatsCard({ statsData }: { statsData: DashboardInstanceStats[] }) {
   const [speedUnit] = useSpeedUnits()
-  const globalStats = useMemo(() => {
-    const connected = statsData.filter(({ instance }) => instance?.connected).length
-    const totalTorrents = statsData.reduce((sum, { torrentCounts }) =>
-      sum + (torrentCounts?.total || 0), 0)
-    const activeTorrents = statsData.reduce((sum, { torrentCounts }) =>
-      sum + (torrentCounts?.status?.active || 0), 0)
-    const totalDownload = statsData.reduce((sum, { stats }) =>
-      sum + (stats?.totalDownloadSpeed || 0), 0)
-    const totalUpload = statsData.reduce((sum, { stats }) =>
-      sum + (stats?.totalUploadSpeed || 0), 0)
-    const downloadingTorrents = statsData.reduce((sum, { stats }) =>
-      sum + (stats?.downloading || 0), 0)
-    const seedingTorrents = statsData.reduce((sum, { stats }) =>
-      sum + (stats?.seeding || 0), 0)
-
-    return {
-      connected,
-      total: statsData.length,
-      totalTorrents,
-      activeTorrents,
-      totalDownload,
-      totalUpload,
-      downloadingTorrents,
-      seedingTorrents,
-    }
-  }, [statsData])
+  const globalStats = useGlobalStats(statsData)
 
   return (
     <Card className="sm:hidden">
@@ -547,62 +582,7 @@ function MobileGlobalStatsCard({ statsData }: { statsData: DashboardInstanceStat
 
 function GlobalStatsCards({ statsData }: { statsData: DashboardInstanceStats[] }) {
   const [speedUnit] = useSpeedUnits()
-  const globalStats = useMemo(() => {
-    const connected = statsData.filter(({ instance }) => instance?.connected).length
-    const totalTorrents = statsData.reduce((sum, { torrentCounts }) =>
-      sum + (torrentCounts?.total || 0), 0)
-    const activeTorrents = statsData.reduce((sum, { torrentCounts }) =>
-      sum + (torrentCounts?.status?.active || 0), 0)
-    const totalDownload = statsData.reduce((sum, { stats }) =>
-      sum + (stats?.totalDownloadSpeed || 0), 0)
-    const totalUpload = statsData.reduce((sum, { stats }) =>
-      sum + (stats?.totalUploadSpeed || 0), 0)
-    const totalErrors = statsData.reduce((sum, { torrentCounts }) =>
-      sum + (torrentCounts?.status?.errored || 0), 0)
-    const totalSize = statsData.reduce((sum, { stats }) =>
-      sum + (stats?.totalSize || 0), 0)
-    const totalRemainingSize = statsData.reduce((sum, { stats }) =>
-      sum + (stats?.totalRemainingSize || 0), 0)
-    const totalSeedingSize = statsData.reduce((sum, { stats }) =>
-      sum + (stats?.totalSeedingSize || 0), 0)
-    const downloadingTorrents = statsData.reduce((sum, { stats }) =>
-      sum + (stats?.downloading || 0), 0)
-    const seedingTorrents = statsData.reduce((sum, { stats }) =>
-      sum + (stats?.seeding || 0), 0)
-
-    // Calculate server stats
-    const alltimeDl = statsData.reduce((sum, { serverState }) =>
-      sum + (serverState?.alltime_dl || 0), 0)
-    const alltimeUl = statsData.reduce((sum, { serverState }) =>
-      sum + (serverState?.alltime_ul || 0), 0)
-    const totalPeers = statsData.reduce((sum, { serverState }) =>
-      sum + (serverState?.total_peer_connections || 0), 0)
-
-    // Calculate global ratio
-    let globalRatio = 0
-    if (alltimeDl > 0) {
-      globalRatio = alltimeUl / alltimeDl
-    }
-
-    return {
-      connected,
-      total: statsData.length,
-      totalTorrents,
-      activeTorrents,
-      totalDownload,
-      totalUpload,
-      totalErrors,
-      totalSize,
-      totalRemainingSize,
-      totalSeedingSize,
-      downloadingTorrents,
-      seedingTorrents,
-      alltimeDl,
-      alltimeUl,
-      globalRatio,
-      totalPeers,
-    }
-  }, [statsData])
+  const globalStats = useGlobalStats(statsData)
 
   return (
     <>
@@ -925,6 +905,15 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
     return sortedTrackerStats.slice(start, start + ITEMS_PER_PAGE)
   }, [sortedTrackerStats, page])
 
+  // clamp page when data shrinks
+  useEffect(() => {
+    if (totalPages === 0) {
+      setPage(0)
+    } else if (page >= totalPages) {
+      setPage(totalPages - 1)
+    }
+  }, [totalPages, page])
+
   // reset page when sort changes
   const handleSort = (column: TrackerSortColumn) => {
     setPage(0)
@@ -1017,14 +1006,14 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
               const isInfiniteRatio = downloaded === 0 && uploaded > 0
               const ratio = downloaded > 0 ? uploaded / downloaded : 0
               const ratioColor = isInfiniteRatio ? "var(--chart-1)" : getRatioColor(ratio)
-              const displayDomain = incognitoMode ? "linux-tracker.org" : domain
+              const displayDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
 
               return (
                 <Card key={domain} className="overflow-hidden">
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <TrackerIconImage tracker={domain} trackerIcons={trackerIcons} />
+                        <TrackerIconImage tracker={displayDomain} trackerIcons={trackerIcons} />
                         <span className="font-medium truncate text-sm">{displayDomain}</span>
                       </div>
                       <Badge variant="secondary" className="ml-2 shrink-0 text-xs">
@@ -1145,13 +1134,13 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                 const isInfiniteRatio = downloaded === 0 && uploaded > 0
                 const ratio = downloaded > 0 ? uploaded / downloaded : 0
                 const ratioColor = isInfiniteRatio ? "var(--chart-1)" : getRatioColor(ratio)
-                const displayDomain = incognitoMode ? "linux-tracker.org" : domain
+                const displayDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
 
                 return (
                   <TableRow key={domain} className="hover:bg-muted/50 transition-colors">
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <TrackerIconImage tracker={domain} trackerIcons={trackerIcons} />
+                        <TrackerIconImage tracker={displayDomain} trackerIcons={trackerIcons} />
                         <span className="font-medium truncate">{displayDomain}</span>
                       </div>
                     </TableCell>
