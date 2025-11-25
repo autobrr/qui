@@ -1740,8 +1740,7 @@ func buildInPlaceholders(count int) string {
 	if count <= 0 {
 		return "()"
 	}
-	s := dbinterface.BuildQueryWithPlaceholders("%s", 1, count)
-	return "(" + s[1:len(s)-1] + ")"
+	return dbinterface.BuildQueryWithPlaceholders("%s", count, 1)
 }
 
 func (s *BackupStore) DeleteRunsByIDs(ctx context.Context, runIDs []int64) error {
