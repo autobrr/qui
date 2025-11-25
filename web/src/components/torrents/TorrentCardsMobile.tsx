@@ -1190,9 +1190,8 @@ export function TorrentCardsMobile({
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
   // subcategoriesFromData reflects backend/server state; allowSubcategories
   // additionally respects user preferences for UI surfaces like dialogs.
-  const allowSubcategories = Boolean(
+  const allowSubcategories =
     supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false)
-  )
 
   // Call the callback when filtered data updates
   useEffect(() => {

@@ -108,9 +108,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   // Get capabilities to check subcategory support
   const { data: capabilities } = useInstanceCapabilities(instanceId)
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
-  const allowSubcategories = Boolean(
+  const allowSubcategories =
     supportsSubcategories && (preferences?.use_subcategories ?? false)
-  )
 
   // Use the shared torrent actions hook
   const {

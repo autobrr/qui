@@ -997,9 +997,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
-  const allowSubcategories = Boolean(
+  const allowSubcategories =
     supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false)
-  )
 
   // When cross-seed filtering is active, ensure instance column is visible
   useEffect(() => {
