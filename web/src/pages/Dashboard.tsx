@@ -1065,7 +1065,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
           <Table className="hidden sm:table">
             <TableHeader>
               <TableRow className="bg-muted/50">
-                <TableHead className="w-[40%]">
+                <TableHead className="w-[40%] pl-4">
                   <button
                     onClick={() => handleSort("tracker")}
                     className="flex items-center gap-1.5 hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
@@ -1110,7 +1110,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                     <SortIcon column="count" sortColumn={sortColumn} sortDirection={sortDirection} />
                   </button>
                 </TableHead>
-                <TableHead className="text-right hidden lg:table-cell">
+                <TableHead className="text-right hidden lg:table-cell pr-4">
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
@@ -1138,7 +1138,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
 
                 return (
                   <TableRow key={domain} className="hover:bg-muted/50 transition-colors">
-                    <TableCell>
+                    <TableCell className="pl-4">
                       <div className="flex items-center gap-2">
                         <TrackerIconImage tracker={displayDomain} trackerIcons={trackerIcons} />
                         <span className="font-medium truncate">{displayDomain}</span>
@@ -1156,7 +1156,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                     <TableCell className="text-right">
                       {count}
                     </TableCell>
-                    <TableCell className="text-right hidden lg:table-cell font-semibold">
+                    <TableCell className="text-right hidden lg:table-cell font-semibold pr-4">
                       {formatPerformance(uploaded, count)}
                     </TableCell>
                   </TableRow>
