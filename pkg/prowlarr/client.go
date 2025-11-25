@@ -80,6 +80,7 @@ type Indexer struct {
 	Implementation     string `json:"implementation"`
 	ImplementationName string `json:"implementationName"`
 	Enable             bool   `json:"enable"`
+	Protocol           string `json:"protocol"` // "unknown", "usenet", "torrent"
 }
 
 // IndexerDetail represents detailed information about a Prowlarr indexer

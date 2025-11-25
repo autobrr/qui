@@ -468,6 +468,15 @@ func DiscoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 	if prowlarrErr == nil {
 		indexers := make([]JackettIndexer, 0, len(pIndexers))
 		for _, idx := range pIndexers {
+			// Skip disabled indexers
+			if !idx.Enable {
+				continue
+			}
+			// Skip non-torrent indexers (Usenet/Newznab)
+			if idx.Protocol != "torrent" {
+				continue
+			}
+
 			description := idx.Description
 			if description == "" {
 				description = idx.ImplementationName
@@ -483,15 +492,13 @@ func DiscoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 				Name:        idx.Name,
 				Description: description,
 				Type:        backendType,
-				Configured:  idx.Enable,
+				Configured:  true, // Always true since we skip disabled indexers above
 				Backend:     models.TorznabBackendProwlarr,
 			}
 
-			// Try to fetch capabilities for enabled indexers
-			if indexer.Configured {
-				if caps := fetchCapabilitiesForDiscovery(baseURL, apiKey, models.TorznabBackendProwlarr, strconv.Itoa(idx.ID)); caps != nil {
-					indexer.Caps = caps
-				}
+			// Try to fetch capabilities
+			if caps := fetchCapabilitiesForDiscovery(baseURL, apiKey, models.TorznabBackendProwlarr, strconv.Itoa(idx.ID)); caps != nil {
+				indexer.Caps = caps
 			}
 
 			indexers = append(indexers, indexer)
