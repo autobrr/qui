@@ -256,11 +256,18 @@ export interface CacheMetadata {
   nextRefresh?: string
 }
 
+export interface TrackerTransferStats {
+  uploaded: number
+  downloaded: number
+  count: number
+}
+
 export interface TorrentCounts {
   status: Record<string, number>
   categories: Record<string, number>
   tags: Record<string, number>
   trackers: Record<string, number>
+  trackerTransfers?: Record<string, TrackerTransferStats>
   total: number
 }
 

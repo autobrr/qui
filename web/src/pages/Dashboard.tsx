@@ -32,7 +32,7 @@ import { formatBytes, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Activity, Ban, BrickWallFire, ChevronDown, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Minus, Plus, Rabbit, RefreshCcw, Turtle, Upload, Zap } from "lucide-react"
+import { Activity, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Minus, Plus, Rabbit, RefreshCcw, Turtle, Upload, Zap } from "lucide-react"
 import { useMemo, useState } from "react"
 
 import {
@@ -44,8 +44,10 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 
+import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import type { TrackerTransferStats } from "@/types"
 
 interface DashboardInstanceStats {
   instance: InstanceResponse
@@ -462,6 +464,87 @@ function InstanceCard({
   )
 }
 
+function MobileGlobalStatsCard({ statsData }: { statsData: DashboardInstanceStats[] }) {
+  const [speedUnit] = useSpeedUnits()
+  const globalStats = useMemo(() => {
+    const connected = statsData.filter(({ instance }) => instance?.connected).length
+    const totalTorrents = statsData.reduce((sum, { torrentCounts }) =>
+      sum + (torrentCounts?.total || 0), 0)
+    const activeTorrents = statsData.reduce((sum, { torrentCounts }) =>
+      sum + (torrentCounts?.status?.active || 0), 0)
+    const totalDownload = statsData.reduce((sum, { stats }) =>
+      sum + (stats?.totalDownloadSpeed || 0), 0)
+    const totalUpload = statsData.reduce((sum, { stats }) =>
+      sum + (stats?.totalUploadSpeed || 0), 0)
+    const downloadingTorrents = statsData.reduce((sum, { stats }) =>
+      sum + (stats?.downloading || 0), 0)
+    const seedingTorrents = statsData.reduce((sum, { stats }) =>
+      sum + (stats?.seeding || 0), 0)
+
+    return {
+      connected,
+      total: statsData.length,
+      totalTorrents,
+      activeTorrents,
+      totalDownload,
+      totalUpload,
+      downloadingTorrents,
+      seedingTorrents,
+    }
+  }, [statsData])
+
+  return (
+    <Card className="sm:hidden">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium">Overview</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-3">
+          {/* Instances */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5">
+              <HardDrive className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Instances</span>
+            </div>
+            <div className="text-xl font-bold">{globalStats.connected}/{globalStats.total}</div>
+            <p className="text-[10px] text-muted-foreground">Connected</p>
+          </div>
+
+          {/* Torrents */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5">
+              <Activity className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Torrents</span>
+            </div>
+            <div className="text-xl font-bold">{globalStats.totalTorrents}</div>
+            <p className="text-[10px] text-muted-foreground">{globalStats.activeTorrents} active</p>
+          </div>
+
+          {/* Download */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5">
+              <Download className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Download</span>
+            </div>
+            <div className="text-xl font-bold">{formatSpeedWithUnit(globalStats.totalDownload, speedUnit)}</div>
+            <p className="text-[10px] text-muted-foreground">{globalStats.downloadingTorrents} active</p>
+          </div>
+
+          {/* Upload */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5">
+              <Upload className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Upload</span>
+            </div>
+            <div className="text-xl font-bold">{formatSpeedWithUnit(globalStats.totalUpload, speedUnit)}</div>
+            <p className="text-[10px] text-muted-foreground">{globalStats.seedingTorrents} active</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 function GlobalStatsCards({ statsData }: { statsData: DashboardInstanceStats[] }) {
   const [speedUnit] = useSpeedUnits()
   const globalStats = useMemo(() => {
@@ -739,6 +822,393 @@ function GlobalAllTimeStats({ statsData }: { statsData: DashboardInstanceStats[]
   )
 }
 
+interface TrackerIconImageProps {
+  tracker: string
+  trackerIcons?: Record<string, string>
+}
+
+function TrackerIconImage({ tracker, trackerIcons }: TrackerIconImageProps) {
+  const [hasError, setHasError] = useState(false)
+
+  const trimmed = tracker.trim()
+  const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
+  const src = trackerIcons?.[trimmed] ?? null
+
+  return (
+    <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-[10px] font-medium uppercase leading-none flex-shrink-0">
+      {src && !hasError ? (
+        <img
+          src={src}
+          alt=""
+          className="h-full w-full object-contain rounded-sm"
+          onError={() => setHasError(true)}
+        />
+      ) : (
+        fallbackLetter
+      )}
+    </div>
+  )
+}
+
+type TrackerSortColumn = "tracker" | "uploaded" | "downloaded" | "ratio" | "count" | "performance"
+type SortDirection = "asc" | "desc"
+
+function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats[] }) {
+  const [accordionValue, setAccordionValue] = usePersistedAccordionState("qui-tracker-breakdown-accordion")
+  const { data: trackerIcons } = useTrackerIcons()
+  const [incognitoMode] = useIncognitoMode()
+  const [sortColumn, setSortColumn] = useState<TrackerSortColumn>("uploaded")
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
+
+  const trackerStats = useMemo(() => {
+    // aggregate tracker transfer stats across all instances
+    const aggregated = new Map<string, TrackerTransferStats>()
+
+    for (const { torrentCounts } of statsData) {
+      if (!torrentCounts?.trackerTransfers) continue
+      for (const [domain, stats] of Object.entries(torrentCounts.trackerTransfers)) {
+        const existing = aggregated.get(domain)
+        if (existing) {
+          existing.uploaded += stats.uploaded
+          existing.downloaded += stats.downloaded
+          existing.count += stats.count
+        } else {
+          aggregated.set(domain, { ...stats })
+        }
+      }
+    }
+
+    // convert to array
+    return Array.from(aggregated.entries())
+      .map(([domain, stats]) => ({ domain, ...stats }))
+  }, [statsData])
+
+  // sort the tracker stats based on current sort state
+  const sortedTrackerStats = useMemo(() => {
+    const sorted = [...trackerStats]
+    const multiplier = sortDirection === "asc" ? 1 : -1
+
+    sorted.sort((a, b) => {
+      switch (sortColumn) {
+        case "tracker":
+          return multiplier * a.domain.localeCompare(b.domain)
+        case "uploaded":
+          return multiplier * (a.uploaded - b.uploaded)
+        case "downloaded":
+          return multiplier * (a.downloaded - b.downloaded)
+        case "ratio": {
+          const ratioA = a.downloaded > 0 ? a.uploaded / a.downloaded : (a.uploaded > 0 ? Infinity : 0)
+          const ratioB = b.downloaded > 0 ? b.uploaded / b.downloaded : (b.uploaded > 0 ? Infinity : 0)
+          return multiplier * (ratioA - ratioB)
+        }
+        case "count":
+          return multiplier * (a.count - b.count)
+        case "performance": {
+          const perfA = a.count > 0 ? a.uploaded / a.count : 0
+          const perfB = b.count > 0 ? b.uploaded / b.count : 0
+          return multiplier * (perfA - perfB)
+        }
+        default:
+          return 0
+      }
+    })
+
+    return sorted
+  }, [trackerStats, sortColumn, sortDirection])
+
+  // pagination
+  const ITEMS_PER_PAGE = 15
+  const [page, setPage] = useState(0)
+  const totalPages = Math.ceil(sortedTrackerStats.length / ITEMS_PER_PAGE)
+  const paginatedTrackerStats = useMemo(() => {
+    const start = page * ITEMS_PER_PAGE
+    return sortedTrackerStats.slice(start, start + ITEMS_PER_PAGE)
+  }, [sortedTrackerStats, page])
+
+  // reset page when sort changes
+  const handleSort = (column: TrackerSortColumn) => {
+    setPage(0)
+    if (sortColumn === column) {
+      setSortDirection(prev => prev === "asc" ? "desc" : "asc")
+    } else {
+      setSortColumn(column)
+      setSortDirection(column === "tracker" ? "asc" : "desc")
+    }
+  }
+
+  const SortIcon = ({ column }: { column: TrackerSortColumn }) => {
+    if (sortColumn !== column) {
+      return <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />
+    }
+    return sortDirection === "asc"
+      ? <ArrowUp className="h-3 w-3" />
+      : <ArrowDown className="h-3 w-3" />
+  }
+
+  // format performance as GiB/t consistently
+  const formatPerformance = (uploaded: number, count: number): string => {
+    if (count === 0) return "-"
+    const bytesPerTorrent = uploaded / count
+    const gibPerTorrent = bytesPerTorrent / (1024 * 1024 * 1024)
+    return `${gibPerTorrent.toFixed(2)} GiB/t`
+  }
+
+  // don't show if no tracker data
+  if (sortedTrackerStats.length === 0) {
+    return null
+  }
+
+  return (
+    <Accordion type="single" collapsible className="rounded-lg border bg-card" value={accordionValue} onValueChange={setAccordionValue}>
+      <AccordionItem value="tracker-breakdown" className="border-0">
+        <AccordionTrigger className="px-4 py-4 hover:no-underline hover:bg-muted/50 transition-colors [&>svg]:hidden group">
+          {/* Mobile layout */}
+          <div className="sm:hidden w-full">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Plus className="h-3.5 w-3.5 text-muted-foreground group-data-[state=open]:hidden" />
+                <Minus className="h-3.5 w-3.5 text-muted-foreground group-data-[state=closed]:hidden" />
+                <h3 className="text-sm font-medium text-muted-foreground">Tracker Breakdown</h3>
+              </div>
+              <span className="text-xs text-muted-foreground">{sortedTrackerStats.length} trackers</span>
+            </div>
+          </div>
+
+          {/* Desktop layout */}
+          <div className="hidden sm:flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 w-full">
+            <div className="flex items-center gap-2">
+              <Plus className="h-4 w-4 text-muted-foreground group-data-[state=open]:hidden" />
+              <Minus className="h-4 w-4 text-muted-foreground group-data-[state=closed]:hidden" />
+              <h3 className="text-base font-medium">Tracker Breakdown</h3>
+            </div>
+            <span className="text-muted-foreground">{sortedTrackerStats.length} trackers</span>
+          </div>
+        </AccordionTrigger>
+        <AccordionContent className="px-0 pb-0">
+          {/* Mobile Sort Dropdown */}
+          <div className="sm:hidden px-4 py-3 border-b">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="w-full justify-between">
+                  <span className="flex items-center gap-2 text-xs">
+                    Sort: {sortColumn === "tracker" ? "Tracker" :
+                           sortColumn === "uploaded" ? "Uploaded" :
+                           sortColumn === "downloaded" ? "Downloaded" :
+                           sortColumn === "ratio" ? "Ratio" :
+                           sortColumn === "count" ? "Torrents" : "Performance"}
+                  </span>
+                  {sortDirection === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-full">
+                <DropdownMenuItem onClick={() => handleSort("tracker")}>Tracker</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleSort("uploaded")}>Uploaded</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleSort("downloaded")}>Downloaded</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleSort("ratio")}>Ratio</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleSort("count")}>Torrents</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleSort("performance")}>Performance</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          {/* Mobile Card Layout */}
+          <div className="sm:hidden px-4 space-y-2 py-3">
+            {paginatedTrackerStats.map(({ domain, uploaded, downloaded, count }) => {
+              const isInfiniteRatio = downloaded === 0 && uploaded > 0
+              const ratio = downloaded > 0 ? uploaded / downloaded : 0
+              const ratioColor = isInfiniteRatio ? "var(--chart-1)" : getRatioColor(ratio)
+              const displayDomain = incognitoMode ? "linux-tracker.org" : domain
+
+              return (
+                <Card key={domain} className="overflow-hidden">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <TrackerIconImage tracker={domain} trackerIcons={trackerIcons} />
+                        <span className="font-medium truncate text-sm">{displayDomain}</span>
+                      </div>
+                      <Badge variant="secondary" className="ml-2 shrink-0 text-xs">
+                        {count}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Uploaded */}
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <ChevronUp className="h-3 w-3" />
+                          <span>Uploaded</span>
+                        </div>
+                        <div className="font-semibold text-sm">{formatBytes(uploaded)}</div>
+                      </div>
+
+                      {/* Downloaded */}
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <ChevronDown className="h-3 w-3" />
+                          <span>Downloaded</span>
+                        </div>
+                        <div className="font-semibold text-sm">{formatBytes(downloaded)}</div>
+                      </div>
+
+                      {/* Ratio */}
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground">Ratio</div>
+                        <div className="font-semibold text-sm" style={{ color: ratioColor }}>
+                          {isInfiniteRatio ? "∞" : ratio.toFixed(2)}
+                        </div>
+                      </div>
+
+                      {/* Performance */}
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground">Performance</div>
+                        <div className="font-semibold text-sm">{formatPerformance(uploaded, count)}</div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+
+          {/* Desktop Table */}
+          <Table className="hidden sm:table">
+            <TableHeader>
+              <TableRow className="bg-muted/50">
+                <TableHead className="w-[40%]">
+                  <button
+                    onClick={() => handleSort("tracker")}
+                    className="flex items-center gap-1.5 hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                  >
+                    Tracker
+                    <SortIcon column="tracker" />
+                  </button>
+                </TableHead>
+                <TableHead className="text-right">
+                  <button
+                    onClick={() => handleSort("uploaded")}
+                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                  >
+                    Uploaded
+                    <SortIcon column="uploaded" />
+                  </button>
+                </TableHead>
+                <TableHead className="text-right">
+                  <button
+                    onClick={() => handleSort("downloaded")}
+                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                  >
+                    Downloaded
+                    <SortIcon column="downloaded" />
+                  </button>
+                </TableHead>
+                <TableHead className="text-right hidden sm:table-cell">
+                  <button
+                    onClick={() => handleSort("ratio")}
+                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                  >
+                    Ratio
+                    <SortIcon column="ratio" />
+                  </button>
+                </TableHead>
+                <TableHead className="text-right hidden sm:table-cell">
+                  <button
+                    onClick={() => handleSort("count")}
+                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                  >
+                    Torrents
+                    <SortIcon column="count" />
+                  </button>
+                </TableHead>
+                <TableHead className="text-right hidden lg:table-cell">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => handleSort("performance")}
+                        className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors"
+                      >
+                        Performance
+                        <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                        <SortIcon column="performance" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      <p className="text-xs">Upload per Torrent = Uploaded ÷ Torrent Count</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {paginatedTrackerStats.map(({ domain, uploaded, downloaded, count }) => {
+                const isInfiniteRatio = downloaded === 0 && uploaded > 0
+                const ratio = downloaded > 0 ? uploaded / downloaded : 0
+                const ratioColor = isInfiniteRatio ? "var(--chart-1)" : getRatioColor(ratio)
+                const displayDomain = incognitoMode ? "linux-tracker.org" : domain
+
+                return (
+                  <TableRow key={domain} className="hover:bg-muted/50 transition-colors">
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <TrackerIconImage tracker={domain} trackerIcons={trackerIcons} />
+                        <span className="font-medium truncate">{displayDomain}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right font-semibold">
+                      {formatBytes(uploaded)}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold">
+                      {formatBytes(downloaded)}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold hidden sm:table-cell" style={{ color: ratioColor }}>
+                      {isInfiniteRatio ? "∞" : ratio.toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-right hidden sm:table-cell">
+                      {count}
+                    </TableCell>
+                    <TableCell className="text-right hidden lg:table-cell font-semibold">
+                      {formatPerformance(uploaded, count)}
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+          {/* Pagination controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t">
+              <span className="text-sm text-muted-foreground">
+                {page * ITEMS_PER_PAGE + 1}-{Math.min((page + 1) * ITEMS_PER_PAGE, sortedTrackerStats.length)} of {sortedTrackerStats.length} trackers
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(p => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  <span className="hidden sm:inline ml-1">Previous</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                >
+                  <span className="hidden sm:inline mr-1">Next</span>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
+  )
+}
+
 function QuickActionsDropdown({ statsData }: { statsData: DashboardInstanceStats[] }) {
   const connectedInstances = statsData
     .filter(({ instance }) => instance?.connected)
@@ -838,9 +1308,18 @@ export function Dashboard() {
               {/* Stats Bar */}
               <GlobalAllTimeStats statsData={statsData} />
 
+              {/* Tracker Breakdown */}
+              <TrackerBreakdownCard statsData={statsData} />
+
               {/* Global Stats */}
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <GlobalStatsCards statsData={statsData} />
+              <div className="space-y-4">
+                {/* Mobile: Single combined card */}
+                <MobileGlobalStatsCard statsData={statsData} />
+
+                {/* Tablet/Desktop: Separate cards */}
+                <div className="hidden sm:grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <GlobalStatsCards statsData={statsData} />
+                </div>
               </div>
 
               {/* Instance Cards */}

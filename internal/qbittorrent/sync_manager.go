@@ -1653,13 +1653,21 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 	return enriched, trackerMap, remaining
 }
 
+// TrackerTransferStats holds aggregated upload/download stats for a tracker domain
+type TrackerTransferStats struct {
+	Uploaded   int64 `json:"uploaded"`
+	Downloaded int64 `json:"downloaded"`
+	Count      int   `json:"count"`
+}
+
 // TorrentCounts represents counts for filtering sidebar
 type TorrentCounts struct {
-	Status     map[string]int `json:"status"`
-	Categories map[string]int `json:"categories"`
-	Tags       map[string]int `json:"tags"`
-	Trackers   map[string]int `json:"trackers"`
-	Total      int            `json:"total"`
+	Status           map[string]int                  `json:"status"`
+	Categories       map[string]int                  `json:"categories"`
+	Tags             map[string]int                  `json:"tags"`
+	Trackers         map[string]int                  `json:"trackers"`
+	TrackerTransfers map[string]TrackerTransferStats `json:"trackerTransfers,omitempty"`
+	Total            int                             `json:"total"`
 }
 
 // InstanceSpeeds represents download/upload speeds for an instance
@@ -1914,12 +1922,27 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Conte
 		}
 
 		var domainsToClear []string
-		// Convert sets to counts, pruning empty domains that remain only due to exclusions
+		// Convert sets to counts and aggregate transfer stats, pruning empty domains
+		counts.TrackerTransfers = make(map[string]TrackerTransferStats, len(trackerDomainCounts))
 		for domain, hashSet := range trackerDomainCounts {
 			if len(hashSet) == 0 {
 				continue
 			}
 			counts.Trackers[domain] = len(hashSet)
+
+			// aggregate upload/download for this domain
+			var uploaded, downloaded int64
+			for hash := range hashSet {
+				if torrent, ok := torrentMap[hash]; ok {
+					uploaded += torrent.Uploaded
+					downloaded += torrent.Downloaded
+				}
+			}
+			counts.TrackerTransfers[domain] = TrackerTransferStats{
+				Uploaded:   uploaded,
+				Downloaded: downloaded,
+				Count:      len(hashSet),
+			}
 		}
 
 		// If the domain disappeared entirely after exclusions, clear the override so future syncs don't skip it unnecessarily
