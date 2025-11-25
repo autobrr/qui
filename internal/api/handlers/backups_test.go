@@ -83,7 +83,7 @@ func setupTestBackupHandler(t *testing.T) (*BackupsHandler, *database.DB, string
 	return handler, db, dataDir, cleanup
 }
 
-func createTestBackupRun(t *testing.T, db *database.DB, instanceID int) *models.BackupRun {
+func createTestBackupRun(t *testing.T, db *database.DB, dataDir string, instanceID int) *models.BackupRun {
 	t.Helper()
 	ctx := context.Background()
 
@@ -149,8 +149,8 @@ func createTestBackupRun(t *testing.T, db *database.DB, instanceID int) *models.
 	manifestData, err := json.MarshalIndent(manifest, "", "  ")
 	require.NoError(t, err)
 
-	manifestPath := filepath.Join("backups", "instance-1", "manual", fmt.Sprintf("run-%d", run.ID), "manifest.json")
-	absManifestPath := filepath.Join("c:\\git\\qui", manifestPath) // Adjust for test data dir
+	manifestPath := filepath.Join("backups", fmt.Sprintf("instance-%d", instanceID), "manual", fmt.Sprintf("run-%d", run.ID), "manifest.json")
+	absManifestPath := filepath.Join(dataDir, manifestPath)
 	require.NoError(t, os.MkdirAll(filepath.Dir(absManifestPath), 0755))
 	require.NoError(t, os.WriteFile(absManifestPath, manifestData, 0644))
 
@@ -274,7 +274,7 @@ func TestDownloadRun_BackupNotAvailable(t *testing.T) {
 }
 
 func TestDownloadRun_UnsupportedFormat(t *testing.T) {
-	handler, db, _, cleanup := setupTestBackupHandler(t)
+	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
 	defer cleanup()
 
 	// Create a test instance and successful backup run
@@ -285,7 +285,7 @@ func TestDownloadRun_UnsupportedFormat(t *testing.T) {
 	require.NoError(t, err)
 	instanceID := int(instanceID64)
 
-	run := createTestBackupRun(t, db, instanceID)
+	run := createTestBackupRun(t, db, dataDir, instanceID)
 
 	req := newRequestWithParamsAndQuery(http.MethodGet, fmt.Sprintf("/api/instances/%d/backups/runs/%d/download", instanceID, run.ID), map[string]string{
 		"instanceID": strconv.Itoa(instanceID),
@@ -313,7 +313,7 @@ func TestDownloadRun_ZIPFormat(t *testing.T) {
 	require.NoError(t, err)
 	instanceID := int(instanceID64)
 
-	run := createTestBackupRun(t, db, instanceID)
+	run := createTestBackupRun(t, db, dataDir, instanceID)
 	createTestTorrentFiles(t, dataDir)
 
 	req := newRequestWithParamsAndQuery(http.MethodGet, fmt.Sprintf("/api/instances/%d/backups/runs/%d/download", instanceID, run.ID), map[string]string{
@@ -358,7 +358,7 @@ func TestDownloadRun_TarGzFormat(t *testing.T) {
 	require.NoError(t, err)
 	instanceID := int(instanceID64)
 
-	run := createTestBackupRun(t, db, instanceID)
+	run := createTestBackupRun(t, db, dataDir, instanceID)
 	createTestTorrentFiles(t, dataDir)
 
 	req := newRequestWithParamsAndQuery(http.MethodGet, fmt.Sprintf("/api/instances/%d/backups/runs/%d/download", instanceID, run.ID), map[string]string{
@@ -409,7 +409,7 @@ func TestDownloadRun_TarZstFormat(t *testing.T) {
 	require.NoError(t, err)
 	instanceID := int(instanceID64)
 
-	run := createTestBackupRun(t, db, instanceID)
+	run := createTestBackupRun(t, db, dataDir, instanceID)
 	createTestTorrentFiles(t, dataDir)
 
 	req := newRequestWithParamsAndQuery(http.MethodGet, fmt.Sprintf("/api/instances/%d/backups/runs/%d/download", instanceID, run.ID), map[string]string{
@@ -460,7 +460,7 @@ func TestDownloadRun_TarBrFormat(t *testing.T) {
 	require.NoError(t, err)
 	instanceID := int(instanceID64)
 
-	run := createTestBackupRun(t, db, instanceID)
+	run := createTestBackupRun(t, db, dataDir, instanceID)
 	createTestTorrentFiles(t, dataDir)
 
 	req := newRequestWithParamsAndQuery(http.MethodGet, fmt.Sprintf("/api/instances/%d/backups/runs/%d/download", instanceID, run.ID), map[string]string{
@@ -508,7 +508,7 @@ func TestDownloadRun_TarXzFormat(t *testing.T) {
 	require.NoError(t, err)
 	instanceID := int(instanceID64)
 
-	run := createTestBackupRun(t, db, instanceID)
+	run := createTestBackupRun(t, db, dataDir, instanceID)
 	createTestTorrentFiles(t, dataDir)
 
 	req := newRequestWithParamsAndQuery(http.MethodGet, fmt.Sprintf("/api/instances/%d/backups/runs/%d/download", instanceID, run.ID), map[string]string{
@@ -558,7 +558,7 @@ func TestDownloadRun_TarFormat(t *testing.T) {
 	require.NoError(t, err)
 	instanceID := int(instanceID64)
 
-	run := createTestBackupRun(t, db, instanceID)
+	run := createTestBackupRun(t, db, dataDir, instanceID)
 	createTestTorrentFiles(t, dataDir)
 
 	req := newRequestWithParamsAndQuery(http.MethodGet, fmt.Sprintf("/api/instances/%d/backups/runs/%d/download", instanceID, run.ID), map[string]string{
@@ -605,7 +605,7 @@ func TestDownloadRun_DefaultFormat(t *testing.T) {
 	require.NoError(t, err)
 	instanceID := int(instanceID64)
 
-	run := createTestBackupRun(t, db, instanceID)
+	run := createTestBackupRun(t, db, dataDir, instanceID)
 	createTestTorrentFiles(t, dataDir)
 
 	// Test without format parameter (should default to zip)
