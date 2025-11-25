@@ -424,6 +424,15 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 		contentType = "application/x-tar"
 		extension = "tar"
 	}
+
+	// Marshal manifest BEFORE setting headers or creating writers
+	// This ensures any marshal error can be reported properly via RespondError
+	manifestData, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		RespondError(w, http.StatusInternalServerError, "Failed to marshal manifest")
+		return
+	}
+
 	filename := fmt.Sprintf("qui-backup_instance-%d_%s_%s.%s", instanceID, strings.ToLower(string(run.Kind)), run.RequestedAt.Format("2006-01-02_15-04-05"), extension)
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
@@ -434,12 +443,6 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 		defer zipWriter.Close()
 
 		// Add manifest to zip
-		manifestData, err := json.MarshalIndent(manifest, "", "  ")
-		if err != nil {
-			RespondError(w, http.StatusInternalServerError, "Failed to marshal manifest")
-			return
-		}
-
 		manifestHeader := &zip.FileHeader{
 			Name:   "manifest.json",
 			Method: zip.Deflate,
@@ -528,12 +531,6 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 		defer tarWriter.Close()
 
 		// Add manifest to tar
-		manifestData, err := json.MarshalIndent(manifest, "", "  ")
-		if err != nil {
-			RespondError(w, http.StatusInternalServerError, "Failed to marshal manifest")
-			return
-		}
-
 		manifestHeader := &tar.Header{
 			Name:    "manifest.json",
 			Size:    int64(len(manifestData)),
