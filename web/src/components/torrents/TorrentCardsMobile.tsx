@@ -1171,7 +1171,7 @@ export function TorrentCardsMobile({
     categories,
     tags,
     stats,
-    useSubcategories: backendUseSubcategories,
+    useSubcategories: subcategoriesFromData,
 
     isLoading,
     isLoadingMore,
@@ -1188,17 +1188,19 @@ export function TorrentCardsMobile({
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
   const supportsTorrentCreation = capabilities?.supportsTorrentCreation ?? true
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
+  // subcategoriesFromData reflects backend/server state; allowSubcategories
+  // additionally respects user preferences for UI surfaces like dialogs.
   const allowSubcategories = Boolean(
-    supportsSubcategories && (preferences?.use_subcategories ?? false)
+    supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false)
   )
 
   // Call the callback when filtered data updates
   useEffect(() => {
     if (onFilteredDataUpdate && torrents && totalCount !== undefined && !isLoading) {
-      onFilteredDataUpdate(torrents, totalCount, counts, categories, tags, backendUseSubcategories)
+      onFilteredDataUpdate(torrents, totalCount, counts, categories, tags, subcategoriesFromData)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalCount, isLoading, torrents.length, counts, categories, tags, backendUseSubcategories, onFilteredDataUpdate]) // Update when data changes
+  }, [totalCount, isLoading, torrents.length, counts, categories, tags, subcategoriesFromData, onFilteredDataUpdate]) // Update when data changes
 
   // Calculate the effective selection count for display
   const effectiveSelectionCount = useMemo(() => {
