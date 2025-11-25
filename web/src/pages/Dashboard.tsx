@@ -833,6 +833,15 @@ function TrackerIconImage({ tracker, trackerIcons }: TrackerIconImageProps) {
 type TrackerSortColumn = "tracker" | "uploaded" | "downloaded" | "ratio" | "count" | "performance"
 type SortDirection = "asc" | "desc"
 
+function SortIcon({ column, sortColumn, sortDirection }: { column: TrackerSortColumn; sortColumn: TrackerSortColumn; sortDirection: SortDirection }) {
+  if (sortColumn !== column) {
+    return <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />
+  }
+  return sortDirection === "asc"
+    ? <ArrowUp className="h-3 w-3" />
+    : <ArrowDown className="h-3 w-3" />
+}
+
 function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats[] }) {
   const [accordionValue, setAccordionValue] = usePersistedAccordionState("qui-tracker-breakdown-accordion")
   const { data: trackerIcons } = useTrackerIcons()
@@ -923,15 +932,6 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
       setSortColumn(column)
       setSortDirection(column === "tracker" ? "asc" : "desc")
     }
-  }
-
-  const SortIcon = ({ column }: { column: TrackerSortColumn }) => {
-    if (sortColumn !== column) {
-      return <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />
-    }
-    return sortDirection === "asc"
-      ? <ArrowUp className="h-3 w-3" />
-      : <ArrowDown className="h-3 w-3" />
   }
 
   // format performance as GiB/t consistently
@@ -1071,7 +1071,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                     className="flex items-center gap-1.5 hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
                   >
                     Tracker
-                    <SortIcon column="tracker" />
+                    <SortIcon column="tracker" sortColumn={sortColumn} sortDirection={sortDirection} />
                   </button>
                 </TableHead>
                 <TableHead className="text-right">
@@ -1080,7 +1080,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                     className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
                   >
                     Uploaded
-                    <SortIcon column="uploaded" />
+                    <SortIcon column="uploaded" sortColumn={sortColumn} sortDirection={sortDirection} />
                   </button>
                 </TableHead>
                 <TableHead className="text-right">
@@ -1089,7 +1089,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                     className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
                   >
                     Downloaded
-                    <SortIcon column="downloaded" />
+                    <SortIcon column="downloaded" sortColumn={sortColumn} sortDirection={sortDirection} />
                   </button>
                 </TableHead>
                 <TableHead className="text-right">
@@ -1098,7 +1098,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                     className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
                   >
                     Ratio
-                    <SortIcon column="ratio" />
+                    <SortIcon column="ratio" sortColumn={sortColumn} sortDirection={sortDirection} />
                   </button>
                 </TableHead>
                 <TableHead className="text-right">
@@ -1107,7 +1107,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                     className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
                   >
                     Torrents
-                    <SortIcon column="count" />
+                    <SortIcon column="count" sortColumn={sortColumn} sortDirection={sortDirection} />
                   </button>
                 </TableHead>
                 <TableHead className="text-right hidden lg:table-cell">
@@ -1119,7 +1119,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                       >
                         Performance
                         <Info className="h-3.5 w-3.5 text-muted-foreground" />
-                        <SortIcon column="performance" />
+                        <SortIcon column="performance" sortColumn={sortColumn} sortDirection={sortDirection} />
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="top">
