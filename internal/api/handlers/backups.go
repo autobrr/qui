@@ -565,7 +565,6 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 				// Skip missing files
 				continue
 			}
-			defer file.Close()
 
 			stat, err := file.Stat()
 			if err != nil {
@@ -593,16 +592,7 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 
 			file.Close()
 		}
-
-		// Close writers
-		if err := tarWriter.Close(); err != nil {
-			log.Error().Err(err).Int64("runID", runID).Msg("Failed to finalize tar")
-			return
-		}
-		if err := compressor.Close(); err != nil {
-			log.Error().Err(err).Int64("runID", runID).Msg("Failed to finalize compression")
-			return
-		}
+		// tarWriter and compressor are closed by defers
 	}
 }
 
