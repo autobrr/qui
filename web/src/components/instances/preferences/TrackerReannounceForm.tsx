@@ -14,6 +14,7 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { buildCategoryTree, type CategoryNode } from "@/components/torrents/CategoryTree"
 import { useInstances } from "@/hooks/useInstances"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { api } from "@/lib/api"
@@ -87,12 +88,24 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
 
   const categoryOptions: Option[] = useMemo(() => {
     if (!categoriesQuery.data) return []
-    return Object.values(categoriesQuery.data)
-      .map((category) => ({
-        label: category.name,
-        value: category.name,
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }))
+
+    // Build tree and flatten with level info for indentation
+    const tree = buildCategoryTree(categoriesQuery.data, {})
+    const flattened: Option[] = []
+
+    const visitNodes = (nodes: CategoryNode[]) => {
+      for (const node of nodes) {
+        flattened.push({
+          label: node.displayName,
+          value: node.name,
+          level: node.level,
+        })
+        visitNodes(node.children)
+      }
+    }
+
+    visitNodes(tree)
+    return flattened
   }, [categoriesQuery.data])
 
   const tagOptions: Option[] = useMemo(() => {
