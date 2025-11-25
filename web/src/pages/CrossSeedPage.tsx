@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { buildCategoryTree, type CategoryNode } from "@/components/torrents/CategoryTree"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -677,22 +678,37 @@ export function CrossSeedPage() {
     [enabledIndexers]
   )
 
-  const searchCategoryNames = useMemo(() => {
-    if (!searchMetadata?.categories) return [] as string[]
-    return Object.keys(searchMetadata.categories).sort()
-  }, [searchMetadata])
-
   const searchTagNames = useMemo(() => searchMetadata?.tags ?? [], [searchMetadata])
 
   const searchCategorySelectOptions = useMemo(
     () => {
-      const extras = searchCategories.filter(category => !searchCategoryNames.includes(category))
-      return Array.from(new Set([...searchCategoryNames, ...extras])).map(category => ({
-        label: category,
-        value: category,
-      }))
+      // Build tree from available categories for indentation
+      const categories = searchMetadata?.categories ?? {}
+      const tree = buildCategoryTree(categories, {})
+      const flattened: { label: string; value: string; level: number }[] = []
+
+      const visitNodes = (nodes: CategoryNode[]) => {
+        for (const node of nodes) {
+          flattened.push({
+            label: node.displayName,
+            value: node.name,
+            level: node.level,
+          })
+          visitNodes(node.children)
+        }
+      }
+
+      visitNodes(tree)
+
+      // Add any extra categories that were manually typed but not in the list
+      const extras = searchCategories.filter(category => !flattened.some(opt => opt.value === category))
+      for (const extra of extras) {
+        flattened.push({ label: extra, value: extra, level: 0 })
+      }
+
+      return flattened
     },
-    [searchCategories, searchCategoryNames]
+    [searchCategories, searchMetadata?.categories]
   )
 
   const searchTagSelectOptions = useMemo(

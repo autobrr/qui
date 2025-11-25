@@ -36,7 +36,7 @@ import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
-import { Archive, ChevronsUpDown, Download, FileEdit, FunnelPlus, FunnelX, GitBranch, HardDrive, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Rss, Search, SearchCode, Server, Settings, X } from "lucide-react"
+import { Archive, ChevronsUpDown, Download, FileEdit, FunnelPlus, FunnelX, GitBranch, HardDrive, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Rss, Search, SearchCode, Server, Settings, Wrench, X } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 
@@ -506,6 +506,15 @@ export function Header({
                 >
                   <GitBranch className="mr-2 h-4 w-4" />
                   Cross-Seed
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link
+                  to="/services"
+                  className="flex cursor-pointer"
+                >
+                  <Wrench className="mr-2 h-4 w-4" />
+                  Services
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>

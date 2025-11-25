@@ -9,6 +9,7 @@ import * as React from "react"
 export interface Option {
   label: string
   value: string
+  level?: number
 }
 
 interface MultiSelectProps {
@@ -152,7 +153,12 @@ export function MultiSelect({
                       selected.includes(option.value) ? "opacity-100" : "opacity-0"
                     )}
                   />
-                  <span className="truncate">{option.label}</span>
+                  <span
+                    className="truncate"
+                    style={option.level ? { paddingLeft: option.level * 12 } : undefined}
+                  >
+                    {option.label}
+                  </span>
                 </CommandItem>
               ))}
             </CommandGroup>

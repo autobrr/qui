@@ -263,6 +263,7 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 
 	now := s.currentTime()
 	instJobs := s.j[instanceID]
+	debounceWindow := s.effectiveDebounceWindow(settings)
 
 	var result []MonitoredTorrent
 	for _, torrent := range torrents {
@@ -286,7 +287,7 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 			if job, ok := instJobs[hashUpper]; ok {
 				if job.isRunning {
 					state = MonitoredTorrentStateReannouncing
-				} else if !job.lastCompleted.IsZero() && now.Sub(job.lastCompleted) < s.cfg.DebounceWindow {
+				} else if !job.lastCompleted.IsZero() && now.Sub(job.lastCompleted) < debounceWindow {
 					state = MonitoredTorrentStateCooldown
 				}
 			}
@@ -296,7 +297,7 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 
 		result = append(result, MonitoredTorrent{
 			InstanceID:        instanceID,
-			Hash:              strings.ToLower(hashUpper),
+			Hash:              hashUpper,
 			TorrentName:       torrent.Name,
 			Trackers:          trackers,
 			TimeActiveSeconds: torrent.TimeActive,
@@ -341,13 +342,17 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 		return true
 	}
 
-	// Check debounce window if Aggressive mode is disabled
 	settings := s.getSettings(baseCtx, instanceID)
 	isAggressive := settings != nil && settings.Aggressive
+	debounceWindow := s.effectiveDebounceWindow(settings)
 
-	if !isAggressive && !job.lastCompleted.IsZero() {
-		if elapsed := now.Sub(job.lastCompleted); elapsed < s.cfg.DebounceWindow {
-			s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, "debounced during cooldown window")
+	if !job.lastCompleted.IsZero() && debounceWindow > 0 {
+		if elapsed := now.Sub(job.lastCompleted); elapsed < debounceWindow {
+			reason := "debounced during cooldown window"
+			if isAggressive {
+				reason = "debounced during retry interval window"
+			}
+			s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, reason)
 			return true
 		}
 	}
@@ -524,6 +529,10 @@ func (s *Service) torrentMeetsCriteria(torrent qbt.Torrent, settings *models.Ins
 	}
 
 	if settings.MaxAgeSeconds > 0 && torrent.TimeActive > int64(settings.MaxAgeSeconds) {
+		return false
+	}
+
+	if settings.InitialWaitSeconds > 0 && torrent.TimeActive < int64(settings.InitialWaitSeconds) {
 		return false
 	}
 
@@ -800,6 +809,17 @@ func (s *Service) currentTime() time.Time {
 		return s.now()
 	}
 	return time.Now()
+}
+
+// effectiveDebounceWindow returns the debounce duration to use for cooldown checks.
+// aggressive mode uses the retry interval; otherwise the global debounce window applies.
+func (s *Service) effectiveDebounceWindow(settings *models.InstanceReannounceSettings) time.Duration {
+	if settings != nil && settings.Aggressive {
+		if interval := time.Duration(settings.ReannounceIntervalSeconds) * time.Second; interval > 0 {
+			return interval
+		}
+	}
+	return s.cfg.DebounceWindow
 }
 
 func (s *Service) extractTrackerDomain(trackerURL string) string {

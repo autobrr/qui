@@ -14,6 +14,7 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { buildCategoryTree, type CategoryNode } from "@/components/torrents/CategoryTree"
 import { useInstances } from "@/hooks/useInstances"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { api } from "@/lib/api"
@@ -87,12 +88,24 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
 
   const categoryOptions: Option[] = useMemo(() => {
     if (!categoriesQuery.data) return []
-    return Object.values(categoriesQuery.data)
-      .map((category) => ({
-        label: category.name,
-        value: category.name,
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }))
+
+    // Build tree and flatten with level info for indentation
+    const tree = buildCategoryTree(categoriesQuery.data, {})
+    const flattened: Option[] = []
+
+    const visitNodes = (nodes: CategoryNode[]) => {
+      for (const node of nodes) {
+        flattened.push({
+          label: node.displayName,
+          value: node.name,
+          level: node.level,
+        })
+        visitNodes(node.children)
+      }
+    }
+
+    visitNodes(tree)
+    return flattened
   }, [categoriesQuery.data])
 
   const tagOptions: Option[] = useMemo(() => {
@@ -121,14 +134,13 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
     })
   }
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const persistSettings = (nextSettings: InstanceReannounceSettings, successMessage = "Settings saved successfully.") => {
     if (!instance) {
       toast.error("Instance missing", { description: "Please close and reopen the dialog." })
       return
     }
-    const sanitized = sanitizeSettings(settings)
 
+    const sanitized = sanitizeSettings(nextSettings)
     const payload: Partial<InstanceFormData> = {
       name: instance.name,
       host: instance.host,
@@ -145,7 +157,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
       { id: instanceId, data: payload },
       {
         onSuccess: () => {
-          toast.success("Tracker monitoring updated", { description: "Settings saved successfully." })
+          toast.success("Tracker monitoring updated", { description: successMessage })
           onSuccess?.()
         },
         onError: (error) => {
@@ -153,6 +165,20 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
         },
       },
     )
+  }
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    persistSettings(settings)
+  }
+
+  const handleToggleEnabled = (enabled: boolean) => {
+    const nextSettings = { ...settings, enabled }
+    setSettings(nextSettings)
+
+    if (!enabled) {
+      persistSettings(nextSettings, "Monitoring disabled")
+    }
   }
 
   const activityQuery = useQuery({
@@ -189,30 +215,41 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
 
   return (
     <form onSubmit={handleSubmit}>
-      <Card className="w-full border-none shadow-none bg-transparent p-0">
-        <CardHeader className="px-0 pt-0 pb-0 space-y-4">
-          <div className="flex items-start justify-between gap-4">
+      <Card className="w-full">
+        <CardHeader className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
             <div className="space-y-1">
-              <CardTitle className="text-lg font-semibold">Automatic Tracker Reannounce</CardTitle>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-lg font-semibold">Automatic Tracker Reannounce</CardTitle>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-[300px]">
+                    <p>qBittorrent doesn't retry failed announces quickly. When a tracker is slow to register a new upload or returns an error, you may be stuck waiting. qui handles this automatically while never spamming trackers.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <CardDescription>
                 qui monitors <strong>stalled</strong> torrents and reannounces them if trackers report "unregistered" or errors.
                 Background scan runs every {GLOBAL_SCAN_INTERVAL_SECONDS} seconds.
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2 bg-muted/40 p-2 rounded-lg border border-border/40">
+            <div className="flex items-center gap-2 bg-muted/40 p-2 rounded-lg border border-border/40 shrink-0">
               <Label htmlFor="tracker-monitoring" className="font-medium text-sm cursor-pointer">
                 {settings.enabled ? "Enabled" : "Disabled"}
               </Label>
               <Switch
                 id="tracker-monitoring"
                 checked={settings.enabled}
-                onCheckedChange={(enabled) => setSettings((prev) => ({ ...prev, enabled }))}
+                onCheckedChange={handleToggleEnabled}
+                disabled={isUpdating}
               />
             </div>
           </div>
         </CardHeader>
 
-        <CardContent className="px-0 pb-0">
+        <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <div className="flex items-center justify-between mb-4">
               <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
@@ -244,7 +281,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                         id="reannounce-interval"
                         label="Retry Interval"
                         description="Seconds between retries"
-                        tooltip="How often to retry inside a single reannounce attempt (up to 3 tries). Aggressive Mode only removes the 2-minute cooldown between scans; this interval still applies. Minimum 5 seconds."
+                        tooltip="How often to retry inside a single reannounce attempt (up to 3 tries). With Quick Retry enabled, this also becomes the cooldown between scans. Minimum 5 seconds."
                         min={MIN_INTERVAL}
                         value={settings.reannounceIntervalSeconds}
                         onChange={(value) => setSettings((prev) => ({ ...prev, reannounceIntervalSeconds: value }))}
@@ -263,26 +300,22 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                     <div className="flex items-center justify-between rounded-lg border border-border/60 p-3 bg-muted/20">
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-2">
-                          <Label htmlFor="aggressive-mode" className="text-base">Aggressive Mode</Label>
+                          <Label htmlFor="quick-retry" className="text-base">Quick Retry</Label>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Info className="h-4 w-4 text-muted-foreground cursor-help" />
                             </TooltipTrigger>
                             <TooltipContent className="max-w-[300px]">
-                              <p>
-                                Normally, we wait 2 minutes between attempts to be polite. 
-                                Enable this to skip that cooldown and let the next 7s scan retry immediately if the torrent is still stalled. 
-                                Per-torrent retries inside each attempt still follow the Retry Interval.
-                              </p>
+                              <p>Use the Retry Interval as the cooldown between scans instead of the default 2 minutes. Useful on trackers that are slow to register new uploads. qui always waits while a tracker is updating and never spams.</p>
                             </TooltipContent>
                           </Tooltip>
                         </div>
                         <p className="text-sm text-muted-foreground">
-                          Skip the 2-minute cooldown between scans (Retry Interval still applies)
+                          Use Retry Interval for cooldown instead of 2 minutes
                         </p>
                       </div>
                       <Switch
-                        id="aggressive-mode"
+                        id="quick-retry"
                         checked={settings.aggressive}
                         onCheckedChange={(aggressive) => setSettings((prev) => ({ ...prev, aggressive }))}
                       />
@@ -485,7 +518,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                     <p className="text-sm text-muted-foreground">Loading activity...</p>
                  </div>
               ) : activityEvents.length === 0 ? (
-                <div className="h-[300px] flex flex-col items-center justify-center border rounded-lg bg-muted/10 text-center p-6">
+                <div className="h-[300px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/10 text-center p-6">
                   <p className="text-sm text-muted-foreground">No activity recorded yet.</p>
                   {activityEnabled && (
                     <p className="text-xs text-muted-foreground/60 mt-1">

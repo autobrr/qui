@@ -100,7 +100,7 @@ import type {
   TorrentFilters
 } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useSearch } from "@tanstack/react-router"
+import { useNavigate, useSearch } from "@tanstack/react-router"
 import {
   ArrowUpDown,
   Ban,
@@ -652,7 +652,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Instance preferences dialog state
   const [preferencesOpen, setPreferencesOpen] = useState(false)
-  const [preferencesDefaultTab, setPreferencesDefaultTab] = useState<string>("speed")
 
   // Filter lifecycle state machine to replace fragile timing-based coordination
   type FilterLifecycleState = 'idle' | 'clearing-all' | 'clearing-columns-only' | 'cleared'
@@ -877,6 +876,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Debounce search to prevent excessive filtering (200ms delay for faster response)
   const debouncedSearch = useDebounce(globalFilter, 200)
   const routeSearch = useSearch({ strict: false }) as { q?: string }
+  const navigate = useNavigate()
   const rawRouteSearch = typeof routeSearch?.q === "string" ? routeSearch.q : ""
   const searchFromRoute = rawRouteSearch.trim()
 
@@ -2801,8 +2801,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       onClick={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
-                        setPreferencesDefaultTab("reannounce")
-                        setPreferencesOpen(true)
+                        void navigate({
+                          to: "/services",
+                          search: { instanceId: String(instanceId) },
+                        })
                       }}
                       className="h-6 w-6 text-muted-foreground hover:text-accent-foreground"
                     >
@@ -3073,7 +3075,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           onOpenChange={setPreferencesOpen}
           instanceId={instanceId}
           instanceName={instance.name}
-          defaultTab={preferencesDefaultTab}
         />
       )}
 

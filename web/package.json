@@ -68,6 +68,7 @@
     "@eslint/js": "^9.38.0",
     "@stylistic/eslint-plugin": "^5.4.0",
     "@tailwindcss/vite": "^4.1.14",
+    "@tanstack/router-cli": "^1.133.10",
     "@types/culori": "^4.0.1",
     "@types/node": "^24.8.1",
     "@types/parse-torrent": "^5.8.7",
