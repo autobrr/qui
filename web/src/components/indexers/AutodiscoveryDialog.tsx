@@ -29,7 +29,7 @@ interface AutodiscoveryDialogProps {
 export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps) {
   const [step, setStep] = useState<'input' | 'select'>('input')
   const [loading, setLoading] = useState(false)
-  const [baseUrl, setBaseUrl] = useState('http://localhost:9117')
+  const [baseUrl, setBaseUrl] = useState('http://localhost:9696')
   const [baseUrlError, setBaseUrlError] = useState<string | null>(null)
   const [apiKey, setApiKey] = useState('')
   const [discoveredIndexers, setDiscoveredIndexers] = useState<JackettIndexer[]>([])
@@ -185,7 +185,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
 
   const handleClose = () => {
     setStep('input')
-    setBaseUrl('http://localhost:9117')
+    setBaseUrl('http://localhost:9696')
     setBaseUrlError(null)
     setApiKey('')
     setDiscoveredIndexers([])
@@ -220,7 +220,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
                       setBaseUrlError(null)
                     }
                   }}
-                  placeholder="http://localhost:9117"
+                  placeholder="http://localhost:9696"
                   className={baseUrlError ? 'border-destructive focus-visible:ring-destructive' : undefined}
                   aria-invalid={baseUrlError ? 'true' : 'false'}
                   required
@@ -231,7 +231,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
                   </p>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  Jackett defaults to http://localhost:9117, Prowlarr to http://localhost:9696.
+                  Prowlarr defaults to http://localhost:9696, Jackett to http://localhost:9117.
                 </p>
               </div>
               <div className="grid gap-2">

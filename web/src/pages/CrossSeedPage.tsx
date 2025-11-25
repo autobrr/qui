@@ -51,7 +51,6 @@ interface AutomationFormState {
   enabled: boolean
   runIntervalMinutes: number  // RSS Automation: interval between RSS feed polls (min: 30 minutes)
   startPaused: boolean
-  category: string
   tags: string[]
   targetInstanceIds: number[]
   targetIndexerIds: number[]
@@ -85,7 +84,6 @@ const DEFAULT_AUTOMATION_FORM: AutomationFormState = {
   enabled: false,
   runIntervalMinutes: DEFAULT_RSS_INTERVAL_MINUTES,
   startPaused: true,
-  category: "",
   tags: [],
   targetInstanceIds: [],
   targetIndexerIds: [],
@@ -321,7 +319,6 @@ export function CrossSeedPage() {
         enabled: settings.enabled,
         runIntervalMinutes: settings.runIntervalMinutes,
         startPaused: settings.startPaused,
-        category: settings.category ?? "",
         tags: settings.tags ?? [],
         targetInstanceIds: settings.targetInstanceIds,
         targetIndexerIds: settings.targetIndexerIds,
@@ -402,7 +399,6 @@ export function CrossSeedPage() {
           enabled: settings.enabled,
           runIntervalMinutes: settings.runIntervalMinutes,
           startPaused: settings.startPaused,
-          category: settings.category ?? "",
           tags: settings.tags ?? [],
           targetInstanceIds: settings.targetInstanceIds,
           targetIndexerIds: settings.targetIndexerIds,
@@ -412,7 +408,6 @@ export function CrossSeedPage() {
       enabled: automationSource.enabled,
       runIntervalMinutes: automationSource.runIntervalMinutes,
       startPaused: automationSource.startPaused,
-      category: automationSource.category.trim() || null,
       tags: normalizeStringList(automationSource.tags),
       targetInstanceIds: automationSource.targetInstanceIds,
       targetIndexerIds: automationSource.targetIndexerIds,
@@ -1026,36 +1021,8 @@ export function CrossSeedPage() {
             </div>
           </div>
 
-          <div className="grid gap-5 md:grid-cols-2">
+          <div className="grid gap-5 md:grid-cols-1">
             <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Label htmlFor="automation-category">Category</Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        className="text-muted-foreground hover:text-foreground"
-                        aria-label="Category help"
-                      >
-                        <Info className="h-4 w-4" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent align="start" className="max-w-xs text-xs">
-                      Leave this blank to reuse the matched torrent&apos;s category. Only set it when every automated add should force a specific qBittorrent category.
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-                <Input
-                  id="automation-category"
-                  placeholder="Optional"
-                  value={automationForm.category}
-                  onChange={event => setAutomationForm(prev => ({ ...prev, category: event.target.value }))}
-                />
-                 <p className="text-xs text-muted-foreground">
-                  Best to leave this blank, unless you have a plan.
-                </p>
-              </div>
-              <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Label htmlFor="automation-tags">Tags</Label>
                   <Tooltip>
