@@ -41,7 +41,6 @@ type TrackerRulePayload struct {
 	DownloadLimitKiB        *int64   `json:"downloadLimitKiB"`
 	RatioLimit              *float64 `json:"ratioLimit"`
 	SeedingTimeLimitMinutes *int64   `json:"seedingTimeLimitMinutes"`
-	IsDefault               bool     `json:"isDefault"`
 	Enabled                 *bool    `json:"enabled"`
 	SortOrder               *int     `json:"sortOrder"`
 }
@@ -65,7 +64,6 @@ func (p *TrackerRulePayload) toModel(instanceID int, id int) *models.TrackerRule
 		DownloadLimitKiB:        p.DownloadLimitKiB,
 		RatioLimit:              p.RatioLimit,
 		SeedingTimeLimitMinutes: p.SeedingTimeLimitMinutes,
-		IsDefault:               p.IsDefault,
 		Enabled:                 true,
 	}
 	if p.Enabled != nil {
@@ -110,8 +108,8 @@ func (h *TrackerRuleHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(normalizeTrackerDomains(payload.TrackerDomains)) == 0 && strings.TrimSpace(payload.TrackerPattern) == "" && !payload.IsDefault {
-		RespondError(w, http.StatusBadRequest, "Select at least one tracker (or mark as default)")
+	if len(normalizeTrackerDomains(payload.TrackerDomains)) == 0 && strings.TrimSpace(payload.TrackerPattern) == "" {
+		RespondError(w, http.StatusBadRequest, "Select at least one tracker")
 		return
 	}
 
@@ -149,8 +147,8 @@ func (h *TrackerRuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(normalizeTrackerDomains(payload.TrackerDomains)) == 0 && strings.TrimSpace(payload.TrackerPattern) == "" && !payload.IsDefault {
-		RespondError(w, http.StatusBadRequest, "Select at least one tracker (or mark as default)")
+	if len(normalizeTrackerDomains(payload.TrackerDomains)) == 0 && strings.TrimSpace(payload.TrackerPattern) == "" {
+		RespondError(w, http.StatusBadRequest, "Select at least one tracker")
 		return
 	}
 

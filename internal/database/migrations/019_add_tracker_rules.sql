@@ -12,7 +12,6 @@ CREATE TABLE IF NOT EXISTS tracker_rules (
     download_limit_kib INTEGER,
     ratio_limit REAL,
     seeding_time_limit_minutes INTEGER,
-    is_default INTEGER NOT NULL DEFAULT 0,
     enabled INTEGER NOT NULL DEFAULT 1,
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -20,7 +19,6 @@ CREATE TABLE IF NOT EXISTS tracker_rules (
 );
 
 CREATE INDEX IF NOT EXISTS idx_tracker_rules_instance ON tracker_rules(instance_id, sort_order, id);
-CREATE INDEX IF NOT EXISTS idx_tracker_rules_default ON tracker_rules(instance_id, is_default);
 
 CREATE TRIGGER IF NOT EXISTS trg_tracker_rules_updated
 AFTER UPDATE ON tracker_rules

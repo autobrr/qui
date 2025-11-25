@@ -256,6 +256,9 @@ func selectRule(torrent qbt.Torrent, rules []*models.TrackerRule, sm *qbittorren
 	trackerDomains := collectTrackerDomains(torrent, sm)
 
 	for _, rule := range rules {
+		if !rule.Enabled {
+			continue
+		}
 		if !matchesTracker(rule.TrackerPattern, trackerDomains) {
 			continue
 		}
@@ -270,12 +273,6 @@ func selectRule(torrent qbt.Torrent, rules []*models.TrackerRule, sm *qbittorren
 			}
 		}
 		return rule
-	}
-
-	for _, rule := range rules {
-		if rule.IsDefault {
-			return rule
-		}
 	}
 
 	return nil

@@ -97,7 +97,6 @@ export interface TrackerRule {
   downloadLimitKiB?: number
   ratioLimit?: number
   seedingTimeLimitMinutes?: number
-  isDefault: boolean
   enabled: boolean
   sortOrder: number
   createdAt?: string
@@ -114,7 +113,6 @@ export interface TrackerRuleInput {
   downloadLimitKiB?: number
   ratioLimit?: number
   seedingTimeLimitMinutes?: number
-  isDefault?: boolean
   enabled?: boolean
   sortOrder?: number
 }

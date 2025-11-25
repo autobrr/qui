@@ -36,7 +36,7 @@ A fast, modern web interface for qBittorrent. Supports managing multiple qBittor
 - **OIDC Single Sign-On**: Authenticate through your OpenID Connect provider
 - **External Programs**: Launch custom scripts from the torrent context menu ([guide](internal/api/handlers/EXTERNAL_PROGRAMS.md))
 - **Tracker Reannounce**: Automatically fix stalled torrents when qBittorrent doesn't retry fast enough ([info](internal/services/reannounce/REANNOUNCE.md))
-- **Tracker Rules**: Apply per-tracker speed limits, ratio caps, and seeding time limits automatically
+- **Tracker Rules**: Apply per-tracker speed limits, ratio caps, and seeding time limits automatically ([info](internal/services/trackerrules/TRACKER_RULES.md))
 
 
 

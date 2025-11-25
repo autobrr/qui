@@ -44,7 +44,6 @@ const emptyFormState: FormState = {
   downloadLimitKiB: undefined,
   ratioLimit: undefined,
   seedingTimeLimitMinutes: undefined,
-  isDefault: false,
   enabled: true,
 }
 
@@ -148,7 +147,6 @@ export function TrackerRulesPanel({ instanceId }: TrackerRulesPanelProps) {
       downloadLimitKiB: rule.downloadLimitKiB,
       ratioLimit: rule.ratioLimit,
       seedingTimeLimitMinutes: rule.seedingTimeLimitMinutes,
-      isDefault: rule.isDefault,
       enabled: rule.enabled,
       sortOrder: rule.sortOrder,
     })
@@ -175,8 +173,8 @@ export function TrackerRulesPanel({ instanceId }: TrackerRulesPanelProps) {
       return
     }
     const selectedTrackers = formState.trackerDomains.filter(Boolean)
-    if (!formState.isDefault && selectedTrackers.length === 0) {
-      toast.error("Select at least one tracker or mark as default")
+    if (selectedTrackers.length === 0) {
+      toast.error("Select at least one tracker")
       return
     }
     const payload: FormState = {
@@ -278,11 +276,6 @@ export function TrackerRulesPanel({ instanceId }: TrackerRulesPanelProps) {
                             className="shrink-0"
                           />
                           <span className={cn("font-medium truncate", !rule.enabled && "text-muted-foreground")}>{rule.name}</span>
-                          {rule.isDefault && (
-                            <Badge variant="secondary" className="shrink-0">
-                              Default
-                            </Badge>
-                          )}
                           {!rule.enabled && (
                             <Badge variant="outline" className="shrink-0 text-muted-foreground">
                               Disabled
@@ -416,7 +409,7 @@ export function TrackerRulesPanel({ instanceId }: TrackerRulesPanelProps) {
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-1">
               <div className="flex items-center justify-between rounded-lg border p-3">
                 <div>
                   <Label htmlFor="rule-enabled">Enabled</Label>
@@ -426,17 +419,6 @@ export function TrackerRulesPanel({ instanceId }: TrackerRulesPanelProps) {
                   id="rule-enabled"
                   checked={formState.enabled ?? true}
                   onCheckedChange={(checked) => setFormState(prev => ({ ...prev, enabled: checked }))}
-                />
-              </div>
-              <div className="flex items-center justify-between rounded-lg border p-3">
-                <div>
-                  <Label htmlFor="rule-default">Default rule</Label>
-                  <p className="text-sm text-muted-foreground">Applies when no other rule matches.</p>
-                </div>
-                <Switch
-                  id="rule-default"
-                  checked={formState.isDefault ?? false}
-                  onCheckedChange={(checked) => setFormState(prev => ({ ...prev, isDefault: checked }))}
                 />
               </div>
             </div>
