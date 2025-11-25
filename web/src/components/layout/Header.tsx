@@ -26,6 +26,7 @@ import {
 import { useLayoutRoute } from "@/contexts/LayoutRouteContext"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
+import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
@@ -165,44 +166,7 @@ export function Header({
 
   const supportsTorrentCreation = instanceCapabilities?.supportsTorrentCreation ?? true
 
-  // Cross-seed status for instance indicators
-  const { data: crossSeedStatus } = useQuery({
-    queryKey: ["cross-seed", "status"],
-    queryFn: () => api.getCrossSeedStatus(),
-    refetchInterval: 30_000,
-    staleTime: 10_000,
-  })
-
-  const { data: crossSeedSearchStatus } = useQuery({
-    queryKey: ["cross-seed", "search-status"],
-    queryFn: () => api.getCrossSeedSearchStatus(),
-    refetchInterval: 5_000,
-    staleTime: 3_000,
-  })
-
-  // Derive cross-seed state per instance
-  const crossSeedInstanceState = useMemo(() => {
-    const rssEnabled = crossSeedStatus?.settings?.enabled ?? false
-    const rssRunning = crossSeedStatus?.running ?? false
-    const rssTargetIds = crossSeedStatus?.settings?.targetInstanceIds ?? []
-    const searchRunning = crossSeedSearchStatus?.running ?? false
-    const searchInstanceId = crossSeedSearchStatus?.run?.instanceId
-
-    const state: Record<number, { rssEnabled?: boolean; rssRunning?: boolean; searchRunning?: boolean }> = {}
-
-    for (const id of rssTargetIds) {
-      state[id] = { rssEnabled, rssRunning }
-    }
-
-    if (searchRunning && searchInstanceId) {
-      state[searchInstanceId] = {
-        ...state[searchInstanceId],
-        searchRunning: true,
-      }
-    }
-
-    return state
-  }, [crossSeedStatus, crossSeedSearchStatus])
+  const crossSeedInstanceState = useCrossSeedInstanceState()
 
   return (
     <header className="sticky top-0 z-50 hidden md:flex flex-wrap lg:flex-nowrap items-start lg:items-center justify-between sm:border-b bg-background pl-2 pr-4 md:pl-4 md:pr-4 lg:pl-0 lg:static py-2 lg:py-0 lg:h-16">

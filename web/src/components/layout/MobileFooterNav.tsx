@@ -22,6 +22,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { isThemePremium, themes } from "@/config/themes"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
+import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useHasPremiumAccess } from "@/hooks/useLicense"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
@@ -117,44 +118,7 @@ export function MobileFooterNav() {
     return instances.filter(instance => instance.isActive)
   }, [instances])
 
-  // Cross-seed status for instance indicators
-  const { data: crossSeedStatus } = useQuery({
-    queryKey: ["cross-seed", "status"],
-    queryFn: () => api.getCrossSeedStatus(),
-    refetchInterval: 30_000,
-    staleTime: 10_000,
-  })
-
-  const { data: crossSeedSearchStatus } = useQuery({
-    queryKey: ["cross-seed", "search-status"],
-    queryFn: () => api.getCrossSeedSearchStatus(),
-    refetchInterval: 5_000,
-    staleTime: 3_000,
-  })
-
-  // Derive cross-seed state per instance
-  const crossSeedInstanceState = useMemo(() => {
-    const rssEnabled = crossSeedStatus?.settings?.enabled ?? false
-    const rssRunning = crossSeedStatus?.running ?? false
-    const rssTargetIds = crossSeedStatus?.settings?.targetInstanceIds ?? []
-    const searchRunning = crossSeedSearchStatus?.running ?? false
-    const searchInstanceId = crossSeedSearchStatus?.run?.instanceId
-
-    const state: Record<number, { rssEnabled?: boolean; rssRunning?: boolean; searchRunning?: boolean }> = {}
-
-    for (const id of rssTargetIds) {
-      state[id] = { rssEnabled, rssRunning }
-    }
-
-    if (searchRunning && searchInstanceId) {
-      state[searchInstanceId] = {
-        ...state[searchInstanceId],
-        searchRunning: true,
-      }
-    }
-
-    return state
-  }, [crossSeedStatus, crossSeedSearchStatus])
+  const crossSeedInstanceState = useCrossSeedInstanceState()
   const isOnInstancePage = location.pathname.startsWith("/instances/")
   const hasMultipleActiveInstances = activeInstances.length > 1
   const singleActiveInstance = activeInstances.length === 1 ? activeInstances[0] : null

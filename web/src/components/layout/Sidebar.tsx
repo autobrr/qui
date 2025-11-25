@@ -10,6 +10,7 @@ import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { UpdateBanner } from "@/components/ui/UpdateBanner"
 import { useAuth } from "@/hooks/useAuth"
+import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useTheme } from "@/hooks/useTheme"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
@@ -30,7 +31,6 @@ import {
   SearchCode,
   Settings
 } from "lucide-react"
-import { useMemo } from "react"
 
 interface NavItem {
   title: string
@@ -80,44 +80,7 @@ export function Sidebar() {
   const activeInstances = instances?.filter(instance => instance.isActive) ?? []
   const hasConfiguredInstances = (instances?.length ?? 0) > 0
 
-  // Cross-seed status for instance indicators
-  const { data: crossSeedStatus } = useQuery({
-    queryKey: ["cross-seed", "status"],
-    queryFn: () => api.getCrossSeedStatus(),
-    refetchInterval: 30_000,
-    staleTime: 10_000,
-  })
-
-  const { data: crossSeedSearchStatus } = useQuery({
-    queryKey: ["cross-seed", "search-status"],
-    queryFn: () => api.getCrossSeedSearchStatus(),
-    refetchInterval: 5_000,
-    staleTime: 3_000,
-  })
-
-  // Derive cross-seed state per instance
-  const crossSeedInstanceState = useMemo(() => {
-    const rssEnabled = crossSeedStatus?.settings?.enabled ?? false
-    const rssRunning = crossSeedStatus?.running ?? false
-    const rssTargetIds = crossSeedStatus?.settings?.targetInstanceIds ?? []
-    const searchRunning = crossSeedSearchStatus?.running ?? false
-    const searchInstanceId = crossSeedSearchStatus?.run?.instanceId
-
-    const state: Record<number, { rssEnabled?: boolean; rssRunning?: boolean; searchRunning?: boolean }> = {}
-
-    for (const id of rssTargetIds) {
-      state[id] = { rssEnabled, rssRunning }
-    }
-
-    if (searchRunning && searchInstanceId) {
-      state[searchInstanceId] = {
-        ...state[searchInstanceId],
-        searchRunning: true,
-      }
-    }
-
-    return state
-  }, [crossSeedStatus, crossSeedSearchStatus])
+  const crossSeedInstanceState = useCrossSeedInstanceState()
 
   const appVersion = getAppVersion()
 
