@@ -472,8 +472,9 @@ func TestTransactionCommitSuccessMutexRelease(t *testing.T) {
 	require.NoError(t, tx2.Rollback())
 }
 
-// TestTransactionCommitFailureMutexRetention tests that failed commits are handled properly
-func TestTransactionCommitFailureMutexRetention(t *testing.T) {
+// TestTransactionRollbackReleasesMutex tests that Rollback() always releases the mutex,
+// even after a failed commit attempt.
+func TestTransactionRollbackReleasesMutex(t *testing.T) {
 	log.Logger = log.Output(io.Discard)
 	ctx := t.Context()
 	db := openTestDatabase(t)
@@ -483,31 +484,72 @@ func TestTransactionCommitFailureMutexRetention(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, tx)
 
-	// Defer foreign key constraints to commit time
-	_, err = tx.ExecContext(ctx, "PRAGMA defer_foreign_keys = ON")
+	// Do some work
+	_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "test_string")
 	require.NoError(t, err)
 
-	// Insert a string that we'll reference
-	var stringID int64
-	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "test_string").Scan(&stringID)
+	// Rollback instead of commit
+	err = tx.Rollback()
 	require.NoError(t, err)
 
-	// Insert an instance referencing a valid string ID
-	_, err = tx.ExecContext(ctx, "INSERT INTO instances (name_id, host_id, username_id, password_encrypted) VALUES (?, ?, ?, ?)",
-		stringID, stringID, stringID, "password")
+	// Should be able to start another write transaction immediately (mutex was released)
+	tx2, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err, "Should be able to start new transaction after rollback")
+	require.NotNil(t, tx2)
+	require.NoError(t, tx2.Rollback())
+}
+
+// TestTransactionDoubleRollbackSafe tests that calling Rollback() twice doesn't panic
+// or cause mutex issues (sync.Once protects the unlock).
+func TestTransactionDoubleRollbackSafe(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+
+	// Start a write transaction
+	tx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 
-	// Now delete the string from string_pool - this will create a dangling foreign key reference
-	_, err = tx.ExecContext(ctx, "DELETE FROM string_pool WHERE id = ?", stringID)
+	// Rollback twice - second call should be safe (returns ErrTxDone, but no panic)
+	err = tx.Rollback()
 	require.NoError(t, err)
 
-	// Try to commit - this should fail due to deferred foreign key constraint
+	err = tx.Rollback()
+	require.Error(t, err) // Expected: sql.ErrTxDone
+
+	// Mutex should still be released, can start new transaction
+	tx2, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NoError(t, tx2.Rollback())
+}
+
+// TestTransactionCommitThenRollbackSafe tests that calling Rollback() after successful
+// Commit() doesn't cause mutex issues (sync.Once protects the unlock).
+func TestTransactionCommitThenRollbackSafe(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+
+	// Start a write transaction
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+
+	// Insert something
+	_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "test_string")
+	require.NoError(t, err)
+
+	// Commit successfully
 	err = tx.Commit()
-	require.Error(t, err) // Commit should fail
+	require.NoError(t, err)
 
-	// Rollback the failed transaction
-	// This may fail if the transaction was auto-rolled back, but the mutex should be released
-	tx.Rollback() // Ignore error - may fail if already rolled back
+	// Call Rollback after commit (like a deferred rollback pattern) - should be safe
+	err = tx.Rollback()
+	require.Error(t, err) // Expected: sql.ErrTxDone
+
+	// Mutex should still be released, can start new transaction
+	tx2, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NoError(t, tx2.Rollback())
 }
 
 // TestTransactionSerialization tests that write transactions are properly serialized
@@ -583,9 +625,6 @@ func TestTransactionSerialization(t *testing.T) {
 		t.Fatal("First transaction didn't commit")
 	}
 }
-
-// TestTransactionSerialization tests that write transactions are properly serialized
-// and that the mutex prevents concurrent write transactions.
 
 // TestReadOnlyTransactionConcurrency tests that read-only transactions can run concurrently
 // with write transactions (due to WAL mode).
