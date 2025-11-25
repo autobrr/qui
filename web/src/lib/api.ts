@@ -373,7 +373,7 @@ class ApiClient {
 
   async importBackupManifest(instanceId: number, manifestFile: File): Promise<BackupRun> {
     const formData = new FormData()
-    formData.append("manifest", manifestFile)
+    formData.append("archive", manifestFile)
 
     const response = await fetch(`${API_BASE}/instances/${instanceId}/backups/import`, {
       method: "POST",

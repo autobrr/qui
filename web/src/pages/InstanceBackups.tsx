@@ -1042,7 +1042,7 @@ export function InstanceBackups() {
                       <ArrowDownToLine className="mr-2 h-4 w-4" /> Run manual backup
                     </Button>
                     <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
-                      <FileText className="mr-2 h-4 w-4" /> Import manifest
+                      <FileText className="mr-2 h-4 w-4" /> Import backup
                     </Button>
                     <Button
                       variant="outline"
@@ -1617,19 +1617,19 @@ export function InstanceBackups() {
         }}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Import backup manifest</DialogTitle>
+              <DialogTitle>Import backup</DialogTitle>
               <DialogDescription>
-                Upload a backup manifest file to import backup metadata into this instance.
-                The manifest should be a JSON file exported from another Qui instance.
+                Upload a backup archive (with torrent files) or manifest.json (metadata only).
+                Archive formats: zip, tar.gz, tar.zst, tar.br, tar.xz, tar.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="manifest-file">Manifest file</Label>
+                <Label htmlFor="manifest-file">Backup file</Label>
                 <Input
                   id="manifest-file"
                   type="file"
-                  accept=".json"
+                  accept=".json,.zip,.tar,.tgz,.zst,.br,.xz,application/json,application/zip,application/x-tar,application/gzip,application/zstd,application/x-brotli,application/x-xz"
                   onChange={(e) => {
                     const file = e.target.files?.[0]
                     setImportFile(file || null)
@@ -1652,11 +1652,11 @@ export function InstanceBackups() {
 
                   try {
                     await importManifest.mutateAsync(importFile)
-                    toast.success("Manifest imported successfully")
+                    toast.success("Backup imported successfully")
                     setImportDialogOpen(false)
                     setImportFile(null)
                   } catch (error) {
-                    toast.error("Failed to import manifest")
+                    toast.error("Failed to import backup")
                     console.error("Import error:", error)
                   }
                 }}

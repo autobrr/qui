@@ -122,10 +122,8 @@ func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager,
 	}
 
 	var jackettService *jackett.Service
-	if jackettSvc != nil {
-		if _, ok := jackettSvc.(*jackett.Service); ok {
-			//jackettService = svc
-		}
+	if svc, ok := jackettSvc.(*jackett.Service); ok {
+		_ = svc // TODO: jackettService = svc when jackett fallback is re-enabled
 	}
 
 	return &Service{
@@ -778,7 +776,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	}, nil
 }
 
-func (s *Service) resolveBasePaths(ctx context.Context, settings *models.BackupSettings, instanceID int) (string, string, error) {
+func (s *Service) resolveBasePaths(ctx context.Context, _ *models.BackupSettings, instanceID int) (string, string, error) {
 	var baseSegment string
 	if name, err := s.store.GetInstanceName(ctx, instanceID); err == nil {
 		if trimmed := strings.TrimSpace(name); trimmed != "" {
@@ -986,7 +984,7 @@ func (s *Service) scheduleDueBackups(ctx context.Context) error {
 			continue
 		}
 
-		evaluate := func(kind models.BackupRunKind, enabled bool, interval time.Duration, monthly bool) {
+		evaluate := func(kind models.BackupRunKind, enabled bool) {
 			if s.isBackupMissed(ctx, cfg.InstanceID, kind, enabled, now) {
 				if _, err := s.QueueRun(ctx, cfg.InstanceID, kind, "scheduler"); err != nil {
 					if !errors.Is(err, ErrInstanceBusy) {
@@ -996,10 +994,10 @@ func (s *Service) scheduleDueBackups(ctx context.Context) error {
 			}
 		}
 
-		evaluate(models.BackupRunKindHourly, cfg.HourlyEnabled, time.Hour, false)
-		evaluate(models.BackupRunKindDaily, cfg.DailyEnabled, 24*time.Hour, false)
-		evaluate(models.BackupRunKindWeekly, cfg.WeeklyEnabled, 7*24*time.Hour, false)
-		evaluate(models.BackupRunKindMonthly, cfg.MonthlyEnabled, 0, true)
+		evaluate(models.BackupRunKindHourly, cfg.HourlyEnabled)
+		evaluate(models.BackupRunKindDaily, cfg.DailyEnabled)
+		evaluate(models.BackupRunKindWeekly, cfg.WeeklyEnabled)
+		evaluate(models.BackupRunKindMonthly, cfg.MonthlyEnabled)
 	}
 
 	return nil
@@ -1067,11 +1065,9 @@ func (s *Service) cleanupRunFiles(ctx context.Context, runIDs []int64) error {
 
 		// Collect items for this run
 		var runItems []*models.BackupItem
-		if items != nil {
-			for _, item := range items {
-				if item.RunID == runID {
-					runItems = append(runItems, item)
-				}
+		for _, item := range items {
+			if item.RunID == runID {
+				runItems = append(runItems, item)
 			}
 		}
 		itemsToCleanup = append(itemsToCleanup, runItems...)
@@ -1233,8 +1229,11 @@ func (s *Service) LoadManifest(ctx context.Context, runID int64) (*Manifest, err
 	return manifest, nil
 }
 
-func (s *Service) ImportManifest(ctx context.Context, instanceID int, manifestData []byte, requestedBy string) (*models.BackupRun, error) {
-	log.Info().Int("instanceID", instanceID).Str("requestedBy", requestedBy).Int("dataSize", len(manifestData)).Str("dataDir", s.cfg.DataDir).Msg("Starting manifest import")
+// ImportManifest imports a backup manifest and optionally torrent files from an archive.
+// archiveFiles is an optional map of archivePath -> torrent file data from an extracted archive.
+// If provided, torrent files will be copied to the blob cache instead of downloading from qBittorrent.
+func (s *Service) ImportManifest(ctx context.Context, instanceID int, manifestData []byte, requestedBy string, archiveFiles map[string][]byte) (*models.BackupRun, error) {
+	log.Info().Int("instanceID", instanceID).Str("requestedBy", requestedBy).Int("dataSize", len(manifestData)).Int("archiveFiles", len(archiveFiles)).Str("dataDir", s.cfg.DataDir).Msg("Starting manifest import")
 
 	// Normalize DataDir for Windows Git Bash paths
 	if runtime.GOOS == "windows" && strings.HasPrefix(s.cfg.DataDir, "/c/") {
@@ -1276,6 +1275,7 @@ func (s *Service) ImportManifest(ctx context.Context, instanceID int, manifestDa
 	// Convert manifest items to backup items
 	items := make([]models.BackupItem, 0, len(manifest.Items))
 	var totalBytes int64
+	var totalTorrentFileBytes int64 // Track actual .torrent file sizes from archive
 
 	var missing []missingTorrent
 
@@ -1321,9 +1321,35 @@ func (s *Service) ImportManifest(ctx context.Context, instanceID int, manifestDa
 		}
 
 		if item.TorrentBlob != "" {
-			// Mark for background processing - don't check existence here to avoid blocking
 			backupItem.TorrentBlobPath = &item.TorrentBlob
-			missing = append(missing, missingTorrent{hash: item.Hash, name: item.Name, absPath: path.Join(s.cfg.DataDir, item.TorrentBlob)})
+			absPath := path.Join(s.cfg.DataDir, item.TorrentBlob)
+
+			// Check if torrent file was provided in archive
+			if archiveFiles != nil && item.ArchivePath != "" {
+				if torrentData, ok := archiveFiles[item.ArchivePath]; ok {
+					// Validate the torrent data
+					if len(torrentData) >= 50 && torrentData[0] == 'd' {
+						// Create directory and write file
+						if err := os.MkdirAll(path.Dir(absPath), 0o755); err != nil {
+							log.Warn().Err(err).Str("hash", item.Hash).Str("path", absPath).Msg("Failed to create directory for imported torrent")
+						} else if err := os.WriteFile(absPath, torrentData, 0o644); err != nil {
+							log.Warn().Err(err).Str("hash", item.Hash).Str("path", absPath).Msg("Failed to write imported torrent file")
+						} else {
+							log.Debug().Str("hash", item.Hash).Str("archivePath", item.ArchivePath).Str("blobPath", absPath).Msg("Imported torrent file from archive")
+							// File imported successfully, don't add to missing
+							totalTorrentFileBytes += int64(len(torrentData))
+							items = append(items, backupItem)
+							totalBytes += item.SizeBytes
+							continue
+						}
+					} else {
+						log.Warn().Str("hash", item.Hash).Int("size", len(torrentData)).Msg("Invalid torrent data in archive, will try qBittorrent")
+					}
+				}
+			}
+
+			// Mark for background download from qBittorrent
+			missing = append(missing, missingTorrent{hash: item.Hash, name: item.Name, absPath: absPath})
 		}
 
 		items = append(items, backupItem)
@@ -1374,11 +1400,11 @@ func (s *Service) ImportManifest(ctx context.Context, instanceID int, manifestDa
 	}
 
 	// Update the run with total bytes and torrent count
-	run.TotalBytes = 0 // Imports don't have archive files, so no total bytes
+	run.TotalBytes = totalTorrentFileBytes // Use actual torrent file sizes from archive (0 if manifest-only)
 	run.TorrentCount = len(items)
-	log.Info().Int64("runID", run.ID).Int("torrentCount", len(items)).Msg("Updating backup run metadata")
+	log.Info().Int64("runID", run.ID).Int("torrentCount", len(items)).Int64("totalTorrentFileBytes", totalTorrentFileBytes).Msg("Updating backup run metadata")
 	if err := s.store.UpdateRunMetadata(ctx, run.ID, func(r *models.BackupRun) error {
-		r.TotalBytes = 0
+		r.TotalBytes = totalTorrentFileBytes
 		r.TorrentCount = len(items)
 		return nil
 	}); err != nil {

@@ -203,6 +203,9 @@ Once backups are enabled for an instance the backlog UI exposes a **Restore** ac
 
 Every restore begins with a dry-run preview so you can inspect planned changes. Unsupported differences (such as mismatched infohashes or file sizes) are surfaced as warnings; they require manual follow-up regardless of mode.
 
+### Importing Backups
+
+Downloaded backups can be imported into any qui instance. Useful for migrating to a new server or recovering after data loss. Click **Import** on the Backups page and select the backup file. All export formats are supported.
 
 ## CLI Commands
 

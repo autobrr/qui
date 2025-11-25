@@ -4,6 +4,10 @@
 package handlers
 
 import (
+	"archive/tar"
+	"archive/zip"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -15,15 +19,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
-
-	"archive/tar"
-	"archive/zip"
-
-	kgzip "github.com/klauspost/compress/gzip"
 
 	"github.com/andybalholm/brotli"
 	"github.com/go-chi/chi/v5"
+	kgzip "github.com/klauspost/compress/gzip"
 	"github.com/klauspost/compress/zstd"
 	"github.com/ulikunitz/xz"
 
@@ -32,11 +31,35 @@ import (
 	"github.com/autobrr/qui/pkg/torrentname"
 )
 
-var registerCompressorOnce sync.Once
+// archiveExtractor defines a supported archive format with its extraction function.
+// A nil extract function indicates manifest-only (JSON) format.
+type archiveExtractor struct {
+	suffixes []string
+	extract  func([]byte) ([]byte, map[string][]byte, error)
+}
 
-func init() {
-	// Note: klauspost deflate compressor registration removed due to conflicts with default registration
-	// The standard library's zip package already registers a deflate compressor
+// archiveExtractors lists supported formats in order of precedence.
+// Longer suffixes (e.g., .tar.gz) must come before shorter ones (e.g., .tar).
+var archiveExtractors = []archiveExtractor{
+	{suffixes: []string{".json"}},
+	{suffixes: []string{".zip"}, extract: extractZipArchive},
+	{suffixes: []string{".tar.gz", ".tgz"}, extract: extractTarGzArchive},
+	{suffixes: []string{".tar.zst"}, extract: extractTarZstArchive},
+	{suffixes: []string{".tar.br"}, extract: extractTarBrArchive},
+	{suffixes: []string{".tar.xz"}, extract: extractTarXzArchive},
+	{suffixes: []string{".tar"}, extract: extractTarArchive},
+}
+
+func findArchiveExtractor(filename string) *archiveExtractor {
+	filename = strings.ToLower(filename)
+	for i := range archiveExtractors {
+		for _, suffix := range archiveExtractors[i].suffixes {
+			if strings.HasSuffix(filename, suffix) {
+				return &archiveExtractors[i]
+			}
+		}
+	}
+	return nil
 }
 
 type BackupsHandler struct {
@@ -472,10 +495,6 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 			RespondError(w, http.StatusInternalServerError, "Failed to create compressor")
 			return
 		}
-		if err != nil {
-			RespondError(w, http.StatusInternalServerError, "Failed to create compressor")
-			return
-		}
 		defer compressor.Close()
 
 		tarWriter := tar.NewWriter(compressor)
@@ -563,23 +582,56 @@ func (h *BackupsHandler) ImportManifest(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Parse multipart form
-	if err := r.ParseMultipartForm(32 << 20); err != nil { // 32MB max
+	// Parse multipart form (512MB max for archives with torrents)
+	if err := r.ParseMultipartForm(512 << 20); err != nil {
 		RespondError(w, http.StatusBadRequest, "Failed to parse multipart form")
 		return
 	}
 
-	file, _, err := r.FormFile("manifest")
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Manifest file is required")
-		return
-	}
-	defer file.Close()
+	var manifestData []byte
+	var archiveFiles map[string][]byte
 
-	manifestData, err := io.ReadAll(file)
-	if err != nil {
-		RespondError(w, http.StatusInternalServerError, "Failed to read manifest file")
-		return
+	// Check for archive upload first (zip or tar.gz containing manifest + torrents)
+	if archiveFile, archiveHeader, err := r.FormFile("archive"); err == nil {
+		defer archiveFile.Close()
+
+		archiveData, err := io.ReadAll(archiveFile)
+		if err != nil {
+			RespondError(w, http.StatusInternalServerError, "Failed to read archive file")
+			return
+		}
+
+		// Extract based on file extension
+		extractor := findArchiveExtractor(archiveHeader.Filename)
+		if extractor == nil {
+			RespondError(w, http.StatusBadRequest, "Unsupported format. Use .json (manifest-only), .zip, .tar.gz, .tar.zst, .tar.br, .tar.xz, or .tar")
+			return
+		}
+
+		if extractor.extract == nil {
+			// Manifest-only upload (JSON)
+			manifestData = archiveData
+		} else {
+			manifestData, archiveFiles, err = extractor.extract(archiveData)
+			if err != nil {
+				RespondError(w, http.StatusBadRequest, fmt.Sprintf("Failed to extract archive: %v", err))
+				return
+			}
+		}
+	} else {
+		// Fall back to manifest-only upload
+		file, _, err := r.FormFile("manifest")
+		if err != nil {
+			RespondError(w, http.StatusBadRequest, "Either 'archive' (zip/tar.gz) or 'manifest' file is required")
+			return
+		}
+		defer file.Close()
+
+		manifestData, err = io.ReadAll(file)
+		if err != nil {
+			RespondError(w, http.StatusInternalServerError, "Failed to read manifest file")
+			return
+		}
 	}
 
 	// Get requestedBy from context or use default
@@ -589,13 +641,136 @@ func (h *BackupsHandler) ImportManifest(w http.ResponseWriter, r *http.Request) 
 		requestedBy = "user"
 	}
 
-	run, err := h.service.ImportManifest(r.Context(), instanceID, manifestData, requestedBy)
+	run, err := h.service.ImportManifest(r.Context(), instanceID, manifestData, requestedBy, archiveFiles)
 	if err != nil {
 		RespondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to import manifest: %v", err))
 		return
 	}
 
 	RespondJSON(w, http.StatusCreated, run)
+}
+
+// extractZipArchive extracts manifest.json and .torrent files from a zip archive
+func extractZipArchive(data []byte) (manifestData []byte, torrentFiles map[string][]byte, err error) {
+	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to open zip: %w", err)
+	}
+
+	torrentFiles = make(map[string][]byte)
+
+	for _, file := range reader.File {
+		if file.FileInfo().IsDir() {
+			continue
+		}
+
+		rc, err := file.Open()
+		if err != nil {
+			continue
+		}
+
+		fileData, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			continue
+		}
+
+		name := file.Name
+		if strings.ToLower(filepath.Base(name)) == "manifest.json" {
+			manifestData = fileData
+		} else if strings.HasSuffix(strings.ToLower(name), ".torrent") {
+			// Store by archive path (relative path in archive)
+			torrentFiles[name] = fileData
+		}
+	}
+
+	if manifestData == nil {
+		return nil, nil, fmt.Errorf("manifest.json not found in archive")
+	}
+
+	return manifestData, torrentFiles, nil
+}
+
+// extractTarGzArchive extracts manifest.json and .torrent files from a tar.gz archive
+func extractTarGzArchive(data []byte) (manifestData []byte, torrentFiles map[string][]byte, err error) {
+	gzReader, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to open gzip: %w", err)
+	}
+	defer gzReader.Close()
+
+	return extractTarReader(gzReader)
+}
+
+// extractTarArchive extracts manifest.json and .torrent files from a tar archive
+func extractTarArchive(data []byte) (manifestData []byte, torrentFiles map[string][]byte, err error) {
+	return extractTarReader(bytes.NewReader(data))
+}
+
+// extractTarReader extracts manifest.json and .torrent files from a tar reader
+func extractTarReader(r io.Reader) (manifestData []byte, torrentFiles map[string][]byte, err error) {
+	tarReader := tar.NewReader(r)
+	torrentFiles = make(map[string][]byte)
+
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to read tar: %w", err)
+		}
+
+		if header.Typeflag != tar.TypeReg {
+			continue
+		}
+
+		fileData, err := io.ReadAll(tarReader)
+		if err != nil {
+			continue
+		}
+
+		name := header.Name
+		if strings.ToLower(filepath.Base(name)) == "manifest.json" {
+			manifestData = fileData
+		} else if strings.HasSuffix(strings.ToLower(name), ".torrent") {
+			// Store by archive path (relative path in archive)
+			torrentFiles[name] = fileData
+		}
+	}
+
+	if manifestData == nil {
+		return nil, nil, fmt.Errorf("manifest.json not found in archive")
+	}
+
+	return manifestData, torrentFiles, nil
+}
+
+// extractTarZstArchive extracts manifest.json and .torrent files from a tar.zst archive
+func extractTarZstArchive(data []byte) (manifestData []byte, torrentFiles map[string][]byte, err error) {
+	zstReader, err := zstd.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to open zstd: %w", err)
+	}
+	defer zstReader.Close()
+
+	return extractTarReader(zstReader)
+}
+
+// extractTarBrArchive extracts manifest.json and .torrent files from a tar.br archive
+func extractTarBrArchive(data []byte) (manifestData []byte, torrentFiles map[string][]byte, err error) {
+	brReader := brotli.NewReader(bytes.NewReader(data))
+	return extractTarReader(brReader)
+}
+
+// extractTarXzArchive extracts manifest.json and .torrent files from a tar.xz archive
+func extractTarXzArchive(data []byte) (manifestData []byte, torrentFiles map[string][]byte, err error) {
+	xzReader, err := xz.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to open xz: %w", err)
+	}
+
+	return extractTarReader(xzReader)
 }
 
 func (h *BackupsHandler) DownloadTorrentBlob(w http.ResponseWriter, r *http.Request) {
