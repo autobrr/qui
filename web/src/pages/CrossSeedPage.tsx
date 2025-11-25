@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { buildCategoryTree, type CategoryNode } from "@/components/torrents/CategoryTree"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -51,7 +52,6 @@ interface AutomationFormState {
   enabled: boolean
   runIntervalMinutes: number  // RSS Automation: interval between RSS feed polls (min: 30 minutes)
   startPaused: boolean
-  category: string
   tags: string[]
   targetInstanceIds: number[]
   targetIndexerIds: number[]
@@ -85,7 +85,6 @@ const DEFAULT_AUTOMATION_FORM: AutomationFormState = {
   enabled: false,
   runIntervalMinutes: DEFAULT_RSS_INTERVAL_MINUTES,
   startPaused: true,
-  category: "",
   tags: [],
   targetInstanceIds: [],
   targetIndexerIds: [],
@@ -321,7 +320,6 @@ export function CrossSeedPage() {
         enabled: settings.enabled,
         runIntervalMinutes: settings.runIntervalMinutes,
         startPaused: settings.startPaused,
-        category: settings.category ?? "",
         tags: settings.tags ?? [],
         targetInstanceIds: settings.targetInstanceIds,
         targetIndexerIds: settings.targetIndexerIds,
@@ -402,7 +400,6 @@ export function CrossSeedPage() {
           enabled: settings.enabled,
           runIntervalMinutes: settings.runIntervalMinutes,
           startPaused: settings.startPaused,
-          category: settings.category ?? "",
           tags: settings.tags ?? [],
           targetInstanceIds: settings.targetInstanceIds,
           targetIndexerIds: settings.targetIndexerIds,
@@ -412,7 +409,6 @@ export function CrossSeedPage() {
       enabled: automationSource.enabled,
       runIntervalMinutes: automationSource.runIntervalMinutes,
       startPaused: automationSource.startPaused,
-      category: automationSource.category.trim() || null,
       tags: normalizeStringList(automationSource.tags),
       targetInstanceIds: automationSource.targetInstanceIds,
       targetIndexerIds: automationSource.targetIndexerIds,
@@ -682,22 +678,37 @@ export function CrossSeedPage() {
     [enabledIndexers]
   )
 
-  const searchCategoryNames = useMemo(() => {
-    if (!searchMetadata?.categories) return [] as string[]
-    return Object.keys(searchMetadata.categories).sort()
-  }, [searchMetadata])
-
   const searchTagNames = useMemo(() => searchMetadata?.tags ?? [], [searchMetadata])
 
   const searchCategorySelectOptions = useMemo(
     () => {
-      const extras = searchCategories.filter(category => !searchCategoryNames.includes(category))
-      return Array.from(new Set([...searchCategoryNames, ...extras])).map(category => ({
-        label: category,
-        value: category,
-      }))
+      // Build tree from available categories for indentation
+      const categories = searchMetadata?.categories ?? {}
+      const tree = buildCategoryTree(categories, {})
+      const flattened: { label: string; value: string; level: number }[] = []
+
+      const visitNodes = (nodes: CategoryNode[]) => {
+        for (const node of nodes) {
+          flattened.push({
+            label: node.displayName,
+            value: node.name,
+            level: node.level,
+          })
+          visitNodes(node.children)
+        }
+      }
+
+      visitNodes(tree)
+
+      // Add any extra categories that were manually typed but not in the list
+      const extras = searchCategories.filter(category => !flattened.some(opt => opt.value === category))
+      for (const extra of extras) {
+        flattened.push({ label: extra, value: extra, level: 0 })
+      }
+
+      return flattened
     },
-    [searchCategories, searchCategoryNames]
+    [searchCategories, searchMetadata?.categories]
   )
 
   const searchTagSelectOptions = useMemo(
@@ -1026,36 +1037,8 @@ export function CrossSeedPage() {
             </div>
           </div>
 
-          <div className="grid gap-5 md:grid-cols-2">
+          <div className="grid gap-5 md:grid-cols-1">
             <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Label htmlFor="automation-category">Category</Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        className="text-muted-foreground hover:text-foreground"
-                        aria-label="Category help"
-                      >
-                        <Info className="h-4 w-4" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent align="start" className="max-w-xs text-xs">
-                      Leave this blank to reuse the matched torrent&apos;s category. Only set it when every automated add should force a specific qBittorrent category.
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-                <Input
-                  id="automation-category"
-                  placeholder="Optional"
-                  value={automationForm.category}
-                  onChange={event => setAutomationForm(prev => ({ ...prev, category: event.target.value }))}
-                />
-                 <p className="text-xs text-muted-foreground">
-                  Best to leave this blank, unless you have a plan.
-                </p>
-              </div>
-              <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Label htmlFor="automation-tags">Tags</Label>
                   <Tooltip>
@@ -1551,31 +1534,34 @@ export function CrossSeedPage() {
         </CardContent>
         <CardFooter className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  onClick={handleStartSearchRun}
-                  disabled={startSearchRunDisabled}
-                  className="disabled:cursor-not-allowed disabled:pointer-events-auto"
-                >
-                  {startSearchRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Rocket className="mr-2 h-4 w-4" />}
-                  Start run
-                </Button>
-              </TooltipTrigger>
-              {startSearchRunDisabledReason && (
-                <TooltipContent align="start" className="max-w-xs text-xs">
-                  {startSearchRunDisabledReason}
-                </TooltipContent>
-              )}
-            </Tooltip>
-            <Button
-              variant="outline"
-              onClick={() => cancelSearchRunMutation.mutate()}
-              disabled={!searchRunning || cancelSearchRunMutation.isPending}
-            >
-              {cancelSearchRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
-              Cancel
-            </Button>
+            {searchRunning ? (
+              <Button
+                variant="outline"
+                onClick={() => cancelSearchRunMutation.mutate()}
+                disabled={cancelSearchRunMutation.isPending}
+              >
+                {cancelSearchRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
+                Cancel
+              </Button>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={handleStartSearchRun}
+                    disabled={startSearchRunDisabled}
+                    className="disabled:cursor-not-allowed disabled:pointer-events-auto"
+                  >
+                    {startSearchRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Rocket className="mr-2 h-4 w-4" />}
+                    Start run
+                  </Button>
+                </TooltipTrigger>
+                {startSearchRunDisabledReason && (
+                  <TooltipContent align="start" className="max-w-xs text-xs">
+                    {startSearchRunDisabledReason}
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            )}
           </div>
         </CardFooter>
           </Card>

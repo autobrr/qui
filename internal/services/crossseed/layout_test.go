@@ -5,6 +5,8 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 func TestClassifyTorrentLayout(t *testing.T) {
@@ -53,7 +55,7 @@ func TestClassifyTorrentLayout(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			layout := classifyTorrentLayout(tt.files, tt.ignorePatterns)
+			layout := classifyTorrentLayout(tt.files, tt.ignorePatterns, stringutils.NewDefaultNormalizer())
 			require.Equal(t, tt.expect, layout)
 		})
 	}

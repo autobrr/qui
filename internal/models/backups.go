@@ -742,7 +742,7 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 
 	// Optimize for large bulk inserts (e.g., 180k+ torrents)
 	// Temporarily disable foreign key checks for massive performance boost
-	if _, err := tx.ExecContext(ctx, "PRAGMA defer_foreign_keys = ON"); err != nil {
+	if err := dbinterface.DeferForeignKeyChecks(tx); err != nil {
 		return fmt.Errorf("failed to defer foreign keys: %w", err)
 	}
 
@@ -837,6 +837,14 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 	// SQLite SQLITE_MAX_VARIABLE_NUMBER is typically 32766 on modern systems
 	// but default is 999. Use 90 items * 10 params = 900 to stay safe
 	const chunkSize = 90
+
+	// Pre-build the query template for full chunks to avoid repeated string building in hot path
+	queryTemplate := `INSERT INTO instance_backup_items (
+		run_id, torrent_hash_id, name_id, category_id, size_bytes, 
+		archive_rel_path_id, infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id
+	) VALUES %s`
+	fullQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 10, chunkSize)
+
 	for i := 0; i < len(items); i += chunkSize {
 		end := i + chunkSize
 		if end > len(items) {
@@ -844,17 +852,14 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 		}
 		chunk := items[i:end]
 
-		// Build multi-row INSERT
+		// Use pre-built query for full chunks, build new one only for smaller final chunk
+		query := fullQuery
+		if len(chunk) < chunkSize {
+			query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 10, len(chunk))
+		}
+
 		args := make([]any, 0, len(chunk)*10)
-		var sb strings.Builder
-		sb.Grow(len(chunk) * 42) // Pre-allocate: each row is "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?), " = ~42 chars
-
-		for j, item := range chunk {
-			if j > 0 {
-				sb.WriteString(", ")
-			}
-			sb.WriteString("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-
+		for _, item := range chunk {
 			// Get IDs from the stringToID map for required fields
 			torrentHashID := stringToID[item.TorrentHash]
 			nameID := stringToID[item.Name]
@@ -872,11 +877,6 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 				getID(item.TorrentBlobPath),
 			)
 		}
-
-		query := `INSERT INTO instance_backup_items (
-			run_id, torrent_hash_id, name_id, category_id, size_bytes, 
-			archive_rel_path_id, infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id
-		) VALUES ` + sb.String()
 
 		_, err = tx.ExecContext(ctx, query, args...)
 		if err != nil {

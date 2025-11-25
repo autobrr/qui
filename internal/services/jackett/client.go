@@ -13,8 +13,9 @@ import (
 	"strings"
 	"time"
 
-	gojackett "github.com/kylesanderson/go-jackett"
+	gojackett "github.com/autobrr/qui/pkg/gojackett"
 
+	"github.com/autobrr/qui/internal/buildinfo"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/prowlarr"
 )
@@ -57,6 +58,8 @@ func NewClient(baseURL, apiKey string, backend models.TorznabBackend, timeoutSec
 			APIKey:     apiKey,
 			Timeout:    timeoutSeconds,
 			HTTPClient: httpClient,
+			UserAgent:  buildinfo.UserAgent,
+			Version:    buildinfo.Version,
 		})
 	case models.TorznabBackendNative:
 		c.jackett = gojackett.NewClient(gojackett.Config{
@@ -101,12 +104,12 @@ type Result struct {
 }
 
 // SearchAll searches across all indexers when supported by the backend
-func (c *Client) SearchAll(params map[string]string) ([]Result, error) {
+func (c *Client) SearchAll(ctx context.Context, params map[string]string) ([]Result, error) {
 	switch c.backend {
 	case models.TorznabBackendJackett:
-		return c.Search("all", params)
+		return c.Search(ctx, "all", params)
 	case models.TorznabBackendNative:
-		return c.SearchDirect(params)
+		return c.SearchDirect(ctx, params)
 	default:
 		return nil, fmt.Errorf("search all not supported for backend %s", c.backend)
 	}
@@ -114,13 +117,17 @@ func (c *Client) SearchAll(params map[string]string) ([]Result, error) {
 
 // SearchDirect searches a direct Torznab endpoint (not through Jackett/Prowlarr aggregator)
 // Uses the native SearchDirectCtx method from go-jackett library
-func (c *Client) SearchDirect(params map[string]string) ([]Result, error) {
+func (c *Client) SearchDirect(ctx context.Context, params map[string]string) ([]Result, error) {
 	if c.jackett == nil {
 		return nil, fmt.Errorf("direct search not supported for backend %s", c.backend)
 	}
 	query := params["q"]
 
-	rss, err := c.jackett.SearchDirectCtx(context.Background(), query, params)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	rss, err := c.jackett.SearchDirectCtx(ctx, query, params)
 	if err != nil {
 		return nil, fmt.Errorf("direct search failed: %w", err)
 	}
@@ -129,17 +136,21 @@ func (c *Client) SearchDirect(params map[string]string) ([]Result, error) {
 }
 
 // Search performs a search on a specific indexer or "all"
-func (c *Client) Search(indexer string, params map[string]string) ([]Result, error) {
+func (c *Client) Search(ctx context.Context, indexer string, params map[string]string) ([]Result, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	switch c.backend {
 	case models.TorznabBackendProwlarr:
-		return c.searchProwlarr(indexer, params)
+		return c.searchProwlarr(ctx, indexer, params)
 	case models.TorznabBackendNative:
-		return c.SearchDirect(params)
+		return c.SearchDirect(ctx, params)
 	default:
 		if c.jackett == nil {
 			return nil, fmt.Errorf("jackett client not configured for backend %s", c.backend)
 		}
-		rss, err := c.jackett.GetTorrentsCtx(context.Background(), indexer, params)
+		rss, err := c.jackett.GetTorrentsCtx(ctx, indexer, params)
 		if err != nil {
 			return nil, fmt.Errorf("search failed: %w", err)
 		}
@@ -147,12 +158,12 @@ func (c *Client) Search(indexer string, params map[string]string) ([]Result, err
 	}
 }
 
-func (c *Client) searchProwlarr(indexerID string, params map[string]string) ([]Result, error) {
+func (c *Client) searchProwlarr(ctx context.Context, indexerID string, params map[string]string) ([]Result, error) {
 	if c.prowlarr == nil {
 		return nil, fmt.Errorf("prowlarr client not configured")
 	}
 
-	rss, err := c.prowlarr.SearchIndexer(context.Background(), indexerID, params)
+	rss, err := c.prowlarr.SearchIndexer(ctx, indexerID, params)
 	if err != nil {
 		return nil, fmt.Errorf("prowlarr search failed: %w", err)
 	}
@@ -446,15 +457,26 @@ func DiscoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 	defer cancel()
 
 	prowlarrClient := prowlarr.NewClient(prowlarr.Config{
-		Host:    baseURL,
-		APIKey:  apiKey,
-		Timeout: 15,
+		Host:      baseURL,
+		APIKey:    apiKey,
+		Timeout:   15,
+		UserAgent: buildinfo.UserAgent,
+		Version:   buildinfo.Version,
 	})
 
 	pIndexers, prowlarrErr := prowlarrClient.GetIndexers(ctx)
 	if prowlarrErr == nil {
 		indexers := make([]JackettIndexer, 0, len(pIndexers))
 		for _, idx := range pIndexers {
+			// Skip disabled indexers
+			if !idx.Enable {
+				continue
+			}
+			// Skip non-torrent indexers (Usenet/Newznab)
+			if idx.Protocol != "torrent" {
+				continue
+			}
+
 			description := idx.Description
 			if description == "" {
 				description = idx.ImplementationName
@@ -470,15 +492,13 @@ func DiscoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 				Name:        idx.Name,
 				Description: description,
 				Type:        backendType,
-				Configured:  idx.Enable,
+				Configured:  true, // Always true since we skip disabled indexers above
 				Backend:     models.TorznabBackendProwlarr,
 			}
 
-			// Try to fetch capabilities for enabled indexers
-			if indexer.Configured {
-				if caps := fetchCapabilitiesForDiscovery(baseURL, apiKey, models.TorznabBackendProwlarr, strconv.Itoa(idx.ID)); caps != nil {
-					indexer.Caps = caps
-				}
+			// Try to fetch capabilities
+			if caps := fetchCapabilitiesForDiscovery(baseURL, apiKey, models.TorznabBackendProwlarr, strconv.Itoa(idx.ID)); caps != nil {
+				indexer.Caps = caps
 			}
 
 			indexers = append(indexers, indexer)
