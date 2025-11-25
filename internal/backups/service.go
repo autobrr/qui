@@ -62,6 +62,7 @@ type Service struct {
 
 	jobs   chan job
 	wg     sync.WaitGroup
+	ctx    context.Context
 	cancel context.CancelFunc
 	once   sync.Once
 
@@ -205,6 +206,7 @@ func (s *Service) normalizeAndPersistSettings(ctx context.Context, settings *mod
 
 func (s *Service) Start(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
+	s.ctx = ctx
 	s.cancel = cancel
 
 	// Recover any incomplete backup runs from previous session
@@ -1395,7 +1397,11 @@ func (s *Service) ImportManifest(ctx context.Context, instanceID int, manifestDa
 		}
 		s.progressMu.Unlock()
 		log.Info().Int64("runID", run.ID).Int("total", len(missing)).Msg("Initialized import progress")
-		go s.downloadMissingTorrents(run.ID, instanceID, missing)
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			s.downloadMissingTorrents(run.ID, instanceID, missing)
+		}()
 	} else {
 		// No missing torrents, mark as completed immediately
 		now := s.now()
@@ -1442,6 +1448,17 @@ func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing [
 	successCount := 0
 	var totalTorrentBytes int64
 	for i, mt := range missing {
+		// Check for shutdown
+		if s.ctx != nil {
+			select {
+			case <-s.ctx.Done():
+				log.Info().Int64("runID", runID).Int("completed", successCount).Int("total", total).Msg("Background download cancelled due to shutdown")
+				s.markImportComplete(runID)
+				return
+			default:
+			}
+		}
+
 		// Check if file already exists
 		if info, err := os.Stat(mt.absPath); err == nil {
 			sz := info.Size()
@@ -1453,7 +1470,10 @@ func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing [
 		}
 
 		log.Trace().Int("current", i+1).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Str("path", mt.absPath).Msg("Downloading missing torrent blob in background")
-		ctx := context.Background() // Use background context since import is complete
+		ctx := s.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
 		if data, _, _, err := s.syncManager.ExportTorrent(ctx, instanceID, mt.hash); err == nil {
 			// Ensure directory exists
 			if err := os.MkdirAll(filepath.Dir(mt.absPath), 0o755); err != nil {
