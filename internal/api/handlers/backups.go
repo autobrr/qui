@@ -24,6 +24,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	kgzip "github.com/klauspost/compress/gzip"
 	"github.com/klauspost/compress/zstd"
+	"github.com/rs/zerolog/log"
 	"github.com/ulikunitz/xz"
 
 	"github.com/autobrr/qui/internal/backups"
@@ -424,11 +425,11 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 		manifestHeader.Modified = run.RequestedAt
 		manifestWriter, err := zipWriter.CreateHeader(manifestHeader)
 		if err != nil {
-			RespondError(w, http.StatusInternalServerError, "Failed to create manifest entry")
+			log.Error().Err(err).Int64("runID", runID).Msg("Failed to create manifest entry in streaming ZIP")
 			return
 		}
 		if _, err := manifestWriter.Write(manifestData); err != nil {
-			RespondError(w, http.StatusInternalServerError, "Failed to write manifest")
+			log.Error().Err(err).Int64("runID", runID).Msg("Failed to write manifest in streaming ZIP")
 			return
 		}
 
@@ -454,13 +455,13 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 			writer, err := zipWriter.CreateHeader(header)
 			if err != nil {
 				file.Close()
-				RespondError(w, http.StatusInternalServerError, "Failed to create zip entry")
+				log.Error().Err(err).Int64("runID", runID).Str("path", item.ArchivePath).Msg("Failed to create zip entry")
 				return
 			}
 
 			if _, err := io.Copy(writer, file); err != nil {
 				file.Close()
-				RespondError(w, http.StatusInternalServerError, "Failed to write torrent to zip")
+				log.Error().Err(err).Int64("runID", runID).Str("path", item.ArchivePath).Msg("Failed to write torrent to zip")
 				return
 			}
 
@@ -469,7 +470,7 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 
 		// Close zip writer to finalize
 		if err := zipWriter.Close(); err != nil {
-			RespondError(w, http.StatusInternalServerError, "Failed to finalize zip")
+			log.Error().Err(err).Int64("runID", runID).Msg("Failed to finalize zip")
 			return
 		}
 	} else {
@@ -514,11 +515,11 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 			ModTime: run.RequestedAt,
 		}
 		if err := tarWriter.WriteHeader(manifestHeader); err != nil {
-			RespondError(w, http.StatusInternalServerError, "Failed to write manifest header")
+			log.Error().Err(err).Int64("runID", runID).Msg("Failed to write manifest header in streaming TAR")
 			return
 		}
 		if _, err := tarWriter.Write(manifestData); err != nil {
-			RespondError(w, http.StatusInternalServerError, "Failed to write manifest")
+			log.Error().Err(err).Int64("runID", runID).Msg("Failed to write manifest in streaming TAR")
 			return
 		}
 
@@ -550,13 +551,13 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 			}
 			if err := tarWriter.WriteHeader(header); err != nil {
 				file.Close()
-				RespondError(w, http.StatusInternalServerError, "Failed to write tar header")
+				log.Error().Err(err).Int64("runID", runID).Str("path", item.ArchivePath).Msg("Failed to write tar header")
 				return
 			}
 
 			if _, err := io.Copy(tarWriter, file); err != nil {
 				file.Close()
-				RespondError(w, http.StatusInternalServerError, "Failed to write torrent to tar")
+				log.Error().Err(err).Int64("runID", runID).Str("path", item.ArchivePath).Msg("Failed to write torrent to tar")
 				return
 			}
 
@@ -565,11 +566,11 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 
 		// Close writers
 		if err := tarWriter.Close(); err != nil {
-			RespondError(w, http.StatusInternalServerError, "Failed to finalize tar")
+			log.Error().Err(err).Int64("runID", runID).Msg("Failed to finalize tar")
 			return
 		}
 		if err := compressor.Close(); err != nil {
-			RespondError(w, http.StatusInternalServerError, "Failed to finalize compression")
+			log.Error().Err(err).Int64("runID", runID).Msg("Failed to finalize compression")
 			return
 		}
 	}
