@@ -143,6 +143,10 @@ func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) (
 		rules = append(rules, &rule)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return rules, nil
 }
 
