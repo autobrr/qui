@@ -997,9 +997,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
-  const allowSubcategories = Boolean(
+  const allowSubcategories =
     supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false)
-  )
 
   // When cross-seed filtering is active, ensure instance column is visible
   useEffect(() => {
@@ -1622,7 +1621,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const isConnectable = normalizedConnectionStatus === "connected"
   const isFirewalled = normalizedConnectionStatus === "firewalled"
   const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : hasConnectionStatus ? Ban : Globe
-  const connectionStatusTooltip = hasConnectionStatus ? (isConnectable ? "Connectable" : connectionStatusDisplay) : "Connection status unknown"
+  const listenPort = metadata?.preferences?.listen_port
+  const connectionStatusTooltip = hasConnectionStatus
+    ? `${isConnectable ? "Connectable" : connectionStatusDisplay}${listenPort ? `. Port: ${listenPort}` : ""}`
+    : "Connection status unknown"
   const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-green-500" : isFirewalled ? "text-amber-500" : "text-destructive" : "text-muted-foreground"
   const connectionStatusAriaLabel = hasConnectionStatus ? `qBittorrent connection status: ${connectionStatusDisplay || formattedConnectionStatus}` : "qBittorrent connection status unknown"
 
@@ -2950,6 +2952,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         isPending={isPending}
         initialCategory={getCommonCategory(contextTorrents)}
         isLoadingCategories={isLoadingCategories}
+        useSubcategories={allowSubcategories}
       />
 
       {/* Create and Assign Category Dialog */}

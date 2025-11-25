@@ -26,6 +26,7 @@ import {
 import { useLayoutRoute } from "@/contexts/LayoutRouteContext"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
+import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
@@ -35,7 +36,7 @@ import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
-import { Archive, ChevronsUpDown, Download, FileEdit, FunnelPlus, FunnelX, GitBranch, HardDrive, Home, Info, ListTodo, LogOut, Menu, Plus, Search, Server, Settings, Wrench, X } from "lucide-react"
+import { Archive, ChevronsUpDown, Download, FileEdit, FunnelPlus, FunnelX, GitBranch, HardDrive, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Rss, Search, SearchCode, Server, Settings, Wrench, X } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 
@@ -164,6 +165,8 @@ export function Header({
   })
 
   const supportsTorrentCreation = instanceCapabilities?.supportsTorrentCreation ?? true
+
+  const crossSeedInstanceState = useCrossSeedInstanceState()
 
   return (
     <header className="sticky top-0 z-50 hidden md:flex flex-wrap lg:flex-nowrap items-start lg:items-center justify-between sm:border-b bg-background pl-2 pr-4 md:pl-4 md:pr-4 lg:pl-0 lg:static py-2 lg:py-0 lg:h-16">
@@ -535,24 +538,60 @@ export function Header({
               </DropdownMenuItem>
               {activeInstances.length > 0 && (
                 <>
-                  {activeInstances.map((instance) => (
-                    <DropdownMenuItem key={instance.id} asChild>
-                      <Link
-                        to="/instances/$instanceId"
-                        params={{ instanceId: instance.id.toString() }}
-                        className="flex cursor-pointer pl-6"
-                      >
-                        <HardDrive className="mr-2 h-4 w-4" />
-                        <span className="truncate">{instance.name}</span>
-                        <span
-                          className={cn(
-                            "ml-auto h-2 w-2 rounded-full flex-shrink-0",
-                            instance.connected ? "bg-green-500" : "bg-red-500"
-                          )}
-                        />
-                      </Link>
-                    </DropdownMenuItem>
-                  ))}
+                  {activeInstances.map((instance) => {
+                    const csState = crossSeedInstanceState[instance.id]
+                    const hasRss = csState?.rssEnabled || csState?.rssRunning
+                    const hasSearch = csState?.searchRunning
+
+                    return (
+                      <DropdownMenuItem key={instance.id} asChild>
+                        <Link
+                          to="/instances/$instanceId"
+                          params={{ instanceId: instance.id.toString() }}
+                          className="flex cursor-pointer pl-6"
+                        >
+                          <HardDrive className="mr-2 h-4 w-4" />
+                          <span className="truncate">{instance.name}</span>
+                          <span className="ml-auto flex items-center gap-1.5">
+                            {hasRss && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="flex items-center">
+                                    {csState?.rssRunning ? (
+                                      <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                                    ) : (
+                                      <Rss className="h-3 w-3 text-muted-foreground" />
+                                    )}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="left" className="text-xs">
+                                  RSS {csState?.rssRunning ? "running" : "enabled"}
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                            {hasSearch && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="flex items-center">
+                                    <SearchCode className="h-3 w-3 text-muted-foreground" />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="left" className="text-xs">
+                                  Seeded search running
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                            <span
+                              className={cn(
+                                "h-2 w-2 rounded-full flex-shrink-0",
+                                instance.connected ? "bg-green-500" : "bg-red-500"
+                              )}
+                            />
+                          </span>
+                        </Link>
+                      </DropdownMenuItem>
+                    )
+                  })}
                 </>
               )}
               <DropdownMenuSeparator />

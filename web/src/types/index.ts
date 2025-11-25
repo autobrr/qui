@@ -758,6 +758,8 @@ export interface AppPreferences {
   category_changed_tmm_enabled: boolean
   save_path_changed_tmm_enabled: boolean
   use_category_paths_in_manual_mode: boolean
+  // Subcategory behavior
+  use_subcategories?: boolean
 
   // Torrent behavior
   torrent_changed_tmm_enabled: boolean
