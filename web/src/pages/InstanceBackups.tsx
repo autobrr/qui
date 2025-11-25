@@ -116,7 +116,6 @@ type SettingsToggleKey =
   | "includeTags"
 
 type SettingsNumericKey = "keepHourly" | "keepDaily" | "keepWeekly" | "keepMonthly"
-
 type ExcludedTorrentMeta = {
   hash: string
   name?: string | null
@@ -366,6 +365,131 @@ export function InstanceBackups() {
     if (!formState) return false
     return formState.hourlyEnabled || formState.dailyEnabled || formState.weeklyEnabled || formState.monthlyEnabled
   }, [formState])
+
+  const nextScheduleInfo = useMemo<{
+    state: "loading" | "ready"
+    kind?: BackupRunKind
+    timestamp?: string
+    status: string
+  }>(() => {
+    if (settingsLoading || !formState) {
+      return {
+        state: "loading",
+        status: "Loading schedule…",
+      }
+    }
+
+    if (!formState.enabled) {
+      return {
+        state: "ready",
+        timestamp: "—",
+        status: "Automatic backups are turned off for this instance.",
+      }
+    }
+
+    const cadenceDefinitions: Array<{
+      kind: BackupRunKind
+      enabled: boolean
+      computeNext: (last: Date) => Date
+    }> = [
+      { kind: "hourly", enabled: formState.hourlyEnabled, computeNext: last => addIntervalMs(last, 60 * 60 * 1000) },
+      { kind: "daily", enabled: formState.dailyEnabled, computeNext: last => addIntervalMs(last, 24 * 60 * 60 * 1000) },
+      { kind: "weekly", enabled: formState.weeklyEnabled, computeNext: last => addIntervalMs(last, 7 * 24 * 60 * 60 * 1000) },
+      { kind: "monthly", enabled: formState.monthlyEnabled, computeNext: addOneMonth },
+    ]
+    const enabledCadences = cadenceDefinitions.filter(c => c.enabled)
+
+    if (enabledCadences.length === 0) {
+      return {
+        state: "ready",
+        timestamp: "—",
+        status: "Enable at least one automatic cadence to schedule backups.",
+      }
+    }
+
+    const enabledKinds = new Set(enabledCadences.map(c => c.kind))
+    const activeRun = summaryRuns.find(
+      run =>
+        enabledKinds.has(run.kind) &&
+        (run.status === "running" || run.status === "pending")
+    )
+    if (activeRun) {
+      return {
+        state: "ready",
+        kind: activeRun.kind,
+        timestamp: formatDateSafe(activeRun.startedAt ?? activeRun.requestedAt, formatDate),
+        status: activeRun.status === "running"
+          ? "Backup is currently running."
+          : "Backup is queued and will start shortly.",
+      }
+    }
+
+    const lastSuccessByKind = buildLastSuccessMap(summaryRuns)
+    const now = new Date()
+
+    let best:
+      | {
+          kind: BackupRunKind
+          nextDate?: Date
+          hasHistory: boolean
+        }
+      | null = null
+
+    for (const cadence of enabledCadences) {
+      const lastSuccess = lastSuccessByKind[cadence.kind]
+      const candidate = {
+        kind: cadence.kind,
+        nextDate: lastSuccess ? cadence.computeNext(lastSuccess) : undefined,
+        hasHistory: !!lastSuccess,
+      }
+
+      if (!best) {
+        best = candidate
+        continue
+      }
+
+      const candidateTime = candidate.nextDate?.getTime() ?? now.getTime()
+      const bestTime = best.nextDate?.getTime() ?? now.getTime()
+      if (candidateTime < bestTime) {
+        best = candidate
+      }
+    }
+
+    if (!best) {
+      return {
+        state: "ready",
+        timestamp: "—",
+        status: "Waiting for the scheduler to pick up the next backup.",
+      }
+    }
+
+    if (!best.hasHistory) {
+      return {
+        state: "ready",
+        kind: best.kind,
+        timestamp: "—",
+        status: "Waiting for the first backup; scheduler will run ASAP.",
+      }
+    }
+
+    if (!best.nextDate) {
+      return {
+        state: "ready",
+        kind: best.kind,
+        timestamp: "—",
+        status: "Waiting for scheduler information.",
+      }
+    }
+
+    const overdue = best.nextDate.getTime() <= now.getTime()
+
+    return {
+      state: "ready",
+      kind: best.kind,
+      timestamp: formatDate(best.nextDate),
+      status: overdue ? "Should have already run; scheduler will retry automatically." : "",
+    }
+  }, [formatDate, formState, settingsLoading, summaryRuns])
 
   // Pagination helpers
   const hasMoreBackups = runsResponse?.hasMore ?? false
@@ -797,16 +921,27 @@ export function InstanceBackups() {
 
           <Card className="flex flex-col">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Queued backups</CardTitle>
+              <CardTitle className="text-sm font-medium">Next scheduled backup</CardTitle>
               <RefreshCw className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
-            <CardContent>
-              {runsLoading ? (
-                <p className="text-sm text-muted-foreground">Loading...</p>
+            <CardContent className="flex-1 flex flex-col">
+              {nextScheduleInfo.state === "loading" ? (
+                <p className="text-sm text-muted-foreground">Loading schedule...</p>
+              ) : nextScheduleInfo.kind ? (
+                <div className="flex flex-col flex-1">
+                  <div className="space-y-2">
+                    <Badge variant="default">{runKindLabels[nextScheduleInfo.kind]}</Badge>
+                    <p className="text-sm">{nextScheduleInfo.timestamp ?? "—"}</p>
+                  </div>
+                  {nextScheduleInfo.status && (
+                    <div className="min-h-[44px] flex items-start pt-1 mt-auto">
+                      <p className="text-xs text-muted-foreground">{nextScheduleInfo.status}</p>
+                    </div>
+                  )}
+                </div>
               ) : (
-                <p className="text-2xl font-bold">{summaryRuns.filter(run => run.status === "running" || run.status === "pending").length}</p>
+                <p className="text-sm text-muted-foreground">{nextScheduleInfo.status}</p>
               )}
-              <p className="text-xs text-muted-foreground">Pending or running backups</p>
             </CardContent>
           </Card>
 
@@ -1968,6 +2103,40 @@ function formatChangeValue(value: unknown): string {
 
 function countItems<T>(items?: T[] | null): number {
   return items?.length ?? 0
+}
+
+function buildLastSuccessMap(runs: BackupRun[]): Partial<Record<BackupRunKind, Date>> {
+  const map: Partial<Record<BackupRunKind, Date>> = {}
+
+  for (const run of runs) {
+    if (run.status !== "success") continue
+    if (map[run.kind]) continue
+    const timestamp = parseDate(run.completedAt ?? run.requestedAt)
+    if (timestamp) {
+      map[run.kind] = timestamp
+    }
+  }
+
+  return map
+}
+
+function addIntervalMs(date: Date, interval: number): Date {
+  return new Date(date.getTime() + interval)
+}
+
+function addOneMonth(date: Date): Date {
+  const next = new Date(date.getTime())
+  next.setUTCMonth(next.getUTCMonth() + 1)
+  return next
+}
+
+function parseDate(value?: string | null): Date | undefined {
+  if (!value) return undefined
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return undefined
+  }
+  return parsed
 }
 
 function formatBytes(bytes: number): string {

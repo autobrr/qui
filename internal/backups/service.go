@@ -311,7 +311,7 @@ func (s *Service) isBackupMissed(ctx context.Context, instanceID int, kind model
 		if r == nil {
 			continue
 		}
-		if r.Status == models.BackupRunStatusSuccess {
+		if strings.EqualFold(string(r.Status), string(models.BackupRunStatusSuccess)) {
 			if r.CompletedAt != nil {
 				refTime = r.CompletedAt
 			} else {
