@@ -50,12 +50,12 @@ export function useInstances() {
       data: Partial<InstanceFormData>
     }) => api.updateInstance(id, data),
     onSuccess: async (updatedInstance) => {
-      // Immediately update the instance in cache, preserving connection status
-      // to avoid UI flicker (testConnection will update it if changed)
+      // Immediately update the instance in cache, preserving only the connected
+      // flag to avoid UI flicker (testConnection will refresh it)
       queryClient.setQueryData<InstanceResponse[]>(["instances"], (old) => {
         if (!old) return [updatedInstance]
         return old.map(i => i.id === updatedInstance.id
-          ? { ...updatedInstance, connected: i.connected, connectionStatus: i.connectionStatus }
+          ? { ...updatedInstance, connected: i.connected }
           : i)
       })
 
