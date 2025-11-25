@@ -19,69 +19,69 @@ import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { columnFiltersToExpr } from "@/lib/column-filter-utils"
 import { formatBytes } from "@/lib/utils"
 import {
-  DndContext,
-  MouseSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors
+    DndContext,
+    MouseSensor,
+    TouchSensor,
+    closestCenter,
+    useSensor,
+    useSensors
 } from "@dnd-kit/core"
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers"
 import {
-  SortableContext,
-  arrayMove,
-  horizontalListSortingStrategy
+    SortableContext,
+    arrayMove,
+    horizontalListSortingStrategy
 } from "@dnd-kit/sortable"
 import {
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getSortedRowModel,
-  useReactTable
+    flexRender,
+    getCoreRowModel,
+    getFilteredRowModel,
+    getSortedRowModel,
+    useReactTable
 } from "@tanstack/react-table"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { Suspense, lazy, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
 import { TorrentContextMenu } from "./TorrentContextMenu"
 import { TORRENT_SORT_OPTIONS, type TorrentSortOptionValue, getDefaultSortOrder } from "./torrentSortOptions"
 
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle
 } from "@/components/ui/dialog"
 import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
+    DropdownMenu,
+    DropdownMenuCheckboxItem,
+    DropdownMenuContent,
+    DropdownMenuLabel,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Logo } from "@/components/ui/Logo"
 import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button"
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger
 } from "@/components/ui/tooltip"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences.ts"
@@ -93,55 +93,59 @@ import { getStateLabel } from "@/lib/torrent-state-utils"
 import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
 import { cn } from "@/lib/utils"
 import type {
-  Category,
-  ServerState,
-  Torrent,
-  TorrentCounts,
-  TorrentFilters
+    Category,
+    ServerState,
+    Torrent,
+    TorrentCounts,
+    TorrentFilters
 } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSearch } from "@tanstack/react-router"
 import {
-  ArrowUpDown,
-  Ban,
-  BrickWallFire,
-  ChevronDown,
-  ChevronUp,
-  Columns3,
-  EthernetPort,
-  Eye,
-  EyeOff,
-  Folder,
-  Globe,
-  LayoutGrid,
-  Loader2,
-  Rabbit,
-  RefreshCcw,
-  Table as TableIcon,
-  Tag,
-  Turtle,
-  X
+    ArrowUpDown,
+    Ban,
+    BrickWallFire,
+    ChevronDown,
+    ChevronUp,
+    Columns3,
+    EthernetPort,
+    Eye,
+    EyeOff,
+    Folder,
+    Globe,
+    LayoutGrid,
+    Loader2,
+    Rabbit,
+    RefreshCcw,
+    Table as TableIcon,
+    Tag,
+    Turtle,
+    X
 } from "lucide-react"
 import { createPortal } from "react-dom"
-import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
+import type { AddTorrentDropPayload } from "./AddTorrentDialog"
 import { DeleteFilesPreference } from "./DeleteFilesPreference"
 import { DraggableTableHeader } from "./DraggableTableHeader"
 import { SelectAllHotkey } from "./SelectAllHotkey"
 import {
-  AddTagsDialog,
-  CreateAndAssignCategoryDialog,
-  RemoveTagsDialog,
-  RenameTorrentDialog,
-  RenameTorrentFileDialog,
-  RenameTorrentFolderDialog,
-  SetCategoryDialog,
-  SetLocationDialog,
-  SetTagsDialog,
-  ShareLimitDialog,
-  SpeedLimitsDialog
+    AddTagsDialog,
+    CreateAndAssignCategoryDialog,
+    RemoveTagsDialog,
+    RenameTorrentDialog,
+    RenameTorrentFileDialog,
+    RenameTorrentFolderDialog,
+    SetCategoryDialog,
+    SetLocationDialog,
+    SetTagsDialog,
+    ShareLimitDialog,
+    SpeedLimitsDialog
 } from "./TorrentDialogs"
 import { TorrentDropZone } from "./TorrentDropZone"
 import { createColumns } from "./TorrentTableColumns"
+
+const AddTorrentDialog = lazy(() =>
+  import("./AddTorrentDialog").then(m => ({ default: m.AddTorrentDialog }))
+)
 
 const TABLE_ALLOWED_VIEW_MODES = ["normal", "compact"] as const
 
@@ -2329,14 +2333,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
               return container ? createPortal(actions, container) : actions
             })()}
 
-            <AddTorrentDialog
-              instanceId={instanceId}
-              open={addTorrentModalOpen}
-              onOpenChange={onAddTorrentModalChange}
-              dropPayload={dropPayload}
-              onDropPayloadConsumed={handleDropPayloadConsumed}
-              torrents={torrents}
-            />
+            <Suspense fallback={null}>
+              <AddTorrentDialog
+                instanceId={instanceId}
+                open={addTorrentModalOpen}
+                onOpenChange={onAddTorrentModalChange}
+                dropPayload={dropPayload}
+                onDropPayloadConsumed={handleDropPayloadConsumed}
+                torrents={torrents}
+              />
+            </Suspense>
           </div>
         </div>
       </div>

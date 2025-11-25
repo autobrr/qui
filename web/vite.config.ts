@@ -109,7 +109,11 @@ export default defineConfig(() => ({
         manualChunks: {
           "react-vendor": ["react", "react-dom", "react-hook-form"],
           "tanstack": ["@tanstack/react-router", "@tanstack/react-query", "@tanstack/react-table", "@tanstack/react-virtual"],
-          "ui-vendor": ["@radix-ui/react-dialog", "@radix-ui/react-dropdown-menu", "lucide-react"],
+          "ui-vendor": ["@radix-ui/react-dialog", "@radix-ui/react-dropdown-menu", "@radix-ui/react-select", "@radix-ui/react-tabs", "@radix-ui/react-tooltip", "@radix-ui/react-popover", "@radix-ui/react-alert-dialog", "@radix-ui/react-accordion", "@radix-ui/react-collapsible", "@radix-ui/react-context-menu", "@radix-ui/react-hover-card", "@radix-ui/react-label", "@radix-ui/react-progress", "@radix-ui/react-scroll-area", "@radix-ui/react-separator", "@radix-ui/react-slider", "@radix-ui/react-slot", "@radix-ui/react-switch", "@radix-ui/react-checkbox"],
+          "dnd-kit": ["@dnd-kit/core", "@dnd-kit/modifiers", "@dnd-kit/sortable", "@dnd-kit/utilities"],
+          "motion": ["motion"],
+          "utils": ["clsx", "tailwind-merge", "class-variance-authority", "cmdk", "culori", "zod", "parse-torrent", "react-dropzone", "react-hotkeys-hook", "sonner"],
+          "icons": ["lucide-react", "flag-icons"],
         },
       },
     },

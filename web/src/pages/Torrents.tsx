@@ -5,8 +5,6 @@
 
 import { FilterSidebar } from "@/components/torrents/FilterSidebar"
 import { TorrentCreationTasks } from "@/components/torrents/TorrentCreationTasks"
-import { TorrentCreatorDialog } from "@/components/torrents/TorrentCreatorDialog"
-import { TorrentDetailsPanel } from "@/components/torrents/TorrentDetailsPanel"
 import { TorrentTableResponsive } from "@/components/torrents/TorrentTableResponsive"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -15,7 +13,15 @@ import { usePersistedFilters } from "@/hooks/usePersistedFilters"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { cn } from "@/lib/utils"
 import type { Category, Torrent, TorrentCounts } from "@/types"
-import { useCallback, useEffect, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useState } from "react"
+
+const TorrentDetailsPanel = lazy(() =>
+  import("@/components/torrents/TorrentDetailsPanel").then(m => ({ default: m.TorrentDetailsPanel }))
+)
+
+const TorrentCreatorDialog = lazy(() =>
+  import("@/components/torrents/TorrentCreatorDialog").then(m => ({ default: m.TorrentCreatorDialog }))
+)
 
 interface TorrentsProps {
   instanceId: number
@@ -292,20 +298,24 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
             </VisuallyHidden>
           </SheetHeader>
           {selectedTorrent && (
-            <TorrentDetailsPanel
-              instanceId={instanceId}
-              torrent={selectedTorrent}
-            />
+            <Suspense fallback={<div className="p-6">Loading...</div>}>
+              <TorrentDetailsPanel
+                instanceId={instanceId}
+                torrent={selectedTorrent}
+              />
+            </Suspense>
           )}
         </SheetContent>
       </Sheet>
 
       {/* Torrent Creator Dialog */}
-      <TorrentCreatorDialog
-        instanceId={instanceId}
-        open={isCreateTorrentModalOpen}
-        onOpenChange={handleCreateTorrentModalChange}
-      />
+      <Suspense fallback={null}>
+        <TorrentCreatorDialog
+          instanceId={instanceId}
+          open={isCreateTorrentModalOpen}
+          onOpenChange={handleCreateTorrentModalChange}
+        />
+      </Suspense>
 
       {/* Torrent Creation Tasks Modal */}
       <Dialog open={isTasksModalOpen} onOpenChange={handleTasksModalChange}>
