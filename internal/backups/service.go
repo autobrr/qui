@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -665,12 +664,12 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 			blobName := hash + ".torrent"
 			subdir := ""
 			if len(hash) >= 6 {
-				subdir = hash[0:2] + "/" + hash[2:4] + "/" + hash[4:6]
+				subdir = filepath.Join(hash[0:2], hash[2:4], hash[4:6])
 			}
-			absBlob := path.Join(s.cacheDir, subdir, blobName)
+			absBlob := filepath.Join(s.cacheDir, subdir, blobName)
 			if _, err := os.Stat(absBlob); errors.Is(err, os.ErrNotExist) {
 				if subdir != "" {
-					if err := os.MkdirAll(path.Dir(absBlob), 0o755); err != nil {
+					if err := os.MkdirAll(filepath.Dir(absBlob), 0o755); err != nil {
 						return nil, fmt.Errorf("create torrent cache subdir: %w", err)
 					}
 				}
@@ -1321,8 +1320,17 @@ func (s *Service) ImportManifest(ctx context.Context, instanceID int, manifestDa
 		}
 
 		if item.TorrentBlob != "" {
-			backupItem.TorrentBlobPath = &item.TorrentBlob
-			absPath := path.Join(s.cfg.DataDir, item.TorrentBlob)
+			// Validate blob path to prevent directory traversal
+			rel := filepath.Clean(item.TorrentBlob)
+			if filepath.IsAbs(rel) || strings.HasPrefix(rel, "..") {
+				log.Warn().Str("hash", item.Hash).Str("blob", item.TorrentBlob).Msg("Ignoring unsafe TorrentBlob path from manifest")
+				items = append(items, backupItem)
+				totalBytes += item.SizeBytes
+				continue
+			}
+
+			backupItem.TorrentBlobPath = &rel
+			absPath := filepath.Join(s.cfg.DataDir, rel)
 
 			// Check if torrent file was provided in archive
 			if archiveFiles != nil && item.ArchivePath != "" {
@@ -1330,7 +1338,7 @@ func (s *Service) ImportManifest(ctx context.Context, instanceID int, manifestDa
 					// Validate the torrent data
 					if len(torrentData) >= 50 && torrentData[0] == 'd' {
 						// Create directory and write file
-						if err := os.MkdirAll(path.Dir(absPath), 0o755); err != nil {
+						if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
 							log.Warn().Err(err).Str("hash", item.Hash).Str("path", absPath).Msg("Failed to create directory for imported torrent")
 						} else if err := os.WriteFile(absPath, torrentData, 0o644); err != nil {
 							log.Warn().Err(err).Str("hash", item.Hash).Str("path", absPath).Msg("Failed to write imported torrent file")
@@ -1445,7 +1453,7 @@ func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing [
 		ctx := context.Background() // Use background context since import is complete
 		if data, _, _, err := s.syncManager.ExportTorrent(ctx, instanceID, mt.hash); err == nil {
 			// Ensure directory exists
-			if err := os.MkdirAll(path.Dir(mt.absPath), 0o755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(mt.absPath), 0o755); err != nil {
 				log.Error().Err(err).Int("downloaded", successCount).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Str("path", mt.absPath).Msg("Failed to create directory for torrent blob")
 				s.updateProgress(runID, i+1)
 				continue

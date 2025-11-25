@@ -73,6 +73,28 @@ type nopCloser struct {
 
 func (nopCloser) Close() error { return nil }
 
+// validateBlobPath checks that a blob path doesn't escape the base directory.
+// Returns the safe absolute path or empty string if the path is unsafe.
+func validateBlobPath(baseDir, blobPath string) string {
+	if blobPath == "" {
+		return ""
+	}
+	rel := filepath.Clean(blobPath)
+	if filepath.IsAbs(rel) || strings.HasPrefix(rel, "..") {
+		return ""
+	}
+	absBase, err := filepath.Abs(baseDir)
+	if err != nil {
+		return ""
+	}
+	absTarget := filepath.Join(absBase, rel)
+	relCheck, err := filepath.Rel(absBase, absTarget)
+	if err != nil || strings.HasPrefix(relCheck, "..") {
+		return ""
+	}
+	return absTarget
+}
+
 func NewBackupsHandler(service *backups.Service) *BackupsHandler {
 	return &BackupsHandler{service: service}
 }
@@ -376,7 +398,7 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 		"tar":     true,
 	}
 	if !supportedFormats[format] {
-		RespondError(w, http.StatusBadRequest, "Unsupported format. Supported: zip, tar.gz, tar.zst, tar.br, tar.lz4, tar.xz, tar")
+		RespondError(w, http.StatusBadRequest, "Unsupported format. Supported: zip, tar.gz, tar.zst, tar.br, tar.xz, tar")
 		return
 	}
 
@@ -439,7 +461,11 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			torrentPath := filepath.Join(h.service.DataDir(), item.TorrentBlob)
+			// Validate blob path to prevent directory traversal
+			torrentPath := validateBlobPath(h.service.DataDir(), item.TorrentBlob)
+			if torrentPath == "" {
+				continue
+			}
 			file, err := os.Open(torrentPath)
 			if err != nil {
 				// Skip missing files
@@ -529,7 +555,11 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			torrentPath := filepath.Join(h.service.DataDir(), item.TorrentBlob)
+			// Validate blob path to prevent directory traversal
+			torrentPath := validateBlobPath(h.service.DataDir(), item.TorrentBlob)
+			if torrentPath == "" {
+				continue
+			}
 			file, err := os.Open(torrentPath)
 			if err != nil {
 				// Skip missing files

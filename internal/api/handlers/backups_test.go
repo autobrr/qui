@@ -665,3 +665,71 @@ func getBackupDownloadUrl(instanceId, runId int, format ...string) string {
 	}
 	return u.String()
 }
+
+func TestValidateBlobPath(t *testing.T) {
+	baseDir := t.TempDir()
+
+	tests := []struct {
+		name     string
+		blobPath string
+		wantSafe bool
+	}{
+		{
+			name:     "valid relative path",
+			blobPath: "backups/torrents/ab/cd/test.torrent",
+			wantSafe: true,
+		},
+		{
+			name:     "valid simple path",
+			blobPath: "test.torrent",
+			wantSafe: true,
+		},
+		{
+			name:     "empty path",
+			blobPath: "",
+			wantSafe: false,
+		},
+		{
+			name:     "traversal with ../",
+			blobPath: "../../../etc/passwd",
+			wantSafe: false,
+		},
+		{
+			name:     "traversal in middle",
+			blobPath: "backups/../../../etc/passwd",
+			wantSafe: false,
+		},
+		{
+			name:     "absolute path unix",
+			blobPath: "/etc/passwd",
+			wantSafe: false,
+		},
+		{
+			name:     "double dot only",
+			blobPath: "..",
+			wantSafe: false,
+		},
+		{
+			name:     "dot dot slash",
+			blobPath: "../",
+			wantSafe: false,
+		},
+		{
+			name:     "hidden traversal with dot segments",
+			blobPath: "backups/./../../etc/passwd",
+			wantSafe: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := validateBlobPath(baseDir, tt.blobPath)
+			if tt.wantSafe {
+				assert.NotEmpty(t, result, "expected safe path to return non-empty result")
+				assert.True(t, filepath.IsAbs(result), "expected absolute path")
+			} else {
+				assert.Empty(t, result, "expected unsafe path to return empty result")
+			}
+		})
+	}
+}
