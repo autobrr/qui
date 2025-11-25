@@ -76,7 +76,7 @@ func (nopCloser) Close() error { return nil }
 // validateBlobPath checks that a blob path doesn't escape the base directory.
 // Returns the safe absolute path or empty string if the path is unsafe.
 func validateBlobPath(baseDir, blobPath string) string {
-	if blobPath == "" {
+	if baseDir == "" || blobPath == "" {
 		return ""
 	}
 	rel := filepath.Clean(blobPath)

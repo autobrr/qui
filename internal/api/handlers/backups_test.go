@@ -732,4 +732,10 @@ func TestValidateBlobPath(t *testing.T) {
 			}
 		})
 	}
+
+	// Test empty baseDir separately (not using shared baseDir)
+	t.Run("empty baseDir", func(t *testing.T) {
+		result := validateBlobPath("", "some/valid/path.torrent")
+		assert.Empty(t, result, "expected empty baseDir to return empty result")
+	})
 }
