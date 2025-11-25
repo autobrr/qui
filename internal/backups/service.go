@@ -1232,13 +1232,16 @@ func (s *Service) LoadManifest(ctx context.Context, runID int64) (*Manifest, err
 // archiveFiles is an optional map of archivePath -> torrent file data from an extracted archive.
 // If provided, torrent files will be copied to the blob cache instead of downloading from qBittorrent.
 func (s *Service) ImportManifest(ctx context.Context, instanceID int, manifestData []byte, requestedBy string, archiveFiles map[string][]byte) (*models.BackupRun, error) {
-	log.Info().Int("instanceID", instanceID).Str("requestedBy", requestedBy).Int("dataSize", len(manifestData)).Int("archiveFiles", len(archiveFiles)).Str("dataDir", s.cfg.DataDir).Msg("Starting manifest import")
+	// Use local variable to avoid mutating shared config (thread-safety)
+	dataDir := s.cfg.DataDir
 
 	// Normalize DataDir for Windows Git Bash paths
-	if runtime.GOOS == "windows" && strings.HasPrefix(s.cfg.DataDir, "/c/") {
-		s.cfg.DataDir = "C:" + strings.ReplaceAll(strings.TrimPrefix(s.cfg.DataDir, "/c"), "/", "\\")
-		log.Info().Str("normalizedDataDir", s.cfg.DataDir).Msg("Normalized DataDir for Windows")
+	if runtime.GOOS == "windows" && strings.HasPrefix(dataDir, "/c/") {
+		dataDir = "C:" + strings.ReplaceAll(strings.TrimPrefix(dataDir, "/c"), "/", "\\")
+		log.Info().Str("normalizedDataDir", dataDir).Msg("Normalized DataDir for Windows")
 	}
+
+	log.Info().Int("instanceID", instanceID).Str("requestedBy", requestedBy).Int("dataSize", len(manifestData)).Int("archiveFiles", len(archiveFiles)).Str("dataDir", dataDir).Msg("Starting manifest import")
 
 	var manifest Manifest
 	if err := json.Unmarshal(manifestData, &manifest); err != nil {
@@ -1330,7 +1333,7 @@ func (s *Service) ImportManifest(ctx context.Context, instanceID int, manifestDa
 			}
 
 			backupItem.TorrentBlobPath = &rel
-			absPath := filepath.Join(s.cfg.DataDir, rel)
+			absPath := filepath.Join(dataDir, rel)
 
 			// Check if torrent file was provided in archive
 			if archiveFiles != nil && item.ArchivePath != "" {
