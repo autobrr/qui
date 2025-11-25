@@ -2862,19 +2862,21 @@ paths:
       parameters:
         - $ref: '#/components/parameters/instanceID'
       requestBody:
-        description: Manifest file to import
+        description: Backup archive or manifest file to import. Provide either an archive (zip, tar.gz, tar.zst, tar.br, tar.xz, tar) or a JSON manifest file.
         required: true
         content:
           multipart/form-data:
             schema:
               type: object
               properties:
+                archive:
+                  type: string
+                  format: binary
+                  description: Compressed backup archive (zip, tar.gz, tar.zst, tar.br, tar.xz, tar) containing manifest.json and torrent files
                 manifest:
                   type: string
                   format: binary
                   description: JSON manifest file exported from a backup run
-              required:
-                - manifest
       responses:
         '201':
           description: Manifest imported successfully
@@ -2883,7 +2885,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/BackupRun'
         '400':
-          description: Invalid request payload or instance ID
+          description: Invalid request - must provide either archive or manifest file, invalid instance ID, or unsupported archive format
         '500':
           description: Failed to import manifest
 
@@ -3071,7 +3073,7 @@ paths:
                 format: binary
                 description: Uncompressed TAR archive
         '400':
-          description: Invalid format parameter
+          description: Invalid instance ID, run ID, or format parameter
         '404':
           description: Backup run not found or not available for download
         '500':
@@ -3106,6 +3108,8 @@ paths:
                 type: string
                 format: binary
                 description: Torrent file
+        '400':
+          description: Invalid instance ID, run ID, or torrent hash
         '404':
           description: Backup run or torrent not found
         '500':
@@ -4222,10 +4226,10 @@ components:
           type: integer
         kind:
           type: string
-          enum: ["manual", "scheduled", "import"]
+          enum: ["manual", "hourly", "daily", "weekly", "monthly"]
         status:
           type: string
-          enum: ["pending", "running", "success", "failed"]
+          enum: ["pending", "running", "success", "failed", "canceled"]
         requestedBy:
           type: string
         requestedAt:
