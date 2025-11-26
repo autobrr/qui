@@ -117,7 +117,7 @@ func (r *RateLimiter) BeforeRequest(ctx context.Context, indexer *models.Torznab
 			return &RateLimitWaitError{
 				IndexerID:   indexer.ID,
 				IndexerName: indexer.Name,
-				Wait:        wait,
+				Wait:        cfg.MaxWait, // Report capped wait, not theoretical wait
 				MaxWait:     cfg.MaxWait,
 				Priority:    cfg.Priority,
 			}

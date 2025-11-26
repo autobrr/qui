@@ -31,6 +31,7 @@ import (
 
 	"github.com/autobrr/autobrr/pkg/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/cespare/xxhash/v2"
 	"github.com/moistari/rls"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -3946,26 +3947,22 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 }
 
 // dedupCacheKey generates a cache key for deduplication results based on instance ID
-// and a signature derived from torrent hashes. The signature samples hashes at specific
-// positions to detect list changes without hashing all hashes.
+// and a signature derived from torrent hashes. Uses XOR of xxhash values for order-independent
+// hashing - the same set of torrents produces the same key regardless of order.
 func dedupCacheKey(instanceID int, torrents []qbt.Torrent) string {
 	n := len(torrents)
 	if n == 0 {
-		return fmt.Sprintf("dedup:%d:0:", instanceID)
+		return fmt.Sprintf("dedup:%d:0:0", instanceID)
 	}
 
-	// Sample first, middle, and last hash to detect changes
-	var sig string
-	if n == 1 {
-		sig = torrents[0].Hash
-	} else if n == 2 {
-		sig = torrents[0].Hash + torrents[1].Hash
-	} else {
-		mid := n / 2
-		sig = torrents[0].Hash + torrents[mid].Hash + torrents[n-1].Hash
+	// XOR all individual hash digests for order-independent signature.
+	// XOR is commutative and associative, so order doesn't matter.
+	var sig uint64
+	for i := range torrents {
+		sig ^= xxhash.Sum64String(torrents[i].Hash)
 	}
 
-	return fmt.Sprintf("dedup:%d:%d:%s", instanceID, n, sig)
+	return fmt.Sprintf("dedup:%d:%d:%x", instanceID, n, sig)
 }
 
 // deduplicateSourceTorrents removes duplicate torrents from the search queue by keeping only
@@ -3988,8 +3985,7 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		return torrents, map[string][]string{}
 	}
 
-	// Generate cache key from instance ID and a signature of torrent hashes.
-	// We sample first, middle, and last hashes plus count to detect changes efficiently.
+	// Generate cache key from instance ID and an order-independent signature of torrent hashes.
 	cacheKey := dedupCacheKey(instanceID, torrents)
 	if s.dedupCache != nil {
 		if entry, ok := s.dedupCache.Get(cacheKey); ok && entry != nil {
@@ -3997,6 +3993,7 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 				Int("instanceID", instanceID).
 				Int("cachedCount", len(entry.deduplicated)).
 				Msg("[CROSSSEED-DEDUP] Using cached deduplication result")
+			// IMPORTANT: Returned slices are cache-backed. Do not modify.
 			return entry.deduplicated, entry.duplicateHashes
 		}
 	}

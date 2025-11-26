@@ -89,7 +89,8 @@ func TestRateLimiterMaxWaitBudget(t *testing.T) {
 		t.Fatalf("expected RateLimitWaitError, got %v", err)
 	}
 
-	if waitErr.Wait <= waitErr.MaxWait {
-		t.Fatalf("expected wait to exceed max wait, got wait %v max %v", waitErr.Wait, waitErr.MaxWait)
+	// Wait is now capped to MaxWait to provide consistent semantics for callers
+	if waitErr.Wait != waitErr.MaxWait {
+		t.Fatalf("expected wait to be capped to max wait, got wait %v max %v", waitErr.Wait, waitErr.MaxWait)
 	}
 }
