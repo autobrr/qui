@@ -5530,7 +5530,10 @@ func (s *Service) extractTrackerDomainsFromTorrent(torrent qbt.Torrent) []string
 func (s *Service) appendSearchResult(state *searchRunState, result models.CrossSeedSearchResult) {
 	s.searchMu.Lock()
 	state.run.Results = append(state.run.Results, result)
-	if s.searchState == state {
+	// Only track successfully added torrents in recentResults so the UI
+	// shows a stable sliding window of actual additions rather than being
+	// diluted by skipped/failed results.
+	if s.searchState == state && result.Added {
 		state.recentResults = append(state.recentResults, result)
 		if len(state.recentResults) > 10 {
 			state.recentResults = state.recentResults[len(state.recentResults)-10:]

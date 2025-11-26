@@ -230,7 +230,7 @@ export function CrossSeedPage() {
 
   const { data: runs, refetch: refetchRuns } = useQuery({
     queryKey: ["cross-seed", "runs"],
-    queryFn: () => api.listCrossSeedRuns({ limit: 10 }),
+    queryFn: () => api.listCrossSeedRuns({ limit: 20 }),
   })
 
   const { data: instances } = useQuery({
@@ -826,7 +826,12 @@ export function CrossSeedPage() {
         result.other.push(run)
       }
     }
-    return result
+    // Limit each group to 5 most recent runs for cleaner display
+    return {
+      scheduled: result.scheduled.slice(0, 5),
+      manual: result.manual.slice(0, 5),
+      other: result.other.slice(0, 5),
+    }
   }, [runs])
 
   const getRunStatusVariant = (status: CrossSeedRun["status"]) => {
@@ -844,11 +849,6 @@ export function CrossSeedPage() {
     }
   }
 
-  const formatTriggerLabel = (triggeredBy: string) => {
-    if (triggeredBy === "scheduler") return "Scheduled"
-    if (triggeredBy === "api") return "Manual"
-    return triggeredBy || "Unknown"
-  }
 
   return (
     <div className="space-y-6 p-6 pb-16">
@@ -1131,32 +1131,36 @@ export function CrossSeedPage() {
                 Recent RSS runs
                 <ChevronDown className={`h-4 w-4 transition-transform ${rssRunsOpen ? "" : "-rotate-90"}`} />
               </span>
-              <Badge variant="outline">{runs?.length ?? 0}</Badge>
+              <div className="flex items-center gap-1.5">
+                {groupedRuns.scheduled.length > 0 && (
+                  <Badge variant="secondary" className="text-[10px]">{groupedRuns.scheduled.length} scheduled</Badge>
+                )}
+                {groupedRuns.manual.length > 0 && (
+                  <Badge variant="outline" className="text-[10px]">{groupedRuns.manual.length} manual</Badge>
+                )}
+              </div>
             </CollapsibleTrigger>
-            <CollapsibleContent className="pt-2 space-y-3">
+            <CollapsibleContent className="pt-2 space-y-4">
               {runs && runs.length > 0 ? (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {(["scheduled", "manual", "other"] as const).map(group => {
                     const data = groupedRuns[group]
                     if (!data || data.length === 0) return null
                     const title =
-                      group === "scheduled" ? "Scheduled runs" : group === "manual" ? "Manual runs" : "Other triggers"
+                      group === "scheduled" ? "Scheduled" : group === "manual" ? "Manual" : "Other"
                     return (
                       <div key={group} className="space-y-2">
-                        <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-muted-foreground">
+                        <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-muted-foreground">
                           <span>{title}</span>
-                          <Badge variant="outline">{data.length}</Badge>
+                          <span className="text-[10px] normal-case tracking-normal">(last {data.length})</span>
                         </div>
                         <div className="space-y-2">
                           {data.map(run => (
                             <div key={run.id} className="rounded border p-3 space-y-2 bg-muted/40">
                               <div className="flex items-center justify-between text-sm">
-                                <div className="flex items-center gap-2">
-                                  <Badge variant={getRunStatusVariant(run.status)} className="uppercase text-[11px] tracking-wide">
-                                    {run.status}
-                                  </Badge>
-                                  <span className="text-foreground">{formatTriggerLabel(run.triggeredBy)}</span>
-                                </div>
+                                <Badge variant={getRunStatusVariant(run.status)} className="uppercase text-[11px] tracking-wide">
+                                  {run.status}
+                                </Badge>
                                 <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
                               </div>
                               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -1169,11 +1173,8 @@ export function CrossSeedPage() {
                                 <Badge variant={run.torrentsFailed > 0 ? "destructive" : "outline"} className="text-[11px]">
                                   Failed {run.torrentsFailed}
                                 </Badge>
-                                <span className="text-[11px]">Feed items {run.totalFeedItems}</span>
+                                <span className="text-[11px]">{run.totalFeedItems} feed items</span>
                               </div>
-                              {run.message && (
-                                <p className="text-xs text-muted-foreground leading-snug">{run.message}</p>
-                              )}
                             </div>
                           ))}
                         </div>
@@ -1510,7 +1511,7 @@ export function CrossSeedPage() {
               </span>
               <Badge variant="outline">{recentAddedResults.length}</Badge>
             </CollapsibleTrigger>
-            <CollapsibleContent className="px-3 pb-3">
+            <CollapsibleContent className="px-3 pb-3 space-y-2">
               {recentAddedResults.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No added cross-seed results recorded yet.</p>
               ) : (
@@ -1529,6 +1530,7 @@ export function CrossSeedPage() {
                   ))}
                 </ul>
               )}
+              <p className="text-[10px] text-muted-foreground">Shows the last 10 additions during this run. List clears when the run stops.</p>
             </CollapsibleContent>
           </Collapsible>
         </CardContent>
