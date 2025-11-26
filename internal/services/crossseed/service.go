@@ -4532,6 +4532,10 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	// Wait for RSS automation to complete before searching to avoid rate limiter contention.
 	// RSS uses higher priority (shorter intervals) so we yield to it.
 	// Cap the wait to 5 minutes to prevent indefinite blocking if RSS gets stuck.
+	wasWaitingForRSS := s.runActive.Load()
+	if wasWaitingForRSS {
+		log.Debug().Msg("[CROSSSEED-SEARCH] Waiting for RSS automation to complete before searching")
+	}
 	rssWaitDeadline := time.After(5 * time.Minute)
 rssWaitLoop:
 	for s.runActive.Load() {
@@ -4543,6 +4547,9 @@ rssWaitLoop:
 			break rssWaitLoop
 		case <-time.After(500 * time.Millisecond):
 		}
+	}
+	if wasWaitingForRSS && !s.runActive.Load() {
+		log.Debug().Msg("[CROSSSEED-SEARCH] RSS automation completed, proceeding with search")
 	}
 
 	searchCtx := ctx
