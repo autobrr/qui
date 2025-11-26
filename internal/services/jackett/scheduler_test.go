@@ -421,23 +421,25 @@ func TestSearchScheduler_MultipleIndexersPerSubmission(t *testing.T) {
 		{ID: 3, Name: "indexer3"},
 	}
 
+	// Use WaitGroup to wait for all OnComplete callbacks
+	// since OnComplete and OnJobDone both run as goroutines and may race
+	var wg sync.WaitGroup
+	wg.Add(len(indexers))
+
 	var completedCount atomic.Int32
-	done := make(chan struct{})
 	_, err := s.Submit(context.Background(), SubmitRequest{
 		Indexers: indexers,
 		ExecFn:   exec,
 		Callbacks: JobCallbacks{
 			OnComplete: func(jobID uint64, idx *models.TorznabIndexer, results []Result, coverage []int, err error) {
 				completedCount.Add(1)
-			},
-			OnJobDone: func(jobID uint64) {
-				close(done)
+				wg.Done()
 			},
 		},
 	})
 
 	require.NoError(t, err)
-	<-done
+	wg.Wait()
 
 	execMu.Lock()
 	defer execMu.Unlock()
