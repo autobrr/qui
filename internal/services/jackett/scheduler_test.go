@@ -525,23 +525,21 @@ func TestSearchScheduler_ErrorPropagation(t *testing.T) {
 
 	indexer := &models.TorznabIndexer{ID: 1, Name: "test-indexer"}
 
-	done := make(chan struct{})
-	var callbackErr error
+	// Use channel to wait for OnComplete specifically (not OnJobDone)
+	// since both callbacks run as goroutines and may race
+	completeCh := make(chan error, 1)
 	_, err := s.Submit(context.Background(), SubmitRequest{
 		Indexers: []*models.TorznabIndexer{indexer},
 		ExecFn:   exec,
 		Callbacks: JobCallbacks{
 			OnComplete: func(jobID uint64, idx *models.TorznabIndexer, results []Result, coverage []int, err error) {
-				callbackErr = err
-			},
-			OnJobDone: func(jobID uint64) {
-				close(done)
+				completeCh <- err
 			},
 		},
 	})
 
 	require.NoError(t, err)
-	<-done
+	callbackErr := <-completeCh
 	assert.Equal(t, expectedErr, callbackErr)
 }
 
