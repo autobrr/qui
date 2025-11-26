@@ -20,6 +20,7 @@ import (
 	"maps"
 	"math"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"sort"
@@ -2235,7 +2236,7 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Determine the appropriate save path for cross-seeding
-	savePath := s.determineSavePath(torrentName, matchedTorrent, props)
+	savePath := s.determineSavePath(torrentName, matchedTorrent, props, matchType, sourceFiles, candidateFiles)
 
 	// Build options for adding the torrent
 	options := make(map[string]string)
@@ -2261,8 +2262,18 @@ func (s *Service) processCrossSeedCandidate(
 		options["category"] = category
 	}
 
-	// Handle AutoTMM and save path (use AutoManaged field from Torrent struct)
-	if matchedTorrent.AutoManaged {
+	// Handle AutoTMM and save path
+	// For cross-seeding, we often need precise control over save path, so disable autoTMM
+	// when we have a specific calculated path that differs from the default category path
+	useAutoTMM := matchedTorrent.AutoManaged
+
+	// For partial-in-pack or different root scenarios, we MUST use our calculated savePath
+	// Disable autoTMM to ensure qBittorrent uses our path instead of category defaults
+	if matchType == "partial-in-pack" || savePath != props.SavePath {
+		useAutoTMM = false
+	}
+
+	if useAutoTMM {
 		options["autoTMM"] = "true"
 	} else {
 		options["autoTMM"] = "false"
@@ -2282,10 +2293,17 @@ func (s *Service) processCrossSeedCandidate(
 		options["tags"] = strings.Join(finalTags, ",")
 	}
 
-	// Respect existing single-file torrents by avoiding automatic subfolders (contentLayout=noSubfolder)
-	if detectCommonRoot(candidateFiles) == "" {
+	// Determine contentLayout based on folder structure comparison
+	// If both torrents have the SAME root folder name, let qBittorrent create the subfolder
+	// If root folders differ (or one has none), use NoSubfolder to place files directly
+	sourceRoot := detectCommonRoot(sourceFiles)
+	candidateRoot := detectCommonRoot(candidateFiles)
+	if sourceRoot == "" || candidateRoot == "" || sourceRoot != candidateRoot {
+		// Different folder structures - use NoSubfolder to avoid creating wrong subfolder
 		options["contentLayout"] = "NoSubfolder"
 	}
+	// If sourceRoot == candidateRoot (and both non-empty), don't set contentLayout
+	// qBittorrent will use default behavior (Original) and create the matching subfolder
 
 	// Add the torrent
 	err = s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options)
@@ -2668,7 +2686,55 @@ func decodeBase64Variants(data string) ([]byte, error) {
 // - Season pack being added when individual episodes exist
 // - Individual episode being added when a season pack exists
 // - Custom paths and directory structures
-func (s *Service) determineSavePath(newTorrentName string, matchedTorrent *qbt.Torrent, props *qbt.TorrentProperties) string {
+// - Partial-in-pack matches where files exist inside the matched torrent's content directory
+func (s *Service) determineSavePath(newTorrentName string, matchedTorrent *qbt.Torrent, props *qbt.TorrentProperties, matchType string, sourceFiles, candidateFiles qbt.TorrentFiles) string {
+	sourceRoot := detectCommonRoot(sourceFiles)
+	candidateRoot := detectCommonRoot(candidateFiles)
+
+	// For partial-in-pack, files exist inside the matched torrent's content directory
+	if matchType == "partial-in-pack" {
+		// If source has no root folder but candidate does, we need to place the file
+		// inside the candidate's root folder
+		if sourceRoot == "" && candidateRoot != "" {
+			// Construct the folder path: SavePath + candidateRoot
+			folderPath := filepath.Join(props.SavePath, candidateRoot)
+			log.Debug().
+				Str("newTorrent", newTorrentName).
+				Str("matchedTorrent", matchedTorrent.Name).
+				Str("candidateRoot", candidateRoot).
+				Str("folderPath", folderPath).
+				Str("savePath", props.SavePath).
+				Msg("Cross-seeding partial-in-pack (single file into folder), using candidate's folder")
+			return folderPath
+		}
+
+		// Otherwise use ContentPath if available (for multi-file partial-in-pack)
+		if matchedTorrent.ContentPath != "" {
+			log.Debug().
+				Str("newTorrent", newTorrentName).
+				Str("matchedTorrent", matchedTorrent.Name).
+				Str("contentPath", matchedTorrent.ContentPath).
+				Str("savePath", props.SavePath).
+				Msg("Cross-seeding partial-in-pack, using matched torrent's content path")
+			return matchedTorrent.ContentPath
+		}
+	}
+
+	// Check if root folders differ - if so, use the candidate's folder
+	// This handles scene releases (SceneRelease.2020/) matching Plex-named folders (Movie (2020)/)
+	if sourceRoot != "" && candidateRoot != "" && sourceRoot != candidateRoot {
+		// Different root folder names - construct the correct folder path
+		folderPath := filepath.Join(props.SavePath, candidateRoot)
+		log.Debug().
+			Str("newTorrent", newTorrentName).
+			Str("matchedTorrent", matchedTorrent.Name).
+			Str("sourceRoot", sourceRoot).
+			Str("candidateRoot", candidateRoot).
+			Str("folderPath", folderPath).
+			Msg("Cross-seeding with different root folders, using candidate's folder path")
+		return folderPath
+	}
+
 	// Default to the matched torrent's save path
 	baseSavePath := props.SavePath
 
