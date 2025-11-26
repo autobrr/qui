@@ -109,8 +109,10 @@ func (r *RateLimiter) BeforeRequest(ctx context.Context, indexer *models.Torznab
 		}
 
 		if cfg.MaxWait > 0 && wait > cfg.MaxWait {
-			// Treat large waits as a short-lived cooldown so schedulers can skip instead of retrying.
-			r.setCooldownLocked(indexer.ID, wait)
+			// Cap cooldown to maxWait to prevent cascading blocks across priorities.
+			// Setting the full wait would cause lower-priority tasks to inherit cooldowns
+			// far exceeding their own budgets, starving them unnecessarily.
+			r.setCooldownLocked(indexer.ID, cfg.MaxWait)
 			r.mu.Unlock()
 			return &RateLimitWaitError{
 				IndexerID:   indexer.ID,

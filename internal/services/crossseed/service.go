@@ -69,6 +69,12 @@ type qbittorrentSync interface {
 	SetTags(ctx context.Context, instanceID int, hashes []string, tags string) error
 }
 
+// dedupCacheEntry stores cached deduplication results to avoid recomputation.
+type dedupCacheEntry struct {
+	deduplicated    []qbt.Torrent
+	duplicateHashes map[string][]string
+}
+
 // ServiceMetrics contains Prometheus metrics for the cross-seed service
 type ServiceMetrics struct {
 	FindCandidatesDuration    prometheus.Histogram
@@ -247,6 +253,11 @@ type Service struct {
 	// Cached torrent file metadata for repeated analyze/search calls.
 	torrentFilesCache *ttlcache.Cache[string, qbt.TorrentFiles]
 
+	// Cached deduplication results to avoid recomputing on every search run.
+	// Key: "dedup:{instanceID}:{torrentCount}:{hashSignature}" where hashSignature
+	// is derived from a sample of torrent hashes to detect list changes.
+	dedupCache *ttlcache.Cache[string, *dedupCacheEntry]
+
 	searchMu     sync.RWMutex
 	searchCancel context.CancelFunc
 	searchState  *searchRunState
@@ -280,6 +291,8 @@ func NewService(
 		SetDefaultTTL(indexerDomainCacheTTL))
 	contentFilesCache := ttlcache.New(ttlcache.Options[string, qbt.TorrentFiles]{}.
 		SetDefaultTTL(5 * time.Minute))
+	dedupCache := ttlcache.New(ttlcache.Options[string, *dedupCacheEntry]{}.
+		SetDefaultTTL(5 * time.Minute))
 
 	return &Service{
 		instanceStore:        instanceStore,
@@ -296,6 +309,7 @@ func NewService(
 		automationWake:       make(chan struct{}, 1),
 		domainMappings:       initializeDomainMappings(),
 		torrentFilesCache:    contentFilesCache,
+		dedupCache:           dedupCache,
 		metrics:              NewServiceMetrics(),
 	}
 }
@@ -3931,6 +3945,29 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 	s.searchMu.Unlock()
 }
 
+// dedupCacheKey generates a cache key for deduplication results based on instance ID
+// and a signature derived from torrent hashes. The signature samples hashes at specific
+// positions to detect list changes without hashing all hashes.
+func dedupCacheKey(instanceID int, torrents []qbt.Torrent) string {
+	n := len(torrents)
+	if n == 0 {
+		return fmt.Sprintf("dedup:%d:0:", instanceID)
+	}
+
+	// Sample first, middle, and last hash to detect changes
+	var sig string
+	if n == 1 {
+		sig = torrents[0].Hash
+	} else if n == 2 {
+		sig = torrents[0].Hash + torrents[1].Hash
+	} else {
+		mid := n / 2
+		sig = torrents[0].Hash + torrents[mid].Hash + torrents[n-1].Hash
+	}
+
+	return fmt.Sprintf("dedup:%d:%d:%s", instanceID, n, sig)
+}
+
 // deduplicateSourceTorrents removes duplicate torrents from the search queue by keeping only
 // the best representative of each unique content group. It prefers torrents that already
 // have a top-level folder (so subsequent cross-seeds inherit cleaner layouts) and falls back to
@@ -3949,6 +3986,19 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int, torrents []qbt.Torrent) ([]qbt.Torrent, map[string][]string) {
 	if len(torrents) <= 1 {
 		return torrents, map[string][]string{}
+	}
+
+	// Generate cache key from instance ID and a signature of torrent hashes.
+	// We sample first, middle, and last hashes plus count to detect changes efficiently.
+	cacheKey := dedupCacheKey(instanceID, torrents)
+	if s.dedupCache != nil {
+		if entry, ok := s.dedupCache.Get(cacheKey); ok && entry != nil {
+			log.Trace().
+				Int("instanceID", instanceID).
+				Int("cachedCount", len(entry.deduplicated)).
+				Msg("[CROSSSEED-DEDUP] Using cached deduplication result")
+			return entry.deduplicated, entry.duplicateHashes
+		}
 	}
 
 	// Parse all torrents and track their releases
@@ -4139,6 +4189,14 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		}
 		rep := &parsed[group.representativeIdx]
 		duplicateMap[rep.torrent.Hash] = append([]string(nil), group.duplicates...)
+	}
+
+	// Cache the result for future runs
+	if s.dedupCache != nil {
+		s.dedupCache.Set(cacheKey, &dedupCacheEntry{
+			deduplicated:    deduplicated,
+			duplicateHashes: duplicateMap,
+		}, ttlcache.DefaultTTL)
 	}
 
 	return deduplicated, duplicateMap
@@ -4398,6 +4456,22 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		return nil
 	}
 
+	// Wait for RSS automation to complete before searching to avoid rate limiter contention.
+	// RSS uses higher priority (shorter intervals) so we yield to it.
+	// Cap the wait to 5 minutes to prevent indefinite blocking if RSS gets stuck.
+	rssWaitDeadline := time.After(5 * time.Minute)
+rssWaitLoop:
+	for s.runActive.Load() {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-rssWaitDeadline:
+			log.Warn().Msg("[CROSSSEED-SEARCH] RSS wait timeout exceeded, proceeding with search")
+			break rssWaitLoop
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+
 	searchCtx := ctx
 	var searchCancel context.CancelFunc
 	searchTimeout := computeAutomationSearchTimeout(len(allowedIndexerIDs))
@@ -4407,7 +4481,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	if searchCancel != nil {
 		defer searchCancel()
 	}
-	searchCtx = jackett.WithSearchPriority(searchCtx, jackett.RateLimitPriorityRSS)
+	searchCtx = jackett.WithSearchPriority(searchCtx, jackett.RateLimitPriorityBackground)
 
 	searchResp, err := s.SearchTorrentMatches(searchCtx, state.opts.InstanceID, torrent.Hash, TorrentSearchOptions{
 		IndexerIDs:             allowedIndexerIDs,

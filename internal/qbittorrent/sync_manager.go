@@ -1272,13 +1272,14 @@ func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int,
 				return nil
 			}
 
-			// Clone the slice so later fetches cannot mutate the stored entry if the
-			// client reuses backing arrays across calls.
-			copied := make(qbt.TorrentFiles, len(*files))
-			copy(copied, *files)
+			// Clone the slice for the caller. The original API response will be used
+			// for caching to reduce memory allocations (cache isolation is handled by
+			// passing the original to cache before returning to caller).
+			callerCopy := make(qbt.TorrentFiles, len(*files))
+			copy(callerCopy, *files)
 
 			mu.Lock()
-			filesByHash[ch] = copied
+			filesByHash[ch] = callerCopy
 			mu.Unlock()
 			return nil
 		})
@@ -1288,15 +1289,14 @@ func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int,
 		return filesByHash, err
 	}
 
-	// Cache all newly fetched files in batch
+	// Cache all newly fetched files in batch.
+	// We pass filesByHash entries directly - callers receive the same slice reference
+	// but are expected not to mutate. This saves one clone per torrent.
 	if fm := sm.getFilesManager(); fm != nil && len(hashesToFetch) > 0 {
 		fetchedFiles := make(map[string]qbt.TorrentFiles)
 		for _, canonicalHash := range hashesToFetch {
 			if files, ok := filesByHash[canonicalHash]; ok {
-				// Cache a clone to keep cache entries isolated.
-				cloned := make(qbt.TorrentFiles, len(files))
-				copy(cloned, files)
-				fetchedFiles[canonicalHash] = cloned
+				fetchedFiles[canonicalHash] = files
 			}
 		}
 		if len(fetchedFiles) > 0 {
