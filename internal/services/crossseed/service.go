@@ -2328,13 +2328,13 @@ func (s *Service) processCrossSeedCandidate(
 			return result
 		}
 
-		result.Message = fmt.Sprintf("Added torrent with recheck to %s (match: %s)", props.SavePath, matchType)
+		result.Message = fmt.Sprintf("Added torrent with recheck to %s (match: %s)", savePath, matchType)
 		log.Debug().
 			Int("instanceID", candidate.InstanceID).
 			Str("instanceName", candidate.InstanceName).
 			Msg("Successfully added cross-seed torrent with recheck")
 	} else {
-		result.Message = fmt.Sprintf("Added torrent paused to %s (match: %s)", props.SavePath, matchType)
+		result.Message = fmt.Sprintf("Added torrent paused to %s (match: %s)", savePath, matchType)
 	}
 
 	// Attempt to align the new torrent's naming and file layout with the matched torrent
@@ -2391,9 +2391,9 @@ func (s *Service) processCrossSeedCandidate(
 		Str("instanceName", candidate.InstanceName).
 		Str("torrentHash", torrentHash).
 		Str("matchedHash", matchedTorrent.Hash).
-		Str("savePath", props.SavePath).
+		Str("savePath", savePath).
 		Str("matchType", matchType).
-		Bool("autoTMM", matchedTorrent.AutoManaged).
+		Bool("autoTMM", useAutoTMM).
 		Str("category", category).
 		Msg("Successfully added cross-seed torrent")
 
@@ -4049,6 +4049,10 @@ func dedupCacheKey(instanceID int, torrents []qbt.Torrent) string {
 // This significantly reduces API calls and processing time when an instance contains multiple
 // cross-seeds of the same content from different trackers, while enforcing strict matching so
 // that season packs never collapse individual-episode queue entries.
+//
+// IMPORTANT: Returned slices are backed by cached data and must be treated as read-only.
+// Do not append to, reorder, or modify the returned slices in-place. This avoids defensive
+// copies on cache hits to reduce memory pressure from repeated deduplication calls.
 func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int, torrents []qbt.Torrent) ([]qbt.Torrent, map[string][]string) {
 	if len(torrents) <= 1 {
 		return torrents, map[string][]string{}
