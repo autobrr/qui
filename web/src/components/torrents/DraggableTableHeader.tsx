@@ -10,14 +10,16 @@ import { CSS } from "@dnd-kit/utilities"
 import { flexRender, type Header } from "@tanstack/react-table"
 import { ChevronDown, ChevronUp } from "lucide-react"
 import { ColumnFilterPopover } from "./ColumnFilterPopover"
+import type { ViewMode } from "@/hooks/usePersistedCompactViewState"
 
 interface DraggableTableHeaderProps {
   header: Header<Torrent, unknown>
   columnFilters?: ColumnFilter[]
+  viewMode?: ViewMode
   onFilterChange?: (columnId: string, filter: ColumnFilter | null) => void
 }
 
-export function DraggableTableHeader({ header, columnFilters = [], onFilterChange }: DraggableTableHeaderProps) {
+export function DraggableTableHeader({ header, columnFilters = [], viewMode = "normal", onFilterChange }: DraggableTableHeaderProps) {
   const { column } = header
 
   const isSelectHeader = column.id === "select"
@@ -25,7 +27,8 @@ export function DraggableTableHeader({ header, columnFilters = [], onFilterChang
   const isTrackerIconHeader = column.id === "tracker_icon"
   const isStatusIconHeader = column.id === "status_icon"
   const isCompactHeader = isTrackerIconHeader || isStatusIconHeader
-  const headerPadding = isCompactHeader ? "px-0" : "px-3"
+  // Match cell padding: compact columns use px-0, others use px-2 (dense) or px-3 (normal)
+  const headerPadding = isCompactHeader ? "px-0" : (viewMode === "dense" ? "px-2" : "px-3")
 
   const {
     attributes,
@@ -64,7 +67,7 @@ export function DraggableTableHeader({ header, columnFilters = [], onFilterChang
       className="group overflow-hidden"
     >
       <div
-        className={`${headerPadding} h-10 text-left text-sm font-medium text-muted-foreground flex items-center ${canSort ? "cursor-pointer select-none" : ""
+        className={`${headerPadding} ${viewMode === "dense" ? "h-7 text-xs" : "h-10 text-sm"} text-left font-medium text-muted-foreground flex items-center ${canSort ? "cursor-pointer select-none" : ""
           } ${column.id !== "select" ? "cursor-grab active:cursor-grabbing" : ""
           }`}
         onClick={event => {

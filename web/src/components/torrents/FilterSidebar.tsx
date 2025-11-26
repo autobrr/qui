@@ -1281,10 +1281,16 @@ const FilterSidebarComponent = ({
   }, [filteredTrackers])
 
   // Virtual scrolling for categories
+  // Dense mode reduces item heights for more compact display
+  const denseItemHeight = viewMode === "dense" ? 28 : 36
+  const accordionTriggerClass = viewMode === "dense" ? "px-2 py-1" : "px-3 py-2"
+  const accordionContentClass = viewMode === "dense" ? "px-2 pb-1" : "px-3 pb-2"
+  const filterItemClass = viewMode === "dense" ? "px-1.5 py-0.5" : "px-2 py-1.5"
+
   const categoryVirtualizer = useVirtualizer({
     count: filteredCategories.length,
     getScrollElement: () => categoryListRef.current,
-    estimateSize: () => 36, // Approximate height of each category item
+    estimateSize: () => denseItemHeight,
     overscan: 10,
   })
 
@@ -1292,7 +1298,7 @@ const FilterSidebarComponent = ({
   const tagVirtualizer = useVirtualizer({
     count: filteredTags.length,
     getScrollElement: () => tagListRef.current,
-    estimateSize: () => 36, // Approximate height of each tag item
+    estimateSize: () => denseItemHeight,
     overscan: 10,
   })
 
@@ -1300,7 +1306,7 @@ const FilterSidebarComponent = ({
   const trackerVirtualizer = useVirtualizer({
     count: nonEmptyFilteredTrackers.length,
     getScrollElement: () => trackerListRef.current,
-    estimateSize: () => 36, // Approximate height of each tracker item
+    estimateSize: () => denseItemHeight,
     overscan: 10,
   })
 
@@ -1422,15 +1428,18 @@ const FilterSidebarComponent = ({
   }
 
   // Simple slide animation - sidebar slides in/out from the left
+  // Sidebar width: 320px normal, 260px dense
+  const sidebarMaxWidth = viewMode === "dense" ? "xl:max-w-[260px]" : "xl:max-w-xs"
+
   return (
     <div
-      className={`${className} h-full w-full xl:max-w-xs flex flex-col xl:flex-shrink-0 xl:border-r xl:bg-muted/10 ${
+      className={`${className} h-full w-full ${sidebarMaxWidth} flex flex-col xl:flex-shrink-0 xl:border-r xl:bg-muted/10 ${
         isStaleData ? "opacity-75 transition-opacity duration-200" : ""
       }`}
     >
       <ScrollArea className="h-full flex-1 overscroll-contain select-none">
-        <div className="p-4">
-          <div className="flex items-center justify-between mb-4">
+        <div className={viewMode === "dense" ? "px-3 py-2" : "p-4"}>
+          <div className={cn("flex items-center justify-between", viewMode === "dense" ? "mb-2" : "mb-4")}>
             <div className="flex items-center gap-2">
               <h3 className="font-semibold">Filters</h3>
               <Tooltip>
@@ -1483,12 +1492,12 @@ const FilterSidebarComponent = ({
             type="multiple"
             value={expandedItems}
             onValueChange={setExpandedItems}
-            className="space-y-2"
+            className={viewMode === "dense" ? "space-y-1" : "space-y-2"}
           >
             {/* Custom Filter */}
             {selectedFilters.expr && (
               <AccordionItem value="custom" className="border rounded-lg">
-                <AccordionTrigger className="px-3 py-2 hover:no-underline">
+                <AccordionTrigger className={cn(accordionTriggerClass, "hover:no-underline")}>
                   <div className="flex items-center justify-between w-full">
                     <div className="flex items-center gap-2">
                       <GitBranch className="h-4 w-4" />
@@ -1500,7 +1509,7 @@ const FilterSidebarComponent = ({
                     />
                   </div>
                 </AccordionTrigger>
-                <AccordionContent className="px-3 pb-2">
+                <AccordionContent className={accordionContentClass}>
                   <div className="text-xs text-muted-foreground font-mono bg-muted/50 p-2 rounded break-all">
                     {selectedFilters.expr}
                   </div>
@@ -1510,10 +1519,10 @@ const FilterSidebarComponent = ({
                 </AccordionContent>
               </AccordionItem>
             )}
-            
+
             {/* Status Filter */}
             <AccordionItem value="status" className="border rounded-lg">
-              <AccordionTrigger className="px-3 py-2 hover:no-underline">
+              <AccordionTrigger className={cn(accordionTriggerClass, "hover:no-underline")}>
                 <div className="flex items-center justify-between w-full">
                   <span className="text-sm font-medium">Status</span>
                   {selectedFilters.status.length + selectedFilters.excludeStatus.length > 0 && (
@@ -1524,12 +1533,12 @@ const FilterSidebarComponent = ({
                   )}
                 </div>
               </AccordionTrigger>
-              <AccordionContent className="px-3 pb-2">
+              <AccordionContent className={accordionContentClass}>
                 <div className="flex flex-col">
                   {hiddenStatusCount > 0 && (
                     <button
                       type="button"
-                      className="flex items-center gap-1.5 self-start text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded px-2 py-1.5 mb-1 transition-colors"
+                      className={cn("flex items-center gap-1.5 self-start text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded mb-1 transition-colors", filterItemClass)}
                       onClick={() => setShowHiddenStatuses((prev) => !prev)}
                     >
                       {showHiddenStatuses ? (
@@ -1555,12 +1564,13 @@ const FilterSidebarComponent = ({
                   {statusOptionsForDisplay.map((state) => {
                     const statusState = getStatusState(state.value)
                     const isCrossSeed = state.value === "cross-seeds"
-                    
+
                     const statusItem = (
                       <label
                         key={state.value}
                       className={cn(
-                        "flex items-center gap-2 px-2 py-1.5 rounded",
+                        "flex items-center gap-2 rounded",
+                        filterItemClass,
                         isCrossSeed && statusState === "neutral" ? "cursor-default" : "cursor-pointer",
                         statusState === "exclude"
                           ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
@@ -1616,7 +1626,7 @@ const FilterSidebarComponent = ({
 
             {/* Categories Filter */}
             <AccordionItem value="categories" className="border rounded-lg">
-              <AccordionTrigger className="px-3 py-2 hover:no-underline">
+              <AccordionTrigger className={cn(accordionTriggerClass, "hover:no-underline")}>
                 <div className="flex items-center justify-between w-full">
                   <span className="text-sm font-medium">Categories</span>
                   {selectedFilters.categories.length + selectedFilters.excludeCategories.length > 0 && (
@@ -1627,10 +1637,10 @@ const FilterSidebarComponent = ({
                   )}
                 </div>
               </AccordionTrigger>
-              <AccordionContent className="px-3 pb-2">
+              <AccordionContent className={accordionContentClass}>
                 <div className="flex flex-col gap-0">
                   {/* Add new category button and show/hide empty toggle */}
-                  <div className="flex items-center gap-1.5 py-1.5 px-2 text-xs text-muted-foreground">
+                  <div className={cn("flex items-center gap-1.5 text-xs text-muted-foreground", filterItemClass)}>
                     <button
                       className="flex items-center gap-1.5 hover:text-foreground transition-colors"
                       onClick={() => {
@@ -1666,7 +1676,7 @@ const FilterSidebarComponent = ({
                   </div>
 
                   {/* Search input for categories */}
-                  <div className="mb-2">
+                  <div className={viewMode === "dense" ? "mb-1" : "mb-2"}>
                     <SearchInput
                       placeholder="Search categories..."
                       value={categorySearch}
@@ -1680,7 +1690,8 @@ const FilterSidebarComponent = ({
                   {!allowSubcategories && (getRawCount("category:") > 0 || uncategorizedState !== "neutral") && (
                     <label
                       className={cn(
-                        "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                        "flex items-center gap-2 rounded cursor-pointer",
+                        filterItemClass,
                         uncategorizedState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                       )}
                       onPointerDown={(event) => handleCategoryPointerDown(event, "")}
@@ -1761,6 +1772,7 @@ const FilterSidebarComponent = ({
                       hasEmptyCategories={hasEmptyCategories}
                       syntheticCategories={syntheticCategorySet}
                       getCategoryCount={getCategoryCountForTree}
+                      viewMode={viewMode}
                     />
                   ) : filteredCategories.length > VIRTUAL_THRESHOLD ? (
                     <div ref={categoryListRef} className="max-h-96 overflow-auto">
@@ -1793,7 +1805,8 @@ const FilterSidebarComponent = ({
                                 <ContextMenuTrigger asChild>
                                   <label
                                     className={cn(
-                                      "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                                      "flex items-center gap-2 rounded cursor-pointer",
+                                      filterItemClass,
                                       categoryState === "exclude"
                                         ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
                                         : "hover:bg-muted"
@@ -1894,7 +1907,8 @@ const FilterSidebarComponent = ({
                           <ContextMenuTrigger asChild>
                             <label
                             className={cn(
-                              "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                              "flex items-center gap-2 rounded cursor-pointer",
+                              filterItemClass,
                               categoryState === "exclude"
                                 ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
                                 : "hover:bg-muted"
@@ -1988,7 +2002,7 @@ const FilterSidebarComponent = ({
 
             {/* Tags Filter */}
             <AccordionItem value="tags" className="border rounded-lg">
-              <AccordionTrigger className="px-3 py-2 hover:no-underline">
+              <AccordionTrigger className={cn(accordionTriggerClass, "hover:no-underline")}>
                 <div className="flex items-center justify-between w-full">
                   <span className="text-sm font-medium">Tags</span>
                   {selectedFilters.tags.length + selectedFilters.excludeTags.length > 0 && (
@@ -1999,10 +2013,10 @@ const FilterSidebarComponent = ({
                   )}
                 </div>
               </AccordionTrigger>
-              <AccordionContent className="px-3 pb-2">
+              <AccordionContent className={accordionContentClass}>
                 <div className="flex flex-col gap-0">
                   {/* Add new tag button and show/hide empty toggle */}
-                  <div className="flex items-center gap-1.5 py-1.5 px-2 text-xs text-muted-foreground">
+                  <div className={cn("flex items-center gap-1.5 text-xs text-muted-foreground", filterItemClass)}>
                     <button
                       className="flex items-center gap-1.5 hover:text-foreground transition-colors"
                       onClick={() => setShowCreateTagDialog(true)}
@@ -2035,7 +2049,7 @@ const FilterSidebarComponent = ({
                   </div>
 
                   {/* Search input for tags */}
-                  <div className="mb-2">
+                  <div className={viewMode === "dense" ? "mb-1" : "mb-2"}>
                     <SearchInput
                       placeholder="Search tags..."
                       value={tagSearch}
@@ -2049,7 +2063,8 @@ const FilterSidebarComponent = ({
                   {(getRawCount("tag:") > 0 || untaggedState !== "neutral") && (
                     <label
                       className={cn(
-                        "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                        "flex items-center gap-2 rounded cursor-pointer",
+                        filterItemClass,
                         untaggedState === "exclude" ? "bg-destructive/10 text-destructive hover:bg-destructive/15" : "hover:bg-muted"
                       )}
                       onPointerDown={(event) => handleTagPointerDown(event, "")}
@@ -2138,7 +2153,8 @@ const FilterSidebarComponent = ({
                                 <ContextMenuTrigger asChild>
                                   <label
                                     className={cn(
-                                      "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                                      "flex items-center gap-2 rounded cursor-pointer",
+                                      filterItemClass,
                                       tagState === "exclude"
                                         ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
                                         : "hover:bg-muted"
@@ -2203,7 +2219,8 @@ const FilterSidebarComponent = ({
                           <ContextMenuTrigger asChild>
                             <label
                             className={cn(
-                              "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                              "flex items-center gap-2 rounded cursor-pointer",
+                              filterItemClass,
                               tagState === "exclude"
                                 ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
                                 : "hover:bg-muted"
@@ -2264,7 +2281,7 @@ const FilterSidebarComponent = ({
 
             {/* Trackers Filter */}
             <AccordionItem value="trackers" className="border rounded-lg last:border-b">
-              <AccordionTrigger className="px-3 py-2 hover:no-underline">
+              <AccordionTrigger className={cn(accordionTriggerClass, "hover:no-underline")}>
                 <div className="flex items-center justify-between w-full">
                   <span className="text-sm font-medium">Trackers</span>
                   {selectedFilters.trackers.length + selectedFilters.excludeTrackers.length > 0 && (
@@ -2275,10 +2292,10 @@ const FilterSidebarComponent = ({
                   )}
                 </div>
               </AccordionTrigger>
-              <AccordionContent className="px-3 pb-2">
+              <AccordionContent className={accordionContentClass}>
                 <div className="flex flex-col gap-0">
                   {/* Search input for trackers */}
-                  <div className="mb-2">
+                  <div className={viewMode === "dense" ? "mb-1" : "mb-2"}>
                     <SearchInput
                       placeholder="Search trackers..."
                       value={trackerSearch}
@@ -2291,7 +2308,8 @@ const FilterSidebarComponent = ({
                   {/* No tracker option */}
                   <label
                     className={cn(
-                      "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                      "flex items-center gap-2 rounded cursor-pointer",
+                      filterItemClass,
                       noTrackerState === "exclude"
                         ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
                         : "hover:bg-muted"
@@ -2365,7 +2383,8 @@ const FilterSidebarComponent = ({
                                 <ContextMenuTrigger asChild>
                                   <label
                                     className={cn(
-                                      "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                                      "flex items-center gap-2 rounded cursor-pointer",
+                                      filterItemClass,
                                       trackerState === "exclude"
                                         ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
                                         : "hover:bg-muted"
@@ -2427,7 +2446,8 @@ const FilterSidebarComponent = ({
                           <ContextMenuTrigger asChild>
                             <label
                             className={cn(
-                              "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                              "flex items-center gap-2 rounded cursor-pointer",
+                              filterItemClass,
                               trackerState === "exclude"
                                 ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
                                 : "hover:bg-muted"

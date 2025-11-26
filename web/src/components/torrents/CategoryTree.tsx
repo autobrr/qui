@@ -11,6 +11,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger
 } from "@/components/ui/context-menu"
+import type { ViewMode } from "@/hooks/usePersistedCompactViewState"
 import type { Category } from "@/types"
 import { ChevronDown, ChevronRight, Edit, FolderPlus, Trash2 } from "lucide-react"
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react"
@@ -45,6 +46,7 @@ interface CategoryTreeProps {
   hasEmptyCategories?: boolean
   syntheticCategories?: Set<string>
   getCategoryCount: (category: string) => string
+  viewMode?: ViewMode
 }
 
 export function buildCategoryTree(
@@ -121,6 +123,7 @@ const CategoryTreeNode = memo(({
   useSubcategories,
   syntheticCategories,
   getCategoryCount,
+  viewMode = "normal",
 }: {
   node: CategoryNode
   getCategoryState: (category: string) => "include" | "exclude" | "neutral"
@@ -138,13 +141,16 @@ const CategoryTreeNode = memo(({
   useSubcategories: boolean
   syntheticCategories?: Set<string>
   getCategoryCount: (category: string) => string
+  viewMode?: ViewMode
 }) => {
   const hasChildren = node.children.length > 0
   const isCollapsed = collapsedCategories.has(node.name)
   const categoryState = getCategoryState(node.name)
   const checkboxState = getCheckboxState(categoryState)
-  const indentLevel = node.level * 20
+  const indentLevel = node.level * (viewMode === "dense" ? 12 : 16)
   const isSynthetic = syntheticCategories?.has(node.name) ?? false
+  const itemPadding = viewMode === "dense" ? "px-1 py-0.5" : "px-1.5 py-1.5"
+  const itemGap = viewMode === "dense" ? "gap-1.5" : "gap-2"
 
   const handleToggleCollapse = useCallback((e: ReactMouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
@@ -187,16 +193,16 @@ const CategoryTreeNode = memo(({
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <li
-          className="flex items-center gap-2 px-2 py-1.5 hover:bg-accent rounded-md cursor-pointer select-none"
-          style={{ paddingLeft: `${indentLevel + 8}px` }}
+          className={`flex items-center ${itemGap} ${itemPadding} hover:bg-muted rounded-md cursor-pointer select-none`}
+          style={{ paddingLeft: `${indentLevel + (viewMode === "dense" ? 4 : 6)}px` }}
           onPointerDown={handlePointerDown}
           onPointerLeave={onCategoryPointerLeave}
           role="presentation"
         >
-            {useSubcategories && (
+            {useSubcategories && hasChildren && (
               <button
                 onClick={handleToggleCollapse}
-                className={`size-4 flex items-center justify-center transition-opacity ${hasChildren ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+                className="size-4 flex items-center justify-center"
                 type="button"
                 aria-label={isCollapsed ? "Expand category" : "Collapse category"}
               >
@@ -206,6 +212,10 @@ const CategoryTreeNode = memo(({
                   <ChevronDown className="size-3" />
                 )}
               </button>
+            )}
+            {/* Spacer for subcategories without children to align with parent's checkbox */}
+            {useSubcategories && !hasChildren && node.level > 0 && (
+              <span className="size-4" />
             )}
 
             <Checkbox
@@ -280,6 +290,7 @@ const CategoryTreeNode = memo(({
               useSubcategories={useSubcategories}
               syntheticCategories={syntheticCategories}
               getCategoryCount={getCategoryCount}
+              viewMode={viewMode}
             />
           ))}
         </ul>
@@ -309,7 +320,10 @@ export const CategoryTree = memo(({
   searchTerm = "",
   syntheticCategories = new Set<string>(),
   getCategoryCount,
+  viewMode = "normal",
 }: CategoryTreeProps) => {
+  const itemPadding = viewMode === "dense" ? "px-1 py-0.5" : "px-1.5 py-1.5"
+  const itemGap = viewMode === "dense" ? "gap-1.5" : "gap-2"
   // Filter categories based on search term
   const filteredCategories = useMemo(() => {
     if (!searchTerm) return categories
@@ -343,7 +357,7 @@ export const CategoryTree = memo(({
       {/* All/Uncategorized special items */}
 
       <li
-        className="flex items-center gap-2 px-2 py-1.5 hover:bg-accent rounded-md cursor-pointer"
+        className={`flex items-center ${itemGap} ${itemPadding} hover:bg-muted rounded-md cursor-pointer`}
         onClick={() => onCategoryCheckboxChange("")}
         onPointerDown={(event) => onCategoryPointerDown?.(event, "")}
         onPointerLeave={onCategoryPointerLeave}
@@ -360,7 +374,7 @@ export const CategoryTree = memo(({
         </span>
       </li>
 
-      <div className="border-t my-2" />
+      <div className={viewMode === "dense" ? "border-t my-1" : "border-t my-2"} />
 
       {/* Category tree/list */}
       {categoryTree.map((node) => (
@@ -382,6 +396,7 @@ export const CategoryTree = memo(({
           useSubcategories={useSubcategories}
           syntheticCategories={syntheticCategories}
           getCategoryCount={getCategoryCount}
+          viewMode={viewMode}
         />
       ))}
     </div>
