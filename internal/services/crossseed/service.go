@@ -3949,6 +3949,9 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 // dedupCacheKey generates a cache key for deduplication results based on instance ID
 // and a signature derived from torrent hashes. Uses XOR of xxhash values for order-independent
 // hashing - the same set of torrents produces the same key regardless of order.
+//
+// Note: XOR has theoretical collision risk (different sets could produce same signature),
+// but the 5-minute TTL and count in key make practical impact negligible.
 func dedupCacheKey(instanceID int, torrents []qbt.Torrent) string {
 	n := len(torrents)
 	if n == 0 {
@@ -3994,6 +3997,9 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 				Int("cachedCount", len(entry.deduplicated)).
 				Msg("[CROSSSEED-DEDUP] Using cached deduplication result")
 			// IMPORTANT: Returned slices are cache-backed. Do not modify.
+			// We intentionally avoid defensive copies here because the cache exists to reduce
+			// memory pressure from repeated deduplication. Cloning on every hit would defeat
+			// that purpose. Current callers (refreshSearchQueue) are read-only.
 			return entry.deduplicated, entry.duplicateHashes
 		}
 	}

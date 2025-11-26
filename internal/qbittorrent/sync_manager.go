@@ -32,7 +32,9 @@ import (
 	"github.com/autobrr/qui/internal/services/trackericons"
 )
 
-// FilesManager interface for caching torrent files
+// FilesManager interface for caching torrent files.
+// IMPORTANT: All returned qbt.TorrentFiles slices must be treated as read-only
+// to preserve cache integrity. Do not append, modify, or re-slice.
 type FilesManager interface {
 	GetCachedFiles(ctx context.Context, instanceID int, hash string) (qbt.TorrentFiles, error)
 	// GetCachedFilesBatch returns cached files for a set of torrents and the hashes that were missing/stale.
