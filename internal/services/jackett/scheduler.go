@@ -11,6 +11,321 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
+// Rate limiting constants and types
+
+const (
+	defaultMinRequestInterval = 60 * time.Second
+)
+
+var priorityMultipliers = map[RateLimitPriority]float64{
+	RateLimitPriorityInteractive: 0.1,
+	RateLimitPriorityRSS:         0.5,
+	RateLimitPriorityCompletion:  0.7,
+	RateLimitPriorityBackground:  1.0,
+}
+
+const (
+	// Keep RSS responsive; we'll skip indexers that need more than this wait.
+	rssMaxWait = 15 * time.Second
+	// Completion tasks can tolerate a bit more waiting than RSS but still should not stall.
+	completionMaxWait = 30 * time.Second
+	// Background jobs are least urgent; allow more wait before skipping.
+	backgroundMaxWait = 45 * time.Second
+)
+
+type RateLimitPriority string
+
+const (
+	RateLimitPriorityInteractive RateLimitPriority = "interactive"
+	RateLimitPriorityRSS         RateLimitPriority = "rss"
+	RateLimitPriorityCompletion  RateLimitPriority = "completion"
+	RateLimitPriorityBackground  RateLimitPriority = "background"
+)
+
+type RateLimitOptions struct {
+	Priority    RateLimitPriority
+	MinInterval time.Duration
+	MaxWait     time.Duration
+}
+
+type RateLimitWaitError struct {
+	IndexerID   int
+	IndexerName string
+	Wait        time.Duration
+	MaxWait     time.Duration
+	Priority    RateLimitPriority
+}
+
+func (e *RateLimitWaitError) Error() string {
+	indexer := fmt.Sprintf("indexer %d", e.IndexerID)
+	if e.IndexerName != "" {
+		indexer = fmt.Sprintf("%s (%d)", e.IndexerName, e.IndexerID)
+	}
+	return fmt.Sprintf("%s blocked by torznab rate limit: requires %s wait but maximum allowed is %s", indexer, e.Wait, e.MaxWait)
+}
+
+func (e *RateLimitWaitError) Is(target error) bool {
+	_, ok := target.(*RateLimitWaitError)
+	return ok
+}
+
+type indexerRateState struct {
+	lastRequest    time.Duration
+	cooldownUntil  time.Duration
+	hourlyRequests []time.Duration
+	dailyRequests  []time.Duration
+}
+
+// RateLimiter tracks per-indexer request timing and computes wait times.
+// It does not block; the scheduler queries it to make dispatch decisions.
+type RateLimiter struct {
+	mu          sync.Mutex
+	minInterval time.Duration
+	states      map[int]*indexerRateState
+	startTime   time.Time
+}
+
+func NewRateLimiter(minInterval time.Duration) *RateLimiter {
+	if minInterval <= 0 {
+		minInterval = defaultMinRequestInterval
+	}
+	return &RateLimiter{
+		minInterval: minInterval,
+		states:      make(map[int]*indexerRateState),
+		startTime:   time.Now(),
+	}
+}
+
+func (r *RateLimiter) RecordRequest(indexerID int, ts time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var dur time.Duration
+	if ts.IsZero() {
+		dur = time.Since(r.startTime)
+	} else {
+		dur = ts.Sub(r.startTime)
+	}
+	r.recordLocked(indexerID, dur)
+}
+
+func (r *RateLimiter) SetCooldown(indexerID int, until time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	state := r.getStateLocked(indexerID)
+	cooldownDur := until.Sub(r.startTime)
+	if cooldownDur > state.cooldownUntil {
+		state.cooldownUntil = cooldownDur
+	}
+}
+
+// LoadCooldowns seeds the rate limiter with pre-existing cooldown windows.
+func (r *RateLimiter) LoadCooldowns(cooldowns map[int]time.Time) {
+	if len(cooldowns) == 0 {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for indexerID, until := range cooldowns {
+		if until.IsZero() {
+			continue
+		}
+		state := r.getStateLocked(indexerID)
+		cooldownDur := until.Sub(r.startTime)
+		if cooldownDur > state.cooldownUntil {
+			state.cooldownUntil = cooldownDur
+		}
+	}
+}
+
+func (r *RateLimiter) ClearCooldown(indexerID int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	state := r.getStateLocked(indexerID)
+	state.cooldownUntil = 0
+}
+
+// IsInCooldown checks if an indexer is currently in cooldown without blocking
+func (r *RateLimiter) IsInCooldown(indexerID int) (bool, time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	state := r.getStateLocked(indexerID)
+	now := time.Since(r.startTime)
+	if state.cooldownUntil > 0 && state.cooldownUntil > now {
+		return true, r.startTime.Add(state.cooldownUntil)
+	}
+	return false, time.Time{}
+}
+
+// GetCooldownIndexers returns a list of indexer IDs that are currently in cooldown
+func (r *RateLimiter) GetCooldownIndexers() map[int]time.Time {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	cooldowns := make(map[int]time.Time)
+	now := time.Since(r.startTime)
+	for indexerID, state := range r.states {
+		if state.cooldownUntil > 0 && state.cooldownUntil > now {
+			cooldowns[indexerID] = r.startTime.Add(state.cooldownUntil)
+		}
+	}
+	return cooldowns
+}
+
+func (r *RateLimiter) computeWaitLocked(indexer *models.TorznabIndexer, now time.Duration, minInterval time.Duration) time.Duration {
+	if minInterval <= 0 {
+		minInterval = r.minInterval
+	}
+	state := r.getStateLocked(indexer.ID)
+	r.pruneLocked(state, now)
+
+	var wait time.Duration
+
+	if state.cooldownUntil > 0 && state.cooldownUntil > now {
+		wait = state.cooldownUntil - now
+	}
+
+	if minInterval > 0 && state.lastRequest >= 0 {
+		next := state.lastRequest + minInterval
+		if next > now {
+			delay := next - now
+			if delay > wait {
+				wait = delay
+			}
+		}
+	}
+
+	if limit := derefLimit(indexer.HourlyRequestLimit); limit > 0 {
+		if len(state.hourlyRequests) >= limit {
+			oldest := state.hourlyRequests[0]
+			readyAt := oldest + time.Hour
+			if readyAt > now {
+				delay := readyAt - now
+				if delay > wait {
+					wait = delay
+				}
+			}
+		}
+	}
+
+	if limit := derefLimit(indexer.DailyRequestLimit); limit > 0 {
+		if len(state.dailyRequests) >= limit {
+			oldest := state.dailyRequests[0]
+			readyAt := oldest + 24*time.Hour
+			if readyAt > now {
+				delay := readyAt - now
+				if delay > wait {
+					wait = delay
+				}
+			}
+		}
+	}
+
+	return wait
+}
+
+func (r *RateLimiter) pruneLocked(state *indexerRateState, now time.Duration) {
+	cutoffHour := now - 1*time.Hour
+	cutoffDay := now - 24*time.Hour
+
+	idx := 0
+	for _, ts := range state.hourlyRequests {
+		if ts > cutoffHour {
+			break
+		}
+		idx++
+	}
+	if idx > 0 {
+		state.hourlyRequests = state.hourlyRequests[idx:]
+	}
+
+	idx = 0
+	for _, ts := range state.dailyRequests {
+		if ts > cutoffDay {
+			break
+		}
+		idx++
+	}
+	if idx > 0 {
+		state.dailyRequests = state.dailyRequests[idx:]
+	}
+}
+
+func (r *RateLimiter) getStateLocked(indexerID int) *indexerRateState {
+	state, ok := r.states[indexerID]
+	if !ok {
+		state = &indexerRateState{lastRequest: -1}
+		r.states[indexerID] = state
+	}
+	return state
+}
+
+func (r *RateLimiter) recordLocked(indexerID int, ts time.Duration) {
+	state := r.getStateLocked(indexerID)
+	state.lastRequest = ts
+	state.hourlyRequests = append(state.hourlyRequests, ts)
+	state.dailyRequests = append(state.dailyRequests, ts)
+	r.pruneLocked(state, ts)
+}
+
+// NextWait returns the amount of time the caller would need to wait before a request could be made
+// against the provided indexer using the supplied options. This is a non-blocking helper used by
+// the job scheduler to decide if a request can run immediately.
+func (r *RateLimiter) NextWait(indexer *models.TorznabIndexer, opts *RateLimitOptions) time.Duration {
+	if indexer == nil {
+		return 0
+	}
+	cfg := r.resolveOptions(opts)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	now := time.Since(r.startTime)
+	return r.computeWaitLocked(indexer, now, cfg.MinInterval)
+}
+
+func (r *RateLimiter) resolveOptions(opts *RateLimitOptions) RateLimitOptions {
+	cfg := RateLimitOptions{
+		Priority:    RateLimitPriorityBackground,
+		MinInterval: r.minInterval,
+	}
+
+	if opts != nil {
+		if opts.Priority != "" {
+			cfg.Priority = opts.Priority
+		}
+		if opts.MinInterval > 0 {
+			cfg.MinInterval = opts.MinInterval
+		}
+		if opts.MaxWait > 0 {
+			cfg.MaxWait = opts.MaxWait
+		}
+	}
+
+	if cfg.MinInterval <= 0 {
+		cfg.MinInterval = defaultMinRequestInterval
+	}
+
+	if multiplier, ok := priorityMultipliers[cfg.Priority]; ok {
+		cfg.MinInterval = time.Duration(float64(cfg.MinInterval) * multiplier)
+	}
+
+	return cfg
+}
+
+func derefLimit(limit *int) int {
+	if limit == nil {
+		return 0
+	}
+	if *limit < 0 {
+		return 0
+	}
+	return *limit
+}
+
+// Scheduler constants and types
+
 // searchJobPriority defines execution ordering for queued searches.
 const (
 	searchJobPriorityInteractive = 0
@@ -19,33 +334,40 @@ const (
 	searchJobPriorityBackground  = 3
 )
 
+const (
+	dispatchCoalesceDelay = 5 * time.Millisecond
+	defaultMaxWorkers     = 10
+)
+
+// JobCallbacks defines the callbacks for async job completion.
+type JobCallbacks struct {
+	// OnComplete fires for each indexer when it finishes (success or error).
+	// Called in a goroutine - safe to do blocking work.
+	OnComplete func(jobID uint64, indexer *models.TorznabIndexer, results []Result, coverage []int, err error)
+	// OnJobDone fires once after ALL indexers complete (optional, can be nil).
+	// Called in a goroutine - safe to do blocking work.
+	OnJobDone func(jobID uint64)
+}
+
+// SubmitRequest contains all parameters for submitting a job to the scheduler.
+type SubmitRequest struct {
+	Indexers  []*models.TorznabIndexer
+	Params    url.Values
+	Meta      *searchContext
+	Callbacks JobCallbacks
+	ExecFn    func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error)
+}
+
 type workerTask struct {
-	jobID   uint64
-	taskID  uint64
-	indexer *models.TorznabIndexer
-	params  url.Values
-	meta    *searchContext
-	exec    func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error)
-	ctx     context.Context
-	respCh  chan workerResult
-	onStart func(jobID uint64, indexerID int) context.Context
-	onDone  func(jobID uint64, indexerID int, err error)
-	isRSS   bool
-}
-
-type workerResult struct {
-	jobID    uint64
-	indexer  int
-	results  []Result
-	coverage []int
-	err      error
-}
-
-type indexerWorker struct {
-	indexerID   int
-	tasks       chan workerTask
-	rateLimiter *RateLimiter
-	stopCh      chan struct{}
+	jobID     uint64
+	taskID    uint64
+	indexer   *models.TorznabIndexer
+	params    url.Values
+	meta      *searchContext
+	exec      func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error)
+	ctx       context.Context
+	callbacks JobCallbacks
+	isRSS     bool
 }
 
 type taskItem struct {
@@ -65,12 +387,12 @@ func (h taskHeap) Less(i, j int) bool {
 	return h[i].priority < h[j].priority
 }
 func (h taskHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i]; h[i].index = i; h[j].index = j }
-func (h *taskHeap) Push(x interface{}) {
+func (h *taskHeap) Push(x any) {
 	item := x.(*taskItem)
 	item.index = len(*h)
 	*h = append(*h, item)
 }
-func (h *taskHeap) Pop() interface{} {
+func (h *taskHeap) Pop() any {
 	old := *h
 	n := len(old)
 	item := old[n-1]
@@ -80,36 +402,55 @@ func (h *taskHeap) Pop() interface{} {
 	return item
 }
 
-// searchScheduler coordinates Torznab searches so we can queue thousands of indexer tasks while
-// keeping one goroutine per indexer and shared clients.
+// jobState tracks completion status for a multi-indexer job.
+type jobState struct {
+	totalTasks     int
+	completedTasks int
+	callbacks      JobCallbacks
+}
+
+// searchScheduler coordinates Torznab searches with dispatch-time rate limiting.
+// Jobs are submitted asynchronously and results delivered via callbacks.
 type searchScheduler struct {
 	mu          sync.Mutex
-	workers     map[int]*indexerWorker
 	rateLimiter *RateLimiter
 
 	taskQueue  taskHeap
 	pendingRSS map[int]struct{}
 
+	// Worker pool semaphore - limits concurrent executions
+	workerPool chan struct{}
+	// Track in-flight tasks per indexer
+	inFlight map[int]struct{}
+	// Track job completion state
+	jobs map[uint64]*jobState
+
 	submitCh   chan []workerTask
-	completeCh chan workerResult
+	completeCh chan struct{}
 	stopCh     chan struct{}
 
 	jobSeq  uint64
 	taskSeq uint64
+
+	// retryTimer tracks the current scheduled retry
+	retryTimer *time.Timer
 }
 
-const dispatchCoalesceDelay = 5 * time.Millisecond
-
-func newSearchScheduler(rl *RateLimiter) *searchScheduler {
+func newSearchScheduler(rl *RateLimiter, maxWorkers int) *searchScheduler {
 	if rl == nil {
 		rl = NewRateLimiter(defaultMinRequestInterval)
 	}
+	if maxWorkers <= 0 {
+		maxWorkers = defaultMaxWorkers
+	}
 	s := &searchScheduler{
-		workers:     make(map[int]*indexerWorker),
 		pendingRSS:  make(map[int]struct{}),
 		rateLimiter: rl,
+		workerPool:  make(chan struct{}, maxWorkers),
+		inFlight:    make(map[int]struct{}),
+		jobs:        make(map[uint64]*jobState),
 		submitCh:    make(chan []workerTask, 128),
-		completeCh:  make(chan workerResult, 128),
+		completeCh:  make(chan struct{}, 128),
 		stopCh:      make(chan struct{}),
 	}
 	heap.Init(&s.taskQueue)
@@ -117,21 +458,27 @@ func newSearchScheduler(rl *RateLimiter) *searchScheduler {
 	return s
 }
 
-// Submit enqueues all indexer tasks for this search and waits for all to finish.
-func (s *searchScheduler) Submit(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext, exec func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error), onReady func(jobID uint64, indexerID int) context.Context, onComplete func(jobID uint64, indexerID int, err error), resultCallback func([]Result, []int, error)) error {
-	if len(indexers) == 0 {
-		resultCallback(nil, nil, nil)
-		return nil
+// Submit enqueues all indexer tasks for this search and returns immediately.
+// Results are delivered via the callbacks in the request.
+func (s *searchScheduler) Submit(ctx context.Context, req SubmitRequest) (uint64, error) {
+	if len(req.Indexers) == 0 {
+		// No indexers - call OnJobDone immediately if provided
+		if req.Callbacks.OnJobDone != nil {
+			go req.Callbacks.OnJobDone(0)
+		}
+		return 0, nil
 	}
 
 	jobID := s.nextJobID()
-	respCh := make(chan workerResult, len(indexers))
-	tasks := make([]workerTask, 0, len(indexers))
-	for _, idx := range indexers {
+	tasks := make([]workerTask, 0, len(req.Indexers))
+
+	for _, idx := range req.Indexers {
 		if idx == nil {
 			continue
 		}
-		if meta != nil && meta.rateLimit != nil && meta.rateLimit.Priority == RateLimitPriorityRSS {
+
+		// RSS deduplication
+		if req.Meta != nil && req.Meta.rateLimit != nil && req.Meta.rateLimit.Priority == RateLimitPriorityRSS {
 			s.mu.Lock()
 			if _, exists := s.pendingRSS[idx.ID]; exists {
 				s.mu.Unlock()
@@ -140,78 +487,49 @@ func (s *searchScheduler) Submit(ctx context.Context, indexers []*models.Torznab
 			s.pendingRSS[idx.ID] = struct{}{}
 			s.mu.Unlock()
 		}
+
 		tasks = append(tasks, workerTask{
-			jobID:   jobID,
-			taskID:  s.nextTaskID(),
-			indexer: idx,
-			params:  cloneValues(params),
-			meta:    meta,
-			exec:    exec,
-			ctx:     ctx,
-			respCh:  respCh,
-			onStart: onReady,
-			onDone:  onComplete,
-			isRSS:   meta != nil && meta.rateLimit != nil && meta.rateLimit.Priority == RateLimitPriorityRSS,
+			jobID:     jobID,
+			taskID:    s.nextTaskID(),
+			indexer:   idx,
+			params:    cloneValues(req.Params),
+			meta:      req.Meta,
+			exec:      req.ExecFn,
+			ctx:       ctx,
+			callbacks: req.Callbacks,
+			isRSS:     req.Meta != nil && req.Meta.rateLimit != nil && req.Meta.rateLimit.Priority == RateLimitPriorityRSS,
 		})
 	}
 
 	if len(tasks) == 0 {
-		resultCallback(nil, nil, nil)
-		return nil
+		// All indexers filtered out - call OnJobDone immediately
+		if req.Callbacks.OnJobDone != nil {
+			go req.Callbacks.OnJobDone(jobID)
+		}
+		return jobID, nil
 	}
 
+	// Register job state for tracking completion
+	s.mu.Lock()
+	s.jobs[jobID] = &jobState{
+		totalTasks:     len(tasks),
+		completedTasks: 0,
+		callbacks:      req.Callbacks,
+	}
+	s.mu.Unlock()
+
+	// Submit tasks - non-blocking
 	select {
 	case s.submitCh <- tasks:
 	case <-ctx.Done():
-		resultCallback(nil, nil, ctx.Err())
-		return ctx.Err()
+		s.mu.Lock()
+		delete(s.jobs, jobID)
+		s.clearPendingRSSLocked(tasks)
+		s.mu.Unlock()
+		return 0, ctx.Err()
 	}
 
-	go func() {
-		var (
-			results  []Result
-			coverage []int
-			failures int
-			lastErr  error
-		)
-
-		for i := 0; i < len(tasks); i++ {
-			select {
-			case <-ctx.Done():
-				safeInvokeResultCallback(resultCallback, results, coverage, ctx.Err())
-				s.clearPendingRSS(tasks)
-				return
-			case res := <-respCh:
-				if res.err != nil {
-					// Rate limit wait is treated as a skip so a single blocked indexer
-					// does not fail the whole scheduled search.
-					if _, isWait := asRateLimitWaitError(res.err); isWait {
-						continue
-					}
-					failures++
-					lastErr = res.err
-					continue
-				}
-				if len(res.coverage) > 0 {
-					coverage = append(coverage, res.coverage...)
-				}
-				if len(res.results) > 0 {
-					results = append(results, res.results...)
-				}
-			}
-		}
-
-		if failures == len(tasks) && lastErr != nil && len(results) == 0 {
-			s.clearPendingRSS(tasks)
-			safeInvokeResultCallback(resultCallback, nil, coverage, lastErr)
-			return
-		}
-
-		s.clearPendingRSS(tasks)
-		safeInvokeResultCallback(resultCallback, results, coverageSetToSlice(sliceToSet(coverage)), nil)
-	}()
-
-	return nil
+	return jobID, nil
 }
 
 func (s *searchScheduler) loop() {
@@ -222,11 +540,9 @@ func (s *searchScheduler) loop() {
 			select {
 			case batch := <-s.submitCh:
 				s.enqueueTasks(batch)
-			case res := <-s.completeCh:
-				s.markWorkerFree(res.indexer)
+			case <-s.completeCh:
 				s.dispatchTasks()
 			case <-s.stopCh:
-				s.stopAllWorkers()
 				return
 			case <-coalesce:
 				coalesce = nil
@@ -239,11 +555,9 @@ func (s *searchScheduler) loop() {
 		case batch := <-s.submitCh:
 			s.enqueueTasks(batch)
 			coalesce = time.After(dispatchCoalesceDelay)
-		case res := <-s.completeCh:
-			s.markWorkerFree(res.indexer)
+		case <-s.completeCh:
 			s.dispatchTasks()
 		case <-s.stopCh:
-			s.stopAllWorkers()
 			return
 		}
 	}
@@ -263,117 +577,223 @@ func (s *searchScheduler) enqueueTasks(tasks []workerTask) {
 }
 
 func (s *searchScheduler) dispatchTasks() {
-	for {
-		s.mu.Lock()
-		n := len(s.taskQueue)
-		if n == 0 {
-			s.mu.Unlock()
-			return
-		}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-		skipped := make([]*taskItem, 0, n)
-		dispatched := false
+	if s.taskQueue.Len() == 0 {
+		return
+	}
 
-		for i := 0; i < n; i++ {
-			item := heap.Pop(&s.taskQueue).(*taskItem)
-			s.mu.Unlock()
+	// Drain heap to classify tasks
+	items := make([]*taskItem, 0, s.taskQueue.Len())
+	for s.taskQueue.Len() > 0 {
+		items = append(items, heap.Pop(&s.taskQueue).(*taskItem))
+	}
 
-			worker := s.getWorker(item.task.indexer)
-			if worker != nil {
-				select {
-				case worker.tasks <- item.task:
-					dispatched = true
-				default:
-					skipped = append(skipped, item)
-				}
+	var blocked []*taskItem
+
+	for _, item := range items {
+		// Check if context is cancelled
+		if item.task.ctx.Err() != nil {
+			s.handleTaskCompleteLocked(item.task.jobID, item.task.indexer, nil, nil, item.task.ctx.Err(), &item.task.callbacks)
+			if item.task.isRSS {
+				delete(s.pendingRSS, item.task.indexer.ID)
 			}
-
-			s.mu.Lock()
+			continue
 		}
 
-		for _, item := range skipped {
-			heap.Push(&s.taskQueue, item)
+		// Check if indexer already has in-flight task
+		if _, inFlight := s.inFlight[item.task.indexer.ID]; inFlight {
+			blocked = append(blocked, item)
+			continue
+		}
+
+		var rlOpts *RateLimitOptions
+		if item.task.meta != nil {
+			rlOpts = item.task.meta.rateLimit
+		}
+
+		wait := s.rateLimiter.NextWait(item.task.indexer, rlOpts)
+		maxWait := s.getMaxWait(item)
+
+		if maxWait > 0 && wait > maxWait {
+			// Skip - exceeds budget
+			var priority RateLimitPriority
+			if rlOpts != nil {
+				priority = rlOpts.Priority
+			}
+			err := &RateLimitWaitError{
+				IndexerID:   item.task.indexer.ID,
+				IndexerName: item.task.indexer.Name,
+				Wait:        wait,
+				MaxWait:     maxWait,
+				Priority:    priority,
+			}
+			s.handleTaskCompleteLocked(item.task.jobID, item.task.indexer, nil, nil, err, &item.task.callbacks)
+			if item.task.isRSS {
+				delete(s.pendingRSS, item.task.indexer.ID)
+			}
+			continue
+		}
+
+		if wait > 0 {
+			// Blocked - re-queue for later
+			blocked = append(blocked, item)
+			continue
+		}
+
+		// Ready - try to acquire worker
+		select {
+		case s.workerPool <- struct{}{}:
+			s.inFlight[item.task.indexer.ID] = struct{}{}
+			go s.executeTask(item)
+		default:
+			// No worker available - re-queue
+			blocked = append(blocked, item)
+		}
+	}
+
+	// Re-queue blocked items
+	for _, item := range blocked {
+		heap.Push(&s.taskQueue, item)
+	}
+
+	// Schedule retry timer for blocked tasks
+	s.scheduleRetryTimerLocked()
+}
+
+func (s *searchScheduler) executeTask(item *taskItem) {
+	task := item.task
+	var panicked bool
+
+	defer func() {
+		if r := recover(); r != nil {
+			panicked = true
+			err := fmt.Errorf("scheduler worker panic: %v", r)
+			s.mu.Lock()
+			s.handleTaskCompleteLocked(task.jobID, task.indexer, nil, nil, err, &task.callbacks)
+			delete(s.inFlight, task.indexer.ID)
+			if task.isRSS {
+				delete(s.pendingRSS, task.indexer.ID)
+			}
+			s.mu.Unlock()
+		}
+
+		// Release worker
+		<-s.workerPool
+
+		// Notify loop - may unblock other tasks
+		select {
+		case s.completeCh <- struct{}{}:
+		default:
+		}
+	}()
+
+	// Record request BEFORE execution (reserve slot)
+	s.rateLimiter.RecordRequest(task.indexer.ID, time.Time{})
+
+	// Execute the search
+	results, coverage, err := task.exec(task.ctx, []*models.TorznabIndexer{task.indexer}, task.params, task.meta)
+
+	// Handle completion (only if we didn't panic)
+	if !panicked {
+		s.mu.Lock()
+		s.handleTaskCompleteLocked(task.jobID, task.indexer, results, coverage, err, &task.callbacks)
+		delete(s.inFlight, task.indexer.ID)
+		if task.isRSS {
+			delete(s.pendingRSS, task.indexer.ID)
 		}
 		s.mu.Unlock()
+	}
+}
 
-		if !dispatched {
-			// All workers were full; wait for a completion signal before retrying.
-			return
+// handleTaskCompleteLocked handles task completion. Caller must hold s.mu.
+func (s *searchScheduler) handleTaskCompleteLocked(jobID uint64, indexer *models.TorznabIndexer, results []Result, coverage []int, err error, callbacks *JobCallbacks) {
+	// Call OnComplete callback
+	if callbacks != nil && callbacks.OnComplete != nil {
+		go callbacks.OnComplete(jobID, indexer, results, coverage, err)
+	}
+
+	// Track job completion
+	job, exists := s.jobs[jobID]
+	if !exists {
+		return
+	}
+
+	job.completedTasks++
+
+	if job.completedTasks >= job.totalTasks {
+		// Job complete - call OnJobDone
+		if job.callbacks.OnJobDone != nil {
+			go job.callbacks.OnJobDone(jobID)
+		}
+		delete(s.jobs, jobID)
+	}
+}
+
+func (s *searchScheduler) getMaxWait(item *taskItem) time.Duration {
+	// Explicit MaxWait takes precedence
+	if item.task.meta != nil && item.task.meta.rateLimit != nil && item.task.meta.rateLimit.MaxWait > 0 {
+		return item.task.meta.rateLimit.MaxWait
+	}
+
+	// Apply priority-based defaults
+	if item.task.meta != nil && item.task.meta.rateLimit != nil {
+		switch item.task.meta.rateLimit.Priority {
+		case RateLimitPriorityRSS:
+			return rssMaxWait
+		case RateLimitPriorityCompletion:
+			return completionMaxWait
+		case RateLimitPriorityBackground:
+			return backgroundMaxWait
+		case RateLimitPriorityInteractive:
+			return 0 // No limit - interactive waits as long as needed
 		}
 	}
+
+	return 0
 }
 
-func (s *searchScheduler) stopAllWorkers() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, w := range s.workers {
-		if w.stopCh != nil {
-			close(w.stopCh)
+func (s *searchScheduler) scheduleRetryTimerLocked() {
+	if s.taskQueue.Len() == 0 {
+		return
+	}
+
+	// Find minimum wait among queued tasks
+	minWait := time.Hour
+	for i := 0; i < s.taskQueue.Len(); i++ {
+		item := s.taskQueue[i]
+		var rlOpts *RateLimitOptions
+		if item.task.meta != nil {
+			rlOpts = item.task.meta.rateLimit
+		}
+		wait := s.rateLimiter.NextWait(item.task.indexer, rlOpts)
+		if wait > 0 && wait < minWait {
+			minWait = wait
 		}
 	}
+
+	if minWait > 0 && minWait < time.Hour {
+		// Cancel existing timer if any
+		if s.retryTimer != nil {
+			s.retryTimer.Stop()
+		}
+
+		s.retryTimer = time.AfterFunc(minWait, func() {
+			select {
+			case s.completeCh <- struct{}{}:
+			default:
+			}
+		})
+	}
 }
 
-func (s *searchScheduler) getWorker(indexer *models.TorznabIndexer) *indexerWorker {
-	if indexer == nil {
-		return nil
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if w, ok := s.workers[indexer.ID]; ok {
-		return w
-	}
-	w := &indexerWorker{
-		indexerID:   indexer.ID,
-		tasks:       make(chan workerTask, 8),
-		rateLimiter: s.rateLimiter,
-		stopCh:      make(chan struct{}),
-	}
-	s.workers[indexer.ID] = w
-	go w.run(s.completeCh)
-	return w
-}
-
-func (w *indexerWorker) run(done chan<- workerResult) {
-	for {
-		select {
-		case <-w.stopCh:
-			return
-		case task := <-w.tasks:
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						err := fmt.Errorf("scheduler worker panic: %v", r)
-						task.respCh <- workerResult{jobID: task.jobID, indexer: w.indexerID, err: err}
-						done <- workerResult{jobID: task.jobID, indexer: w.indexerID}
-					}
-				}()
-
-				if !task.isRSS && task.ctx.Err() != nil {
-					task.respCh <- workerResult{jobID: task.jobID, indexer: w.indexerID, err: task.ctx.Err()}
-					done <- workerResult{jobID: task.jobID, indexer: w.indexerID}
-					return
-				}
-				searchCtx := safeInvokeStart(task.onStart, task.jobID, w.indexerID)
-				if searchCtx == nil {
-					searchCtx = task.ctx
-				}
-				results, coverage, err := task.exec(searchCtx, []*models.TorznabIndexer{task.indexer}, task.params, task.meta)
-				safeInvokeDone(task.onDone, task.jobID, w.indexerID, err)
-				task.respCh <- workerResult{
-					jobID:    task.jobID,
-					indexer:  w.indexerID,
-					results:  results,
-					coverage: coverage,
-					err:      err,
-				}
-				done <- workerResult{jobID: task.jobID, indexer: w.indexerID}
-			}()
+func (s *searchScheduler) clearPendingRSSLocked(tasks []workerTask) {
+	for _, task := range tasks {
+		if task.isRSS && task.indexer != nil {
+			delete(s.pendingRSS, task.indexer.ID)
 		}
 	}
-}
-
-func (s *searchScheduler) markWorkerFree(indexerID int) {
-	// placeholder for future per-indexer cleanup
 }
 
 func jobPriority(meta *searchContext) int {
@@ -406,50 +826,7 @@ func (s *searchScheduler) nextTaskID() uint64 {
 	return s.taskSeq
 }
 
-func sliceToSet(ids []int) map[int]struct{} {
-	set := make(map[int]struct{}, len(ids))
-	for _, id := range ids {
-		set[id] = struct{}{}
-	}
-	return set
-}
-
-func (s *searchScheduler) clearPendingRSS(tasks []workerTask) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, task := range tasks {
-		if task.isRSS && task.indexer != nil {
-			delete(s.pendingRSS, task.indexer.ID)
-		}
-	}
-}
-
-func safeInvokeStart(fn func(jobID uint64, indexerID int) context.Context, jobID uint64, indexerID int) context.Context {
-	if fn == nil {
-		return nil
-	}
-	defer func() {
-		_ = recover()
-	}()
-	return fn(jobID, indexerID)
-}
-
-func safeInvokeDone(fn func(jobID uint64, indexerID int, err error), jobID uint64, indexerID int, err error) {
-	if fn == nil {
-		return
-	}
-	defer func() {
-		_ = recover()
-	}()
-	fn(jobID, indexerID, err)
-}
-
-func safeInvokeResultCallback(fn func([]Result, []int, error), results []Result, coverage []int, err error) {
-	if fn == nil {
-		return
-	}
-	defer func() {
-		_ = recover()
-	}()
-	fn(results, coverage, err)
+// Stop gracefully shuts down the scheduler.
+func (s *searchScheduler) Stop() {
+	close(s.stopCh)
 }
