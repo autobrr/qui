@@ -14,7 +14,7 @@ import { useEffect, useState } from "react"
 export function IndexerActivityPanel() {
   const [activity, setActivity] = useState<IndexerActivityStatus | null>(null)
   const [loading, setLoading] = useState(true)
-  const [isOpen, setIsOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(true)
 
   const fetchActivity = async () => {
     try {

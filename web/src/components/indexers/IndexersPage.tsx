@@ -14,7 +14,7 @@ import {
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { api } from "@/lib/api"
 import type { TorznabIndexer } from "@/types"
-import { ChevronDown, Plus, RefreshCw, Trash2 } from "lucide-react"
+import { ChevronDown, Database, Plus, RefreshCw, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { AutodiscoveryDialog } from "./AutodiscoveryDialog"
@@ -45,6 +45,7 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
   const [editingIndexer, setEditingIndexer] = useState<TorznabIndexer | null>(null)
   const [deleteIndexerId, setDeleteIndexerId] = useState<number | null>(null)
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false)
+  const [indexersOpen, setIndexersOpen] = useState(true)
 
   const loadIndexers = async () => {
     try {
@@ -187,81 +188,92 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
     loadIndexers()
   }
 
+  const enabledCount = indexers.filter(idx => idx.enabled).length
+  const capsCount = indexers.filter(idx => idx.capabilities && idx.capabilities.length > 0).length
+
   const content = (
     <>
-      {indexers.length > 0 && <IndexerActivityPanel />}
       {indexers.length > 0 && <SearchHistoryPanel />}
+      {indexers.length > 0 && <IndexerActivityPanel />}
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <CardTitle>Torznab Indexers</CardTitle>
-              <CardDescription>
-                Manage Torznab indexers powered by Jackett, Prowlarr, or native tracker endpoints
-                {indexers.length > 0 && (
-                  <span className="block mt-1">
-                    {indexers.filter(idx => idx.enabled).length} enabled, {' '}
-                    {indexers.filter(idx => idx.capabilities && idx.capabilities.length > 0).length} with capabilities
-                  </span>
-                )}
-              </CardDescription>
+      <Collapsible open={indexersOpen} onOpenChange={setIndexersOpen}>
+        <div className="rounded-xl border bg-card text-card-foreground shadow-sm">
+          <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-4 hover:cursor-pointer text-left hover:bg-muted/50 transition-colors rounded-xl">
+            <div className="flex items-center gap-2">
+              <Database className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Torznab Indexers</span>
+              {indexers.length > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  {enabledCount} enabled, {capsCount} with capabilities
+                </span>
+              )}
             </div>
-            <div className="flex flex-wrap gap-2 justify-end">
-              <Button
-                variant="outline"
-                onClick={() => setShowDeleteAllDialog(true)}
-                disabled={loading || indexers.length === 0}
-              >
-                <Trash2 className="h-4 w-4" />
-                Delete All
-              </Button>
-              <div className="flex">
-                <Button
-                  onClick={() => setAutodiscoveryOpen(true)}
-                  className="rounded-r-none"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Discover
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button className="rounded-l-none border-l px-2">
-                      <ChevronDown className="h-4 w-4" />
+            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${indexersOpen ? "rotate-180" : ""}`} />
+          </CollapsibleTrigger>
+
+          <CollapsibleContent>
+            <div className="px-4 pb-4 space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <p className="text-sm text-muted-foreground">
+                  Manage Torznab indexers powered by Jackett, Prowlarr, or native tracker endpoints
+                </p>
+                <div className="flex flex-wrap gap-2 justify-end shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowDeleteAllDialog(true)}
+                    disabled={loading || indexers.length === 0}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete All
+                  </Button>
+                  <div className="flex">
+                    <Button
+                      size="sm"
+                      onClick={() => setAutodiscoveryOpen(true)}
+                      className="rounded-r-none"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Discover
                     </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => setAddDialogOpen(true)}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add single
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="sm" className="rounded-l-none border-l px-2">
+                          <ChevronDown className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setAddDialogOpen(true)}>
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add single
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
               </div>
+              <IndexerTable
+                indexers={indexers}
+                loading={loading}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                onTest={handleTest}
+                onTestAll={handleTestAll}
+                onSyncCaps={async (id) => {
+                  try {
+                    const updated = await api.syncTorznabCaps(id)
+                    toast.success("Capabilities synced from backend")
+                    setIndexers((prev) => prev.map((idx) => (idx.id === updated.id ? updated : idx)))
+                  } catch (error) {
+                    const message = error instanceof Error ? error.message : "Failed to sync caps"
+                    toast.error(message)
+                  }
+                }}
+              />
             </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <IndexerTable
-            indexers={indexers}
-            loading={loading}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-            onTest={handleTest}
-            onTestAll={handleTestAll}
-            onSyncCaps={async (id) => {
-              try {
-                const updated = await api.syncTorznabCaps(id)
-                toast.success("Capabilities synced from backend")
-                setIndexers((prev) => prev.map((idx) => (idx.id === updated.id ? updated : idx)))
-              } catch (error) {
-                const message = error instanceof Error ? error.message : "Failed to sync caps"
-                toast.error(message)
-              }
-            }}
-          />
-        </CardContent>
-      </Card>
+          </CollapsibleContent>
+        </div>
+      </Collapsible>
 
       <IndexerDialog
         open={addDialogOpen}

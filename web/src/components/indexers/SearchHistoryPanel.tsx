@@ -17,7 +17,7 @@ import { AlertCircle, CheckCircle2, ChevronDown, Clock, History, Loader2, Plus, 
 import { type ReactNode, useState } from "react"
 
 export function SearchHistoryPanel() {
-  const [isOpen, setIsOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(true)
   const [selectedEntry, setSelectedEntry] = useState<SearchHistoryEntry | null>(null)
   const { data, isLoading } = useSearchHistory({
     limit: 50,
@@ -77,7 +77,7 @@ export function SearchHistoryPanel() {
               )}
 
               {/* History entries */}
-              {entries.length > 0 ? (
+              {entries.length > 0 && (
                 <div className="space-y-1 max-h-80 overflow-y-auto">
                   {entries.map((entry) => (
                     <HistoryRow
@@ -86,10 +86,6 @@ export function SearchHistoryPanel() {
                       onClick={() => setSelectedEntry(entry)}
                     />
                   ))}
-                </div>
-              ) : !isLoading && (
-                <div className="text-center py-2 text-xs text-muted-foreground">
-                  No search history available
                 </div>
               )}
             </div>
