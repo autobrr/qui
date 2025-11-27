@@ -5,7 +5,7 @@
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardTitle } from "@/components/ui/card"
 import {
   Collapsible,
   CollapsibleContent,
@@ -133,13 +133,38 @@ function HistoryRow({ entry }: { entry: ProwlarrHistoryEntry }) {
         </TableCell>
       </TableRow>
       {expanded && (
-        <TableRow className="bg-muted/30">
+        <TableRow className="bg-muted/20 hover:bg-muted/20">
           <TableCell colSpan={8} className="p-4">
-            <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3 lg:grid-cols-4">
-              {Object.entries(entry.data).map(([key, value]) => (
-                <div key={key} className="min-w-0 space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground">{key}</p>
-                  <p className="break-words overflow-hidden">{value || "—"}</p>
+            <div className="grid grid-cols-2 gap-2 text-sm md:grid-cols-3 lg:grid-cols-4">
+              {Object.entries(entry.data)
+                .sort(([a], [b]) => {
+                  // Put url last since it's always long
+                  if (a === "url") return 1
+                  if (b === "url") return -1
+                  return 0
+                })
+                .map(([key, value]) => (
+                <div
+                  key={key}
+                  className={`rounded-md bg-muted/30 px-3 py-2 border border-border/30 overflow-hidden hover:bg-muted/50 transition-colors ${
+                    key === "url" ? "col-span-2 md:col-span-3 lg:col-span-4" : ""
+                  }`}
+                >
+                  <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider">{key}</p>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <p className={`text-foreground mt-1 font-mono text-[13px] cursor-default ${key === "url" ? "truncate" : "truncate"}`}>
+                          {value || "—"}
+                        </p>
+                      </TooltipTrigger>
+                      {value && value.length > 30 && (
+                        <TooltipContent side="bottom" className="max-w-md break-all font-mono text-xs">
+                          {value}
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
               ))}
             </div>
@@ -250,11 +275,10 @@ export function ProwlarrHistoryPanel({ indexers }: ProwlarrHistoryPanelProps) {
   const totalEvents = history?.servers.reduce((sum, s) => sum + s.records.length, 0) ?? 0
 
   return (
-    <Card className="mt-4">
+    <Card className="mt-4 !py-0 !gap-0">
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-        <CardHeader className="pb-3">
-          <CollapsibleTrigger className="flex w-full items-center justify-between text-left">
-            <div>
+        <CollapsibleTrigger className="flex w-full items-start justify-between text-left px-6 py-4 hover:bg-muted/50 transition-colors">
+            <div className="py-1">
               <CardTitle className="flex items-center gap-2">
                 {isOpen ? (
                   <ChevronDown className="h-5 w-5" />
@@ -263,9 +287,6 @@ export function ProwlarrHistoryPanel({ indexers }: ProwlarrHistoryPanelProps) {
                 )}
                 Torznab Activity
               </CardTitle>
-              <CardDescription className="ml-7">
-                Recent RSS syncs, searches, and grabs
-              </CardDescription>
             </div>
             {isOpen && (
               <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
@@ -301,7 +322,6 @@ export function ProwlarrHistoryPanel({ indexers }: ProwlarrHistoryPanelProps) {
               </div>
             )}
           </CollapsibleTrigger>
-        </CardHeader>
         <CollapsibleContent>
           <CardContent className="pt-0">
             {isLoading ? (
