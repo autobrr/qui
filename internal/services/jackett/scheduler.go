@@ -31,6 +31,8 @@ const (
 	completionMaxWait = 30 * time.Second
 	// Background jobs are least urgent; allow more wait before skipping.
 	backgroundMaxWait = 45 * time.Second
+	// Maximum interval for retry timer to prevent starvation when all tasks have long waits.
+	maxRetryTimerInterval = 15 * time.Minute
 )
 
 type RateLimitPriority string
@@ -831,7 +833,7 @@ func (s *searchScheduler) scheduleRetryTimerLocked() {
 	}
 
 	// Find minimum wait among queued tasks
-	minWait := time.Hour
+	var minWait time.Duration
 	for i := 0; i < s.taskQueue.Len(); i++ {
 		item := s.taskQueue[i]
 		var rlOpts *RateLimitOptions
@@ -839,12 +841,17 @@ func (s *searchScheduler) scheduleRetryTimerLocked() {
 			rlOpts = item.task.meta.rateLimit
 		}
 		wait := s.rateLimiter.NextWait(item.task.indexer, rlOpts)
-		if wait > 0 && wait < minWait {
+		if wait > 0 && (minWait == 0 || wait < minWait) {
 			minWait = wait
 		}
 	}
 
-	if minWait > 0 && minWait < time.Hour {
+	if minWait > 0 {
+		// Clamp to maximum interval to prevent starvation when all tasks have long waits
+		if minWait > maxRetryTimerInterval {
+			minWait = maxRetryTimerInterval
+		}
+
 		// Cancel existing timer if any
 		if s.retryTimer != nil {
 			s.retryTimer.Stop()
