@@ -484,7 +484,6 @@ export function CrossSeedPage() {
   const startSearchRunMutation = useMutation({
     mutationFn: (payload: Parameters<typeof api.startCrossSeedSearchRun>[0]) => api.startCrossSeedSearchRun(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["cross-seed", "search", "settings"] })
       toast.success("Search run started")
       refetchSearchStatus()
     },
@@ -796,6 +795,16 @@ export function CrossSeedPage() {
     [instances, searchInstanceId]
   )
 
+  const currentSearchInstanceName = useMemo(
+    () => {
+      if (searchRunning && activeSearchRun) {
+        return instances?.find(instance => instance.id === activeSearchRun.instanceId)?.name ?? `Instance ${activeSearchRun.instanceId}`
+      }
+      return searchInstanceName
+    },
+    [instances, searchInstanceId, searchRunning, activeSearchRun]
+  )
+
   const ignorePatternCount = useMemo(
     () => normalizeIgnorePatterns(globalSettings.ignorePatterns).length,
     [globalSettings.ignorePatterns]
@@ -931,7 +940,7 @@ export function CrossSeedPage() {
           <CardContent className="space-y-2 text-sm">
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Instance</span>
-              <span className="font-medium truncate text-right max-w-[180px]">{searchInstanceName}</span>
+              <span className="font-medium truncate text-right max-w-[180px]">{currentSearchInstanceName}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Recent additions</span>

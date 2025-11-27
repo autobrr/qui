@@ -853,19 +853,14 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		return
 	}
 
-	_, err = s.StartSearchRun(ctx, SearchRunOptions{
-		InstanceID:      instanceID,
-		SpecificHashes:  []string{torrent.Hash},
-		RequestedBy:     "completion",
-		IntervalSeconds: 0,
-	})
+	err = s.executeCompletionSearch(ctx, instanceID, &torrent, settings)
 	if err != nil {
 		log.Warn().
 			Err(err).
 			Int("instanceID", instanceID).
 			Str("hash", torrent.Hash).
 			Str("name", torrent.Name).
-			Msg("[CROSSSEED-COMPLETION] Failed to start completion search run")
+			Msg("[CROSSSEED-COMPLETION] Failed to execute completion search")
 	}
 }
 
@@ -1127,18 +1122,6 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		return nil, err
 	}
 
-	if _, err := s.PatchSearchSettings(ctx, SearchSettingsPatch{
-		InstanceIDSet:   true,
-		InstanceID:      &opts.InstanceID,
-		Categories:      &opts.Categories,
-		Tags:            &opts.Tags,
-		IndexerIDs:      &opts.IndexerIDs,
-		IntervalSeconds: &opts.IntervalSeconds,
-		CooldownMinutes: &opts.CooldownMinutes,
-	}); err != nil {
-		return nil, err
-	}
-
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
 		return nil, err
@@ -1217,7 +1200,7 @@ func (s *Service) GetSearchRunStatus(ctx context.Context) (*SearchRunStatus, err
 
 	s.searchMu.RLock()
 	state := s.searchState
-	if state != nil && state.run.CompletedAt == nil {
+	if state != nil && state.run.CompletedAt == nil && state.opts.RequestedBy != "completion" {
 		status.Running = true
 		status.Run = cloneSearchRun(state.run)
 		if state.currentCandidate != nil {
