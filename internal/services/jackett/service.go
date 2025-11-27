@@ -3696,6 +3696,9 @@ type ActivityStatus struct {
 
 // GetActivityStatus returns the current activity status including scheduler state and cooldowns
 func (s *Service) GetActivityStatus(ctx context.Context) (*ActivityStatus, error) {
+	// Ensure persisted cooldowns are restored before checking status
+	s.ensureRateLimiterState()
+
 	status := &ActivityStatus{
 		CooldownIndexers: make([]IndexerCooldownStatus, 0),
 	}

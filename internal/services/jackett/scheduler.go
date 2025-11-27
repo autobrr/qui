@@ -417,6 +417,7 @@ type searchScheduler struct {
 	submitCh   chan []workerTask
 	completeCh chan struct{}
 	stopCh     chan struct{}
+	stopOnce   sync.Once
 
 	jobSeq  uint64
 	taskSeq uint64
@@ -933,9 +934,11 @@ func (s *searchScheduler) nextTaskID() uint64 {
 	return s.taskSeq
 }
 
-// Stop gracefully shuts down the scheduler.
+// Stop gracefully shuts down the scheduler. Safe to call multiple times.
 func (s *searchScheduler) Stop() {
-	close(s.stopCh)
+	s.stopOnce.Do(func() {
+		close(s.stopCh)
+	})
 }
 
 // SchedulerTaskStatus represents a single task's status
