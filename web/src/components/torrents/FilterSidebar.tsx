@@ -236,8 +236,8 @@ const FilterSidebarComponent = ({
     supportsSubcategories && (preferenceUseSubcategories ?? useSubcategories ?? false)
   )
 
-  // Use compact view state hook
-  const { viewMode, cycleViewMode } = usePersistedCompactViewState("compact")
+  // Use compact view state hook - mobile only gets normal, compact, ultra-compact (no dense)
+  const { viewMode, cycleViewMode } = usePersistedCompactViewState("compact", ["normal", "compact", "ultra-compact"])
 
   // Helper function to get count display - shows 0 when loading to prevent showing stale counts from previous instance
   const getDisplayCount = useCallback((key: string, fallbackCount?: number): string => {
@@ -1310,6 +1310,13 @@ const FilterSidebarComponent = ({
     overscan: 10,
   })
 
+  // Re-measure virtualizers when view mode changes to invalidate stale size caches
+  useEffect(() => {
+    categoryVirtualizer.measure()
+    tagVirtualizer.measure()
+    trackerVirtualizer.measure()
+  }, [viewMode, categoryVirtualizer, tagVirtualizer, trackerVirtualizer])
+
   const clearFilters = () => {
     applyFilterChange({
       status: [],
@@ -1476,14 +1483,14 @@ const FilterSidebarComponent = ({
               <div className="flex flex-col gap-1">
                 <span className="text-sm font-medium">View Mode</span>
                 <span className="text-xs text-muted-foreground">
-                  {viewMode === "normal" ? "Full torrent cards" :viewMode === "compact" ? "Compact cards" : "Ultra compact"}
+                  {viewMode === "normal" ? "Full torrent cards" : viewMode === "compact" ? "Compact cards" : "Ultra compact"}
                 </span>
               </div>
               <button
                 onClick={cycleViewMode}
                 className="px-3 py-1 text-xs font-medium rounded border bg-background hover:bg-muted"
               >
-                {viewMode === "normal" ? "Normal" :viewMode === "compact" ? "Compact" : "Ultra"}
+                {viewMode === "normal" ? "Normal" : viewMode === "compact" ? "Compact" : "Ultra"}
               </button>
             </div>
           )}

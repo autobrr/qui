@@ -142,7 +142,7 @@ import {
   SpeedLimitsDialog
 } from "./TorrentDialogs"
 import { TorrentDropZone } from "./TorrentDropZone"
-import { createColumns } from "./TorrentTableColumns"
+import { createColumns, type TableViewMode } from "./TorrentTableColumns"
 
 const TABLE_ALLOWED_VIEW_MODES = ["normal", "dense", "compact"] as const
 
@@ -1297,7 +1297,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       onRowSelection: handleRowSelection,
       isAllSelected,
       excludedFromSelectAll,
-    }, speedUnit, trackerIcons, formatTimestamp, preferences, supportsTrackerHealth, isCrossSeedFiltering, desktopViewMode),
+    }, speedUnit, trackerIcons, formatTimestamp, preferences, supportsTrackerHealth, isCrossSeedFiltering, desktopViewMode as TableViewMode),
     [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth, isCrossSeedFiltering, desktopViewMode]
   )
 
@@ -1735,17 +1735,20 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
   }, [loadedRows, rows.length, filterLifecycleState])
 
+  // Compute estimated row height based on view mode - used by virtualizer and keyboard navigation
+  const estimatedRowHeight = useMemo(() => {
+    switch (desktopViewMode) {
+      case "compact": return 80
+      case "dense": return 26
+      default: return 40
+    }
+  }, [desktopViewMode])
+
   // useVirtualizer must be called at the top level, not inside useMemo
   const virtualizer = useVirtualizer({
     count: safeLoadedRows,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => {
-      switch (desktopViewMode) {
-        case "compact": return 80
-        case "dense": return 26
-        default: return 40
-      }
-    },
+    estimateSize: () => estimatedRowHeight,
     // Optimized overscan based on TanStack Virtual recommendations
     // Start small and adjust based on dataset size and performance
     overscan: sortedTorrents.length > 50000 ? 3 : sortedTorrents.length > 10000 ? 5 : sortedTorrents.length > 1000 ? 10 : 15,
@@ -1897,7 +1900,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     hasLoadedAll,
     isLoadingMore,
     loadMore,
-    estimatedRowHeight: 40,
+    estimatedRowHeight,
     onClearSelection: clearSelection,
     hasSelection: isAllSelected || selectedRowIds.length > 0,
   })
