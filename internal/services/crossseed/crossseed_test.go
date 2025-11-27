@@ -989,7 +989,7 @@ func TestDetermineSavePath(t *testing.T) {
 		},
 
 		// E15: Mixed separators in paths (edge case for cross-platform)
-		// Code normalizes all paths to forward slashes via filepath.ToSlash
+		// Code normalizes all paths to forward slashes via strings.ReplaceAll
 		// qBittorrent accepts forward slashes on all platforms including Windows
 		{
 			name:               "E15: mixed path separators",
