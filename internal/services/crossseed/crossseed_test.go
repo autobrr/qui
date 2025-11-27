@@ -2672,6 +2672,8 @@ type mockRecoverSyncManager struct {
 	failGetTorrentsAfterRecheck bool                    // whether GetTorrents should fail after recheck
 	setProgressToThreshold      bool                    // whether to set progress exactly at threshold
 	hasRechecked                bool                    // track if recheck has been called
+	secondRecheckCompletes      bool                    // whether second recheck should complete torrents
+	recheckCount                int                     // count of recheck calls
 }
 
 func newMockRecoverSyncManager(initialTorrents []qbt.Torrent) *mockRecoverSyncManager {
@@ -2690,6 +2692,8 @@ func newMockRecoverSyncManager(initialTorrents []qbt.Torrent) *mockRecoverSyncMa
 		failGetTorrentsAfterRecheck: false,
 		setProgressToThreshold:      false,
 		hasRechecked:                false,
+		secondRecheckCompletes:      false,
+		recheckCount:                0,
 	}
 }
 
@@ -2723,15 +2727,30 @@ func (m *mockRecoverSyncManager) BulkAction(_ context.Context, instanceID int, h
 		return errors.New("bulk action failed")
 	}
 
-	if action == "recheck" {
+	if action == "pause" {
+		// Pause torrents
+		for _, hash := range hashes {
+			if torrent, ok := m.torrents[hash]; ok {
+				torrent.State = qbt.TorrentStatePausedDl
+			}
+		}
+	} else if action == "resume" {
+		// Resume torrents
+		for _, hash := range hashes {
+			if torrent, ok := m.torrents[hash]; ok {
+				torrent.State = qbt.TorrentStateDownloading
+			}
+		}
+	} else if action == "recheck" {
 		m.hasRechecked = true
+		m.recheckCount++
 		for _, hash := range hashes {
 			if torrent, ok := m.torrents[hash]; ok {
 				if m.disappearAfterRecheck {
 					delete(m.torrents, hash)
 				} else if m.keepInCheckingState {
 					torrent.State = qbt.TorrentStateCheckingDl
-				} else if m.recheckCompletes {
+				} else if m.recheckCompletes || (m.secondRecheckCompletes && m.recheckCount >= 2) {
 					torrent.State = qbt.TorrentStatePausedDl
 					torrent.Progress = 1.0
 				} else if m.setProgressToThreshold {
@@ -2769,7 +2788,9 @@ func (m *mockRecoverSyncManager) GetTorrentProperties(context.Context, int, stri
 }
 
 func (m *mockRecoverSyncManager) GetAppPreferences(context.Context, int) (qbt.AppPreferences, error) {
-	return qbt.AppPreferences{}, nil
+	return qbt.AppPreferences{
+		DiskCacheTTL: 1, // 1 second for tests
+	}, nil
 }
 
 func (m *mockRecoverSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
@@ -2837,8 +2858,10 @@ func TestRecoverErroredTorrents_SingleErroredTorrent(t *testing.T) {
 	err := svc.recoverErroredTorrents(context.Background(), 1, []qbt.Torrent{erroredTorrent})
 	require.NoError(t, err)
 
-	// Should have attempted recheck
+	// Should have attempted pause, recheck, and resume
+	assert.Contains(t, mockSync.calls, "BulkAction:pause:[error123]")
 	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error123]")
+	assert.Contains(t, mockSync.calls, "BulkAction:resume:[error123]")
 }
 
 func TestRecoverErroredTorrents_MultipleErroredTorrents(t *testing.T) {
@@ -2867,11 +2890,17 @@ func TestRecoverErroredTorrents_MultipleErroredTorrents(t *testing.T) {
 	err := svc.recoverErroredTorrents(context.Background(), 1, []qbt.Torrent{erroredTorrent1, erroredTorrent2, normalTorrent})
 	require.NoError(t, err)
 
-	// Should have attempted recheck on both errored torrents
+	// Should have attempted pause, recheck, and resume on both errored torrents
+	assert.Contains(t, mockSync.calls, "BulkAction:pause:[error123]")
 	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error123]")
+	assert.Contains(t, mockSync.calls, "BulkAction:resume:[error123]")
+	assert.Contains(t, mockSync.calls, "BulkAction:pause:[error456]")
 	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error456]")
-	// Should not have rechecked the normal torrent
+	assert.Contains(t, mockSync.calls, "BulkAction:resume:[error456]")
+	// Should not have touched the normal torrent
+	assert.NotContains(t, mockSync.calls, "BulkAction:pause:[normal123]")
 	assert.NotContains(t, mockSync.calls, "BulkAction:recheck:[normal123]")
+	assert.NotContains(t, mockSync.calls, "BulkAction:resume:[normal123]")
 }
 
 func TestRecoverErroredTorrents_MissingFilesState(t *testing.T) {
@@ -2888,8 +2917,10 @@ func TestRecoverErroredTorrents_MissingFilesState(t *testing.T) {
 	err := svc.recoverErroredTorrents(context.Background(), 1, []qbt.Torrent{missingFilesTorrent})
 	require.NoError(t, err)
 
-	// Should have attempted recheck
+	// Should have attempted pause, recheck, and resume
+	assert.Contains(t, mockSync.calls, "BulkAction:pause:[missing123]")
 	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[missing123]")
+	assert.Contains(t, mockSync.calls, "BulkAction:resume:[missing123]")
 }
 
 func TestRecoverSingleErroredTorrent_RemainsIncomplete(t *testing.T) {
@@ -2907,9 +2938,10 @@ func TestRecoverSingleErroredTorrent_RemainsIncomplete(t *testing.T) {
 
 	err := svc.recoverSingleErroredTorrent(context.Background(), 1, erroredTorrent)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "torrent not complete after recheck")
+	assert.Contains(t, err.Error(), "torrent not complete after second recheck")
 
-	// Should have attempted recheck
+	// Should have attempted pause and recheck
+	assert.Contains(t, mockSync.calls, "BulkAction:pause:[error123]")
 	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error123]")
 }
 
@@ -2930,7 +2962,8 @@ func TestRecoverSingleErroredTorrent_DisappearsDuringRecheck(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "torrent disappeared during recheck")
 
-	// Should have attempted recheck
+	// Should have attempted pause and recheck
+	assert.Contains(t, mockSync.calls, "BulkAction:pause:[error123]")
 	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error123]")
 }
 
@@ -2949,10 +2982,11 @@ func TestRecoverSingleErroredTorrent_BulkActionFails(t *testing.T) {
 
 	err := svc.recoverSingleErroredTorrent(context.Background(), 1, erroredTorrent)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "recheck torrent")
+	assert.Contains(t, err.Error(), "pause torrent")
 
-	// Should have attempted recheck
-	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error123]")
+	// Should have attempted pause (recheck not attempted since pause failed)
+	assert.Contains(t, mockSync.calls, "BulkAction:pause:[error123]")
+	assert.NotContains(t, mockSync.calls, "BulkAction:recheck:[error123]")
 }
 
 func TestRecoverErroredTorrents_ContextCancelled(t *testing.T) {
@@ -3013,11 +3047,19 @@ func TestRecoverErroredTorrents_MixedStates(t *testing.T) {
 	err := svc.recoverErroredTorrents(context.Background(), 1, []qbt.Torrent{erroredTorrent, missingFilesTorrent, downloadingTorrent, completedTorrent})
 	require.NoError(t, err)
 
-	// Should have attempted recheck only on errored and missing files torrents
+	// Should have attempted pause, recheck, and resume only on errored and missing files torrents
+	assert.Contains(t, mockSync.calls, "BulkAction:pause:[error123]")
 	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error123]")
+	assert.Contains(t, mockSync.calls, "BulkAction:resume:[error123]")
+	assert.Contains(t, mockSync.calls, "BulkAction:pause:[missing123]")
 	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[missing123]")
+	assert.Contains(t, mockSync.calls, "BulkAction:resume:[missing123]")
+	assert.NotContains(t, mockSync.calls, "BulkAction:pause:[download123]")
 	assert.NotContains(t, mockSync.calls, "BulkAction:recheck:[download123]")
+	assert.NotContains(t, mockSync.calls, "BulkAction:resume:[download123]")
+	assert.NotContains(t, mockSync.calls, "BulkAction:pause:[complete123]")
 	assert.NotContains(t, mockSync.calls, "BulkAction:recheck:[complete123]")
+	assert.NotContains(t, mockSync.calls, "BulkAction:resume:[complete123]")
 }
 
 func TestRecoverSingleErroredTorrent_Timeout(t *testing.T) {
@@ -3041,7 +3083,8 @@ func TestRecoverSingleErroredTorrent_Timeout(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, context.DeadlineExceeded, err)
 
-	// Should have attempted recheck
+	// Should have attempted pause and recheck
+	assert.Contains(t, mockSync.calls, "BulkAction:pause:[error123]")
 	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error123]")
 }
 
@@ -3062,7 +3105,8 @@ func TestRecoverSingleErroredTorrent_GetTorrentsFailsDuringWait(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "torrent disappeared during recheck")
 
-	// Should have attempted recheck
+	// Should have attempted pause and recheck
+	assert.Contains(t, mockSync.calls, "BulkAction:pause:[error123]")
 	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error123]")
 }
 
@@ -3082,8 +3126,10 @@ func TestRecoverSingleErroredTorrent_ProgressAtThreshold(t *testing.T) {
 	err := svc.recoverSingleErroredTorrent(context.Background(), 1, erroredTorrent)
 	require.NoError(t, err)
 
-	// Should have attempted recheck
+	// Should have attempted pause, recheck, and resume
+	assert.Contains(t, mockSync.calls, "BulkAction:pause:[error123]")
 	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error123]")
+	assert.Contains(t, mockSync.calls, "BulkAction:resume:[error123]")
 }
 
 func TestRecoverErroredTorrents_EmptyList(t *testing.T) {
@@ -3112,6 +3158,8 @@ func TestRecoverSingleErroredTorrent_SettingsLoadFailure(t *testing.T) {
 	err := svc.recoverSingleErroredTorrent(context.Background(), 1, erroredTorrent)
 	require.NoError(t, err) // Should still work with defaults
 
-	// Should have attempted recheck
+	// Should have attempted pause, recheck, and resume
+	assert.Contains(t, mockSync.calls, "BulkAction:pause:[error123]")
 	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error123]")
+	assert.Contains(t, mockSync.calls, "BulkAction:resume:[error123]")
 }
