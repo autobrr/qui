@@ -38,6 +38,7 @@ import { Link } from "@tanstack/react-router"
 import {
   AlertTriangle,
   ChevronDown,
+  FlameIcon,
   Info,
   Loader2,
   Play,
@@ -1622,6 +1623,9 @@ export function CrossSeedPage() {
               </div>
               <p className="text-xs text-muted-foreground">
                 When enabled, season packs also match individual episodes. When disabled, season packs only match other season packs.
+              </p>
+              <p className="flex items-center pb-2 text-sm text-destructive">
+                <FlameIcon className="h-4 w-4 mr-2" aria-hidden="true" /> Episodes are added with Auto Torrent Management disabled to prevent save path conflicts.
               </p>
               <div className="space-y-2">
                 <Label htmlFor="global-size-tolerance">Size mismatch tolerance (%)</Label>
