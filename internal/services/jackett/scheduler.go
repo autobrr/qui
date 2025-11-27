@@ -33,6 +33,13 @@ const (
 	backgroundMaxWait = 45 * time.Second
 	// Maximum interval for retry timer to prevent starvation when all tasks have long waits.
 	maxRetryTimerInterval = 15 * time.Minute
+
+	// Execution timeouts for tasks whose original context deadline expired while queued.
+	// These give the task a fresh chance to execute without being penalized for queue wait time.
+	rssExecutionTimeout        = 15 * time.Second
+	completionExecutionTimeout = 30 * time.Second
+	backgroundExecutionTimeout = 45 * time.Second
+	defaultExecutionTimeout    = 30 * time.Second
 )
 
 type RateLimitPriority string
@@ -368,6 +375,7 @@ type workerTask struct {
 	meta      *searchContext
 	exec      func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error)
 	ctx       context.Context
+	ctxCancel context.CancelFunc // Set when we create a fresh context for expired-deadline tasks
 	callbacks JobCallbacks
 	isRSS     bool
 }
@@ -599,9 +607,30 @@ func (s *searchScheduler) dispatchTasks() {
 	var blocked []*taskItem
 
 	for _, item := range items {
-		// Check if context is cancelled
-		if item.task.ctx.Err() != nil {
+		// Check if context was explicitly cancelled (user/system stopped the search)
+		if item.task.ctx.Err() == context.Canceled {
 			item.started = time.Now() // Mark as "started" now for skipped tasks
+			s.handleTaskCompleteLocked(item, nil, nil, item.task.ctx.Err())
+			if item.task.isRSS {
+				delete(s.pendingRSS, item.task.indexer.ID)
+			}
+			continue
+		}
+
+		// If context deadline expired while queued (not explicit cancellation),
+		// give the task a fresh context so it can still execute.
+		// This prevents tasks from failing just because they waited in queue.
+		// Only do this once (check ctxCancel == nil to avoid creating multiple contexts).
+		if item.task.ctx.Err() == context.DeadlineExceeded && item.task.ctxCancel == nil {
+			timeout := s.getExecutionTimeout(item)
+			item.task.ctx, item.task.ctxCancel = context.WithTimeout(context.Background(), timeout)
+		}
+
+		// If we already gave this task a fresh context and it expired too, fail it.
+		// This prevents infinite retries for tasks that can't complete in time.
+		if item.task.ctx.Err() != nil && item.task.ctxCancel != nil {
+			item.task.ctxCancel()
+			item.started = time.Now()
 			s.handleTaskCompleteLocked(item, nil, nil, item.task.ctx.Err())
 			if item.task.isRSS {
 				delete(s.pendingRSS, item.task.indexer.ID)
@@ -675,6 +704,11 @@ func (s *searchScheduler) executeTask(item *taskItem) {
 	var panicked bool
 
 	defer func() {
+		// Cancel fresh context if one was created for this task
+		if task.ctxCancel != nil {
+			task.ctxCancel()
+		}
+
 		if r := recover(); r != nil {
 			panicked = true
 			err := fmt.Errorf("scheduler worker panic: %v", r)
@@ -825,6 +859,25 @@ func (s *searchScheduler) getMaxWait(item *taskItem) time.Duration {
 	}
 
 	return 0
+}
+
+// getExecutionTimeout returns the appropriate timeout for task execution based on priority.
+// Used when a task's original context deadline expired while queued.
+func (s *searchScheduler) getExecutionTimeout(item *taskItem) time.Duration {
+	if item.task.meta != nil && item.task.meta.rateLimit != nil {
+		switch item.task.meta.rateLimit.Priority {
+		case RateLimitPriorityRSS:
+			return rssExecutionTimeout
+		case RateLimitPriorityCompletion:
+			return completionExecutionTimeout
+		case RateLimitPriorityBackground:
+			return backgroundExecutionTimeout
+		case RateLimitPriorityInteractive:
+			// Interactive tasks shouldn't be queued, but if they are, use default
+			return defaultExecutionTimeout
+		}
+	}
+	return defaultExecutionTimeout
 }
 
 func (s *searchScheduler) scheduleRetryTimerLocked() {
