@@ -239,6 +239,7 @@ func TestDetermineSavePath(t *testing.T) {
 		matchedTorrentName string
 		matchedContentPath string
 		baseSavePath       string
+		contentLayout      string
 		matchType          string
 		sourceFiles        qbt.TorrentFiles
 		candidateFiles     qbt.TorrentFiles
@@ -249,126 +250,128 @@ func TestDetermineSavePath(t *testing.T) {
 			name:               "season pack from individual episode",
 			newTorrentName:     "Show.S01.1080p.BluRay.x264-GROUP",
 			matchedTorrentName: "Show.S01E05.1080p.WEB-DL.x264-OTHER",
-			baseSavePath:       "/data/media/Show/Season 01",
-			matchType:          "exact",
-			sourceFiles:        qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-GROUP/ep1.mkv"}},
-			candidateFiles:     qbt.TorrentFiles{{Name: "Show.S01E05.1080p.WEB-DL.x264-OTHER/ep.mkv"}},
-			wantPath:           "/data/media/Show/Season 01/Show.S01E05.1080p.WEB-DL.x264-OTHER",
-			description:        "Different roots - use SavePath + candidateRoot (existing files are there)",
+			baseSavePath:       "/data/media/Show/Season 01", contentLayout: "Original",
+
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-GROUP/ep1.mkv"}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Show.S01E05.1080p.WEB-DL.x264-OTHER/ep.mkv"}},
+			wantPath:       "/data/media/Show/Season 01/Show.S01E05.1080p.WEB-DL.x264-OTHER",
+			description:    "Different roots - use SavePath + candidateRoot (existing files are there)",
 		},
 		{
 			name:               "individual episode from season pack",
 			newTorrentName:     "Show.S01E05.1080p.WEB-DL.x264-OTHER",
 			matchedTorrentName: "Show.S01.1080p.BluRay.x264-GROUP",
-			baseSavePath:       "/data/media/Show/Season 01",
-			matchType:          "exact",
-			sourceFiles:        qbt.TorrentFiles{{Name: "Show.S01E05.1080p.WEB-DL.x264-OTHER/ep.mkv"}},
-			candidateFiles:     qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-GROUP/ep1.mkv"}},
-			wantPath:           "/data/media/Show/Season 01/Show.S01.1080p.BluRay.x264-GROUP",
-			description:        "Different roots - use SavePath + candidateRoot (existing files are there)",
+			baseSavePath:       "/data/media/Show/Season 01", contentLayout: "Original",
+
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Show.S01E05.1080p.WEB-DL.x264-OTHER/ep.mkv"}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-GROUP/ep1.mkv"}},
+			wantPath:       "/data/media/Show/Season 01/Show.S01.1080p.BluRay.x264-GROUP",
+			description:    "Different roots - use SavePath + candidateRoot (existing files are there)",
 		},
 		{
 			name:               "same content type - both episodes",
 			newTorrentName:     "Show.S01E05.720p.HDTV.x264-GROUP",
 			matchedTorrentName: "Show.S01E05.1080p.WEB-DL.x264-OTHER",
-			baseSavePath:       "/data/media/Show/Season 01",
-			matchType:          "exact",
-			sourceFiles:        qbt.TorrentFiles{{Name: "Show.S01E05.720p.HDTV.x264-GROUP/ep.mkv"}},
-			candidateFiles:     qbt.TorrentFiles{{Name: "Show.S01E05.1080p.WEB-DL.x264-OTHER/ep.mkv"}},
-			wantPath:           "/data/media/Show/Season 01/Show.S01E05.1080p.WEB-DL.x264-OTHER",
-			description:        "Different roots - use SavePath + candidateRoot (existing files are there)",
+			baseSavePath:       "/data/media/Show/Season 01", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Show.S01E05.720p.HDTV.x264-GROUP/ep.mkv"}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Show.S01E05.1080p.WEB-DL.x264-OTHER/ep.mkv"}},
+			wantPath:       "/data/media/Show/Season 01/Show.S01E05.1080p.WEB-DL.x264-OTHER",
+			description:    "Different roots - use SavePath + candidateRoot (existing files are there)",
 		},
 		{
 			name:               "same content type - both season packs with same root",
 			newTorrentName:     "Show.S01.1080p.BluRay.x264-GROUP",
 			matchedTorrentName: "Show.S01.1080p.BluRay.x264-GROUP",
-			baseSavePath:       "/data/media/Show",
-			matchType:          "exact",
-			sourceFiles:        qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-GROUP/ep1.mkv"}},
-			candidateFiles:     qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-GROUP/ep1.mkv"}},
-			wantPath:           "/data/media/Show",
-			description:        "Same root folders, use SavePath (parent)",
+			baseSavePath:       "/data/media/Show", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-GROUP/ep1.mkv"}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-GROUP/ep1.mkv"}},
+			wantPath:       "/data/media/Show",
+			description:    "Same root folders, use SavePath (parent)",
 		},
 		{
 			name:               "movies with year",
 			newTorrentName:     "Movie.2020.720p.BluRay.x264-GROUP",
 			matchedTorrentName: "Movie.2020.1080p.WEB-DL.x264-OTHER",
-			baseSavePath:       "/data/media/Movies/Movie (2020)",
-			matchType:          "exact",
-			sourceFiles:        qbt.TorrentFiles{{Name: "Movie.2020.720p.BluRay.x264-GROUP/movie.mkv"}},
-			candidateFiles:     qbt.TorrentFiles{{Name: "Movie.2020.1080p.WEB-DL.x264-OTHER/movie.mkv"}},
-			wantPath:           "/data/media/Movies/Movie (2020)/Movie.2020.1080p.WEB-DL.x264-OTHER",
-			description:        "Different roots - use SavePath + candidateRoot (existing files are there)",
+			baseSavePath:       "/data/media/Movies/Movie (2020)", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie.2020.720p.BluRay.x264-GROUP/movie.mkv"}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2020.1080p.WEB-DL.x264-OTHER/movie.mkv"}},
+			wantPath:       "/data/media/Movies/Movie (2020)/Movie.2020.1080p.WEB-DL.x264-OTHER",
+			description:    "Different roots - use SavePath + candidateRoot (existing files are there)",
 		},
 		{
 			name:               "no series info",
 			newTorrentName:     "Documentary.1080p.HDTV.x264-GROUP",
 			matchedTorrentName: "Documentary.720p.WEB-DL.x264-OTHER",
-			baseSavePath:       "/data/media/Documentaries",
-			matchType:          "size",
-			sourceFiles:        qbt.TorrentFiles{{Name: "Documentary.1080p.HDTV.x264-GROUP/doc.mkv"}},
-			candidateFiles:     qbt.TorrentFiles{{Name: "Documentary.720p.WEB-DL.x264-OTHER/doc.mkv"}},
-			wantPath:           "/data/media/Documentaries/Documentary.720p.WEB-DL.x264-OTHER",
-			description:        "Different roots - use SavePath + candidateRoot (existing files are there)",
+			baseSavePath:       "/data/media/Documentaries", contentLayout: "Original",
+			matchType:      "size",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Documentary.1080p.HDTV.x264-GROUP/doc.mkv"}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Documentary.720p.WEB-DL.x264-OTHER/doc.mkv"}},
+			wantPath:       "/data/media/Documentaries/Documentary.720p.WEB-DL.x264-OTHER",
+			description:    "Different roots - use SavePath + candidateRoot (existing files are there)",
 		},
 		{
 			name:               "partial-in-pack movie in collection",
 			newTorrentName:     "Pulse.2001.1080p.BluRay.x264-GROUP",
 			matchedTorrentName: "Horror.Collection.2020",
 			matchedContentPath: "/data/media/Movies/Horror.Collection.2020",
-			baseSavePath:       "/data/media/Movies",
-			matchType:          "partial-in-pack",
-			sourceFiles:        qbt.TorrentFiles{{Name: "Pulse.2001.1080p.BluRay.x264-GROUP/movie.mkv"}},
-			candidateFiles:     qbt.TorrentFiles{{Name: "Horror.Collection.2020/Pulse.2001.mkv"}},
-			wantPath:           "/data/media/Movies/Horror.Collection.2020",
-			description:        "Partial-in-pack uses ContentPath, not SavePath",
+			baseSavePath:       "/data/media/Movies", contentLayout: "Original",
+			matchType:      "partial-in-pack",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Pulse.2001.1080p.BluRay.x264-GROUP/movie.mkv"}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Horror.Collection.2020/Pulse.2001.mkv"}},
+			wantPath:       "/data/media/Movies/Horror.Collection.2020",
+			description:    "Partial-in-pack uses ContentPath, not SavePath",
 		},
 		{
 			name:               "partial-in-pack episode in season pack",
 			newTorrentName:     "Show.S01E05.1080p.WEB-DL.x264-GROUP",
 			matchedTorrentName: "Show.S01.1080p.BluRay.x264-OTHER",
 			matchedContentPath: "/data/media/Shows/Show.S01.1080p.BluRay.x264-OTHER",
-			baseSavePath:       "/data/media/Shows",
-			matchType:          "partial-in-pack",
-			sourceFiles:        qbt.TorrentFiles{{Name: "Show.S01E05.1080p.WEB-DL.x264-GROUP/ep.mkv"}},
-			candidateFiles:     qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-OTHER/ep1.mkv"}},
-			wantPath:           "/data/media/Shows/Show.S01.1080p.BluRay.x264-OTHER",
-			description:        "Partial-in-pack episode uses season pack's ContentPath",
+			baseSavePath:       "/data/media/Shows", contentLayout: "Original",
+			matchType:      "partial-in-pack",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Show.S01E05.1080p.WEB-DL.x264-GROUP/ep.mkv"}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-OTHER/ep1.mkv"}},
+			wantPath:       "/data/media/Shows/Show.S01.1080p.BluRay.x264-OTHER",
+			description:    "Partial-in-pack episode uses season pack's ContentPath",
 		},
 		{
 			name:               "partial-in-pack with empty ContentPath uses candidateRoot",
 			newTorrentName:     "Movie.2020.1080p.BluRay.x264-GROUP",
 			matchedTorrentName: "Collection.2020",
 			matchedContentPath: "",
-			baseSavePath:       "/data/media/Movies",
-			matchType:          "partial-in-pack",
-			sourceFiles:        qbt.TorrentFiles{{Name: "Movie.2020.1080p.BluRay.x264-GROUP/movie.mkv"}},
-			candidateFiles:     qbt.TorrentFiles{{Name: "Collection.2020/movie.mkv"}},
-			wantPath:           "/data/media/Movies/Collection.2020",
-			description:        "Partial-in-pack with empty ContentPath uses SavePath + candidateRoot",
+			baseSavePath:       "/data/media/Movies", contentLayout: "Original",
+			matchType:      "partial-in-pack",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie.2020.1080p.BluRay.x264-GROUP/movie.mkv"}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Collection.2020/movie.mkv"}},
+			wantPath:       "/data/media/Movies/Collection.2020",
+			description:    "Partial-in-pack with empty ContentPath uses SavePath + candidateRoot",
 		},
 		{
 			name:               "different root folders uses ContentPath",
 			newTorrentName:     "SceneRelease.2020.BluRay.1080p-GRP",
 			matchedTorrentName: "Movie (2020) [1080p]",
 			matchedContentPath: "/data/media/Movies/Movie (2020) [1080p]",
-			baseSavePath:       "/data/media/Movies",
-			matchType:          "exact",
-			sourceFiles:        qbt.TorrentFiles{{Name: "SceneRelease.2020.BluRay.1080p-GRP/movie.mkv"}},
-			candidateFiles:     qbt.TorrentFiles{{Name: "Movie (2020) [1080p]/movie.mkv"}},
-			wantPath:           "/data/media/Movies/Movie (2020) [1080p]",
-			description:        "Different root folders should use ContentPath",
+			baseSavePath:       "/data/media/Movies", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "SceneRelease.2020.BluRay.1080p-GRP/movie.mkv"}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie (2020) [1080p]/movie.mkv"}},
+			wantPath:       "/data/media/Movies/Movie (2020) [1080p]",
+			description:    "Different root folders should use ContentPath",
 		},
 		{
 			name:               "single file torrents (no root) use SavePath",
 			newTorrentName:     "Movie.2020.1080p.BluRay.x264-GROUP",
 			matchedTorrentName: "Movie.2020.1080p.WEB-DL.x264-OTHER",
-			baseSavePath:       "/data/media/Movies",
-			matchType:          "exact",
-			sourceFiles:        qbt.TorrentFiles{{Name: "movie.mkv"}},
-			candidateFiles:     qbt.TorrentFiles{{Name: "movie.mkv"}},
-			wantPath:           "/data/media/Movies",
-			description:        "Single file torrents with no root folder use SavePath",
+			baseSavePath:       "/data/media/Movies", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "movie.mkv"}},
+			candidateFiles: qbt.TorrentFiles{{Name: "movie.mkv"}},
+			wantPath:       "/data/media/Movies",
+			description:    "Single file torrents with no root folder use SavePath",
 		},
 
 		// ============================================================
@@ -383,12 +386,12 @@ func TestDetermineSavePath(t *testing.T) {
 			newTorrentName:     "The.Movie.2020-GRP.mkv",
 			matchedTorrentName: "The.Movie.2020-GRP",
 			matchedContentPath: "/movies/The.Movie.2020-GRP",
-			baseSavePath:       "/movies",
-			matchType:          "partial-in-pack",
-			sourceFiles:        qbt.TorrentFiles{{Name: "The.Movie.2020-GRP.mkv", Size: 5 << 30}},
-			candidateFiles:     qbt.TorrentFiles{{Name: "The.Movie.2020-GRP/The.Movie.2020-GRP.mkv", Size: 5 << 30}},
-			wantPath:           "/movies/The.Movie.2020-GRP",
-			description:        "Loose file goes inside existing folder via ContentPath",
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType:      "partial-in-pack",
+			sourceFiles:    qbt.TorrentFiles{{Name: "The.Movie.2020-GRP.mkv", Size: 5 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "The.Movie.2020-GRP/The.Movie.2020-GRP.mkv", Size: 5 << 30}},
+			wantPath:       "/movies/The.Movie.2020-GRP",
+			description:    "Loose file goes inside existing folder via ContentPath",
 		},
 
 		// M2: We seed loose file, match on folder
@@ -398,12 +401,12 @@ func TestDetermineSavePath(t *testing.T) {
 			name:               "M2: movie loose file seeded, match folder",
 			newTorrentName:     "The.Movie.2020-GRP",
 			matchedTorrentName: "The.Movie.2020-GRP",
-			baseSavePath:       "/movies",
-			matchType:          "exact",
-			sourceFiles:        qbt.TorrentFiles{{Name: "The.Movie.2020-GRP/movie.mkv", Size: 5 << 30}},
-			candidateFiles:     qbt.TorrentFiles{{Name: "movie.mkv", Size: 5 << 30}},
-			wantPath:           "/movies",
-			description:        "Folder torrent points to SavePath, NoSubfolder strips root",
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "The.Movie.2020-GRP/movie.mkv", Size: 5 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "movie.mkv", Size: 5 << 30}},
+			wantPath:       "/movies",
+			description:    "Folder torrent points to SavePath, NoSubfolder strips root",
 		},
 
 		// M3: Same root folder names
@@ -413,12 +416,12 @@ func TestDetermineSavePath(t *testing.T) {
 			name:               "M3: movie same root folders",
 			newTorrentName:     "The.Movie.2020-GRP",
 			matchedTorrentName: "The.Movie.2020-GRP",
-			baseSavePath:       "/movies",
-			matchType:          "exact",
-			sourceFiles:        qbt.TorrentFiles{{Name: "The.Movie.2020-GRP/movie.mkv", Size: 5 << 30}},
-			candidateFiles:     qbt.TorrentFiles{{Name: "The.Movie.2020-GRP/movie.mkv", Size: 5 << 30}},
-			wantPath:           "/movies",
-			description:        "Same roots use SavePath with Original layout",
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "The.Movie.2020-GRP/movie.mkv", Size: 5 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "The.Movie.2020-GRP/movie.mkv", Size: 5 << 30}},
+			wantPath:       "/movies",
+			description:    "Same roots use SavePath with Original layout",
 		},
 
 		// M4: Different root folders (spaces vs dots naming)
@@ -429,12 +432,12 @@ func TestDetermineSavePath(t *testing.T) {
 			newTorrentName:     "The.Movie.2020.1080p-GRP",
 			matchedTorrentName: "Movie (2020) [1080p]",
 			matchedContentPath: "/movies/Movie (2020) [1080p]",
-			baseSavePath:       "/movies",
-			matchType:          "exact",
-			sourceFiles:        qbt.TorrentFiles{{Name: "The.Movie.2020.1080p-GRP/movie.mkv", Size: 5 << 30}},
-			candidateFiles:     qbt.TorrentFiles{{Name: "Movie (2020) [1080p]/movie.mkv", Size: 5 << 30}},
-			wantPath:           "/movies/Movie (2020) [1080p]",
-			description:        "Different roots use candidate folder path",
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "The.Movie.2020.1080p-GRP/movie.mkv", Size: 5 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie (2020) [1080p]/movie.mkv", Size: 5 << 30}},
+			wantPath:       "/movies/Movie (2020) [1080p]",
+			description:    "Different roots use candidate folder path",
 		},
 
 		// M5: Both loose files (no folders)
@@ -442,12 +445,12 @@ func TestDetermineSavePath(t *testing.T) {
 			name:               "M5: both movies loose files",
 			newTorrentName:     "The.Movie.2020-GRP.mkv",
 			matchedTorrentName: "The.Movie.2020-GRP.mkv",
-			baseSavePath:       "/movies",
-			matchType:          "exact",
-			sourceFiles:        qbt.TorrentFiles{{Name: "The.Movie.2020-GRP.mkv", Size: 5 << 30}},
-			candidateFiles:     qbt.TorrentFiles{{Name: "The.Movie.2020-GRP.mkv", Size: 5 << 30}},
-			wantPath:           "/movies",
-			description:        "Both loose files use SavePath directly",
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "The.Movie.2020-GRP.mkv", Size: 5 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "The.Movie.2020-GRP.mkv", Size: 5 << 30}},
+			wantPath:       "/movies",
+			description:    "Both loose files use SavePath directly",
 		},
 
 		// ============================================================
@@ -462,9 +465,9 @@ func TestDetermineSavePath(t *testing.T) {
 			newTorrentName:     "The.Show.S01E01.1080p-GRP.mkv",
 			matchedTorrentName: "The.Show.S01.1080p-GRP",
 			matchedContentPath: "/tv/The.Show.S01.1080p-GRP",
-			baseSavePath:       "/tv",
-			matchType:          "partial-in-pack",
-			sourceFiles:        qbt.TorrentFiles{{Name: "The.Show.S01E01.1080p-GRP.mkv", Size: 2 << 30}},
+			baseSavePath:       "/tv", contentLayout: "Original",
+			matchType:   "partial-in-pack",
+			sourceFiles: qbt.TorrentFiles{{Name: "The.Show.S01E01.1080p-GRP.mkv", Size: 2 << 30}},
 			candidateFiles: qbt.TorrentFiles{
 				{Name: "The.Show.S01.1080p-GRP/The.Show.S01E01.1080p-GRP.mkv", Size: 2 << 30},
 				{Name: "The.Show.S01.1080p-GRP/The.Show.S01E02.1080p-GRP.mkv", Size: 2 << 30},
@@ -481,8 +484,8 @@ func TestDetermineSavePath(t *testing.T) {
 			name:               "T2: loose episode seeded, match season pack",
 			newTorrentName:     "The.Show.S01.1080p-GRP",
 			matchedTorrentName: "The.Show.S01E01.1080p-GRP",
-			baseSavePath:       "/tv",
-			matchType:          "partial-contains",
+			baseSavePath:       "/tv", contentLayout: "Original",
+			matchType: "partial-contains",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "The.Show.S01.1080p-GRP/The.Show.S01E01.1080p-GRP.mkv", Size: 2 << 30},
 				{Name: "The.Show.S01.1080p-GRP/The.Show.S01E02.1080p-GRP.mkv", Size: 2 << 30},
@@ -500,9 +503,9 @@ func TestDetermineSavePath(t *testing.T) {
 			newTorrentName:     "The.Show.S01E01.1080p-OTHER",
 			matchedTorrentName: "The.Show.S01.1080p-GRP",
 			matchedContentPath: "/tv/The.Show.S01.1080p-GRP",
-			baseSavePath:       "/tv",
-			matchType:          "partial-in-pack",
-			sourceFiles:        qbt.TorrentFiles{{Name: "The.Show.S01E01.1080p-OTHER/ep.mkv", Size: 2 << 30}},
+			baseSavePath:       "/tv", contentLayout: "Original",
+			matchType:   "partial-in-pack",
+			sourceFiles: qbt.TorrentFiles{{Name: "The.Show.S01E01.1080p-OTHER/ep.mkv", Size: 2 << 30}},
 			candidateFiles: qbt.TorrentFiles{
 				{Name: "The.Show.S01.1080p-GRP/The.Show.S01E01.mkv", Size: 2 << 30},
 				{Name: "The.Show.S01.1080p-GRP/The.Show.S01E02.mkv", Size: 2 << 30},
@@ -518,8 +521,8 @@ func TestDetermineSavePath(t *testing.T) {
 			name:               "T4: season pack same root",
 			newTorrentName:     "The.Show.S01.1080p.BluRay-GRP",
 			matchedTorrentName: "The.Show.S01.1080p.BluRay-GRP",
-			baseSavePath:       "/tv",
-			matchType:          "exact",
+			baseSavePath:       "/tv", contentLayout: "Original",
+			matchType: "exact",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "The.Show.S01.1080p.BluRay-GRP/ep1.mkv", Size: 2 << 30},
 				{Name: "The.Show.S01.1080p.BluRay-GRP/ep2.mkv", Size: 2 << 30},
@@ -540,8 +543,8 @@ func TestDetermineSavePath(t *testing.T) {
 			newTorrentName:     "The.Show.S01.1080p.WEB-GRP",
 			matchedTorrentName: "The.Show.S01.1080p.BluRay-GRP",
 			matchedContentPath: "/tv/The.Show.S01.1080p.BluRay-GRP",
-			baseSavePath:       "/tv",
-			matchType:          "exact",
+			baseSavePath:       "/tv", contentLayout: "Original",
+			matchType: "exact",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "The.Show.S01.1080p.WEB-GRP/ep1.mkv", Size: 2 << 30},
 				{Name: "The.Show.S01.1080p.WEB-GRP/ep2.mkv", Size: 2 << 30},
@@ -560,12 +563,12 @@ func TestDetermineSavePath(t *testing.T) {
 			newTorrentName:     "The.Show.S01E01.1080p-GRP",
 			matchedTorrentName: "The Show S01E01 [1080p]",
 			matchedContentPath: "/tv/The Show S01E01 [1080p]",
-			baseSavePath:       "/tv",
-			matchType:          "exact",
-			sourceFiles:        qbt.TorrentFiles{{Name: "The.Show.S01E01.1080p-GRP/ep.mkv", Size: 2 << 30}},
-			candidateFiles:     qbt.TorrentFiles{{Name: "The Show S01E01 [1080p]/ep.mkv", Size: 2 << 30}},
-			wantPath:           "/tv/The Show S01E01 [1080p]",
-			description:        "Different naming conventions use candidate folder",
+			baseSavePath:       "/tv", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "The.Show.S01E01.1080p-GRP/ep.mkv", Size: 2 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "The Show S01E01 [1080p]/ep.mkv", Size: 2 << 30}},
+			wantPath:       "/tv/The Show S01E01 [1080p]",
+			description:    "Different naming conventions use candidate folder",
 		},
 
 		// ============================================================
@@ -580,9 +583,9 @@ func TestDetermineSavePath(t *testing.T) {
 			newTorrentName:     "Pulse.2001.1080p-GRP.mkv",
 			matchedTorrentName: "Horror.Collection.2020",
 			matchedContentPath: "/movies/Horror.Collection.2020",
-			baseSavePath:       "/movies",
-			matchType:          "partial-in-pack",
-			sourceFiles:        qbt.TorrentFiles{{Name: "Pulse.2001.1080p-GRP.mkv", Size: 4 << 30}},
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType:   "partial-in-pack",
+			sourceFiles: qbt.TorrentFiles{{Name: "Pulse.2001.1080p-GRP.mkv", Size: 4 << 30}},
 			candidateFiles: qbt.TorrentFiles{
 				{Name: "Horror.Collection.2020/Pulse.2001.mkv", Size: 4 << 30},
 				{Name: "Horror.Collection.2020/Ring.2002.mkv", Size: 4 << 30},
@@ -601,14 +604,14 @@ func TestDetermineSavePath(t *testing.T) {
 			newTorrentName:     "Horror.Collection.2020",
 			matchedTorrentName: "Pulse.2001.1080p-GRP",
 			matchedContentPath: "/movies/Pulse.2001.1080p-GRP",
-			baseSavePath:       "/movies",
-			matchType:          "partial-contains",
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType: "partial-contains",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "Horror.Collection.2020/Pulse.2001.mkv", Size: 4 << 30},
 				{Name: "Horror.Collection.2020/Ring.2002.mkv", Size: 4 << 30},
 			},
 			candidateFiles: qbt.TorrentFiles{{Name: "Pulse.2001.1080p-GRP/Pulse.mkv", Size: 4 << 30}},
-			wantPath:       "/movies/Pulse.2001.1080p-GRP",
+			wantPath:       "/movies",
 			description:    "Collection points to existing movie folder, file renaming aligns",
 		},
 
@@ -618,9 +621,9 @@ func TestDetermineSavePath(t *testing.T) {
 			newTorrentName:     "Pulse.2001.1080p-GRP",
 			matchedTorrentName: "Horror.Collection.2020",
 			matchedContentPath: "/movies/Horror.Collection.2020",
-			baseSavePath:       "/movies",
-			matchType:          "partial-in-pack",
-			sourceFiles:        qbt.TorrentFiles{{Name: "Pulse.2001.1080p-GRP/movie.mkv", Size: 4 << 30}},
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType:   "partial-in-pack",
+			sourceFiles: qbt.TorrentFiles{{Name: "Pulse.2001.1080p-GRP/movie.mkv", Size: 4 << 30}},
 			candidateFiles: qbt.TorrentFiles{
 				{Name: "Horror.Collection.2020/Pulse.2001.mkv", Size: 4 << 30},
 				{Name: "Horror.Collection.2020/Ring.2002.mkv", Size: 4 << 30},
@@ -639,9 +642,9 @@ func TestDetermineSavePath(t *testing.T) {
 			newTorrentName:     "The.Movie.2020-GRP",
 			matchedTorrentName: "The.Movie.2020-OTHER",
 			matchedContentPath: "/movies/The.Movie.2020-OTHER",
-			baseSavePath:       "/movies",
-			matchType:          "partial-in-pack",
-			sourceFiles:        qbt.TorrentFiles{{Name: "The.Movie.2020-GRP/movie.mkv", Size: 5 << 30}},
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType:   "partial-in-pack",
+			sourceFiles: qbt.TorrentFiles{{Name: "The.Movie.2020-GRP/movie.mkv", Size: 5 << 30}},
 			candidateFiles: qbt.TorrentFiles{
 				{Name: "The.Movie.2020-OTHER/movie.mkv", Size: 5 << 30},
 				{Name: "The.Movie.2020-OTHER/Sample/sample.mkv", Size: 50 << 20},
@@ -657,8 +660,8 @@ func TestDetermineSavePath(t *testing.T) {
 			newTorrentName:     "Movie.Pack.2020",
 			matchedTorrentName: "The.Movie.2020-GRP",
 			matchedContentPath: "/movies/The.Movie.2020-GRP",
-			baseSavePath:       "/movies",
-			matchType:          "partial-in-pack",
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType: "partial-in-pack",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "Movie.Pack.2020/The.Movie.2020/movie.mkv", Size: 5 << 30},
 			},
@@ -675,12 +678,12 @@ func TestDetermineSavePath(t *testing.T) {
 			newTorrentName:     "Amélie.2001.1080p-GRP",
 			matchedTorrentName: "Amélie (2001) [1080p]",
 			matchedContentPath: "/movies/Amélie (2001) [1080p]",
-			baseSavePath:       "/movies",
-			matchType:          "exact",
-			sourceFiles:        qbt.TorrentFiles{{Name: "Amélie.2001.1080p-GRP/movie.mkv", Size: 4 << 30}},
-			candidateFiles:     qbt.TorrentFiles{{Name: "Amélie (2001) [1080p]/movie.mkv", Size: 4 << 30}},
-			wantPath:           "/movies/Amélie (2001) [1080p]",
-			description:        "Unicode characters handled correctly",
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Amélie.2001.1080p-GRP/movie.mkv", Size: 4 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Amélie (2001) [1080p]/movie.mkv", Size: 4 << 30}},
+			wantPath:       "/movies/Amélie (2001) [1080p]",
+			description:    "Unicode characters handled correctly",
 		},
 
 		// E4: Very long folder names
@@ -689,12 +692,321 @@ func TestDetermineSavePath(t *testing.T) {
 			newTorrentName:     "The.Movie.With.A.Very.Long.Title.That.Goes.On.And.On.2020.1080p.BluRay.x264.DTS-HD.MA.7.1-VERYLONGGROUP",
 			matchedTorrentName: "Movie Long Title (2020)",
 			matchedContentPath: "/movies/Movie Long Title (2020)",
-			baseSavePath:       "/movies",
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "The.Movie.With.A.Very.Long.Title.That.Goes.On.And.On.2020.1080p.BluRay.x264.DTS-HD.MA.7.1-VERYLONGGROUP/movie.mkv", Size: 20 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie Long Title (2020)/movie.mkv", Size: 20 << 30}},
+			wantPath:       "/movies/Movie Long Title (2020)",
+			description:    "Long folder names handled correctly",
+		},
+
+		// E5: Prevent infinite recursion - matched torrent already in root-named folder
+		{
+			name:               "E5: prevent infinite recursion when save path already ends with candidate root",
+			newTorrentName:     "Show.S01E01.720p.HDTV.x264-GROUP",
+			matchedTorrentName: "Show.S01E01.1080p.WEB-DL.x264-OTHER",
+			matchedContentPath: "/data/media/Show/Season 01/Show.S01E01.1080p.WEB-DL.x264-OTHER",
+			baseSavePath:       "/data/media/Show/Season 01/Show.S01E01.1080p.WEB-DL.x264-OTHER", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Show.S01E01.720p.HDTV.x264-GROUP/ep.mkv", Size: 1 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Show.S01E01.1080p.WEB-DL.x264-OTHER/ep.mkv", Size: 1 << 30}},
+			wantPath:       "/data/media/Show/Season 01/Show.S01E01.1080p.WEB-DL.x264-OTHER",
+			description:    "Save path already ends with candidate root, don't append again",
+		},
+
+		// E6: Deep nesting prevention - multiple levels of cross-seeding
+		{
+			name:               "E6: prevent deep nesting from chained cross-seeds",
+			newTorrentName:     "Movie.2020.480p.WEB.x264-GROUP",
+			matchedTorrentName: "Movie.2020.1080p.BluRay.x264-OTHER",
+			matchedContentPath: "/movies/Movie.2020.1080p.BluRay.x264-OTHER/Movie.2020.720p.WEB.x264-SOME",
+			baseSavePath:       "/movies/Movie.2020.1080p.BluRay.x264-OTHER/Movie.2020.720p.WEB.x264-SOME", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie.2020.480p.WEB.x264-GROUP/movie.mkv", Size: 1 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2020.720p.WEB.x264-SOME/movie.mkv", Size: 1 << 30}},
+			wantPath:       "/movies/Movie.2020.1080p.BluRay.x264-OTHER/Movie.2020.720p.WEB.x264-SOME",
+			description:    "Even with deep nesting in save path, don't append candidate root again",
+		},
+
+		// E7: Partial-in-pack with pre-existing root folder
+		{
+			name:               "E7: partial-in-pack single file into already-rooted folder",
+			newTorrentName:     "Episode.S01E01.1080p-GROUP.mkv",
+			matchedTorrentName: "Season.S01.1080p.BluRay.x264-OTHER",
+			matchedContentPath: "/tv/Season.S01.1080p.BluRay.x264-OTHER",
+			baseSavePath:       "/tv/Season.S01.1080p.BluRay.x264-OTHER", contentLayout: "Original",
+			matchType:      "partial-in-pack",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Episode.S01E01.1080p-GROUP.mkv", Size: 1 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Season.S01.1080p.BluRay.x264-OTHER/ep1.mkv", Size: 1 << 30}},
+			wantPath:       "/tv/Season.S01.1080p.BluRay.x264-OTHER",
+			description:    "Single file into season pack folder that's already named after root",
+		},
+
+		// E8: Cross-seed chain - episode from season pack that's in episode folder
+		{
+			name:               "E8: episode from season pack in episode-named folder",
+			newTorrentName:     "Show.S01E02.720p.HDTV.x264-GROUP",
+			matchedTorrentName: "Show.S01.1080p.BluRay.x264-OTHER",
+			matchedContentPath: "/tv/Show.S01E01.1080p.WEB.x264-SOME",
+			baseSavePath:       "/tv/Show.S01E01.1080p.WEB.x264-SOME", contentLayout: "Original",
+			matchType:   "partial-contains",
+			sourceFiles: qbt.TorrentFiles{{Name: "Show.S01E02.720p.HDTV.x264-GROUP/ep.mkv", Size: 1 << 30}},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Show.S01.1080p.BluRay.x264-OTHER/ep1.mkv", Size: 1 << 30},
+				{Name: "Show.S01.1080p.BluRay.x264-OTHER/ep2.mkv", Size: 1 << 30},
+			},
+			wantPath:    "/tv/Show.S01E01.1080p.WEB.x264-SOME",
+			description: "Season pack in episode folder should not create new subfolder",
+		},
+
+		// E9: Complex nesting with collection
+		{
+			name:               "E9: movie from collection in deeply nested path",
+			newTorrentName:     "Movie.A.2020.1080p.BluRay.x264-GROUP",
+			matchedTorrentName: "Horror.Collection.2020",
+			matchedContentPath: "/movies/Collections/Horror.2020/Horror.Collection.2020",
+			baseSavePath:       "/movies/Collections/Horror.2020/Horror.Collection.2020", contentLayout: "Original",
+			matchType:      "partial-in-pack",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie.A.2020.1080p.BluRay.x264-GROUP/movie.mkv", Size: 1 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Horror.Collection.2020/Movie.A.mkv", Size: 1 << 30}},
+			wantPath:       "/movies/Collections/Horror.2020/Horror.Collection.2020",
+			description:    "Collection in nested path should not add another level",
+		},
+
+		// E10: Root folder with special characters already in path
+		{
+			name:               "E10: special chars root already in complex path",
+			newTorrentName:     "Show.S01E01.720p.HDTV.x264-GROUP",
+			matchedTorrentName: "Show.S01E01.[1080p].WEB.x264-OTHER",
+			matchedContentPath: "/tv/Shows/Season 01/Show.S01E01.[1080p].WEB.x264-OTHER",
+			baseSavePath:       "/tv/Shows/Season 01/Show.S01E01.[1080p].WEB.x264-OTHER", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Show.S01E01.720p.HDTV.x264-GROUP/ep.mkv", Size: 1 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Show.S01E01.[1080p].WEB.x264-OTHER/ep.mkv", Size: 1 << 30}},
+			wantPath:       "/tv/Shows/Season 01/Show.S01E01.[1080p].WEB.x264-OTHER",
+			description:    "Special characters in root folder name already in path",
+		},
+
+		// E11: Empty save path (edge case)
+		{
+			name:               "E11: empty save path fallback",
+			newTorrentName:     "Movie.2020.1080p.BluRay.x264-GROUP",
+			matchedTorrentName: "Movie.2020.720p.WEB.x264-OTHER",
+			matchedContentPath: "",
+			baseSavePath:       "",
 			matchType:          "exact",
-			sourceFiles:        qbt.TorrentFiles{{Name: "The.Movie.With.A.Very.Long.Title.That.Goes.On.And.On.2020.1080p.BluRay.x264.DTS-HD.MA.7.1-VERYLONGGROUP/movie.mkv", Size: 20 << 30}},
-			candidateFiles:     qbt.TorrentFiles{{Name: "Movie Long Title (2020)/movie.mkv", Size: 20 << 30}},
-			wantPath:           "/movies/Movie Long Title (2020)",
-			description:        "Long folder names handled correctly",
+			sourceFiles:        qbt.TorrentFiles{{Name: "Movie.2020.1080p.BluRay.x264-GROUP/movie.mkv", Size: 1 << 30}},
+			candidateFiles:     qbt.TorrentFiles{{Name: "Movie.2020.720p.WEB.x264-OTHER/movie.mkv", Size: 1 << 30}},
+			wantPath:           "",
+			description:        "Empty save path should be returned as-is",
+		},
+
+		// E12: Root folder with numbers and symbols
+		{
+			name:               "E12: numeric and symbolic root folders",
+			newTorrentName:     "Show.2025.S01.1080p.BluRay.x264-GROUP",
+			matchedTorrentName: "Show.2025.S01.720p.WEB.x264-OTHER",
+			matchedContentPath: "/tv/Show (2025) - Season 1",
+			baseSavePath:       "/tv", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Show.2025.S01.1080p.BluRay.x264-GROUP/ep1.mkv", Size: 1 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Show.2025.S01.720p.WEB.x264-OTHER/ep1.mkv", Size: 1 << 30}},
+			wantPath:       "/tv/Show.2025.S01.720p.WEB.x264-OTHER",
+			description:    "Numeric season folders with different naming conventions",
+		},
+
+		// E13: Very deep nested paths
+		{
+			name:               "E13: extremely deep nested paths",
+			newTorrentName:     "Movie.2020.1080p.BluRay.x264-GROUP",
+			matchedTorrentName: "Movie.2020.720p.WEB.x264-OTHER",
+			matchedContentPath: "/media/movies/action/2020/sci-fi/Movie.2020.720p.WEB.x264-OTHER",
+			baseSavePath:       "/media/movies/action/2020/sci-fi", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie.2020.1080p.BluRay.x264-GROUP/movie.mkv", Size: 1 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2020.720p.WEB.x264-OTHER/movie.mkv", Size: 1 << 30}},
+			wantPath:       "/media/movies/action/2020/sci-fi/Movie.2020.720p.WEB.x264-OTHER",
+			description:    "Deeply nested directory structures",
+		},
+
+		// E14: Case sensitivity differences
+		{
+			name:               "E14: case differences in root folders",
+			newTorrentName:     "MOVIE.2020.1080P.BLU-RAY.X264-GROUP",
+			matchedTorrentName: "movie.2020.720p.web.x264-other",
+			matchedContentPath: "/movies/movie.2020.720p.web.x264-other",
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "MOVIE.2020.1080P.BLU-RAY.X264-GROUP/movie.mkv", Size: 1 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "movie.2020.720p.web.x264-other/movie.mkv", Size: 1 << 30}},
+			wantPath:       "/movies/movie.2020.720p.web.x264-other",
+			description:    "Case differences between source and candidate root folders",
+		},
+
+		// E15: Mixed separators in paths (edge case for cross-platform)
+		{
+			name:               "E15: mixed path separators",
+			newTorrentName:     "Show.S01.1080p.BluRay.x264-GROUP",
+			matchedTorrentName: "Show.S01.720p.WEB.x264-OTHER",
+			matchedContentPath: "/tv\\mixed\\Show.S01.720p.WEB.x264-OTHER",
+			baseSavePath:       "/tv\\mixed", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-GROUP/ep1.mkv", Size: 1 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Show.S01.720p.WEB.x264-OTHER/ep1.mkv", Size: 1 << 30}},
+			wantPath:       "/tv\\mixed\\Show.S01.720p.WEB.x264-OTHER",
+			description:    "Mixed forward and backward slashes in paths",
+		},
+
+		// E16: Root folders with spaces and punctuation
+		{
+			name:               "E16: complex punctuation in folder names",
+			newTorrentName:     "The.Movie.2020.1080p.BluRay.x264-GROUP",
+			matchedTorrentName: "The Movie (2020) [1080p] BluRay x264-OTHER",
+			matchedContentPath: "/movies/The Movie (2020) [1080p] BluRay x264-OTHER",
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "The.Movie.2020.1080p.BluRay.x264-GROUP/movie.mkv", Size: 1 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "The Movie (2020) [1080p] BluRay x264-OTHER/movie.mkv", Size: 1 << 30}},
+			wantPath:       "/movies/The Movie (2020) [1080p] BluRay x264-OTHER",
+			description:    "Complex punctuation and spacing in folder names",
+		},
+
+		// E17: Single character root folders
+		{
+			name:               "E17: minimal root folder names",
+			newTorrentName:     "A.2020.1080p.BluRay.x264-GROUP",
+			matchedTorrentName: "B.2020.720p.WEB.x264-OTHER",
+			matchedContentPath: "/movies/B.2020.720p.WEB.x264-OTHER",
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "A.2020.1080p.BluRay.x264-GROUP/movie.mkv", Size: 1 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "B.2020.720p.WEB.x264-OTHER/movie.mkv", Size: 1 << 30}},
+			wantPath:       "/movies/B.2020.720p.WEB.x264-OTHER",
+			description:    "Single character root folder names",
+		},
+
+		// E18: Paths with dots in directory names
+		{
+			name:               "E18: dots in directory paths",
+			newTorrentName:     "Movie.2020.1080p.BluRay.x264-GROUP",
+			matchedTorrentName: "Movie.2020.720p.WEB.x264-OTHER",
+			matchedContentPath: "/movies/2020.Movies/Movie.2020.720p.WEB.x264-OTHER",
+			baseSavePath:       "/movies/2020.Movies", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie.2020.1080p.BluRay.x264-GROUP/movie.mkv", Size: 1 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2020.720p.WEB.x264-OTHER/movie.mkv", Size: 1 << 30}},
+			wantPath:       "/movies/2020.Movies/Movie.2020.720p.WEB.x264-OTHER",
+			description:    "Dots in directory names that could confuse parsing",
+		},
+
+		// E19: Unicode characters in different positions
+		{
+			name:               "E19: unicode in middle of folder names",
+			newTorrentName:     "Film.2020.1080p.BluRay.x264-GROUP",
+			matchedTorrentName: "Film.2020.720p.WEB.x264-OTHER",
+			matchedContentPath: "/movies/Film.2020.720p.WEB.x264-OTHER",
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Film.2020.1080p.BluRay.x264-GROUP/movie.mkv", Size: 1 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Film.2020.720p.WEB.x264-OTHER/movie.mkv", Size: 1 << 30}},
+			wantPath:       "/movies/Film.2020.720p.WEB.x264-OTHER",
+			description:    "Unicode characters properly handled in folder names",
+		},
+
+		// E20: Empty root detection (single file torrents)
+		{
+			name:               "E20: single file torrents with no root",
+			newTorrentName:     "movie.2020.1080p.bluray.x264-group.mkv",
+			matchedTorrentName: "movie.2020.720p.web.x264-other.mkv",
+			matchedContentPath: "/movies",
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "movie.2020.1080p.bluray.x264-group.mkv", Size: 1 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "movie.2020.720p.web.x264-other.mkv", Size: 1 << 30}},
+			wantPath:       "/movies",
+			description:    "Single file torrents with no root folder structure",
+		},
+
+		// E21: Nested root folders in source
+		{
+			name:               "E21: source with nested subfolders",
+			newTorrentName:     "Movie.2020.1080p.BluRay.x264-GROUP",
+			matchedTorrentName: "Movie.2020.720p.WEB.x264-OTHER",
+			matchedContentPath: "/movies/Movie.2020.720p.WEB.x264-OTHER",
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType: "exact",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie.2020.1080p.BluRay.x264-GROUP/extras/trailer.mkv", Size: 50 << 20},
+				{Name: "Movie.2020.1080p.BluRay.x264-GROUP/movie.mkv", Size: 1 << 30},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie.2020.720p.WEB.x264-OTHER/extras/trailer.mkv", Size: 50 << 20},
+				{Name: "Movie.2020.720p.WEB.x264-OTHER/movie.mkv", Size: 1 << 30},
+			},
+			wantPath:    "/movies/Movie.2020.720p.WEB.x264-OTHER",
+			description: "Source torrent with nested subfolders in root",
+		},
+
+		// E22: Inconsistent root detection (mixed files)
+		{
+			name:               "E22: inconsistent file structures",
+			newTorrentName:     "Collection.2020",
+			matchedTorrentName: "Movie.A.2020.1080p.BluRay.x264-GROUP",
+			matchedContentPath: "/movies/Movie.A.2020.1080p.BluRay.x264-GROUP",
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType: "partial-in-pack",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Collection.2020/Movie.A.mkv", Size: 1 << 30},
+				{Name: "Collection.2020/Movie.B.mkv", Size: 1 << 30},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie.A.2020.1080p.BluRay.x264-GROUP/movie.mkv", Size: 1 << 30},
+				{Name: "Movie.A.2020.1080p.BluRay.x264-GROUP/extras/trailer.mkv", Size: 50 << 20},
+			},
+			wantPath:    "/movies/Movie.A.2020.1080p.BluRay.x264-GROUP",
+			description: "Inconsistent file structures between collection and individual movie",
+		},
+
+		// E23: Maximum path length simulation
+		{
+			name:               "E23: very long folder names",
+			newTorrentName:     "Short.Name.2020",
+			matchedTorrentName: "Very.Long.Folder.Name.That.Exceeds.Normal.Limits.And.Might.Cause.Issues.On.Some.File.Systems.2020.1080p.BluRay.x264-GROUP",
+			matchedContentPath: "/movies/Very.Long.Folder.Name.That.Exceeds.Normal.Limits.And.Might.Cause.Issues.On.Some.File.Systems.2020.1080p.BluRay.x264-GROUP",
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Short.Name.2020/movie.mkv", Size: 1 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Very.Long.Folder.Name.That.Exceeds.Normal.Limits.And.Might.Cause.Issues.On.Some.File.Systems.2020.1080p.BluRay.x264-GROUP/movie.mkv", Size: 1 << 30}},
+			wantPath:       "/movies/Very.Long.Folder.Name.That.Exceeds.Normal.Limits.And.Might.Cause.Issues.On.Some.File.Systems.2020.1080p.BluRay.x264-GROUP",
+			description:    "Very long folder names that might exceed filesystem limits",
+		},
+
+		// E24: Relative paths (edge case)
+		{
+			name:               "E24: relative save paths",
+			newTorrentName:     "Movie.2020.1080p.BluRay.x264-GROUP",
+			matchedTorrentName: "Movie.2020.720p.WEB.x264-OTHER",
+			matchedContentPath: "Movie.2020.720p.WEB.x264-OTHER",
+			baseSavePath:       ".", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie.2020.1080p.BluRay.x264-GROUP/movie.mkv", Size: 1 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2020.720p.WEB.x264-OTHER/movie.mkv", Size: 1 << 30}},
+			wantPath:       "Movie.2020.720p.WEB.x264-OTHER",
+			description:    "Relative save paths and content paths",
+		},
+
+		// E25: Root folder conflicts with save path base
+		{
+			name:               "E25: root folder same as save path base",
+			newTorrentName:     "movies.2020.collection",
+			matchedTorrentName: "movies.2020.720p.web.x264-other",
+			matchedContentPath: "/data/media/movies.2020.720p.web.x264-other",
+			baseSavePath:       "/data/media", contentLayout: "Original",
+			matchType:      "exact",
+			sourceFiles:    qbt.TorrentFiles{{Name: "movies.2020.collection/movie.mkv", Size: 1 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "movies.2020.720p.web.x264-other/movie.mkv", Size: 1 << 30}},
+			wantPath:       "/data/media/movies.2020.720p.web.x264-other",
+			description:    "Root folder name conflicts with save path base directory",
 		},
 	}
 
@@ -708,8 +1020,8 @@ func TestDetermineSavePath(t *testing.T) {
 				SavePath: tt.baseSavePath,
 			}
 
-			gotPath := s.determineSavePath(tt.newTorrentName, matchedTorrent, props, tt.matchType, tt.sourceFiles, tt.candidateFiles)
-			assert.Equal(t, tt.wantPath, gotPath, tt.description)
+			gotPath := s.determineSavePath(tt.newTorrentName, matchedTorrent, props, tt.matchType, tt.sourceFiles, tt.candidateFiles, tt.contentLayout)
+			assert.Equal(t, filepath.ToSlash(tt.wantPath), filepath.ToSlash(gotPath), tt.description)
 		})
 	}
 }
@@ -760,7 +1072,7 @@ func TestPartialInPackIntegration(t *testing.T) {
 		"episode matched against season pack should produce partial-in-pack match type")
 
 	// Step 2: Verify determineSavePath uses ContentPath (not SavePath)
-	savePath := svc.determineSavePath(episodeName, seasonPackTorrent, seasonPackProps, matchType, episodeFiles, seasonPackFiles)
+	savePath := svc.determineSavePath(episodeName, seasonPackTorrent, seasonPackProps, matchType, episodeFiles, seasonPackFiles, "Original")
 	require.Equal(t, "/downloads/tv/The.Show.S01.1080p.BluRay.x264-GRP", savePath,
 		"partial-in-pack should use season pack's ContentPath, not SavePath")
 
@@ -810,7 +1122,7 @@ func TestPartialInPackMovieCollectionIntegration(t *testing.T) {
 		"movie matched against collection should produce partial-in-pack match type")
 
 	// Step 2: Verify determineSavePath uses ContentPath
-	savePath := svc.determineSavePath(movieName, collectionTorrent, collectionProps, matchType, movieFiles, collectionFiles)
+	savePath := svc.determineSavePath(movieName, collectionTorrent, collectionProps, matchType, movieFiles, collectionFiles, "Original")
 	require.Equal(t, "/downloads/movies/Horror.Collection.2020.1080p.BluRay.x264-GRP", savePath,
 		"partial-in-pack should use collection's ContentPath")
 }
@@ -1969,6 +2281,10 @@ func (f *fakeSyncManager) GetTorrentProperties(_ context.Context, _ int, _ strin
 	return nil, fmt.Errorf("GetTorrentProperties not implemented in fakeSyncManager")
 }
 
+func (f *fakeSyncManager) GetAppPreferences(_ context.Context, _ int) (qbt.AppPreferences, error) {
+	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
+}
+
 func (f *fakeSyncManager) AddTorrent(_ context.Context, _ int, _ []byte, _ map[string]string) error {
 	return fmt.Errorf("AddTorrent not implemented in fakeSyncManager")
 }
@@ -2106,5 +2422,240 @@ func TestWrapCrossSeedSearchErrorGeneric(t *testing.T) {
 	}
 	if !strings.Contains(wrapped.Error(), "torznab search failed") {
 		t.Fatalf("expected generic torznab failure prefix, got %q", wrapped.Error())
+	}
+}
+
+// TestDetermineSavePathContentLayoutScenarios tests determineSavePath with different
+// qBittorrent content layout settings to ensure cross-seeding works correctly
+// regardless of the user's content layout preference.
+func TestDetermineSavePathContentLayoutScenarios(t *testing.T) {
+	cache := NewReleaseCache()
+	s := &Service{releaseCache: cache}
+
+	// Test cases covering key scenarios with different contentLayout values
+	tests := []struct {
+		name               string
+		newTorrentName     string
+		matchedTorrentName string
+		matchedContentPath string
+		baseSavePath       string
+		contentLayout      string
+		matchType          string
+		sourceFiles        qbt.TorrentFiles
+		candidateFiles     qbt.TorrentFiles
+		wantPath           string
+		description        string
+	}{
+		// Original layout - files in subfolders based on torrent structure
+		{
+			name:               "original_layout_season_pack_from_episode",
+			newTorrentName:     "Show.S01.1080p.BluRay.x264-GROUP",
+			matchedTorrentName: "Show.S01E05.1080p.WEB-DL.x264-OTHER",
+			baseSavePath:       "/data/media/Show/Season 01",
+			contentLayout:      "Original",
+			matchType:          "exact",
+			sourceFiles:        qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-GROUP/ep1.mkv"}},
+			candidateFiles:     qbt.TorrentFiles{{Name: "Show.S01E05.1080p.WEB-DL.x264-OTHER/ep.mkv"}},
+			wantPath:           "/data/media/Show/Season 01/Show.S01E05.1080p.WEB-DL.x264-OTHER",
+			description:        "Original layout: Different roots use SavePath + candidateRoot",
+		},
+		{
+			name:               "subfolder_layout_season_pack_from_episode",
+			newTorrentName:     "Show.S01.1080p.BluRay.x264-GROUP",
+			matchedTorrentName: "Show.S01E05.1080p.WEB-DL.x264-OTHER",
+			baseSavePath:       "/data/media/Show/Season 01",
+			contentLayout:      "Subfolder",
+			matchType:          "exact",
+			sourceFiles:        qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-GROUP/ep1.mkv"}},
+			candidateFiles:     qbt.TorrentFiles{{Name: "Show.S01E05.1080p.WEB-DL.x264-OTHER/ep.mkv"}},
+			wantPath:           "/data/media/Show/Season 01/Show.S01E05.1080p.WEB-DL.x264-OTHER",
+			description:        "Subfolder layout: Path determination should be identical",
+		},
+		{
+			name:               "nosubfolder_layout_season_pack_from_episode",
+			newTorrentName:     "Show.S01.1080p.BluRay.x264-GROUP",
+			matchedTorrentName: "Show.S01E05.1080p.WEB-DL.x264-OTHER",
+			baseSavePath:       "/data/media/Show/Season 01",
+			contentLayout:      "NoSubfolder",
+			matchType:          "exact",
+			sourceFiles:        qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-GROUP/ep1.mkv"}},
+			candidateFiles:     qbt.TorrentFiles{{Name: "Show.S01E05.1080p.WEB-DL.x264-OTHER/ep.mkv"}},
+			wantPath:           "/data/media/Show/Season 01/Show.S01E05.1080p.WEB-DL.x264-OTHER",
+			description:        "NoSubfolder layout: Path determination should be identical",
+		},
+
+		// Partial-in-pack scenarios with different layouts
+		{
+			name:               "original_layout_partial_in_pack_episode",
+			newTorrentName:     "Show.S01E05.1080p.WEB-DL.x264-GROUP",
+			matchedTorrentName: "Show.S01.1080p.BluRay.x264-OTHER",
+			matchedContentPath: "/data/media/Shows/Show.S01.1080p.BluRay.x264-OTHER",
+			baseSavePath:       "/data/media/Shows",
+			contentLayout:      "Original",
+			matchType:          "partial-in-pack",
+			sourceFiles:        qbt.TorrentFiles{{Name: "Show.S01E05.1080p.WEB-DL.x264-GROUP/ep.mkv"}},
+			candidateFiles:     qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-OTHER/ep1.mkv"}},
+			wantPath:           "/data/media/Shows/Show.S01.1080p.BluRay.x264-OTHER",
+			description:        "Original layout: Partial-in-pack uses ContentPath",
+		},
+		{
+			name:               "subfolder_layout_partial_in_pack_episode",
+			newTorrentName:     "Show.S01E05.1080p.WEB-DL.x264-GROUP",
+			matchedTorrentName: "Show.S01.1080p.BluRay.x264-OTHER",
+			matchedContentPath: "/data/media/Shows/Show.S01.1080p.BluRay.x264-OTHER",
+			baseSavePath:       "/data/media/Shows",
+			contentLayout:      "Subfolder",
+			matchType:          "partial-in-pack",
+			sourceFiles:        qbt.TorrentFiles{{Name: "Show.S01E05.1080p.WEB-DL.x264-GROUP/ep.mkv"}},
+			candidateFiles:     qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-OTHER/ep1.mkv"}},
+			wantPath:           "/data/media/Shows/Show.S01.1080p.BluRay.x264-OTHER",
+			description:        "Subfolder layout: Partial-in-pack uses ContentPath",
+		},
+		{
+			name:               "nosubfolder_layout_partial_in_pack_episode",
+			newTorrentName:     "Show.S01E05.1080p.WEB-DL.x264-GROUP",
+			matchedTorrentName: "Show.S01.1080p.BluRay.x264-OTHER",
+			matchedContentPath: "/data/media/Shows/Show.S01.1080p.BluRay.x264-OTHER",
+			baseSavePath:       "/data/media/Shows",
+			contentLayout:      "NoSubfolder",
+			matchType:          "partial-in-pack",
+			sourceFiles:        qbt.TorrentFiles{{Name: "Show.S01E05.1080p.WEB-DL.x264-GROUP/ep.mkv"}},
+			candidateFiles:     qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-OTHER/ep1.mkv"}},
+			wantPath:           "/data/media/Shows/Show.S01.1080p.BluRay.x264-OTHER",
+			description:        "NoSubfolder layout: Partial-in-pack uses ContentPath",
+		},
+
+		// Movie collection scenarios
+		{
+			name:               "original_layout_partial_in_pack_movie_collection",
+			newTorrentName:     "Pulse.2001.1080p.BluRay.x264-GROUP",
+			matchedTorrentName: "Horror.Collection.2020",
+			matchedContentPath: "/data/media/Movies/Horror.Collection.2020",
+			baseSavePath:       "/data/media/Movies",
+			contentLayout:      "Original",
+			matchType:          "partial-in-pack",
+			sourceFiles:        qbt.TorrentFiles{{Name: "Pulse.2001.1080p.BluRay.x264-GROUP/movie.mkv"}},
+			candidateFiles:     qbt.TorrentFiles{{Name: "Horror.Collection.2020/Pulse.2001.mkv"}},
+			wantPath:           "/data/media/Movies/Horror.Collection.2020",
+			description:        "Original layout: Movie in collection uses ContentPath",
+		},
+		{
+			name:               "subfolder_layout_partial_in_pack_movie_collection",
+			newTorrentName:     "Pulse.2001.1080p.BluRay.x264-GROUP",
+			matchedTorrentName: "Horror.Collection.2020",
+			matchedContentPath: "/data/media/Movies/Horror.Collection.2020",
+			baseSavePath:       "/data/media/Movies",
+			contentLayout:      "Subfolder",
+			matchType:          "partial-in-pack",
+			sourceFiles:        qbt.TorrentFiles{{Name: "Pulse.2001.1080p.BluRay.x264-GROUP/movie.mkv"}},
+			candidateFiles:     qbt.TorrentFiles{{Name: "Horror.Collection.2020/Pulse.2001.mkv"}},
+			wantPath:           "/data/media/Movies/Horror.Collection.2020",
+			description:        "Subfolder layout: Movie in collection uses ContentPath",
+		},
+		{
+			name:               "nosubfolder_layout_partial_in_pack_movie_collection",
+			newTorrentName:     "Pulse.2001.1080p.BluRay.x264-GROUP",
+			matchedTorrentName: "Horror.Collection.2020",
+			matchedContentPath: "/data/media/Movies/Horror.Collection.2020",
+			baseSavePath:       "/data/media/Movies",
+			contentLayout:      "NoSubfolder",
+			matchType:          "partial-in-pack",
+			sourceFiles:        qbt.TorrentFiles{{Name: "Pulse.2001.1080p.BluRay.x264-GROUP/movie.mkv"}},
+			candidateFiles:     qbt.TorrentFiles{{Name: "Horror.Collection.2020/Pulse.2001.mkv"}},
+			wantPath:           "/data/media/Movies/Horror.Collection.2020",
+			description:        "NoSubfolder layout: Movie in collection uses ContentPath",
+		},
+
+		// Same content type scenarios
+		{
+			name:               "original_layout_same_content_type_movies",
+			newTorrentName:     "Movie.2020.720p.BluRay.x264-GROUP",
+			matchedTorrentName: "Movie.2020.1080p.WEB-DL.x264-OTHER",
+			baseSavePath:       "/data/media/Movies",
+			contentLayout:      "Original",
+			matchType:          "exact",
+			sourceFiles:        qbt.TorrentFiles{{Name: "Movie.2020.720p.BluRay.x264-GROUP/movie.mkv"}},
+			candidateFiles:     qbt.TorrentFiles{{Name: "Movie.2020.1080p.WEB-DL.x264-OTHER/movie.mkv"}},
+			wantPath:           "/data/media/Movies/Movie.2020.1080p.WEB-DL.x264-OTHER",
+			description:        "Original layout: Same type, different roots use candidate folder",
+		},
+		{
+			name:               "subfolder_layout_same_content_type_movies",
+			newTorrentName:     "Movie.2020.720p.BluRay.x264-GROUP",
+			matchedTorrentName: "Movie.2020.1080p.WEB-DL.x264-OTHER",
+			baseSavePath:       "/data/media/Movies",
+			contentLayout:      "Subfolder",
+			matchType:          "exact",
+			sourceFiles:        qbt.TorrentFiles{{Name: "Movie.2020.720p.BluRay.x264-GROUP/movie.mkv"}},
+			candidateFiles:     qbt.TorrentFiles{{Name: "Movie.2020.1080p.WEB-DL.x264-OTHER/movie.mkv"}},
+			wantPath:           "/data/media/Movies/Movie.2020.1080p.WEB-DL.x264-OTHER",
+			description:        "Subfolder layout: Same type, different roots use candidate folder",
+		},
+		{
+			name:               "nosubfolder_layout_same_content_type_movies",
+			newTorrentName:     "Movie.2020.720p.BluRay.x264-GROUP",
+			matchedTorrentName: "Movie.2020.1080p.WEB-DL.x264-OTHER",
+			baseSavePath:       "/data/media/Movies",
+			contentLayout:      "NoSubfolder",
+			matchType:          "exact",
+			sourceFiles:        qbt.TorrentFiles{{Name: "Movie.2020.720p.BluRay.x264-GROUP/movie.mkv"}},
+			candidateFiles:     qbt.TorrentFiles{{Name: "Movie.2020.1080p.WEB-DL.x264-OTHER/movie.mkv"}},
+			wantPath:           "/data/media/Movies/Movie.2020.1080p.WEB-DL.x264-OTHER",
+			description:        "NoSubfolder layout: Same type, different roots use candidate folder",
+		},
+
+		// Single file torrents (no root folders)
+		{
+			name:               "original_layout_single_file_torrents",
+			newTorrentName:     "Movie.2020.1080p.BluRay.x264-GROUP",
+			matchedTorrentName: "Movie.2020.720p.WEB.x264-OTHER",
+			baseSavePath:       "/data/media/Movies",
+			contentLayout:      "Original",
+			matchType:          "exact",
+			sourceFiles:        qbt.TorrentFiles{{Name: "movie.mkv"}},
+			candidateFiles:     qbt.TorrentFiles{{Name: "movie.mkv"}},
+			wantPath:           "/data/media/Movies",
+			description:        "Original layout: Single file torrents use SavePath directly",
+		},
+		{
+			name:               "subfolder_layout_single_file_torrents",
+			newTorrentName:     "Movie.2020.1080p.BluRay.x264-GROUP",
+			matchedTorrentName: "Movie.2020.720p.WEB.x264-OTHER",
+			baseSavePath:       "/data/media/Movies",
+			contentLayout:      "Subfolder",
+			matchType:          "exact",
+			sourceFiles:        qbt.TorrentFiles{{Name: "movie.mkv"}},
+			candidateFiles:     qbt.TorrentFiles{{Name: "movie.mkv"}},
+			wantPath:           "/data/media/Movies",
+			description:        "Subfolder layout: Single file torrents use SavePath directly",
+		},
+		{
+			name:               "nosubfolder_layout_single_file_torrents",
+			newTorrentName:     "Movie.2020.1080p.BluRay.x264-GROUP",
+			matchedTorrentName: "Movie.2020.720p.WEB.x264-OTHER",
+			baseSavePath:       "/data/media/Movies",
+			contentLayout:      "NoSubfolder",
+			matchType:          "exact",
+			sourceFiles:        qbt.TorrentFiles{{Name: "movie.mkv"}},
+			candidateFiles:     qbt.TorrentFiles{{Name: "movie.mkv"}},
+			wantPath:           "/data/media/Movies",
+			description:        "NoSubfolder layout: Single file torrents use SavePath directly",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matchedTorrent := &qbt.Torrent{
+				Name:        tt.matchedTorrentName,
+				ContentPath: tt.matchedContentPath,
+			}
+			props := &qbt.TorrentProperties{
+				SavePath: tt.baseSavePath,
+			}
+
+			gotPath := s.determineSavePath(tt.newTorrentName, matchedTorrent, props, tt.matchType, tt.sourceFiles, tt.candidateFiles, tt.contentLayout)
+			assert.Equal(t, filepath.ToSlash(tt.wantPath), filepath.ToSlash(gotPath),
+				"ContentLayout=%s: %s", tt.contentLayout, tt.description)
+		})
 	}
 }

@@ -244,6 +244,10 @@ func (f *episodeSyncManager) GetTorrentProperties(_ context.Context, instanceID 
 	return &qbt.TorrentProperties{SavePath: "/downloads"}, nil
 }
 
+func (f *episodeSyncManager) GetAppPreferences(_ context.Context, _ int) (qbt.AppPreferences, error) {
+	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
+}
+
 func (f *episodeSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
 	return nil
 }

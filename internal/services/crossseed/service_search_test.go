@@ -241,6 +241,10 @@ func (*queueTestSyncManager) GetTorrentProperties(context.Context, int, string) 
 	return nil, nil
 }
 
+func (*queueTestSyncManager) GetAppPreferences(_ context.Context, _ int) (qbt.AppPreferences, error) {
+	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
+}
+
 func (*queueTestSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
 	return nil
 }
