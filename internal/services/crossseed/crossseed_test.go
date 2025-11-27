@@ -1218,14 +1218,11 @@ func TestPartialInPackIntegration(t *testing.T) {
 	require.Equal(t, "partial-in-pack", matchType,
 		"episode matched against season pack should produce partial-in-pack match type")
 
-	// Step 2: Verify determineSavePath uses ContentPath (not SavePath)
+	// Step 2: Verify determineSavePath uses SavePath (Subfolder layout will create folder)
+	// Single file source going into folder candidate now uses SavePath + Subfolder layout
 	savePath := svc.determineSavePath(episodeName, seasonPackTorrent, seasonPackProps, matchType, episodeFiles, seasonPackFiles, "Original")
-	require.Equal(t, "/downloads/tv/The.Show.S01.1080p.BluRay.x264-GRP", savePath,
-		"partial-in-pack should use season pack's ContentPath, not SavePath")
-
-	// Verify it's NOT using SavePath
-	require.NotEqual(t, "/downloads/tv", savePath,
-		"should NOT use SavePath for partial-in-pack matches")
+	require.Equal(t, "/downloads/tv", savePath,
+		"partial-in-pack single file into folder uses SavePath, Subfolder layout creates folder")
 }
 
 // TestPartialInPackMovieCollectionIntegration verifies partial-in-pack for movie collections.
@@ -1268,10 +1265,10 @@ func TestPartialInPackMovieCollectionIntegration(t *testing.T) {
 	require.Equal(t, "partial-in-pack", matchType,
 		"movie matched against collection should produce partial-in-pack match type")
 
-	// Step 2: Verify determineSavePath uses ContentPath
+	// Step 2: Verify determineSavePath uses SavePath (Subfolder layout will create folder)
 	savePath := svc.determineSavePath(movieName, collectionTorrent, collectionProps, matchType, movieFiles, collectionFiles, "Original")
-	require.Equal(t, "/downloads/movies/Horror.Collection.2020.1080p.BluRay.x264-GRP", savePath,
-		"partial-in-pack should use collection's ContentPath")
+	require.Equal(t, "/downloads/movies", savePath,
+		"partial-in-pack single file into folder uses SavePath, Subfolder layout creates folder")
 }
 
 // TestCrossSeed_TorrentCreationAndParsing tests creating torrents and extracting info
