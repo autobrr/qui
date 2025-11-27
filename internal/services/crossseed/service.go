@@ -207,7 +207,8 @@ const (
 	crossSeedRenamePollInterval         = 200 * time.Millisecond
 	automationSettingsQueryTimeout      = 5 * time.Second
 	recheckPollInterval                 = 2 * time.Second
-	recheckStaleTimeout                 = 10 * time.Second
+	recheckAbsoluteTimeout              = 30 * time.Minute
+	recheckAPITimeout                   = 10 * time.Second
 	minSearchIntervalSeconds            = 60
 	minSearchCooldownMinutes            = 720
 )
@@ -276,6 +277,19 @@ type Service struct {
 	// test hooks
 	crossSeedInvoker    func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
 	torrentDownloadFunc func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
+
+	// Recheck resume worker
+	recheckResumeChan   chan *pendingResume
+	recheckResumeCtx    context.Context
+	recheckResumeCancel context.CancelFunc
+}
+
+// pendingResume tracks a torrent waiting for recheck to complete before resuming.
+type pendingResume struct {
+	instanceID int
+	hash       string
+	threshold  float64
+	addedAt    time.Time
 }
 
 // NewService creates a new cross-seed service
@@ -299,7 +313,9 @@ func NewService(
 	dedupCache := ttlcache.New(ttlcache.Options[string, *dedupCacheEntry]{}.
 		SetDefaultTTL(5 * time.Minute))
 
-	return &Service{
+	recheckCtx, recheckCancel := context.WithCancel(context.Background())
+
+	svc := &Service{
 		instanceStore:        instanceStore,
 		syncManager:          syncManager,
 		filesManager:         filesManager,
@@ -316,7 +332,15 @@ func NewService(
 		torrentFilesCache:    contentFilesCache,
 		dedupCache:           dedupCache,
 		metrics:              NewServiceMetrics(),
+		recheckResumeChan:    make(chan *pendingResume, 100),
+		recheckResumeCtx:     recheckCtx,
+		recheckResumeCancel:  recheckCancel,
 	}
+
+	// Start the single worker goroutine for processing recheck resumes
+	go svc.recheckResumeWorker()
+
+	return svc
 }
 
 // HealthCheck performs comprehensive health checks on the cross-seed service
@@ -2457,8 +2481,18 @@ func (s *Service) processCrossSeedCandidate(
 					Msg("Failed to trigger recheck after rename")
 			}
 		}
-		// Spawn background goroutine to monitor progress and auto-resume when threshold reached
-		go s.waitAndResumeAfterRecheck(context.Background(), candidate.InstanceID, torrentHash)
+		// Queue for background resume when recheck completes
+		s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash)
+	} else if startPaused {
+		// Perfect match: skip_checking=true, no alignment needed, torrent is at 100%
+		// Resume immediately since there's nothing to wait for
+		if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "resume"); err != nil {
+			log.Warn().
+				Err(err).
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentHash", torrentHash).
+				Msg("Failed to resume cross-seed torrent after add")
+		}
 	}
 	result.Success = true
 	result.Status = "added"
@@ -2494,10 +2528,9 @@ func normalizeHash(hash string) string {
 	return strings.ToLower(strings.TrimSpace(hash))
 }
 
-// waitAndResumeAfterRecheck monitors a torrent's recheck progress in the background
-// and automatically resumes it once progress reaches the configured tolerance threshold.
-// This runs as a goroutine so the UI doesn't block waiting for recheck to complete.
-func (s *Service) waitAndResumeAfterRecheck(ctx context.Context, instanceID int, hash string) {
+// queueRecheckResume adds a torrent to the recheck resume queue.
+// It calculates the resume threshold from settings and sends to the worker channel.
+func (s *Service) queueRecheckResume(ctx context.Context, instanceID int, hash string) {
 	// Get tolerance setting
 	settingsCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 	settings, err := s.GetAutomationSettings(settingsCtx)
@@ -2514,80 +2547,136 @@ func (s *Service) waitAndResumeAfterRecheck(ctx context.Context, instanceID int,
 		resumeThreshold = 0.9 // Safety floor
 	}
 
-	var lastProgress float64 = -1
-	lastChangeTime := time.Now()
+	// Send to worker (non-blocking with buffer)
+	select {
+	case s.recheckResumeChan <- &pendingResume{
+		instanceID: instanceID,
+		hash:       hash,
+		threshold:  resumeThreshold,
+		addedAt:    time.Now(),
+	}:
+	default:
+		log.Warn().
+			Int("instanceID", instanceID).
+			Str("hash", hash).
+			Msg("Recheck resume channel full, skipping queue")
+	}
+}
+
+// recheckResumeWorker is a single goroutine that processes all pending recheck resumes.
+// Instead of spawning a goroutine per torrent, this worker manages all pending torrents
+// in a map and checks them periodically, avoiding goroutine accumulation.
+func (s *Service) recheckResumeWorker() {
+	pending := make(map[string]*pendingResume)
+	ticker := time.NewTicker(recheckPollInterval)
+	defer ticker.Stop()
 
 	for {
-		if ctx.Err() != nil {
-			return
-		}
-
-		torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Hashes: []string{hash}})
-		if err != nil || len(torrents) == 0 {
+		select {
+		case req := <-s.recheckResumeChan:
+			// Add new pending resume request
+			pending[req.hash] = req
 			log.Debug().
-				Int("instanceID", instanceID).
-				Str("hash", hash).
-				Msg("Torrent not found during recheck wait, bailing")
-			return
-		}
+				Int("instanceID", req.instanceID).
+				Str("hash", req.hash).
+				Float64("threshold", req.threshold).
+				Int("pendingCount", len(pending)).
+				Msg("Added torrent to recheck resume queue")
 
-		torrent := torrents[0]
-		progress := torrent.Progress
-		state := torrent.State
-
-		// Don't resume while still checking - qBittorrent ignores resume during check
-		isChecking := state == qbt.TorrentStateCheckingUp ||
-			state == qbt.TorrentStateCheckingDl ||
-			state == qbt.TorrentStateCheckingResumeData
-
-		// Check if we've reached the threshold AND not still checking
-		if progress >= resumeThreshold && !isChecking {
-			if err := s.syncManager.BulkAction(ctx, instanceID, []string{hash}, "resume"); err != nil {
-				log.Warn().
-					Err(err).
-					Int("instanceID", instanceID).
-					Str("hash", hash).
-					Float64("progress", progress).
-					Msg("Failed to resume torrent after recheck")
-			} else {
-				log.Debug().
-					Int("instanceID", instanceID).
-					Str("hash", hash).
-					Float64("progress", progress).
-					Float64("threshold", resumeThreshold).
-					Str("state", string(state)).
-					Msg("Resumed torrent after recheck completed")
+		case <-ticker.C:
+			if len(pending) == 0 {
+				continue
 			}
-			return
-		}
 
-		// Bail if progress dropped to 0 (error condition) - check before updating lastProgress
-		if progress == 0 && lastProgress > 0 {
+			// Process all pending torrents
+			for hash, req := range pending {
+				// Check absolute timeout
+				if time.Since(req.addedAt) > recheckAbsoluteTimeout {
+					log.Warn().
+						Int("instanceID", req.instanceID).
+						Str("hash", hash).
+						Dur("elapsed", time.Since(req.addedAt)).
+						Msg("Recheck resume absolute timeout reached, removing from queue")
+					delete(pending, hash)
+					continue
+				}
+
+				// Get torrent state with timeout to avoid blocking other pending torrents
+				apiCtx, cancel := context.WithTimeout(s.recheckResumeCtx, recheckAPITimeout)
+				torrents, err := s.syncManager.GetTorrents(apiCtx, req.instanceID, qbt.TorrentFilterOptions{Hashes: []string{hash}})
+				cancel()
+				if err != nil {
+					// Timeout or other error - keep in queue for retry on next tick
+					log.Debug().
+						Err(err).
+						Int("instanceID", req.instanceID).
+						Str("hash", hash).
+						Msg("Failed to get torrent state during recheck resume, will retry")
+					continue
+				}
+				if len(torrents) == 0 {
+					log.Debug().
+						Int("instanceID", req.instanceID).
+						Str("hash", hash).
+						Msg("Torrent not found during recheck resume, removing from queue")
+					delete(pending, hash)
+					continue
+				}
+
+				torrent := torrents[0]
+				progress := torrent.Progress
+				state := torrent.State
+
+				// Check if still in checking state
+				isChecking := state == qbt.TorrentStateCheckingUp ||
+					state == qbt.TorrentStateCheckingDl ||
+					state == qbt.TorrentStateCheckingResumeData
+
+				// Resume if threshold reached and not checking
+				if progress >= req.threshold && !isChecking {
+					resumeCtx, resumeCancel := context.WithTimeout(s.recheckResumeCtx, recheckAPITimeout)
+					err := s.syncManager.BulkAction(resumeCtx, req.instanceID, []string{hash}, "resume")
+					resumeCancel()
+					if err != nil {
+						log.Warn().
+							Err(err).
+							Int("instanceID", req.instanceID).
+							Str("hash", hash).
+							Float64("progress", progress).
+							Msg("Failed to resume torrent after recheck")
+					} else {
+						log.Debug().
+							Int("instanceID", req.instanceID).
+							Str("hash", hash).
+							Float64("progress", progress).
+							Float64("threshold", req.threshold).
+							Str("state", string(state)).
+							Msg("Resumed torrent after recheck completed")
+					}
+					delete(pending, hash)
+					continue
+				}
+
+				// If progress is 0 and torrent is not checking, something is wrong
+				if progress == 0 && !isChecking {
+					log.Debug().
+						Int("instanceID", req.instanceID).
+						Str("hash", hash).
+						Str("state", string(state)).
+						Msg("Torrent has 0 progress and not checking, removing from queue")
+					delete(pending, hash)
+					continue
+				}
+
+				// Otherwise, keep in queue for next tick
+			}
+
+		case <-s.recheckResumeCtx.Done():
 			log.Debug().
-				Int("instanceID", instanceID).
-				Str("hash", hash).
-				Msg("Torrent progress dropped to 0 during recheck, bailing")
+				Int("pendingCount", len(pending)).
+				Msg("Recheck resume worker shutting down")
 			return
 		}
-
-		// Check for progress changes
-		if progress != lastProgress {
-			lastProgress = progress
-			lastChangeTime = time.Now()
-		}
-
-		// Bail if stale (no progress change for timeout period)
-		if time.Since(lastChangeTime) > recheckStaleTimeout {
-			log.Debug().
-				Int("instanceID", instanceID).
-				Str("hash", hash).
-				Float64("progress", progress).
-				Dur("staleFor", time.Since(lastChangeTime)).
-				Msg("Torrent recheck stalled, bailing")
-			return
-		}
-
-		time.Sleep(recheckPollInterval)
 	}
 }
 
