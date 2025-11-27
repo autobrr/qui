@@ -312,7 +312,7 @@ function SearchDetailDialog({ entry, open, onClose }: SearchDetailDialogProps) {
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="!max-w-2xl gap-0 p-0 overflow-hidden">
         {/* Header */}
-        <div className="px-5 pt-5 border-b border-border/50">
+        <div className="px-5 pt-5">
           <div className="flex items-start justify-between gap-3 pr-8">
             <div className="space-y-1 min-w-0">
               <DialogTitle className="text-base font-semibold truncate">
