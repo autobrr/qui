@@ -391,8 +391,8 @@ func TestDetermineSavePath(t *testing.T) {
 			matchType:      "partial-in-pack",
 			sourceFiles:    qbt.TorrentFiles{{Name: "The.Movie.2020-GRP.mkv", Size: 5 << 30}},
 			candidateFiles: qbt.TorrentFiles{{Name: "The.Movie.2020-GRP/The.Movie.2020-GRP.mkv", Size: 5 << 30}},
-			wantPath:       "/movies/The.Movie.2020-GRP",
-			description:    "Loose file goes inside existing folder via ContentPath",
+			wantPath:       "/movies",
+			description:    "Loose file uses SavePath, Subfolder layout creates folder",
 		},
 
 		// M2: We seed loose file, match on folder
@@ -618,8 +618,8 @@ func TestDetermineSavePath(t *testing.T) {
 				{Name: "The.Show.S01.1080p-GRP/The.Show.S01E02.1080p-GRP.mkv", Size: 2 << 30},
 				{Name: "The.Show.S01.1080p-GRP/The.Show.S01E03.1080p-GRP.mkv", Size: 2 << 30},
 			},
-			wantPath:    "/tv/The.Show.S01.1080p-GRP",
-			description: "Loose episode goes inside season pack folder",
+			wantPath:    "/tv",
+			description: "Loose episode uses SavePath, Subfolder layout creates folder",
 		},
 
 		// T2: Single episode seeded (no folder), match season pack
@@ -736,8 +736,8 @@ func TestDetermineSavePath(t *testing.T) {
 				{Name: "Horror.Collection.2020/Ring.2002.mkv", Size: 4 << 30},
 				{Name: "Horror.Collection.2020/Grudge.2004.mkv", Size: 4 << 30},
 			},
-			wantPath:    "/movies/Horror.Collection.2020",
-			description: "Loose movie goes inside collection folder",
+			wantPath:    "/movies",
+			description: "Loose movie uses SavePath, Subfolder layout creates folder",
 		},
 
 		// C2: Single movie seeded (with folder), match collection

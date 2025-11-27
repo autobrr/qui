@@ -2380,9 +2380,14 @@ func (s *Service) processCrossSeedCandidate(
 	sourceRoot := detectCommonRoot(sourceFiles)
 	candidateRoot := detectCommonRoot(candidateFiles)
 
-	// If the current content layout is "NoSubfolder", qBittorrent will place files directly
-	// in the save path regardless of folder structure
-	if prefs.TorrentContentLayout == "NoSubfolder" {
+	// Special case: single file source going into folder candidate
+	// Use "Subfolder" layout so qBittorrent creates the folder based on renamed torrent name
+	// This allows TMM to stay enabled since savePath matches props.SavePath
+	if sourceRoot == "" && candidateRoot != "" {
+		options["contentLayout"] = "Subfolder"
+	} else if prefs.TorrentContentLayout == "NoSubfolder" {
+		// If the current content layout is "NoSubfolder", qBittorrent will place files directly
+		// in the save path regardless of folder structure
 		options["contentLayout"] = "NoSubfolder"
 	} else if prefs.TorrentContentLayout == "Subfolder" {
 		// qBittorrent will create a subfolder based on torrent name
@@ -2395,7 +2400,7 @@ func (s *Service) processCrossSeedCandidate(
 	} else {
 		// contentLayout is "Original" (default)
 		// qBittorrent preserves original folder structure
-		if sourceRoot == "" || candidateRoot == "" || sourceRoot != candidateRoot {
+		if candidateRoot == "" || sourceRoot != candidateRoot {
 			// Different folder structures - use NoSubfolder to avoid creating wrong subfolder
 			options["contentLayout"] = "NoSubfolder"
 		}
@@ -2812,29 +2817,18 @@ func (s *Service) determineSavePath(newTorrentName string, matchedTorrent *qbt.T
 			return filepath.ToSlash(props.SavePath)
 		}
 
-		// If source has no root folder but candidate does, we need to place the file
-		// inside the candidate's root folder
+		// If source has no root folder but candidate does, return SavePath
+		// The contentLayout will be set to "Subfolder" which makes qBittorrent
+		// create a folder based on the renamed torrent name (which matches candidateRoot)
+		// This allows TMM to stay enabled since savePath matches props.SavePath
 		if sourceRoot == "" && candidateRoot != "" {
-			// Avoid duplicating the folder if it's already in the save path
-			if filepath.Base(props.SavePath) == candidateRoot {
-				log.Debug().
-					Str("newTorrent", newTorrentName).
-					Str("matchedTorrent", matchedTorrent.Name).
-					Str("candidateRoot", candidateRoot).
-					Str("savePath", props.SavePath).
-					Msg("Cross-seeding partial-in-pack (single file into folder), save path already ends with candidate root")
-				return filepath.ToSlash(props.SavePath)
-			}
-			// Construct the folder path: SavePath + candidateRoot
-			folderPath := filepath.Join(props.SavePath, candidateRoot)
 			log.Debug().
 				Str("newTorrent", newTorrentName).
 				Str("matchedTorrent", matchedTorrent.Name).
 				Str("candidateRoot", candidateRoot).
-				Str("folderPath", folderPath).
 				Str("savePath", props.SavePath).
-				Msg("Cross-seeding partial-in-pack (single file into folder), using candidate's folder")
-			return filepath.ToSlash(folderPath)
+				Msg("Cross-seeding partial-in-pack (single file into folder), using save path with Subfolder layout")
+			return filepath.ToSlash(props.SavePath)
 		}
 
 		// Otherwise use ContentPath if available (for multi-file partial-in-pack)
