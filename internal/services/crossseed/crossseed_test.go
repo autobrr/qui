@@ -454,9 +454,153 @@ func TestDetermineSavePath(t *testing.T) {
 			description:    "Both loose files use SavePath directly",
 		},
 
+		// M6: Both loose files with partial-in-pack match (ContentPath is file path)
+		// Bug scenario: ContentPath = /movies/Movie.mkv but we need SavePath = /movies
+		{
+			name:               "M6: partial-in-pack single file to single file",
+			newTorrentName:     "Dracula.A.Love.Tale.2025.1080p.WEB.H264-SLOT",
+			matchedTorrentName: "Dracula.A.Love.Tale.2025.1080p.WEB.H264-SLOT.mkv",
+			matchedContentPath: "/mnt/storage/torrents/movies/Dracula.A.Love.Tale.2025.1080p.WEB.H264-SLOT.mkv",
+			baseSavePath:       "/mnt/storage/torrents/movies", contentLayout: "Original",
+			matchType:      "partial-in-pack",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Dracula.A.Love.Tale.2025.1080p.WEB.H264-SLOT.mkv", Size: 7 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Dracula.A.Love.Tale.2025.1080p.WEB.H264-SLOT.mkv", Size: 7 << 30}},
+			wantPath:       "/mnt/storage/torrents/movies",
+			description:    "Single file partial-in-pack uses SavePath, not ContentPath (which is a file path)",
+		},
+
+		// M7: Folder-based source torrent matched against single file candidate
+		// Real scenario: indexer returns folder torrent, we have single .mkv file
+		{
+			name:               "M7: partial-in-pack folder source to single file",
+			newTorrentName:     "Dracula.A.Love.Tale.2025.1080p.WEB.H264-SLOT",
+			matchedTorrentName: "Dracula.A.Love.Tale.2025.1080p.WEB.H264-SLOT.mkv",
+			matchedContentPath: "/mnt/storage/torrents/movies/Dracula.A.Love.Tale.2025.1080p.WEB.H264-SLOT.mkv",
+			baseSavePath:       "/mnt/storage/torrents/movies", contentLayout: "Original",
+			matchType: "partial-in-pack",
+			sourceFiles: qbt.TorrentFiles{{
+				Name: "Dracula.A.Love.Tale.2025.1080p.WEB.H264-SLOT/Dracula.A.Love.Tale.2025.1080p.WEB.H264-SLOT.mkv",
+				Size: 7 << 30,
+			}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Dracula.A.Love.Tale.2025.1080p.WEB.H264-SLOT.mkv", Size: 7 << 30}},
+			wantPath:       "/mnt/storage/torrents/movies",
+			description:    "Folder source to single file candidate uses SavePath",
+		},
+
+		// M8: Folder source → folder candidate (both have folders)
+		// Both torrents have folder structure - should use ContentPath (folder)
+		{
+			name:               "M8: partial-in-pack folder source to folder candidate",
+			newTorrentName:     "Movie.2020.1080p.WEB-GRP",
+			matchedTorrentName: "Movie.2020.1080p.BluRay-OTHER",
+			matchedContentPath: "/movies/Movie.2020.1080p.BluRay-OTHER",
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType: "partial-in-pack",
+			sourceFiles: qbt.TorrentFiles{{
+				Name: "Movie.2020.1080p.WEB-GRP/Movie.2020.1080p.WEB-GRP.mkv",
+				Size: 8 << 30,
+			}},
+			candidateFiles: qbt.TorrentFiles{{
+				Name: "Movie.2020.1080p.BluRay-OTHER/Movie.2020.1080p.BluRay-OTHER.mkv",
+				Size: 8 << 30,
+			}},
+			wantPath:    "/movies/Movie.2020.1080p.BluRay-OTHER",
+			description: "Both have folders - uses ContentPath (folder path)",
+		},
+
+		// M9: Single file movie with extras folder matched against single file
+		// Source has extras subfolder, candidate is single file
+		{
+			name:               "M9: movie with extras folder to single file",
+			newTorrentName:     "Movie.2020.1080p.BluRay-GRP",
+			matchedTorrentName: "Movie.2020.1080p.WEB.mkv",
+			matchedContentPath: "/movies/Movie.2020.1080p.WEB.mkv",
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType: "partial-in-pack",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie.2020.1080p.BluRay-GRP/Movie.2020.1080p.BluRay-GRP.mkv", Size: 8 << 30},
+				{Name: "Movie.2020.1080p.BluRay-GRP/Extras/Behind.The.Scenes.mkv", Size: 1 << 30},
+			},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2020.1080p.WEB.mkv", Size: 8 << 30}},
+			wantPath:       "/movies",
+			description:    "Multi-file source with extras to single file uses SavePath",
+		},
+
 		// ============================================================
 		// TV SHOWS - Episode and Season Pack scenarios
 		// ============================================================
+
+		// Additional TV partial-in-pack single file candidate tests:
+
+		// T7: Season pack folder source → single loose episode file candidate
+		// Indexer has season pack, we have a single episode file
+		{
+			name:               "T7: season pack source to single episode file",
+			newTorrentName:     "The.Show.S01.1080p.BluRay-GRP",
+			matchedTorrentName: "The.Show.S01E01.1080p.WEB.mkv",
+			matchedContentPath: "/tv/The.Show.S01E01.1080p.WEB.mkv",
+			baseSavePath:       "/tv", contentLayout: "Original",
+			matchType: "partial-in-pack",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "The.Show.S01.1080p.BluRay-GRP/The.Show.S01E01.1080p.BluRay-GRP.mkv", Size: 2 << 30},
+				{Name: "The.Show.S01.1080p.BluRay-GRP/The.Show.S01E02.1080p.BluRay-GRP.mkv", Size: 2 << 30},
+				{Name: "The.Show.S01.1080p.BluRay-GRP/The.Show.S01E03.1080p.BluRay-GRP.mkv", Size: 2 << 30},
+			},
+			candidateFiles: qbt.TorrentFiles{{Name: "The.Show.S01E01.1080p.WEB.mkv", Size: 2 << 30}},
+			wantPath:       "/tv",
+			description:    "Season pack source to single episode file uses SavePath",
+		},
+
+		// T8: Episode folder source → single episode file candidate
+		// Indexer has episode with folder, we have single episode file
+		{
+			name:               "T8: episode folder source to single episode file",
+			newTorrentName:     "The.Show.S01E05.1080p.BluRay-GRP",
+			matchedTorrentName: "The.Show.S01E05.1080p.WEB.mkv",
+			matchedContentPath: "/tv/The.Show.S01E05.1080p.WEB.mkv",
+			baseSavePath:       "/tv", contentLayout: "Original",
+			matchType: "partial-in-pack",
+			sourceFiles: qbt.TorrentFiles{{
+				Name: "The.Show.S01E05.1080p.BluRay-GRP/The.Show.S01E05.1080p.BluRay-GRP.mkv",
+				Size: 2 << 30,
+			}},
+			candidateFiles: qbt.TorrentFiles{{Name: "The.Show.S01E05.1080p.WEB.mkv", Size: 2 << 30}},
+			wantPath:       "/tv",
+			description:    "Episode folder source to single episode file uses SavePath",
+		},
+
+		// T9: Single episode file source → single episode file candidate
+		// Both are single episode files without folders
+		{
+			name:               "T9: single episode file to single episode file",
+			newTorrentName:     "The.Show.S01E05.1080p.BluRay.mkv",
+			matchedTorrentName: "The.Show.S01E05.1080p.WEB.mkv",
+			matchedContentPath: "/tv/The.Show.S01E05.1080p.WEB.mkv",
+			baseSavePath:       "/tv", contentLayout: "Original",
+			matchType:      "partial-in-pack",
+			sourceFiles:    qbt.TorrentFiles{{Name: "The.Show.S01E05.1080p.BluRay.mkv", Size: 2 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "The.Show.S01E05.1080p.WEB.mkv", Size: 2 << 30}},
+			wantPath:       "/tv",
+			description:    "Both single episode files - uses SavePath",
+		},
+
+		// T10: Episode with subs folder source → single episode file candidate
+		// Source has episode + subs in folder, candidate is single file
+		{
+			name:               "T10: episode with subs to single episode file",
+			newTorrentName:     "The.Show.S01E05.1080p.BluRay-GRP",
+			matchedTorrentName: "The.Show.S01E05.1080p.WEB.mkv",
+			matchedContentPath: "/tv/The.Show.S01E05.1080p.WEB.mkv",
+			baseSavePath:       "/tv", contentLayout: "Original",
+			matchType: "partial-in-pack",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "The.Show.S01E05.1080p.BluRay-GRP/The.Show.S01E05.1080p.BluRay-GRP.mkv", Size: 2 << 30},
+				{Name: "The.Show.S01E05.1080p.BluRay-GRP/Subs/English.srt", Size: 100 << 10},
+			},
+			candidateFiles: qbt.TorrentFiles{{Name: "The.Show.S01E05.1080p.WEB.mkv", Size: 2 << 30}},
+			wantPath:       "/tv",
+			description:    "Episode with subs folder to single file uses SavePath",
+		},
 
 		// T1: Season pack seeded, match single episode (no folder)
 		// Seeding: Show.S01-GRP/E01.mkv, E02.mkv, ...
@@ -845,17 +989,19 @@ func TestDetermineSavePath(t *testing.T) {
 		},
 
 		// E15: Mixed separators in paths (edge case for cross-platform)
+		// Code normalizes all paths to forward slashes via strings.ReplaceAll
+		// qBittorrent accepts forward slashes on all platforms including Windows
 		{
 			name:               "E15: mixed path separators",
 			newTorrentName:     "Show.S01.1080p.BluRay.x264-GROUP",
 			matchedTorrentName: "Show.S01.720p.WEB.x264-OTHER",
-			matchedContentPath: "/tv/mixed/Show.S01.720p.WEB.x264-OTHER",
-			baseSavePath:       "/tv/mixed", contentLayout: "Original",
+			matchedContentPath: "/tv\\mixed\\Show.S01.720p.WEB.x264-OTHER",
+			baseSavePath:       "/tv\\mixed", contentLayout: "Original",
 			matchType:      "exact",
 			sourceFiles:    qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-GROUP/ep1.mkv", Size: 1 << 30}},
 			candidateFiles: qbt.TorrentFiles{{Name: "Show.S01.720p.WEB.x264-OTHER/ep1.mkv", Size: 1 << 30}},
 			wantPath:       "/tv/mixed/Show.S01.720p.WEB.x264-OTHER",
-			description:    "Mixed forward and backward slashes in paths",
+			description:    "Mixed separators normalized to forward slashes",
 		},
 
 		// E16: Root folders with spaces and punctuation
