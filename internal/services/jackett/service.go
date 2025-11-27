@@ -1765,6 +1765,9 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 		}
 	}
 
+	// Reset escalation on successful request
+	s.rateLimiter.RecordSuccess(idx.ID)
+
 	return indexerExecResult{
 		results: results,
 		id:      idx.ID,

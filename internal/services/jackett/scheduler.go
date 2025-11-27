@@ -791,8 +791,6 @@ func (s *searchScheduler) handleTaskCompleteLocked(item *taskItem, results []Res
 			entry.ErrorMessage = err.Error()
 		} else {
 			entry.Status = "success"
-			// Reset escalation level on successful request
-			s.rateLimiter.RecordSuccess(task.indexer.ID)
 		}
 
 		// Record asynchronously to avoid blocking
