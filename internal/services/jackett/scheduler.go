@@ -315,10 +315,10 @@ func (r *RateLimiter) resolveOptions(opts *RateLimitOptions) RateLimitOptions {
 
 // searchJobPriority defines execution ordering for queued searches.
 const (
-	searchJobPriorityInteractive = 0
-	searchJobPriorityRSS         = 1
-	searchJobPriorityCompletion  = 2
-	searchJobPriorityBackground  = 3
+	searchJobPriorityInteractive = 0 // runs on interactive searches
+	searchJobPriorityRSS         = 1 // runs on RSS feeds (CrossSeedPage.tsx)
+	searchJobPriorityCompletion  = 2 // runs on torrent completion unless the tag cross-seed is present
+	searchJobPriorityBackground  = 3 // runs on seeded searches (CrossSeedPage.tsx)
 )
 
 const (

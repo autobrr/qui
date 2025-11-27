@@ -309,15 +309,8 @@ func (s *Service) executeSearch(ctx context.Context, indexers []*models.TorznabI
 func (s *Service) executeQueuedSearch(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext, onComplete func(jobID uint64, indexerID int, err error), resultCallback func(jobID uint64, results []Result, coverage []int, err error)) error {
 	meta = finalizeSearchContext(ctx, meta, RateLimitPriorityBackground)
 	if s.searchExecutor != nil {
-		// For synchronous executor, call it and callback immediately (no jobID for sync execution)
+		// For synchronous executor (tests), call it and callback immediately
 		results, coverage, err := s.searchExecutor(ctx, indexers, params, meta)
-		resultCallback(0, results, coverage, err)
-		return nil
-	}
-	if meta != nil && meta.requireSuccess && meta.rateLimit != nil && meta.rateLimit.Priority == RateLimitPriorityInteractive {
-		// For interactive callers (explicit indexer selection), run synchronously to avoid delayed errors.
-		// Non-interactive priorities (RSS, completion, background) should still use the scheduler for visibility.
-		results, coverage, err := s.executeSearch(ctx, indexers, params, meta)
 		resultCallback(0, results, coverage, err)
 		return nil
 	}
