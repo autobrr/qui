@@ -6637,17 +6637,13 @@ func (s *Service) recoverSingleErroredTorrent(ctx context.Context, instanceID in
 			currentTorrent := currentTorrents[0]
 			state := currentTorrent.State
 
-			// If still checking, wait
-			if state == qbt.TorrentStateCheckingDl ||
-				state == qbt.TorrentStateCheckingUp ||
-				state == qbt.TorrentStateCheckingResumeData ||
-				state == qbt.TorrentStateAllocating {
-				time.Sleep(10 * time.Millisecond) // Short sleep for tests, reasonable delay for production
-				continue
+			// If recheck completed (any paused or stopped state), return progress
+			if state == qbt.TorrentStatePausedDl || state == qbt.TorrentStatePausedUp || state == qbt.TorrentStateStoppedDl || state == qbt.TorrentStateStoppedUp {
+				return currentTorrent.Progress, nil
 			}
 
-			// Recheck completed
-			return currentTorrent.Progress, nil
+			// Sleep until recheck completes to a recognized final state
+			time.Sleep(100 * time.Millisecond) // Short sleep for tests, reasonable delay for production
 		}
 
 		return 0, fmt.Errorf("timeout waiting for recheck to complete")
