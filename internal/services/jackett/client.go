@@ -329,6 +329,7 @@ func (c *Client) Download(ctx context.Context, downloadURL string) ([]byte, erro
 		return nil, fmt.Errorf("build download request: %w", err)
 	}
 	req.Header.Set("Accept", "application/x-bittorrent, application/octet-stream")
+	req.Header.Set("User-Agent", buildinfo.UserAgent)
 
 	// Ensure API key is present for backends that require it
 	if c.apiKey != "" && !strings.Contains(downloadURL, "apikey=") {

@@ -64,7 +64,8 @@ import type {
   TorznabSearchCacheMetadata,
   TorznabSearchCacheStats,
   TorznabRecentSearch,
-  User
+  User,
+  ProwlarrHistoryResponse
 } from "@/types"
 import { getApiBaseUrl, withBasePath } from "./base-url"
 
@@ -1607,6 +1608,11 @@ class ApiClient {
 
   async getIndexerStats(id: number): Promise<TorznabIndexerLatencyStats[]> {
     return this.request<TorznabIndexerLatencyStats[]>(`/torznab/indexers/${id}/stats`)
+  }
+
+  async getProwlarrHistory(refresh = false): Promise<ProwlarrHistoryResponse> {
+    const params = refresh ? "?refresh=true" : ""
+    return this.request<ProwlarrHistoryResponse>(`/torznab/prowlarr/history${params}`)
   }
 }
 

@@ -71,6 +71,9 @@ func (h *JackettHandler) Routes(r chi.Router) {
 			r.Get("/", h.GetSearchCacheStats)
 			r.Put("/settings", h.UpdateSearchCacheSettings)
 		})
+
+		// Prowlarr-specific endpoints
+		r.Get("/prowlarr/history", h.GetProwlarrHistory)
 	})
 }
 
@@ -912,4 +915,39 @@ func (h *JackettHandler) GetIndexerStats(w http.ResponseWriter, r *http.Request)
 	}
 
 	RespondJSON(w, http.StatusOK, stats)
+}
+
+// GetProwlarrHistory godoc
+// @Summary Get history from Prowlarr servers
+// @Description Retrieves RSS, search, and grab history from all configured Prowlarr servers
+// @Tags torznab
+// @Produce json
+// @Param limit query int false "Maximum number of records per server" default(100)
+// @Param refresh query bool false "Force fresh fetch instead of using cache"
+// @Success 200 {object} jackett.ProwlarrHistoryResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/torznab/prowlarr/history [get]
+func (h *JackettHandler) GetProwlarrHistory(w http.ResponseWriter, r *http.Request) {
+	// Check if fresh fetch is requested
+	refresh := r.URL.Query().Get("refresh") == "true"
+
+	var history *jackett.ProwlarrHistoryResponse
+	var err error
+
+	if refresh {
+		// Force fresh fetch (manual refresh button)
+		history, err = h.service.GetProwlarrHistory(r.Context(), 100, time.Time{})
+	} else {
+		// Use cached data (frequent polling from frontend)
+		history, err = h.service.GetCachedProwlarrHistory(r.Context(), 0)
+	}
+
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get Prowlarr history")
+		RespondError(w, http.StatusInternalServerError, "Failed to get Prowlarr history")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, history)
 }

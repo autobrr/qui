@@ -1369,3 +1369,27 @@ export interface CrossSeedSearchStatus {
   recentResults: CrossSeedSearchResult[]
   nextRunAt?: string
 }
+
+// Prowlarr History Types
+export interface ProwlarrHistoryEntry {
+  id: number
+  indexerId: number
+  indexerName: string
+  date: string
+  successful: boolean
+  eventType: "IndexerRss" | "IndexerQuery" | "ReleaseGrabbed" | "IndexerAuth" | string
+  downloadId?: string
+  data: Record<string, string>
+}
+
+export interface ProwlarrServerHistory {
+  serverUrl: string
+  serverName: string
+  totalRecords: number
+  records: ProwlarrHistoryEntry[]
+  error?: string
+}
+
+export interface ProwlarrHistoryResponse {
+  servers: ProwlarrServerHistory[]
+}
