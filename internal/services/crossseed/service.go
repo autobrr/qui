@@ -2326,13 +2326,18 @@ func (s *Service) processCrossSeedCandidate(
 		options["stopped"] = "false"
 	}
 
-	// Always skip checking for cross-seed adds - the data is already verified by the
-	// matched torrent that's actively seeding. qBittorrent's hash verification is
-	// redundant and can cause path resolution issues when pointing to existing data.
-	options["skip_checking"] = "true"
-
 	// Check if we need rename alignment (folder/file names differ)
 	requiresAlignment := needsRenameAlignment(torrentName, matchedTorrent.Name, sourceFiles, candidateFiles)
+
+	// Check if source has extra files that won't exist on disk (e.g., NFO files not filtered by ignorePatterns)
+	hasExtraFiles := hasExtraSourceFiles(sourceFiles, candidateFiles)
+
+	// Skip checking for cross-seed adds when all files exist - the data is already verified by the
+	// matched torrent that's actively seeding. However, if source has extra files (like NFO) that
+	// don't exist in candidate, we need to let qBittorrent verify since those files are missing.
+	if !hasExtraFiles {
+		options["skip_checking"] = "true"
+	}
 
 	// Detect folder structure for contentLayout decisions
 	sourceRoot := detectCommonRoot(sourceFiles)
@@ -2435,19 +2440,25 @@ func (s *Service) processCrossSeedCandidate(
 	// Attempt to align the new torrent's naming and file layout with the matched torrent
 	s.alignCrossSeedContentPaths(ctx, candidate.InstanceID, torrentHash, torrentName, matchedTorrent, sourceFiles, candidateFiles)
 
-	// Only trigger manual recheck if we added with skip_checking (alignment was needed)
-	// Otherwise qBittorrent already auto-checked on add
-	if requiresAlignment {
-		if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "recheck"); err != nil {
-			log.Warn().
-				Err(err).
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Msg("Failed to trigger recheck after rename")
-		} else {
-			// Spawn background goroutine to monitor recheck and auto-resume when complete
-			go s.waitAndResumeAfterRecheck(context.Background(), candidate.InstanceID, torrentHash)
+	// Determine if we need to wait for verification and resume at threshold:
+	// - requiresAlignment: we used skip_checking but need to recheck after renaming paths
+	// - hasExtraFiles: we didn't use skip_checking, qBittorrent auto-verifies, but won't reach 100%
+	needsRecheckAndResume := requiresAlignment || hasExtraFiles
+
+	if needsRecheckAndResume {
+		// Only trigger manual recheck if we used skip_checking (alignment case)
+		// For hasExtraFiles, qBittorrent already auto-checked on add (no skip_checking)
+		if requiresAlignment {
+			if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "recheck"); err != nil {
+				log.Warn().
+					Err(err).
+					Int("instanceID", candidate.InstanceID).
+					Str("torrentHash", torrentHash).
+					Msg("Failed to trigger recheck after rename")
+			}
 		}
+		// Spawn background goroutine to monitor progress and auto-resume when threshold reached
+		go s.waitAndResumeAfterRecheck(context.Background(), candidate.InstanceID, torrentHash)
 	}
 	result.Success = true
 	result.Status = "added"
@@ -2468,9 +2479,10 @@ func (s *Service) processCrossSeedCandidate(
 		Str("matchedHash", matchedTorrent.Hash).
 		Str("matchType", matchType).
 		Str("category", category).
-		Bool("autoTMM", category != "")
-	if requiresAlignment {
-		logEvent.Msg("Successfully added cross-seed torrent (recheck triggered, auto-resume pending)")
+		Bool("autoTMM", category != "").
+		Bool("hasExtraFiles", hasExtraFiles)
+	if needsRecheckAndResume {
+		logEvent.Msg("Successfully added cross-seed torrent (auto-resume pending)")
 	} else {
 		logEvent.Msg("Successfully added cross-seed torrent")
 	}

@@ -460,6 +460,33 @@ func namesMatchIgnoringExtension(name1, name2 string) bool {
 	return stripped1 == stripped2
 }
 
+// hasExtraSourceFiles checks if source torrent has files that don't exist in the candidate.
+// This happens when source has extra sidecar files (NFO, SRT, etc.) that weren't filtered
+// by ignorePatterns. Returns true if source has files with sizes not present in candidate.
+func hasExtraSourceFiles(sourceFiles, candidateFiles qbt.TorrentFiles) bool {
+	if len(sourceFiles) <= len(candidateFiles) {
+		return false
+	}
+
+	// Build size buckets for candidate files
+	candidateSizes := make(map[int64]int)
+	for _, cf := range candidateFiles {
+		candidateSizes[cf.Size]++
+	}
+
+	// Count how many source files can be matched by size
+	matched := 0
+	for _, sf := range sourceFiles {
+		if count := candidateSizes[sf.Size]; count > 0 {
+			candidateSizes[sf.Size]--
+			matched++
+		}
+	}
+
+	// If we couldn't match all source files, there are extras
+	return matched < len(sourceFiles)
+}
+
 // needsRenameAlignment checks if rename alignment will be required for a cross-seed add.
 // Returns true if torrent name or root folder differs between source and candidate,
 // but NOT for single-file → folder cases (handled by contentLayout=Subfolder).
