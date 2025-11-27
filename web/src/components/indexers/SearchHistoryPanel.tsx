@@ -16,7 +16,7 @@ import type { SearchHistoryEntry } from "@/types"
 import { AlertCircle, CheckCircle2, ChevronDown, Clock, History, Loader2, Plus, XCircle } from "lucide-react"
 import { type ReactNode, useState } from "react"
 
-// Torznab standard category mappings (matches pkg/gojackett/constants.go)
+// Torznab standard category mappings (synced with pkg/gojackett/constants.go)
 const CATEGORY_MAP: Record<string, string> = {
   // Parent categories
   "1000": "Console",
@@ -27,17 +27,7 @@ const CATEGORY_MAP: Record<string, string> = {
   "6000": "XXX",
   "7000": "Other",
   "8000": "Books",
-  // TV subcategories
-  "5010": "TV Web",
-  "5020": "TV Foreign",
-  "5030": "TV SD",
-  "5040": "TV HD",
-  "5045": "TV UHD",
-  "5060": "TV Sport",
-  "5070": "TV Anime",
-  "5080": "TV Documentary",
-  "5090": "TV Other",
-  // Movie subcategories
+  // Movies subcategories
   "2010": "Movies Foreign",
   "2020": "Movies Other",
   "2030": "Movies SD",
@@ -53,6 +43,45 @@ const CATEGORY_MAP: Record<string, string> = {
   "3040": "Audio Lossless",
   "3050": "Audio Other",
   "3060": "Audio Foreign",
+  // PC subcategories
+  "4010": "PC 0day",
+  "4020": "PC ISO",
+  "4030": "PC Mac",
+  "4040": "PC Phone Other",
+  "4050": "PC Games",
+  "4060": "PC Phone iOS",
+  "4070": "PC Phone Android",
+  // TV subcategories
+  "5010": "TV Web",
+  "5020": "TV Foreign",
+  "5030": "TV SD",
+  "5040": "TV HD",
+  "5045": "TV UHD",
+  "5060": "TV Sport",
+  "5070": "TV Anime",
+  "5080": "TV Documentary",
+  "5090": "TV Other",
+  // XXX subcategories
+  "6010": "XXX DVD",
+  "6020": "XXX WMV",
+  "6030": "XXX XviD",
+  "6040": "XXX x264",
+  "6045": "XXX UHD",
+  "6050": "XXX Pack",
+  "6060": "XXX ImageSet",
+  "6070": "XXX Other",
+  "6080": "XXX SD",
+  "6090": "XXX Web",
+  // Other subcategories
+  "7010": "Other Misc",
+  "7020": "Other Hashed",
+  // Books subcategories
+  "8010": "Books Mags",
+  "8020": "Books EBook",
+  "8030": "Books Comics",
+  "8040": "Books Technical",
+  "8050": "Books Foreign",
+  "8060": "Books Other",
 }
 
 interface ParamBadge {
