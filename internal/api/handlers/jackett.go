@@ -72,8 +72,11 @@ func (h *JackettHandler) Routes(r chi.Router) {
 			r.Put("/settings", h.UpdateSearchCacheSettings)
 		})
 
-		// Prowlarr-specific endpoints
-		r.Get("/prowlarr/history", h.GetProwlarrHistory)
+		// Search history - completed searches
+		r.Get("/search/history", h.GetSearchHistory)
+
+		// Activity status
+		r.Get("/activity", h.GetActivityStatus)
 	})
 }
 
@@ -917,37 +920,53 @@ func (h *JackettHandler) GetIndexerStats(w http.ResponseWriter, r *http.Request)
 	RespondJSON(w, http.StatusOK, stats)
 }
 
-// GetProwlarrHistory godoc
-// @Summary Get history from Prowlarr servers
-// @Description Retrieves RSS, search, and grab history from all configured Prowlarr servers
+// GetSearchHistory godoc
+// @Summary Get search history
+// @Description Returns recent completed searches from the in-memory history buffer
 // @Tags torznab
 // @Produce json
-// @Param limit query int false "Maximum number of records per server" default(100)
-// @Param refresh query bool false "Force fresh fetch instead of using cache"
-// @Success 200 {object} jackett.ProwlarrHistoryResponse
+// @Param limit query int false "Maximum number of entries to return (default: 50, max: 500)"
+// @Success 200 {object} jackett.SearchHistoryResponseWithOutcome
 // @Failure 500 {object} httphelpers.ErrorResponse
 // @Security ApiKeyAuth
-// @Router /api/torznab/prowlarr/history [get]
-func (h *JackettHandler) GetProwlarrHistory(w http.ResponseWriter, r *http.Request) {
-	// Check if fresh fetch is requested
-	refresh := r.URL.Query().Get("refresh") == "true"
-
-	var history *jackett.ProwlarrHistoryResponse
-	var err error
-
-	if refresh {
-		// Force fresh fetch (manual refresh button)
-		history, err = h.service.GetProwlarrHistory(r.Context(), 100, time.Time{})
-	} else {
-		// Use cached data (frequent polling from frontend)
-		history, err = h.service.GetCachedProwlarrHistory(r.Context(), 0)
+// @Router /api/torznab/search/history [get]
+func (h *JackettHandler) GetSearchHistory(w http.ResponseWriter, r *http.Request) {
+	limit := 50
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
+			limit = parsed
+			if limit > 500 {
+				limit = 500
+			}
+		}
 	}
 
+	history, err := h.service.GetSearchHistory(r.Context(), limit)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to get Prowlarr history")
-		RespondError(w, http.StatusInternalServerError, "Failed to get Prowlarr history")
+		log.Error().Err(err).Msg("Failed to get search history")
+		RespondError(w, http.StatusInternalServerError, "Failed to get search history")
 		return
 	}
 
 	RespondJSON(w, http.StatusOK, history)
+}
+
+// GetActivityStatus godoc
+// @Summary Get scheduler and indexer activity status
+// @Description Returns current scheduler state including queued tasks, in-flight jobs, and rate-limited indexers
+// @Tags torznab
+// @Produce json
+// @Success 200 {object} jackett.ActivityStatus
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/torznab/activity [get]
+func (h *JackettHandler) GetActivityStatus(w http.ResponseWriter, r *http.Request) {
+	status, err := h.service.GetActivityStatus(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get activity status")
+		RespondError(w, http.StatusInternalServerError, "Failed to get activity status")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, status)
 }

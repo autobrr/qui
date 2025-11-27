@@ -375,6 +375,7 @@ type taskItem struct {
 	priority int
 	created  time.Time
 	index    int
+	started  time.Time // When execution began (for duration tracking)
 }
 
 type taskHeap []*taskItem
@@ -420,8 +421,8 @@ type searchScheduler struct {
 
 	// Worker pool semaphore - limits concurrent executions
 	workerPool chan struct{}
-	// Track in-flight tasks per indexer
-	inFlight map[int]struct{}
+	// Track in-flight tasks per indexer (with full task details for status)
+	inFlight map[int]*taskItem
 	// Track job completion state
 	jobs map[uint64]*jobState
 
@@ -434,6 +435,9 @@ type searchScheduler struct {
 
 	// retryTimer tracks the current scheduled retry
 	retryTimer *time.Timer
+
+	// historyRecorder records completed searches for history tracking
+	historyRecorder HistoryRecorder
 }
 
 func newSearchScheduler(rl *RateLimiter, maxWorkers int) *searchScheduler {
@@ -447,7 +451,7 @@ func newSearchScheduler(rl *RateLimiter, maxWorkers int) *searchScheduler {
 		pendingRSS:  make(map[int]struct{}),
 		rateLimiter: rl,
 		workerPool:  make(chan struct{}, maxWorkers),
-		inFlight:    make(map[int]struct{}),
+		inFlight:    make(map[int]*taskItem),
 		jobs:        make(map[uint64]*jobState),
 		submitCh:    make(chan []workerTask, 128),
 		completeCh:  make(chan struct{}, 128),
@@ -595,7 +599,8 @@ func (s *searchScheduler) dispatchTasks() {
 	for _, item := range items {
 		// Check if context is cancelled
 		if item.task.ctx.Err() != nil {
-			s.handleTaskCompleteLocked(item.task.jobID, item.task.indexer, nil, nil, item.task.ctx.Err(), &item.task.callbacks)
+			item.started = time.Now() // Mark as "started" now for skipped tasks
+			s.handleTaskCompleteLocked(item, nil, nil, item.task.ctx.Err())
 			if item.task.isRSS {
 				delete(s.pendingRSS, item.task.indexer.ID)
 			}
@@ -629,7 +634,8 @@ func (s *searchScheduler) dispatchTasks() {
 				MaxWait:     maxWait,
 				Priority:    priority,
 			}
-			s.handleTaskCompleteLocked(item.task.jobID, item.task.indexer, nil, nil, err, &item.task.callbacks)
+			item.started = time.Now() // Mark as "started" now for skipped tasks
+			s.handleTaskCompleteLocked(item, nil, nil, err)
 			if item.task.isRSS {
 				delete(s.pendingRSS, item.task.indexer.ID)
 			}
@@ -645,7 +651,7 @@ func (s *searchScheduler) dispatchTasks() {
 		// Ready - try to acquire worker
 		select {
 		case s.workerPool <- struct{}{}:
-			s.inFlight[item.task.indexer.ID] = struct{}{}
+			s.inFlight[item.task.indexer.ID] = item
 			go s.executeTask(item)
 		default:
 			// No worker available - re-queue
@@ -671,7 +677,7 @@ func (s *searchScheduler) executeTask(item *taskItem) {
 			panicked = true
 			err := fmt.Errorf("scheduler worker panic: %v", r)
 			s.mu.Lock()
-			s.handleTaskCompleteLocked(task.jobID, task.indexer, nil, nil, err, &task.callbacks)
+			s.handleTaskCompleteLocked(item, nil, nil, err)
 			delete(s.inFlight, task.indexer.ID)
 			if task.isRSS {
 				delete(s.pendingRSS, task.indexer.ID)
@@ -692,13 +698,16 @@ func (s *searchScheduler) executeTask(item *taskItem) {
 	// Record request BEFORE execution (reserve slot)
 	s.rateLimiter.RecordRequest(task.indexer.ID, time.Time{})
 
+	// Capture start time for duration tracking
+	item.started = time.Now()
+
 	// Execute the search
 	results, coverage, err := task.exec(task.ctx, []*models.TorznabIndexer{task.indexer}, task.params, task.meta)
 
 	// Handle completion (only if we didn't panic)
 	if !panicked {
 		s.mu.Lock()
-		s.handleTaskCompleteLocked(task.jobID, task.indexer, results, coverage, err, &task.callbacks)
+		s.handleTaskCompleteLocked(item, results, coverage, err)
 		delete(s.inFlight, task.indexer.ID)
 		if task.isRSS {
 			delete(s.pendingRSS, task.indexer.ID)
@@ -708,14 +717,76 @@ func (s *searchScheduler) executeTask(item *taskItem) {
 }
 
 // handleTaskCompleteLocked handles task completion. Caller must hold s.mu.
-func (s *searchScheduler) handleTaskCompleteLocked(jobID uint64, indexer *models.TorznabIndexer, results []Result, coverage []int, err error, callbacks *JobCallbacks) {
+func (s *searchScheduler) handleTaskCompleteLocked(item *taskItem, results []Result, coverage []int, err error) {
+	task := item.task
+
 	// Call OnComplete callback
-	if callbacks != nil && callbacks.OnComplete != nil {
-		go callbacks.OnComplete(jobID, indexer, results, coverage, err)
+	if task.callbacks.OnComplete != nil {
+		go task.callbacks.OnComplete(task.jobID, task.indexer, results, coverage, err)
+	}
+
+	// Record search history
+	if s.historyRecorder != nil {
+		completedAt := time.Now()
+		entry := SearchHistoryEntry{
+			JobID:       task.jobID,
+			TaskID:      task.taskID,
+			IndexerID:   task.indexer.ID,
+			IndexerName: task.indexer.Name,
+			StartedAt:   item.started,
+			CompletedAt: completedAt,
+			DurationMs:  int(completedAt.Sub(item.started).Milliseconds()),
+			ResultCount: len(results),
+		}
+
+		// Extract search context
+		if task.meta != nil {
+			if task.meta.rateLimit != nil {
+				entry.Priority = string(task.meta.rateLimit.Priority)
+			}
+			entry.ContentType = task.meta.contentType.String()
+			entry.SearchMode = task.meta.searchMode
+			entry.Categories = task.meta.categories
+			entry.ReleaseName = task.meta.releaseName
+		}
+		if entry.Priority == "" {
+			entry.Priority = string(RateLimitPriorityBackground)
+		}
+
+		// Extract query and params
+		if task.params != nil {
+			entry.Query = task.params.Get("q")
+			// Capture all params sent to the indexer (excluding apikey)
+			if len(task.params) > 0 {
+				entry.Params = make(map[string]string, len(task.params))
+				for k, v := range task.params {
+					if k != "apikey" && len(v) > 0 {
+						entry.Params[k] = v[0]
+					}
+				}
+			}
+		}
+
+		// Determine status
+		if err != nil {
+			if _, isRateLimit := asRateLimitWaitError(err); isRateLimit {
+				entry.Status = "rate_limited"
+			} else {
+				entry.Status = "error"
+			}
+			entry.ErrorMessage = err.Error()
+		} else if len(results) == 0 {
+			entry.Status = "success"
+		} else {
+			entry.Status = "success"
+		}
+
+		// Record asynchronously to avoid blocking
+		go s.historyRecorder.Record(entry)
 	}
 
 	// Track job completion
-	job, exists := s.jobs[jobID]
+	job, exists := s.jobs[task.jobID]
 	if !exists {
 		return
 	}
@@ -725,9 +796,9 @@ func (s *searchScheduler) handleTaskCompleteLocked(jobID uint64, indexer *models
 	if job.completedTasks >= job.totalTasks {
 		// Job complete - call OnJobDone
 		if job.callbacks.OnJobDone != nil {
-			go job.callbacks.OnJobDone(jobID)
+			go job.callbacks.OnJobDone(task.jobID)
 		}
-		delete(s.jobs, jobID)
+		delete(s.jobs, task.jobID)
 	}
 }
 
@@ -829,4 +900,95 @@ func (s *searchScheduler) nextTaskID() uint64 {
 // Stop gracefully shuts down the scheduler.
 func (s *searchScheduler) Stop() {
 	close(s.stopCh)
+}
+
+// SchedulerTaskStatus represents a single task's status
+type SchedulerTaskStatus struct {
+	JobID       uint64    `json:"jobId"`
+	TaskID      uint64    `json:"taskId"`
+	IndexerID   int       `json:"indexerId"`
+	IndexerName string    `json:"indexerName"`
+	Priority    string    `json:"priority"`
+	CreatedAt   time.Time `json:"createdAt"`
+	IsRSS       bool      `json:"isRss"`
+}
+
+// SchedulerJobStatus represents a job's completion status
+type SchedulerJobStatus struct {
+	JobID          uint64 `json:"jobId"`
+	TotalTasks     int    `json:"totalTasks"`
+	CompletedTasks int    `json:"completedTasks"`
+}
+
+// SchedulerStatus represents the current state of the scheduler
+type SchedulerStatus struct {
+	QueuedTasks   []SchedulerTaskStatus `json:"queuedTasks"`
+	InFlightTasks []SchedulerTaskStatus `json:"inFlightTasks"`
+	ActiveJobs    []SchedulerJobStatus  `json:"activeJobs"`
+	QueueLength   int                   `json:"queueLength"`
+	WorkerCount   int                   `json:"workerCount"`
+	WorkersInUse  int                   `json:"workersInUse"`
+}
+
+// GetStatus returns the current state of the scheduler
+func (s *searchScheduler) GetStatus() SchedulerStatus {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	status := SchedulerStatus{
+		QueuedTasks:   make([]SchedulerTaskStatus, 0, s.taskQueue.Len()),
+		InFlightTasks: make([]SchedulerTaskStatus, 0, len(s.inFlight)),
+		ActiveJobs:    make([]SchedulerJobStatus, 0, len(s.jobs)),
+		QueueLength:   s.taskQueue.Len(),
+		WorkerCount:   cap(s.workerPool),
+		WorkersInUse:  len(s.workerPool),
+	}
+
+	// Collect queued tasks
+	for i := 0; i < s.taskQueue.Len(); i++ {
+		item := s.taskQueue[i]
+		priority := "background"
+		if item.task.meta != nil && item.task.meta.rateLimit != nil {
+			priority = string(item.task.meta.rateLimit.Priority)
+		}
+		status.QueuedTasks = append(status.QueuedTasks, SchedulerTaskStatus{
+			JobID:       item.task.jobID,
+			TaskID:      item.task.taskID,
+			IndexerID:   item.task.indexer.ID,
+			IndexerName: item.task.indexer.Name,
+			Priority:    priority,
+			CreatedAt:   item.created,
+			IsRSS:       item.task.isRSS,
+		})
+	}
+
+	// Collect in-flight tasks with full details
+	for _, item := range s.inFlight {
+		if item != nil {
+			priority := "background"
+			if item.task.meta != nil && item.task.meta.rateLimit != nil {
+				priority = string(item.task.meta.rateLimit.Priority)
+			}
+			status.InFlightTasks = append(status.InFlightTasks, SchedulerTaskStatus{
+				JobID:       item.task.jobID,
+				TaskID:      item.task.taskID,
+				IndexerID:   item.task.indexer.ID,
+				IndexerName: item.task.indexer.Name,
+				Priority:    priority,
+				CreatedAt:   item.created,
+				IsRSS:       item.task.isRSS,
+			})
+		}
+	}
+
+	// Collect active jobs
+	for jobID, job := range s.jobs {
+		status.ActiveJobs = append(status.ActiveJobs, SchedulerJobStatus{
+			JobID:          jobID,
+			TotalTasks:     job.totalTasks,
+			CompletedTasks: job.completedTasks,
+		})
+	}
+
+	return status
 }

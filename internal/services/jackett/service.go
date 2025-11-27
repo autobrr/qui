@@ -83,10 +83,11 @@ type Service struct {
 	torrentCacheCleanupMu   sync.Mutex
 	nextTorrentCacheCleanup time.Time
 
-	// Prowlarr history cache - refreshed after Prowlarr operations
-	historyCacheMu   sync.RWMutex
-	historyCacheData *ProwlarrHistoryResponse
-	historyCacheTime time.Time
+	// searchHistory provides in-memory search history tracking
+	searchHistory *SearchHistoryBuffer
+
+	// indexerOutcomes tracks cross-seed outcomes per (jobID, indexerID)
+	indexerOutcomes *IndexerOutcomeStore
 }
 
 // ErrMissingIndexerIdentifier signals that the Torznab backend requires an indexer ID to fetch caps.
@@ -154,6 +155,7 @@ type searchContext struct {
 	searchMode     string
 	rateLimit      *RateLimitOptions
 	requireSuccess bool
+	releaseName    string // Original full release name for debugging/history
 }
 
 type searchPriorityKey struct{}
@@ -306,33 +308,32 @@ func (s *Service) executeSearch(ctx context.Context, indexers []*models.TorznabI
 
 // executeQueuedSearch submits the search to the scheduler so we can skip over jobs blocked by
 // indexer cooldowns or other rate-limit constraints.
-func (s *Service) executeQueuedSearch(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext, onComplete func(jobID uint64, indexerID int, err error), resultCallback func([]Result, []int, error)) error {
+func (s *Service) executeQueuedSearch(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext, onComplete func(jobID uint64, indexerID int, err error), resultCallback func(jobID uint64, results []Result, coverage []int, err error)) error {
 	meta = finalizeSearchContext(ctx, meta, RateLimitPriorityBackground)
 	if s.searchExecutor != nil {
-		// For synchronous executor, call it and callback immediately
+		// For synchronous executor, call it and callback immediately (no jobID for sync execution)
 		results, coverage, err := s.searchExecutor(ctx, indexers, params, meta)
-		resultCallback(results, coverage, err)
+		resultCallback(0, results, coverage, err)
 		return nil
 	}
-	if meta != nil && meta.requireSuccess {
-		// For strict callers (explicit indexer selection), run synchronously to avoid delayed errors.
+	if meta != nil && meta.requireSuccess && meta.rateLimit != nil && meta.rateLimit.Priority == RateLimitPriorityInteractive {
+		// For interactive callers (explicit indexer selection), run synchronously to avoid delayed errors.
+		// Non-interactive priorities (RSS, completion, background) should still use the scheduler for visibility.
 		results, coverage, err := s.executeSearch(ctx, indexers, params, meta)
-		s.TriggerHistoryCacheRefresh()
-		resultCallback(results, coverage, err)
+		resultCallback(0, results, coverage, err)
 		return nil
 	}
 	if s.searchScheduler == nil {
 		results, coverage, err := s.executeSearch(ctx, indexers, params, meta)
-		s.TriggerHistoryCacheRefresh()
-		resultCallback(results, coverage, err)
+		resultCallback(0, results, coverage, err)
 		return nil
 	}
 	return s.searchIndexersWithScheduler(ctx, indexers, params, meta, onComplete, resultCallback)
 }
 
-func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext, onComplete func(jobID uint64, indexerID int, err error), resultCallback func([]Result, []int, error)) error {
+func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext, onComplete func(jobID uint64, indexerID int, err error), resultCallback func(jobID uint64, results []Result, coverage []int, err error)) error {
 	if len(indexers) == 0 {
-		resultCallback(nil, nil, nil)
+		resultCallback(0, nil, nil, nil)
 		return nil
 	}
 
@@ -408,16 +409,13 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 				totalFailures := failures
 				mu.Unlock()
 
-				// Trigger history cache refresh after search completes
-				s.TriggerHistoryCacheRefresh()
-
 				// If all indexers failed, return the last error
 				if totalFailures == totalIndexers && finalErr != nil && len(finalResults) == 0 {
-					resultCallback(nil, finalCoverage, finalErr)
+					resultCallback(jobID, nil, finalCoverage, finalErr)
 					return
 				}
 
-				resultCallback(finalResults, finalCoverage, nil)
+				resultCallback(jobID, finalResults, finalCoverage, nil)
 			},
 		},
 		ExecFn: execFn,
@@ -447,6 +445,79 @@ func WithSearchCache(cache searchCacheStore, cfg SearchCacheConfig) ServiceOptio
 		s.searchCacheTTL = ttl
 		s.searchCacheEnabled = cache != nil
 	}
+}
+
+// WithSearchHistory enables in-memory search history tracking with the given capacity.
+// Pass 0 to use the default capacity (500 entries).
+func WithSearchHistory(capacity int) ServiceOption {
+	return func(s *Service) {
+		s.searchHistory = NewSearchHistoryBuffer(capacity)
+		// Wire the history recorder to the scheduler
+		if s.searchScheduler != nil {
+			s.searchScheduler.historyRecorder = NewHistoryRecorder(s.searchHistory)
+		}
+	}
+}
+
+// WithIndexerOutcomes enables cross-seed outcome tracking per (jobID, indexerID).
+// Pass 0 to use the default capacity (1000 entries).
+func WithIndexerOutcomes(capacity int) ServiceOption {
+	return func(s *Service) {
+		s.indexerOutcomes = NewIndexerOutcomeStore(capacity)
+	}
+}
+
+// ReportIndexerOutcome records a cross-seed outcome for a specific indexer's search results.
+// Called by the cross-seed service after processing search results.
+func (s *Service) ReportIndexerOutcome(jobID uint64, indexerID int, outcome string, addedCount int, message string) {
+	if s.indexerOutcomes != nil {
+		s.indexerOutcomes.Record(jobID, indexerID, outcome, addedCount, message)
+	}
+}
+
+// GetSearchHistory returns recent search history entries from the in-memory buffer,
+// merged with any recorded cross-seed outcomes.
+func (s *Service) GetSearchHistory(_ context.Context, limit int) (*SearchHistoryResponseWithOutcome, error) {
+	if s.searchHistory == nil {
+		return &SearchHistoryResponseWithOutcome{
+			Entries: []SearchHistoryEntryWithOutcome{},
+			Total:   0,
+			Source:  "memory",
+		}, nil
+	}
+
+	entries := s.searchHistory.GetRecent(limit)
+	result := make([]SearchHistoryEntryWithOutcome, len(entries))
+
+	for i, e := range entries {
+		result[i] = SearchHistoryEntryWithOutcome{SearchHistoryEntry: e}
+		// Merge outcome if available
+		if s.indexerOutcomes != nil {
+			if oc, ok := s.indexerOutcomes.Get(e.JobID, e.IndexerID); ok {
+				result[i].Outcome = oc.Outcome
+				result[i].AddedCount = oc.AddedCount
+			}
+		}
+	}
+
+	return &SearchHistoryResponseWithOutcome{
+		Entries: result,
+		Total:   s.searchHistory.Count(),
+		Source:  "memory",
+	}, nil
+}
+
+// GetSearchHistoryStats returns statistics about search history.
+func (s *Service) GetSearchHistoryStats(_ context.Context) (*SearchHistoryStats, error) {
+	if s.searchHistory == nil {
+		return &SearchHistoryStats{
+			ByStatus:   make(map[string]int),
+			ByPriority: make(map[string]int),
+		}, nil
+	}
+
+	stats := s.searchHistory.Stats()
+	return &stats, nil
 }
 
 // GetIndexerName resolves a Torznab indexer ID to its configured name.
@@ -529,6 +600,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 		contentType:    detectedType,
 		searchMode:     searchMode,
 		requireSuccess: len(req.IndexerIDs) > 0,
+		releaseName:    req.ReleaseName,
 	}, RateLimitPriorityInteractive)
 
 	cacheEnabled := s.shouldUseSearchCache()
@@ -588,7 +660,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 	searchCtx, _ := timeouts.WithSearchTimeout(baseCtx, searchTimeout)
 	// Note: do not cancel for async searches, as it would cancel immediately when the function returns
 
-	resultCallback := func(allResults []Result, networkCoverage []int, err error) {
+	resultCallback := func(jobID uint64, allResults []Result, networkCoverage []int, err error) {
 		deadlineErr := err != nil && errors.Is(err, context.DeadlineExceeded)
 		if deadlineErr {
 			log.Warn().
@@ -608,6 +680,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 					Results: results,
 					Total:   total,
 					Partial: true,
+					JobID:   jobID,
 				}
 				resp.Cache = cachedPortion.metadata(searchCacheSourceCache)
 				if req.OnAllComplete != nil {
@@ -640,6 +713,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 			Results: pageResults,
 			Total:   total,
 			Partial: partial,
+			JobID:   jobID,
 		}
 		if cachedPortion != nil && len(cachedResults) > 0 {
 			response.Cache = cachedPortion.metadata(searchCacheSourceHybrid)
@@ -648,6 +722,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 			Results: combined,
 			Total:   total,
 			Partial: partial,
+			JobID:   jobID,
 		}
 		if partial {
 			log.Debug().
@@ -736,7 +811,7 @@ func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int, callb
 	searchCtx, _ := timeouts.WithSearchTimeout(ctx, searchTimeout)
 	// Note: do not cancel for async searches, as it would cancel immediately when the function returns
 
-	resultCallback := func(results []Result, coverage []int, err error) {
+	resultCallback := func(jobID uint64, results []Result, coverage []int, err error) {
 		deadlineErr := err != nil && errors.Is(err, context.DeadlineExceeded)
 		partial := (deadlineErr && len(results) > 0) || (err != nil && !deadlineErr)
 		if partial && len(coverage) == len(indexersToSearch) {
@@ -748,6 +823,7 @@ func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int, callb
 			Results: searchResults,
 			Total:   len(searchResults),
 			Partial: partial,
+			JobID:   jobID,
 		}
 		if partial {
 			log.Warn().
@@ -824,9 +900,6 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 		}
 		s.maybeScheduleTorrentCacheCleanup()
 	}
-
-	// Trigger history cache refresh after download completes (grab event)
-	s.TriggerHistoryCacheRefresh()
 
 	return data, nil
 }
@@ -3092,6 +3165,37 @@ const (
 	contentTypeGame
 )
 
+func (c contentType) String() string {
+	switch c {
+	case contentTypeMovie:
+		return "movie"
+	case contentTypeTVShow:
+		return "tv"
+	case contentTypeTVDaily:
+		return "tv_daily"
+	case contentTypeXXX:
+		return "xxx"
+	case contentTypeMusic:
+		return "music"
+	case contentTypeAudiobook:
+		return "audiobook"
+	case contentTypeBook:
+		return "book"
+	case contentTypeComic:
+		return "comic"
+	case contentTypeMagazine:
+		return "magazine"
+	case contentTypeEducation:
+		return "education"
+	case contentTypeApp:
+		return "app"
+	case contentTypeGame:
+		return "game"
+	default:
+		return "unknown"
+	}
+}
+
 // detectContentType attempts to detect the content type from search parameters
 func (s *Service) detectContentType(req *TorznabSearchRequest) contentType {
 	query := strings.TrimSpace(req.Query)
@@ -3639,262 +3743,58 @@ func (s *Service) getProwlarrTrackerDomains(ctx context.Context, prowlarrIndexer
 	return result
 }
 
-// ProwlarrHistoryEntry represents a history entry with server context
-type ProwlarrHistoryEntry struct {
-	ID          int               `json:"id"`
-	IndexerID   int               `json:"indexerId"`
-	IndexerName string            `json:"indexerName"`
-	Date        time.Time         `json:"date"`
-	Successful  bool              `json:"successful"`
-	EventType   string            `json:"eventType"`
-	DownloadID  *string           `json:"downloadId,omitempty"`
-	Data        map[string]string `json:"data"`
+// IndexerCooldownStatus represents an indexer in cooldown
+type IndexerCooldownStatus struct {
+	IndexerID   int       `json:"indexerId"`
+	IndexerName string    `json:"indexerName"`
+	CooldownEnd time.Time `json:"cooldownEnd"`
+	Reason      string    `json:"reason,omitempty"`
 }
 
-// ProwlarrServerHistory represents history from a single Prowlarr server
-type ProwlarrServerHistory struct {
-	ServerURL    string                 `json:"serverUrl"`
-	ServerName   string                 `json:"serverName"`
-	TotalRecords int                    `json:"totalRecords"`
-	Records      []ProwlarrHistoryEntry `json:"records"`
-	Error        string                 `json:"error,omitempty"`
+// ActivityStatus represents the current activity state of the indexer service
+type ActivityStatus struct {
+	Scheduler        *SchedulerStatus        `json:"scheduler,omitempty"`
+	CooldownIndexers []IndexerCooldownStatus `json:"cooldownIndexers"`
 }
 
-// ProwlarrHistoryResponse contains history from all Prowlarr servers
-type ProwlarrHistoryResponse struct {
-	Servers []ProwlarrServerHistory `json:"servers"`
-}
-
-// GetProwlarrHistory fetches history from all Prowlarr servers grouped by server.
-// It queries RSS, Search, and Grab events (event types 1, 2, 3).
-// GetProwlarrHistory fetches history from all configured Prowlarr servers.
-// If since is non-zero, only events after that time are returned (delta fetch).
-func (s *Service) GetProwlarrHistory(ctx context.Context, limit int, since time.Time) (*ProwlarrHistoryResponse, error) {
-	// Get all Prowlarr-backend indexers
-	allIndexers, err := s.indexerStore.List(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list indexers: %w", err)
+// GetActivityStatus returns the current activity status including scheduler state and cooldowns
+func (s *Service) GetActivityStatus(ctx context.Context) (*ActivityStatus, error) {
+	status := &ActivityStatus{
+		CooldownIndexers: make([]IndexerCooldownStatus, 0),
 	}
 
-	// Filter to Prowlarr indexers only
-	var prowlarrIndexers []*models.TorznabIndexer
-	for _, idx := range allIndexers {
-		if idx.Backend == models.TorznabBackendProwlarr {
-			prowlarrIndexers = append(prowlarrIndexers, idx)
-		}
+	// Get scheduler status if available
+	if s.searchScheduler != nil {
+		schedulerStatus := s.searchScheduler.GetStatus()
+		status.Scheduler = &schedulerStatus
 	}
 
-	if len(prowlarrIndexers) == 0 {
-		return &ProwlarrHistoryResponse{Servers: []ProwlarrServerHistory{}}, nil
-	}
+	// Get cooldown indexers from rate limiter
+	if s.rateLimiter != nil {
+		cooldowns := s.rateLimiter.GetCooldownIndexers()
+		if len(cooldowns) > 0 {
+			// Build a map of indexer names
+			indexers, err := s.indexerStore.List(ctx)
+			if err == nil {
+				nameMap := make(map[int]string)
+				for _, idx := range indexers {
+					nameMap[idx.ID] = idx.Name
+				}
 
-	// Group indexers by Prowlarr server (BaseURL)
-	prowlarrGroups := make(map[string][]*models.TorznabIndexer)
-	for _, indexer := range prowlarrIndexers {
-		key := strings.TrimRight(strings.TrimSpace(indexer.BaseURL), "/")
-		prowlarrGroups[key] = append(prowlarrGroups[key], indexer)
-	}
-
-	// Build indexer ID to name mapping for all Prowlarr indexers
-	indexerNames := make(map[string]map[int]string) // serverURL -> prowlarrIndexerID -> name
-	for baseURL, indexers := range prowlarrGroups {
-		indexerNames[baseURL] = make(map[int]string)
-		for _, idx := range indexers {
-			if prowID, err := strconv.Atoi(idx.IndexerID); err == nil {
-				indexerNames[baseURL][prowID] = idx.Name
-			}
-		}
-	}
-
-	response := &ProwlarrHistoryResponse{
-		Servers: make([]ProwlarrServerHistory, 0, len(prowlarrGroups)),
-	}
-
-	// Query history from each Prowlarr server
-	for baseURL, indexers := range prowlarrGroups {
-		serverHistory := ProwlarrServerHistory{
-			ServerURL:  baseURL,
-			ServerName: deriveServerName(baseURL, indexers),
-			Records:    []ProwlarrHistoryEntry{},
-		}
-
-		if len(indexers) == 0 {
-			response.Servers = append(response.Servers, serverHistory)
-			continue
-		}
-
-		// Use the first indexer's API key
-		apiKey, err := s.indexerStore.GetDecryptedAPIKey(indexers[0])
-		if err != nil {
-			log.Warn().Err(err).Str("serverURL", baseURL).Msg("Failed to decrypt API key for Prowlarr history")
-			serverHistory.Error = "failed to decrypt API key"
-			response.Servers = append(response.Servers, serverHistory)
-			continue
-		}
-
-		// Create Prowlarr client
-		timeout := indexers[0].TimeoutSeconds
-		if timeout <= 0 {
-			timeout = 30
-		}
-		client := NewClient(baseURL, apiKey, models.TorznabBackendProwlarr, timeout)
-		if client.prowlarr == nil {
-			serverHistory.Error = "failed to create Prowlarr client"
-			response.Servers = append(response.Servers, serverHistory)
-			continue
-		}
-
-		// Fetch history: event types 1 (grab), 2 (query), 3 (rss)
-		eventTypes := []int{1, 2, 3}
-		var records []prowlarr.HistoryResource
-		var totalRecords int
-
-		if !since.IsZero() {
-			// Delta fetch - only get events since the given timestamp
-			recs, err := client.prowlarr.GetHistorySince(ctx, since, eventTypes)
-			if err != nil {
-				log.Warn().Err(err).Str("serverURL", baseURL).Msg("Failed to fetch Prowlarr history (since)")
-				serverHistory.Error = err.Error()
-				response.Servers = append(response.Servers, serverHistory)
-				continue
-			}
-			records = recs
-			totalRecords = len(recs)
-		} else {
-			// Full fetch with pagination
-			historyResp, err := client.prowlarr.GetHistory(ctx, 1, limit, eventTypes)
-			if err != nil {
-				log.Warn().Err(err).Str("serverURL", baseURL).Msg("Failed to fetch Prowlarr history")
-				serverHistory.Error = err.Error()
-				response.Servers = append(response.Servers, serverHistory)
-				continue
-			}
-			records = historyResp.Records
-			totalRecords = historyResp.TotalRecords
-		}
-
-		serverHistory.TotalRecords = totalRecords
-
-		// Convert records and add indexer names
-		nameMap := indexerNames[baseURL]
-		for _, rec := range records {
-			entry := ProwlarrHistoryEntry{
-				ID:         rec.ID,
-				IndexerID:  rec.IndexerID,
-				Date:       rec.Date,
-				Successful: rec.Successful,
-				EventType:  rec.EventType,
-				DownloadID: rec.DownloadID,
-				Data:       rec.Data,
-			}
-
-			// Try to get indexer name from our local mapping
-			if name, ok := nameMap[rec.IndexerID]; ok {
-				entry.IndexerName = name
-			} else {
-				// Fallback: use host field from data if available
-				if host, ok := rec.Data["Host"]; ok && host != "" {
-					entry.IndexerName = host
-				} else if source, ok := rec.Data["Source"]; ok && source != "" {
-					entry.IndexerName = source
-				} else {
-					entry.IndexerName = fmt.Sprintf("Indexer %d", rec.IndexerID)
+				for id, until := range cooldowns {
+					name := nameMap[id]
+					if name == "" {
+						name = fmt.Sprintf("Indexer %d", id)
+					}
+					status.CooldownIndexers = append(status.CooldownIndexers, IndexerCooldownStatus{
+						IndexerID:   id,
+						IndexerName: name,
+						CooldownEnd: until,
+					})
 				}
 			}
-
-			serverHistory.Records = append(serverHistory.Records, entry)
 		}
-
-		response.Servers = append(response.Servers, serverHistory)
 	}
 
-	return response, nil
-}
-
-const (
-	historyCacheRefreshDebounce = 5 * time.Second  // Min time between cache refreshes
-	historyCacheMaxAge          = 30 * time.Second // Max age before fallback fetch
-	historyCacheDefaultLimit    = 100
-)
-
-// TriggerHistoryCacheRefresh schedules an async refresh of the Prowlarr history cache.
-// Call this AFTER Prowlarr operations complete (RSS sync, search, download).
-// The refresh is debounced - if called multiple times within 5s, only one refresh runs.
-func (s *Service) TriggerHistoryCacheRefresh() {
-	go func() {
-		// Debounce: skip if last refresh was recent
-		s.historyCacheMu.RLock()
-		lastRefresh := s.historyCacheTime
-		s.historyCacheMu.RUnlock()
-
-		if time.Since(lastRefresh) < historyCacheRefreshDebounce {
-			return
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		history, err := s.GetProwlarrHistory(ctx, historyCacheDefaultLimit, time.Time{})
-		if err != nil {
-			log.Debug().Err(err).Msg("Failed to refresh Prowlarr history cache")
-			return
-		}
-
-		s.historyCacheMu.Lock()
-		s.historyCacheData = history
-		s.historyCacheTime = time.Now()
-		s.historyCacheMu.Unlock()
-
-		log.Trace().Msg("Prowlarr history cache refreshed")
-	}()
-}
-
-// GetCachedProwlarrHistory returns cached history if fresh, otherwise fetches live.
-// This is optimized for frequent frontend polling - returns from memory when possible.
-func (s *Service) GetCachedProwlarrHistory(ctx context.Context, maxAge time.Duration) (*ProwlarrHistoryResponse, error) {
-	if maxAge <= 0 {
-		maxAge = historyCacheMaxAge
-	}
-
-	s.historyCacheMu.RLock()
-	cached := s.historyCacheData
-	cacheTime := s.historyCacheTime
-	s.historyCacheMu.RUnlock()
-
-	// Return cache if fresh
-	if cached != nil && time.Since(cacheTime) < maxAge {
-		return cached, nil
-	}
-
-	// Cache is stale or empty - fetch synchronously
-	history, err := s.GetProwlarrHistory(ctx, historyCacheDefaultLimit, time.Time{})
-	if err != nil {
-		// If fetch fails but we have stale cache, return stale data
-		if cached != nil {
-			log.Debug().Err(err).Msg("Returning stale Prowlarr history cache after fetch error")
-			return cached, nil
-		}
-		return nil, err
-	}
-
-	// Update cache
-	s.historyCacheMu.Lock()
-	s.historyCacheData = history
-	s.historyCacheTime = time.Now()
-	s.historyCacheMu.Unlock()
-
-	return history, nil
-}
-
-// deriveServerName extracts a friendly name for the Prowlarr server
-func deriveServerName(baseURL string, indexers []*models.TorznabIndexer) string {
-	u, err := url.Parse(baseURL)
-	if err == nil && u.Host != "" {
-		return u.Host
-	}
-	// Fallback to the first indexer's name prefix
-	if len(indexers) > 0 {
-		return "Prowlarr"
-	}
-	return baseURL
+	return status, nil
 }

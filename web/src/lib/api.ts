@@ -42,6 +42,7 @@ import type {
   RestoreMode,
   RestorePlan,
   RestoreResult,
+  SearchHistoryResponse,
   SortedPeersResponse,
   TorrentCreationParams,
   TorrentCreationTask,
@@ -58,14 +59,14 @@ import type {
   TorznabIndexerFormData,
   TorznabIndexerHealth,
   TorznabIndexerLatencyStats,
+  IndexerActivityStatus,
   TorznabSearchRequest,
   TorznabSearchResult,
   TorznabSearchResponse,
   TorznabSearchCacheMetadata,
   TorznabSearchCacheStats,
   TorznabRecentSearch,
-  User,
-  ProwlarrHistoryResponse
+  User
 } from "@/types"
 import { getApiBaseUrl, withBasePath } from "./base-url"
 
@@ -1507,6 +1508,15 @@ class ApiClient {
     })
   }
 
+  async getIndexerActivityStatus(): Promise<IndexerActivityStatus> {
+    return this.request<IndexerActivityStatus>("/torznab/activity")
+  }
+
+  async getSearchHistory(limit?: number): Promise<SearchHistoryResponse> {
+    const params = limit ? `?limit=${limit}` : ""
+    return this.request<SearchHistoryResponse>(`/torznab/search/history${params}`)
+  }
+
   async discoverJackettIndexers(baseUrl: string, apiKey: string): Promise<JackettIndexer[]> {
     return this.request<JackettIndexer[]>("/torznab/indexers/discover", {
       method: "POST",
@@ -1608,11 +1618,6 @@ class ApiClient {
 
   async getIndexerStats(id: number): Promise<TorznabIndexerLatencyStats[]> {
     return this.request<TorznabIndexerLatencyStats[]>(`/torznab/indexers/${id}/stats`)
-  }
-
-  async getProwlarrHistory(refresh = false): Promise<ProwlarrHistoryResponse> {
-    const params = refresh ? "?refresh=true" : ""
-    return this.request<ProwlarrHistoryResponse>(`/torznab/prowlarr/history${params}`)
   }
 }
 

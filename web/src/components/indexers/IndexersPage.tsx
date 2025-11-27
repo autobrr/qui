@@ -27,9 +27,10 @@ import { ChevronDown, Plus, RefreshCw, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { AutodiscoveryDialog } from "./AutodiscoveryDialog"
+import { IndexerActivityPanel } from "./IndexerActivityPanel"
 import { IndexerDialog } from "./IndexerDialog"
+import { SearchHistoryPanel } from "./SearchHistoryPanel"
 import { IndexerTable } from "./IndexerTable"
-import { ProwlarrHistoryPanel } from "./ProwlarrHistoryPanel"
 
 interface IndexersPageProps {
   withContainer?: boolean
@@ -188,6 +189,9 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
 
   const content = (
     <>
+      {indexers.length > 0 && <IndexerActivityPanel />}
+      {indexers.length > 0 && <SearchHistoryPanel />}
+
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between gap-4">
@@ -258,8 +262,6 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
           />
         </CardContent>
       </Card>
-
-      <ProwlarrHistoryPanel indexers={indexers} />
 
       <IndexerDialog
         open={addDialogOpen}

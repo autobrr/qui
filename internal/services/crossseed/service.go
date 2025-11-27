@@ -3576,10 +3576,11 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		Msg("[CROSSSEED-SEARCH] Applied indexer filtering")
 
 	searchReq := &jackett.TorznabSearchRequest{
-		Query:      query,
-		Limit:      requestLimit,
-		IndexerIDs: filteredIndexerIDs,
-		CacheMode:  opts.CacheMode,
+		Query:       query,
+		ReleaseName: sourceTorrent.Name,
+		Limit:       requestLimit,
+		IndexerIDs:  filteredIndexerIDs,
+		CacheMode:   opts.CacheMode,
 	}
 
 	if seasonPtr != nil {
@@ -3795,6 +3796,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 			Results:       []TorrentSearchResult{},
 			Cache:         searchResp.Cache,
 			Partial:       searchResp.Partial,
+			JobID:         searchResp.JobID,
 		}, nil
 	}
 
@@ -3849,6 +3851,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		Results:       results,
 		Cache:         searchResp.Cache,
 		Partial:       searchResp.Partial,
+		JobID:         searchResp.JobID,
 	}, nil
 }
 
@@ -4765,6 +4768,10 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	nonSuccessAttempt := false
 	var attemptErrors []string
 
+	// Track outcomes per indexer for search history
+	indexerAdds := make(map[int]int)  // indexerID -> count of adds
+	indexerFails := make(map[int]int) // indexerID -> count of fails
+
 	for _, match := range searchResp.Results {
 		attemptResult, err := s.executeCrossSeedSearchAttempt(ctx, state, torrent, match, processedAt)
 		if attemptResult != nil {
@@ -4773,15 +4780,21 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 				state.run.TorrentsAdded++
 				s.searchMu.Unlock()
 				successCount++
+				indexerAdds[match.IndexerID]++
 			} else {
 				nonSuccessAttempt = true
+				indexerFails[match.IndexerID]++
 			}
 			s.appendSearchResult(state, *attemptResult)
 		}
 		if err != nil {
 			attemptErrors = append(attemptErrors, fmt.Sprintf("%s: %v", match.Indexer, err))
+			indexerFails[match.IndexerID]++
 		}
 	}
+
+	// Report outcomes to jackett service for search history
+	s.reportIndexerOutcomes(searchResp.JobID, indexerAdds, indexerFails)
 
 	if successCount > 0 {
 		s.persistSearchRun(state)
@@ -4810,6 +4823,36 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	s.searchMu.Unlock()
 	s.persistSearchRun(state)
 	return nil
+}
+
+// reportIndexerOutcomes reports cross-seed outcomes to the jackett service for search history tracking.
+// For each indexer, it reports "added" if any torrents were added, "failed" if only failures occurred.
+func (s *Service) reportIndexerOutcomes(jobID uint64, indexerAdds, indexerFails map[int]int) {
+	if s.jackettService == nil || jobID == 0 {
+		return
+	}
+
+	// Collect all unique indexer IDs
+	allIndexers := make(map[int]struct{})
+	for id := range indexerAdds {
+		allIndexers[id] = struct{}{}
+	}
+	for id := range indexerFails {
+		allIndexers[id] = struct{}{}
+	}
+
+	for indexerID := range allIndexers {
+		addCount := indexerAdds[indexerID]
+		failCount := indexerFails[indexerID]
+
+		if addCount > 0 {
+			// Indexer contributed at least one successful add
+			s.jackettService.ReportIndexerOutcome(jobID, indexerID, "added", addCount, "")
+		} else if failCount > 0 {
+			// Indexer had attempts but all failed
+			s.jackettService.ReportIndexerOutcome(jobID, indexerID, "failed", 0, "add failed")
+		}
+	}
 }
 
 func (s *Service) resolveAllowedIndexerIDs(ctx context.Context, torrentHash string, filteringState *AsyncIndexerFilteringState, fallback []int) ([]int, string) {

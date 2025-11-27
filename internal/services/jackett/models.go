@@ -11,6 +11,8 @@ import (
 type TorznabSearchRequest struct {
 	// Query is the search term
 	Query string `json:"query"`
+	// ReleaseName is the original full release name (for debugging/logging)
+	ReleaseName string `json:"release_name,omitempty"`
 	// Categories to search
 	Categories []int `json:"categories,omitempty"`
 	// IMDbID for movies/shows (optional)
@@ -45,6 +47,8 @@ type SearchResponse struct {
 	Total   int                  `json:"total"`
 	Cache   *SearchCacheMetadata `json:"cache,omitempty"`
 	Partial bool                 `json:"partial,omitempty"`
+	// JobID identifies this search for outcome tracking (cross-seed)
+	JobID uint64 `json:"jobId,omitempty"`
 }
 
 // SearchCacheMetadata describes how the response was sourced.

@@ -999,6 +999,74 @@ export interface TorznabIndexerHealth {
   last_measured_at?: string
 }
 
+// Activity/Scheduler types
+export interface SchedulerTaskStatus {
+  jobId: number
+  taskId: number
+  indexerId: number
+  indexerName: string
+  priority: string
+  createdAt: string
+  isRss: boolean
+}
+
+export interface SchedulerJobStatus {
+  jobId: number
+  totalTasks: number
+  completedTasks: number
+}
+
+export interface SchedulerStatus {
+  queuedTasks: SchedulerTaskStatus[]
+  inFlightTasks: SchedulerTaskStatus[]
+  activeJobs: SchedulerJobStatus[]
+  queueLength: number
+  workerCount: number
+  workersInUse: number
+}
+
+export interface IndexerCooldownStatus {
+  indexerId: number
+  indexerName: string
+  cooldownEnd: string
+  reason?: string
+}
+
+export interface IndexerActivityStatus {
+  scheduler?: SchedulerStatus
+  cooldownIndexers: IndexerCooldownStatus[]
+}
+
+export interface SearchHistoryEntry {
+  id: number
+  jobId: number
+  taskId: number
+  indexerId: number
+  indexerName: string
+  query?: string
+  releaseName?: string
+  params?: Record<string, string>
+  categories?: number[]
+  contentType?: string
+  priority: string
+  searchMode?: string
+  status: "success" | "error" | "skipped" | "rate_limited"
+  resultCount: number
+  startedAt: string
+  completedAt: string
+  durationMs: number
+  errorMessage?: string
+  // Cross-seed outcome tracking
+  outcome?: "added" | "failed" | "no_match" | ""
+  addedCount?: number
+}
+
+export interface SearchHistoryResponse {
+  entries: SearchHistoryEntry[]
+  total: number
+  source: string
+}
+
 export interface TorznabIndexerFormData {
   name: string
   base_url: string
@@ -1370,26 +1438,3 @@ export interface CrossSeedSearchStatus {
   nextRunAt?: string
 }
 
-// Prowlarr History Types
-export interface ProwlarrHistoryEntry {
-  id: number
-  indexerId: number
-  indexerName: string
-  date: string
-  successful: boolean
-  eventType: "IndexerRss" | "IndexerQuery" | "ReleaseGrabbed" | "IndexerAuth" | string
-  downloadId?: string
-  data: Record<string, string>
-}
-
-export interface ProwlarrServerHistory {
-  serverUrl: string
-  serverName: string
-  totalRecords: number
-  records: ProwlarrHistoryEntry[]
-  error?: string
-}
-
-export interface ProwlarrHistoryResponse {
-  servers: ProwlarrServerHistory[]
-}
