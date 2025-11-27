@@ -2381,10 +2381,21 @@ func (s *Service) processCrossSeedCandidate(
 	candidateRoot := detectCommonRoot(candidateFiles)
 
 	// Special case: single file source going into folder candidate
-	// Use "Subfolder" layout so qBittorrent creates the folder based on renamed torrent name
-	// This allows TMM to stay enabled since savePath matches props.SavePath
 	if sourceRoot == "" && candidateRoot != "" {
-		options["contentLayout"] = "Subfolder"
+		// Parse releases to detect TV episode into season pack
+		newRelease := s.releaseCache.Parse(torrentName)
+		matchedRelease := s.releaseCache.Parse(matchedTorrent.Name)
+
+		// TV episode into season pack: NoSubfolder (ContentPath already includes folder)
+		// For this case, determineSavePath returns the season pack's ContentPath
+		if newRelease.Series > 0 && newRelease.Episode > 0 &&
+			matchedRelease.Series > 0 && matchedRelease.Episode == 0 {
+			options["contentLayout"] = "NoSubfolder"
+		} else {
+			// Non-TV (movies, etc.): Subfolder layout creates folder from torrent name
+			// This allows TMM to stay enabled since savePath matches props.SavePath
+			options["contentLayout"] = "Subfolder"
+		}
 	} else if prefs.TorrentContentLayout == "NoSubfolder" {
 		// If the current content layout is "NoSubfolder", qBittorrent will place files directly
 		// in the save path regardless of folder structure
@@ -2817,11 +2828,30 @@ func (s *Service) determineSavePath(newTorrentName string, matchedTorrent *qbt.T
 			return filepath.ToSlash(props.SavePath)
 		}
 
-		// If source has no root folder but candidate does, return SavePath
-		// The contentLayout will be set to "Subfolder" which makes qBittorrent
-		// create a folder based on the renamed torrent name (which matches candidateRoot)
-		// This allows TMM to stay enabled since savePath matches props.SavePath
+		// If source has no root folder but candidate does
 		if sourceRoot == "" && candidateRoot != "" {
+			// Parse releases to detect TV episode into season pack
+			newRelease := s.releaseCache.Parse(newTorrentName)
+			matchedRelease := s.releaseCache.Parse(matchedTorrent.Name)
+
+			// TV episode going into season pack: use ContentPath (the season pack folder)
+			// This ensures the episode file ends up in the season pack folder, not a new folder
+			// named after the episode torrent
+			if newRelease.Series > 0 && newRelease.Episode > 0 &&
+				matchedRelease.Series > 0 && matchedRelease.Episode == 0 &&
+				matchedTorrent.ContentPath != "" {
+				log.Debug().
+					Str("newTorrent", newTorrentName).
+					Str("matchedTorrent", matchedTorrent.Name).
+					Str("contentPath", matchedTorrent.ContentPath).
+					Msg("Cross-seeding TV episode into season pack, using ContentPath")
+				return filepath.ToSlash(matchedTorrent.ContentPath)
+			}
+
+			// Non-TV (movies, etc.): use SavePath with Subfolder layout
+			// The contentLayout will be set to "Subfolder" which makes qBittorrent
+			// create a folder based on the renamed torrent name (which matches candidateRoot)
+			// This allows TMM to stay enabled since savePath matches props.SavePath
 			log.Debug().
 				Str("newTorrent", newTorrentName).
 				Str("matchedTorrent", matchedTorrent.Name).

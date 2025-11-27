@@ -328,7 +328,7 @@ func TestDetermineSavePath(t *testing.T) {
 			description:    "Partial-in-pack uses ContentPath, not SavePath",
 		},
 		{
-			name:               "partial-in-pack episode in season pack",
+			name:               "partial-in-pack episode in season pack (folder source)",
 			newTorrentName:     "Show.S01E05.1080p.WEB-DL.x264-GROUP",
 			matchedTorrentName: "Show.S01.1080p.BluRay.x264-OTHER",
 			matchedContentPath: "/data/media/Shows/Show.S01.1080p.BluRay.x264-OTHER",
@@ -338,6 +338,18 @@ func TestDetermineSavePath(t *testing.T) {
 			candidateFiles: qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-OTHER/ep1.mkv"}},
 			wantPath:       "/data/media/Shows/Show.S01.1080p.BluRay.x264-OTHER",
 			description:    "Partial-in-pack episode uses season pack's ContentPath",
+		},
+		{
+			name:               "partial-in-pack single-file episode into season pack folder",
+			newTorrentName:     "Show.S01E05.1080p.WEB-DL.x264-GROUP",
+			matchedTorrentName: "Show.S01.1080p.BluRay.x264-OTHER",
+			matchedContentPath: "/data/media/Shows/Show.S01.1080p.BluRay.x264-OTHER",
+			baseSavePath:       "/data/media/Shows", contentLayout: "Original",
+			matchType:      "partial-in-pack",
+			sourceFiles:    qbt.TorrentFiles{{Name: "ep.mkv"}}, // Single file, no folder
+			candidateFiles: qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-OTHER/ep1.mkv"}},
+			wantPath:       "/data/media/Shows/Show.S01.1080p.BluRay.x264-OTHER",
+			description:    "Single-file TV episode uses season pack's ContentPath, not SavePath+Subfolder",
 		},
 		{
 			name:               "partial-in-pack with empty ContentPath uses candidateRoot",
@@ -618,8 +630,8 @@ func TestDetermineSavePath(t *testing.T) {
 				{Name: "The.Show.S01.1080p-GRP/The.Show.S01E02.1080p-GRP.mkv", Size: 2 << 30},
 				{Name: "The.Show.S01.1080p-GRP/The.Show.S01E03.1080p-GRP.mkv", Size: 2 << 30},
 			},
-			wantPath:    "/tv",
-			description: "Loose episode uses SavePath, Subfolder layout creates folder",
+			wantPath:    "/tv/The.Show.S01.1080p-GRP",
+			description: "TV episode into season pack uses ContentPath, NoSubfolder layout",
 		},
 
 		// T2: Single episode seeded (no folder), match season pack
@@ -1218,11 +1230,12 @@ func TestPartialInPackIntegration(t *testing.T) {
 	require.Equal(t, "partial-in-pack", matchType,
 		"episode matched against season pack should produce partial-in-pack match type")
 
-	// Step 2: Verify determineSavePath uses SavePath (Subfolder layout will create folder)
-	// Single file source going into folder candidate now uses SavePath + Subfolder layout
+	// Step 2: Verify determineSavePath uses ContentPath for TV episode into season pack
+	// TV episodes going into season packs should use the season pack's ContentPath directly
+	// with NoSubfolder layout (not SavePath + Subfolder which would create wrong folder name)
 	savePath := svc.determineSavePath(episodeName, seasonPackTorrent, seasonPackProps, matchType, episodeFiles, seasonPackFiles, "Original")
-	require.Equal(t, "/downloads/tv", savePath,
-		"partial-in-pack single file into folder uses SavePath, Subfolder layout creates folder")
+	require.Equal(t, "/downloads/tv/The.Show.S01.1080p.BluRay.x264-GRP", savePath,
+		"TV episode into season pack uses ContentPath directly")
 }
 
 // TestPartialInPackMovieCollectionIntegration verifies partial-in-pack for movie collections.
@@ -2667,6 +2680,48 @@ func TestDetermineSavePathContentLayoutScenarios(t *testing.T) {
 			candidateFiles:     qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-OTHER/ep1.mkv"}},
 			wantPath:           "/data/media/Shows/Show.S01.1080p.BluRay.x264-OTHER",
 			description:        "NoSubfolder layout: Partial-in-pack uses ContentPath",
+		},
+
+		// Single-file TV episode into season pack (the specific bug fix scenario)
+		// These verify that single-file episodes use ContentPath (not SavePath+Subfolder)
+		{
+			name:               "original_layout_single_file_episode_into_season_pack",
+			newTorrentName:     "Show.S01E05.1080p.WEB-DL.x264-GROUP",
+			matchedTorrentName: "Show.S01.1080p.BluRay.x264-OTHER",
+			matchedContentPath: "/data/media/Shows/Show.S01.1080p.BluRay.x264-OTHER",
+			baseSavePath:       "/data/media/Shows",
+			contentLayout:      "Original",
+			matchType:          "partial-in-pack",
+			sourceFiles:        qbt.TorrentFiles{{Name: "ep.mkv"}}, // Single file, no folder
+			candidateFiles:     qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-OTHER/ep1.mkv"}},
+			wantPath:           "/data/media/Shows/Show.S01.1080p.BluRay.x264-OTHER",
+			description:        "Original layout: Single-file TV episode uses ContentPath, NoSubfolder layout required",
+		},
+		{
+			name:               "subfolder_layout_single_file_episode_into_season_pack",
+			newTorrentName:     "Show.S01E05.1080p.WEB-DL.x264-GROUP",
+			matchedTorrentName: "Show.S01.1080p.BluRay.x264-OTHER",
+			matchedContentPath: "/data/media/Shows/Show.S01.1080p.BluRay.x264-OTHER",
+			baseSavePath:       "/data/media/Shows",
+			contentLayout:      "Subfolder",
+			matchType:          "partial-in-pack",
+			sourceFiles:        qbt.TorrentFiles{{Name: "ep.mkv"}}, // Single file, no folder
+			candidateFiles:     qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-OTHER/ep1.mkv"}},
+			wantPath:           "/data/media/Shows/Show.S01.1080p.BluRay.x264-OTHER",
+			description:        "Subfolder layout: Single-file TV episode uses ContentPath, NoSubfolder layout required",
+		},
+		{
+			name:               "nosubfolder_layout_single_file_episode_into_season_pack",
+			newTorrentName:     "Show.S01E05.1080p.WEB-DL.x264-GROUP",
+			matchedTorrentName: "Show.S01.1080p.BluRay.x264-OTHER",
+			matchedContentPath: "/data/media/Shows/Show.S01.1080p.BluRay.x264-OTHER",
+			baseSavePath:       "/data/media/Shows",
+			contentLayout:      "NoSubfolder",
+			matchType:          "partial-in-pack",
+			sourceFiles:        qbt.TorrentFiles{{Name: "ep.mkv"}}, // Single file, no folder
+			candidateFiles:     qbt.TorrentFiles{{Name: "Show.S01.1080p.BluRay.x264-OTHER/ep1.mkv"}},
+			wantPath:           "/data/media/Shows/Show.S01.1080p.BluRay.x264-OTHER",
+			description:        "NoSubfolder layout: Single-file TV episode uses ContentPath",
 		},
 
 		// Movie collection scenarios
