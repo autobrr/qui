@@ -2348,9 +2348,10 @@ func (s *Service) processCrossSeedCandidate(
 	// when we have a specific calculated path that differs from the default category path
 	useAutoTMM := matchedTorrent.AutoManaged
 
-	// For partial-in-pack or different root scenarios, we MUST use our calculated savePath
-	// Disable autoTMM to ensure qBittorrent uses our path instead of category defaults
-	if matchType == "partial-in-pack" || savePath != props.SavePath {
+	// Disable autoTMM only when our calculated savePath differs from the matched torrent's SavePath
+	// This handles partial-in-pack with folders (where savePath is the folder) while allowing
+	// single-file to single-file matches (where savePath == props.SavePath) to use TMM
+	if savePath != props.SavePath {
 		useAutoTMM = false
 	}
 
@@ -2786,14 +2787,31 @@ func decodeBase64Variants(data string) ([]byte, error) {
 // - Partial-in-pack matches where files exist inside the matched torrent's content directory
 func (s *Service) determineSavePath(newTorrentName string, matchedTorrent *qbt.Torrent, props *qbt.TorrentProperties, matchType string, sourceFiles, candidateFiles qbt.TorrentFiles, contentLayout string) string {
 	// Normalize path separators in SavePath and ContentPath to ensure cross-platform compatibility
-	props.SavePath = filepath.ToSlash(props.SavePath)
-	matchedTorrent.ContentPath = filepath.ToSlash(matchedTorrent.ContentPath)
+	// Use strings.ReplaceAll instead of filepath.ToSlash because on Unix, backslash is a valid
+	// filename character (not a separator), but qBittorrent paths from Windows use backslashes
+	props.SavePath = strings.ReplaceAll(props.SavePath, "\\", "/")
+	matchedTorrent.ContentPath = strings.ReplaceAll(matchedTorrent.ContentPath, "\\", "/")
 
 	sourceRoot := detectCommonRoot(sourceFiles)
 	candidateRoot := detectCommonRoot(candidateFiles)
 
 	// For partial-in-pack, files exist inside the matched torrent's content directory
 	if matchType == "partial-in-pack" {
+		// If candidate is a single file (no root folder), use SavePath
+		// ContentPath for single files is the full file path, not the directory
+		// This handles both:
+		// - sourceRoot == "" && candidateRoot == "" (both single files)
+		// - sourceRoot != "" && candidateRoot == "" (folder source, single file candidate)
+		if candidateRoot == "" {
+			log.Debug().
+				Str("newTorrent", newTorrentName).
+				Str("matchedTorrent", matchedTorrent.Name).
+				Str("sourceRoot", sourceRoot).
+				Str("savePath", props.SavePath).
+				Msg("Cross-seeding partial-in-pack to single file, using save path")
+			return filepath.ToSlash(props.SavePath)
+		}
+
 		// If source has no root folder but candidate does, we need to place the file
 		// inside the candidate's root folder
 		if sourceRoot == "" && candidateRoot != "" {
