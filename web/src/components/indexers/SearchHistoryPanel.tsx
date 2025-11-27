@@ -16,6 +16,115 @@ import type { SearchHistoryEntry } from "@/types"
 import { AlertCircle, CheckCircle2, ChevronDown, Clock, History, Loader2, Plus, XCircle } from "lucide-react"
 import { type ReactNode, useState } from "react"
 
+// Torznab standard category mappings (matches pkg/gojackett/constants.go)
+const CATEGORY_MAP: Record<string, string> = {
+  // Parent categories
+  "1000": "Console",
+  "2000": "Movies",
+  "3000": "Audio",
+  "4000": "PC",
+  "5000": "TV",
+  "6000": "XXX",
+  "7000": "Other",
+  "8000": "Books",
+  // TV subcategories
+  "5010": "TV Web",
+  "5020": "TV Foreign",
+  "5030": "TV SD",
+  "5040": "TV HD",
+  "5045": "TV UHD",
+  "5060": "TV Sport",
+  "5070": "TV Anime",
+  "5080": "TV Documentary",
+  "5090": "TV Other",
+  // Movie subcategories
+  "2010": "Movies Foreign",
+  "2020": "Movies Other",
+  "2030": "Movies SD",
+  "2040": "Movies HD",
+  "2045": "Movies UHD",
+  "2050": "Movies BluRay",
+  "2060": "Movies 3D",
+  "2070": "Movies Web",
+  // Audio subcategories
+  "3010": "Audio MP3",
+  "3020": "Audio Video",
+  "3030": "Audiobook",
+  "3040": "Audio Lossless",
+  "3050": "Audio Other",
+  "3060": "Audio Foreign",
+}
+
+interface ParamBadge {
+  label: string
+  value?: string
+}
+
+// Transform raw torznab params into semantic badges
+function transformParams(params: Record<string, string>): ParamBadge[] {
+  const badges: ParamBadge[] = []
+  const consumed = new Set<string>()
+
+  // Season and episode as separate badges
+  if (params.season) {
+    badges.push({ label: "Season", value: params.season })
+    consumed.add("season")
+  }
+  if (params.ep) {
+    badges.push({ label: "Episode", value: params.ep })
+    consumed.add("ep")
+  }
+
+  // Map category ID to name with number in parentheses
+  if (params.cat) {
+    // Handle comma-separated categories, use first one for display
+    const firstCat = params.cat.split(",")[0]
+    // Try exact match first, then fall back to parent category (e.g., 5030 -> 5000 -> TV)
+    let catName = CATEGORY_MAP[firstCat]
+    if (!catName && firstCat.length >= 4) {
+      const parentCat = `${firstCat.slice(0, 1)}000`
+      catName = CATEGORY_MAP[parentCat]
+    }
+    const catLabel = catName ? `${catName} (${firstCat})` : firstCat
+    badges.push({ label: catLabel })
+    consumed.add("cat")
+  }
+
+  // Year as standalone badge
+  if (params.year) {
+    badges.push({ label: params.year })
+    consumed.add("year")
+  }
+
+  // External IDs with labels
+  const idMappings: [string, string][] = [
+    ["imdbid", "IMDB"],
+    ["tmdbid", "TMDB"],
+    ["tvdbid", "TVDB"],
+    ["tvmazeid", "TVMaze"],
+    ["rid", "TVRage"],
+  ]
+  for (const [key, label] of idMappings) {
+    if (params[key]) {
+      badges.push({ label, value: params[key] })
+      consumed.add(key)
+    }
+  }
+
+  // Skip redundant params (already shown elsewhere)
+  consumed.add("t") // Shown as Mode in footer
+  consumed.add("q") // Already filtered out
+
+  // Remaining params with key: value format
+  for (const [key, value] of Object.entries(params)) {
+    if (!consumed.has(key)) {
+      badges.push({ label: key, value })
+    }
+  }
+
+  return badges
+}
+
 export function SearchHistoryPanel() {
   const [isOpen, setIsOpen] = useState(true)
   const [selectedEntry, setSelectedEntry] = useState<SearchHistoryEntry | null>(null)
@@ -196,10 +305,8 @@ function SearchDetailDialog({ entry, open, onClose }: SearchDetailDialogProps) {
     ? `${entry.durationMs}ms`
     : `${(entry.durationMs / 1000).toFixed(2)}s`
 
-  // Filter out params that are already shown elsewhere
-  const filteredParams = entry.params
-    ? Object.entries(entry.params).filter(([key]) => !["q"].includes(key))
-    : []
+  // Transform params into semantic badges
+  const paramBadges = entry.params ? transformParams(entry.params) : []
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
@@ -274,23 +381,17 @@ function SearchDetailDialog({ entry, open, onClose }: SearchDetailDialogProps) {
           )}
 
           {/* Request Parameters */}
-          {filteredParams.length > 0 && (
-            <div>
+          {paramBadges.length > 0 && (
+            <div className="rounded-lg border border-dashed border-border bg-muted/20 p-3">
               <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">
-                Request Parameters
+                Search Parameters
               </div>
-              <div className="rounded-lg border border-border bg-muted/60 overflow-hidden">
-                <div className="p-3 font-mono text-xs leading-relaxed max-h-36 overflow-y-auto">
-                  {filteredParams
-                    .sort(([a], [b]) => a.localeCompare(b))
-                    .map(([key, value]) => (
-                      <div key={key} className="flex">
-                        <span className="text-primary/80 shrink-0 w-16">{key}</span>
-                        <span className="text-muted-foreground mx-1">=</span>
-                        <span className="text-foreground/80 break-all">{value}</span>
-                      </div>
-                    ))}
-                </div>
+              <div className="flex flex-wrap gap-1.5">
+                {paramBadges.map((badge, i) => (
+                  <Badge key={i} variant="outline" className="text-xs font-normal">
+                    {badge.value ? `${badge.label}: ${badge.value}` : badge.label}
+                  </Badge>
+                ))}
               </div>
             </div>
           )}
