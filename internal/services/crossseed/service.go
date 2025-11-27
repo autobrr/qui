@@ -869,6 +869,62 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 	}
 }
 
+// updateAutomationRunWithRetry attempts to update the automation run in the database with retries
+func (s *Service) updateAutomationRunWithRetry(ctx context.Context, run *models.CrossSeedRun) (*models.CrossSeedRun, error) {
+	const maxRetries = 3
+	var lastErr error
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			// Wait before retry
+			select {
+			case <-ctx.Done():
+				return run, ctx.Err()
+			case <-time.After(time.Duration(attempt) * 100 * time.Millisecond):
+			}
+		}
+
+		updated, err := s.automationStore.UpdateRun(ctx, run)
+		if err == nil {
+			return updated, nil
+		}
+
+		lastErr = err
+		log.Warn().Err(err).Int("attempt", attempt+1).Int64("runID", run.ID).Msg("Failed to update automation run, retrying")
+	}
+
+	log.Error().Err(lastErr).Int64("runID", run.ID).Msg("Failed to update automation run after retries")
+	return run, lastErr
+}
+
+// updateSearchRunWithRetry attempts to update the search run in the database with retries
+func (s *Service) updateSearchRunWithRetry(ctx context.Context, run *models.CrossSeedSearchRun) (*models.CrossSeedSearchRun, error) {
+	const maxRetries = 3
+	var lastErr error
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			// Wait before retry
+			select {
+			case <-ctx.Done():
+				return run, ctx.Err()
+			case <-time.After(time.Duration(attempt) * 100 * time.Millisecond):
+			}
+		}
+
+		updated, err := s.automationStore.UpdateSearchRun(ctx, run)
+		if err == nil {
+			return updated, nil
+		}
+
+		lastErr = err
+		log.Warn().Err(err).Int("attempt", attempt+1).Int64("runID", run.ID).Msg("Failed to update search run, retrying")
+	}
+
+	log.Error().Err(lastErr).Int64("runID", run.ID).Msg("Failed to update search run after retries")
+	return run, lastErr
+}
+
 // GetAutomationStatus returns scheduler information for the API.
 func (s *Service) GetAutomationStatus(ctx context.Context) (*AutomationStatus, error) {
 	settings, err := s.GetAutomationSettings(ctx)
@@ -886,6 +942,24 @@ func (s *Service) GetAutomationStatus(ctx context.Context) (*AutomationStatus, e
 		if err != nil {
 			return nil, fmt.Errorf("load latest automation run: %w", err)
 		}
+
+		// Check if the last run is stuck in running status (e.g., due to crash)
+		if lastRun != nil && lastRun.Status == models.CrossSeedRunStatusRunning {
+			// If it's been running for more than 5 minutes, mark it as failed
+			if time.Since(lastRun.StartedAt) > 5*time.Minute {
+				lastRun.Status = models.CrossSeedRunStatusFailed
+				msg := "automation run timed out (stuck for >5 minutes)"
+				lastRun.ErrorMessage = &msg
+				completed := time.Now().UTC()
+				lastRun.CompletedAt = &completed
+				if updated, updateErr := s.automationStore.UpdateRun(ctx, lastRun); updateErr != nil {
+					log.Warn().Err(updateErr).Int64("runID", lastRun.ID).Msg("failed to update stuck automation run")
+				} else {
+					lastRun = updated
+				}
+			}
+		}
+
 		status.LastRun = lastRun
 
 		delay, shouldRun := s.computeNextRunDelay(ctx, settings)
@@ -1143,7 +1217,7 @@ func (s *Service) GetSearchRunStatus(ctx context.Context) (*SearchRunStatus, err
 
 	s.searchMu.RLock()
 	state := s.searchState
-	if state != nil {
+	if state != nil && state.run.CompletedAt == nil {
 		status.Running = true
 		status.Run = cloneSearchRun(state.run)
 		if state.currentCandidate != nil {
@@ -1367,7 +1441,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		run.Status = models.CrossSeedRunStatusFailed
 		completed := time.Now().UTC()
 		run.CompletedAt = &completed
-		if updated, updateErr := s.automationStore.UpdateRun(ctx, run); updateErr == nil {
+		if updated, updateErr := s.updateAutomationRunWithRetry(ctx, run); updateErr == nil {
 			run = updated
 		}
 		return run, err
@@ -1382,7 +1456,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		run.Status = models.CrossSeedRunStatusFailed
 		completed := time.Now().UTC()
 		run.CompletedAt = &completed
-		if updated, updateErr := s.automationStore.UpdateRun(ctx, run); updateErr == nil {
+		if updated, updateErr := s.updateAutomationRunWithRetry(ctx, run); updateErr == nil {
 			run = updated
 		}
 		return run, err
@@ -1392,7 +1466,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		run.Status = models.CrossSeedRunStatusFailed
 		completed := time.Now().UTC()
 		run.CompletedAt = &completed
-		if updated, updateErr := s.automationStore.UpdateRun(ctx, run); updateErr == nil {
+		if updated, updateErr := s.updateAutomationRunWithRetry(ctx, run); updateErr == nil {
 			run = updated
 		}
 		return run, fmt.Errorf("recent search timed out")
@@ -1402,7 +1476,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		run.Status = models.CrossSeedRunStatusFailed
 		completed := time.Now().UTC()
 		run.CompletedAt = &completed
-		if updated, updateErr := s.automationStore.UpdateRun(ctx, run); updateErr == nil {
+		if updated, updateErr := s.updateAutomationRunWithRetry(ctx, run); updateErr == nil {
 			run = updated
 		}
 		return run, ctx.Err()
@@ -1478,7 +1552,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		run.ErrorMessage = &cancelMsg
 	}
 
-	if updated, updateErr := s.automationStore.UpdateRun(ctx, run); updateErr == nil {
+	if updated, updateErr := s.updateAutomationRunWithRetry(ctx, run); updateErr == nil {
 		run = updated
 	} else {
 		log.Warn().Err(updateErr).Msg("Failed to persist automation run update")
@@ -4033,9 +4107,6 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 	completed := time.Now().UTC()
 	s.searchMu.Lock()
 	state.run.CompletedAt = &completed
-	if s.searchState == state {
-		s.searchState.currentCandidate = nil
-	}
 	if canceled && state.lastError == nil {
 		state.run.Status = models.CrossSeedSearchRunStatusCanceled
 		msg := "search run canceled"
@@ -4047,9 +4118,12 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 	} else {
 		state.run.Status = models.CrossSeedSearchRunStatusSuccess
 	}
+	if s.searchState == state {
+		s.searchState.currentCandidate = nil
+	}
 	s.searchMu.Unlock()
 
-	if updated, err := s.automationStore.UpdateSearchRun(context.Background(), state.run); err == nil {
+	if updated, err := s.updateSearchRunWithRetry(context.Background(), state.run); err == nil {
 		s.searchMu.Lock()
 		if s.searchState == state {
 			state.run = updated
@@ -4583,29 +4657,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		})
 		s.persistSearchRun(state)
 		return nil
-	}
-
-	// Wait for RSS automation to complete before searching to avoid rate limiter contention.
-	// RSS uses higher priority (shorter intervals) so we yield to it.
-	// Cap the wait to 5 minutes to prevent indefinite blocking if RSS gets stuck.
-	wasWaitingForRSS := s.runActive.Load()
-	if wasWaitingForRSS {
-		log.Debug().Msg("[CROSSSEED-SEARCH] Waiting for RSS automation to complete before searching")
-	}
-	rssWaitDeadline := time.After(5 * time.Minute)
-rssWaitLoop:
-	for s.runActive.Load() {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-rssWaitDeadline:
-			log.Warn().Msg("[CROSSSEED-SEARCH] RSS wait timeout exceeded, proceeding with search")
-			break rssWaitLoop
-		case <-time.After(500 * time.Millisecond):
-		}
-	}
-	if wasWaitingForRSS && !s.runActive.Load() {
-		log.Debug().Msg("[CROSSSEED-SEARCH] RSS automation completed, proceeding with search")
 	}
 
 	searchCtx := ctx
