@@ -6,8 +6,8 @@
 import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { api } from "@/lib/api"
+import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import type { IndexerActivityStatus, IndexerCooldownStatus, SchedulerTaskStatus } from "@/types"
-import { formatDistanceToNow } from "date-fns"
 import { Activity, ChevronDown, Clock, Loader2, Pause, Zap } from "lucide-react"
 import { useEffect, useState } from "react"
 
@@ -164,7 +164,7 @@ function TaskRow({ task, status }: { task: SchedulerTaskStatus; status: "running
           {task.priority}
         </span>
         <span className="text-xs text-muted-foreground">
-          {formatDistanceToNow(new Date(task.createdAt), { addSuffix: true })}
+          {formatRelativeTime(new Date(task.createdAt))}
         </span>
       </div>
     </div>
@@ -187,7 +187,7 @@ function CooldownRow({ cooldown }: { cooldown: IndexerCooldownStatus }) {
           <span className="text-xs text-green-500">Ready</span>
         ) : (
           <span className="text-xs text-orange-500">
-            {formatDistanceToNow(cooldownEnd, { addSuffix: false })} left
+            {formatRelativeTime(cooldownEnd, false)} left
           </span>
         )}
       </div>

@@ -11,8 +11,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useSearchHistory } from "@/hooks/useSearchHistory"
+import { formatRelativeTime, formatTimeHMS } from "@/lib/dateTimeUtils"
 import type { SearchHistoryEntry } from "@/types"
-import { format, formatDistanceToNow } from "date-fns"
 import { AlertCircle, CheckCircle2, ChevronDown, Clock, History, Loader2, Plus, XCircle } from "lucide-react"
 import { type ReactNode, useState } from "react"
 
@@ -170,7 +170,7 @@ function HistoryRow({ entry, onClick }: HistoryRowProps) {
           {durationStr}
         </span>
         <span className="text-xs text-muted-foreground">
-          {formatDistanceToNow(new Date(entry.completedAt), { addSuffix: true })}
+          {formatRelativeTime(new Date(entry.completedAt))}
         </span>
       </div>
     </div>
@@ -316,7 +316,7 @@ function SearchDetailDialog({ entry, open, onClose }: SearchDetailDialogProps) {
               )}
             </div>
             <div className="font-mono text-[10px] text-muted-foreground/60">
-              {format(new Date(entry.completedAt), "HH:mm:ss")} · Job {entry.jobId}
+              {formatTimeHMS(new Date(entry.completedAt))} · Job {entry.jobId}
             </div>
           </div>
         </div>
