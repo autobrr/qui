@@ -1479,14 +1479,6 @@ func (m *mockTorznabIndexerStore) RecordError(ctx context.Context, indexerID int
 	return nil
 }
 
-func (m *mockTorznabIndexerStore) CountRequests(ctx context.Context, indexerID int, window time.Duration) (int, error) {
-	return 0, nil
-}
-
-func (m *mockTorznabIndexerStore) UpdateRequestLimits(ctx context.Context, indexerID int, hourly, daily *int) error {
-	return nil
-}
-
 func (m *mockTorznabIndexerStore) ListRateLimitCooldowns(ctx context.Context) ([]models.TorznabIndexerCooldown, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

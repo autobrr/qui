@@ -17,6 +17,21 @@ const (
 	defaultMinRequestInterval = 60 * time.Second
 )
 
+// escalationPeriods defines backoff durations for repeated rate limit failures.
+// Matches Prowlarr/Sonarr behavior: escalates with consecutive failures, resets on success.
+var escalationPeriods = []time.Duration{
+	0,               // Level 0: immediate retry
+	1 * time.Minute, // Level 1
+	5 * time.Minute, // Level 2
+	15 * time.Minute,
+	30 * time.Minute,
+	1 * time.Hour,
+	3 * time.Hour,
+	6 * time.Hour,
+	12 * time.Hour,
+	24 * time.Hour, // Level 9 (max)
+}
+
 var priorityMultipliers = map[RateLimitPriority]float64{
 	RateLimitPriorityInteractive: 0.1,
 	RateLimitPriorityRSS:         0.5,
@@ -79,10 +94,9 @@ func (e *RateLimitWaitError) Is(target error) bool {
 }
 
 type indexerRateState struct {
-	lastRequest    time.Duration
-	cooldownUntil  time.Duration
-	hourlyRequests []time.Duration
-	dailyRequests  []time.Duration
+	lastRequest     time.Duration
+	cooldownUntil   time.Duration
+	escalationLevel int
 }
 
 // RateLimiter tracks per-indexer request timing and computes wait times.
@@ -156,6 +170,37 @@ func (r *RateLimiter) ClearCooldown(indexerID int) {
 	state.cooldownUntil = 0
 }
 
+// RecordFailure increments the escalation level and sets a cooldown based on the new level.
+// This implements Prowlarr-style escalating backoff for rate limit failures.
+func (r *RateLimiter) RecordFailure(indexerID int) time.Duration {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	state := r.getStateLocked(indexerID)
+
+	// Increment escalation level (capped at max)
+	if state.escalationLevel < len(escalationPeriods)-1 {
+		state.escalationLevel++
+	}
+
+	cooldown := escalationPeriods[state.escalationLevel]
+	if cooldown > 0 {
+		now := time.Since(r.startTime)
+		state.cooldownUntil = now + cooldown
+	}
+
+	return cooldown
+}
+
+// RecordSuccess resets the escalation level to 0 on successful request.
+func (r *RateLimiter) RecordSuccess(indexerID int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	state := r.getStateLocked(indexerID)
+	state.escalationLevel = 0
+}
+
 // IsInCooldown checks if an indexer is currently in cooldown without blocking
 func (r *RateLimiter) IsInCooldown(indexerID int) (bool, time.Time) {
 	r.mu.Lock()
@@ -189,7 +234,6 @@ func (r *RateLimiter) computeWaitLocked(indexer *models.TorznabIndexer, now time
 		minInterval = r.minInterval
 	}
 	state := r.getStateLocked(indexer.ID)
-	r.pruneLocked(state, now)
 
 	var wait time.Duration
 
@@ -207,60 +251,7 @@ func (r *RateLimiter) computeWaitLocked(indexer *models.TorznabIndexer, now time
 		}
 	}
 
-	if limit := derefLimit(indexer.HourlyRequestLimit); limit > 0 {
-		if len(state.hourlyRequests) >= limit {
-			oldest := state.hourlyRequests[0]
-			readyAt := oldest + time.Hour
-			if readyAt > now {
-				delay := readyAt - now
-				if delay > wait {
-					wait = delay
-				}
-			}
-		}
-	}
-
-	if limit := derefLimit(indexer.DailyRequestLimit); limit > 0 {
-		if len(state.dailyRequests) >= limit {
-			oldest := state.dailyRequests[0]
-			readyAt := oldest + 24*time.Hour
-			if readyAt > now {
-				delay := readyAt - now
-				if delay > wait {
-					wait = delay
-				}
-			}
-		}
-	}
-
 	return wait
-}
-
-func (r *RateLimiter) pruneLocked(state *indexerRateState, now time.Duration) {
-	cutoffHour := now - 1*time.Hour
-	cutoffDay := now - 24*time.Hour
-
-	idx := 0
-	for _, ts := range state.hourlyRequests {
-		if ts > cutoffHour {
-			break
-		}
-		idx++
-	}
-	if idx > 0 {
-		state.hourlyRequests = state.hourlyRequests[idx:]
-	}
-
-	idx = 0
-	for _, ts := range state.dailyRequests {
-		if ts > cutoffDay {
-			break
-		}
-		idx++
-	}
-	if idx > 0 {
-		state.dailyRequests = state.dailyRequests[idx:]
-	}
 }
 
 func (r *RateLimiter) getStateLocked(indexerID int) *indexerRateState {
@@ -275,9 +266,6 @@ func (r *RateLimiter) getStateLocked(indexerID int) *indexerRateState {
 func (r *RateLimiter) recordLocked(indexerID int, ts time.Duration) {
 	state := r.getStateLocked(indexerID)
 	state.lastRequest = ts
-	state.hourlyRequests = append(state.hourlyRequests, ts)
-	state.dailyRequests = append(state.dailyRequests, ts)
-	r.pruneLocked(state, ts)
 }
 
 // NextWait returns the amount of time the caller would need to wait before a request could be made
@@ -321,16 +309,6 @@ func (r *RateLimiter) resolveOptions(opts *RateLimitOptions) RateLimitOptions {
 	}
 
 	return cfg
-}
-
-func derefLimit(limit *int) int {
-	if limit == nil {
-		return 0
-	}
-	if *limit < 0 {
-		return 0
-	}
-	return *limit
 }
 
 // Scheduler constants and types
@@ -811,10 +789,10 @@ func (s *searchScheduler) handleTaskCompleteLocked(item *taskItem, results []Res
 				entry.Status = "error"
 			}
 			entry.ErrorMessage = err.Error()
-		} else if len(results) == 0 {
-			entry.Status = "success"
 		} else {
 			entry.Status = "success"
+			// Reset escalation level on successful request
+			s.rateLimiter.RecordSuccess(task.indexer.ID)
 		}
 
 		// Record asynchronously to avoid blocking

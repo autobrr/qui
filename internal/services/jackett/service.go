@@ -39,8 +39,6 @@ type IndexerStore interface {
 	SetCategories(ctx context.Context, indexerID int, categories []models.TorznabIndexerCategory) error
 	RecordLatency(ctx context.Context, indexerID int, operationType string, latencyMs int, success bool) error
 	RecordError(ctx context.Context, indexerID int, errorMessage, errorCode string) error
-	CountRequests(ctx context.Context, indexerID int, window time.Duration) (int, error)
-	UpdateRequestLimits(ctx context.Context, indexerID int, hourly, daily *int) error
 	ListRateLimitCooldowns(ctx context.Context) ([]models.TorznabIndexerCooldown, error)
 	UpsertRateLimitCooldown(ctx context.Context, indexerID int, resumeAt time.Time, cooldown time.Duration, reason string) error
 	DeleteRateLimitCooldown(ctx context.Context, indexerID int) error
@@ -2402,16 +2400,15 @@ func extractRetryAfter(msg string) time.Duration {
 	return 0
 }
 
-func (s *Service) handleRateLimit(ctx context.Context, idx *models.TorznabIndexer, cooldown time.Duration, cause error) {
+func (s *Service) handleRateLimit(ctx context.Context, idx *models.TorznabIndexer, _ time.Duration, cause error) {
 	if idx == nil {
 		return
 	}
-	if cooldown <= 0 {
-		cooldown = defaultRateLimitCooldown
-	}
+
+	// Use escalating backoff instead of fixed cooldown
+	cooldown := s.rateLimiter.RecordFailure(idx.ID)
 	resumeAt := time.Now().Add(cooldown)
 	localResumeAt := resumeAt.In(time.Local)
-	s.rateLimiter.SetCooldown(idx.ID, resumeAt)
 
 	message := fmt.Sprintf("Rate limit triggered for %s, pausing until %s (cooldown: %v)",
 		idx.Name, localResumeAt.Format(time.RFC3339), cooldown)
@@ -2425,15 +2422,13 @@ func (s *Service) handleRateLimit(ctx context.Context, idx *models.TorznabIndexe
 		Dur("cooldown", cooldown).
 		Time("resume_at", localResumeAt).
 		Err(cause).
-		Msg("Rate limit applied to indexer")
+		Msg("Rate limit applied to indexer (escalating backoff)")
 
 	reason := message
 	if cause != nil && strings.TrimSpace(cause.Error()) != "" {
 		reason = cause.Error()
 	}
 	s.persistRateLimitCooldown(idx.ID, resumeAt, cooldown, reason)
-
-	s.adaptRequestLimits(ctx, idx)
 }
 
 func (s *Service) ensureRateLimiterState() {
@@ -2589,60 +2584,6 @@ func (s *Service) isCooldownPersisted(indexerID int) bool {
 
 	_, ok := s.persistedCooldowns[indexerID]
 	return ok
-}
-
-func (s *Service) adaptRequestLimits(ctx context.Context, idx *models.TorznabIndexer) {
-	if idx == nil {
-		return
-	}
-	if hourCount, err := s.indexerStore.CountRequests(ctx, idx.ID, time.Hour); err == nil {
-		if limit, ok := inferredLimitFromCount(hourCount); ok {
-			if idx.HourlyRequestLimit == nil || limit < *idx.HourlyRequestLimit {
-				if err := s.indexerStore.UpdateRequestLimits(ctx, idx.ID, &limit, nil); err != nil {
-					log.Debug().Err(err).Int("indexer_id", idx.ID).Msg("Failed to persist hourly request limit")
-				} else {
-					idx.HourlyRequestLimit = &limit
-					log.Info().
-						Int("indexer_id", idx.ID).
-						Str("indexer", idx.Name).
-						Int("hourly_limit", limit).
-						Msg("Updated inferred hourly request limit")
-				}
-			}
-		}
-	} else {
-		log.Debug().Err(err).Int("indexer_id", idx.ID).Msg("Failed to count hourly requests for rate limit")
-	}
-
-	if dayCount, err := s.indexerStore.CountRequests(ctx, idx.ID, 24*time.Hour); err == nil {
-		if limit, ok := inferredLimitFromCount(dayCount); ok {
-			if idx.DailyRequestLimit == nil || limit < *idx.DailyRequestLimit {
-				if err := s.indexerStore.UpdateRequestLimits(ctx, idx.ID, nil, &limit); err != nil {
-					log.Debug().Err(err).Int("indexer_id", idx.ID).Msg("Failed to persist daily request limit")
-				} else {
-					idx.DailyRequestLimit = &limit
-					log.Info().
-						Int("indexer_id", idx.ID).
-						Str("indexer", idx.Name).
-						Int("daily_limit", limit).
-						Msg("Updated inferred daily request limit")
-				}
-			}
-		}
-	} else {
-		log.Debug().Err(err).Int("indexer_id", idx.ID).Msg("Failed to count daily requests for rate limit")
-	}
-}
-
-func inferredLimitFromCount(count int) (int, bool) {
-	if count <= 0 {
-		return 0, false
-	}
-	limit := count - 1
-	if limit <= 0 {
-		limit = 1
-	}
-	return limit, true
 }
 
 func requiredCapabilities(meta *searchContext) []string {
