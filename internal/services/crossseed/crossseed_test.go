@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/anacrolix/torrent/bencode"
 	"github.com/anacrolix/torrent/metainfo"
@@ -2658,4 +2659,459 @@ func TestDetermineSavePathContentLayoutScenarios(t *testing.T) {
 				"ContentLayout=%s: %s", tt.contentLayout, tt.description)
 		})
 	}
+}
+
+// mockRecoverSyncManager simulates torrent state changes during recheck operations
+type mockRecoverSyncManager struct {
+	torrents                    map[string]*qbt.Torrent // hash -> torrent
+	calls                       []string                // track method calls for verification
+	recheckCompletes            bool                    // whether recheck should complete torrents
+	disappearAfterRecheck       bool                    // whether torrent disappears after recheck
+	bulkActionFails             bool                    // whether BulkAction should fail
+	keepInCheckingState         bool                    // whether to keep torrent in checking state
+	failGetTorrentsAfterRecheck bool                    // whether GetTorrents should fail after recheck
+	setProgressToThreshold      bool                    // whether to set progress exactly at threshold
+	hasRechecked                bool                    // track if recheck has been called
+}
+
+func newMockRecoverSyncManager(initialTorrents []qbt.Torrent) *mockRecoverSyncManager {
+	torrents := make(map[string]*qbt.Torrent)
+	for _, t := range initialTorrents {
+		torrent := t // copy
+		torrents[t.Hash] = &torrent
+	}
+	return &mockRecoverSyncManager{
+		torrents:                    torrents,
+		calls:                       []string{},
+		recheckCompletes:            true, // default to completing
+		disappearAfterRecheck:       false,
+		bulkActionFails:             false,
+		keepInCheckingState:         false,
+		failGetTorrentsAfterRecheck: false,
+		setProgressToThreshold:      false,
+		hasRechecked:                false,
+	}
+}
+
+func (m *mockRecoverSyncManager) GetTorrents(_ context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+	m.calls = append(m.calls, "GetTorrents")
+
+	if m.failGetTorrentsAfterRecheck && m.hasRechecked {
+		// Return empty list to simulate torrent disappearing
+		return []qbt.Torrent{}, nil
+	}
+
+	var result []qbt.Torrent
+	if len(filter.Hashes) > 0 {
+		for _, hash := range filter.Hashes {
+			if torrent, ok := m.torrents[hash]; ok {
+				result = append(result, *torrent)
+			}
+		}
+	} else {
+		for _, torrent := range m.torrents {
+			result = append(result, *torrent)
+		}
+	}
+	return result, nil
+}
+
+func (m *mockRecoverSyncManager) BulkAction(_ context.Context, instanceID int, hashes []string, action string) error {
+	m.calls = append(m.calls, fmt.Sprintf("BulkAction:%s:%v", action, hashes))
+
+	if m.bulkActionFails {
+		return errors.New("bulk action failed")
+	}
+
+	if action == "recheck" {
+		m.hasRechecked = true
+		for _, hash := range hashes {
+			if torrent, ok := m.torrents[hash]; ok {
+				if m.disappearAfterRecheck {
+					delete(m.torrents, hash)
+				} else if m.keepInCheckingState {
+					torrent.State = qbt.TorrentStateCheckingDl
+				} else if m.recheckCompletes {
+					torrent.State = qbt.TorrentStatePausedDl
+					torrent.Progress = 1.0
+				} else if m.setProgressToThreshold {
+					torrent.State = qbt.TorrentStatePausedDl
+					torrent.Progress = 0.95 // Exactly at threshold with 5% tolerance
+				} else {
+					// Leave incomplete
+					torrent.State = qbt.TorrentStatePausedDl
+					torrent.Progress = 0.5 // incomplete
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// Simulate state progression after recheck
+func (m *mockRecoverSyncManager) simulateRecheckComplete(hash string, finalProgress float64, finalState qbt.TorrentState) {
+	if torrent, ok := m.torrents[hash]; ok {
+		torrent.Progress = finalProgress
+		torrent.State = finalState
+	}
+}
+
+func (m *mockRecoverSyncManager) GetTorrentFilesBatch(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (m *mockRecoverSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+	return nil, false, fmt.Errorf("not implemented")
+}
+
+func (m *mockRecoverSyncManager) GetTorrentProperties(context.Context, int, string) (*qbt.TorrentProperties, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (m *mockRecoverSyncManager) GetAppPreferences(context.Context, int) (qbt.AppPreferences, error) {
+	return qbt.AppPreferences{}, nil
+}
+
+func (m *mockRecoverSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (m *mockRecoverSyncManager) RenameTorrent(context.Context, int, string, string) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (m *mockRecoverSyncManager) RenameTorrentFile(context.Context, int, string, string, string) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (m *mockRecoverSyncManager) RenameTorrentFolder(context.Context, int, string, string, string) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (m *mockRecoverSyncManager) SetTags(context.Context, int, []string, string) error {
+	return nil
+}
+
+func (m *mockRecoverSyncManager) GetCachedInstanceTorrents(context.Context, int) ([]internalqb.CrossInstanceTorrentView, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (m *mockRecoverSyncManager) ExtractDomainFromURL(string) string {
+	return ""
+}
+
+func (m *mockRecoverSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func TestRecoverErroredTorrents_NoErroredTorrents(t *testing.T) {
+	// Test with no errored torrents
+	normalTorrent := qbt.Torrent{
+		Hash:     "normal123",
+		Name:     "normal.torrent",
+		State:    qbt.TorrentStateDownloading,
+		Progress: 0.5,
+	}
+
+	mockSync := newMockRecoverSyncManager([]qbt.Torrent{normalTorrent})
+	svc := &Service{syncManager: mockSync}
+
+	err := svc.recoverErroredTorrents(context.Background(), 1, []qbt.Torrent{normalTorrent})
+	require.NoError(t, err)
+
+	// Should not have made any calls
+	assert.Empty(t, mockSync.calls)
+}
+
+func TestRecoverErroredTorrents_SingleErroredTorrent(t *testing.T) {
+	erroredTorrent := qbt.Torrent{
+		Hash:     "error123",
+		Name:     "errored.torrent",
+		State:    qbt.TorrentStateError,
+		Progress: 0.0,
+	}
+
+	mockSync := newMockRecoverSyncManager([]qbt.Torrent{erroredTorrent})
+	svc := &Service{syncManager: mockSync}
+
+	err := svc.recoverErroredTorrents(context.Background(), 1, []qbt.Torrent{erroredTorrent})
+	require.NoError(t, err)
+
+	// Should have attempted recheck
+	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error123]")
+}
+
+func TestRecoverErroredTorrents_MultipleErroredTorrents(t *testing.T) {
+	erroredTorrent1 := qbt.Torrent{
+		Hash:     "error123",
+		Name:     "errored1.torrent",
+		State:    qbt.TorrentStateError,
+		Progress: 0.0,
+	}
+	erroredTorrent2 := qbt.Torrent{
+		Hash:     "error456",
+		Name:     "errored2.torrent",
+		State:    qbt.TorrentStateError,
+		Progress: 0.0,
+	}
+	normalTorrent := qbt.Torrent{
+		Hash:     "normal123",
+		Name:     "normal.torrent",
+		State:    qbt.TorrentStateDownloading,
+		Progress: 0.5,
+	}
+
+	mockSync := newMockRecoverSyncManager([]qbt.Torrent{erroredTorrent1, erroredTorrent2, normalTorrent})
+	svc := &Service{syncManager: mockSync}
+
+	err := svc.recoverErroredTorrents(context.Background(), 1, []qbt.Torrent{erroredTorrent1, erroredTorrent2, normalTorrent})
+	require.NoError(t, err)
+
+	// Should have attempted recheck on both errored torrents
+	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error123]")
+	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error456]")
+	// Should not have rechecked the normal torrent
+	assert.NotContains(t, mockSync.calls, "BulkAction:recheck:[normal123]")
+}
+
+func TestRecoverErroredTorrents_MissingFilesState(t *testing.T) {
+	missingFilesTorrent := qbt.Torrent{
+		Hash:     "missing123",
+		Name:     "missing.torrent",
+		State:    qbt.TorrentStateMissingFiles,
+		Progress: 0.0,
+	}
+
+	mockSync := newMockRecoverSyncManager([]qbt.Torrent{missingFilesTorrent})
+	svc := &Service{syncManager: mockSync}
+
+	err := svc.recoverErroredTorrents(context.Background(), 1, []qbt.Torrent{missingFilesTorrent})
+	require.NoError(t, err)
+
+	// Should have attempted recheck
+	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[missing123]")
+}
+
+func TestRecoverSingleErroredTorrent_RemainsIncomplete(t *testing.T) {
+	erroredTorrent := qbt.Torrent{
+		Hash:     "error123",
+		Name:     "errored.torrent",
+		State:    qbt.TorrentStateError,
+		Progress: 0.0,
+	}
+
+	mockSync := newMockRecoverSyncManager([]qbt.Torrent{erroredTorrent})
+	// Configure mock to not complete the torrent after recheck
+	mockSync.recheckCompletes = false
+	svc := &Service{syncManager: mockSync}
+
+	err := svc.recoverSingleErroredTorrent(context.Background(), 1, erroredTorrent)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "torrent not complete after recheck")
+
+	// Should have attempted recheck
+	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error123]")
+}
+
+func TestRecoverSingleErroredTorrent_DisappearsDuringRecheck(t *testing.T) {
+	erroredTorrent := qbt.Torrent{
+		Hash:     "error123",
+		Name:     "errored.torrent",
+		State:    qbt.TorrentStateError,
+		Progress: 0.0,
+	}
+
+	mockSync := newMockRecoverSyncManager([]qbt.Torrent{erroredTorrent})
+	// Configure mock to make torrent disappear after recheck
+	mockSync.disappearAfterRecheck = true
+	svc := &Service{syncManager: mockSync}
+
+	err := svc.recoverSingleErroredTorrent(context.Background(), 1, erroredTorrent)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "torrent disappeared during recheck")
+
+	// Should have attempted recheck
+	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error123]")
+}
+
+func TestRecoverSingleErroredTorrent_BulkActionFails(t *testing.T) {
+	erroredTorrent := qbt.Torrent{
+		Hash:     "error123",
+		Name:     "errored.torrent",
+		State:    qbt.TorrentStateError,
+		Progress: 0.0,
+	}
+
+	mockSync := newMockRecoverSyncManager([]qbt.Torrent{erroredTorrent})
+	// Configure mock to fail BulkAction
+	mockSync.bulkActionFails = true
+	svc := &Service{syncManager: mockSync}
+
+	err := svc.recoverSingleErroredTorrent(context.Background(), 1, erroredTorrent)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "recheck torrent")
+
+	// Should have attempted recheck
+	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error123]")
+}
+
+func TestRecoverErroredTorrents_ContextCancelled(t *testing.T) {
+	erroredTorrent1 := qbt.Torrent{
+		Hash:     "error123",
+		Name:     "errored1.torrent",
+		State:    qbt.TorrentStateError,
+		Progress: 0.0,
+	}
+	erroredTorrent2 := qbt.Torrent{
+		Hash:     "error456",
+		Name:     "errored2.torrent",
+		State:    qbt.TorrentStateError,
+		Progress: 0.0,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	mockSync := newMockRecoverSyncManager([]qbt.Torrent{erroredTorrent1, erroredTorrent2})
+	svc := &Service{syncManager: mockSync}
+
+	// Cancel context immediately
+	cancel()
+
+	err := svc.recoverErroredTorrents(ctx, 1, []qbt.Torrent{erroredTorrent1, erroredTorrent2})
+	require.Error(t, err)
+	assert.Equal(t, context.Canceled, err)
+}
+
+func TestRecoverErroredTorrents_MixedStates(t *testing.T) {
+	erroredTorrent := qbt.Torrent{
+		Hash:     "error123",
+		Name:     "errored.torrent",
+		State:    qbt.TorrentStateError,
+		Progress: 0.0,
+	}
+	missingFilesTorrent := qbt.Torrent{
+		Hash:     "missing123",
+		Name:     "missing.torrent",
+		State:    qbt.TorrentStateMissingFiles,
+		Progress: 0.0,
+	}
+	downloadingTorrent := qbt.Torrent{
+		Hash:     "download123",
+		Name:     "downloading.torrent",
+		State:    qbt.TorrentStateDownloading,
+		Progress: 0.3,
+	}
+	completedTorrent := qbt.Torrent{
+		Hash:     "complete123",
+		Name:     "completed.torrent",
+		State:    qbt.TorrentStatePausedDl,
+		Progress: 1.0,
+	}
+
+	mockSync := newMockRecoverSyncManager([]qbt.Torrent{erroredTorrent, missingFilesTorrent, downloadingTorrent, completedTorrent})
+	svc := &Service{syncManager: mockSync}
+
+	err := svc.recoverErroredTorrents(context.Background(), 1, []qbt.Torrent{erroredTorrent, missingFilesTorrent, downloadingTorrent, completedTorrent})
+	require.NoError(t, err)
+
+	// Should have attempted recheck only on errored and missing files torrents
+	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error123]")
+	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[missing123]")
+	assert.NotContains(t, mockSync.calls, "BulkAction:recheck:[download123]")
+	assert.NotContains(t, mockSync.calls, "BulkAction:recheck:[complete123]")
+}
+
+func TestRecoverSingleErroredTorrent_Timeout(t *testing.T) {
+	erroredTorrent := qbt.Torrent{
+		Hash:     "error123",
+		Name:     "errored.torrent",
+		State:    qbt.TorrentStateError,
+		Progress: 0.0,
+	}
+
+	mockSync := newMockRecoverSyncManager([]qbt.Torrent{erroredTorrent})
+	// Configure mock to keep torrent in checking state forever
+	mockSync.keepInCheckingState = true
+	svc := &Service{syncManager: mockSync}
+
+	// Use a short timeout for testing - should cancel before the 5-minute internal timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+
+	err := svc.recoverSingleErroredTorrent(ctx, 1, erroredTorrent)
+	require.Error(t, err)
+	assert.Equal(t, context.DeadlineExceeded, err)
+
+	// Should have attempted recheck
+	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error123]")
+}
+
+func TestRecoverSingleErroredTorrent_GetTorrentsFailsDuringWait(t *testing.T) {
+	erroredTorrent := qbt.Torrent{
+		Hash:     "error123",
+		Name:     "errored.torrent",
+		State:    qbt.TorrentStateError,
+		Progress: 0.0,
+	}
+
+	mockSync := newMockRecoverSyncManager([]qbt.Torrent{erroredTorrent})
+	// Configure mock to fail GetTorrents after recheck
+	mockSync.failGetTorrentsAfterRecheck = true
+	svc := &Service{syncManager: mockSync}
+
+	err := svc.recoverSingleErroredTorrent(context.Background(), 1, erroredTorrent)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "torrent disappeared during recheck")
+
+	// Should have attempted recheck
+	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error123]")
+}
+
+func TestRecoverSingleErroredTorrent_ProgressAtThreshold(t *testing.T) {
+	erroredTorrent := qbt.Torrent{
+		Hash:     "error123",
+		Name:     "errored.torrent",
+		State:    qbt.TorrentStateError,
+		Progress: 0.0,
+	}
+
+	mockSync := newMockRecoverSyncManager([]qbt.Torrent{erroredTorrent})
+	// Configure mock to set progress exactly at threshold (0.95 with 5% tolerance)
+	mockSync.setProgressToThreshold = true
+	svc := &Service{syncManager: mockSync}
+
+	err := svc.recoverSingleErroredTorrent(context.Background(), 1, erroredTorrent)
+	require.NoError(t, err)
+
+	// Should have attempted recheck
+	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error123]")
+}
+
+func TestRecoverErroredTorrents_EmptyList(t *testing.T) {
+	mockSync := newMockRecoverSyncManager([]qbt.Torrent{})
+	svc := &Service{syncManager: mockSync}
+
+	err := svc.recoverErroredTorrents(context.Background(), 1, []qbt.Torrent{})
+	require.NoError(t, err)
+
+	// Should not have made any calls
+	assert.Empty(t, mockSync.calls)
+}
+
+func TestRecoverSingleErroredTorrent_SettingsLoadFailure(t *testing.T) {
+	erroredTorrent := qbt.Torrent{
+		Hash:     "error123",
+		Name:     "errored.torrent",
+		State:    qbt.TorrentStateError,
+		Progress: 0.0,
+	}
+
+	mockSync := newMockRecoverSyncManager([]qbt.Torrent{erroredTorrent})
+	// Create service without settings store to simulate failure
+	svc := &Service{syncManager: mockSync}
+
+	err := svc.recoverSingleErroredTorrent(context.Background(), 1, erroredTorrent)
+	require.NoError(t, err) // Should still work with defaults
+
+	// Should have attempted recheck
+	assert.Contains(t, mockSync.calls, "BulkAction:recheck:[error123]")
 }
