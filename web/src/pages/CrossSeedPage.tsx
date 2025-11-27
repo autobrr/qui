@@ -1651,7 +1651,7 @@ export function CrossSeedPage() {
                   }))}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Filters out results with sizes differing by more than this percentage. Set to 0 for exact size matching.
+                  Filters out results with sizes differing by more than this percentage. Also determines the auto-resume threshold after recheck completes (e.g., 5% tolerance auto-resumes if recheck finishes at 95% or higher). Set to 0 for exact size matching.
                 </p>
               </div>
             </div>

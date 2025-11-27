@@ -206,6 +206,8 @@ const (
 	crossSeedRenameWaitTimeout          = 15 * time.Second
 	crossSeedRenamePollInterval         = 200 * time.Millisecond
 	automationSettingsQueryTimeout      = 5 * time.Second
+	recheckPollInterval                 = 2 * time.Second
+	recheckStaleTimeout                 = 10 * time.Second
 	minSearchIntervalSeconds            = 60
 	minSearchCooldownMinutes            = 720
 )
@@ -2309,16 +2311,6 @@ func (s *Service) processCrossSeedCandidate(
 		return result
 	}
 
-	// Get app preferences to understand content layout setting
-	prefs, err := s.syncManager.GetAppPreferences(ctx, candidate.InstanceID)
-	if err != nil {
-		log.Warn().Err(err).Int("instanceID", candidate.InstanceID).Msg("Failed to get app preferences, using default content layout logic")
-		prefs.TorrentContentLayout = "Original" // Default fallback
-	}
-
-	// Determine the appropriate save path for cross-seeding
-	savePath := s.determineSavePath(torrentName, matchedTorrent, props, matchType, sourceFiles, candidateFiles, prefs.TorrentContentLayout)
-
 	// Build options for adding the torrent
 	options := make(map[string]string)
 
@@ -2334,35 +2326,22 @@ func (s *Service) processCrossSeedCandidate(
 		options["stopped"] = "false"
 	}
 
-	// Skip hash checking since we're pointing to existing files
+	// Always skip checking for cross-seed adds - the data is already verified by the
+	// matched torrent that's actively seeding. qBittorrent's hash verification is
+	// redundant and can cause path resolution issues when pointing to existing data.
 	options["skip_checking"] = "true"
+
+	// Check if we need rename alignment (folder/file names differ)
+	requiresAlignment := needsRenameAlignment(torrentName, matchedTorrent.Name, sourceFiles, candidateFiles)
+
+	// Detect folder structure for contentLayout decisions
+	sourceRoot := detectCommonRoot(sourceFiles)
+	candidateRoot := detectCommonRoot(candidateFiles)
 
 	// Determine final category to apply
 	category := s.determineCrossSeedCategory(ctx, req, matchedTorrent)
 	if category != "" {
 		options["category"] = category
-	}
-
-	// Handle AutoTMM and save path
-	// For cross-seeding, we often need precise control over save path, so disable autoTMM
-	// when we have a specific calculated path that differs from the default category path
-	useAutoTMM := matchedTorrent.AutoManaged
-
-	// Disable autoTMM only when our calculated savePath differs from the matched torrent's SavePath
-	// This handles partial-in-pack with folders (where savePath is the folder) while allowing
-	// single-file to single-file matches (where savePath == props.SavePath) to use TMM
-	if savePath != props.SavePath {
-		useAutoTMM = false
-	}
-
-	if useAutoTMM {
-		options["autoTMM"] = "true"
-	} else {
-		options["autoTMM"] = "false"
-		// Use the determined save path (handles season packs, custom paths, etc.)
-		if savePath != "" {
-			options["savepath"] = savePath
-		}
 	}
 
 	addCrossSeedTag := true
@@ -2375,48 +2354,50 @@ func (s *Service) processCrossSeedCandidate(
 		options["tags"] = strings.Join(finalTags, ",")
 	}
 
-	// Determine contentLayout based on folder structure comparison and current preference
-	// We need to ensure the new torrent is placed in the same location as the existing one
-	sourceRoot := detectCommonRoot(sourceFiles)
-	candidateRoot := detectCommonRoot(candidateFiles)
+	// Simplified cross-seed add strategy:
+	// 1. Always use TMM=true with category - let qBittorrent manage save path
+	// 2. alignCrossSeedContentPaths will rename torrent/folders/files to match existing
+	// 3. After rename, paths will match existing torrent and recheck will find files
+	//
+	// This is much simpler than trying to calculate the perfect save path for every
+	// edge case (spaces vs dots, different folder names, etc.)
 
-	// Special case: single file source going into folder candidate
+	// Set contentLayout based on folder structure (reusing sourceRoot/candidateRoot from above):
+	// - Single file source → folder candidate: use Subfolder so qBittorrent creates folder
+	// - Folder source → single file candidate: use NoSubfolder to strip folder
+	// - Otherwise: preserve original structure
 	if sourceRoot == "" && candidateRoot != "" {
-		// Parse releases to detect TV episode into season pack
-		newRelease := s.releaseCache.Parse(torrentName)
-		matchedRelease := s.releaseCache.Parse(matchedTorrent.Name)
-
-		// TV episode into season pack: NoSubfolder (ContentPath already includes folder)
-		// For this case, determineSavePath returns the season pack's ContentPath
-		if newRelease.Series > 0 && newRelease.Episode > 0 &&
-			matchedRelease.Series > 0 && matchedRelease.Episode == 0 {
-			options["contentLayout"] = "NoSubfolder"
-		} else {
-			// Non-TV (movies, etc.): Subfolder layout creates folder from torrent name
-			// This allows TMM to stay enabled since savePath matches props.SavePath
-			options["contentLayout"] = "Subfolder"
-		}
-	} else if prefs.TorrentContentLayout == "NoSubfolder" {
-		// If the current content layout is "NoSubfolder", qBittorrent will place files directly
-		// in the save path regardless of folder structure
+		// Single file going into folder - need Subfolder to create folder structure
+		options["contentLayout"] = "Subfolder"
+	} else if sourceRoot != "" && candidateRoot == "" {
+		// Folder source going to single file - strip folder
 		options["contentLayout"] = "NoSubfolder"
-	} else if prefs.TorrentContentLayout == "Subfolder" {
-		// qBittorrent will create a subfolder based on torrent name
-		// For cross-seeding, we want to match the existing torrent's location
-		if sourceRoot == "" || candidateRoot == "" || sourceRoot != candidateRoot {
-			// Different structures - force NoSubfolder to place directly in save path
-			options["contentLayout"] = "NoSubfolder"
-		}
-		// If structures match, let qBittorrent create the subfolder (default behavior)
+	}
+	// Otherwise: don't set contentLayout, let qBittorrent use Original behavior
+
+	// Always use TMM=true when we have a category
+	// The rename step will align paths to match existing torrent
+	// If initial state is missingFiles, recheck will fix it
+	if category != "" {
+		options["autoTMM"] = "true"
+		log.Debug().
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentName", torrentName).
+			Str("category", category).
+			Str("matchedTorrent", matchedTorrent.Name).
+			Msg("Adding cross-seed with TMM enabled, will rename to match existing torrent")
 	} else {
-		// contentLayout is "Original" (default)
-		// qBittorrent preserves original folder structure
-		if candidateRoot == "" || sourceRoot != candidateRoot {
-			// Different folder structures - use NoSubfolder to avoid creating wrong subfolder
-			options["contentLayout"] = "NoSubfolder"
+		// No category - fall back to matched torrent's save path
+		options["autoTMM"] = "false"
+		if props.SavePath != "" {
+			options["savepath"] = props.SavePath
 		}
-		// If sourceRoot == candidateRoot (and both non-empty), don't set contentLayout
-		// qBittorrent will use Original behavior and create the matching subfolder
+		log.Debug().
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentName", torrentName).
+			Str("savePath", props.SavePath).
+			Str("matchedTorrent", matchedTorrent.Name).
+			Msg("Adding cross-seed without TMM (no category), using matched torrent's save path")
 	}
 
 	// Add the torrent
@@ -2442,52 +2423,32 @@ func (s *Service) processCrossSeedCandidate(
 			return result
 		}
 
-		result.Message = fmt.Sprintf("Added torrent with recheck to %s (match: %s)", savePath, matchType)
+		result.Message = fmt.Sprintf("Added torrent with recheck (match: %s, category: %s)", matchType, category)
 		log.Debug().
 			Int("instanceID", candidate.InstanceID).
 			Str("instanceName", candidate.InstanceName).
 			Msg("Successfully added cross-seed torrent with recheck")
 	} else {
-		result.Message = fmt.Sprintf("Added torrent paused to %s (match: %s)", savePath, matchType)
+		result.Message = fmt.Sprintf("Added torrent paused (match: %s, category: %s)", matchType, category)
 	}
 
 	// Attempt to align the new torrent's naming and file layout with the matched torrent
 	s.alignCrossSeedContentPaths(ctx, candidate.InstanceID, torrentHash, torrentName, matchedTorrent, sourceFiles, candidateFiles)
 
-	// Wait for the torrent to be added and potentially rechecked
-	newTorrent := s.waitForTorrentRecheck(ctx, candidate.InstanceID, torrentHash, &result)
-	if newTorrent != nil {
-		// If torrent is 100% complete (or very close), auto-resume it
-		if newTorrent.Progress >= 0.999 {
-			resumeErr := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{newTorrent.Hash}, "resume")
-			if resumeErr != nil {
-				log.Warn().
-					Err(resumeErr).
-					Int("instanceID", candidate.InstanceID).
-					Str("hash", newTorrent.Hash).
-					Msg("Failed to auto-resume 100% complete cross-seed torrent")
-				result.Message += " (100% complete but failed to auto-resume)"
-			} else {
-				result.Message += " (100% complete, auto-resumed)"
-				log.Debug().
-					Int("instanceID", candidate.InstanceID).
-					Str("hash", newTorrent.Hash).
-					Float64("progress", newTorrent.Progress).
-					Msg("Auto-resumed 100% complete cross-seed torrent")
-			}
-		} else {
-			// Torrent is not 100%, may be missing files (like .srt, sample, etc.)
-			// This is expected and controlled by user's file layout
-			log.Debug().
+	// Only trigger manual recheck if we added with skip_checking (alignment was needed)
+	// Otherwise qBittorrent already auto-checked on add
+	if requiresAlignment {
+		if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "recheck"); err != nil {
+			log.Warn().
+				Err(err).
 				Int("instanceID", candidate.InstanceID).
-				Str("hash", newTorrent.Hash).
-				Float64("progress", newTorrent.Progress).
-				Msg("Cross-seed torrent added but not 100% complete (may be missing optional files)")
-			result.Message += fmt.Sprintf(" (%.1f%% complete, check manually)", newTorrent.Progress*100)
+				Str("torrentHash", torrentHash).
+				Msg("Failed to trigger recheck after rename")
+		} else {
+			// Spawn background goroutine to monitor recheck and auto-resume when complete
+			go s.waitAndResumeAfterRecheck(context.Background(), candidate.InstanceID, torrentHash)
 		}
 	}
-
-	// Success!
 	result.Success = true
 	result.Status = "added"
 	result.MatchedTorrent = &MatchedTorrent{
@@ -2500,22 +2461,122 @@ func (s *Service) processCrossSeedCandidate(
 	// Execute external program if configured (async, non-blocking)
 	s.executeExternalProgram(ctx, candidate.InstanceID, torrentHash)
 
-	log.Debug().
+	logEvent := log.Debug().
 		Int("instanceID", candidate.InstanceID).
 		Str("instanceName", candidate.InstanceName).
 		Str("torrentHash", torrentHash).
 		Str("matchedHash", matchedTorrent.Hash).
-		Str("savePath", savePath).
 		Str("matchType", matchType).
-		Bool("autoTMM", useAutoTMM).
 		Str("category", category).
-		Msg("Successfully added cross-seed torrent")
+		Bool("autoTMM", category != "")
+	if requiresAlignment {
+		logEvent.Msg("Successfully added cross-seed torrent (recheck triggered, auto-resume pending)")
+	} else {
+		logEvent.Msg("Successfully added cross-seed torrent")
+	}
 
 	return result
 }
 
 func normalizeHash(hash string) string {
 	return strings.ToLower(strings.TrimSpace(hash))
+}
+
+// waitAndResumeAfterRecheck monitors a torrent's recheck progress in the background
+// and automatically resumes it once progress reaches the configured tolerance threshold.
+// This runs as a goroutine so the UI doesn't block waiting for recheck to complete.
+func (s *Service) waitAndResumeAfterRecheck(ctx context.Context, instanceID int, hash string) {
+	// Get tolerance setting
+	settingsCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	settings, err := s.GetAutomationSettings(settingsCtx)
+	cancel()
+
+	tolerancePercent := 5.0 // Default
+	if err == nil && settings != nil {
+		tolerancePercent = settings.SizeMismatchTolerancePercent
+	}
+
+	// Calculate resume threshold (e.g., 95% for 5% tolerance)
+	resumeThreshold := 1.0 - (tolerancePercent / 100.0)
+	if resumeThreshold < 0.9 {
+		resumeThreshold = 0.9 // Safety floor
+	}
+
+	var lastProgress float64 = -1
+	lastChangeTime := time.Now()
+
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+
+		torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Hashes: []string{hash}})
+		if err != nil || len(torrents) == 0 {
+			log.Debug().
+				Int("instanceID", instanceID).
+				Str("hash", hash).
+				Msg("Torrent not found during recheck wait, bailing")
+			return
+		}
+
+		torrent := torrents[0]
+		progress := torrent.Progress
+		state := torrent.State
+
+		// Don't resume while still checking - qBittorrent ignores resume during check
+		isChecking := state == qbt.TorrentStateCheckingUp ||
+			state == qbt.TorrentStateCheckingDl ||
+			state == qbt.TorrentStateCheckingResumeData
+
+		// Check if we've reached the threshold AND not still checking
+		if progress >= resumeThreshold && !isChecking {
+			if err := s.syncManager.BulkAction(ctx, instanceID, []string{hash}, "resume"); err != nil {
+				log.Warn().
+					Err(err).
+					Int("instanceID", instanceID).
+					Str("hash", hash).
+					Float64("progress", progress).
+					Msg("Failed to resume torrent after recheck")
+			} else {
+				log.Debug().
+					Int("instanceID", instanceID).
+					Str("hash", hash).
+					Float64("progress", progress).
+					Float64("threshold", resumeThreshold).
+					Str("state", string(state)).
+					Msg("Resumed torrent after recheck completed")
+			}
+			return
+		}
+
+		// Bail if progress dropped to 0 (error condition) - check before updating lastProgress
+		if progress == 0 && lastProgress > 0 {
+			log.Debug().
+				Int("instanceID", instanceID).
+				Str("hash", hash).
+				Msg("Torrent progress dropped to 0 during recheck, bailing")
+			return
+		}
+
+		// Check for progress changes
+		if progress != lastProgress {
+			lastProgress = progress
+			lastChangeTime = time.Now()
+		}
+
+		// Bail if stale (no progress change for timeout period)
+		if time.Since(lastChangeTime) > recheckStaleTimeout {
+			log.Debug().
+				Int("instanceID", instanceID).
+				Str("hash", hash).
+				Float64("progress", progress).
+				Dur("staleFor", time.Since(lastChangeTime)).
+				Msg("Torrent recheck stalled, bailing")
+			return
+		}
+
+		time.Sleep(recheckPollInterval)
+	}
 }
 
 func cacheKeyForTorrentFiles(instanceID int, hash string) string {
@@ -2721,7 +2782,9 @@ func (s *Service) findBestCandidateMatch(
 		}
 
 		candidateRelease := s.releaseCache.Parse(torrent.Name)
-		candidateMatchType := s.getMatchType(sourceRelease, candidateRelease, sourceFiles, files, ignorePatterns)
+		// Swap parameter order: check if EXISTING files (files) are contained in NEW files (sourceFiles)
+		// This matches the search behavior where we found "partial-in-pack" (existing mkv in new mkv+nfo)
+		candidateMatchType := s.getMatchType(candidateRelease, sourceRelease, files, sourceFiles, ignorePatterns)
 		if candidateMatchType == "" {
 			continue
 		}
@@ -3926,102 +3989,126 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 		tagName = "cross-seed"
 	}
 
-	results := make([]TorrentSearchAddResult, 0, len(req.Selections))
+	// Process all selections in parallel - don't wait for one to finish before starting the next
+	type selectionResult struct {
+		index  int
+		result TorrentSearchAddResult
+	}
 
-	for _, selection := range req.Selections {
-		downloadURL := strings.TrimSpace(selection.DownloadURL)
-		guid := strings.TrimSpace(selection.GUID)
+	resultChan := make(chan selectionResult, len(req.Selections))
+	var wg sync.WaitGroup
 
-		if selection.IndexerID <= 0 || (downloadURL == "" && guid == "") {
-			results = append(results, TorrentSearchAddResult{
-				Title:   selection.Title,
-				Indexer: selection.Indexer,
-				Success: false,
-				Error:   "invalid selection",
+	for i, selection := range req.Selections {
+		wg.Add(1)
+		go func(idx int, sel TorrentSearchSelection) {
+			defer wg.Done()
+
+			downloadURL := strings.TrimSpace(sel.DownloadURL)
+			guid := strings.TrimSpace(sel.GUID)
+
+			if sel.IndexerID <= 0 || (downloadURL == "" && guid == "") {
+				resultChan <- selectionResult{idx, TorrentSearchAddResult{
+					Title:   sel.Title,
+					Indexer: sel.Indexer,
+					Success: false,
+					Error:   "invalid selection",
+				}}
+				return
+			}
+
+			cachedResult, err := s.resolveSelectionFromCache(cachedSelections, sel)
+			if err != nil {
+				resultChan <- selectionResult{idx, TorrentSearchAddResult{
+					Title:   sel.Title,
+					Indexer: sel.Indexer,
+					Success: false,
+					Error:   err.Error(),
+				}}
+				return
+			}
+
+			indexerName := sel.Indexer
+			if indexerName == "" {
+				indexerName = cachedResult.Indexer
+			}
+
+			title := sel.Title
+			if title == "" {
+				title = cachedResult.Title
+			}
+
+			torrentBytes, err := s.downloadTorrent(ctx, jackett.TorrentDownloadRequest{
+				IndexerID:   cachedResult.IndexerID,
+				DownloadURL: cachedResult.DownloadURL,
+				GUID:        cachedResult.GUID,
+				Title:       cachedResult.Title,
+				Size:        cachedResult.Size,
 			})
-			continue
-		}
+			if err != nil {
+				resultChan <- selectionResult{idx, TorrentSearchAddResult{
+					Title:   title,
+					Indexer: indexerName,
+					Success: false,
+					Error:   fmt.Sprintf("download torrent: %v", err),
+				}}
+				return
+			}
 
-		cachedResult, err := s.resolveSelectionFromCache(cachedSelections, selection)
-		if err != nil {
-			results = append(results, TorrentSearchAddResult{
-				Title:   selection.Title,
-				Indexer: selection.Indexer,
-				Success: false,
-				Error:   err.Error(),
-			})
-			continue
-		}
+			startPausedCopy := startPaused
+			addCrossSeedTag := useTag
 
-		indexerName := selection.Indexer
-		if indexerName == "" {
-			indexerName = cachedResult.Indexer
-		}
+			payload := &CrossSeedRequest{
+				TorrentData:            base64.StdEncoding.EncodeToString(torrentBytes),
+				TargetInstanceIDs:      []int{instanceID},
+				StartPaused:            &startPausedCopy,
+				AddCrossSeedTag:        &addCrossSeedTag,
+				IndexerName:            indexerName,
+				FindIndividualEpisodes: req.FindIndividualEpisodes,
+			}
+			if settings != nil && len(settings.IgnorePatterns) > 0 {
+				payload.IgnorePatterns = append([]string(nil), settings.IgnorePatterns...)
+			}
 
-		title := selection.Title
-		if title == "" {
-			title = cachedResult.Title
-		}
+			if useTag {
+				payload.Tags = []string{tagName}
+			}
 
-		torrentBytes, err := s.downloadTorrent(ctx, jackett.TorrentDownloadRequest{
-			IndexerID:   cachedResult.IndexerID,
-			DownloadURL: cachedResult.DownloadURL,
-			GUID:        cachedResult.GUID,
-			Title:       cachedResult.Title,
-			Size:        cachedResult.Size,
-		})
-		if err != nil {
-			results = append(results, TorrentSearchAddResult{
-				Title:   title,
-				Indexer: indexerName,
-				Success: false,
-				Error:   fmt.Sprintf("download torrent: %v", err),
-			})
-			continue
-		}
+			resp, err := s.invokeCrossSeed(ctx, payload)
+			if err != nil {
+				resultChan <- selectionResult{idx, TorrentSearchAddResult{
+					Title:   title,
+					Indexer: indexerName,
+					Success: false,
+					Error:   err.Error(),
+				}}
+				return
+			}
 
-		startPausedCopy := startPaused
-		addCrossSeedTag := useTag
+			torrentName := ""
+			if resp.TorrentInfo != nil {
+				torrentName = resp.TorrentInfo.Name
+			}
 
-		payload := &CrossSeedRequest{
-			TorrentData:            base64.StdEncoding.EncodeToString(torrentBytes),
-			TargetInstanceIDs:      []int{instanceID},
-			StartPaused:            &startPausedCopy,
-			AddCrossSeedTag:        &addCrossSeedTag,
-			IndexerName:            indexerName,
-			FindIndividualEpisodes: req.FindIndividualEpisodes,
-		}
-		if settings != nil && len(settings.IgnorePatterns) > 0 {
-			payload.IgnorePatterns = append([]string(nil), settings.IgnorePatterns...)
-		}
+			resultChan <- selectionResult{idx, TorrentSearchAddResult{
+				Title:           title,
+				Indexer:         indexerName,
+				TorrentName:     torrentName,
+				Success:         resp.Success,
+				InstanceResults: resp.Results,
+			}}
+		}(i, selection)
+	}
 
-		if useTag {
-			payload.Tags = []string{tagName}
-		}
+	// Wait for all goroutines to finish
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
 
-		resp, err := s.invokeCrossSeed(ctx, payload)
-		if err != nil {
-			results = append(results, TorrentSearchAddResult{
-				Title:   title,
-				Indexer: indexerName,
-				Success: false,
-				Error:   err.Error(),
-			})
-			continue
-		}
-
-		torrentName := ""
-		if resp.TorrentInfo != nil {
-			torrentName = resp.TorrentInfo.Name
-		}
-
-		results = append(results, TorrentSearchAddResult{
-			Title:           title,
-			Indexer:         indexerName,
-			TorrentName:     torrentName,
-			Success:         resp.Success,
-			InstanceResults: resp.Results,
-		})
+	// Collect results in order
+	results := make([]TorrentSearchAddResult, len(req.Selections))
+	for res := range resultChan {
+		results[res.index] = res.result
 	}
 
 	return &ApplyTorrentSearchResponse{
@@ -5957,121 +6044,6 @@ func evaluateReleaseMatch(source, candidate *rls.Release) (float64, string) {
 	}
 
 	return score, strings.Join(reasons, ", ")
-}
-
-// waitForTorrentRecheck waits for a torrent to finish rechecking after being added
-// This can take several minutes for large torrents, so we poll periodically
-func (s *Service) waitForTorrentRecheck(ctx context.Context, instanceID int, torrentHash string, result *InstanceCrossSeedResult) *qbt.Torrent {
-	const (
-		maxWaitTime  = 5 * time.Minute // Maximum time to wait for recheck
-		pollInterval = 2 * time.Second // How often to check status
-		initialWait  = 500 * time.Millisecond
-	)
-
-	// Initial wait for torrent to appear
-	time.Sleep(initialWait)
-
-	startTime := time.Now()
-	lastLogTime := startTime
-
-	for {
-		// Check if we've exceeded max wait time
-		if time.Since(startTime) > maxWaitTime {
-			log.Warn().
-				Int("instanceID", instanceID).
-				Str("torrentHash", torrentHash).
-				Dur("waited", time.Since(startTime)).
-				Msg("Timeout waiting for torrent recheck to complete")
-			result.Message += " (timeout waiting for recheck)"
-			return nil
-		}
-
-		// Check context cancellation
-		if ctx.Err() != nil {
-			log.Warn().
-				Int("instanceID", instanceID).
-				Str("torrentHash", torrentHash).
-				Err(ctx.Err()).
-				Msg("Context cancelled while waiting for recheck")
-			return nil
-		}
-
-		// Force sync to get latest state from qBittorrent
-		qbtSyncManager, err := s.syncManager.GetQBittorrentSyncManager(ctx, instanceID)
-		if err != nil {
-			log.Warn().
-				Err(err).
-				Int("instanceID", instanceID).
-				Msg("Failed to get sync manager while waiting for recheck")
-			time.Sleep(pollInterval)
-			continue
-		}
-
-		if syncErr := qbtSyncManager.Sync(ctx); syncErr != nil {
-			log.Warn().
-				Err(syncErr).
-				Int("instanceID", instanceID).
-				Msg("Failed to sync while waiting for recheck, will retry")
-			time.Sleep(pollInterval)
-			continue
-		}
-
-		// Get current torrents
-		torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Hashes: []string{torrentHash}})
-		if err != nil {
-			log.Warn().
-				Err(err).
-				Int("instanceID", instanceID).
-				Msg("Failed to get torrents while waiting for recheck")
-			time.Sleep(pollInterval)
-			continue
-		}
-
-		// Find the torrent
-		if len(torrents) == 0 {
-			log.Warn().
-				Int("instanceID", instanceID).
-				Str("torrentHash", torrentHash).
-				Msg("Torrent not found after adding")
-			return nil
-		}
-
-		torrent := &torrents[0]
-
-		// Check if torrent is still checking
-		isChecking := torrent.State == qbt.TorrentStateCheckingDl ||
-			torrent.State == qbt.TorrentStateCheckingUp ||
-			torrent.State == qbt.TorrentStateCheckingResumeData ||
-			torrent.State == qbt.TorrentStateAllocating
-
-		if isChecking {
-			// Log periodically (every 10 seconds) to show progress
-			if time.Since(lastLogTime) > 10*time.Second {
-				log.Debug().
-					Int("instanceID", instanceID).
-					Str("hash", torrent.Hash).
-					Str("state", string(torrent.State)).
-					Float64("progress", torrent.Progress).
-					Dur("elapsed", time.Since(startTime)).
-					Msg("Waiting for torrent recheck to complete")
-				lastLogTime = time.Now()
-			}
-
-			time.Sleep(pollInterval)
-			continue
-		}
-
-		// Torrent is done checking
-		log.Debug().
-			Int("instanceID", instanceID).
-			Str("hash", torrent.Hash).
-			Str("state", string(torrent.State)).
-			Float64("progress", torrent.Progress).
-			Dur("elapsed", time.Since(startTime)).
-			Msg("Torrent recheck completed")
-
-		return torrent
-	}
 }
 
 // isSizeWithinTolerance checks if two torrent sizes are within the specified tolerance percentage.

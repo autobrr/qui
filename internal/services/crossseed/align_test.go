@@ -201,3 +201,78 @@ func TestShouldAlignFilesWithCandidate(t *testing.T) {
 	require.True(t, shouldAlignFilesWithCandidate(&seasonPack, &seasonPack))
 	require.True(t, shouldAlignFilesWithCandidate(&episode, &otherEpisode))
 }
+
+func TestNeedsRenameAlignment(t *testing.T) {
+	tests := []struct {
+		name           string
+		torrentName    string
+		matchedName    string
+		sourceFiles    qbt.TorrentFiles
+		candidateFiles qbt.TorrentFiles
+		expectedResult bool
+	}{
+		{
+			name:           "identical names and roots - no alignment needed",
+			torrentName:    "Movie.2024.1080p.BluRay.x264-GROUP",
+			matchedName:    "Movie.2024.1080p.BluRay.x264-GROUP",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie.2024.1080p.BluRay.x264-GROUP/movie.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2024.1080p.BluRay.x264-GROUP/movie.mkv", Size: 1000}},
+			expectedResult: false,
+		},
+		{
+			name:           "different torrent names with folders - alignment needed",
+			torrentName:    "Movie 2024 1080p BluRay x264-GROUP",
+			matchedName:    "Movie.2024.1080p.BluRay.x264-GROUP",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie 2024 1080p BluRay x264-GROUP/movie.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2024.1080p.BluRay.x264-GROUP/movie.mkv", Size: 1000}},
+			expectedResult: true,
+		},
+		{
+			name:           "different root folders - alignment needed",
+			torrentName:    "Movie.2024.1080p.BluRay.x264-GROUP",
+			matchedName:    "Movie.2024.1080p.BluRay.x264-GROUP",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie 2024/movie.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2024/movie.mkv", Size: 1000}},
+			expectedResult: true,
+		},
+		{
+			name:           "single file torrents same name - no alignment needed",
+			torrentName:    "movie.mkv",
+			matchedName:    "movie.mkv",
+			sourceFiles:    qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+			expectedResult: false,
+		},
+		{
+			name:           "whitespace differences in names - no alignment needed",
+			torrentName:    "  Movie.2024  ",
+			matchedName:    "Movie.2024",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie.2024/movie.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2024/movie.mkv", Size: 1000}},
+			expectedResult: false, // trimmed names match
+		},
+		{
+			name:           "single file to folder - no alignment needed (uses Subfolder layout)",
+			torrentName:    "Movie.2024.mkv",
+			matchedName:    "Movie.2024",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie.2024.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2024/Movie.2024.mkv", Size: 1000}},
+			expectedResult: false, // handled by contentLayout=Subfolder
+		},
+		{
+			name:           "folder to single file - no alignment needed (uses NoSubfolder layout)",
+			torrentName:    "Movie.2024",
+			matchedName:    "Movie.2024.mkv",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie.2024/Movie.2024.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2024.mkv", Size: 1000}},
+			expectedResult: false, // handled by contentLayout=NoSubfolder
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := needsRenameAlignment(tt.torrentName, tt.matchedName, tt.sourceFiles, tt.candidateFiles)
+			require.Equal(t, tt.expectedResult, result)
+		})
+	}
+}

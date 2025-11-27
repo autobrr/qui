@@ -431,7 +431,10 @@ func (s *Service) getMatchType(sourceRelease, candidateRelease *rls.Release, sou
 			enrichedRelease := enrichReleaseFromTorrent(fileRelease, sourceRelease)
 			key := makeReleaseKey(enrichedRelease)
 			if key != (releaseKey{}) {
-				sourceReleaseKeys[key] = sf.Size
+				// Keep max size when multiple files map to same key (e.g., mkv vs nfo for movies)
+				if existingSize, exists := sourceReleaseKeys[key]; !exists || sf.Size > existingSize {
+					sourceReleaseKeys[key] = sf.Size
+				}
 			}
 		}
 	}
@@ -449,7 +452,10 @@ func (s *Service) getMatchType(sourceRelease, candidateRelease *rls.Release, sou
 			enrichedRelease := enrichReleaseFromTorrent(fileRelease, candidateRelease)
 			key := makeReleaseKey(enrichedRelease)
 			if key != (releaseKey{}) {
-				candidateReleaseKeys[key] = cf.Size
+				// Keep max size when multiple files map to same key (e.g., mkv vs nfo for movies)
+				if existingSize, exists := candidateReleaseKeys[key]; !exists || cf.Size > existingSize {
+					candidateReleaseKeys[key] = cf.Size
+				}
 			}
 		}
 	}
