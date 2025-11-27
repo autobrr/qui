@@ -2769,8 +2769,9 @@ func decodeBase64Variants(data string) ([]byte, error) {
 // - Custom paths and directory structures
 // - Partial-in-pack matches where files exist inside the matched torrent's content directory
 func (s *Service) determineSavePath(newTorrentName string, matchedTorrent *qbt.Torrent, props *qbt.TorrentProperties, matchType string, sourceFiles, candidateFiles qbt.TorrentFiles, contentLayout string) string {
-	// Normalize path separators in SavePath to ensure cross-platform compatibility
+	// Normalize path separators in SavePath and ContentPath to ensure cross-platform compatibility
 	props.SavePath = filepath.ToSlash(props.SavePath)
+	matchedTorrent.ContentPath = filepath.ToSlash(matchedTorrent.ContentPath)
 
 	sourceRoot := detectCommonRoot(sourceFiles)
 	candidateRoot := detectCommonRoot(candidateFiles)
