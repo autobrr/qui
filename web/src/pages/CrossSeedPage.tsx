@@ -1552,8 +1552,17 @@ export function CrossSeedPage() {
                 onClick={() => cancelSearchRunMutation.mutate()}
                 disabled={cancelSearchRunMutation.isPending}
               >
-                {cancelSearchRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
-                Cancel
+                {cancelSearchRunMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Stopping...
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="mr-2 h-4 w-4" />
+                    Cancel
+                  </>
+                )}
               </Button>
             ) : (
               <Tooltip>
