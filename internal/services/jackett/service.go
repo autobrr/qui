@@ -82,6 +82,11 @@ type Service struct {
 	nextSearchCacheCleanup  time.Time
 	torrentCacheCleanupMu   sync.Mutex
 	nextTorrentCacheCleanup time.Time
+
+	// Prowlarr history cache - refreshed after Prowlarr operations
+	historyCacheMu   sync.RWMutex
+	historyCacheData *ProwlarrHistoryResponse
+	historyCacheTime time.Time
 }
 
 // ErrMissingIndexerIdentifier signals that the Torznab backend requires an indexer ID to fetch caps.
@@ -312,11 +317,13 @@ func (s *Service) executeQueuedSearch(ctx context.Context, indexers []*models.To
 	if meta != nil && meta.requireSuccess {
 		// For strict callers (explicit indexer selection), run synchronously to avoid delayed errors.
 		results, coverage, err := s.executeSearch(ctx, indexers, params, meta)
+		s.TriggerHistoryCacheRefresh()
 		resultCallback(results, coverage, err)
 		return nil
 	}
 	if s.searchScheduler == nil {
 		results, coverage, err := s.executeSearch(ctx, indexers, params, meta)
+		s.TriggerHistoryCacheRefresh()
 		resultCallback(results, coverage, err)
 		return nil
 	}
@@ -400,6 +407,9 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 				totalIndexers := len(indexers)
 				totalFailures := failures
 				mu.Unlock()
+
+				// Trigger history cache refresh after search completes
+				s.TriggerHistoryCacheRefresh()
 
 				// If all indexers failed, return the last error
 				if totalFailures == totalIndexers && finalErr != nil && len(finalResults) == 0 {
@@ -814,6 +824,9 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 		}
 		s.maybeScheduleTorrentCacheCleanup()
 	}
+
+	// Trigger history cache refresh after download completes (grab event)
+	s.TriggerHistoryCacheRefresh()
 
 	return data, nil
 }
@@ -3624,4 +3637,264 @@ func (s *Service) getProwlarrTrackerDomains(ctx context.Context, prowlarrIndexer
 	}
 
 	return result
+}
+
+// ProwlarrHistoryEntry represents a history entry with server context
+type ProwlarrHistoryEntry struct {
+	ID          int               `json:"id"`
+	IndexerID   int               `json:"indexerId"`
+	IndexerName string            `json:"indexerName"`
+	Date        time.Time         `json:"date"`
+	Successful  bool              `json:"successful"`
+	EventType   string            `json:"eventType"`
+	DownloadID  *string           `json:"downloadId,omitempty"`
+	Data        map[string]string `json:"data"`
+}
+
+// ProwlarrServerHistory represents history from a single Prowlarr server
+type ProwlarrServerHistory struct {
+	ServerURL    string                 `json:"serverUrl"`
+	ServerName   string                 `json:"serverName"`
+	TotalRecords int                    `json:"totalRecords"`
+	Records      []ProwlarrHistoryEntry `json:"records"`
+	Error        string                 `json:"error,omitempty"`
+}
+
+// ProwlarrHistoryResponse contains history from all Prowlarr servers
+type ProwlarrHistoryResponse struct {
+	Servers []ProwlarrServerHistory `json:"servers"`
+}
+
+// GetProwlarrHistory fetches history from all Prowlarr servers grouped by server.
+// It queries RSS, Search, and Grab events (event types 1, 2, 3).
+// GetProwlarrHistory fetches history from all configured Prowlarr servers.
+// If since is non-zero, only events after that time are returned (delta fetch).
+func (s *Service) GetProwlarrHistory(ctx context.Context, limit int, since time.Time) (*ProwlarrHistoryResponse, error) {
+	// Get all Prowlarr-backend indexers
+	allIndexers, err := s.indexerStore.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list indexers: %w", err)
+	}
+
+	// Filter to Prowlarr indexers only
+	var prowlarrIndexers []*models.TorznabIndexer
+	for _, idx := range allIndexers {
+		if idx.Backend == models.TorznabBackendProwlarr {
+			prowlarrIndexers = append(prowlarrIndexers, idx)
+		}
+	}
+
+	if len(prowlarrIndexers) == 0 {
+		return &ProwlarrHistoryResponse{Servers: []ProwlarrServerHistory{}}, nil
+	}
+
+	// Group indexers by Prowlarr server (BaseURL)
+	prowlarrGroups := make(map[string][]*models.TorznabIndexer)
+	for _, indexer := range prowlarrIndexers {
+		key := strings.TrimRight(strings.TrimSpace(indexer.BaseURL), "/")
+		prowlarrGroups[key] = append(prowlarrGroups[key], indexer)
+	}
+
+	// Build indexer ID to name mapping for all Prowlarr indexers
+	indexerNames := make(map[string]map[int]string) // serverURL -> prowlarrIndexerID -> name
+	for baseURL, indexers := range prowlarrGroups {
+		indexerNames[baseURL] = make(map[int]string)
+		for _, idx := range indexers {
+			if prowID, err := strconv.Atoi(idx.IndexerID); err == nil {
+				indexerNames[baseURL][prowID] = idx.Name
+			}
+		}
+	}
+
+	response := &ProwlarrHistoryResponse{
+		Servers: make([]ProwlarrServerHistory, 0, len(prowlarrGroups)),
+	}
+
+	// Query history from each Prowlarr server
+	for baseURL, indexers := range prowlarrGroups {
+		serverHistory := ProwlarrServerHistory{
+			ServerURL:  baseURL,
+			ServerName: deriveServerName(baseURL, indexers),
+			Records:    []ProwlarrHistoryEntry{},
+		}
+
+		if len(indexers) == 0 {
+			response.Servers = append(response.Servers, serverHistory)
+			continue
+		}
+
+		// Use the first indexer's API key
+		apiKey, err := s.indexerStore.GetDecryptedAPIKey(indexers[0])
+		if err != nil {
+			log.Warn().Err(err).Str("serverURL", baseURL).Msg("Failed to decrypt API key for Prowlarr history")
+			serverHistory.Error = "failed to decrypt API key"
+			response.Servers = append(response.Servers, serverHistory)
+			continue
+		}
+
+		// Create Prowlarr client
+		timeout := indexers[0].TimeoutSeconds
+		if timeout <= 0 {
+			timeout = 30
+		}
+		client := NewClient(baseURL, apiKey, models.TorznabBackendProwlarr, timeout)
+		if client.prowlarr == nil {
+			serverHistory.Error = "failed to create Prowlarr client"
+			response.Servers = append(response.Servers, serverHistory)
+			continue
+		}
+
+		// Fetch history: event types 1 (grab), 2 (query), 3 (rss)
+		eventTypes := []int{1, 2, 3}
+		var records []prowlarr.HistoryResource
+		var totalRecords int
+
+		if !since.IsZero() {
+			// Delta fetch - only get events since the given timestamp
+			recs, err := client.prowlarr.GetHistorySince(ctx, since, eventTypes)
+			if err != nil {
+				log.Warn().Err(err).Str("serverURL", baseURL).Msg("Failed to fetch Prowlarr history (since)")
+				serverHistory.Error = err.Error()
+				response.Servers = append(response.Servers, serverHistory)
+				continue
+			}
+			records = recs
+			totalRecords = len(recs)
+		} else {
+			// Full fetch with pagination
+			historyResp, err := client.prowlarr.GetHistory(ctx, 1, limit, eventTypes)
+			if err != nil {
+				log.Warn().Err(err).Str("serverURL", baseURL).Msg("Failed to fetch Prowlarr history")
+				serverHistory.Error = err.Error()
+				response.Servers = append(response.Servers, serverHistory)
+				continue
+			}
+			records = historyResp.Records
+			totalRecords = historyResp.TotalRecords
+		}
+
+		serverHistory.TotalRecords = totalRecords
+
+		// Convert records and add indexer names
+		nameMap := indexerNames[baseURL]
+		for _, rec := range records {
+			entry := ProwlarrHistoryEntry{
+				ID:         rec.ID,
+				IndexerID:  rec.IndexerID,
+				Date:       rec.Date,
+				Successful: rec.Successful,
+				EventType:  rec.EventType,
+				DownloadID: rec.DownloadID,
+				Data:       rec.Data,
+			}
+
+			// Try to get indexer name from our local mapping
+			if name, ok := nameMap[rec.IndexerID]; ok {
+				entry.IndexerName = name
+			} else {
+				// Fallback: use host field from data if available
+				if host, ok := rec.Data["Host"]; ok && host != "" {
+					entry.IndexerName = host
+				} else if source, ok := rec.Data["Source"]; ok && source != "" {
+					entry.IndexerName = source
+				} else {
+					entry.IndexerName = fmt.Sprintf("Indexer %d", rec.IndexerID)
+				}
+			}
+
+			serverHistory.Records = append(serverHistory.Records, entry)
+		}
+
+		response.Servers = append(response.Servers, serverHistory)
+	}
+
+	return response, nil
+}
+
+const (
+	historyCacheRefreshDebounce = 5 * time.Second  // Min time between cache refreshes
+	historyCacheMaxAge          = 30 * time.Second // Max age before fallback fetch
+	historyCacheDefaultLimit    = 100
+)
+
+// TriggerHistoryCacheRefresh schedules an async refresh of the Prowlarr history cache.
+// Call this AFTER Prowlarr operations complete (RSS sync, search, download).
+// The refresh is debounced - if called multiple times within 5s, only one refresh runs.
+func (s *Service) TriggerHistoryCacheRefresh() {
+	go func() {
+		// Debounce: skip if last refresh was recent
+		s.historyCacheMu.RLock()
+		lastRefresh := s.historyCacheTime
+		s.historyCacheMu.RUnlock()
+
+		if time.Since(lastRefresh) < historyCacheRefreshDebounce {
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		history, err := s.GetProwlarrHistory(ctx, historyCacheDefaultLimit, time.Time{})
+		if err != nil {
+			log.Debug().Err(err).Msg("Failed to refresh Prowlarr history cache")
+			return
+		}
+
+		s.historyCacheMu.Lock()
+		s.historyCacheData = history
+		s.historyCacheTime = time.Now()
+		s.historyCacheMu.Unlock()
+
+		log.Trace().Msg("Prowlarr history cache refreshed")
+	}()
+}
+
+// GetCachedProwlarrHistory returns cached history if fresh, otherwise fetches live.
+// This is optimized for frequent frontend polling - returns from memory when possible.
+func (s *Service) GetCachedProwlarrHistory(ctx context.Context, maxAge time.Duration) (*ProwlarrHistoryResponse, error) {
+	if maxAge <= 0 {
+		maxAge = historyCacheMaxAge
+	}
+
+	s.historyCacheMu.RLock()
+	cached := s.historyCacheData
+	cacheTime := s.historyCacheTime
+	s.historyCacheMu.RUnlock()
+
+	// Return cache if fresh
+	if cached != nil && time.Since(cacheTime) < maxAge {
+		return cached, nil
+	}
+
+	// Cache is stale or empty - fetch synchronously
+	history, err := s.GetProwlarrHistory(ctx, historyCacheDefaultLimit, time.Time{})
+	if err != nil {
+		// If fetch fails but we have stale cache, return stale data
+		if cached != nil {
+			log.Debug().Err(err).Msg("Returning stale Prowlarr history cache after fetch error")
+			return cached, nil
+		}
+		return nil, err
+	}
+
+	// Update cache
+	s.historyCacheMu.Lock()
+	s.historyCacheData = history
+	s.historyCacheTime = time.Now()
+	s.historyCacheMu.Unlock()
+
+	return history, nil
+}
+
+// deriveServerName extracts a friendly name for the Prowlarr server
+func deriveServerName(baseURL string, indexers []*models.TorznabIndexer) string {
+	u, err := url.Parse(baseURL)
+	if err == nil && u.Host != "" {
+		return u.Host
+	}
+	// Fallback to the first indexer's name prefix
+	if len(indexers) > 0 {
+		return "Prowlarr"
+	}
+	return baseURL
 }

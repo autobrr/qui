@@ -29,6 +29,7 @@ import { toast } from "sonner"
 import { AutodiscoveryDialog } from "./AutodiscoveryDialog"
 import { IndexerDialog } from "./IndexerDialog"
 import { IndexerTable } from "./IndexerTable"
+import { ProwlarrHistoryPanel } from "./ProwlarrHistoryPanel"
 
 interface IndexersPageProps {
   withContainer?: boolean
@@ -257,6 +258,8 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
           />
         </CardContent>
       </Card>
+
+      <ProwlarrHistoryPanel indexers={indexers} />
 
       <IndexerDialog
         open={addDialogOpen}

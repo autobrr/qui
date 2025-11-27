@@ -340,6 +340,132 @@ func ExtractDomainFromIndexerFields(fields []IndexerField) string {
 	return ""
 }
 
+// HistoryResource represents a Prowlarr history entry
+type HistoryResource struct {
+	ID         int               `json:"id"`
+	IndexerID  int               `json:"indexerId"`
+	Date       time.Time         `json:"date"`
+	Successful bool              `json:"successful"`
+	EventType  string            `json:"eventType"`
+	DownloadID *string           `json:"downloadId"`
+	Data       map[string]string `json:"data"`
+}
+
+// HistoryResponse is the paginated response from Prowlarr
+type HistoryResponse struct {
+	Page         int               `json:"page"`
+	PageSize     int               `json:"pageSize"`
+	TotalRecords int               `json:"totalRecords"`
+	Records      []HistoryResource `json:"records"`
+}
+
+// GetHistory fetches history from Prowlarr with optional filtering by event types.
+// eventTypes: 1=ReleaseGrabbed, 2=IndexerQuery, 3=IndexerRss, 4=IndexerAuth
+func (c *Client) GetHistory(ctx context.Context, page, pageSize int, eventTypes []int) (*HistoryResponse, error) {
+	if c.httpClient == nil {
+		return nil, fmt.Errorf("prowlarr HTTP client is not configured")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	endpoint, err := url.JoinPath(c.host, "api", "v1", "history")
+	if err != nil {
+		return nil, fmt.Errorf("failed to build prowlarr endpoint: %w", err)
+	}
+
+	query := url.Values{}
+	query.Set("page", fmt.Sprintf("%d", page))
+	query.Set("pageSize", fmt.Sprintf("%d", pageSize))
+	query.Set("sortKey", "date")
+	query.Set("sortDirection", "descending")
+
+	for _, et := range eventTypes {
+		query.Add("eventType", fmt.Sprintf("%d", et))
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build prowlarr request: %w", err)
+	}
+	req.URL.RawQuery = query.Encode()
+	if c.apiKey != "" {
+		req.Header.Set("X-Api-Key", c.apiKey)
+	}
+	req.Header.Set("User-Agent", c.userAgent)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query prowlarr: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		// continue
+	case http.StatusNotFound:
+		return nil, fmt.Errorf("prowlarr history endpoint not found (404)")
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return nil, fmt.Errorf("prowlarr returned %d (unauthorized)", resp.StatusCode)
+	default:
+		return nil, fmt.Errorf("prowlarr unexpected status %d", resp.StatusCode)
+	}
+
+	var payload HistoryResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, fmt.Errorf("failed to decode prowlarr response: %w", err)
+	}
+
+	return &payload, nil
+}
+
+// GetHistorySince fetches history events that occurred after the given timestamp.
+// This is more efficient than GetHistory for subsequent polling requests.
+func (c *Client) GetHistorySince(ctx context.Context, since time.Time, eventTypes []int) ([]HistoryResource, error) {
+	endpoint := fmt.Sprintf("%s/api/v1/history/since", c.host)
+
+	query := url.Values{}
+	query.Set("date", since.UTC().Format(time.RFC3339))
+
+	for _, et := range eventTypes {
+		query.Add("eventType", fmt.Sprintf("%d", et))
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build prowlarr request: %w", err)
+	}
+	req.URL.RawQuery = query.Encode()
+	if c.apiKey != "" {
+		req.Header.Set("X-Api-Key", c.apiKey)
+	}
+	req.Header.Set("User-Agent", c.userAgent)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query prowlarr: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		// continue
+	case http.StatusNotFound:
+		return nil, fmt.Errorf("prowlarr history/since endpoint not found (404)")
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return nil, fmt.Errorf("prowlarr returned %d (unauthorized)", resp.StatusCode)
+	default:
+		return nil, fmt.Errorf("prowlarr unexpected status %d", resp.StatusCode)
+	}
+
+	var records []HistoryResource
+	if err := json.NewDecoder(resp.Body).Decode(&records); err != nil {
+		return nil, fmt.Errorf("failed to decode prowlarr response: %w", err)
+	}
+
+	return records, nil
+}
+
 // extractDomainFromURL extracts the domain from a URL string (copied from jackett service)
 func extractDomainFromURL(urlStr string) string {
 	if urlStr == "" {
