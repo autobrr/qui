@@ -255,11 +255,11 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		}
 	}
 
-	// Certain variant tags (IMAX, HYBRID, etc.) must match even if RLS places
-	// them in different fields. This ensures we only cross-seed truly identical
-	// video masters.
-	if !strictVariantOverrides.variantsCompatible(source, candidate) ||
-		!strictVariantOverrides.variantsCompatible(candidate, source) {
+	// Certain variant tags must match for safe cross-seeding.
+	// IMAX/HYBRID always require exact match (different video masters).
+	// REPACK/PROPER require exact match for non-pack content, but season packs
+	// are exempt since a pack might contain a REPACK of just one episode.
+	if !checkVariantsCompatible(source, candidate) {
 		return false
 	}
 

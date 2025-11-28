@@ -22,15 +22,28 @@ type variantOverrides struct {
 	cut        []string
 }
 
-// strictVariantOverrides contains the current curated set of strict tags.
+// strictVariantOverrides contains tags that must ALWAYS match exactly.
+// These represent different video masters (IMAX, HYBRID) that cannot be cross-seeded.
 //
-// Edit these slices to add more variants that should match exactly.
+// nonPackVariantOverrides contains tags that must match for non-pack content.
+// Season packs are exempt because a pack might contain a REPACK of just one episode.
 var (
-	variantNormalizer      = stringutils.NewNormalizer(5*time.Minute, transformToUpper)
+	variantNormalizer = stringutils.NewNormalizer(5*time.Minute, transformToUpper)
+
+	// Always strict - these represent different source masters
 	strictVariantOverrides = newVariantOverrides(
 		[]string{"IMAX"}, // IMAX releases behave like a unique master
 		[]string{
-			"HYBRID",   // HYBRID encodes differ notably from vanilla releases
+			"HYBRID", // HYBRID encodes differ notably from vanilla releases
+		},
+		nil,
+		nil,
+	)
+
+	// Non-pack strict - exempt season packs since they may contain partial REPACKs
+	nonPackVariantOverrides = newVariantOverrides(
+		nil,
+		[]string{
 			"REPACK",   // Re-release to fix issues with original
 			"REPACK2",  // Second re-release
 			"REPACK3",  // Third re-release
@@ -158,5 +171,35 @@ func (o variantOverrides) variantsCompatible(source, candidate *rls.Release) boo
 			return false
 		}
 	}
+	return true
+}
+
+// isSeasonPack returns true if the release is a season pack (has series but no episode).
+func isSeasonPack(r *rls.Release) bool {
+	return r.Series > 0 && r.Episode == 0
+}
+
+// checkVariantsCompatible validates variant compatibility between source and candidate.
+// For always-strict variants (IMAX, HYBRID), mismatches are never allowed.
+// For non-pack variants (REPACK, PROPER), mismatches are allowed if either release is a season pack.
+func checkVariantsCompatible(source, candidate *rls.Release) bool {
+	// Always-strict variants must match regardless of content type
+	if !strictVariantOverrides.variantsCompatible(source, candidate) ||
+		!strictVariantOverrides.variantsCompatible(candidate, source) {
+		return false
+	}
+
+	// Non-pack variants are skipped for season packs
+	// A season pack might contain a REPACK of just one episode
+	if isSeasonPack(source) || isSeasonPack(candidate) {
+		return true
+	}
+
+	// For non-pack content, REPACK/PROPER must match
+	if !nonPackVariantOverrides.variantsCompatible(source, candidate) ||
+		!nonPackVariantOverrides.variantsCompatible(candidate, source) {
+		return false
+	}
+
 	return true
 }
