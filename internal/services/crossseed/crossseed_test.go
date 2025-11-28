@@ -1342,64 +1342,71 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 	defaultSettings := models.DefaultCrossSeedAutomationSettings()
 
 	tests := []struct {
-		name             string
-		request          *CrossSeedRequest
-		matched          qbt.Torrent
-		settings         *models.CrossSeedAutomationSettings
-		addCrossSeedTag  bool
-		expectedCategory string
-		expectedTags     []string
+		name              string
+		request           *CrossSeedRequest
+		matched           qbt.Torrent
+		settings          *models.CrossSeedAutomationSettings
+		addCrossSeedTag   *bool
+		inheritSourceTags bool
+		expectedCategory  string
+		expectedTags      []string
 	}{
 		{
-			name: "use matched category when request is empty",
+			name: "inherit matched tags when inheritSourceTags enabled",
 			request: &CrossSeedRequest{
-				Category: "",
-				Tags:     nil,
+				Category:          "",
+				Tags:              []string{"cross-seed"},
+				InheritSourceTags: true,
 			},
 			matched: qbt.Torrent{
 				Category: "movies",
 				Tags:     "tracker1,quality-1080p",
 			},
-			settings:         defaultSettings,
-			addCrossSeedTag:  true,
-			expectedCategory: "movies",
-			expectedTags:     []string{"tracker1", "quality-1080p", "cross-seed"},
+			settings:          defaultSettings,
+			addCrossSeedTag:   nil,
+			inheritSourceTags: true,
+			expectedCategory:  "movies",
+			expectedTags:      []string{"cross-seed", "tracker1", "quality-1080p"},
 		},
 		{
-			name: "override with request category",
+			name: "source tags without inheritance",
 			request: &CrossSeedRequest{
 				Category: "movies-4k",
-				Tags:     []string{"custom"},
+				Tags:     []string{"custom", "cross-seed"},
 			},
 			matched: qbt.Torrent{
 				Category: "movies",
 				Tags:     "tracker1",
 			},
-			settings:         defaultSettings,
-			addCrossSeedTag:  true,
-			expectedCategory: "movies-4k",
-			expectedTags:     []string{"custom", "cross-seed"},
+			settings:          defaultSettings,
+			addCrossSeedTag:   nil,
+			inheritSourceTags: false,
+			expectedCategory:  "movies-4k",
+			expectedTags:      []string{"custom", "cross-seed"},
 		},
 		{
-			name: "add cross-seed tag when matched tags exist",
+			name: "source tags with inheritance",
 			request: &CrossSeedRequest{
-				Category: "",
-				Tags:     nil,
+				Category:          "",
+				Tags:              []string{"cross-seed"},
+				InheritSourceTags: true,
 			},
 			matched: qbt.Torrent{
 				Category: "tv",
 				Tags:     "sonarr",
 			},
-			settings:         defaultSettings,
-			addCrossSeedTag:  true,
-			expectedCategory: "tv",
-			expectedTags:     []string{"sonarr", "cross-seed"},
+			settings:          defaultSettings,
+			addCrossSeedTag:   nil,
+			inheritSourceTags: true,
+			expectedCategory:  "tv",
+			expectedTags:      []string{"cross-seed", "sonarr"},
 		},
 		{
 			name: "use indexer category when enabled",
 			request: &CrossSeedRequest{
 				Category:    "",
 				IndexerName: "IndexerCat",
+				Tags:        []string{"cross-seed"},
 			},
 			matched: qbt.Torrent{
 				Category: "fallback",
@@ -1407,24 +1414,26 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 			settings: &models.CrossSeedAutomationSettings{
 				UseCategoryFromIndexer: true,
 			},
-			addCrossSeedTag:  true,
-			expectedCategory: "IndexerCat",
-			expectedTags:     []string{"cross-seed"},
+			addCrossSeedTag:   nil,
+			inheritSourceTags: false,
+			expectedCategory:  "IndexerCat",
+			expectedTags:      []string{"cross-seed"},
 		},
 		{
-			name: "skip cross-seed tag when disabled",
+			name: "remove cross-seed tag when explicitly disabled",
 			request: &CrossSeedRequest{
 				Category: "",
-				Tags:     []string{"keep"},
+				Tags:     []string{"cross-seed", "keep"},
 			},
 			matched: qbt.Torrent{
 				Category: "tv",
 				Tags:     "",
 			},
-			settings:         defaultSettings,
-			addCrossSeedTag:  false,
-			expectedCategory: "tv",
-			expectedTags:     []string{"keep"},
+			settings:          defaultSettings,
+			addCrossSeedTag:   boolPtr(false),
+			inheritSourceTags: false,
+			expectedCategory:  "tv",
+			expectedTags:      []string{"keep"},
 		},
 	}
 
@@ -1442,7 +1451,7 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 			category := svc.determineCrossSeedCategory(context.Background(), tt.request, &tt.matched)
 			assert.Equal(t, tt.expectedCategory, category)
 
-			tags := buildCrossSeedTags(tt.request.Tags, tt.matched.Tags, tt.addCrossSeedTag)
+			tags := buildCrossSeedTags(tt.request.Tags, tt.matched.Tags, tt.inheritSourceTags, tt.addCrossSeedTag)
 			if len(tt.expectedTags) == 0 {
 				assert.Empty(t, tags)
 			} else {
@@ -1450,6 +1459,10 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func boolPtr(b bool) *bool {
+	return &b
 }
 
 // TestSeasonPackDetection tests season vs episode detection logic

@@ -424,6 +424,7 @@ type SearchRunOptions struct {
 	StartPaused            bool
 	CategoryOverride       *string
 	TagsOverride           []string
+	InheritSourceTags      bool
 	IgnorePatterns         []string
 	SpecificHashes         []string
 }
@@ -1094,7 +1095,8 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 			FindIndividualEpisodes: settings.FindIndividualEpisodes,
 			StartPaused:            settings.StartPaused,
 			CategoryOverride:       settings.Category,
-			TagsOverride:           normalizeStringSlice(settings.Tags),
+			TagsOverride:           append([]string(nil), settings.CompletionSearchTags...),
+			InheritSourceTags:      settings.InheritSourceTags,
 			IgnorePatterns:         append([]string(nil), settings.IgnorePatterns...),
 		},
 	}
@@ -1156,9 +1158,11 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		if opts.CategoryOverride == nil {
 			opts.CategoryOverride = settings.Category
 		}
-		if len(opts.TagsOverride) == 0 && len(settings.Tags) > 0 {
-			opts.TagsOverride = append([]string(nil), settings.Tags...)
+		// Use seeded search tags from settings for manual/background seeded search runs
+		if len(opts.TagsOverride) == 0 {
+			opts.TagsOverride = append([]string(nil), settings.SeededSearchTags...)
 		}
+		opts.InheritSourceTags = settings.InheritSourceTags
 		if len(settings.IgnorePatterns) > 0 {
 			opts.IgnorePatterns = append([]string(nil), settings.IgnorePatterns...)
 		}
@@ -1644,7 +1648,8 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	req := &CrossSeedRequest{
 		TorrentData:            encodedTorrent,
 		TargetInstanceIDs:      append([]int(nil), settings.TargetInstanceIDs...),
-		Tags:                   append([]string(nil), settings.Tags...),
+		Tags:                   append([]string(nil), settings.RSSAutomationTags...),
+		InheritSourceTags:      settings.InheritSourceTags,
 		IgnorePatterns:         append([]string(nil), settings.IgnorePatterns...),
 		SkipIfExists:           &skipIfExists,
 		IndexerName:            sourceIndexer,
@@ -2212,11 +2217,24 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		ignorePatterns = append([]string(nil), settings.IgnorePatterns...)
 	}
 
+	// Use request tags if provided, otherwise fall back to webhook tags from settings
+	tags := req.Tags
+	if len(tags) == 0 && settings != nil {
+		tags = append([]string(nil), settings.WebhookTags...)
+	}
+
+	// Inherit source tags from settings (webhook callers can override via AddCrossSeedTag for backward compat)
+	inheritSourceTags := false
+	if settings != nil {
+		inheritSourceTags = settings.InheritSourceTags
+	}
+
 	crossReq := &CrossSeedRequest{
 		TorrentData:            req.TorrentData,
 		TargetInstanceIDs:      targetInstanceIDs,
 		Category:               req.Category,
-		Tags:                   req.Tags,
+		Tags:                   tags,
+		InheritSourceTags:      inheritSourceTags,
 		IgnorePatterns:         ignorePatterns,
 		StartPaused:            req.StartPaused,
 		AddCrossSeedTag:        req.AddCrossSeedTag,
@@ -2373,12 +2391,7 @@ func (s *Service) processCrossSeedCandidate(
 		options["category"] = category
 	}
 
-	addCrossSeedTag := true
-	if req.AddCrossSeedTag != nil {
-		addCrossSeedTag = *req.AddCrossSeedTag
-	}
-
-	finalTags := buildCrossSeedTags(req.Tags, matchedTorrent.Tags, addCrossSeedTag)
+	finalTags := buildCrossSeedTags(req.Tags, matchedTorrent.Tags, req.InheritSourceTags, req.AddCrossSeedTag)
 	if len(finalTags) > 0 {
 		options["tags"] = strings.Join(finalTags, ",")
 	}
@@ -2565,6 +2578,9 @@ func (s *Service) queueRecheckResume(ctx context.Context, instanceID int, hash s
 // recheckResumeWorker is a single goroutine that processes all pending recheck resumes.
 // Instead of spawning a goroutine per torrent, this worker manages all pending torrents
 // in a map and checks them periodically, avoiding goroutine accumulation.
+//
+// TODO: key by instanceID+hash if multi-instance background search is enabled,
+// currently we only run background search on one instance at a time so hash-only keys are safe.
 func (s *Service) recheckResumeWorker() {
 	pending := make(map[string]*pendingResume)
 	ticker := time.NewTicker(recheckPollInterval)
@@ -4157,20 +4173,34 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 			startPausedCopy := startPaused
 			addCrossSeedTag := useTag
 
+			// Determine tags for manual apply: use user's choice if provided, otherwise use seeded search tags
+			var applyTags []string
+			if useTag {
+				if tagName != "" {
+					applyTags = []string{tagName}
+				} else if settings != nil {
+					applyTags = append([]string(nil), settings.SeededSearchTags...)
+				}
+			}
+
+			// Inherit source tags from settings for manual apply
+			inheritSourceTags := false
+			if settings != nil {
+				inheritSourceTags = settings.InheritSourceTags
+			}
+
 			payload := &CrossSeedRequest{
 				TorrentData:            base64.StdEncoding.EncodeToString(torrentBytes),
 				TargetInstanceIDs:      []int{instanceID},
 				StartPaused:            &startPausedCopy,
 				AddCrossSeedTag:        &addCrossSeedTag,
+				Tags:                   applyTags,
+				InheritSourceTags:      inheritSourceTags,
 				IndexerName:            indexerName,
 				FindIndividualEpisodes: req.FindIndividualEpisodes,
 			}
 			if settings != nil && len(settings.IgnorePatterns) > 0 {
 				payload.IgnorePatterns = append([]string(nil), settings.IgnorePatterns...)
-			}
-
-			if useTag {
-				payload.Tags = []string{tagName}
 			}
 
 			resp, err := s.invokeCrossSeed(ctx, payload)
@@ -5244,6 +5274,7 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		TargetInstanceIDs:      []int{state.opts.InstanceID},
 		StartPaused:            &startPaused,
 		Tags:                   append([]string(nil), state.opts.TagsOverride...),
+		InheritSourceTags:      state.opts.InheritSourceTags,
 		Category:               "",
 		IndexerName:            match.Indexer,
 		FindIndividualEpisodes: state.opts.FindIndividualEpisodes,
@@ -6195,8 +6226,13 @@ func (s *Service) determineCrossSeedCategory(ctx context.Context, req *CrossSeed
 	return matchedCategory
 }
 
-// buildCrossSeedTags merges request tags, matched torrent tags, and the automatic cross-seed tag.
-func buildCrossSeedTags(requestTags []string, matchedTags string, addCrossSeedTag bool) []string {
+// buildCrossSeedTags merges source-specific tags with optional matched torrent tags.
+// Parameters:
+//   - sourceTags: tags configured for this source type (e.g., RSSAutomationTags, SeededSearchTags)
+//   - matchedTags: comma-separated tags from the matched torrent in qBittorrent
+//   - inheritSourceTags: whether to also include tags from the matched torrent
+//   - addCrossSeedTag: deprecated backward-compat flag; only used if explicitly false to remove "cross-seed"
+func buildCrossSeedTags(sourceTags []string, matchedTags string, inheritSourceTags bool, addCrossSeedTag *bool) []string {
 	tagSet := make(map[string]struct{})
 	finalTags := make([]string, 0)
 
@@ -6212,18 +6248,28 @@ func buildCrossSeedTags(requestTags []string, matchedTags string, addCrossSeedTa
 		finalTags = append(finalTags, tag)
 	}
 
-	if len(requestTags) > 0 {
-		for _, tag := range requestTags {
-			addTag(tag)
-		}
-	} else if matchedTags != "" {
+	// Add source-specific tags first
+	for _, tag := range sourceTags {
+		addTag(tag)
+	}
+
+	// Optionally inherit tags from the matched torrent
+	if inheritSourceTags && matchedTags != "" {
 		for _, tag := range strings.Split(matchedTags, ",") {
 			addTag(tag)
 		}
 	}
 
-	if addCrossSeedTag {
-		addTag("cross-seed")
+	// Backward compatibility: if addCrossSeedTag is explicitly false, remove "cross-seed"
+	// This allows old API callers to opt out of the cross-seed tag
+	if addCrossSeedTag != nil && !*addCrossSeedTag {
+		filtered := make([]string, 0, len(finalTags))
+		for _, tag := range finalTags {
+			if tag != "cross-seed" {
+				filtered = append(filtered, tag)
+			}
+		}
+		return filtered
 	}
 
 	return finalTags

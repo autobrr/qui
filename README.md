@@ -636,7 +636,9 @@ Optionally, you can include additional fields supported by qui’s `AutobrrApply
 
 When this action runs after a successful `/api/cross-seed/webhook/check`, autobrr posts the torrent to `/api/cross-seed/apply`. qui then decodes the torrent, re-validates it by finding 100% complete matching torrents on the targeted instances, aligns the new torrent’s naming and file layout with the existing one, and finally adds it using the same cross-seed pipeline as manual apply.
 
-If you omit `category`, qui reuses the category (and AutoTMM/save path) from the matched, already-seeding torrent so the cross-seed lands alongside the original files. If you omit `tags`, qui copies the matched torrent’s tags and then appends a `cross-seed` tag by default; you can optionally include `category` (e.g., `"TV"`) and `tags` (e.g., `["autobrr", "cross-seed"]`) in the payload to override those defaults, and `cross-seed` is still added unless you set `addCrossSeedTag` to `false`.
+If you omit `category`, qui reuses the category (and AutoTMM/save path) from the matched, already-seeding torrent so the cross-seed lands alongside the original files.
+
+**Tagging behavior:** By default, qui applies the **Webhook Tags** configured in the Cross-Seed settings (defaults to `["cross-seed"]`). You can customize these tags per-source in the **Source Tagging** section of the Global Rules tab. To override this on a per-request basis, include `tags` in the payload (e.g., `["autobrr", "cross-seed"]`). Enable **Inherit source torrent tags** in settings to also copy tags from the matched torrent in qBittorrent. The `addCrossSeedTag` field is deprecated but still supported for backward compatibility; set it to `false` to remove the `cross-seed` tag from the final tag list.
 
 Cross-seeded torrents are first added paused with hash checking skipped (`skip_checking=true`) so qBittorrent can immediately reuse existing data; if that add fails, qui retries without `skip_checking` to let qBittorrent run a full recheck. After adding, qui polls the torrent state: if qBittorrent reports ~100% complete, qui automatically resumes it; if progress stays lower (for example because optional files like samples or subtitles are missing), it remains paused so you can review it manually.
 
@@ -649,6 +651,12 @@ Cross-seed matching behavior is controlled by settings in qui's Cross-Seed page:
 **Global Settings:**
 - **Size mismatch tolerance** - Maximum size difference percentage (default: 5%).
 - **Ignore patterns** - File patterns used to skip sidecar and sample files when comparing torrents. Plain strings match any path ending in the given text (for example, `.nfo` or `.srr` will ignore files whose path ends with those extensions). Glob patterns treat `/` as a folder separator, so `*.nfo` only matches top-level files; to ignore sample folders in any release, use `*/sample/*`.
+- **Source Tagging** - Configure tags applied to cross-seed torrents based on their source:
+  - **RSS Automation Tags** - Tags for torrents added via RSS feed automation (default: `["cross-seed"]`).
+  - **Seeded Search Tags** - Tags for torrents added via seeded torrent search (default: `["cross-seed"]`).
+  - **Completion Search Tags** - Tags for torrents added via completion-triggered search (default: `["cross-seed"]`).
+  - **Webhook Tags** - Tags for torrents added via `/apply` webhook (default: `["cross-seed"]`).
+  - **Inherit source torrent tags** - Also copy tags from the matched source torrent in qBittorrent.
 
 Ignore patterns apply to RSS automation, `/cross-seed/webhook/check`, `/cross-seed/apply` (Autobrr Apply), and seeded torrent search additions.
 

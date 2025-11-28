@@ -1329,7 +1329,6 @@ export interface CrossSeedAutomationSettings {
   runIntervalMinutes: number
   startPaused: boolean
   category?: string | null
-  tags: string[]
   ignorePatterns: string[]
   targetInstanceIds: number[]
   targetIndexerIds: number[]
@@ -1338,6 +1337,12 @@ export interface CrossSeedAutomationSettings {
   useCategoryFromIndexer: boolean
   runExternalProgramId?: number | null
   completion?: CrossSeedCompletionSettings
+  // Source-specific tagging
+  rssAutomationTags: string[]
+  seededSearchTags: string[]
+  completionSearchTags: string[]
+  webhookTags: string[]
+  inheritSourceTags: boolean
   createdAt?: string
   updatedAt?: string
 }
@@ -1347,7 +1352,6 @@ export interface CrossSeedAutomationSettingsPatch {
   runIntervalMinutes?: number
   startPaused?: boolean
   category?: string | null
-  tags?: string[]
   ignorePatterns?: string[]
   targetInstanceIds?: number[]
   targetIndexerIds?: number[]
@@ -1356,6 +1360,12 @@ export interface CrossSeedAutomationSettingsPatch {
   useCategoryFromIndexer?: boolean
   runExternalProgramId?: number | null
   completion?: CrossSeedCompletionSettingsPatch
+  // Source-specific tagging
+  rssAutomationTags?: string[]
+  seededSearchTags?: string[]
+  completionSearchTags?: string[]
+  webhookTags?: string[]
+  inheritSourceTags?: boolean
 }
 
 export interface CrossSeedAutomationStatus {

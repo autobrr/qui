@@ -20,7 +20,7 @@ type CrossSeedRequest struct {
 	TargetInstanceIDs []int `json:"target_instance_ids,omitempty"`
 	// Category to apply to the cross-seeded torrent
 	Category string `json:"category,omitempty"`
-	// Tags to apply to the cross-seeded torrent
+	// Tags to apply to the cross-seeded torrent (source-specific tags from settings)
 	Tags []string `json:"tags,omitempty"`
 	// IgnorePatterns specify files to ignore when matching
 	IgnorePatterns []string `json:"ignore_patterns,omitempty"`
@@ -29,8 +29,10 @@ type CrossSeedRequest struct {
 	// StartPaused controls whether newly added torrents start paused
 	StartPaused *bool `json:"start_paused,omitempty"`
 	// AddCrossSeedTag controls whether the service should automatically tag added torrents as cross-seeds.
-	// Defaults to true when omitted.
+	// Deprecated: Use source-specific tags in settings instead. Defaults to true when omitted for backward compatibility.
 	AddCrossSeedTag *bool `json:"add_cross_seed_tag,omitempty"`
+	// InheritSourceTags controls whether to also copy tags from the matched source torrent.
+	InheritSourceTags bool `json:"inherit_source_tags,omitempty"`
 	// IndexerName specifies the name of the indexer for this torrent (used with useCategoryFromIndexer setting)
 	IndexerName string `json:"indexer_name,omitempty"`
 	// FindIndividualEpisodes controls whether to find individual episodes when searching with season packs

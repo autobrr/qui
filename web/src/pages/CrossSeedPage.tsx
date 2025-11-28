@@ -53,7 +53,6 @@ interface AutomationFormState {
   enabled: boolean
   runIntervalMinutes: number  // RSS Automation: interval between RSS feed polls (min: 30 minutes)
   startPaused: boolean
-  tags: string[]
   targetInstanceIds: number[]
   targetIndexerIds: number[]
 }
@@ -65,6 +64,12 @@ interface GlobalCrossSeedSettings {
   useCategoryFromIndexer: boolean
   runExternalProgramId?: number | null
   ignorePatterns: string
+  // Source-specific tagging
+  rssAutomationTags: string[]
+  seededSearchTags: string[]
+  completionSearchTags: string[]
+  webhookTags: string[]
+  inheritSourceTags: boolean
 }
 
 interface CompletionFormState {
@@ -86,7 +91,6 @@ const DEFAULT_AUTOMATION_FORM: AutomationFormState = {
   enabled: false,
   runIntervalMinutes: DEFAULT_RSS_INTERVAL_MINUTES,
   startPaused: true,
-  tags: [],
   targetInstanceIds: [],
   targetIndexerIds: [],
 }
@@ -97,6 +101,12 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   useCategoryFromIndexer: false,
   runExternalProgramId: null,
   ignorePatterns: "",
+  // Source-specific tagging defaults
+  rssAutomationTags: ["cross-seed"],
+  seededSearchTags: ["cross-seed"],
+  completionSearchTags: ["cross-seed"],
+  webhookTags: ["cross-seed"],
+  inheritSourceTags: false,
 }
 
 const DEFAULT_COMPLETION_SETTINGS: CrossSeedCompletionSettings = {
@@ -321,7 +331,6 @@ export function CrossSeedPage() {
         enabled: settings.enabled,
         runIntervalMinutes: settings.runIntervalMinutes,
         startPaused: settings.startPaused,
-        tags: settings.tags ?? [],
         targetInstanceIds: settings.targetInstanceIds,
         targetIndexerIds: settings.targetIndexerIds,
       })
@@ -339,6 +348,12 @@ export function CrossSeedPage() {
         ignorePatterns: Array.isArray(settings.ignorePatterns)
           ? settings.ignorePatterns.join("\n")
           : "",
+        // Source-specific tagging
+        rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
+        seededSearchTags: settings.seededSearchTags ?? ["cross-seed"],
+        completionSearchTags: settings.completionSearchTags ?? ["cross-seed"],
+        webhookTags: settings.webhookTags ?? ["cross-seed"],
+        inheritSourceTags: settings.inheritSourceTags ?? false,
       })
       setGlobalSettingsInitialized(true)
     }
@@ -401,7 +416,6 @@ export function CrossSeedPage() {
           enabled: settings.enabled,
           runIntervalMinutes: settings.runIntervalMinutes,
           startPaused: settings.startPaused,
-          tags: settings.tags ?? [],
           targetInstanceIds: settings.targetInstanceIds,
           targetIndexerIds: settings.targetIndexerIds,
         }
@@ -410,7 +424,6 @@ export function CrossSeedPage() {
       enabled: automationSource.enabled,
       runIntervalMinutes: automationSource.runIntervalMinutes,
       startPaused: automationSource.startPaused,
-      tags: normalizeStringList(automationSource.tags),
       targetInstanceIds: automationSource.targetInstanceIds,
       targetIndexerIds: automationSource.targetIndexerIds,
     }
@@ -454,6 +467,11 @@ export function CrossSeedPage() {
           useCategoryFromIndexer: settings.useCategoryFromIndexer,
           runExternalProgramId: settings.runExternalProgramId ?? null,
           ignorePatterns: ignorePatterns.length > 0 ? ignorePatterns.join(", ") : "",
+          rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
+          seededSearchTags: settings.seededSearchTags ?? ["cross-seed"],
+          completionSearchTags: settings.completionSearchTags ?? ["cross-seed"],
+          webhookTags: settings.webhookTags ?? ["cross-seed"],
+          inheritSourceTags: settings.inheritSourceTags ?? false,
         }
 
     return {
@@ -462,6 +480,12 @@ export function CrossSeedPage() {
       useCategoryFromIndexer: globalSource.useCategoryFromIndexer,
       runExternalProgramId: globalSource.runExternalProgramId,
       ignorePatterns: normalizeIgnorePatterns(globalSource.ignorePatterns),
+      // Source-specific tagging
+      rssAutomationTags: globalSource.rssAutomationTags,
+      seededSearchTags: globalSource.seededSearchTags,
+      completionSearchTags: globalSource.completionSearchTags,
+      webhookTags: globalSource.webhookTags,
+      inheritSourceTags: globalSource.inheritSourceTags,
     }
   }, [
     settings,
@@ -720,15 +744,6 @@ export function CrossSeedPage() {
       }))
     },
     [searchTagNames, searchTags]
-  )
-
-  const automationTagOptions = useMemo(
-    () => {
-      const suggestions = ["cross-seed"]
-      const merged = Array.from(new Set([...suggestions, ...automationForm.tags]))
-      return merged.map(tag => ({ label: tag, value: tag }))
-    },
-    [automationForm.tags]
   )
 
   const handleStartSearchRun = () => {
@@ -1045,39 +1060,6 @@ export function CrossSeedPage() {
                 <p className="text-sm text-destructive">{validationErrors.runIntervalMinutes}</p>
               )}
             </div>
-          </div>
-
-          <div className="grid gap-5 md:grid-cols-1">
-            <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="automation-tags">Tags</Label>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        className="text-muted-foreground hover:text-foreground"
-                        aria-label="Tags help"
-                      >
-                        <Info className="h-4 w-4" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent align="start" className="max-w-xs text-xs">
-                      Optional list applied to every cross-seeded torrent. If left empty the service reuses the source torrent tags and still adds the default <span className="font-semibold">cross-seed</span> tag automatically.
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-                <MultiSelect
-                  options={automationTagOptions}
-                  selected={automationForm.tags}
-                  onChange={values => setAutomationForm(prev => ({ ...prev, tags: normalizeStringList(values) }))}
-                  placeholder="Reuse source torrent tags"
-                  creatable
-                  onCreateOption={value => setAutomationForm(prev => ({ ...prev, tags: normalizeStringList([...prev.tags, value]) }))}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Leave blank to inherit tags from the matched torrent; the default <span className="font-semibold">cross-seed</span> tag is always added.
-                </p>
-              </div>
           </div>
 
           <div className="grid gap-5 md:grid-cols-2">
@@ -1705,6 +1687,92 @@ export function CrossSeedPage() {
                   )}
                 </p>
               </div>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-4">
+            <div className="space-y-1">
+              <p className="text-sm font-medium leading-none">Source Tagging</p>
+              <p className="text-xs text-muted-foreground">Configure tags applied to cross-seed torrents based on how they were discovered.</p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="rss-automation-tags">RSS Automation Tags</Label>
+                <MultiSelect
+                  options={[
+                    { label: "cross-seed", value: "cross-seed" },
+                    { label: "rss", value: "rss" },
+                  ]}
+                  selected={globalSettings.rssAutomationTags}
+                  onChange={values => setGlobalSettings(prev => ({ ...prev, rssAutomationTags: normalizeStringList(values) }))}
+                  placeholder="Select tags for RSS automation"
+                  creatable
+                  onCreateOption={value => setGlobalSettings(prev => ({ ...prev, rssAutomationTags: normalizeStringList([...prev.rssAutomationTags, value]) }))}
+                />
+                <p className="text-xs text-muted-foreground">Tags applied to torrents added via RSS feed automation.</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="seeded-search-tags">Seeded Search Tags</Label>
+                <MultiSelect
+                  options={[
+                    { label: "cross-seed", value: "cross-seed" },
+                    { label: "seeded-search", value: "seeded-search" },
+                  ]}
+                  selected={globalSettings.seededSearchTags}
+                  onChange={values => setGlobalSettings(prev => ({ ...prev, seededSearchTags: normalizeStringList(values) }))}
+                  placeholder="Select tags for seeded search"
+                  creatable
+                  onCreateOption={value => setGlobalSettings(prev => ({ ...prev, seededSearchTags: normalizeStringList([...prev.seededSearchTags, value]) }))}
+                />
+                <p className="text-xs text-muted-foreground">Tags applied to torrents added via seeded torrent search.</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="completion-search-tags">Completion Search Tags</Label>
+                <MultiSelect
+                  options={[
+                    { label: "cross-seed", value: "cross-seed" },
+                    { label: "completion", value: "completion" },
+                  ]}
+                  selected={globalSettings.completionSearchTags}
+                  onChange={values => setGlobalSettings(prev => ({ ...prev, completionSearchTags: normalizeStringList(values) }))}
+                  placeholder="Select tags for completion search"
+                  creatable
+                  onCreateOption={value => setGlobalSettings(prev => ({ ...prev, completionSearchTags: normalizeStringList([...prev.completionSearchTags, value]) }))}
+                />
+                <p className="text-xs text-muted-foreground">Tags applied to torrents added via completion-triggered search.</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="webhook-tags">Webhook Tags</Label>
+                <MultiSelect
+                  options={[
+                    { label: "cross-seed", value: "cross-seed" },
+                    { label: "webhook", value: "webhook" },
+                    { label: "autobrr", value: "autobrr" },
+                  ]}
+                  selected={globalSettings.webhookTags}
+                  onChange={values => setGlobalSettings(prev => ({ ...prev, webhookTags: normalizeStringList(values) }))}
+                  placeholder="Select tags for webhook/apply"
+                  creatable
+                  onCreateOption={value => setGlobalSettings(prev => ({ ...prev, webhookTags: normalizeStringList([...prev.webhookTags, value]) }))}
+                />
+                <p className="text-xs text-muted-foreground">Tags applied to torrents added via /apply webhook (e.g., autobrr).</p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 pt-2">
+              <div className="space-y-0.5">
+                <Label htmlFor="inherit-source-tags" className="font-medium">Inherit source torrent tags</Label>
+                <p className="text-xs text-muted-foreground">Also copy tags from the matched source torrent in qBittorrent.</p>
+              </div>
+              <Switch
+                id="inherit-source-tags"
+                checked={globalSettings.inheritSourceTags}
+                onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, inheritSourceTags: !!value }))}
+              />
             </div>
           </div>
 

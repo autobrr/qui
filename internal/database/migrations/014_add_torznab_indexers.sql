@@ -208,7 +208,6 @@ CREATE TABLE IF NOT EXISTS cross_seed_settings (
     run_interval_minutes INTEGER NOT NULL DEFAULT 120,
     start_paused BOOLEAN NOT NULL DEFAULT 1,
     category TEXT,
-    tags TEXT NOT NULL DEFAULT '[]',
     ignore_patterns TEXT NOT NULL DEFAULT '[]',
     target_instance_ids TEXT NOT NULL DEFAULT '[]',
     target_indexer_ids TEXT NOT NULL DEFAULT '[]',
