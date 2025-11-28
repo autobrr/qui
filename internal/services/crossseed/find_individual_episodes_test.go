@@ -73,7 +73,7 @@ func TestProcessAutomationCandidatePropagatesEpisodeFlag(t *testing.T) {
 
 	settings := &models.CrossSeedAutomationSettings{
 		StartPaused:            true,
-		Tags:                   []string{"cross-seed"},
+		RSSAutomationTags:      []string{"cross-seed"},
 		IgnorePatterns:         []string{},
 		TargetInstanceIDs:      []int{instanceID},
 		FindIndividualEpisodes: true,
