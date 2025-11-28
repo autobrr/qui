@@ -28,8 +28,21 @@ type variantOverrides struct {
 var (
 	variantNormalizer      = stringutils.NewNormalizer(5*time.Minute, transformToUpper)
 	strictVariantOverrides = newVariantOverrides(
-		[]string{"IMAX"},   // IMAX releases behave like a unique master
-		[]string{"HYBRID"}, // HYBRID encodes differ notably from vanilla releases
+		[]string{"IMAX"}, // IMAX releases behave like a unique master
+		[]string{
+			"HYBRID",   // HYBRID encodes differ notably from vanilla releases
+			"REPACK",   // Re-release to fix issues with original
+			"REPACK2",  // Second re-release
+			"REPACK3",  // Third re-release
+			"REPACK4",  // Fourth re-release
+			"REPACK5",  // Fifth re-release
+			"REPACK6",  // Sixth re-release
+			"REPACK7",  // Seventh re-release
+			"REPACK8",  // Eighth re-release
+			"REPACK9",  // Ninth re-release
+			"REPACK10", // Tenth re-release
+			"PROPER",   // Correction to a flawed release
+		},
 		nil,
 		nil,
 	)
