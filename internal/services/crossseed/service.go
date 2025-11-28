@@ -2470,16 +2470,15 @@ func (s *Service) processCrossSeedCandidate(
 	needsRecheckAndResume := requiresAlignment || hasExtraFiles
 
 	if needsRecheckAndResume {
-		// Only trigger manual recheck if we used skip_checking (alignment case)
-		// For hasExtraFiles, qBittorrent already auto-checked on add (no skip_checking)
-		if requiresAlignment {
-			if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "recheck"); err != nil {
-				log.Warn().
-					Err(err).
-					Int("instanceID", candidate.InstanceID).
-					Str("torrentHash", torrentHash).
-					Msg("Failed to trigger recheck after rename")
-			}
+		// Trigger manual recheck for both alignment and hasExtraFiles cases.
+		// qBittorrent does NOT auto-recheck torrents added in stopped/paused state,
+		// even when skip_checking is not set. We must explicitly trigger recheck.
+		if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "recheck"); err != nil {
+			log.Warn().
+				Err(err).
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentHash", torrentHash).
+				Msg("Failed to trigger recheck after add")
 		}
 		// Queue for background resume when recheck completes
 		s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash)
