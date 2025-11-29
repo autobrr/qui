@@ -51,6 +51,8 @@ import type {
   TorrentProperties,
   TorrentResponse,
   TorrentTracker,
+  TrackerRule,
+  TrackerRuleInput,
   TorznabIndexer,
   TorznabIndexerError,
   TorznabIndexerFormData,
@@ -1215,6 +1217,43 @@ class ApiClient {
 
   async getActiveTrackers(instanceId: number): Promise<Record<string, string>> {
     return this.request(`/instances/${instanceId}/trackers`)
+  }
+
+  async listTrackerRules(instanceId: number): Promise<TrackerRule[]> {
+    return this.request(`/instances/${instanceId}/tracker-rules`)
+  }
+
+  async createTrackerRule(instanceId: number, payload: TrackerRuleInput): Promise<TrackerRule> {
+    return this.request(`/instances/${instanceId}/tracker-rules`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async updateTrackerRule(instanceId: number, ruleId: number, payload: TrackerRuleInput): Promise<TrackerRule> {
+    return this.request(`/instances/${instanceId}/tracker-rules/${ruleId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async deleteTrackerRule(instanceId: number, ruleId: number): Promise<void> {
+    return this.request(`/instances/${instanceId}/tracker-rules/${ruleId}`, {
+      method: "DELETE",
+    })
+  }
+
+  async reorderTrackerRules(instanceId: number, orderedIds: number[]): Promise<void> {
+    return this.request(`/instances/${instanceId}/tracker-rules/order`, {
+      method: "PUT",
+      body: JSON.stringify({ orderedIds }),
+    })
+  }
+
+  async applyTrackerRules(instanceId: number): Promise<void> {
+    return this.request(`/instances/${instanceId}/tracker-rules/apply`, {
+      method: "POST",
+    })
   }
 
   // User endpoints

@@ -100,7 +100,7 @@ import type {
   TorrentFilters
 } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useSearch } from "@tanstack/react-router"
+import { useNavigate, useSearch } from "@tanstack/react-router"
 import {
   ArrowUpDown,
   Ban,
@@ -117,6 +117,7 @@ import {
   Loader2,
   Rabbit,
   RefreshCcw,
+  Rows3,
   Table as TableIcon,
   Tag,
   Turtle,
@@ -141,9 +142,9 @@ import {
   SpeedLimitsDialog
 } from "./TorrentDialogs"
 import { TorrentDropZone } from "./TorrentDropZone"
-import { createColumns } from "./TorrentTableColumns"
+import { createColumns, type TableViewMode } from "./TorrentTableColumns"
 
-const TABLE_ALLOWED_VIEW_MODES = ["normal", "compact"] as const
+const TABLE_ALLOWED_VIEW_MODES = ["normal", "dense", "compact"] as const
 
 // Default values for persisted state hooks (module scope for stable references)
 const DEFAULT_COLUMN_VISIBILITY = {
@@ -652,7 +653,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Instance preferences dialog state
   const [preferencesOpen, setPreferencesOpen] = useState(false)
-  const [preferencesDefaultTab, setPreferencesDefaultTab] = useState<string>("speed")
 
   // Filter lifecycle state machine to replace fragile timing-based coordination
   type FilterLifecycleState = 'idle' | 'clearing-all' | 'clearing-columns-only' | 'cleared'
@@ -877,6 +877,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Debounce search to prevent excessive filtering (200ms delay for faster response)
   const debouncedSearch = useDebounce(globalFilter, 200)
   const routeSearch = useSearch({ strict: false }) as { q?: string }
+  const navigate = useNavigate()
   const rawRouteSearch = typeof routeSearch?.q === "string" ? routeSearch.q : ""
   const searchFromRoute = rawRouteSearch.trim()
 
@@ -1296,8 +1297,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       onRowSelection: handleRowSelection,
       isAllSelected,
       excludedFromSelectAll,
-    }, speedUnit, trackerIcons, formatTimestamp, preferences, supportsTrackerHealth, isCrossSeedFiltering),
-    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth, isCrossSeedFiltering]
+    }, speedUnit, trackerIcons, formatTimestamp, preferences, supportsTrackerHealth, isCrossSeedFiltering, desktopViewMode as TableViewMode),
+    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth, isCrossSeedFiltering, desktopViewMode]
   )
 
   const torrentIdentityCounts = useMemo(() => {
@@ -1734,11 +1735,20 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
   }, [loadedRows, rows.length, filterLifecycleState])
 
+  // Compute estimated row height based on view mode - used by virtualizer and keyboard navigation
+  const estimatedRowHeight = useMemo(() => {
+    switch (desktopViewMode) {
+      case "compact": return 80
+      case "dense": return 26
+      default: return 40
+    }
+  }, [desktopViewMode])
+
   // useVirtualizer must be called at the top level, not inside useMemo
   const virtualizer = useVirtualizer({
     count: safeLoadedRows,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => (desktopViewMode === "compact" ? 80 : 40),
+    estimateSize: () => estimatedRowHeight,
     // Optimized overscan based on TanStack Virtual recommendations
     // Start small and adjust based on dataset size and performance
     overscan: sortedTorrents.length > 50000 ? 3 : sortedTorrents.length > 10000 ? 5 : sortedTorrents.length > 1000 ? 10 : 15,
@@ -1890,7 +1900,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     hasLoadedAll,
     isLoadingMore,
     loadMore,
-    estimatedRowHeight: 40,
+    estimatedRowHeight,
     onClearSelection: clearSelection,
     hasSelection: isAllSelected || selectedRowIds.length > 0,
   })
@@ -2387,8 +2397,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           )}
 
           <div style={{ position: "relative", minWidth: "min-content" }}>
-            {/* Header - only show in normal table view */}
-            {desktopViewMode === "normal" && (
+            {/* Header - show in normal and dense table views */}
+            {desktopViewMode !== "compact" && (
               <div className="sticky top-0 bg-background border-b" style={{ zIndex: 50 }}>
                 <DndContext
                 sensors={sensors}
@@ -2438,6 +2448,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             key={header.id}
                             header={header}
                             columnFilters={columnFilters}
+                            viewMode={desktopViewMode}
                             onFilterChange={(columnId, filter) => {
                               if (filter === null) {
                                 setColumnFilters(columnFilters.filter(f => f.columnId !== columnId))
@@ -2674,21 +2685,33 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                         }
                       }}
                     >
-                      {row.getVisibleCells().map(cell => (
-                        <div
-                          key={cell.id}
-                          style={{
-                            width: cell.column.getSize(),
-                            flexShrink: 0,
-                          }}
-                          className="px-3 py-2 flex items-center overflow-hidden min-w-0"
-                        >
-                          {flexRender(
-                            cell.column.columnDef.cell,
-                            cell.getContext()
-                          )}
-                        </div>
-                      ))}
+                      {row.getVisibleCells().map(cell => {
+                        // Compact columns (tracker_icon, status_icon) use px-0 to match header
+                        const isCompactColumn = cell.column.id === "tracker_icon" || cell.column.id === "status_icon"
+                        const isSelectColumn = cell.column.id === "select"
+                        return (
+                          <div
+                            key={cell.id}
+                            style={{
+                              width: cell.column.getSize(),
+                              flexShrink: 0,
+                            }}
+                            className={cn(
+                              "flex items-center overflow-hidden min-w-0",
+                              // Select and compact columns are centered to match header
+                              (isSelectColumn || isCompactColumn) && "justify-center",
+                              isCompactColumn
+                                ? (desktopViewMode === "dense" ? "px-0 py-0.5" : "px-0 py-2")
+                                : (desktopViewMode === "dense" ? "px-2 py-0.5" : "px-3 py-2")
+                            )}
+                          >
+                            {flexRender(
+                              cell.column.columnDef.cell,
+                              cell.getContext()
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   </TorrentContextMenu>
                 )
@@ -2801,8 +2824,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       onClick={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
-                        setPreferencesDefaultTab("reannounce")
-                        setPreferencesOpen(true)
+                        void navigate({
+                          to: "/services",
+                          search: { instanceId: String(instanceId) },
+                        })
                       }}
                       className="h-6 w-6 text-muted-foreground hover:text-accent-foreground"
                     >
@@ -2825,11 +2850,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
               >
                 {desktopViewMode === "normal" ? (
                   <TableIcon className="h-3 w-3" />
+                ) : desktopViewMode === "dense" ? (
+                  <Rows3 className="h-3 w-3" />
                 ) : (
                   <LayoutGrid className="h-3 w-3" />
                 )}
                 <span className="hidden sm:inline">
-                  {desktopViewMode === "normal" ? "Table view" : "Stacked view"}
+                  {desktopViewMode === "normal" ? "Table" : desktopViewMode === "dense" ? "Dense" : "Stacked"}
                 </span>
               </Button>
               <Button
@@ -3073,7 +3100,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           onOpenChange={setPreferencesOpen}
           instanceId={instanceId}
           instanceName={instance.name}
-          defaultTab={preferencesDefaultTab}
         />
       )}
 

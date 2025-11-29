@@ -29,7 +29,8 @@ import {
   Rss,
   Search,
   SearchCode,
-  Settings
+  Settings,
+  Wrench
 } from "lucide-react"
 
 interface NavItem {
@@ -55,6 +56,11 @@ const navigation: NavItem[] = [
     href: "/cross-seed",
     icon: GitBranch,
     params: {},
+  },
+  {
+    title: "Services",
+    href: "/services",
+    icon: Wrench,
   },
   {
     title: "Backups",

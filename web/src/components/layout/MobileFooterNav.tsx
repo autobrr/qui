@@ -59,6 +59,7 @@ import {
   Search as SearchIcon,
   Server,
   Settings,
+  Wrench,
   Sun
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
@@ -386,6 +387,15 @@ export function MobileFooterNav() {
               >
                 <GitBranch className="h-4 w-4" />
                 Cross-Seed
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link
+                to="/services"
+                className="flex items-center gap-2"
+              >
+                <Wrench className="h-4 w-4" />
+                Services
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>

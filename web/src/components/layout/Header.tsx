@@ -29,6 +29,7 @@ import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useInstances } from "@/hooks/useInstances"
+import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { useTheme } from "@/hooks/useTheme"
 import { api } from "@/lib/api"
@@ -36,7 +37,7 @@ import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
-import { Archive, ChevronsUpDown, Download, FileEdit, FunnelPlus, FunnelX, GitBranch, HardDrive, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Rss, Search, SearchCode, Server, Settings, X } from "lucide-react"
+import { Archive, ChevronsUpDown, Download, FileEdit, FunnelPlus, FunnelX, GitBranch, HardDrive, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Rss, Search, SearchCode, Server, Settings, Wrench, X } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 
@@ -137,6 +138,7 @@ export function Header({
     [shouldShowInstanceControls]
   )
   const { theme } = useTheme()
+  const { viewMode } = usePersistedCompactViewState("normal")
 
   // Query active task count for badge (lightweight endpoint, only for instance routes)
   const { data: activeTaskCount = 0 } = useQuery({
@@ -168,9 +170,14 @@ export function Header({
 
   const crossSeedInstanceState = useCrossSeedInstanceState()
 
+  // Dense mode uses reduced header height
+  const headerHeight = viewMode === "dense" ? "lg:h-12" : "lg:h-16"
+  const innerHeight = viewMode === "dense" ? "h-10 lg:h-auto" : "h-12 lg:h-auto"
+  const smInnerHeight = viewMode === "dense" ? "sm:h-10 lg:h-auto" : "sm:h-12 lg:h-auto"
+
   return (
-    <header className="sticky top-0 z-50 hidden md:flex flex-wrap lg:flex-nowrap items-start lg:items-center justify-between sm:border-b bg-background pl-2 pr-4 md:pl-4 md:pr-4 lg:pl-0 lg:static py-2 lg:py-0 lg:h-16">
-      <div className="hidden md:flex items-center gap-2 mr-2 h-12 lg:h-auto order-1 lg:order-none">
+    <header className={cn("sticky top-0 z-50 hidden md:flex flex-wrap lg:flex-nowrap items-start lg:items-center justify-between sm:border-b bg-background pl-2 pr-4 md:pl-4 md:pr-4 lg:pl-0 lg:static py-2 lg:py-0", headerHeight)}>
+      <div className={cn("hidden md:flex items-center gap-2 mr-2 order-1 lg:order-none", innerHeight)}>
         {children}
         {instanceName && hasMultipleActiveInstances ? (
           <DropdownMenu>
@@ -254,7 +261,8 @@ export function Header({
       {shouldShowInstanceControls && (
         <>
           <div className={cn(
-            "hidden md:flex items-center gap-2 h-12 lg:h-auto order-2 lg:order-none",
+            "hidden md:flex items-center gap-2 order-2 lg:order-none",
+            innerHeight,
             sidebarCollapsed && "lg:ml-2"
           )}>
             {/* Filter button */}
@@ -357,7 +365,7 @@ export function Header({
       )}
       {/* Instance route - search on right */}
       {shouldShowInstanceControls && (
-        <div className="flex items-center flex-1 gap-2 sm:order-3 lg:order-none sm:h-12 lg:h-auto">
+        <div className={cn("flex items-center flex-1 gap-2 sm:order-3 lg:order-none", smInnerHeight)}>
 
           {/* Right side: Filter button and Search bar */}
           <div className="flex items-center gap-2 flex-1 justify-end mr-2">
@@ -446,7 +454,7 @@ export function Header({
       )}
 
 
-      <div className="grid grid-cols-[auto_auto] items-center gap-1 transition-all duration-300 ease-out sm:order-4 lg:order-none sm:h-12 lg:h-auto">
+      <div className={cn("grid grid-cols-[auto_auto] items-center gap-1 transition-all duration-300 ease-out sm:order-4 lg:order-none", smInnerHeight)}>
         <ThemeToggle />
         <div className={cn(
           "transition-all duration-300 ease-out overflow-hidden",
@@ -506,6 +514,15 @@ export function Header({
                 >
                   <GitBranch className="mr-2 h-4 w-4" />
                   Cross-Seed
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link
+                  to="/services"
+                  className="flex cursor-pointer"
+                >
+                  <Wrench className="mr-2 h-4 w-4" />
+                  Services
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
