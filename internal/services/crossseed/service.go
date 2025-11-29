@@ -2225,7 +2225,6 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		tags = append([]string(nil), settings.WebhookTags...)
 	}
 
-	// Inherit source tags from settings (webhook callers can override via AddCrossSeedTag for backward compat)
 	inheritSourceTags := false
 	if settings != nil {
 		inheritSourceTags = settings.InheritSourceTags
@@ -2239,7 +2238,6 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		InheritSourceTags:      inheritSourceTags,
 		IgnorePatterns:         ignorePatterns,
 		StartPaused:            req.StartPaused,
-		AddCrossSeedTag:        req.AddCrossSeedTag,
 		SkipIfExists:           req.SkipIfExists,
 		FindIndividualEpisodes: findIndividualEpisodes,
 	}
@@ -2400,7 +2398,7 @@ func (s *Service) processCrossSeedCandidate(
 		options["category"] = category
 	}
 
-	finalTags := buildCrossSeedTags(req.Tags, matchedTorrent.Tags, req.InheritSourceTags, req.AddCrossSeedTag)
+	finalTags := buildCrossSeedTags(req.Tags, matchedTorrent.Tags, req.InheritSourceTags)
 	if len(finalTags) > 0 {
 		options["tags"] = strings.Join(finalTags, ",")
 	}
@@ -4219,7 +4217,6 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 			}
 
 			startPausedCopy := startPaused
-			addCrossSeedTag := useTag
 
 			// Determine tags for manual apply: use user's choice if provided, otherwise use seeded search tags
 			var applyTags []string
@@ -4241,7 +4238,6 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				TorrentData:            base64.StdEncoding.EncodeToString(torrentBytes),
 				TargetInstanceIDs:      []int{instanceID},
 				StartPaused:            &startPausedCopy,
-				AddCrossSeedTag:        &addCrossSeedTag,
 				Tags:                   applyTags,
 				InheritSourceTags:      inheritSourceTags,
 				IndexerName:            indexerName,
@@ -6223,8 +6219,7 @@ func (s *Service) determineCrossSeedCategory(ctx context.Context, req *CrossSeed
 //   - sourceTags: tags configured for this source type (e.g., RSSAutomationTags, SeededSearchTags)
 //   - matchedTags: comma-separated tags from the matched torrent in qBittorrent
 //   - inheritSourceTags: whether to also include tags from the matched torrent
-//   - addCrossSeedTag: deprecated backward-compat flag; only used if explicitly false to remove "cross-seed"
-func buildCrossSeedTags(sourceTags []string, matchedTags string, inheritSourceTags bool, addCrossSeedTag *bool) []string {
+func buildCrossSeedTags(sourceTags []string, matchedTags string, inheritSourceTags bool) []string {
 	tagSet := make(map[string]struct{})
 	finalTags := make([]string, 0)
 
@@ -6250,18 +6245,6 @@ func buildCrossSeedTags(sourceTags []string, matchedTags string, inheritSourceTa
 		for _, tag := range strings.Split(matchedTags, ",") {
 			addTag(tag)
 		}
-	}
-
-	// Backward compatibility: if addCrossSeedTag is explicitly false, remove "cross-seed"
-	// This allows old API callers to opt out of the cross-seed tag
-	if addCrossSeedTag != nil && !*addCrossSeedTag {
-		filtered := make([]string, 0, len(finalTags))
-		for _, tag := range finalTags {
-			if tag != "cross-seed" {
-				filtered = append(filtered, tag)
-			}
-		}
-		return filtered
 	}
 
 	return finalTags
