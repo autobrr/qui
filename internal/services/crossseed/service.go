@@ -206,9 +206,9 @@ const (
 	crossSeedRenameWaitTimeout          = 15 * time.Second
 	crossSeedRenamePollInterval         = 200 * time.Millisecond
 	automationSettingsQueryTimeout      = 5 * time.Second
-	recheckPollInterval                 = 2 * time.Second
-	recheckAbsoluteTimeout              = 30 * time.Minute
-	recheckAPITimeout                   = 10 * time.Second
+	recheckPollInterval                 = 3 * time.Second  // Batch API calls per instance
+	recheckAbsoluteTimeout              = 60 * time.Minute // Allow time for large recheck queues
+	recheckAPITimeout                   = 30 * time.Second
 	minSearchIntervalSeconds            = 60
 	minSearchCooldownMinutes            = 720
 )
@@ -2618,9 +2618,9 @@ func (s *Service) recheckResumeWorker() {
 				continue
 			}
 
-			// Process all pending torrents
+			// First pass: check timeouts and group by instance for batched API calls
+			byInstance := make(map[int][]string)
 			for hash, req := range pending {
-				// Check absolute timeout
 				if time.Since(req.addedAt) > recheckAbsoluteTimeout {
 					log.Warn().
 						Int("instanceID", req.instanceID).
@@ -2630,75 +2630,93 @@ func (s *Service) recheckResumeWorker() {
 					delete(pending, hash)
 					continue
 				}
+				byInstance[req.instanceID] = append(byInstance[req.instanceID], hash)
+			}
 
-				// Get torrent state with timeout to avoid blocking other pending torrents
+			// Second pass: one API call per instance with all pending hashes
+			for instanceID, hashes := range byInstance {
 				apiCtx, cancel := context.WithTimeout(s.recheckResumeCtx, recheckAPITimeout)
-				torrents, err := s.syncManager.GetTorrents(apiCtx, req.instanceID, qbt.TorrentFilterOptions{Hashes: []string{hash}})
+				torrents, err := s.syncManager.GetTorrents(apiCtx, instanceID, qbt.TorrentFilterOptions{Hashes: hashes})
 				cancel()
 				if err != nil {
-					// Timeout or other error - keep in queue for retry on next tick
 					log.Debug().
 						Err(err).
-						Int("instanceID", req.instanceID).
-						Str("hash", hash).
-						Msg("Failed to get torrent state during recheck resume, will retry")
-					continue
-				}
-				if len(torrents) == 0 {
-					log.Debug().
-						Int("instanceID", req.instanceID).
-						Str("hash", hash).
-						Msg("Torrent not found during recheck resume, removing from queue")
-					delete(pending, hash)
+						Int("instanceID", instanceID).
+						Int("hashCount", len(hashes)).
+						Msg("Failed to get torrent states during recheck resume, will retry")
 					continue
 				}
 
-				torrent := torrents[0]
-				progress := torrent.Progress
-				state := torrent.State
+				// Build lookup map by hash
+				torrentByHash := make(map[string]qbt.Torrent, len(torrents))
+				for _, t := range torrents {
+					torrentByHash[strings.ToLower(t.Hash)] = t
+				}
 
-				// Check if still in checking state
-				isChecking := state == qbt.TorrentStateCheckingUp ||
-					state == qbt.TorrentStateCheckingDl ||
-					state == qbt.TorrentStateCheckingResumeData
-
-				// Resume if threshold reached and not checking
-				if progress >= req.threshold && !isChecking {
-					resumeCtx, resumeCancel := context.WithTimeout(s.recheckResumeCtx, recheckAPITimeout)
-					err := s.syncManager.BulkAction(resumeCtx, req.instanceID, []string{hash}, "resume")
-					resumeCancel()
-					if err != nil {
-						log.Warn().
-							Err(err).
-							Int("instanceID", req.instanceID).
-							Str("hash", hash).
-							Float64("progress", progress).
-							Msg("Failed to resume torrent after recheck")
-					} else {
+				// Process each pending torrent for this instance
+				for _, hash := range hashes {
+					req := pending[hash]
+					torrent, found := torrentByHash[strings.ToLower(hash)]
+					if !found {
 						log.Debug().
-							Int("instanceID", req.instanceID).
+							Int("instanceID", instanceID).
+							Str("hash", hash).
+							Msg("Torrent not found during recheck resume, removing from queue")
+						delete(pending, hash)
+						continue
+					}
+
+					progress := torrent.Progress
+					state := torrent.State
+
+					// Check if still in checking state
+					isChecking := state == qbt.TorrentStateCheckingUp ||
+						state == qbt.TorrentStateCheckingDl ||
+						state == qbt.TorrentStateCheckingResumeData
+
+					// Resume if threshold reached and not checking
+					if progress >= req.threshold && !isChecking {
+						resumeCtx, resumeCancel := context.WithTimeout(s.recheckResumeCtx, recheckAPITimeout)
+						err := s.syncManager.BulkAction(resumeCtx, instanceID, []string{hash}, "resume")
+						resumeCancel()
+						if err != nil {
+							log.Warn().
+								Err(err).
+								Int("instanceID", instanceID).
+								Str("hash", hash).
+								Float64("progress", progress).
+								Msg("Failed to resume torrent after recheck")
+						} else {
+							log.Debug().
+								Int("instanceID", instanceID).
+								Str("hash", hash).
+								Float64("progress", progress).
+								Float64("threshold", req.threshold).
+								Str("state", string(state)).
+								Msg("Resumed torrent after recheck completed")
+						}
+						delete(pending, hash)
+						continue
+					}
+
+					// If recheck completed (not checking) with some progress but below threshold,
+					// the torrent won't improve - remove it from queue.
+					// Note: We can't do this for 0% progress since we can't distinguish
+					// "queued for recheck" from "recheck completed with 0 matches".
+					if !isChecking && progress > 0 && progress < req.threshold {
+						log.Debug().
+							Int("instanceID", instanceID).
 							Str("hash", hash).
 							Float64("progress", progress).
 							Float64("threshold", req.threshold).
-							Str("state", string(state)).
-							Msg("Resumed torrent after recheck completed")
+							Msg("Recheck completed below threshold, removing from queue")
+						delete(pending, hash)
+						continue
 					}
-					delete(pending, hash)
-					continue
-				}
 
-				// If progress is 0 and torrent is not checking, something is wrong
-				if progress == 0 && !isChecking {
-					log.Debug().
-						Int("instanceID", req.instanceID).
-						Str("hash", hash).
-						Str("state", string(state)).
-						Msg("Torrent has 0 progress and not checking, removing from queue")
-					delete(pending, hash)
-					continue
+					// Torrent not ready yet - either still checking or queued for recheck (0% progress).
+					// Keep in queue until absolute timeout.
 				}
-
-				// Otherwise, keep in queue for next tick
 			}
 
 		case <-s.recheckResumeCtx.Done():
@@ -6832,8 +6850,11 @@ func (s *Service) recoverSingleErroredTorrent(ctx context.Context, instanceID in
 		}
 
 		// Wait for recheck to complete
-		maxWaitTime := 5 * time.Minute
+		// Allow up to 25 minutes to account for qBittorrent's recheck queue
+		maxWaitTime := 25 * time.Minute
 		startTime := time.Now()
+		errorRetries := 0
+		const maxErrorRetries = 3
 
 		for time.Since(startTime) < maxWaitTime {
 			if ctx.Err() != nil {
@@ -6855,9 +6876,42 @@ func (s *Service) recoverSingleErroredTorrent(ctx context.Context, instanceID in
 			currentTorrent := currentTorrents[0]
 			state := currentTorrent.State
 
-			// If recheck completed (any paused or stopped state), return progress
-			if state == qbt.TorrentStatePausedDl || state == qbt.TorrentStatePausedUp || state == qbt.TorrentStateStoppedDl || state == qbt.TorrentStateStoppedUp {
+			// If recheck completed to paused/stopped state, return progress
+			if state == qbt.TorrentStatePausedDl || state == qbt.TorrentStatePausedUp ||
+				state == qbt.TorrentStateStoppedDl || state == qbt.TorrentStateStoppedUp {
 				return currentTorrent.Progress, nil
+			}
+
+			// If torrent went to error/missingFiles state, pause and retry recheck
+			// This can happen if files weren't fully flushed to disk yet
+			if state == qbt.TorrentStateError || state == qbt.TorrentStateMissingFiles {
+				errorRetries++
+				if errorRetries > maxErrorRetries {
+					log.Warn().
+						Int("instanceID", instanceID).
+						Str("hash", torrent.Hash).
+						Str("state", string(state)).
+						Int("retries", errorRetries).
+						Msg("Torrent still in error state after max retries")
+					return currentTorrent.Progress, nil
+				}
+
+				log.Debug().
+					Int("instanceID", instanceID).
+					Str("hash", torrent.Hash).
+					Str("state", string(state)).
+					Int("retry", errorRetries).
+					Msg("Torrent in error state, pausing and retrying recheck")
+
+				// Pause then recheck again
+				if err := s.syncManager.BulkAction(ctx, instanceID, []string{torrent.Hash}, "pause"); err != nil {
+					log.Warn().Err(err).Str("hash", torrent.Hash).Msg("Failed to pause errored torrent for retry")
+				}
+				time.Sleep(500 * time.Millisecond) // Brief pause before retry
+				if err := s.syncManager.BulkAction(ctx, instanceID, []string{torrent.Hash}, "recheck"); err != nil {
+					log.Warn().Err(err).Str("hash", torrent.Hash).Msg("Failed to recheck errored torrent for retry")
+				}
+				continue
 			}
 
 			// Sleep until recheck completes to a recognized final state
