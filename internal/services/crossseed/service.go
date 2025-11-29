@@ -966,7 +966,9 @@ func (s *Service) GetAutomationStatus(ctx context.Context) (*AutomationStatus, e
 		}
 
 		// Check if the last run is stuck in running status (e.g., due to crash)
-		if lastRun != nil && lastRun.Status == models.CrossSeedRunStatusRunning {
+		// Only mark as stuck if no run is currently active in memory - this prevents
+		// marking legitimate long-running automations as failed while they're still executing
+		if lastRun != nil && lastRun.Status == models.CrossSeedRunStatusRunning && !s.runActive.Load() {
 			// If it's been running for more than 5 minutes, mark it as failed
 			if time.Since(lastRun.StartedAt) > 5*time.Minute {
 				lastRun.Status = models.CrossSeedRunStatusFailed
