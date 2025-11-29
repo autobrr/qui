@@ -6,7 +6,6 @@ package handlers
 import (
 	"archive/tar"
 	"archive/zip"
-	"bytes"
 	"compress/gzip"
 	"context"
 	"database/sql"
@@ -32,34 +31,95 @@ import (
 	"github.com/autobrr/qui/pkg/torrentname"
 )
 
-// archiveExtractor defines a supported archive format with its extraction function.
-// A nil extract function indicates manifest-only (JSON) format.
-type archiveExtractor struct {
-	suffixes []string
-	extract  func([]byte) ([]byte, map[string][]byte, error)
+// ExtractedArchive represents the result of streaming extraction to disk.
+// Caller must call Close() to clean up the temporary directory.
+type ExtractedArchive struct {
+	TempDir      string            // Root temp directory (caller must clean up)
+	ManifestPath string            // Path to extracted manifest.json
+	TorrentPaths map[string]string // archivePath -> absolute file path on disk
 }
 
-// archiveExtractors lists supported formats in order of precedence.
-// Longer suffixes (e.g., .tar.gz) must come before shorter ones (e.g., .tar).
-var archiveExtractors = []archiveExtractor{
-	{suffixes: []string{".json"}},
-	{suffixes: []string{".zip"}, extract: extractZipArchive},
-	{suffixes: []string{".tar.gz", ".tgz"}, extract: extractTarGzArchive},
-	{suffixes: []string{".tar.zst"}, extract: extractTarZstArchive},
-	{suffixes: []string{".tar.br"}, extract: extractTarBrArchive},
-	{suffixes: []string{".tar.xz"}, extract: extractTarXzArchive},
-	{suffixes: []string{".tar"}, extract: extractTarArchive},
+// Close removes the temporary directory and all extracted files.
+func (e *ExtractedArchive) Close() error {
+	if e.TempDir != "" {
+		return os.RemoveAll(e.TempDir)
+	}
+	return nil
 }
 
-func findArchiveExtractor(filename string) *archiveExtractor {
+// streamingExtractor defines a streaming archive format extractor.
+// A nil extractToDisk function indicates manifest-only (JSON) format.
+type streamingExtractor struct {
+	suffixes      []string
+	extractToDisk func(archivePath string) (*ExtractedArchive, error)
+}
+
+// streamingExtractors lists supported formats for streaming extraction.
+var streamingExtractors = []streamingExtractor{
+	{suffixes: []string{".json"}}, // nil extractToDisk = manifest only
+	{suffixes: []string{".zip"}, extractToDisk: extractZipToDisk},
+	{suffixes: []string{".tar.gz", ".tgz"}, extractToDisk: extractTarGzToDisk},
+	{suffixes: []string{".tar.zst"}, extractToDisk: extractTarZstToDisk},
+	{suffixes: []string{".tar.br"}, extractToDisk: extractTarBrToDisk},
+	{suffixes: []string{".tar.xz"}, extractToDisk: extractTarXzToDisk},
+	{suffixes: []string{".tar"}, extractToDisk: extractTarToDisk},
+}
+
+func findStreamingExtractor(filename string) *streamingExtractor {
 	filename = strings.ToLower(filename)
-	for i := range archiveExtractors {
-		for _, suffix := range archiveExtractors[i].suffixes {
+	for i := range streamingExtractors {
+		for _, suffix := range streamingExtractors[i].suffixes {
 			if strings.HasSuffix(filename, suffix) {
-				return &archiveExtractors[i]
+				return &streamingExtractors[i]
 			}
 		}
 	}
+	return nil
+}
+
+// saveUploadToTemp copies the uploaded file to a temp file for streaming extraction.
+func saveUploadToTemp(src io.Reader, filename string) (string, error) {
+	// Determine extension for temp file
+	ext := filepath.Ext(filename)
+	if ext == "" {
+		ext = ".tmp"
+	}
+
+	tmpFile, err := os.CreateTemp("", "qui-import-*"+ext)
+	if err != nil {
+		return "", fmt.Errorf("create temp file: %w", err)
+	}
+
+	if _, err := io.Copy(tmpFile, src); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpFile.Name())
+		return "", fmt.Errorf("copy to temp: %w", err)
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		os.Remove(tmpFile.Name())
+		return "", fmt.Errorf("close temp: %w", err)
+	}
+
+	return tmpFile.Name(), nil
+}
+
+// copyStreamToFile copies from a reader to a file, creating parent directories as needed.
+func copyStreamToFile(src io.Reader, destPath string) error {
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return fmt.Errorf("create directory: %w", err)
+	}
+
+	f, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("create file: %w", err)
+	}
+	defer f.Close()
+
+	if _, err := io.Copy(f, src); err != nil {
+		return fmt.Errorf("copy data: %w", err)
+	}
+
 	return nil
 }
 
@@ -600,41 +660,58 @@ func (h *BackupsHandler) ImportManifest(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Parse multipart form (512MB max for archives with torrents)
-	if err := r.ParseMultipartForm(512 << 20); err != nil {
+	// Parse multipart form with reduced memory limit (large files spool to disk)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		RespondError(w, http.StatusBadRequest, "Failed to parse multipart form")
 		return
 	}
 
 	var manifestData []byte
-	var archiveFiles map[string][]byte
+	var torrentPaths map[string]string
 
 	// Check for archive upload first (zip or tar.gz containing manifest + torrents)
 	if archiveFile, archiveHeader, err := r.FormFile("archive"); err == nil {
 		defer archiveFile.Close()
 
-		archiveData, err := io.ReadAll(archiveFile)
-		if err != nil {
-			RespondError(w, http.StatusInternalServerError, "Failed to read archive file")
-			return
-		}
-
-		// Extract based on file extension
-		extractor := findArchiveExtractor(archiveHeader.Filename)
+		// Find streaming extractor
+		extractor := findStreamingExtractor(archiveHeader.Filename)
 		if extractor == nil {
 			RespondError(w, http.StatusBadRequest, "Unsupported format. Use .json (manifest-only), .zip, .tar.gz, .tar.zst, .tar.br, .tar.xz, or .tar")
 			return
 		}
 
-		if extractor.extract == nil {
-			// Manifest-only upload (JSON)
-			manifestData = archiveData
+		if extractor.extractToDisk == nil {
+			// Manifest-only upload (JSON) - read directly (small file)
+			manifestData, err = io.ReadAll(archiveFile)
+			if err != nil {
+				RespondError(w, http.StatusInternalServerError, "Failed to read manifest file")
+				return
+			}
 		} else {
-			manifestData, archiveFiles, err = extractor.extract(archiveData)
+			// Save upload to temp file for streaming extraction
+			archivePath, err := saveUploadToTemp(archiveFile, archiveHeader.Filename)
+			if err != nil {
+				RespondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save archive: %v", err))
+				return
+			}
+			defer os.Remove(archivePath)
+
+			// Extract to temp directory
+			extracted, err := extractor.extractToDisk(archivePath)
 			if err != nil {
 				RespondError(w, http.StatusBadRequest, fmt.Sprintf("Failed to extract archive: %v", err))
 				return
 			}
+			defer extracted.Close()
+
+			// Read manifest from extracted temp file
+			manifestData, err = os.ReadFile(extracted.ManifestPath)
+			if err != nil {
+				RespondError(w, http.StatusBadRequest, "Failed to read manifest from archive")
+				return
+			}
+
+			torrentPaths = extracted.TorrentPaths
 		}
 	} else {
 		// Fall back to manifest-only upload
@@ -659,7 +736,7 @@ func (h *BackupsHandler) ImportManifest(w http.ResponseWriter, r *http.Request) 
 		requestedBy = "user"
 	}
 
-	run, err := h.service.ImportManifest(r.Context(), instanceID, manifestData, requestedBy, archiveFiles)
+	run, err := h.service.ImportManifestFromDir(r.Context(), instanceID, manifestData, requestedBy, torrentPaths)
 	if err != nil {
 		RespondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to import manifest: %v", err))
 		return
@@ -668,127 +745,240 @@ func (h *BackupsHandler) ImportManifest(w http.ResponseWriter, r *http.Request) 
 	RespondJSON(w, http.StatusCreated, run)
 }
 
-// extractZipArchive extracts manifest.json and .torrent files from a zip archive
-func extractZipArchive(data []byte) (manifestData []byte, torrentFiles map[string][]byte, err error) {
-	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+// --- Streaming extractors (write directly to disk) ---
+
+// extractZipToDisk extracts a zip archive to a temp directory.
+func extractZipToDisk(archivePath string) (*ExtractedArchive, error) {
+	archiveFile, err := os.Open(archivePath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to open zip: %w", err)
+		return nil, fmt.Errorf("open archive: %w", err)
+	}
+	defer archiveFile.Close()
+
+	info, err := archiveFile.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("stat archive: %w", err)
 	}
 
-	torrentFiles = make(map[string][]byte)
+	reader, err := zip.NewReader(archiveFile, info.Size())
+	if err != nil {
+		return nil, fmt.Errorf("open zip: %w", err)
+	}
+
+	tempDir, err := os.MkdirTemp("", "qui-extract-*")
+	if err != nil {
+		return nil, fmt.Errorf("create temp dir: %w", err)
+	}
+
+	result := &ExtractedArchive{
+		TempDir:      tempDir,
+		TorrentPaths: make(map[string]string),
+	}
+
+	cleanup := func() { os.RemoveAll(tempDir) }
 
 	for _, file := range reader.File {
 		if file.FileInfo().IsDir() {
 			continue
 		}
 
-		rc, err := file.Open()
-		if err != nil {
-			continue
-		}
-
-		fileData, err := io.ReadAll(rc)
-		rc.Close()
-		if err != nil {
-			continue
-		}
-
 		name := file.Name
-		if strings.ToLower(filepath.Base(name)) == "manifest.json" {
-			manifestData = fileData
-		} else if strings.HasSuffix(strings.ToLower(name), ".torrent") {
-			// Store by archive path (relative path in archive)
-			torrentFiles[name] = fileData
+		baseName := strings.ToLower(filepath.Base(name))
+
+		if baseName == "manifest.json" {
+			destPath := filepath.Join(tempDir, "manifest.json")
+			if err := extractZipFileToDisk(file, destPath); err != nil {
+				cleanup()
+				return nil, fmt.Errorf("extract manifest: %w", err)
+			}
+			result.ManifestPath = destPath
+		} else if strings.HasSuffix(baseName, ".torrent") {
+			// Validate path to prevent directory traversal
+			safePath := filepath.Clean(name)
+			if filepath.IsAbs(safePath) || strings.HasPrefix(safePath, "..") {
+				continue
+			}
+			destPath := filepath.Join(tempDir, "torrents", safePath)
+			if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+				cleanup()
+				return nil, fmt.Errorf("create dir: %w", err)
+			}
+			if err := extractZipFileToDisk(file, destPath); err != nil {
+				cleanup()
+				return nil, fmt.Errorf("extract %s: %w", name, err)
+			}
+			result.TorrentPaths[name] = destPath
 		}
 	}
 
-	if manifestData == nil {
-		return nil, nil, fmt.Errorf("manifest.json not found in archive")
+	if result.ManifestPath == "" {
+		cleanup()
+		return nil, fmt.Errorf("manifest.json not found in archive")
 	}
 
-	return manifestData, torrentFiles, nil
+	return result, nil
 }
 
-// extractTarGzArchive extracts manifest.json and .torrent files from a tar.gz archive
-func extractTarGzArchive(data []byte) (manifestData []byte, torrentFiles map[string][]byte, err error) {
-	gzReader, err := gzip.NewReader(bytes.NewReader(data))
+// extractZipFileToDisk extracts a single zip file entry to disk.
+func extractZipFileToDisk(zf *zip.File, destPath string) error {
+	rc, err := zf.Open()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to open gzip: %w", err)
+		return err
+	}
+	defer rc.Close()
+
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return err
+	}
+
+	destFile, err := os.Create(destPath)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, rc)
+	return err
+}
+
+// extractTarGzToDisk extracts a tar.gz archive to a temp directory.
+func extractTarGzToDisk(archivePath string) (*ExtractedArchive, error) {
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return nil, fmt.Errorf("open archive: %w", err)
+	}
+	defer f.Close()
+
+	gzReader, err := gzip.NewReader(f)
+	if err != nil {
+		return nil, fmt.Errorf("open gzip: %w", err)
 	}
 	defer gzReader.Close()
 
-	return extractTarReader(gzReader)
+	return extractTarReaderToDisk(gzReader)
 }
 
-// extractTarArchive extracts manifest.json and .torrent files from a tar archive
-func extractTarArchive(data []byte) (manifestData []byte, torrentFiles map[string][]byte, err error) {
-	return extractTarReader(bytes.NewReader(data))
+// extractTarToDisk extracts a plain tar archive to a temp directory.
+func extractTarToDisk(archivePath string) (*ExtractedArchive, error) {
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return nil, fmt.Errorf("open archive: %w", err)
+	}
+	defer f.Close()
+
+	return extractTarReaderToDisk(f)
 }
 
-// extractTarReader extracts manifest.json and .torrent files from a tar reader
-func extractTarReader(r io.Reader) (manifestData []byte, torrentFiles map[string][]byte, err error) {
+// extractTarZstToDisk extracts a tar.zst archive to a temp directory.
+func extractTarZstToDisk(archivePath string) (*ExtractedArchive, error) {
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return nil, fmt.Errorf("open archive: %w", err)
+	}
+	defer f.Close()
+
+	zstReader, err := zstd.NewReader(f)
+	if err != nil {
+		return nil, fmt.Errorf("open zstd: %w", err)
+	}
+	defer zstReader.Close()
+
+	return extractTarReaderToDisk(zstReader)
+}
+
+// extractTarBrToDisk extracts a tar.br archive to a temp directory.
+func extractTarBrToDisk(archivePath string) (*ExtractedArchive, error) {
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return nil, fmt.Errorf("open archive: %w", err)
+	}
+	defer f.Close()
+
+	brReader := brotli.NewReader(f)
+	return extractTarReaderToDisk(brReader)
+}
+
+// extractTarXzToDisk extracts a tar.xz archive to a temp directory.
+func extractTarXzToDisk(archivePath string) (*ExtractedArchive, error) {
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return nil, fmt.Errorf("open archive: %w", err)
+	}
+	defer f.Close()
+
+	xzReader, err := xz.NewReader(f)
+	if err != nil {
+		return nil, fmt.Errorf("open xz: %w", err)
+	}
+
+	return extractTarReaderToDisk(xzReader)
+}
+
+// extractTarReaderToDisk extracts a tar stream to a temp directory.
+func extractTarReaderToDisk(r io.Reader) (*ExtractedArchive, error) {
+	tempDir, err := os.MkdirTemp("", "qui-extract-*")
+	if err != nil {
+		return nil, fmt.Errorf("create temp dir: %w", err)
+	}
+
+	result := &ExtractedArchive{
+		TempDir:      tempDir,
+		TorrentPaths: make(map[string]string),
+	}
+
+	cleanup := func() { os.RemoveAll(tempDir) }
+
 	tarReader := tar.NewReader(r)
-	torrentFiles = make(map[string][]byte)
-
 	for {
 		header, err := tarReader.Next()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to read tar: %w", err)
+			cleanup()
+			return nil, fmt.Errorf("read tar: %w", err)
 		}
 
 		if header.Typeflag != tar.TypeReg {
 			continue
 		}
 
-		fileData, err := io.ReadAll(tarReader)
-		if err != nil {
-			continue
-		}
-
 		name := header.Name
-		if strings.ToLower(filepath.Base(name)) == "manifest.json" {
-			manifestData = fileData
-		} else if strings.HasSuffix(strings.ToLower(name), ".torrent") {
-			// Store by archive path (relative path in archive)
-			torrentFiles[name] = fileData
+		baseName := strings.ToLower(filepath.Base(name))
+
+		if baseName == "manifest.json" {
+			destPath := filepath.Join(tempDir, "manifest.json")
+			if err := copyStreamToFile(tarReader, destPath); err != nil {
+				cleanup()
+				return nil, fmt.Errorf("extract manifest: %w", err)
+			}
+			result.ManifestPath = destPath
+		} else if strings.HasSuffix(baseName, ".torrent") {
+			// Validate path to prevent directory traversal
+			safePath := filepath.Clean(name)
+			if filepath.IsAbs(safePath) || strings.HasPrefix(safePath, "..") {
+				// Skip unsafe paths but continue reading to consume the entry
+				_, _ = io.Copy(io.Discard, tarReader)
+				continue
+			}
+			destPath := filepath.Join(tempDir, "torrents", safePath)
+			if err := copyStreamToFile(tarReader, destPath); err != nil {
+				cleanup()
+				return nil, fmt.Errorf("extract %s: %w", name, err)
+			}
+			result.TorrentPaths[name] = destPath
+		} else {
+			// Skip other files but consume the data
+			_, _ = io.Copy(io.Discard, tarReader)
 		}
 	}
 
-	if manifestData == nil {
-		return nil, nil, fmt.Errorf("manifest.json not found in archive")
+	if result.ManifestPath == "" {
+		cleanup()
+		return nil, fmt.Errorf("manifest.json not found in archive")
 	}
 
-	return manifestData, torrentFiles, nil
-}
-
-// extractTarZstArchive extracts manifest.json and .torrent files from a tar.zst archive
-func extractTarZstArchive(data []byte) (manifestData []byte, torrentFiles map[string][]byte, err error) {
-	zstReader, err := zstd.NewReader(bytes.NewReader(data))
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to open zstd: %w", err)
-	}
-	defer zstReader.Close()
-
-	return extractTarReader(zstReader)
-}
-
-// extractTarBrArchive extracts manifest.json and .torrent files from a tar.br archive
-func extractTarBrArchive(data []byte) (manifestData []byte, torrentFiles map[string][]byte, err error) {
-	brReader := brotli.NewReader(bytes.NewReader(data))
-	return extractTarReader(brReader)
-}
-
-// extractTarXzArchive extracts manifest.json and .torrent files from a tar.xz archive
-func extractTarXzArchive(data []byte) (manifestData []byte, torrentFiles map[string][]byte, err error) {
-	xzReader, err := xz.NewReader(bytes.NewReader(data))
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to open xz: %w", err)
-	}
-
-	return extractTarReader(xzReader)
+	return result, nil
 }
 
 func (h *BackupsHandler) DownloadTorrentBlob(w http.ResponseWriter, r *http.Request) {

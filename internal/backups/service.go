@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -887,7 +888,6 @@ func (s *Service) updateProgress(runID int64, current int) {
 	if p := s.progress[runID]; p != nil {
 		p.Current = current
 		p.Percentage = float64(current) / float64(p.Total) * 100
-		log.Trace().Int64("runID", runID).Int("current", current).Int("total", p.Total).Float64("percentage", p.Percentage).Msg("Updated progress")
 	}
 }
 
@@ -1230,10 +1230,10 @@ func (s *Service) LoadManifest(ctx context.Context, runID int64) (*Manifest, err
 	return manifest, nil
 }
 
-// ImportManifest imports a backup manifest and optionally torrent files from an archive.
-// archiveFiles is an optional map of archivePath -> torrent file data from an extracted archive.
-// If provided, torrent files will be copied to the blob cache instead of downloading from qBittorrent.
-func (s *Service) ImportManifest(ctx context.Context, instanceID int, manifestData []byte, requestedBy string, archiveFiles map[string][]byte) (*models.BackupRun, error) {
+// ImportManifestFromDir imports a backup manifest with torrent files from temp paths.
+// torrentPaths is a map of archivePath -> absolute temp file path on disk.
+// The caller is responsible for cleaning up the temp files after this returns.
+func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, manifestData []byte, requestedBy string, torrentPaths map[string]string) (*models.BackupRun, error) {
 	// Use local variable to avoid mutating shared config (thread-safety)
 	dataDir := s.cfg.DataDir
 
@@ -1243,7 +1243,7 @@ func (s *Service) ImportManifest(ctx context.Context, instanceID int, manifestDa
 		log.Info().Str("normalizedDataDir", dataDir).Msg("Normalized DataDir for Windows")
 	}
 
-	log.Info().Int("instanceID", instanceID).Str("requestedBy", requestedBy).Int("dataSize", len(manifestData)).Int("archiveFiles", len(archiveFiles)).Str("dataDir", dataDir).Msg("Starting manifest import")
+	log.Info().Int("instanceID", instanceID).Str("requestedBy", requestedBy).Int("dataSize", len(manifestData)).Int("torrentPaths", len(torrentPaths)).Str("dataDir", dataDir).Msg("Starting manifest import from dir")
 
 	var manifest Manifest
 	if err := json.Unmarshal(manifestData, &manifest); err != nil {
@@ -1257,12 +1257,12 @@ func (s *Service) ImportManifest(ctx context.Context, instanceID int, manifestDa
 	run := &models.BackupRun{
 		InstanceID:   instanceID,
 		Kind:         models.BackupRunKind(manifest.Kind),
-		Status:       models.BackupRunStatusRunning, // Start as running, will complete after downloads
+		Status:       models.BackupRunStatusRunning,
 		RequestedBy:  requestedBy,
 		RequestedAt:  manifest.GeneratedAt,
-		CompletedAt:  nil, // Will set when downloads complete
-		TotalBytes:   0,   // We'll calculate this
-		TorrentCount: 0,   // We'll calculate this
+		CompletedAt:  nil,
+		TotalBytes:   0,
+		TorrentCount: 0,
 		Categories:   manifest.Categories,
 		Tags:         manifest.Tags,
 	}
@@ -1279,7 +1279,7 @@ func (s *Service) ImportManifest(ctx context.Context, instanceID int, manifestDa
 	// Convert manifest items to backup items
 	items := make([]models.BackupItem, 0, len(manifest.Items))
 	var totalBytes int64
-	var totalTorrentFileBytes int64 // Track actual .torrent file sizes from archive
+	var totalTorrentFileBytes int64
 
 	var missing []missingTorrent
 
@@ -1337,26 +1337,19 @@ func (s *Service) ImportManifest(ctx context.Context, instanceID int, manifestDa
 			backupItem.TorrentBlobPath = &rel
 			absPath := filepath.Join(dataDir, rel)
 
-			// Check if torrent file was provided in archive
-			if archiveFiles != nil && item.ArchivePath != "" {
-				if torrentData, ok := archiveFiles[item.ArchivePath]; ok {
-					// Validate the torrent data
-					if len(torrentData) >= 50 && torrentData[0] == 'd' {
-						// Create directory and write file
-						if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
-							log.Warn().Err(err).Str("hash", item.Hash).Str("path", absPath).Msg("Failed to create directory for imported torrent")
-						} else if err := os.WriteFile(absPath, torrentData, 0o644); err != nil {
-							log.Warn().Err(err).Str("hash", item.Hash).Str("path", absPath).Msg("Failed to write imported torrent file")
-						} else {
-							log.Debug().Str("hash", item.Hash).Str("archivePath", item.ArchivePath).Str("blobPath", absPath).Msg("Imported torrent file from archive")
-							// File imported successfully, don't add to missing
-							totalTorrentFileBytes += int64(len(torrentData))
-							items = append(items, backupItem)
-							totalBytes += item.SizeBytes
-							continue
+			// Check if torrent file path was provided from temp directory
+			if torrentPaths != nil && item.ArchivePath != "" {
+				if tempPath, ok := torrentPaths[item.ArchivePath]; ok {
+					if err := s.copyTorrentFromTemp(tempPath, absPath); err == nil {
+						if info, statErr := os.Stat(absPath); statErr == nil {
+							totalTorrentFileBytes += info.Size()
 						}
+						log.Debug().Str("hash", item.Hash).Str("archivePath", item.ArchivePath).Msg("Imported torrent from temp")
+						items = append(items, backupItem)
+						totalBytes += item.SizeBytes
+						continue
 					} else {
-						log.Warn().Str("hash", item.Hash).Int("size", len(torrentData)).Msg("Invalid torrent data in archive, will try qBittorrent")
+						log.Warn().Err(err).Str("hash", item.Hash).Msg("Failed to copy from temp, will try qBittorrent")
 					}
 				}
 			}
@@ -1417,7 +1410,7 @@ func (s *Service) ImportManifest(ctx context.Context, instanceID int, manifestDa
 	}
 
 	// Update the run with total bytes and torrent count
-	run.TotalBytes = totalTorrentFileBytes // Use actual torrent file sizes from archive (0 if manifest-only)
+	run.TotalBytes = totalTorrentFileBytes
 	run.TorrentCount = len(items)
 	log.Info().Int64("runID", run.ID).Int("torrentCount", len(items)).Int64("totalTorrentFileBytes", totalTorrentFileBytes).Msg("Updating backup run metadata")
 	if err := s.store.UpdateRunMetadata(ctx, run.ID, func(r *models.BackupRun) error {
@@ -1430,8 +1423,55 @@ func (s *Service) ImportManifest(ctx context.Context, instanceID int, manifestDa
 		log.Info().Int64("runID", run.ID).Msg("Successfully updated backup run metadata")
 	}
 
-	log.Info().Int64("runID", run.ID).Msg("Manifest import completed successfully")
+	log.Info().Int64("runID", run.ID).Msg("Manifest import from dir completed successfully")
 	return run, nil
+}
+
+// copyTorrentFromTemp copies a torrent from temp file to final blob cache location.
+func (s *Service) copyTorrentFromTemp(srcPath, destPath string) error {
+	srcFile, err := os.Open(srcPath)
+	if err != nil {
+		return fmt.Errorf("open temp file: %w", err)
+	}
+	defer srcFile.Close()
+
+	// Check minimum file size (valid torrents are at least ~50 bytes)
+	info, err := srcFile.Stat()
+	if err != nil {
+		return fmt.Errorf("stat temp file: %w", err)
+	}
+	if info.Size() < 50 {
+		return fmt.Errorf("invalid torrent data: too small (%d bytes)", info.Size())
+	}
+
+	// Validate torrent starts with 'd' (bencoded dict)
+	header := make([]byte, 1)
+	if _, err := srcFile.Read(header); err != nil {
+		return fmt.Errorf("read header: %w", err)
+	}
+	if header[0] != 'd' {
+		return fmt.Errorf("invalid torrent data: not a bencoded dict")
+	}
+	if _, err := srcFile.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return fmt.Errorf("create dir: %w", err)
+	}
+
+	destFile, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("create dest: %w", err)
+	}
+	defer destFile.Close()
+
+	if _, err := io.Copy(destFile, srcFile); err != nil {
+		os.Remove(destPath)
+		return fmt.Errorf("copy: %w", err)
+	}
+
+	return nil
 }
 
 // downloadMissingTorrents downloads torrent blobs in the background for imported manifests
