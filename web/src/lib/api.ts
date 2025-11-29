@@ -42,6 +42,7 @@ import type {
   RestoreMode,
   RestorePlan,
   RestoreResult,
+  SearchHistoryResponse,
   SortedPeersResponse,
   TorrentCreationParams,
   TorrentCreationTask,
@@ -58,6 +59,7 @@ import type {
   TorznabIndexerFormData,
   TorznabIndexerHealth,
   TorznabIndexerLatencyStats,
+  IndexerActivityStatus,
   TorznabSearchRequest,
   TorznabSearchResult,
   TorznabSearchResponse,
@@ -373,6 +375,25 @@ class ApiClient {
     })
   }
 
+  async importBackupManifest(instanceId: number, manifestFile: File): Promise<BackupRun> {
+    const formData = new FormData()
+    formData.append("archive", manifestFile)
+
+    const response = await fetch(`${API_BASE}/instances/${instanceId}/backups/import`, {
+      method: "POST",
+      body: formData,
+      credentials: "include",
+    })
+
+    if (!response.ok) {
+      const errorMessage = await this.extractErrorMessage(response)
+      this.handleAuthError(response.status, `/instances/${instanceId}/backups/import`, errorMessage)
+      throw new Error(errorMessage)
+    }
+
+    return response.json()
+  }
+
   async previewRestore(
     instanceId: number,
     runId: number,
@@ -402,8 +423,12 @@ class ApiClient {
     })
   }
 
-  getBackupDownloadUrl(instanceId: number, runId: number): string {
-    return withBasePath(`/api/instances/${instanceId}/backups/runs/${runId}/download`)
+  getBackupDownloadUrl(instanceId: number, runId: number, format?: string): string {
+    const url = new URL(withBasePath(`/api/instances/${instanceId}/backups/runs/${runId}/download`), window.location.origin)
+    if (format && format !== 'zip') {
+      url.searchParams.set('format', format)
+    }
+    return url.toString()
   }
 
   getBackupTorrentDownloadUrl(instanceId: number, runId: number, torrentHash: string): string {
@@ -1504,6 +1529,15 @@ class ApiClient {
     return this.request<{ status: string }>(`/torznab/indexers/${id}/test`, {
       method: "POST",
     })
+  }
+
+  async getIndexerActivityStatus(): Promise<IndexerActivityStatus> {
+    return this.request<IndexerActivityStatus>("/torznab/activity")
+  }
+
+  async getSearchHistory(limit?: number): Promise<SearchHistoryResponse> {
+    const params = limit ? `?limit=${limit}` : ""
+    return this.request<SearchHistoryResponse>(`/torznab/search/history${params}`)
   }
 
   async discoverJackettIndexers(baseUrl: string, apiKey: string): Promise<JackettIndexer[]> {

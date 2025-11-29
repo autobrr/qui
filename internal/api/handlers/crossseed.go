@@ -31,7 +31,6 @@ type automationSettingsRequest struct {
 	RunIntervalMinutes           int                        `json:"runIntervalMinutes"`
 	StartPaused                  bool                       `json:"startPaused"`
 	Category                     *string                    `json:"category"`
-	Tags                         []string                   `json:"tags"`
 	IgnorePatterns               []string                   `json:"ignorePatterns"`
 	TargetInstanceIDs            []int                      `json:"targetInstanceIds"`
 	TargetIndexerIDs             []int                      `json:"targetIndexerIds"`
@@ -56,7 +55,6 @@ type automationSettingsPatchRequest struct {
 	RunIntervalMinutes           *int                            `json:"runIntervalMinutes,omitempty"`
 	StartPaused                  *bool                           `json:"startPaused,omitempty"`
 	Category                     optionalString                  `json:"category"`
-	Tags                         *[]string                       `json:"tags,omitempty"`
 	IgnorePatterns               *[]string                       `json:"ignorePatterns,omitempty"`
 	TargetInstanceIDs            *[]int                          `json:"targetInstanceIds,omitempty"`
 	TargetIndexerIDs             *[]int                          `json:"targetIndexerIds,omitempty"`
@@ -66,6 +64,12 @@ type automationSettingsPatchRequest struct {
 	UseCategoryFromIndexer       *bool                           `json:"useCategoryFromIndexer,omitempty"`
 	RunExternalProgramID         optionalInt                     `json:"runExternalProgramId"`
 	Completion                   *completionSettingsPatchRequest `json:"completion,omitempty"`
+	// Source-specific tagging
+	RSSAutomationTags    *[]string `json:"rssAutomationTags,omitempty"`
+	SeededSearchTags     *[]string `json:"seededSearchTags,omitempty"`
+	CompletionSearchTags *[]string `json:"completionSearchTags,omitempty"`
+	WebhookTags          *[]string `json:"webhookTags,omitempty"`
+	InheritSourceTags    *bool     `json:"inheritSourceTags,omitempty"`
 }
 
 type completionSettingsPatchRequest struct {
@@ -137,7 +141,6 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.RunIntervalMinutes == nil &&
 		r.StartPaused == nil &&
 		!r.Category.Set &&
-		r.Tags == nil &&
 		r.IgnorePatterns == nil &&
 		r.TargetInstanceIDs == nil &&
 		r.TargetIndexerIDs == nil &&
@@ -146,7 +149,12 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.SizeMismatchTolerancePercent == nil &&
 		r.UseCategoryFromIndexer == nil &&
 		!r.RunExternalProgramID.Set &&
-		(r.Completion == nil || r.Completion.isEmpty())
+		(r.Completion == nil || r.Completion.isEmpty()) &&
+		r.RSSAutomationTags == nil &&
+		r.SeededSearchTags == nil &&
+		r.CompletionSearchTags == nil &&
+		r.WebhookTags == nil &&
+		r.InheritSourceTags == nil
 }
 
 func (r completionSettingsPatchRequest) isEmpty() bool {
@@ -179,9 +187,6 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 			}
 		}
 	}
-	if patch.Tags != nil {
-		settings.Tags = *patch.Tags
-	}
 	if patch.IgnorePatterns != nil {
 		settings.IgnorePatterns = *patch.IgnorePatterns
 	}
@@ -208,6 +213,22 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	}
 	if patch.Completion != nil {
 		applyCompletionSettingsPatch(&settings.Completion, patch.Completion)
+	}
+	// Source-specific tagging
+	if patch.RSSAutomationTags != nil {
+		settings.RSSAutomationTags = *patch.RSSAutomationTags
+	}
+	if patch.SeededSearchTags != nil {
+		settings.SeededSearchTags = *patch.SeededSearchTags
+	}
+	if patch.CompletionSearchTags != nil {
+		settings.CompletionSearchTags = *patch.CompletionSearchTags
+	}
+	if patch.WebhookTags != nil {
+		settings.WebhookTags = *patch.WebhookTags
+	}
+	if patch.InheritSourceTags != nil {
+		settings.InheritSourceTags = *patch.InheritSourceTags
 	}
 }
 
@@ -408,7 +429,7 @@ func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	ctx := jackett.WithSearchPriority(context.WithoutCancel(r.Context()), jackett.RateLimitPriorityInteractive)
+	ctx := jackett.WithSearchPriority(r.Context(), jackett.RateLimitPriorityInteractive)
 	response, err := h.service.SearchTorrentMatches(ctx, instanceID, hash, opts)
 	if err != nil {
 		status := mapCrossSeedErrorStatus(err)
@@ -595,7 +616,6 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		RunIntervalMinutes:           req.RunIntervalMinutes,
 		StartPaused:                  req.StartPaused,
 		Category:                     category,
-		Tags:                         req.Tags,
 		IgnorePatterns:               req.IgnorePatterns,
 		TargetInstanceIDs:            req.TargetInstanceIDs,
 		TargetIndexerIDs:             req.TargetIndexerIDs,

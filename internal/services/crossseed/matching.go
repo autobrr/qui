@@ -255,11 +255,11 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		}
 	}
 
-	// Certain variant tags (IMAX, HYBRID, etc.) must match even if RLS places
-	// them in different fields. This ensures we only cross-seed truly identical
-	// video masters.
-	if !strictVariantOverrides.variantsCompatible(source, candidate) ||
-		!strictVariantOverrides.variantsCompatible(candidate, source) {
+	// Certain variant tags must match for safe cross-seeding.
+	// IMAX/HYBRID always require exact match (different video masters).
+	// REPACK/PROPER require exact match for non-pack content, but season packs
+	// are exempt since a pack might contain a REPACK of just one episode.
+	if !checkVariantsCompatible(source, candidate) {
 		return false
 	}
 
@@ -431,7 +431,10 @@ func (s *Service) getMatchType(sourceRelease, candidateRelease *rls.Release, sou
 			enrichedRelease := enrichReleaseFromTorrent(fileRelease, sourceRelease)
 			key := makeReleaseKey(enrichedRelease)
 			if key != (releaseKey{}) {
-				sourceReleaseKeys[key] = sf.Size
+				// Keep max size when multiple files map to same key (e.g., mkv vs nfo for movies)
+				if existingSize, exists := sourceReleaseKeys[key]; !exists || sf.Size > existingSize {
+					sourceReleaseKeys[key] = sf.Size
+				}
 			}
 		}
 	}
@@ -449,7 +452,10 @@ func (s *Service) getMatchType(sourceRelease, candidateRelease *rls.Release, sou
 			enrichedRelease := enrichReleaseFromTorrent(fileRelease, candidateRelease)
 			key := makeReleaseKey(enrichedRelease)
 			if key != (releaseKey{}) {
-				candidateReleaseKeys[key] = cf.Size
+				// Keep max size when multiple files map to same key (e.g., mkv vs nfo for movies)
+				if existingSize, exists := candidateReleaseKeys[key]; !exists || cf.Size > existingSize {
+					candidateReleaseKeys[key] = cf.Size
+				}
 			}
 		}
 	}

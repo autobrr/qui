@@ -416,7 +416,7 @@ export interface SortedPeersResponse extends TorrentPeersResponse {
   sorted_peers?: SortedPeer[]
 }
 
-export type BackupRunKind = "manual" | "hourly" | "daily" | "weekly" | "monthly"
+export type BackupRunKind = "manual" | "hourly" | "daily" | "weekly" | "monthly" | "import"
 
 export type BackupRunStatus = "pending" | "running" | "success" | "failed" | "canceled"
 
@@ -446,7 +446,6 @@ export interface BackupRun {
   requestedAt: string
   startedAt?: string
   completedAt?: string
-  archivePath?: string | null
   manifestPath?: string | null
   totalBytes: number
   torrentCount: number
@@ -469,7 +468,6 @@ export interface BackupManifestItem {
   name: string
   category?: string | null
   sizeBytes: number
-  archivePath: string
   infohashV1?: string | null
   infohashV2?: string | null
   tags?: string[]
@@ -953,8 +951,6 @@ export interface TorznabIndexer {
   enabled: boolean
   priority: number
   timeout_seconds: number
-  hourly_request_limit?: number | null
-  daily_request_limit?: number | null
   capabilities: string[]
   categories: TorznabIndexerCategory[]
   last_test_at?: string
@@ -1004,6 +1000,74 @@ export interface TorznabIndexerHealth {
   success_rate_pct?: number
   requests_last_7d?: number
   last_measured_at?: string
+}
+
+// Activity/Scheduler types
+export interface SchedulerTaskStatus {
+  jobId: number
+  taskId: number
+  indexerId: number
+  indexerName: string
+  priority: string
+  createdAt: string
+  isRss: boolean
+}
+
+export interface SchedulerJobStatus {
+  jobId: number
+  totalTasks: number
+  completedTasks: number
+}
+
+export interface SchedulerStatus {
+  queuedTasks: SchedulerTaskStatus[]
+  inFlightTasks: SchedulerTaskStatus[]
+  activeJobs: SchedulerJobStatus[]
+  queueLength: number
+  workerCount: number
+  workersInUse: number
+}
+
+export interface IndexerCooldownStatus {
+  indexerId: number
+  indexerName: string
+  cooldownEnd: string
+  reason?: string
+}
+
+export interface IndexerActivityStatus {
+  scheduler?: SchedulerStatus
+  cooldownIndexers: IndexerCooldownStatus[]
+}
+
+export interface SearchHistoryEntry {
+  id: number
+  jobId: number
+  taskId: number
+  indexerId: number
+  indexerName: string
+  query?: string
+  releaseName?: string
+  params?: Record<string, string>
+  categories?: number[]
+  contentType?: string
+  priority: string
+  searchMode?: string
+  status: "success" | "error" | "skipped" | "rate_limited"
+  resultCount: number
+  startedAt: string
+  completedAt: string
+  durationMs: number
+  errorMessage?: string
+  // Cross-seed outcome tracking
+  outcome?: "added" | "failed" | "no_match" | ""
+  addedCount?: number
+}
+
+export interface SearchHistoryResponse {
+  entries: SearchHistoryEntry[]
+  total: number
+  source: string
 }
 
 export interface TorznabIndexerFormData {
@@ -1270,7 +1334,6 @@ export interface CrossSeedAutomationSettings {
   runIntervalMinutes: number
   startPaused: boolean
   category?: string | null
-  tags: string[]
   ignorePatterns: string[]
   targetInstanceIds: number[]
   targetIndexerIds: number[]
@@ -1279,6 +1342,12 @@ export interface CrossSeedAutomationSettings {
   useCategoryFromIndexer: boolean
   runExternalProgramId?: number | null
   completion?: CrossSeedCompletionSettings
+  // Source-specific tagging
+  rssAutomationTags: string[]
+  seededSearchTags: string[]
+  completionSearchTags: string[]
+  webhookTags: string[]
+  inheritSourceTags: boolean
   createdAt?: string
   updatedAt?: string
 }
@@ -1288,7 +1357,6 @@ export interface CrossSeedAutomationSettingsPatch {
   runIntervalMinutes?: number
   startPaused?: boolean
   category?: string | null
-  tags?: string[]
   ignorePatterns?: string[]
   targetInstanceIds?: number[]
   targetIndexerIds?: number[]
@@ -1297,6 +1365,12 @@ export interface CrossSeedAutomationSettingsPatch {
   useCategoryFromIndexer?: boolean
   runExternalProgramId?: number | null
   completion?: CrossSeedCompletionSettingsPatch
+  // Source-specific tagging
+  rssAutomationTags?: string[]
+  seededSearchTags?: string[]
+  completionSearchTags?: string[]
+  webhookTags?: string[]
+  inheritSourceTags?: boolean
 }
 
 export interface CrossSeedAutomationStatus {
@@ -1376,3 +1450,4 @@ export interface CrossSeedSearchStatus {
   recentResults: CrossSeedSearchResult[]
   nextRunAt?: string
 }
+

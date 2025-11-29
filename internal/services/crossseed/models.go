@@ -20,7 +20,7 @@ type CrossSeedRequest struct {
 	TargetInstanceIDs []int `json:"target_instance_ids,omitempty"`
 	// Category to apply to the cross-seeded torrent
 	Category string `json:"category,omitempty"`
-	// Tags to apply to the cross-seeded torrent
+	// Tags to apply to the cross-seeded torrent (source-specific tags from settings)
 	Tags []string `json:"tags,omitempty"`
 	// IgnorePatterns specify files to ignore when matching
 	IgnorePatterns []string `json:"ignore_patterns,omitempty"`
@@ -28,9 +28,8 @@ type CrossSeedRequest struct {
 	SkipIfExists *bool `json:"skip_if_exists,omitempty"`
 	// StartPaused controls whether newly added torrents start paused
 	StartPaused *bool `json:"start_paused,omitempty"`
-	// AddCrossSeedTag controls whether the service should automatically tag added torrents as cross-seeds.
-	// Defaults to true when omitted.
-	AddCrossSeedTag *bool `json:"add_cross_seed_tag,omitempty"`
+	// InheritSourceTags controls whether to also copy tags from the matched source torrent.
+	InheritSourceTags bool `json:"inherit_source_tags,omitempty"`
 	// IndexerName specifies the name of the indexer for this torrent (used with useCategoryFromIndexer setting)
 	IndexerName string `json:"indexer_name,omitempty"`
 	// FindIndividualEpisodes controls whether to find individual episodes when searching with season packs
@@ -198,6 +197,8 @@ type TorrentSearchResponse struct {
 	Results       []TorrentSearchResult        `json:"results"`
 	Cache         *jackett.SearchCacheMetadata `json:"cache,omitempty"`
 	Partial       bool                         `json:"partial,omitempty"`
+	// JobID identifies this search for outcome tracking (cross-seed)
+	JobID uint64 `json:"jobId,omitempty"`
 }
 
 // TorrentSearchSelection represents a user-selected search result that should be added for cross-seeding.
@@ -331,9 +332,7 @@ type AutobrrApplyRequest struct {
 	Tags           []string `json:"tags,omitempty"`
 	IgnorePatterns []string `json:"ignorePatterns,omitempty"`
 	StartPaused    *bool    `json:"startPaused,omitempty"`
-	// AddCrossSeedTag controls whether qui should apply the cross-seed tag automatically; defaults to true.
-	AddCrossSeedTag *bool `json:"addCrossSeedTag,omitempty"`
-	SkipIfExists    *bool `json:"skipIfExists,omitempty"`
+	SkipIfExists   *bool    `json:"skipIfExists,omitempty"`
 	// FindIndividualEpisodes overrides the automation-level episode matching behavior when set.
 	FindIndividualEpisodes *bool `json:"findIndividualEpisodes,omitempty"`
 }

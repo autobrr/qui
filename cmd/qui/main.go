@@ -536,6 +536,8 @@ func (app *Application) runServer() {
 		jackett.WithSearchCache(torznabSearchCache, jackett.SearchCacheConfig{
 			TTL: cacheTTL,
 		}),
+		jackett.WithSearchHistory(0),   // Use default capacity (500 entries)
+		jackett.WithIndexerOutcomes(0), // Use default capacity (1000 entries)
 	)
 	log.Info().Msg("Torznab/Jackett service initialized")
 
@@ -562,7 +564,7 @@ func (app *Application) runServer() {
 	trackerRuleService.Start(trackerRulesCtx)
 
 	backupStore := models.NewBackupStore(db)
-	backupService := backups.NewService(backupStore, syncManager, backups.Config{DataDir: cfg.GetDataDir()})
+	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir()})
 	backupService.Start(context.Background())
 	defer backupService.Stop()
 
