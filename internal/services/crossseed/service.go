@@ -2560,10 +2560,8 @@ func normalizeHash(hash string) string {
 // queueRecheckResume adds a torrent to the recheck resume queue.
 // It calculates the resume threshold from settings and sends to the worker channel.
 func (s *Service) queueRecheckResume(ctx context.Context, instanceID int, hash string) {
-	// Get tolerance setting
-	settingsCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
-	settings, err := s.GetAutomationSettings(settingsCtx)
-	cancel()
+	// Get tolerance setting (GetAutomationSettings uses its own 5s timeout internally)
+	settings, err := s.GetAutomationSettings(ctx)
 
 	tolerancePercent := 5.0 // Default
 	if err == nil && settings != nil {
