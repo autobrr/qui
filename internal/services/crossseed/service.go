@@ -6697,11 +6697,12 @@ func (s *Service) buildArgsSimple(template string, torrentData map[string]string
 	return args
 }
 
-// recoverErroredTorrents identifies errored torrents and performs recheck to fix their state
+// recoverErroredTorrents identifies errored torrents and performs batched recheck to fix their state.
+// This function blocks until all recoverable torrents are processed, ensuring they can participate
+// in the current automation run. API calls are batched to minimize qBittorrent load.
 func (s *Service) recoverErroredTorrents(ctx context.Context, instanceID int, torrents []qbt.Torrent) error {
-	var erroredTorrents []qbt.Torrent
-
 	// Identify errored torrents
+	var erroredTorrents []qbt.Torrent
 	for _, torrent := range torrents {
 		if torrent.State == qbt.TorrentStateError || torrent.State == qbt.TorrentStateMissingFiles {
 			erroredTorrents = append(erroredTorrents, torrent)
@@ -6715,28 +6716,276 @@ func (s *Service) recoverErroredTorrents(ctx context.Context, instanceID int, to
 	log.Info().
 		Int("instanceID", instanceID).
 		Int("count", len(erroredTorrents)).
-		Msg("Found errored torrents, attempting individual recovery")
+		Msg("Found errored torrents, attempting batched recovery")
 
-	recoveredCount := 0
-
-	// Process each errored torrent individually
-	for _, torrent := range erroredTorrents {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-
-		if err := s.recoverSingleErroredTorrent(ctx, instanceID, torrent); err != nil {
-			log.Warn().
-				Err(err).
-				Int("instanceID", instanceID).
-				Str("hash", torrent.Hash).
-				Str("name", torrent.Name).
-				Msg("Failed to recover errored torrent")
-		} else {
-			recoveredCount++
+	// Get automation settings once for completion tolerance
+	settingsCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	settings, err := s.GetAutomationSettings(settingsCtx)
+	cancel()
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to load automation settings for recovery, using defaults")
+		settings = &models.CrossSeedAutomationSettings{
+			SizeMismatchTolerancePercent: 5.0,
 		}
 	}
 
+	completionTolerance := settings.SizeMismatchTolerancePercent / 100.0
+	minCompletionProgress := 1.0 - completionTolerance
+	if minCompletionProgress < 0.9 {
+		minCompletionProgress = 0.9
+	}
+
+	// Get qBittorrent app preferences once for disk cache TTL
+	appPrefs, err := s.syncManager.GetAppPreferences(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get app preferences, using default cache timeout")
+		appPrefs.DiskCacheTTL = 60
+	}
+
+	cacheTimeout := time.Duration(appPrefs.DiskCacheTTL) * time.Second
+	if cacheTimeout < 1*time.Second {
+		cacheTimeout = 1 * time.Second
+	}
+
+	// Collect all hashes and build lookup maps
+	allHashes := make([]string, len(erroredTorrents))
+	torrentByHash := make(map[string]qbt.Torrent, len(erroredTorrents))
+	for i, t := range erroredTorrents {
+		allHashes[i] = t.Hash
+		torrentByHash[t.Hash] = t
+	}
+
+	// Track per-torrent state
+	type torrentRecoveryState struct {
+		errorRetries      int
+		progress          float64
+		checkingStartTime time.Time // When torrent entered checking state (zero if not yet checking)
+	}
+	states := make(map[string]*torrentRecoveryState, len(erroredTorrents))
+	for _, hash := range allHashes {
+		states[hash] = &torrentRecoveryState{}
+	}
+
+	const (
+		maxErrorRetries = 3
+		maxCheckingTime = 25 * time.Minute // Per-torrent timeout once actively checking
+		pollInterval    = 2 * time.Second
+	)
+
+	// performBatchRecheck triggers recheck on hashes and polls until all complete or timeout.
+	// Returns hashes that completed within threshold and those that didn't.
+	// Timeout is per-torrent: only starts counting when torrent enters checkingDL/checkingUP state.
+	performBatchRecheck := func(hashes []string) (complete, incomplete []string) {
+		if len(hashes) == 0 {
+			return nil, nil
+		}
+
+		// Reset checking start times for this phase
+		for _, h := range hashes {
+			states[h].checkingStartTime = time.Time{}
+		}
+
+		// Trigger recheck on all hashes
+		if err := s.syncManager.BulkAction(ctx, instanceID, hashes, "recheck"); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to trigger batch recheck")
+			return nil, hashes
+		}
+
+		pending := make(map[string]bool, len(hashes))
+		for _, h := range hashes {
+			pending[h] = true
+		}
+
+		for len(pending) > 0 {
+			if ctx.Err() != nil {
+				for h := range pending {
+					incomplete = append(incomplete, h)
+				}
+				return complete, incomplete
+			}
+
+			// Collect pending hashes for batch query
+			pendingHashes := make([]string, 0, len(pending))
+			for h := range pending {
+				pendingHashes = append(pendingHashes, h)
+			}
+
+			// Batch query all pending torrents
+			currentTorrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Hashes: pendingHashes})
+			if err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to check recheck progress")
+				time.Sleep(pollInterval)
+				continue
+			}
+
+			// Build lookup map
+			currentByHash := make(map[string]qbt.Torrent, len(currentTorrents))
+			for _, t := range currentTorrents {
+				currentByHash[t.Hash] = t
+			}
+
+			// Process each pending torrent
+			for hash := range pending {
+				current, exists := currentByHash[hash]
+				if !exists {
+					log.Warn().Str("hash", hash).Msg("Torrent disappeared during recheck")
+					delete(pending, hash)
+					continue
+				}
+
+				state := current.State
+
+				// Recheck completed to paused/stopped state
+				if state == qbt.TorrentStatePausedDl || state == qbt.TorrentStatePausedUp ||
+					state == qbt.TorrentStateStoppedDl || state == qbt.TorrentStateStoppedUp {
+					states[hash].progress = current.Progress
+					if current.Progress >= minCompletionProgress {
+						complete = append(complete, hash)
+					} else {
+						incomplete = append(incomplete, hash)
+					}
+					delete(pending, hash)
+					continue
+				}
+
+				// Torrent is actively checking - track start time
+				if state == qbt.TorrentStateCheckingDl || state == qbt.TorrentStateCheckingUp ||
+					state == qbt.TorrentStateCheckingResumeData {
+					if states[hash].checkingStartTime.IsZero() {
+						states[hash].checkingStartTime = time.Now()
+					} else if time.Since(states[hash].checkingStartTime) > maxCheckingTime {
+						// Torrent has been checking for too long
+						log.Warn().
+							Str("hash", hash).
+							Dur("checkingDuration", time.Since(states[hash].checkingStartTime)).
+							Msg("Torrent recheck timed out after extended checking")
+						states[hash].progress = current.Progress
+						incomplete = append(incomplete, hash)
+						delete(pending, hash)
+					}
+					continue
+				}
+
+				// Torrent went back to error/missingFiles - retry recheck
+				if state == qbt.TorrentStateError || state == qbt.TorrentStateMissingFiles {
+					states[hash].errorRetries++
+					states[hash].checkingStartTime = time.Time{} // Reset for retry
+					if states[hash].errorRetries > maxErrorRetries {
+						log.Warn().
+							Int("instanceID", instanceID).
+							Str("hash", hash).
+							Str("state", string(state)).
+							Int("retries", states[hash].errorRetries).
+							Msg("Torrent still in error state after max retries")
+						states[hash].progress = current.Progress
+						delete(pending, hash)
+						continue
+					}
+
+					log.Debug().
+						Int("instanceID", instanceID).
+						Str("hash", hash).
+						Str("state", string(state)).
+						Int("retry", states[hash].errorRetries).
+						Msg("Torrent in error state, retrying recheck")
+
+					// Pause then recheck again
+					if err := s.syncManager.BulkAction(ctx, instanceID, []string{hash}, "pause"); err != nil {
+						log.Warn().Err(err).Str("hash", hash).Msg("Failed to pause errored torrent for retry")
+					}
+					time.Sleep(500 * time.Millisecond)
+					if err := s.syncManager.BulkAction(ctx, instanceID, []string{hash}, "recheck"); err != nil {
+						log.Warn().Err(err).Str("hash", hash).Msg("Failed to recheck errored torrent for retry")
+					}
+					continue
+				}
+
+				// Still queued or other state - keep waiting (no timeout for queued torrents)
+			}
+
+			if len(pending) > 0 {
+				time.Sleep(pollInterval)
+			}
+		}
+
+		return complete, incomplete
+	}
+
+	// Phase 1: Pause all and trigger first recheck
+	if err := s.syncManager.BulkAction(ctx, instanceID, allHashes, "pause"); err != nil {
+		return fmt.Errorf("pause errored torrents: %w", err)
+	}
+
+	complete, incomplete := performBatchRecheck(allHashes)
+
+	// Resume all complete torrents from phase 1
+	if len(complete) > 0 {
+		if err := s.syncManager.BulkAction(ctx, instanceID, complete, "resume"); err != nil {
+			log.Warn().Err(err).Int("count", len(complete)).Msg("Failed to resume recovered torrents")
+		}
+		for _, hash := range complete {
+			t := torrentByHash[hash]
+			log.Info().
+				Int("instanceID", instanceID).
+				Str("hash", hash).
+				Str("name", t.Name).
+				Float64("progress", states[hash].progress).
+				Msg("Successfully recovered errored torrent after first recheck")
+		}
+	}
+
+	// Phase 2: Second recheck for incomplete torrents after cache timeout
+	var phase2Complete []string
+	if len(incomplete) > 0 {
+		log.Info().
+			Int("instanceID", instanceID).
+			Int("count", len(incomplete)).
+			Dur("cacheTimeout", cacheTimeout).
+			Msg("Waiting for disk cache timeout before second recheck of incomplete torrents")
+
+		select {
+		case <-time.After(cacheTimeout):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+
+		// Reset error retries for phase 2
+		for _, hash := range incomplete {
+			states[hash].errorRetries = 0
+		}
+
+		var stillIncomplete []string
+		phase2Complete, stillIncomplete = performBatchRecheck(incomplete)
+
+		// Resume phase 2 completions
+		if len(phase2Complete) > 0 {
+			if err := s.syncManager.BulkAction(ctx, instanceID, phase2Complete, "resume"); err != nil {
+				log.Warn().Err(err).Int("count", len(phase2Complete)).Msg("Failed to resume torrents recovered in phase 2")
+			}
+			for _, hash := range phase2Complete {
+				t := torrentByHash[hash]
+				log.Info().
+					Int("instanceID", instanceID).
+					Str("hash", hash).
+					Str("name", t.Name).
+					Float64("progress", states[hash].progress).
+					Msg("Successfully recovered errored torrent after second recheck")
+			}
+		}
+
+		// Log failures
+		for _, hash := range stillIncomplete {
+			t := torrentByHash[hash]
+			log.Warn().
+				Int("instanceID", instanceID).
+				Str("hash", hash).
+				Str("name", t.Name).
+				Float64("progress", states[hash].progress).
+				Msg("Errored torrent not complete after second recheck, recovery failed")
+		}
+	}
+
+	recoveredCount := len(complete) + len(phase2Complete)
 	if recoveredCount > 0 {
 		log.Info().
 			Int("instanceID", instanceID).
@@ -6746,201 +6995,6 @@ func (s *Service) recoverErroredTorrents(ctx context.Context, instanceID int, to
 	}
 
 	return nil
-}
-
-// recoverSingleErroredTorrent attempts to recover a single errored torrent
-func (s *Service) recoverSingleErroredTorrent(ctx context.Context, instanceID int, torrent qbt.Torrent) error {
-	log.Debug().
-		Int("instanceID", instanceID).
-		Str("hash", torrent.Hash).
-		Str("name", torrent.Name).
-		Str("state", string(torrent.State)).
-		Msg("Attempting to recover errored torrent")
-
-	// Get automation settings for completion tolerance with timeout to prevent hanging in tests
-	settingsCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
-	defer cancel()
-
-	settings, err := s.GetAutomationSettings(settingsCtx)
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to load automation settings for recovery, using defaults")
-		settings = &models.CrossSeedAutomationSettings{
-			SizeMismatchTolerancePercent: 5.0, // Default tolerance
-		}
-	}
-
-	completionTolerance := settings.SizeMismatchTolerancePercent / 100.0
-	minCompletionProgress := 1.0 - completionTolerance
-	if minCompletionProgress < 0.9 { // Don't go below 90% as a safety measure
-		minCompletionProgress = 0.9
-	}
-
-	// Get qBittorrent app preferences to determine disk cache TTL
-	appPrefs, err := s.syncManager.GetAppPreferences(ctx, instanceID)
-	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get app preferences, using default cache timeout")
-		appPrefs.DiskCacheTTL = 60 // Default 60 seconds
-	}
-
-	// Use disk cache TTL as the wait time, with a minimum of 1 second
-	cacheTimeout := time.Duration(appPrefs.DiskCacheTTL) * time.Second
-	if cacheTimeout < 1*time.Second {
-		cacheTimeout = 1 * time.Second
-	}
-
-	// Helper function to perform recheck and wait for completion
-	performRecheck := func() (float64, error) {
-		// Perform recheck on this single torrent
-		if err := s.syncManager.BulkAction(ctx, instanceID, []string{torrent.Hash}, "recheck"); err != nil {
-			return 0, fmt.Errorf("recheck torrent: %w", err)
-		}
-
-		// Wait for recheck to complete
-		// Allow up to 25 minutes to account for qBittorrent's recheck queue
-		maxWaitTime := 25 * time.Minute
-		startTime := time.Now()
-		errorRetries := 0
-		const maxErrorRetries = 3
-
-		for time.Since(startTime) < maxWaitTime {
-			if ctx.Err() != nil {
-				return 0, ctx.Err()
-			}
-
-			// Check current state of this torrent
-			currentTorrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Hashes: []string{torrent.Hash}})
-			if err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", torrent.Hash).Msg("Failed to check recheck progress")
-				time.Sleep(10 * time.Millisecond) // Short sleep for tests, reasonable delay for production
-				continue
-			}
-
-			if len(currentTorrents) == 0 {
-				return 0, fmt.Errorf("torrent disappeared during recheck")
-			}
-
-			currentTorrent := currentTorrents[0]
-			state := currentTorrent.State
-
-			// If recheck completed to paused/stopped state, return progress
-			if state == qbt.TorrentStatePausedDl || state == qbt.TorrentStatePausedUp ||
-				state == qbt.TorrentStateStoppedDl || state == qbt.TorrentStateStoppedUp {
-				return currentTorrent.Progress, nil
-			}
-
-			// If torrent went to error/missingFiles state, pause and retry recheck
-			// This can happen if files weren't fully flushed to disk yet
-			if state == qbt.TorrentStateError || state == qbt.TorrentStateMissingFiles {
-				errorRetries++
-				if errorRetries > maxErrorRetries {
-					log.Warn().
-						Int("instanceID", instanceID).
-						Str("hash", torrent.Hash).
-						Str("state", string(state)).
-						Int("retries", errorRetries).
-						Msg("Torrent still in error state after max retries")
-					return currentTorrent.Progress, nil
-				}
-
-				log.Debug().
-					Int("instanceID", instanceID).
-					Str("hash", torrent.Hash).
-					Str("state", string(state)).
-					Int("retry", errorRetries).
-					Msg("Torrent in error state, pausing and retrying recheck")
-
-				// Pause then recheck again
-				if err := s.syncManager.BulkAction(ctx, instanceID, []string{torrent.Hash}, "pause"); err != nil {
-					log.Warn().Err(err).Str("hash", torrent.Hash).Msg("Failed to pause errored torrent for retry")
-				}
-				time.Sleep(500 * time.Millisecond) // Brief pause before retry
-				if err := s.syncManager.BulkAction(ctx, instanceID, []string{torrent.Hash}, "recheck"); err != nil {
-					log.Warn().Err(err).Str("hash", torrent.Hash).Msg("Failed to recheck errored torrent for retry")
-				}
-				continue
-			}
-
-			// Sleep until recheck completes to a recognized final state
-			time.Sleep(100 * time.Millisecond) // Short sleep for tests, reasonable delay for production
-		}
-
-		return 0, fmt.Errorf("timeout waiting for recheck to complete")
-	}
-
-	// Pause the torrent before rechecking
-	if err := s.syncManager.BulkAction(ctx, instanceID, []string{torrent.Hash}, "pause"); err != nil {
-		return fmt.Errorf("pause torrent: %w", err)
-	}
-
-	// First recheck attempt
-	progress, err := performRecheck()
-	if err != nil {
-		return err
-	}
-
-	if progress >= minCompletionProgress {
-		// Torrent is complete within tolerance, resume it
-		if err := s.syncManager.BulkAction(ctx, instanceID, []string{torrent.Hash}, "resume"); err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", torrent.Hash).Msg("Failed to resume recovered torrent")
-		}
-		log.Info().
-			Int("instanceID", instanceID).
-			Str("hash", torrent.Hash).
-			Str("name", torrent.Name).
-			Float64("progress", progress).
-			Float64("minCompletionProgress", minCompletionProgress).
-			Msg("Successfully recovered errored torrent - now complete within tolerance and resumed")
-		return nil
-	}
-
-	// First recheck didn't complete the torrent, possibly due to disk cache issues
-	// Wait for disk cache timeout
-	log.Info().
-		Int("instanceID", instanceID).
-		Str("hash", torrent.Hash).
-		Str("name", torrent.Name).
-		Float64("progress", progress).
-		Float64("minCompletionProgress", minCompletionProgress).
-		Dur("cacheTimeout", cacheTimeout).
-		Msg("Torrent not complete after first recheck, waiting for disk cache timeout before second recheck")
-
-	select {
-	case <-time.After(cacheTimeout):
-		// Continue with second recheck
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-
-	// Second recheck attempt after cache timeout
-	progress, err = performRecheck()
-	if err != nil {
-		return err
-	}
-
-	if progress >= minCompletionProgress {
-		// Torrent is complete within tolerance after second recheck, resume it
-		if err := s.syncManager.BulkAction(ctx, instanceID, []string{torrent.Hash}, "resume"); err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", torrent.Hash).Msg("Failed to resume recovered torrent")
-		}
-		log.Info().
-			Int("instanceID", instanceID).
-			Str("hash", torrent.Hash).
-			Str("name", torrent.Name).
-			Float64("progress", progress).
-			Float64("minCompletionProgress", minCompletionProgress).
-			Msg("Successfully recovered errored torrent after second recheck - now complete within tolerance and resumed")
-		return nil
-	}
-
-	// Still not complete after second recheck
-	log.Warn().
-		Int("instanceID", instanceID).
-		Str("hash", torrent.Hash).
-		Str("name", torrent.Name).
-		Float64("progress", progress).
-		Float64("minCompletionProgress", minCompletionProgress).
-		Msg("Errored torrent not complete after second recheck, recovery failed")
-	return fmt.Errorf("torrent not complete after second recheck (progress: %.2f, required: %.2f)", progress, minCompletionProgress)
 }
 
 func wrapCrossSeedSearchError(err error) error {
