@@ -2822,6 +2822,21 @@ func (s *Service) selectContentDetectionRelease(torrentName string, sourceReleas
 		fileContent.ContentType != "" && fileContent.ContentType != "unknown" &&
 		sourceContent.ContentType != fileContent.ContentType
 
+	// Special case: file has explicit episode markers → trust it for TV detection
+	// Handles season packs where torrent name has year but files have episode numbers
+	// Only apply when titles match (to avoid unrelated files in wrong folders)
+	if contentMismatch && !titleMismatch && fileContent.ContentType == "tv" && sourceContent.ContentType == "movie" {
+		if largestRelease.Episode > 0 || largestRelease.Series > 0 {
+			log.Debug().
+				Str("torrentName", torrentName).
+				Str("largestFile", largestFile.Name).
+				Int("episode", largestRelease.Episode).
+				Int("series", largestRelease.Series).
+				Msg("[CROSSSEED-SEARCH] File has explicit episode markers, using file for TV detection")
+			return largestRelease, true
+		}
+	}
+
 	if titleMismatch || contentMismatch {
 		log.Warn().
 			Str("torrentName", torrentName).

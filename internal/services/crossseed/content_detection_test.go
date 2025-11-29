@@ -86,3 +86,99 @@ func TestAnalyzeTorrentForSearchAsync_UsesLargestFileWhenTitlesAlign(t *testing.
 	require.Equal(t, "tvsearch", result.TorrentInfo.SearchType)
 	require.Equal(t, []int{5000}, result.TorrentInfo.SearchCategories)
 }
+
+func TestAnalyzeTorrentForSearchAsync_TrustFileEpisodeMarkers_Miniseries(t *testing.T) {
+	// Torka.aldrig.tarar.utan.handskar is a Swedish miniseries
+	// Torrent name has year but no episode markers → parsed as movie
+	// File name has E01 → parsed as TV episode
+	// Should trust the file since titles match and file has explicit episode marker
+	t.Parallel()
+
+	ctx := context.Background()
+	instance := &models.Instance{ID: 1, Name: "Test"}
+
+	torrent := qbt.Torrent{
+		Hash:     "torka123",
+		Name:     "Torka.aldrig.tarar.utan.handskar.2012.720p.BluRay.x264-HANDJOB",
+		Progress: 1.0,
+		Size:     8 << 30,
+	}
+
+	files := map[string]qbt.TorrentFiles{
+		torrent.Hash: {
+			{
+				Name: "Torka.aldrig.tarar.utan.handskar.2012.720p.BluRay.x264-HANDJOB/Torka.aldrig.tarar.utan.handskar.E01.2012.720p.BluRay.x264-HANDJOB.mkv",
+				Size: 4 << 30,
+			},
+			{
+				Name: "Torka.aldrig.tarar.utan.handskar.2012.720p.BluRay.x264-HANDJOB/Torka.aldrig.tarar.utan.handskar.E02.2012.720p.BluRay.x264-HANDJOB.mkv",
+				Size: 4 << 30,
+			},
+		},
+	}
+
+	service := &Service{
+		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{torrent}, files),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	result, err := service.AnalyzeTorrentForSearchAsync(ctx, instance.ID, torrent.Hash, false)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	require.Equal(t, "tv", result.TorrentInfo.ContentType, "should detect as TV when file has episode markers")
+	require.Equal(t, "tvsearch", result.TorrentInfo.SearchType)
+	require.Equal(t, []int{5000}, result.TorrentInfo.SearchCategories)
+}
+
+func TestAnalyzeTorrentForSearchAsync_TrustFileEpisodeMarkers_Anime(t *testing.T) {
+	// Anime often uses " - 01 " style episode numbering without S/E prefixes
+	// Torrent name has no episode markers → parsed as movie
+	// File name has " - 01 " → parsed as TV episode
+	// Should trust the file since titles match and file has explicit episode marker
+	t.Parallel()
+
+	ctx := context.Background()
+	instance := &models.Instance{ID: 1, Name: "Test"}
+
+	torrent := qbt.Torrent{
+		Hash:     "takopii123",
+		Name:     "[SubsPlease] Takopii no Genzai (1080p)",
+		Progress: 1.0,
+		Size:     9 << 30,
+	}
+
+	files := map[string]qbt.TorrentFiles{
+		torrent.Hash: {
+			{
+				Name: "[SubsPlease] Takopii no Genzai (1080p)/[SubsPlease] Takopii no Genzai - 01 (1080p) [2480DBD9].mkv",
+				Size: 2 << 30,
+			},
+			{
+				Name: "[SubsPlease] Takopii no Genzai (1080p)/[SubsPlease] Takopii no Genzai - 02 (1080p) [C84AB672].mkv",
+				Size: 1500 << 20,
+			},
+			{
+				Name: "[SubsPlease] Takopii no Genzai (1080p)/[SubsPlease] Takopii no Genzai - 03 (1080p) [A2386109].mkv",
+				Size: 1500 << 20,
+			},
+		},
+	}
+
+	service := &Service{
+		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{torrent}, files),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	result, err := service.AnalyzeTorrentForSearchAsync(ctx, instance.ID, torrent.Hash, false)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	require.Equal(t, "tv", result.TorrentInfo.ContentType, "should detect anime as TV when file has episode markers")
+	require.Equal(t, "tvsearch", result.TorrentInfo.SearchType)
+	require.Equal(t, []int{5000}, result.TorrentInfo.SearchCategories)
+}
