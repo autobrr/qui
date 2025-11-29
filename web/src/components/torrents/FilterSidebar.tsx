@@ -1315,7 +1315,8 @@ const FilterSidebarComponent = ({
     categoryVirtualizer.measure()
     tagVirtualizer.measure()
     trackerVirtualizer.measure()
-  }, [viewMode, categoryVirtualizer, tagVirtualizer, trackerVirtualizer])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Virtualizers are stable refs, only re-measure on viewMode change
+  }, [viewMode])
 
   const clearFilters = () => {
     applyFilterChange({

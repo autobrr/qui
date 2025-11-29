@@ -12,6 +12,7 @@ import {
   ContextMenuTrigger
 } from "@/components/ui/context-menu"
 import type { ViewMode } from "@/hooks/usePersistedCompactViewState"
+import { cn } from "@/lib/utils"
 import type { Category } from "@/types"
 import { ChevronDown, ChevronRight, Edit, FolderPlus, Trash2 } from "lucide-react"
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react"
@@ -193,7 +194,7 @@ const CategoryTreeNode = memo(({
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <li
-          className={`flex items-center ${itemGap} ${itemPadding} hover:bg-muted rounded-md cursor-pointer select-none`}
+          className={cn("flex items-center hover:bg-muted rounded-md cursor-pointer select-none", itemGap, itemPadding)}
           style={{ paddingLeft: `${indentLevel + (viewMode === "dense" ? 4 : 6)}px` }}
           onPointerDown={handlePointerDown}
           onPointerLeave={onCategoryPointerLeave}
@@ -357,7 +358,7 @@ export const CategoryTree = memo(({
       {/* All/Uncategorized special items */}
 
       <li
-        className={`flex items-center ${itemGap} ${itemPadding} hover:bg-muted rounded-md cursor-pointer`}
+        className={cn("flex items-center hover:bg-muted rounded-md cursor-pointer", itemGap, itemPadding)}
         onClick={() => onCategoryCheckboxChange("")}
         onPointerDown={(event) => onCategoryPointerDown?.(event, "")}
         onPointerLeave={onCategoryPointerLeave}
@@ -366,10 +367,10 @@ export const CategoryTree = memo(({
           checked={uncategorizedCheckboxState}
           className="size-4"
         />
-        <span className={`flex-1 text-sm italic ${uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground"}`}>
+        <span className={cn("flex-1 text-sm italic", uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground")}>
           Uncategorized
         </span>
-        <span className={`text-xs ${uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground"}`}>
+        <span className={cn("text-xs", uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground")}>
           ({uncategorizedCount})
         </span>
       </li>
