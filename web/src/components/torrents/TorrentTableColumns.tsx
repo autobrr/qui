@@ -379,6 +379,8 @@ const getStatusBadgeMeta = (
   }
 }
 
+export type TableViewMode = "normal" | "dense" | "compact"
+
 export const createColumns = (
   incognitoMode: boolean,
   selectionEnhancers?: {
@@ -398,8 +400,13 @@ export const createColumns = (
   formatTimestamp?: (timestamp: number) => string,
   instancePreferences?: AppPreferences | null,
   supportsTrackerHealth: boolean = true,
-  showInstanceColumn: boolean = false
-): ColumnDef<Torrent>[] => [
+  showInstanceColumn: boolean = false,
+  viewMode: TableViewMode = "normal"
+): ColumnDef<Torrent>[] => {
+  // Badge padding classes based on view mode
+  const badgePadding = viewMode === "dense" ? "px-1.5 py-0" : ""
+
+  return [
   {
     id: "select",
     header: ({ table }) => (
@@ -647,7 +654,7 @@ export const createColumns = (
       if (isQueued && priority > 0) {
         return (
           <div className="flex items-center gap-1">
-            <Badge variant={badgeVariant} className={cn("text-xs", badgeClass)}>
+            <Badge variant={badgeVariant} className={cn("text-xs", badgePadding, badgeClass)}>
               {displayLabel}
             </Badge>
             <span className="text-xs text-muted-foreground">#{priority}</span>
@@ -656,7 +663,7 @@ export const createColumns = (
       }
 
       return (
-        <Badge variant={badgeVariant} className={cn("text-xs", badgeClass)}>
+        <Badge variant={badgeVariant} className={cn("text-xs", badgePadding, badgeClass)}>
           {displayLabel}
         </Badge>
       )
@@ -1118,4 +1125,4 @@ export const createColumns = (
     },
     size: calculateMinWidth("Private"),
   },
-]
+]}
