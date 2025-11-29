@@ -32,11 +32,13 @@ import (
 	"github.com/autobrr/qui/internal/services/trackericons"
 )
 
-// FilesManager interface for caching torrent files
+// FilesManager interface for caching torrent files.
+// IMPORTANT: All returned qbt.TorrentFiles slices must be treated as read-only
+// to preserve cache integrity. Do not append, modify, or re-slice.
 type FilesManager interface {
 	GetCachedFiles(ctx context.Context, instanceID int, hash string) (qbt.TorrentFiles, error)
 	// GetCachedFilesBatch returns cached files for a set of torrents and the hashes that were missing/stale.
-	// Callers must pass hashes already trimmed/normalized (e.g. lowercase hex)
+	// Callers must pass hashes already trimmed/normalized (e.g. uppercase hex)
 	// because implementations treat the provided keys as-is when populating lookups and cache metadata.
 	GetCachedFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, []string, error)
 	CacheFiles(ctx context.Context, instanceID int, hash string, files qbt.TorrentFiles) error
@@ -1272,13 +1274,13 @@ func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int,
 				return nil
 			}
 
-			// Clone the slice so later fetches cannot mutate the stored entry if the
-			// client reuses backing arrays across calls.
-			copied := make(qbt.TorrentFiles, len(*files))
-			copy(copied, *files)
+			// Clone the API response once. This clone is shared between the caller's
+			// result map and the cache. Callers must treat returned slices as read-only.
+			callerCopy := make(qbt.TorrentFiles, len(*files))
+			copy(callerCopy, *files)
 
 			mu.Lock()
-			filesByHash[ch] = copied
+			filesByHash[ch] = callerCopy
 			mu.Unlock()
 			return nil
 		})
@@ -1288,15 +1290,15 @@ func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int,
 		return filesByHash, err
 	}
 
-	// Cache all newly fetched files in batch
+	// Cache all newly fetched files in batch.
+	// Fresh fetches share the cloned slice between caller and cache (one clone total).
+	// Cache hits (handled earlier) return isolated clones.
+	// IMPORTANT: Callers must treat qbt.TorrentFiles as read-only to avoid cache corruption.
 	if fm := sm.getFilesManager(); fm != nil && len(hashesToFetch) > 0 {
 		fetchedFiles := make(map[string]qbt.TorrentFiles)
 		for _, canonicalHash := range hashesToFetch {
 			if files, ok := filesByHash[canonicalHash]; ok {
-				// Cache a clone to keep cache entries isolated.
-				cloned := make(qbt.TorrentFiles, len(files))
-				copy(cloned, files)
-				fetchedFiles[canonicalHash] = cloned
+				fetchedFiles[canonicalHash] = files
 			}
 		}
 		if len(fetchedFiles) > 0 {

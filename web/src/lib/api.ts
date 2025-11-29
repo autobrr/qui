@@ -42,6 +42,7 @@ import type {
   RestoreMode,
   RestorePlan,
   RestoreResult,
+  SearchHistoryResponse,
   SortedPeersResponse,
   TorrentCreationParams,
   TorrentCreationTask,
@@ -58,6 +59,7 @@ import type {
   TorznabIndexerFormData,
   TorznabIndexerHealth,
   TorznabIndexerLatencyStats,
+  IndexerActivityStatus,
   TorznabSearchRequest,
   TorznabSearchResult,
   TorznabSearchResponse,
@@ -1527,6 +1529,15 @@ class ApiClient {
     return this.request<{ status: string }>(`/torznab/indexers/${id}/test`, {
       method: "POST",
     })
+  }
+
+  async getIndexerActivityStatus(): Promise<IndexerActivityStatus> {
+    return this.request<IndexerActivityStatus>("/torznab/activity")
+  }
+
+  async getSearchHistory(limit?: number): Promise<SearchHistoryResponse> {
+    const params = limit ? `?limit=${limit}` : ""
+    return this.request<SearchHistoryResponse>(`/torznab/search/history${params}`)
   }
 
   async discoverJackettIndexers(baseUrl: string, apiKey: string): Promise<JackettIndexer[]> {

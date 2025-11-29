@@ -2714,8 +2714,6 @@ paths:
                     type: string
                 startPaused:
                   type: boolean
-                addCrossSeedTag:
-                  type: boolean
                 skipIfExists:
                   type: boolean
                 findIndividualEpisodes:

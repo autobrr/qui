@@ -536,6 +536,8 @@ func (app *Application) runServer() {
 		jackett.WithSearchCache(torznabSearchCache, jackett.SearchCacheConfig{
 			TTL: cacheTTL,
 		}),
+		jackett.WithSearchHistory(0),   // Use default capacity (500 entries)
+		jackett.WithIndexerOutcomes(0), // Use default capacity (1000 entries)
 	)
 	log.Info().Msg("Torznab/Jackett service initialized")
 

@@ -53,7 +53,22 @@ func (s *Service) alignCrossSeedContentPaths(
 
 	trimmedSourceName := strings.TrimSpace(sourceTorrentName)
 	trimmedMatchedName := strings.TrimSpace(matchedTorrent.Name)
-	if shouldRenameTorrentDisplay(sourceRelease, matchedRelease) && trimmedMatchedName != "" && trimmedSourceName != trimmedMatchedName {
+
+	// Detect single-file → folder case (using expected files, before any qBittorrent updates)
+	expectedSourceRoot := detectCommonRoot(expectedSourceFiles)
+	expectedCandidateRoot := detectCommonRoot(candidateFiles)
+	isSingleFileToFolder := expectedSourceRoot == "" && expectedCandidateRoot != ""
+
+	// For single-file → folder cases, qBittorrent strips the file extension when creating
+	// the subfolder with contentLayout=Subfolder. Don't rename the display name as that
+	// would cause TMM to try relocating files and break the cross-seed.
+	// Only rename if names differ by more than just the extension.
+	shouldRename := shouldRenameTorrentDisplay(sourceRelease, matchedRelease) &&
+		trimmedMatchedName != "" &&
+		trimmedSourceName != trimmedMatchedName &&
+		!(isSingleFileToFolder && namesMatchIgnoringExtension(trimmedSourceName, trimmedMatchedName))
+
+	if shouldRename {
 		if err := s.syncManager.RenameTorrent(ctx, instanceID, torrentHash, trimmedMatchedName); err != nil {
 			log.Warn().
 				Err(err).
@@ -91,10 +106,10 @@ func (s *Service) alignCrossSeedContentPaths(
 	sourceRoot := detectCommonRoot(sourceFiles)
 	targetRoot := detectCommonRoot(candidateFiles)
 
-	plan, unmatched := buildFileRenamePlan(sourceFiles, candidateFiles)
-
+	// Rename folder FIRST if different - this must happen before file renames
+	// because qBittorrent needs to know where to look for files on disk
 	rootRenamed := false
-	if len(plan) == 0 && sourceRoot != "" && targetRoot != "" && sourceRoot != targetRoot {
+	if sourceRoot != "" && targetRoot != "" && sourceRoot != targetRoot {
 		if err := s.syncManager.RenameTorrentFolder(ctx, instanceID, torrentHash, sourceRoot, targetRoot); err != nil {
 			log.Warn().
 				Err(err).
@@ -111,8 +126,15 @@ func (s *Service) alignCrossSeedContentPaths(
 				Str("from", sourceRoot).
 				Str("to", targetRoot).
 				Msg("Renamed cross-seed root folder to match existing torrent")
+
+			// Update sourceFiles paths to reflect the folder rename for file matching
+			for i := range sourceFiles {
+				sourceFiles[i].Name = adjustPathForRootRename(sourceFiles[i].Name, sourceRoot, targetRoot)
+			}
 		}
 	}
+
+	plan, unmatched := buildFileRenamePlan(sourceFiles, candidateFiles)
 
 	if len(plan) == 0 {
 		if len(unmatched) > 0 {
@@ -411,4 +433,88 @@ func shouldAlignFilesWithCandidate(newRelease, matchedRelease *rls.Release) bool
 		return false
 	}
 	return true
+}
+
+// namesMatchIgnoringExtension returns true if two names match after stripping common video file extensions.
+// This is used for single-file → folder cases where qBittorrent strips the extension when creating subfolders.
+func namesMatchIgnoringExtension(name1, name2 string) bool {
+	// Common video file extensions that qBittorrent strips
+	extensions := []string{".mkv", ".mp4", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".ts", ".m2ts"}
+
+	stripped1 := name1
+	stripped2 := name2
+
+	for _, ext := range extensions {
+		if strings.HasSuffix(strings.ToLower(name1), ext) {
+			stripped1 = name1[:len(name1)-len(ext)]
+			break
+		}
+	}
+	for _, ext := range extensions {
+		if strings.HasSuffix(strings.ToLower(name2), ext) {
+			stripped2 = name2[:len(name2)-len(ext)]
+			break
+		}
+	}
+
+	return stripped1 == stripped2
+}
+
+// hasExtraSourceFiles checks if source torrent has files that don't exist in the candidate.
+// This happens when source has extra sidecar files (NFO, SRT, etc.) that weren't filtered
+// by ignorePatterns. Returns true if source has files with sizes not present in candidate.
+func hasExtraSourceFiles(sourceFiles, candidateFiles qbt.TorrentFiles) bool {
+	if len(sourceFiles) <= len(candidateFiles) {
+		return false
+	}
+
+	// Build size buckets for candidate files
+	candidateSizes := make(map[int64]int)
+	for _, cf := range candidateFiles {
+		candidateSizes[cf.Size]++
+	}
+
+	// Count how many source files can be matched by size
+	matched := 0
+	for _, sf := range sourceFiles {
+		if count := candidateSizes[sf.Size]; count > 0 {
+			candidateSizes[sf.Size]--
+			matched++
+		}
+	}
+
+	// If we couldn't match all source files, there are extras
+	return matched < len(sourceFiles)
+}
+
+// needsRenameAlignment checks if rename alignment will be required for a cross-seed add.
+// Returns true if torrent name or root folder differs between source and candidate,
+// but NOT for single-file → folder cases (handled by contentLayout=Subfolder).
+func needsRenameAlignment(torrentName string, matchedTorrentName string, sourceFiles, candidateFiles qbt.TorrentFiles) bool {
+	sourceRoot := detectCommonRoot(sourceFiles)
+	candidateRoot := detectCommonRoot(candidateFiles)
+
+	// Single file → folder: handled by contentLayout=Subfolder, no rename needed
+	if sourceRoot == "" && candidateRoot != "" {
+		return false
+	}
+
+	// Folder → single file: handled by contentLayout=NoSubfolder, no rename needed
+	if sourceRoot != "" && candidateRoot == "" {
+		return false
+	}
+
+	// Check display name (both have folders or both are single files)
+	trimmedSourceName := strings.TrimSpace(torrentName)
+	trimmedMatchedName := strings.TrimSpace(matchedTorrentName)
+	if trimmedSourceName != trimmedMatchedName {
+		return true
+	}
+
+	// Check root folder (both have folders)
+	if sourceRoot != "" && candidateRoot != "" && sourceRoot != candidateRoot {
+		return true
+	}
+
+	return false
 }

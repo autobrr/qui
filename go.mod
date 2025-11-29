@@ -12,6 +12,7 @@ require (
 	github.com/autobrr/autobrr v1.68.0
 	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251123070056-da58b6063850
 	github.com/avast/retry-go v3.0.0+incompatible
+	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/coreos/go-oidc/v3 v3.16.0
 	github.com/creativeprojects/go-selfupdate v1.5.1
 	github.com/expr-lang/expr v1.17.6
@@ -51,7 +52,6 @@ require (
 	github.com/anacrolix/missinggo v1.3.0 // indirect
 	github.com/anacrolix/missinggo/v2 v2.10.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/davidmz/go-pageant v1.0.2 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect

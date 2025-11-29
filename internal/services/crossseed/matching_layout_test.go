@@ -136,6 +136,10 @@ func (c *candidateSelectionSyncManager) GetTorrentProperties(context.Context, in
 	return nil, fmt.Errorf("not implemented")
 }
 
+func (c *candidateSelectionSyncManager) GetAppPreferences(_ context.Context, _ int) (qbt.AppPreferences, error) {
+	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
+}
+
 func (c *candidateSelectionSyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 	result := make(map[string]qbt.TorrentFiles, len(hashes))
 	for _, h := range hashes {

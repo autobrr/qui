@@ -71,6 +71,12 @@ func (h *JackettHandler) Routes(r chi.Router) {
 			r.Get("/", h.GetSearchCacheStats)
 			r.Put("/settings", h.UpdateSearchCacheSettings)
 		})
+
+		// Search history - completed searches
+		r.Get("/search/history", h.GetSearchHistory)
+
+		// Activity status
+		r.Get("/activity", h.GetActivityStatus)
 	})
 }
 
@@ -912,4 +918,55 @@ func (h *JackettHandler) GetIndexerStats(w http.ResponseWriter, r *http.Request)
 	}
 
 	RespondJSON(w, http.StatusOK, stats)
+}
+
+// GetSearchHistory godoc
+// @Summary Get search history
+// @Description Returns recent completed searches from the in-memory history buffer
+// @Tags torznab
+// @Produce json
+// @Param limit query int false "Maximum number of entries to return (default: 50, max: 500)"
+// @Success 200 {object} jackett.SearchHistoryResponseWithOutcome
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/torznab/search/history [get]
+func (h *JackettHandler) GetSearchHistory(w http.ResponseWriter, r *http.Request) {
+	limit := 50
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
+			limit = parsed
+			if limit > 500 {
+				limit = 500
+			}
+		}
+	}
+
+	history, err := h.service.GetSearchHistory(r.Context(), limit)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get search history")
+		RespondError(w, http.StatusInternalServerError, "Failed to get search history")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, history)
+}
+
+// GetActivityStatus godoc
+// @Summary Get scheduler and indexer activity status
+// @Description Returns current scheduler state including queued tasks, in-flight jobs, and rate-limited indexers
+// @Tags torznab
+// @Produce json
+// @Success 200 {object} jackett.ActivityStatus
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/torznab/activity [get]
+func (h *JackettHandler) GetActivityStatus(w http.ResponseWriter, r *http.Request) {
+	status, err := h.service.GetActivityStatus(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get activity status")
+		RespondError(w, http.StatusInternalServerError, "Failed to get activity status")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, status)
 }
