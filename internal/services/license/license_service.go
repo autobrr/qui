@@ -39,6 +39,19 @@ func NewLicenseService(repo *database.LicenseRepo, polarClient *polar.Client, co
 	}
 }
 
+// getDeviceFingerprint retrieves the device fingerprint with database fallback support.
+// This allows recovery when the fingerprint file is lost but the fingerprint is stored in the database.
+func (s *Service) getDeviceFingerprint(ctx context.Context, username string) (string, error) {
+	// Try to get stored fingerprint from database as fallback
+	dbFingerprint, err := s.licenseRepo.GetFingerprintByUsername(ctx, username)
+	if err != nil {
+		log.Warn().Err(err).Msg("failed to get fingerprint from database, will use file only")
+		dbFingerprint = ""
+	}
+
+	return GetDeviceIDWithFallback(appIDPremium, username, s.configDir, dbFingerprint)
+}
+
 // ActivateAndStoreLicense activates a license key and stores it if valid
 func (s *Service) ActivateAndStoreLicense(ctx context.Context, licenseKey string, username string) (*models.ProductLicense, error) {
 	// Validate with Polar API
@@ -52,7 +65,7 @@ func (s *Service) ActivateAndStoreLicense(ctx context.Context, licenseKey string
 		return nil, fmt.Errorf("failed to check existing license: %w", err)
 	}
 
-	fingerprint, err := GetDeviceID("qui-premium", username, s.configDir)
+	fingerprint, err := s.getDeviceFingerprint(ctx, username)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get machine ID: %w", err)
 	}
@@ -101,6 +114,7 @@ func (s *Service) ActivateAndStoreLicense(ctx context.Context, licenseKey string
 		existingLicense.PolarProductID = &activateResp.LicenseKey.BenefitID
 		existingLicense.PolarActivationID = activateResp.Id
 		existingLicense.Username = username
+		existingLicense.Fingerprint = fingerprint // Store fingerprint for recovery
 		existingLicense.UpdatedAt = time.Now()
 
 		if err := s.licenseRepo.UpdateLicenseActivation(ctx, existingLicense); err != nil {
@@ -127,6 +141,7 @@ func (s *Service) ActivateAndStoreLicense(ctx context.Context, licenseKey string
 		PolarProductID:    &activateResp.LicenseKey.BenefitID,
 		PolarActivationID: activateResp.Id,
 		Username:          username,
+		Fingerprint:       fingerprint, // Store fingerprint for recovery
 		CreatedAt:         time.Now(),
 		UpdatedAt:         time.Now(),
 	}
@@ -157,7 +172,7 @@ func (s *Service) ValidateAndStoreLicense(ctx context.Context, licenseKey string
 		return nil, err
 	}
 
-	fingerprint, err := GetDeviceID("qui-premium", username, s.configDir)
+	fingerprint, err := s.getDeviceFingerprint(ctx, username)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get machine ID: %w", err)
 	}
@@ -174,8 +189,15 @@ func (s *Service) ValidateAndStoreLicense(ctx context.Context, licenseKey string
 		return nil, fmt.Errorf("validation error: %s", validationResp.Status)
 	}
 
-	// License already exists, update validation time and return
+	// License already exists, update validation time and fingerprint
 	existingLicense.LastValidated = time.Now()
+	// Ensure fingerprint is stored for recovery
+	if existingLicense.Fingerprint == "" {
+		existingLicense.Fingerprint = fingerprint
+		if err := s.licenseRepo.UpdateLicenseFingerprint(ctx, existingLicense.ID, fingerprint); err != nil {
+			log.Warn().Err(err).Msg("Failed to update license fingerprint")
+		}
+	}
 	if err := s.licenseRepo.UpdateLicenseValidation(ctx, existingLicense); err != nil {
 		log.Error().Err(err).Msg("Failed to update license validation time")
 	}
@@ -222,7 +244,8 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 			continue
 		}
 
-		fingerprint, err := GetDeviceID("qui-premium", license.Username, s.configDir)
+		// Use database fallback for fingerprint recovery
+		fingerprint, err := s.getDeviceFingerprint(ctx, license.Username)
 		if err != nil {
 			return fmt.Errorf("failed to get machine ID: %w", err)
 		}
@@ -259,12 +282,14 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 				continue
 			}
 
-			// Update the license with activation ID
+			// Update the license with activation ID and fingerprint
 			license.PolarActivationID = activateResp.Id
 			license.PolarCustomerID = &activateResp.LicenseKey.CustomerID
 			license.PolarProductID = &activateResp.LicenseKey.BenefitID
 			license.ActivatedAt = time.Now()
 			license.ExpiresAt = activateResp.LicenseKey.ExpiresAt
+			license.Fingerprint = fingerprint
+			license.Status = models.LicenseStatusActive
 
 			// Update in database
 			if err := s.licenseRepo.UpdateLicenseActivation(ctx, license); err != nil {
@@ -304,10 +329,17 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 			}
 		}
 
-		// Update status
+		// Update status and ensure fingerprint is stored
 		newStatus := models.LicenseStatusActive
 		if !licenseInfo.ValidLicense() {
 			newStatus = models.LicenseStatusInvalid
+		}
+
+		// Store fingerprint in database for recovery if not already present
+		if license.Fingerprint == "" && fingerprint != "" {
+			if updateErr := s.licenseRepo.UpdateLicenseFingerprint(ctx, license.ID, fingerprint); updateErr != nil {
+				log.Warn().Err(updateErr).Msg("Failed to store fingerprint for recovery")
+			}
 		}
 
 		if err := s.licenseRepo.UpdateLicenseStatus(ctx, license.ID, newStatus); err != nil {
@@ -343,17 +375,13 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 	var transientErr error
 
 	for _, license := range licenses {
-		// Skip recently validated licenses (within 1 hour)
-		//if time.Since(license.LastValidated) < time.Hour {
-		//	continue
-		//}
-
 		if license.Username == "" {
 			log.Error().Msg("no username found for license, skipping refresh")
 			continue
 		}
 
-		fingerprint, err := GetDeviceID("qui-premium", license.Username, s.configDir)
+		// Use database fallback for fingerprint recovery
+		fingerprint, err := s.getDeviceFingerprint(ctx, license.Username)
 		if err != nil {
 			return false, fmt.Errorf("failed to get machine ID: %w", err)
 		}
@@ -391,12 +419,14 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 				continue
 			}
 
-			// Update the license with activation ID
+			// Update the license with activation ID and fingerprint
 			license.PolarActivationID = activateResp.Id
 			license.PolarCustomerID = &activateResp.LicenseKey.CustomerID
 			license.PolarProductID = &activateResp.LicenseKey.BenefitID
 			license.ActivatedAt = time.Now()
 			license.ExpiresAt = activateResp.LicenseKey.ExpiresAt
+			license.Fingerprint = fingerprint
+			license.Status = models.LicenseStatusActive
 
 			// Update in database
 			if err := s.licenseRepo.UpdateLicenseActivation(ctx, license); err != nil {
@@ -424,20 +454,73 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 			// Log specific error based on type
 			switch {
 			case errors.Is(err, polar.ErrConditionMismatch):
-				log.Error().
+				// Fingerprint mismatch - attempt automatic re-activation
+				log.Warn().
 					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
-					Msg("License fingerprint mismatch - database appears to have been copied from another machine")
-				allValid = false
+					Msg("License fingerprint mismatch detected, attempting automatic re-activation")
+
+				// Try to re-activate with the new fingerprint
+				reactivateReq := polar.ActivateRequest{Key: license.LicenseKey, Label: defaultLabel}
+				reactivateReq.SetCondition("fingerprint", fingerprint)
+				reactivateReq.SetMeta("product", defaultLabel)
+
+				reactivateResp, reactivateErr := s.polarClient.Activate(ctx, reactivateReq)
+				if reactivateErr != nil {
+					if errors.Is(reactivateErr, polar.ErrActivationLimitExceeded) {
+						log.Error().
+							Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+							Msg("Re-activation failed: activation limit exceeded. Please deactivate unused devices at the Polar customer portal.")
+					} else {
+						log.Error().
+							Err(reactivateErr).
+							Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+							Msg("Re-activation failed")
+					}
+					// Mark as invalid since re-activation failed
+					if updateErr := s.licenseRepo.UpdateLicenseStatus(ctx, license.ID, models.LicenseStatusInvalid); updateErr != nil {
+						log.Error().
+							Err(updateErr).
+							Int("licenseId", license.ID).
+							Msg("Failed to update license status to invalid")
+					}
+					allValid = false
+					continue
+				}
+
+				// Re-activation successful! Update license with new activation details
+				log.Info().
+					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+					Msg("License successfully re-activated with new fingerprint")
+
+				license.PolarActivationID = reactivateResp.Id
+				license.PolarCustomerID = &reactivateResp.LicenseKey.CustomerID
+				license.PolarProductID = &reactivateResp.LicenseKey.BenefitID
+				license.ActivatedAt = time.Now()
+				license.ExpiresAt = reactivateResp.LicenseKey.ExpiresAt
+				license.Fingerprint = fingerprint
+				license.Status = models.LicenseStatusActive
+
+				if updateErr := s.licenseRepo.UpdateLicenseActivation(ctx, license); updateErr != nil {
+					log.Error().
+						Err(updateErr).
+						Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+						Msg("Failed to update license after re-activation")
+				}
+				// License is now valid, continue to next
+				continue
+
 			case errors.Is(err, polar.ErrActivationLimitExceeded):
 				log.Error().
 					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
 					Msg("License activation limit exceeded")
 				allValid = false
+
 			case errors.Is(err, polar.ErrInvalidLicenseKey):
 				log.Error().
 					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
 					Msg("Invalid license key - license does not exist")
 				allValid = false
+
 			default:
 				offlineDeadline := license.LastValidated.Add(offlineGracePeriod)
 				if time.Now().After(offlineDeadline) {
@@ -462,7 +545,7 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 				log.Warn().
 					Err(err).
 					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
-					Msg("License validation failed, keeping existing status")
+					Msg("License validation failed, keeping existing status (within grace period)")
 				if license.Status != models.LicenseStatusActive {
 					allValid = false
 				}
@@ -472,7 +555,7 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 				continue
 			}
 
-			// Mark license as invalid when validation fails
+			// Mark license as invalid when validation fails (except for transient errors)
 			if updateErr := s.licenseRepo.UpdateLicenseStatus(ctx, license.ID, models.LicenseStatusInvalid); updateErr != nil {
 				log.Error().
 					Err(updateErr).
@@ -484,11 +567,18 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 			continue
 		}
 
-		// Update status
+		// Validation successful - update status and ensure fingerprint is stored
 		newStatus := models.LicenseStatusActive
 		if !licenseInfo.ValidLicense() {
 			newStatus = models.LicenseStatusInvalid
 			allValid = false
+		}
+
+		// Store fingerprint in database for recovery if not already present
+		if license.Fingerprint == "" && fingerprint != "" {
+			if updateErr := s.licenseRepo.UpdateLicenseFingerprint(ctx, license.ID, fingerprint); updateErr != nil {
+				log.Warn().Err(updateErr).Msg("Failed to store fingerprint for recovery")
+			}
 		}
 
 		if err := s.licenseRepo.UpdateLicenseStatus(ctx, license.ID, newStatus); err != nil {
@@ -530,6 +620,7 @@ const (
 	ProductNamePremium = "premium-access"
 	ProductNameUnknown = "unknown"
 	defaultLabel       = "qui Premium License"
+	appIDPremium       = "qui-premium"
 )
 
 // mapBenefitToProduct maps a benefit ID to product name

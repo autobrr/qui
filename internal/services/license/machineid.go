@@ -15,16 +15,41 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// GetDeviceID retrieves or generates a device fingerprint.
+// Priority: 1. Existing file, 2. Generate new
+// For database fallback support, use GetDeviceIDWithFallback instead.
 func GetDeviceID(appID string, userID string, configDir string) (string, error) {
+	return GetDeviceIDWithFallback(appID, userID, configDir, "")
+}
+
+// GetDeviceIDWithFallback retrieves or generates a device fingerprint with database fallback support.
+// Priority: 1. Existing file, 2. Database fallback (if provided), 3. Generate new
+// The dbFingerprint parameter allows recovering from lost fingerprint files by using
+// a previously stored fingerprint from the database.
+func GetDeviceIDWithFallback(appID string, userID string, configDir string, dbFingerprint string) (string, error) {
 	fingerprintPath := getFingerprintPath(userID, configDir)
+
+	// Priority 1: Check for existing fingerprint file
 	if content, err := os.ReadFile(fingerprintPath); err == nil {
 		existing := strings.TrimSpace(string(content))
 		if existing != "" {
-			log.Trace().Str("path", fingerprintPath).Msg("using existing fingerprint")
+			log.Trace().Str("path", fingerprintPath).Msg("using existing fingerprint from file")
 			return existing, nil
 		}
 	}
 
+	// Priority 2: Use database fingerprint if available (recovery scenario)
+	if dbFingerprint != "" {
+		log.Info().Str("path", fingerprintPath).Msg("fingerprint file not found, recovering from database")
+		// Re-persist the fingerprint to file for future use
+		if _, err := persistFingerprint(dbFingerprint, userID, configDir); err != nil {
+			log.Warn().Err(err).Msg("failed to re-persist fingerprint from database, continuing anyway")
+		}
+		return dbFingerprint, nil
+	}
+
+	// Priority 3: Generate new fingerprint
+	log.Info().Msg("generating new device fingerprint")
 	baseID, err := machineid.ProtectedID(appID)
 	if err != nil {
 		log.Warn().Err(err).Msg("failed to get machine ID, using fallback")

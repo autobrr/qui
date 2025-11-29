@@ -26,14 +26,15 @@ func NewLicenseRepo(db *DB) *LicenseRepo {
 // GetLicenseByKey retrieves a license by its key
 func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*models.ProductLicense, error) {
 	query := `
-		SELECT id, license_key, product_name,  status, activated_at, expires_at, 
-		       last_validated, polar_customer_id, polar_product_id, polar_activation_id, username, created_at, updated_at
-		FROM licenses 
+		SELECT id, license_key, product_name, status, activated_at, expires_at,
+		       last_validated, polar_customer_id, polar_product_id, polar_activation_id, username, fingerprint, created_at, updated_at
+		FROM licenses
 		WHERE license_key = ?
 	`
 
 	license := &models.ProductLicense{}
 	var activationId sql.Null[string]
+	var fingerprint sql.Null[string]
 
 	err := r.db.QueryRowContext(ctx, query, licenseKey).Scan(
 		&license.ID,
@@ -47,6 +48,7 @@ func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*
 		&license.PolarProductID,
 		&activationId,
 		&license.Username,
+		&fingerprint,
 		&license.CreatedAt,
 		&license.UpdatedAt,
 	)
@@ -59,6 +61,7 @@ func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*
 	}
 
 	license.PolarActivationID = activationId.V
+	license.Fingerprint = fingerprint.V
 
 	return license, nil
 }
@@ -66,9 +69,9 @@ func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*
 // GetAllLicenses retrieves all licenses
 func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLicense, error) {
 	query := `
-		SELECT id, license_key, product_name, status, activated_at, expires_at, 
-		       last_validated, polar_customer_id, polar_product_id, polar_activation_id, username, created_at, updated_at
-		FROM licenses 
+		SELECT id, license_key, product_name, status, activated_at, expires_at,
+		       last_validated, polar_customer_id, polar_product_id, polar_activation_id, username, fingerprint, created_at, updated_at
+		FROM licenses
 		ORDER BY created_at DESC
 	`
 
@@ -83,6 +86,7 @@ func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLice
 		license := &models.ProductLicense{}
 
 		var activationId sql.Null[string]
+		var fingerprint sql.Null[string]
 
 		err := rows.Scan(
 			&license.ID,
@@ -96,6 +100,7 @@ func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLice
 			&license.PolarProductID,
 			&activationId,
 			&license.Username,
+			&fingerprint,
 			&license.CreatedAt,
 			&license.UpdatedAt,
 		)
@@ -104,6 +109,7 @@ func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLice
 		}
 
 		license.PolarActivationID = activationId.V
+		license.Fingerprint = fingerprint.V
 
 		licenses = append(licenses, license)
 	}
@@ -177,9 +183,9 @@ func (r *LicenseRepo) StoreLicense(ctx context.Context, license *models.ProductL
 	defer tx.Rollback()
 
 	query := `
-		INSERT INTO licenses (license_key, product_name, status, activated_at, expires_at, 
-		                           last_validated, polar_customer_id, polar_product_id, polar_activation_id, username, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO licenses (license_key, product_name, status, activated_at, expires_at,
+		                      last_validated, polar_customer_id, polar_product_id, polar_activation_id, username, fingerprint, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err = tx.ExecContext(ctx, query,
@@ -193,6 +199,7 @@ func (r *LicenseRepo) StoreLicense(ctx context.Context, license *models.ProductL
 		license.PolarProductID,
 		license.PolarActivationID,
 		license.Username,
+		stringToNullString(license.Fingerprint),
 		license.CreatedAt,
 		license.UpdatedAt,
 	)
@@ -269,7 +276,7 @@ func (r *LicenseRepo) UpdateLicenseActivation(ctx context.Context, license *mode
 	query := `
 		UPDATE licenses
 		SET polar_activation_id = ?, polar_customer_id = ?, polar_product_id = ?,
-		    activated_at = ?, expires_at = ?, last_validated = ?, updated_at = ?, status = ?
+		    activated_at = ?, expires_at = ?, last_validated = ?, updated_at = ?, status = ?, fingerprint = ?
 		WHERE id = ?
 	`
 
@@ -282,6 +289,7 @@ func (r *LicenseRepo) UpdateLicenseActivation(ctx context.Context, license *mode
 		time.Now(),
 		time.Now(),
 		license.Status,
+		stringToNullString(license.Fingerprint),
 		license.ID,
 	)
 
@@ -301,6 +309,62 @@ func timeToNullTime(t *time.Time) sql.NullTime {
 		return sql.NullTime{Valid: false}
 	}
 	return sql.NullTime{Time: *t, Valid: true}
+}
+
+func stringToNullString(s string) sql.NullString {
+	if s == "" {
+		return sql.NullString{Valid: false}
+	}
+	return sql.NullString{String: s, Valid: true}
+}
+
+// GetFingerprintByUsername retrieves the stored fingerprint for a username
+// This is used as a fallback when the fingerprint file is lost
+func (r *LicenseRepo) GetFingerprintByUsername(ctx context.Context, username string) (string, error) {
+	query := `
+		SELECT fingerprint
+		FROM licenses
+		WHERE username = ? AND fingerprint IS NOT NULL AND fingerprint != ''
+		ORDER BY last_validated DESC
+		LIMIT 1
+	`
+
+	var fingerprint sql.NullString
+	err := r.db.QueryRowContext(ctx, query, username).Scan(&fingerprint)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", nil
+		}
+		return "", err
+	}
+
+	return fingerprint.String, nil
+}
+
+// UpdateLicenseFingerprint updates the fingerprint for a license
+func (r *LicenseRepo) UpdateLicenseFingerprint(ctx context.Context, licenseID int, fingerprint string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	query := `
+		UPDATE licenses
+		SET fingerprint = ?, updated_at = ?
+		WHERE id = ?
+	`
+
+	_, err = tx.ExecContext(ctx, query, stringToNullString(fingerprint), time.Now(), licenseID)
+	if err != nil {
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }
 
 // Helper function to mask license keys in logs

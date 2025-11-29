@@ -26,6 +26,7 @@ type ProductLicense struct {
 	PolarProductID    *string    `json:"polarProductId,omitempty"`
 	PolarActivationID string     `json:"polarActivationId,omitempty"`
 	Username          string     `json:"username"`
+	Fingerprint       string     `json:"fingerprint,omitempty"` // Device fingerprint for recovery
 	CreatedAt         time.Time  `json:"createdAt"`
 	UpdatedAt         time.Time  `json:"updatedAt"`
 }
