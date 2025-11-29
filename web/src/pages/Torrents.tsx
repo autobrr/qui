@@ -11,6 +11,7 @@ import { TorrentTableResponsive } from "@/components/torrents/TorrentTableRespon
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { VisuallyHidden } from "@/components/ui/visually-hidden"
+import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilters } from "@/hooks/usePersistedFilters"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { cn } from "@/lib/utils"
@@ -27,6 +28,10 @@ interface TorrentsProps {
 export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) {
   const [filters, setFilters] = usePersistedFilters(instanceId)
   const [filterSidebarCollapsed] = usePersistedFilterSidebarState(false)
+  const { viewMode } = usePersistedCompactViewState("normal")
+
+  // Sidebar width: 320px normal, 260px dense
+  const sidebarWidth = viewMode === "dense" ? "16.25rem" : "20rem"
   const [selectedTorrent, setSelectedTorrent] = useState<Torrent | null>(null)
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
   // Navigation is handled by parent component via onSearchChange prop
@@ -193,16 +198,18 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
       {/* Desktop Sidebar - slides in on tablet/desktop */}
       <div
         className={cn(
-          "hidden md:flex shrink-0 h-full overflow-hidden transition-[flex-basis] duration-300 ease-in-out",
-          filterSidebarCollapsed ? "basis-0" : "basis-[20rem]"
+          "hidden md:flex shrink-0 h-full overflow-hidden transition-[flex-basis,width] duration-300 ease-in-out",
+          filterSidebarCollapsed && "basis-0"
         )}
+        style={{ flexBasis: filterSidebarCollapsed ? 0 : sidebarWidth }}
         aria-hidden={filterSidebarCollapsed}
       >
         <div
           className={cn(
-            "w-[20rem] overflow-hidden transition-[transform,opacity] duration-300 ease-in-out",
-            filterSidebarCollapsed? "-translate-x-full opacity-0 pointer-events-none": "translate-x-0 opacity-100"
+            "overflow-hidden transition-[transform,opacity,width] duration-300 ease-in-out",
+            filterSidebarCollapsed ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100"
           )}
+          style={{ width: sidebarWidth }}
         >
           <FilterSidebar
             key={`filter-sidebar-${instanceId}`}
