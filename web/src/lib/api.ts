@@ -373,6 +373,25 @@ class ApiClient {
     })
   }
 
+  async importBackupManifest(instanceId: number, manifestFile: File): Promise<BackupRun> {
+    const formData = new FormData()
+    formData.append("archive", manifestFile)
+
+    const response = await fetch(`${API_BASE}/instances/${instanceId}/backups/import`, {
+      method: "POST",
+      body: formData,
+      credentials: "include",
+    })
+
+    if (!response.ok) {
+      const errorMessage = await this.extractErrorMessage(response)
+      this.handleAuthError(response.status, `/instances/${instanceId}/backups/import`, errorMessage)
+      throw new Error(errorMessage)
+    }
+
+    return response.json()
+  }
+
   async previewRestore(
     instanceId: number,
     runId: number,
@@ -402,8 +421,12 @@ class ApiClient {
     })
   }
 
-  getBackupDownloadUrl(instanceId: number, runId: number): string {
-    return withBasePath(`/api/instances/${instanceId}/backups/runs/${runId}/download`)
+  getBackupDownloadUrl(instanceId: number, runId: number, format?: string): string {
+    const url = new URL(withBasePath(`/api/instances/${instanceId}/backups/runs/${runId}/download`), window.location.origin)
+    if (format && format !== 'zip') {
+      url.searchParams.set('format', format)
+    }
+    return url.toString()
   }
 
   getBackupTorrentDownloadUrl(instanceId: number, runId: number, torrentHash: string): string {

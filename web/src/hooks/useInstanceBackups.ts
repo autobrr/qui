@@ -152,3 +152,36 @@ export function useExecuteRestore(instanceId: number) {
     },
   })
 }
+
+export function useImportBackupManifest(instanceId: number) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (manifestFile: File) => api.importBackupManifest(instanceId, manifestFile),
+    onSuccess: (run: BackupRun) => {
+      queryClient.invalidateQueries({ queryKey: ["instance-backups", instanceId, "runs"] })
+      queryClient.setQueriesData<BackupRunsResponse>(
+        {
+          predicate: (query) => {
+            const key = query.queryKey
+            if (!Array.isArray(key)) {
+              return false
+            }
+            const [, keyInstanceId, section, , offset] = key
+            if (keyInstanceId !== instanceId || section !== "runs") {
+              return false
+            }
+            return offset === 0 || offset === null || offset === undefined
+          },
+        },
+        (existing) => {
+          if (!existing) {
+            return { runs: [run], hasMore: false }
+          }
+          const filtered = existing.runs.filter(item => item.id !== run.id)
+          return { ...existing, runs: [run, ...filtered] }
+        }
+      )
+    },
+  })
+}

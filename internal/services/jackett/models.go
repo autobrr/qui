@@ -90,6 +90,10 @@ type SearchResult struct {
 	UploadVolumeFactor float64 `json:"upload_volume_factor"`
 	// GUID (unique identifier)
 	GUID string `json:"guid"`
+	// InfoHashV1 if available
+	InfoHashV1 string `json:"infohash_v1,omitempty"`
+	// InfoHashV2 if available
+	InfoHashV2 string `json:"infohash_v2,omitempty"`
 	// IMDb ID if available
 	IMDbID string `json:"imdb_id,omitempty"`
 	// TVDb ID if available
