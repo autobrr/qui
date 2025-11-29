@@ -236,8 +236,14 @@ const FilterSidebarComponent = ({
     supportsSubcategories && (preferenceUseSubcategories ?? useSubcategories ?? false)
   )
 
-  // Use compact view state hook - mobile only gets normal, compact, ultra-compact (no dense)
-  const { viewMode, cycleViewMode } = usePersistedCompactViewState("compact", ["normal", "compact", "ultra-compact"])
+  // View mode syncs with the torrent list (table on desktop, cards on mobile).
+  // Desktop supports all modes including "dense" (compact table rows).
+  // Mobile excludes "dense" since TorrentCardsMobile uses card layouts, not table rows.
+  // Passing undefined for desktop allows all modes; mobile restricts to card-compatible modes.
+  const { viewMode, cycleViewMode } = usePersistedCompactViewState(
+    "compact",
+    isMobile ? ["normal", "compact", "ultra-compact"] : undefined
+  )
 
   // Helper function to get count display - shows 0 when loading to prevent showing stale counts from previous instance
   const getDisplayCount = useCallback((key: string, fallbackCount?: number): string => {
@@ -1282,10 +1288,10 @@ const FilterSidebarComponent = ({
 
   // Virtual scrolling for categories
   // Dense mode reduces item heights for more compact display
-  const denseItemHeight = viewMode === "dense" ? 30 : 36
-  const accordionTriggerClass = viewMode === "dense" ? "px-2 py-1.5" : "px-3 py-2"
-  const accordionContentClass = viewMode === "dense" ? "px-2 pb-1.5" : "px-3 pb-2"
-  const filterItemClass = viewMode === "dense" ? "px-1.5 py-1" : "px-2 py-1.5"
+  const denseItemHeight = viewMode === "dense" ? 26 : 36
+  const accordionTriggerClass = viewMode === "dense" ? "px-2 py-1" : "px-3 py-2"
+  const accordionContentClass = viewMode === "dense" ? "px-2 pb-1" : "px-3 pb-2"
+  const filterItemClass = viewMode === "dense" ? "px-1.5 py-0.5" : "px-2 py-1.5"
 
   const categoryVirtualizer = useVirtualizer({
     count: filteredCategories.length,
@@ -1684,7 +1690,7 @@ const FilterSidebarComponent = ({
                   </div>
 
                   {/* Search input for categories */}
-                  <div className={viewMode === "dense" ? "mb-1.5" : "mb-2"}>
+                  <div className={viewMode === "dense" ? "mb-1" : "mb-2"}>
                     <SearchInput
                       placeholder="Search categories..."
                       value={categorySearch}
@@ -2057,7 +2063,7 @@ const FilterSidebarComponent = ({
                   </div>
 
                   {/* Search input for tags */}
-                  <div className={viewMode === "dense" ? "mb-1.5" : "mb-2"}>
+                  <div className={viewMode === "dense" ? "mb-1" : "mb-2"}>
                     <SearchInput
                       placeholder="Search tags..."
                       value={tagSearch}
@@ -2303,7 +2309,7 @@ const FilterSidebarComponent = ({
               <AccordionContent className={accordionContentClass}>
                 <div className="flex flex-col gap-0">
                   {/* Search input for trackers */}
-                  <div className={viewMode === "dense" ? "mb-1.5" : "mb-2"}>
+                  <div className={viewMode === "dense" ? "mb-1" : "mb-2"}>
                     <SearchInput
                       placeholder="Search trackers..."
                       value={trackerSearch}
