@@ -429,7 +429,7 @@ func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	ctx := jackett.WithSearchPriority(context.WithoutCancel(r.Context()), jackett.RateLimitPriorityInteractive)
+	ctx := jackett.WithSearchPriority(r.Context(), jackett.RateLimitPriorityInteractive)
 	response, err := h.service.SearchTorrentMatches(ctx, instanceID, hash, opts)
 	if err != nil {
 		status := mapCrossSeedErrorStatus(err)

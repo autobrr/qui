@@ -409,7 +409,7 @@ export interface SortedPeersResponse extends TorrentPeersResponse {
   sorted_peers?: SortedPeer[]
 }
 
-export type BackupRunKind = "manual" | "hourly" | "daily" | "weekly" | "monthly"
+export type BackupRunKind = "manual" | "hourly" | "daily" | "weekly" | "monthly" | "import"
 
 export type BackupRunStatus = "pending" | "running" | "success" | "failed" | "canceled"
 
@@ -439,7 +439,6 @@ export interface BackupRun {
   requestedAt: string
   startedAt?: string
   completedAt?: string
-  archivePath?: string | null
   manifestPath?: string | null
   totalBytes: number
   torrentCount: number
@@ -462,7 +461,6 @@ export interface BackupManifestItem {
   name: string
   category?: string | null
   sizeBytes: number
-  archivePath: string
   infohashV1?: string | null
   infohashV2?: string | null
   tags?: string[]
