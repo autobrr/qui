@@ -5495,23 +5495,8 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 	log.Debug().
 		Str("torrentHash", hash).
 		Int("instanceID", instanceID).
-		Ints("inputIndexers", indexerIDs).
-		Int("inputCount", len(indexerIDs)).
-		Msg("[CROSSSEED-FILTER] *** FILTER FUNCTION CALLED ***")
-
-	// TEMPORARY TEST: Remove all indexers to see if the filtering is working
-	testFilteringEnabled := false // Set to true to test if filtering is working
-	if testFilteringEnabled {
-		log.Debug().Msg("[CROSSSEED-FILTER] *** TEST MODE: FILTERING OUT ALL INDEXERS ***")
-		return []int{}, nil, nil, nil
-	}
-
-	log.Debug().
-		Str("torrentHash", hash).
-		Int("instanceID", instanceID).
-		Ints("inputIndexers", indexerIDs).
-		Int("inputCount", len(indexerIDs)).
-		Msg("[CROSSSEED-FILTER] Starting indexer content filtering")
+		Int("indexerCount", len(indexerIDs)).
+		Msg("filtering indexers by existing content")
 
 	// Get the source torrent being searched for
 	torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{
@@ -5525,22 +5510,8 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 	}
 	sourceTorrent := &torrents[0]
 
-	log.Debug().
-		Str("sourceTorrentName", sourceTorrent.Name).
-		Str("sourceTorrentHash", sourceTorrent.Hash).
-		Msg("[CROSSSEED-FILTER] Source torrent info")
-
 	// Parse the source torrent to understand what content we're looking for
 	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
-
-	log.Debug().
-		Str("sourceTitle", sourceRelease.Title).
-		Str("sourceGroup", sourceRelease.Group).
-		Int("sourceSeries", sourceRelease.Series).
-		Int("sourceEpisode", sourceRelease.Episode).
-		Int("sourceYear", sourceRelease.Year).
-		Str("sourceType", sourceRelease.Type.String()).
-		Msg("[CROSSSEED-FILTER] Parsed source release info")
 
 	// Get cached torrents from the active instance only
 	instanceTorrents, err := s.syncManager.GetCachedInstanceTorrents(ctx, instanceID)
@@ -5548,20 +5519,14 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 		return indexerIDs, nil, nil, fmt.Errorf("failed to get cached instance torrents: %w", err)
 	}
 
-	log.Debug().
-		Int("instanceID", instanceID).
-		Int("cachedInstanceTorrents", len(instanceTorrents)).
-		Msg("[CROSSSEED-FILTER] Retrieved cached instance torrents")
-
 	type matchedTorrent struct {
 		view           qbittorrent.CrossInstanceTorrentView
 		trackerDomains []string
 	}
 
 	var (
-		matchedContent   []matchedTorrent
-		contentMatches   []string
-		potentialMatches []string
+		matchedContent []matchedTorrent
+		contentMatches []string
 	)
 
 	for _, crossTorrent := range instanceTorrents {
@@ -5576,28 +5541,13 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 			continue
 		}
 
-		matchLabel := fmt.Sprintf("%s (%s)", crossTorrent.Name, crossTorrent.InstanceName)
-		potentialMatches = append(potentialMatches, fmt.Sprintf("%s (Instance: %s)", crossTorrent.Name, crossTorrent.InstanceName))
-		contentMatches = append(contentMatches, matchLabel)
-
+		contentMatches = append(contentMatches, fmt.Sprintf("%s (%s)", crossTorrent.Name, crossTorrent.InstanceName))
 		trackerDomains := s.extractTrackerDomainsFromTorrent(crossTorrent.TorrentView.Torrent)
 		matchedContent = append(matchedContent, matchedTorrent{
 			view:           crossTorrent,
 			trackerDomains: trackerDomains,
 		})
-
-		log.Debug().
-			Str("matchingTorrentName", crossTorrent.Name).
-			Str("matchingInstanceName", crossTorrent.InstanceName).
-			Strs("trackerDomains", trackerDomains).
-			Msg("[CROSSSEED-FILTER] Found content match with tracker domains")
 	}
-
-	log.Debug().
-		Int("instanceID", instanceID).
-		Int("contentMatches", len(matchedContent)).
-		Strs("potentialMatches", potentialMatches).
-		Msg("[CROSSSEED-FILTER] Content matching analysis")
 
 	// Check each indexer to see if we already have content that matches what it would provide
 	var filteredIndexerIDs []int
@@ -5612,9 +5562,6 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 		if indexerName == "" {
 			// If we can't get indexer info, include it to be safe
 			filteredIndexerIDs = append(filteredIndexerIDs, indexerID)
-			log.Debug().
-				Int("indexerID", indexerID).
-				Msg("[CROSSSEED-FILTER] Including indexer: could not get indexer name")
 			continue
 		}
 
@@ -5637,22 +5584,19 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 
 		if shouldIncludeIndexer {
 			filteredIndexerIDs = append(filteredIndexerIDs, indexerID)
-			log.Debug().
-				Int("indexerID", indexerID).
-				Str("indexerName", indexerName).
-				Msg("[CROSSSEED-FILTER] INCLUDING indexer: no matching content found")
 		} else {
 			excludedIndexers[indexerID] = exclusionReason
 		}
 	}
 
-	log.Debug().
-		Str("torrentHash", hash).
-		Int("inputCount", len(indexerIDs)).
-		Int("outputCount", len(filteredIndexerIDs)).
-		Int("excludedCount", len(excludedIndexers)).
-		Interface("excludedIndexers", excludedIndexers).
-		Msg("[CROSSSEED-FILTER] Content filtering completed")
+	if len(excludedIndexers) > 0 {
+		log.Debug().
+			Str("torrentHash", hash).
+			Int("inputCount", len(indexerIDs)).
+			Int("outputCount", len(filteredIndexerIDs)).
+			Interface("excludedIndexers", excludedIndexers).
+			Msg("filtered indexers by existing content")
+	}
 
 	return filteredIndexerIDs, excludedIndexers, contentMatches, nil
 }
