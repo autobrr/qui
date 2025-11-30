@@ -467,15 +467,16 @@ Optionally run an external program after successfully injecting a cross-seed tor
 
 Most cross-seeds are added with hash verification skipped (`skip_checking=true`) and resume immediately. Some scenarios require a recheck:
 
-**1. Name or folder alignment needed**
+#### 1. Name or folder alignment needed
 
 When the cross-seed torrent has a different display name or root folder, qui renames them to match. qBittorrent must recheck to verify files at the new paths.
 
-**2. Extra files in source torrent**
+#### 2. Extra files in source torrent
 
 When the source torrent contains files not on disk (NFO, SRT, samples not filtered by ignore patterns), a recheck determines actual progress.
 
-**Auto-resume behavior:**
+#### Auto-resume behavior
+
 - Default tolerance 5% → auto-resumes at ≥95% completion
 - Torrents below threshold stay paused for manual investigation
 - Configure via **Size mismatch tolerance** in Global rules
