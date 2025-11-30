@@ -78,6 +78,8 @@ interface CompletionFormState {
   tags: string
   excludeCategories: string
   excludeTags: string
+  delayMinutes: number
+  preImportCategories: string
 }
 
 // RSS Automation constants
@@ -115,6 +117,8 @@ const DEFAULT_COMPLETION_SETTINGS: CrossSeedCompletionSettings = {
   tags: [],
   excludeCategories: [],
   excludeTags: [],
+  delayMinutes: 0,
+  preImportCategories: [],
 }
 
 const DEFAULT_COMPLETION_FORM: CompletionFormState = {
@@ -123,6 +127,8 @@ const DEFAULT_COMPLETION_FORM: CompletionFormState = {
   tags: "",
   excludeCategories: "",
   excludeTags: "",
+  delayMinutes: 0,
+  preImportCategories: "",
 }
 
 function parseList(value: string): string[] {
@@ -368,6 +374,8 @@ export function CrossSeedPage() {
         tags: completion.tags.join(", "),
         excludeCategories: completion.excludeCategories.join(", "),
         excludeTags: completion.excludeTags.join(", "),
+        delayMinutes: completion.delayMinutes ?? 0,
+        preImportCategories: (completion.preImportCategories ?? []).join(", "),
       })
       setCompletionFormInitialized(true)
     }
@@ -441,6 +449,8 @@ export function CrossSeedPage() {
           tags: completionSource.tags.join(", "),
           excludeCategories: completionSource.excludeCategories.join(", "),
           excludeTags: completionSource.excludeTags.join(", "),
+          delayMinutes: completionSource.delayMinutes ?? 0,
+          preImportCategories: (completionSource.preImportCategories ?? []).join(", "),
         }
 
     return {
@@ -450,6 +460,8 @@ export function CrossSeedPage() {
         tags: parseList(completionState.tags),
         excludeCategories: parseList(completionState.excludeCategories),
         excludeTags: parseList(completionState.excludeTags),
+        delayMinutes: completionState.delayMinutes,
+        preImportCategories: parseList(completionState.preImportCategories),
       },
     }
   }, [settings, completionForm, completionFormInitialized])
@@ -1280,6 +1292,84 @@ export function CrossSeedPage() {
                 onChange={event => setCompletionForm(prev => ({ ...prev, excludeTags: event.target.value }))}
               />
               <p className="text-xs text-muted-foreground">Skip completion searches when any of these tags are present.</p>
+            </div>
+          </div>
+          <Separator />
+          <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-4">
+            <div className="space-y-1">
+              <p className="text-sm font-medium leading-none">Import timing</p>
+              <p className="text-xs text-muted-foreground">
+                Delay cross-seed searches to allow Sonarr/Radarr to import and categorize files first.
+                Cross-seeds inherit the source torrent's category, so waiting ensures they get the post-import category.
+              </p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="completion-delay">Delay (minutes)</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground"
+                        aria-label="Delay help"
+                      >
+                        <Info className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent align="start" className="max-w-xs text-xs">
+                      Wait this long after torrent completion before searching for cross-seeds.
+                      This gives *arr applications time to import files and move the torrent to its final category.
+                      Set to 0 for immediate search.
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <Input
+                  id="completion-delay"
+                  type="number"
+                  min={0}
+                  value={completionForm.delayMinutes}
+                  onChange={event => setCompletionForm(prev => ({ ...prev, delayMinutes: Math.max(0, Number(event.target.value) || 0) }))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {completionForm.delayMinutes === 0
+                    ? "Immediate search on completion (no delay)."
+                    : `Wait ${completionForm.delayMinutes} minute${completionForm.delayMinutes === 1 ? "" : "s"} after completion.`}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="completion-pre-import-categories">Pre-import categories</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground"
+                        aria-label="Pre-import categories help"
+                      >
+                        <Info className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent align="start" className="max-w-xs text-xs">
+                      Categories that indicate a torrent is waiting for *arr import (e.g., "sonarr", "radarr").
+                      If a torrent's category changes from one of these before the delay expires, the search triggers immediately.
+                      Leave blank to always wait the full delay.
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <Input
+                  id="completion-pre-import-categories"
+                  placeholder="sonarr, radarr"
+                  value={completionForm.preImportCategories}
+                  onChange={event => setCompletionForm(prev => ({ ...prev, preImportCategories: event.target.value }))}
+                  disabled={completionForm.delayMinutes === 0}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {completionForm.delayMinutes === 0
+                    ? "Enable delay to use pre-import categories."
+                    : "Skip remaining delay when torrent leaves these categories."}
+                </p>
+              </div>
             </div>
           </div>
         </CardContent>

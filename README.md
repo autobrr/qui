@@ -529,6 +529,27 @@ Ignore patterns apply to RSS automation, `/cross-seed/webhook/check`, `/cross-se
 
 These settings affect both the webhook endpoint and qui's other cross-seed features.
 
+### Auto-Search on Completion
+
+The "Auto-search on completion" feature triggers cross-seed searches when torrents finish downloading. When using Sonarr, Radarr, or similar *arr applications, a timing issue can occur: the torrent completes, qui immediately searches for cross-seeds, but the *arr app hasn't moved the file to its post-import category yet. Cross-seeded torrents inherit the source category, potentially landing in the wrong category.
+
+**Import timing settings** (under Completion settings) help solve this:
+
+- **Delay (minutes)** - Wait this many minutes after completion before triggering the cross-seed search. This gives *arr apps time to import and recategorize the torrent.
+
+- **Pre-import categories** - Categories that indicate a torrent is still waiting for *arr import (e.g., `sonarr`, `radarr`, `tv-sonarr`, `movies-radarr`). If you configure these, qui watches for category changes. When a torrent's category changes away from any pre-import category, the search triggers immediately—skipping the remaining delay. This allows faster cross-seeding when the *arr import completes early.
+
+**How it works:**
+1. Torrent completes downloading
+2. If delay is configured, qui queues the torrent instead of searching immediately
+3. After the configured delay expires, the cross-seed search runs
+4. If pre-import categories are configured and the torrent's category changes away from one, the search runs immediately (skipping the remaining delay)
+
+**Example configuration:**
+- Set delay to `5` minutes
+- Add `sonarr` and `radarr` as pre-import categories
+- Result: Cross-seed searches wait up to 5 minutes, but if Sonarr/Radarr recategorizes sooner, the search fires immediately
+
 ## Reverse Proxy for External Applications
 
 qui includes a built-in reverse proxy that allows external applications like autobrr, Sonarr, Radarr, and other tools to connect to your qBittorrent instances **without needing qBittorrent credentials**. qui handles authentication transparently, making integration seamless.

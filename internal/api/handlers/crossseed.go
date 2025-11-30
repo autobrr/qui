@@ -43,11 +43,13 @@ type automationSettingsRequest struct {
 }
 
 type completionSettingsRequest struct {
-	Enabled           bool     `json:"enabled"`
-	Categories        []string `json:"categories"`
-	Tags              []string `json:"tags"`
-	ExcludeCategories []string `json:"excludeCategories"`
-	ExcludeTags       []string `json:"excludeTags"`
+	Enabled             bool     `json:"enabled"`
+	Categories          []string `json:"categories"`
+	Tags                []string `json:"tags"`
+	ExcludeCategories   []string `json:"excludeCategories"`
+	ExcludeTags         []string `json:"excludeTags"`
+	DelayMinutes        int      `json:"delayMinutes"`
+	PreImportCategories []string `json:"preImportCategories"`
 }
 
 type automationSettingsPatchRequest struct {
@@ -73,11 +75,13 @@ type automationSettingsPatchRequest struct {
 }
 
 type completionSettingsPatchRequest struct {
-	Enabled           *bool     `json:"enabled,omitempty"`
-	Categories        *[]string `json:"categories,omitempty"`
-	Tags              *[]string `json:"tags,omitempty"`
-	ExcludeCategories *[]string `json:"excludeCategories,omitempty"`
-	ExcludeTags       *[]string `json:"excludeTags,omitempty"`
+	Enabled             *bool     `json:"enabled,omitempty"`
+	Categories          *[]string `json:"categories,omitempty"`
+	Tags                *[]string `json:"tags,omitempty"`
+	ExcludeCategories   *[]string `json:"excludeCategories,omitempty"`
+	ExcludeTags         *[]string `json:"excludeTags,omitempty"`
+	DelayMinutes        *int      `json:"delayMinutes,omitempty"`
+	PreImportCategories *[]string `json:"preImportCategories,omitempty"`
 }
 
 type optionalString struct {
@@ -247,6 +251,12 @@ func applyCompletionSettingsPatch(dest *models.CrossSeedCompletionSettings, patc
 	}
 	if patch.ExcludeTags != nil {
 		dest.ExcludeTags = *patch.ExcludeTags
+	}
+	if patch.DelayMinutes != nil {
+		dest.DelayMinutes = *patch.DelayMinutes
+	}
+	if patch.PreImportCategories != nil {
+		dest.PreImportCategories = *patch.PreImportCategories
 	}
 }
 
