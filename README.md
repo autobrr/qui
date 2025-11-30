@@ -358,123 +358,208 @@ Downloaded backups can be imported into any qui instance. Useful for migrating t
 
 ## Cross-Seed
 
-qui includes intelligent cross-seeding capabilities that help you automatically find and add matching torrents across different trackers. This allows you to maximize your ratio by seeding the same content to multiple trackers.
+qui includes intelligent cross-seeding capabilities that help you automatically find and add matching torrents across different trackers. This allows you to seed the same content on multiple trackers.
+
+> [!NOTE]
+> qui adds cross-seeded torrents with **Automatic Torrent Management (AutoTMM)** enabled, inheriting the category from the matched torrent. This reuses existing files directly without creating hardlinks. Ensure your torrents use category-based paths rather than custom save paths.
 
 ### Prerequisites
 
-You need to use Prowlarr or Jackett. You can easily add your indexers in Settings via a "1-click-sync" feature..
+You need Prowlarr or Jackett to provide Torznab indexer feeds. Add your indexers in **Settings → Indexers** using the "1-click sync" feature to import from Prowlarr/Jackett automatically.
 
-Once that's done, head over to the Cross-Seed page in the sidebar and the UI should be pretty self-explanatory from there.
+### Discovery Methods
 
+qui offers several ways to find cross-seed opportunities:
+
+#### RSS Automation
+
+Scheduled polling of tracker RSS feeds. Configure in the **Automation** tab on the Cross-Seed page.
+
+- **Run interval** - How often to poll feeds (minimum 30 minutes)
+- **Target instances** - Which qBittorrent instances receive cross-seeds
+- **Target indexers** - Limit to specific indexers or use all enabled ones
+
+RSS automation processes the full feed from every enabled indexer on each run, matching against torrents across your target instances.
+
+#### Seeded Torrent Search
+
+Deep scan of torrents you already seed to find cross-seed opportunities on other trackers. Configure in the **Seeded search** tab.
+
+- **Source instance** - The qBittorrent instance to scan
+- **Categories/Tags** - Filter which torrents to include
+- **Interval** - Delay between processing each torrent (minimum 60 seconds)
+- **Cooldown** - Skip torrents searched within this window (minimum 12 hours)
+
+> [!WARNING]
+> Run sparingly. This deep scan touches every matching torrent and queries indexers for each one. Use RSS automation or autobrr for routine coverage; reserve seeded search for occasional catch-up passes.
+
+#### Auto-Search on Completion
+
+Triggers a cross-seed search when torrents finish downloading. Configure in the **Automation** tab under "Auto-search on completion".
+
+- **Categories/Tags** - Filter which completed torrents trigger searches
+- **Exclude categories/tags** - Skip torrents matching these filters
+
+**Import timing settings** help when using Sonarr, Radarr, or similar *arr applications:
+
+- **Delay (minutes)** - Wait after completion before searching, giving *arr apps time to import and recategorize
+- **Pre-import categories** - Categories like `sonarr` or `radarr` that indicate pending import. When a torrent's category changes away from these, the search triggers immediately (skipping remaining delay)
+
+Example: Set delay to `5` minutes with `sonarr` and `radarr` as pre-import categories. Searches wait up to 5 minutes, but fire immediately when Sonarr/Radarr recategorizes.
+
+#### Manual Search
+
+Right-click any torrent in the list to access cross-seed actions:
+
+- **Search Cross-Seeds** - Query indexers for matching torrents on other trackers
+- **Filter Cross-Seeds** - Show torrents in your library that share content with the selected torrent (useful for identifying existing cross-seeds)
+
+### How qui Differs from cross-seed
+
+qui takes a different approach than the [cross-seed](https://github.com/cross-seed/cross-seed) project:
+
+| Aspect | cross-seed | qui |
+|--------|-----------|-----|
+| **File handling** | Creates hardlinks/symlinks to a separate directory | Reuses existing files directly |
+| **AutoTMM** | Disabled (uses explicit save paths) | Enabled (relies on category-based paths) |
+| **Category** | Uses dedicated `linkCategory` (e.g., "cross-seed-link") | Inherits matched torrent's category |
+
+> [!IMPORTANT]
+> **Migrating from cross-seed?** Ensure your setup uses AutoTMM:
+> 1. Configure categories in qBittorrent with appropriate default save paths
+> 2. Enable AutoTMM on existing torrents (right-click → Automatic Torrent Management → Enable)
+> 3. Remove any custom save paths from torrents you want to cross-seed
+>
+> Torrents with custom save paths (AutoTMM disabled) won't work correctly with qui's cross-seed feature.
+
+### Global Settings
+
+Configure matching behavior in the **Global rules** tab on the Cross-Seed page.
+
+#### Matching
+
+- **Find individual episodes** - When enabled, season packs also match individual episodes. When disabled, season packs only match other season packs. Episodes are added with AutoTMM disabled to prevent save path conflicts.
+- **Size mismatch tolerance** - Maximum size difference percentage (default: 5%). Also determines auto-resume threshold after recheck.
+- **Use indexer name as category** - Set the qBittorrent category to the indexer name instead of inheriting from the matched torrent.
+
+#### Source Tagging
+
+Configure tags applied to cross-seed torrents based on how they were discovered:
+
+- **RSS Automation Tags** - Torrents added via RSS feed polling (default: `["cross-seed"]`)
+- **Seeded Search Tags** - Torrents added via seeded torrent search (default: `["cross-seed"]`)
+- **Completion Search Tags** - Torrents added via completion-triggered search (default: `["cross-seed"]`)
+- **Webhook Tags** - Torrents added via `/apply` webhook (default: `["cross-seed"]`)
+- **Inherit source torrent tags** - Also copy tags from the matched source torrent
+
+#### Ignore Patterns
+
+File patterns to skip when comparing torrents. Useful for excluding sidecar files like `.nfo`, `.srr`, or sample folders.
+
+- Plain strings match any path ending in the text (e.g., `.nfo` ignores all `.nfo` files)
+- Glob patterns treat `/` as a folder separator (e.g., `*/sample/*` ignores sample folders)
+
+#### External Program
+
+Optionally run an external program after successfully injecting a cross-seed torrent.
+
+### When Rechecks Are Required
+
+Most cross-seeds are added with hash verification skipped (`skip_checking=true`) and resume immediately. Some scenarios require a recheck:
+
+#### 1. Name or folder alignment needed
+
+When the cross-seed torrent has a different display name or root folder, qui renames them to match. qBittorrent must recheck to verify files at the new paths.
+
+#### 2. Extra files in source torrent
+
+When the source torrent contains files not on disk (NFO, SRT, samples not filtered by ignore patterns), a recheck determines actual progress.
+
+#### Auto-resume behavior
+
+- Default tolerance 5% → auto-resumes at ≥95% completion
+- Torrents below threshold stay paused for manual investigation
+- Configure via **Size mismatch tolerance** in Global rules
 
 ### autobrr Integration
 
-qui can integrate directly with autobrr through a webhook endpoint. When autobrr receives a new release, it can check qui to see if you already have matching content across your qBittorrent instances - indicating a cross-seed opportunity.
+qui integrates with autobrr through webhook endpoints, enabling real-time cross-seed detection when autobrr announces new releases.
 
 #### How It Works
 
 1. autobrr sees a new release from a tracker
-2. autobrr sends the torrentname and target instance ID to qui's webhook endpoint
-3. qui searches the specified qBittorrent instance for matching content
-4. qui responds with one of three states:
-   - `200 OK` – matching torrent is already complete and ready to cross-seed
-   - `202 Accepted` – matching torrent exists but is still downloading; retry until it completes
-   - `404 Not Found` – no matching torrent exists on that instance
-5. autobrr can decide to download (or retry) based on the response
+2. autobrr sends the torrent name to qui's `/api/cross-seed/webhook/check` endpoint
+3. qui searches your qBittorrent instances for matching content
+4. qui responds with:
+   - `200 OK` – matching torrent is complete and ready to cross-seed
+   - `202 Accepted` – matching torrent exists but still downloading; retry later
+   - `404 Not Found` – no matching torrent exists
+5. On `200 OK`, autobrr sends the torrent file to `/api/cross-seed/apply`
 
 #### Setup
 
 **1. Create an API Key in qui**
-- Go to **Settings → API Keys** in qui
+- Go to **Settings → API Keys**
 - Click **Create API Key**
-- Give it a name like "autobrr webhook"
-- Copy the generated API key
+- Name it (e.g., "autobrr webhook")
+- Copy the generated key
 
 **2. Configure autobrr External Filter**
 
-In your autobrr filter, go to the **External** tab and click **Add new**:
+In your autobrr filter, go to **External** tab → **Add new**:
 
-**Type:** `Webhook`
-
-**Name:** `qui` (or any name you prefer)
-
-**On Error:** `Reject`
-
-**Endpoint:**
-```
-http://localhost:7476/api/cross-seed/webhook/check
-```
-
-**HTTP Method:** `POST`
-
-**HTTP Request Headers:**
-```
-X-API-Key=YOUR_QUI_API_KEY,Content-Type=application/json
-```
-
-**Expected HTTP Status Code:** `200`
-
-> `/api/cross-seed/webhook/check` returns three main outcomes:
-> - `200 OK` – a matching torrent is fully complete and ready to cross-seed (safe to proceed to `/api/cross-seed/apply`)
-> - `202 Accepted` – a matching torrent exists but is still downloading; callers should keep polling until it becomes `200` or `404`
-> - `404 Not Found` – no matching torrent exists on the targeted instances (recommendation `skip`)
-> Invalid payloads still return `400 Bad Request`, so double‑check `torrentName` and `instanceIds` if autobrr reports a validation error.
-
-Use autobrr's **Retry** block on webhook actions, configure it so `202` is handled as a retry instead of an immediate failure:
-
-- **Retry HTTP status code(s):** `202`
-- **Maximum retry attempts:** e.g. `10`
-- **Retry delay in seconds:** e.g. `4`
-
-With this setup:
-- `200 OK` is the only status treated as success for the External filter.
-- `202 Accepted` causes autobrr to retry the request (up to the configured attempts) instead of failing immediately.
-- `404 Not Found` (or other non‑200 / non‑202 statuses) cause the External step to fail according to the **On Error** setting (`Reject` in this example).
+| Field | Value |
+|-------|-------|
+| Type | `Webhook` |
+| Name | `qui` |
+| On Error | `Reject` |
+| Endpoint | `http://localhost:7476/api/cross-seed/webhook/check` |
+| HTTP Method | `POST` |
+| HTTP Request Headers | `X-API-Key=YOUR_QUI_API_KEY,Content-Type=application/json` |
+| Expected HTTP Status Code | `200` |
 
 **Data (JSON):**
 ```json
 {
   "torrentName": "{{ .TorrentName }}",
-  "instanceIds": [1],
-  "findIndividualEpisodes": false
+  "instanceIds": [1]
 }
 ```
 
-To search **all** configured instances from a single autobrr filter, omit `instanceIds` entirely (or pass an empty array):
-
+To search all instances, omit `instanceIds`:
 ```json
 {
   "torrentName": "{{ .TorrentName }}"
 }
 ```
 
-**Field Descriptions:**
+**Field descriptions:**
 - `torrentName` (required): The release name as announced
-- `instanceIds` (optional): List of qBittorrent instance IDs to scan. When omitted or empty, qui searches all configured instances. Single-instance setups should explicitly pass their ID (e.g., `[1]`) so behaviour remains predictable if you add more instances later.
-- `size` (optional): The total torrent size in bytes - enables size validation when provided
-- `findIndividualEpisodes` (optional): Overrides the global **Find individual episodes** setting for this webhook call. Leave it out to use the value configured in qui, or set explicitly (e.g., `false`) when a filter should force strict season-pack matching.
+- `instanceIds` (optional): qBittorrent instance IDs to scan. Omit to search all instances.
+- `size` (optional): Torrent size in bytes for size validation
+- `findIndividualEpisodes` (optional): Override the global episode matching setting
 
-Click **Save** to create the external filter.
+**3. Configure Retry Handling**
+
+Use autobrr's **Retry** block to handle `202 Accepted` responses:
+
+- **Retry HTTP status code(s):** `202`
+- **Maximum retry attempts:** `10`
+- **Retry delay in seconds:** `4`
 
 #### Apply Endpoint
 
-When `/api/cross-seed/webhook/check` returns `200 OK`, autobrr can hand the torrent file directly to qui via a **Webhook action** that calls `POST /api/cross-seed/apply`. If the webhook returns `202 Accepted`, autobrr's retry logic should keep polling `/api/cross-seed/webhook/check` until it transitions to `200 OK` (or `404` if the match disappears); only then should you enqueue `/api/cross-seed/apply`.
+When `/check` returns `200 OK`, send the torrent to `/api/cross-seed/apply`:
 
-**Action setup in autobrr**
+**Action setup in autobrr:**
 
-In **Settings → Actions** (or from the filter's Actions tab), create a new action:
-
-- **Action Type:** `Webhook`
-- **Name:** `qui cross-seed` (or any name you prefer)
-- **Endpoint:**
-  For autobrr, use a query parameter because webhook actions cannot set custom headers:
-  ```text
-  http://localhost:7476/api/cross-seed/apply?apikey=YOUR_QUI_API_KEY
-  ```
-  For other clients, prefer the `X-API-Key` header instead of the query parameter.
+| Field | Value |
+|-------|-------|
+| Action Type | `Webhook` |
+| Name | `qui cross-seed` |
+| Endpoint | `http://localhost:7476/api/cross-seed/apply?apikey=YOUR_QUI_API_KEY` |
 
 **Payload (JSON):**
-
 ```json
 {
   "torrentData": "{{ .TorrentDataRawBytes | toString | b64enc }}",
@@ -482,52 +567,12 @@ In **Settings → Actions** (or from the filter's Actions tab), create a new act
 }
 ```
 
-`torrentData` is base64-encoded torrent bytes; in autobrr you can use the `TorrentDataRawBytes` macro together with `toString` and the `b64enc` sprig helper as shown above (the extra `toString` converts the byte slice into the string type sprig expects). `instanceIds` controls which qBittorrent instances qui will attempt to cross-seed into; omit it (or use an empty array) to apply globally, or provide a subset to keep the action scoped.
+- `torrentData` - Base64-encoded torrent file bytes
+- `instanceIds` - Target instances (omit to apply to any matching instance)
+- `tags` (optional) - Override webhook tags from settings
+- `category` (optional) - Override category (defaults to matched torrent's category)
 
-To run in global mode (any instance with a complete match), drop the `instanceIds` field:
-
-```json
-{
-  "torrentData": "{{ .TorrentDataRawBytes | toString | b64enc }}"
-}
-```
-
-To scope to specific instances, include `instanceIds`:
-
-```json
-{
-  "torrentData": "{{ .TorrentDataRawBytes | toString | b64enc }}",
-  "instanceIds": [1, 2]
-}
-```
-
-When this action runs after a successful `/api/cross-seed/webhook/check`, autobrr posts the torrent to `/api/cross-seed/apply`. qui then decodes the torrent, re-validates it by finding 100% complete matching torrents on the targeted instances, aligns the new torrent's naming and file layout with the existing one, and finally adds it using the same cross-seed pipeline as manual apply.
-
-If you omit `category`, qui reuses the category (and AutoTMM/save path) from the matched, already-seeding torrent so the cross-seed lands alongside the original files.
-
-**Tagging:** By default, qui applies **Webhook Tags** from the Cross-Seed page's **Global rules** tab (defaults to `["cross-seed"]`). To override, include `tags` in the payload—this replaces the configured tags entirely. Enable **Inherit source torrent tags** to also copy tags from the matched torrent.
-
-Cross-seeded torrents are first added paused with hash checking skipped (`skip_checking=true`) so qBittorrent can immediately reuse existing data; if that add fails, qui retries without `skip_checking` to let qBittorrent run a full recheck. After adding, qui polls the torrent state: if qBittorrent reports ~100% complete, qui automatically resumes it; if progress stays lower (for example because optional files like samples or subtitles are missing), it remains paused so you can review it manually.
-
-Episode-aware matching (season pack ↔ single episode) is controlled by the **Find individual episodes** setting on the Cross-Seed page, and can be overridden per-call via the `findIndividualEpisodes` field on the `/cross-seed/webhook/check` payload. Using the webhook preflight with this flag is recommended when you want to influence matching behaviour, rather than sending it on the apply call itself.
-
-#### Settings
-
-Cross-seed matching behavior is controlled by settings in qui's Cross-Seed page under the **Global rules** tab:
-
-**Global Cross-Seed Settings:**
-- **Size mismatch tolerance** - Maximum size difference percentage (default: 5%).
-- **Ignore patterns** - File patterns used to skip sidecar and sample files when comparing torrents. Plain strings match any path ending in the given text (for example, `.nfo` or `.srr` will ignore files whose path ends with those extensions). Glob patterns treat `/` as a folder separator, so `*.nfo` only matches top-level files; to ignore sample folders in any release, use `*/sample/*`.
-- **Source Tagging** - Configure tags applied to cross-seed torrents based on their source:
-  - **RSS Automation Tags** - Tags for torrents added via RSS feed automation (default: `["cross-seed"]`).
-  - **Seeded Search Tags** - Tags for torrents added via seeded torrent search (default: `["cross-seed"]`).
-  - **Completion Search Tags** - Tags for torrents added via completion-triggered search (default: `["cross-seed"]`).
-  - **Webhook Tags** - Tags for torrents added via `/apply` webhook (default: `["cross-seed"]`).
-  - **Inherit source torrent tags** - Also copy tags from the matched source torrent in qBittorrent.
-
-Ignore patterns apply to RSS automation, `/cross-seed/webhook/check`, `/cross-seed/apply` (Autobrr Apply), and seeded torrent search additions.
-
-These settings affect both the webhook endpoint and qui's other cross-seed features.
+Cross-seeded torrents are added paused with `skip_checking=true`. qui polls the torrent state and auto-resumes if progress meets the size tolerance threshold. If progress is too low, it remains paused for manual review.
 
 ## Reverse Proxy for External Applications
 
