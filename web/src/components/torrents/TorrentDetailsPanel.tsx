@@ -566,11 +566,10 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   }, [])
 
   const handleRenameFileClick = useCallback(async (filePath: string) => {
-    if (incognitoMode) return
     await refreshTorrentFiles()
     setRenameFilePath(filePath)
     setShowRenameFileDialog(true)
-  }, [incognitoMode, refreshTorrentFiles])
+  }, [refreshTorrentFiles])
 
   // Handle rename file
   const handleRenameFileConfirm = useCallback(({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
