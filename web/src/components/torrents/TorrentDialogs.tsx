@@ -23,10 +23,9 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog"
-import { Tree } from "@/components/ui/file-tree"
-import { pathsToTreeView } from "@/components/ui/file-tree-utils"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import type { Category, Torrent } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -749,146 +748,115 @@ export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
   isPending = false,
   initialPath,
 }: RenameTorrentFileDialogProps) {
-  const [selectedPath, setSelectedPath] = useState("")
   const [newName, setNewName] = useState("")
-  const wasOpen = useRef(false)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  const sortedFiles = useMemo(() => {
-    return files.slice().sort((a, b) => a.name.localeCompare(b.name))
-  }, [files])
-
-  const fileTreeElements = useMemo(() => {
-    const filePaths = sortedFiles.map(file => file.name)
-    if (filePaths.length === 0) {
-      return []
+  // Parse the initial path into folder and filename
+  const { folderPath, fileName } = useMemo(() => {
+    if (!initialPath) return { folderPath: "", fileName: "" }
+    const lastSlash = initialPath.lastIndexOf("/")
+    if (lastSlash === -1) return { folderPath: "", fileName: initialPath }
+    return {
+      folderPath: initialPath.slice(0, lastSlash),
+      fileName: initialPath.slice(lastSlash + 1)
     }
-    return pathsToTreeView(filePaths, {
-      selectablePaths: new Set(filePaths),
-    })
-  }, [sortedFiles])
+  }, [initialPath])
 
-  const selectPath = useCallback((path: string) => {
-    setSelectedPath(path)
-    if (path) {
-      const segments = path.split("/")
-      setNewName(segments[segments.length - 1] || path)
-    } else {
+  // Check if file exists in the list
+  const fileExists = useMemo(() => {
+    return initialPath ? files.some(f => f.name === initialPath) : false
+  }, [files, initialPath])
+
+  // Initialize newName when dialog opens or path changes
+  useEffect(() => {
+    if (open && fileName) {
+      setNewName(fileName)
+      // Focus and select the filename (without extension) after a brief delay
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus()
+          const dotIndex = fileName.lastIndexOf(".")
+          if (dotIndex > 0) {
+            inputRef.current.setSelectionRange(0, dotIndex)
+          } else {
+            inputRef.current.select()
+          }
+        }
+      }, 50)
+    }
+    if (!open) {
       setNewName("")
     }
-  }, [setNewName, setSelectedPath])
+  }, [open, fileName])
 
-  useEffect(() => {
-    if (open && !wasOpen.current) {
-      const fallbackPath = sortedFiles[0]?.name ?? ""
-      const hasInitialPath = initialPath && sortedFiles.some(file => file.name === initialPath)
-      const defaultPath = (hasInitialPath ? initialPath! : fallbackPath) || ""
-      selectPath(defaultPath)
-    }
-    if (!open && wasOpen.current) {
-      selectPath("")
-    }
-    wasOpen.current = open
-  }, [open, sortedFiles, initialPath, selectPath])
+  const newPath = useMemo(() => {
+    const trimmed = newName.trim()
+    if (!trimmed) return ""
+    return folderPath ? `${folderPath}/${trimmed}` : trimmed
+  }, [folderPath, newName])
 
-  const lastInitialPath = useRef<string | undefined>(undefined)
-
-  useEffect(() => {
-    // Keep the selected file in sync when a new initialPath is provided while the dialog stays open
-    // (e.g., user clicks a different pencil icon without closing the modal).
-    if (!open) {
-      lastInitialPath.current = undefined
-      return
-    }
-    if (!initialPath) return
-    if (initialPath === lastInitialPath.current) return
-    lastInitialPath.current = initialPath
-    const exists = sortedFiles.some(file => file.name === initialPath)
-    if (!exists) return
-    selectPath(initialPath)
-  }, [initialPath, open, sortedFiles, selectPath])
-
-  const buildNewPath = useCallback((path: string, nextName: string) => {
-    if (!path) return nextName
-    const lastSlash = path.lastIndexOf("/")
-    if (lastSlash === -1) return nextName
-    if (lastSlash === 0) return `/${nextName}`
-    const parent = path.slice(0, lastSlash)
-    return parent ? `${parent}/${nextName}` : nextName
-  }, [])
+  const hasChanges = newName.trim() !== fileName
 
   const handleConfirm = useCallback(() => {
-    if (!selectedPath) return
-    const trimmedName = newName.trim()
-    if (!trimmedName) return
-    const newPath = buildNewPath(selectedPath, trimmedName)
-    onConfirm({ oldPath: selectedPath, newPath })
-  }, [buildNewPath, newName, onConfirm, selectedPath])
-
-  const handlePathChange = useCallback((value: string) => {
-    selectPath(value)
-  }, [selectPath])
+    if (!initialPath || !newName.trim()) return
+    onConfirm({ oldPath: initialPath, newPath })
+  }, [initialPath, newName, newPath, onConfirm])
 
   const handleClose = useCallback((nextOpen: boolean) => {
     if (!nextOpen) {
-      selectPath("")
+      setNewName("")
     }
     onOpenChange(nextOpen)
-  }, [onOpenChange, selectPath])
+  }, [onOpenChange])
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="w-[calc(100vw-2.5rem)] max-w-xl sm:max-w-2xl">
+      <DialogContent className="w-[calc(100vw-2.5rem)] max-w-md sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Rename File</DialogTitle>
-          <DialogDescription>
-            Choose a file from the torrent and provide its new name. Folder structure is preserved.
-          </DialogDescription>
         </DialogHeader>
-        <div className="py-4 space-y-4">
+        <div className="py-2 space-y-4">
           {isLoading ? (
             <div className="flex items-center justify-center py-8 text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin mr-2" />
-              Fetching file list...
+              Loading...
             </div>
-          ) : sortedFiles.length === 0 ? (
+          ) : !initialPath || !fileExists ? (
             <div className="rounded-md border border-dashed py-6 text-center text-sm text-muted-foreground">
-              No files available for this torrent yet.
+              No file selected.
             </div>
           ) : (
             <>
-              <div className="space-y-2">
-                <Label>Select File</Label>
-                <div className="rounded-md border p-2">
-                  <Tree
-                    className="h-64"
-                    elements={fileTreeElements}
-                    initialSelectedId={selectedPath || sortedFiles[0]?.name}
-                    onSelectionChange={handlePathChange}
-                  />
+              {/* Current path display */}
+              {folderPath && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Location</Label>
+                  <div className="text-xs font-mono text-muted-foreground bg-muted/50 rounded px-2.5 py-1.5 break-all">
+                    {folderPath}/
+                  </div>
                 </div>
-              </div>
+              )}
 
-              <div className="space-y-2">
-                <Label htmlFor="fileName">New File Name</Label>
+              {/* New name input */}
+              <div className="space-y-1.5">
+                <Label htmlFor="fileName">File Name</Label>
                 <Input
+                  ref={inputRef}
                   id="fileName"
                   value={newName}
                   onChange={(e: ChangeEvent<HTMLInputElement>) => setNewName(e.target.value)}
-                  placeholder="Enter new file name"
+                  placeholder="Enter file name"
                   disabled={isPending}
                   className="font-mono"
-                  title={newName}
                   onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
-                    if (e.key === "Enter" && !isPending && newName.trim()) {
+                    if (e.key === "Enter" && !isPending && newName.trim() && hasChanges) {
                       e.preventDefault()
                       handleConfirm()
                     }
                   }}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Only the file name is changed. Folder paths remain the same.
-                </p>
               </div>
+
             </>
           )}
         </div>
@@ -898,9 +866,10 @@ export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
           </Button>
           <Button
             onClick={handleConfirm}
-            disabled={isPending || !selectedPath || !newName.trim() || sortedFiles.length === 0}
+            disabled={isPending || !initialPath || !newName.trim() || !hasChanges || !fileExists}
           >
-            Rename File
+            {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Rename
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -915,6 +884,7 @@ interface RenameTorrentFolderDialogProps {
   isLoading?: boolean
   onConfirm: (payload: { oldPath: string; newPath: string }) => void | Promise<void>
   isPending?: boolean
+  initialPath?: string
 }
 
 export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog({
@@ -924,62 +894,72 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
   isLoading = false,
   onConfirm,
   isPending = false,
+  initialPath,
 }: RenameTorrentFolderDialogProps) {
   const [selectedPath, setSelectedPath] = useState("")
   const [newName, setNewName] = useState("")
-  const wasOpen = useRef(false)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const sortedFolders = useMemo(() => {
     return folders.slice().sort((a, b) => a.name.localeCompare(b.name))
   }, [folders])
 
-  const folderTreeElements = useMemo(() => {
-    const folderPaths = sortedFolders.map(folder => folder.name)
-    if (folderPaths.length === 0) {
-      return []
+  // Parse the selected path into parent and folder name
+  const { parentPath, folderName } = useMemo(() => {
+    const path = selectedPath || initialPath || ""
+    if (!path) return { parentPath: "", folderName: "" }
+    const lastSlash = path.lastIndexOf("/")
+    if (lastSlash === -1) return { parentPath: "", folderName: path }
+    return {
+      parentPath: path.slice(0, lastSlash),
+      folderName: path.slice(lastSlash + 1)
     }
-    return pathsToTreeView(folderPaths, {
-      selectablePaths: new Set(folderPaths),
-      leafType: "folder",
-    })
-  }, [sortedFolders])
+  }, [selectedPath, initialPath])
 
+  // Check if folder exists
+  const folderExists = useMemo(() => {
+    const path = selectedPath || initialPath
+    return path ? folders.some(f => f.name === path) : false
+  }, [folders, selectedPath, initialPath])
+
+  // Initialize when dialog opens
   useEffect(() => {
-    if (open && !wasOpen.current) {
-      const defaultPath = sortedFolders[0]?.name ?? ""
-      setSelectedPath(defaultPath)
-      if (defaultPath) {
-        const segments = defaultPath.split("/")
-        setNewName(segments[segments.length - 1] || defaultPath)
-      } else {
-        setNewName("")
+    if (open) {
+      const path = initialPath || sortedFolders[0]?.name || ""
+      setSelectedPath(path)
+      if (path) {
+        const segments = path.split("/")
+        const name = segments[segments.length - 1] || path
+        setNewName(name)
+        setTimeout(() => {
+          if (inputRef.current) {
+            inputRef.current.focus()
+            inputRef.current.select()
+          }
+        }, 50)
       }
     }
     if (!open) {
       setSelectedPath("")
       setNewName("")
     }
-    wasOpen.current = open
-  }, [open, sortedFolders])
+  }, [open, initialPath, sortedFolders])
 
-  const buildNewPath = useCallback((path: string, nextName: string) => {
-    if (!path) return nextName
-    const lastSlash = path.lastIndexOf("/")
-    if (lastSlash === -1) return nextName
-    if (lastSlash === 0) return `/${nextName}`
-    const parent = path.slice(0, lastSlash)
-    return parent ? `${parent}/${nextName}` : nextName
-  }, [])
+  const newPath = useMemo(() => {
+    const trimmed = newName.trim()
+    if (!trimmed) return ""
+    return parentPath ? `${parentPath}/${trimmed}` : trimmed
+  }, [parentPath, newName])
+
+  const hasChanges = newName.trim() !== folderName
 
   const handleConfirm = useCallback(() => {
-    if (!selectedPath) return
-    const trimmedName = newName.trim()
-    if (!trimmedName) return
-    const newPath = buildNewPath(selectedPath, trimmedName)
-    onConfirm({ oldPath: selectedPath, newPath })
-  }, [buildNewPath, newName, onConfirm, selectedPath])
+    const path = selectedPath || initialPath
+    if (!path || !newName.trim()) return
+    onConfirm({ oldPath: path, newPath })
+  }, [selectedPath, initialPath, newName, newPath, onConfirm])
 
-  const handlePathChange = useCallback((value: string) => {
+  const handleFolderSelect = useCallback((value: string) => {
     setSelectedPath(value)
     const segments = value.split("/")
     setNewName(segments[segments.length - 1] || value)
@@ -993,20 +973,20 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
     onOpenChange(nextOpen)
   }, [onOpenChange])
 
+  // If we have an initialPath, show simplified UI. Otherwise show folder selector.
+  const showFolderSelector = !initialPath && sortedFolders.length > 1
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="w-[calc(100vw-2.5rem)] max-w-xl sm:max-w-2xl">
+      <DialogContent className="w-[calc(100vw-2.5rem)] max-w-md sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Rename Folder</DialogTitle>
-          <DialogDescription>
-            Choose a folder within the torrent and provide its new name. Any nested structure will be kept intact.
-          </DialogDescription>
         </DialogHeader>
-        <div className="py-4 space-y-4">
+        <div className="py-2 space-y-4 overflow-hidden">
           {isLoading ? (
             <div className="flex items-center justify-center py-8 text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin mr-2" />
-              Fetching folder list...
+              Loading...
             </div>
           ) : sortedFolders.length === 0 ? (
             <div className="rounded-md border border-dashed py-6 text-center text-sm text-muted-foreground">
@@ -1014,39 +994,59 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
             </div>
           ) : (
             <>
-              <div className="space-y-2">
-                <Label>Select Folder</Label>
-                <div className="rounded-md border p-2">
-                  <Tree
-                    className="h-64"
-                    elements={folderTreeElements}
-                    initialSelectedId={selectedPath || sortedFolders[0]?.name}
-                    onSelectionChange={handlePathChange}
-                  />
+              {/* Folder selector - only if no initialPath and multiple folders */}
+              {showFolderSelector && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="folderSelect">Select Folder</Label>
+                  <Select value={selectedPath} onValueChange={handleFolderSelect}>
+                    <SelectTrigger id="folderSelect" className="font-mono text-xs">
+                      <SelectValue placeholder="Choose a folder..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sortedFolders.map((folder) => (
+                        <SelectItem key={folder.name} value={folder.name} className="font-mono text-xs">
+                          {folder.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              </div>
+              )}
 
-              <div className="space-y-2">
-                <Label htmlFor="folderName">New Folder Name</Label>
+              {/* Parent path display */}
+              {parentPath && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Location</Label>
+                  <div className="text-xs font-mono text-muted-foreground bg-muted/50 rounded px-2.5 py-1.5 break-all">
+                    {parentPath}/
+                  </div>
+                </div>
+              )}
+
+              {/* New name input */}
+              <div className="space-y-1.5">
+                <Label htmlFor="folderName">Folder Name</Label>
                 <Input
+                  ref={inputRef}
                   id="folderName"
                   value={newName}
                   onChange={(e: ChangeEvent<HTMLInputElement>) => setNewName(e.target.value)}
-                  placeholder="Enter new folder name"
+                  placeholder="Enter folder name"
                   disabled={isPending}
                   className="font-mono"
-                  title={newName}
                   onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
-                    if (e.key === "Enter" && !isPending && newName.trim()) {
+                    if (e.key === "Enter" && !isPending && newName.trim() && hasChanges) {
                       e.preventDefault()
                       handleConfirm()
                     }
                   }}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Only the selected folder name is changed. Parent directories remain the same.
-                </p>
               </div>
+
+
+              <p className="text-xs text-muted-foreground">
+                All files inside this folder will be moved to the new location.
+              </p>
             </>
           )}
         </div>
@@ -1056,9 +1056,10 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
           </Button>
           <Button
             onClick={handleConfirm}
-            disabled={isPending || !selectedPath || !newName.trim() || sortedFolders.length === 0}
+            disabled={isPending || !folderExists || !newName.trim() || !hasChanges}
           >
-            Rename Folder
+            {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Rename
           </Button>
         </DialogFooter>
       </DialogContent>
