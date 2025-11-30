@@ -52,7 +52,6 @@ import { toast } from "sonner"
 interface AutomationFormState {
   enabled: boolean
   runIntervalMinutes: number  // RSS Automation: interval between RSS feed polls (min: 30 minutes)
-  startPaused: boolean
   targetInstanceIds: number[]
   targetIndexerIds: number[]
 }
@@ -92,7 +91,6 @@ const MIN_SEEDED_SEARCH_COOLDOWN_MINUTES = 720  // Seeded Search: minimum cooldo
 const DEFAULT_AUTOMATION_FORM: AutomationFormState = {
   enabled: false,
   runIntervalMinutes: DEFAULT_RSS_INTERVAL_MINUTES,
-  startPaused: true,
   targetInstanceIds: [],
   targetIndexerIds: [],
 }
@@ -336,7 +334,6 @@ export function CrossSeedPage() {
       setAutomationForm({
         enabled: settings.enabled,
         runIntervalMinutes: settings.runIntervalMinutes,
-        startPaused: settings.startPaused,
         targetInstanceIds: settings.targetInstanceIds,
         targetIndexerIds: settings.targetIndexerIds,
       })
@@ -423,7 +420,6 @@ export function CrossSeedPage() {
       : {
           enabled: settings.enabled,
           runIntervalMinutes: settings.runIntervalMinutes,
-          startPaused: settings.startPaused,
           targetInstanceIds: settings.targetInstanceIds,
           targetIndexerIds: settings.targetIndexerIds,
         }
@@ -431,7 +427,6 @@ export function CrossSeedPage() {
     return {
       enabled: automationSource.enabled,
       runIntervalMinutes: automationSource.runIntervalMinutes,
-      startPaused: automationSource.startPaused,
       targetInstanceIds: automationSource.targetInstanceIds,
       targetIndexerIds: automationSource.targetIndexerIds,
     }
@@ -922,6 +917,28 @@ export function CrossSeedPage() {
         </Alert>
       )}
 
+      <Alert className="border-border rounded-xl bg-card">
+        <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+        <AlertTitle>AutoTMM required</AlertTitle>
+        <AlertDescription className="space-y-1">
+          <p>
+            qui adds cross-seeded torrents with <strong>Automatic Torrent Management (AutoTMM)</strong> enabled,
+            inheriting the category from the matched torrent. This reuses existing files directly. No hardlinking.
+          </p>
+          <p className="text-muted-foreground">
+            Ensure your torrents use category-based paths rather than custom save paths.{" "}
+            <a
+              href="https://github.com/autobrr/qui#how-qui-differs-from-cross-seed"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Learn more
+            </a>
+          </p>
+        </AlertDescription>
+      </Alert>
+
       <div className="grid gap-4 md:grid-cols-2 mb-6">
         <Card className="h-full">
           <CardHeader className="space-y-2">
@@ -1021,16 +1038,6 @@ export function CrossSeedPage() {
                   }}
                 />
                 Enable RSS automation
-              </Label>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="automation-start-paused" className="flex items-center gap-2">
-                <Switch
-                  id="automation-start-paused"
-                  checked={automationForm.startPaused}
-                  onCheckedChange={value => setAutomationForm(prev => ({ ...prev, startPaused: !!value }))}
-                />
-                Start torrents paused
               </Label>
             </div>
           </div>
