@@ -286,7 +286,7 @@ function HistoryRow({ entry, onClick }: HistoryRowProps) {
           </Badge>
         )}
       </div>
-      <div className="flex items-center gap-2 shrink-0 pl-5 md:pl-0">
+      <div className="flex flex-wrap items-center gap-2 shrink-0 pl-5 md:pl-0">
         {entry.status === "success" && (
           <span className={`text-xs ${entry.resultCount > 0 ? "text-primary" : "text-muted-foreground"}`}>
             {entry.resultCount} results
