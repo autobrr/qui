@@ -282,6 +282,13 @@ type Service struct {
 	recheckResumeChan   chan *pendingResume
 	recheckResumeCtx    context.Context
 	recheckResumeCancel context.CancelFunc
+
+	// Completion delay queue - for *arr import timing
+	pendingCompletionsMu     sync.Mutex
+	pendingCompletions       map[string]*pendingCompletion // keyed by "instanceID:hash"
+	pendingCompletionsChan   chan *pendingCompletion
+	pendingCompletionsCtx    context.Context
+	pendingCompletionsCancel context.CancelFunc
 }
 
 // pendingResume tracks a torrent waiting for recheck to complete before resuming.
@@ -290,6 +297,17 @@ type pendingResume struct {
 	hash       string
 	threshold  float64
 	addedAt    time.Time
+}
+
+// pendingCompletion tracks a completed torrent waiting for delay or category change
+// before triggering the cross-seed search. This allows *arr applications to import
+// and potentially change the category before we search.
+type pendingCompletion struct {
+	instanceID       int
+	hash             string
+	name             string
+	originalCategory string
+	searchAt         time.Time // when to trigger the cross-seed search
 }
 
 // NewService creates a new cross-seed service
@@ -314,31 +332,39 @@ func NewService(
 		SetDefaultTTL(5 * time.Minute))
 
 	recheckCtx, recheckCancel := context.WithCancel(context.Background())
+	pendingCompletionsCtx, pendingCompletionsCancel := context.WithCancel(context.Background())
 
 	svc := &Service{
-		instanceStore:        instanceStore,
-		syncManager:          syncManager,
-		filesManager:         filesManager,
-		releaseCache:         NewReleaseCache(),
-		searchResultCache:    searchCache,
-		asyncFilteringCache:  asyncFilteringCache,
-		indexerDomainCache:   indexerDomainCache,
-		stringNormalizer:     stringutils.NewDefaultNormalizer(),
-		automationStore:      automationStore,
-		jackettService:       jackettService,
-		externalProgramStore: externalProgramStore,
-		automationWake:       make(chan struct{}, 1),
-		domainMappings:       initializeDomainMappings(),
-		torrentFilesCache:    contentFilesCache,
-		dedupCache:           dedupCache,
-		metrics:              NewServiceMetrics(),
-		recheckResumeChan:    make(chan *pendingResume, 100),
-		recheckResumeCtx:     recheckCtx,
-		recheckResumeCancel:  recheckCancel,
+		instanceStore:            instanceStore,
+		syncManager:              syncManager,
+		filesManager:             filesManager,
+		releaseCache:             NewReleaseCache(),
+		searchResultCache:        searchCache,
+		asyncFilteringCache:      asyncFilteringCache,
+		indexerDomainCache:       indexerDomainCache,
+		stringNormalizer:         stringutils.NewDefaultNormalizer(),
+		automationStore:          automationStore,
+		jackettService:           jackettService,
+		externalProgramStore:     externalProgramStore,
+		automationWake:           make(chan struct{}, 1),
+		domainMappings:           initializeDomainMappings(),
+		torrentFilesCache:        contentFilesCache,
+		dedupCache:               dedupCache,
+		metrics:                  NewServiceMetrics(),
+		recheckResumeChan:        make(chan *pendingResume, 100),
+		recheckResumeCtx:         recheckCtx,
+		recheckResumeCancel:      recheckCancel,
+		pendingCompletions:       make(map[string]*pendingCompletion),
+		pendingCompletionsChan:   make(chan *pendingCompletion, 100),
+		pendingCompletionsCtx:    pendingCompletionsCtx,
+		pendingCompletionsCancel: pendingCompletionsCancel,
 	}
 
 	// Start the single worker goroutine for processing recheck resumes
 	go svc.recheckResumeWorker()
+
+	// Start the worker goroutine for processing delayed completion searches
+	go svc.pendingCompletionsWorker()
 
 	return svc
 }
@@ -880,6 +906,47 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		return
 	}
 
+	// Check if delay is configured - if so, queue instead of immediate search
+	if completion.DelayMinutes > 0 {
+		pending := &pendingCompletion{
+			instanceID:       instanceID,
+			hash:             torrent.Hash,
+			name:             torrent.Name,
+			originalCategory: torrent.Category,
+			searchAt:         time.Now().Add(time.Duration(completion.DelayMinutes) * time.Minute),
+		}
+
+		// Send to worker via channel
+		select {
+		case s.pendingCompletionsChan <- pending:
+			log.Info().
+				Int("instanceID", instanceID).
+				Str("hash", torrent.Hash).
+				Str("name", torrent.Name).
+				Str("category", torrent.Category).
+				Int("delayMinutes", completion.DelayMinutes).
+				Time("searchAt", pending.searchAt).
+				Msg("[CROSSSEED-COMPLETION] Queued torrent for delayed search (waiting for *arr import)")
+		default:
+			log.Warn().
+				Int("instanceID", instanceID).
+				Str("hash", torrent.Hash).
+				Str("name", torrent.Name).
+				Msg("[CROSSSEED-COMPLETION] Pending completions queue full, executing immediately")
+			// Fallback to immediate execution if queue is full
+			if execErr := s.executeCompletionSearch(ctx, instanceID, &torrent, settings); execErr != nil {
+				log.Warn().
+					Err(execErr).
+					Int("instanceID", instanceID).
+					Str("hash", torrent.Hash).
+					Str("name", torrent.Name).
+					Msg("[CROSSSEED-COMPLETION] Failed to execute completion search")
+			}
+		}
+		return
+	}
+
+	// No delay configured - execute immediately
 	err = s.executeCompletionSearch(ctx, instanceID, &torrent, settings)
 	if err != nil {
 		log.Warn().
@@ -2724,6 +2791,198 @@ func (s *Service) recheckResumeWorker() {
 			return
 		}
 	}
+}
+
+// pendingCompletionsWorker processes torrents waiting for delay or category change
+// before triggering cross-seed search. This supports *arr import timing.
+func (s *Service) pendingCompletionsWorker() {
+	const pollInterval = 10 * time.Second // How often to check for category changes and timeouts
+
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case req := <-s.pendingCompletionsChan:
+			// Add new pending completion request
+			key := fmt.Sprintf("%d:%s", req.instanceID, req.hash)
+			s.pendingCompletionsMu.Lock()
+			s.pendingCompletions[key] = req
+			s.pendingCompletionsMu.Unlock()
+			log.Debug().
+				Int("instanceID", req.instanceID).
+				Str("hash", req.hash).
+				Str("name", req.name).
+				Str("originalCategory", req.originalCategory).
+				Time("searchAt", req.searchAt).
+				Msg("[CROSSSEED-COMPLETION] Added torrent to pending completions queue")
+
+		case <-ticker.C:
+			// Snapshot pending completions under lock, then release before I/O
+			s.pendingCompletionsMu.Lock()
+			if len(s.pendingCompletions) == 0 {
+				s.pendingCompletionsMu.Unlock()
+				continue
+			}
+
+			// Group by instance for batched API calls
+			byInstance := make(map[int][]string)
+			for _, req := range s.pendingCompletions {
+				byInstance[req.instanceID] = append(byInstance[req.instanceID], req.hash)
+			}
+
+			// Create a copy to process (to avoid holding lock during API calls)
+			toProcess := make(map[string]*pendingCompletion)
+			for k, v := range s.pendingCompletions {
+				toProcess[k] = v
+			}
+			s.pendingCompletionsMu.Unlock()
+
+			// Load settings (DB call) after releasing lock
+			ctx := s.pendingCompletionsCtx
+			settings, err := s.GetAutomationSettings(ctx)
+			if err != nil {
+				log.Warn().Err(err).Msg("[CROSSSEED-COMPLETION] Failed to load settings for pending completions check")
+				continue
+			}
+			if settings == nil {
+				settings = models.DefaultCrossSeedAutomationSettings()
+			}
+
+			preImportCategories := make(map[string]struct{})
+			for _, cat := range settings.Completion.PreImportCategories {
+				preImportCategories[strings.ToLower(strings.TrimSpace(cat))] = struct{}{}
+			}
+			hasPreImportCategories := len(preImportCategories) > 0
+
+			now := time.Now()
+
+			// Check each instance
+			for instanceID, hashes := range byInstance {
+				apiCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+				torrents, apiErr := s.syncManager.GetTorrents(apiCtx, instanceID, qbt.TorrentFilterOptions{Hashes: hashes})
+				cancel()
+				if apiErr != nil {
+					log.Debug().
+						Err(apiErr).
+						Int("instanceID", instanceID).
+						Int("hashCount", len(hashes)).
+						Msg("[CROSSSEED-COMPLETION] Failed to get torrent states for pending completions, will retry")
+					continue
+				}
+
+				// Build lookup by hash
+				torrentByHash := make(map[string]qbt.Torrent, len(torrents))
+				for _, t := range torrents {
+					torrentByHash[strings.ToLower(t.Hash)] = t
+				}
+
+				// Check each pending completion for this instance
+				for _, hash := range hashes {
+					key := fmt.Sprintf("%d:%s", instanceID, hash)
+					req, exists := toProcess[key]
+					if !exists {
+						continue
+					}
+
+					// Look up current torrent state
+					torrent, found := torrentByHash[strings.ToLower(hash)]
+					if !found {
+						// Torrent was removed - clean up
+						log.Debug().
+							Int("instanceID", instanceID).
+							Str("hash", hash).
+							Str("name", req.name).
+							Msg("[CROSSSEED-COMPLETION] Torrent no longer exists, removing from queue")
+						s.removePendingCompletion(key)
+						continue
+					}
+
+					// Check for category change (early exit)
+					currentCategory := strings.ToLower(strings.TrimSpace(torrent.Category))
+					originalCategory := strings.ToLower(strings.TrimSpace(req.originalCategory))
+
+					if hasPreImportCategories && currentCategory != originalCategory {
+						// Category changed - check if original was a pre-import category
+						if _, wasPreImport := preImportCategories[originalCategory]; wasPreImport {
+							log.Info().
+								Int("instanceID", instanceID).
+								Str("hash", hash).
+								Str("name", req.name).
+								Str("originalCategory", req.originalCategory).
+								Str("currentCategory", torrent.Category).
+								Msg("[CROSSSEED-COMPLETION] Category changed from pre-import category, triggering search immediately")
+							s.triggerPendingCompletionSearch(ctx, req, settings)
+							s.removePendingCompletion(key)
+							continue
+						}
+					}
+
+					// Check if delay has elapsed
+					if now.After(req.searchAt) {
+						log.Info().
+							Int("instanceID", instanceID).
+							Str("hash", hash).
+							Str("name", req.name).
+							Str("category", torrent.Category).
+							Msg("[CROSSSEED-COMPLETION] Delay elapsed, triggering search")
+						s.triggerPendingCompletionSearch(ctx, req, settings)
+						s.removePendingCompletion(key)
+						continue
+					}
+
+					// Still waiting
+					log.Trace().
+						Int("instanceID", instanceID).
+						Str("hash", hash).
+						Str("name", req.name).
+						Dur("remaining", req.searchAt.Sub(now)).
+						Msg("[CROSSSEED-COMPLETION] Torrent still pending")
+				}
+			}
+
+		case <-s.pendingCompletionsCtx.Done():
+			log.Debug().
+				Msg("[CROSSSEED-COMPLETION] Pending completions worker shutting down")
+			return
+		}
+	}
+}
+
+// triggerPendingCompletionSearch executes the cross-seed search for a pending completion.
+func (s *Service) triggerPendingCompletionSearch(ctx context.Context, req *pendingCompletion, settings *models.CrossSeedAutomationSettings) {
+	// Get current torrent state with a bounded timeout
+	apiCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	torrents, err := s.syncManager.GetTorrents(apiCtx, req.instanceID, qbt.TorrentFilterOptions{Hashes: []string{req.hash}})
+	cancel()
+	if err != nil || len(torrents) == 0 {
+		log.Warn().
+			Err(err).
+			Int("instanceID", req.instanceID).
+			Str("hash", req.hash).
+			Str("name", req.name).
+			Msg("[CROSSSEED-COMPLETION] Failed to get torrent for pending completion search")
+		return
+	}
+
+	torrent := torrents[0]
+
+	// Execute the search
+	if err := s.executeCompletionSearch(ctx, req.instanceID, &torrent, settings); err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", req.instanceID).
+			Str("hash", req.hash).
+			Str("name", req.name).
+			Msg("[CROSSSEED-COMPLETION] Failed to execute pending completion search")
+	}
+}
+
+// removePendingCompletion removes a torrent from the pending completions map.
+func (s *Service) removePendingCompletion(key string) {
+	s.pendingCompletionsMu.Lock()
+	delete(s.pendingCompletions, key)
+	s.pendingCompletionsMu.Unlock()
 }
 
 func cacheKeyForTorrentFiles(instanceID int, hash string) string {
