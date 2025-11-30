@@ -31,10 +31,11 @@ import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/util
 import type { SortedPeersResponse, Torrent, TorrentFile, TorrentPeer } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import "flag-icons/css/flag-icons.min.css"
-import { Ban, Copy, FolderPen, Loader2, Pencil, Trash2, UserPlus } from "lucide-react"
+import { Ban, Copy, Loader2, Trash2, UserPlus } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
+import { TorrentFileTree } from "./TorrentFileTree"
 
 interface TorrentDetailsPanelProps {
   instanceId: number;
@@ -283,6 +284,29 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     setFilePriorityMutation.mutate({ indices, priority: 0, hash: torrent.hash })
   }, [files, setFilePriorityMutation, supportsFilePriority, torrent])
 
+  const handleToggleFolderDownload = useCallback((folderPath: string, selected: boolean) => {
+    if (!torrent || !supportsFilePriority || !files) {
+      return
+    }
+
+    // Find all files under this folder
+    const folderPrefix = folderPath + "/"
+    const indices = files
+      .filter(f => f.name.startsWith(folderPrefix))
+      .filter(f => selected ? f.priority === 0 : f.priority !== 0)
+      .map(f => f.index)
+
+    if (indices.length === 0) {
+      return
+    }
+
+    setFilePriorityMutation.mutate({
+      indices,
+      priority: selected ? 1 : 0,
+      hash: torrent.hash
+    })
+  }, [files, setFilePriorityMutation, supportsFilePriority, torrent])
+
   // Fetch torrent peers with optimized refetch
   const isPeersTabActive = activeTab === "peers"
   const peersQueryKey = ["torrent-peers", instanceId, torrent?.hash] as const
@@ -344,11 +368,20 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     mutationFn: async ({ hash, oldPath, newPath }) => {
       await api.renameTorrentFile(instanceId, hash, oldPath, newPath)
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: async (_data, variables) => {
       toast.success("File renamed successfully")
       setShowRenameFileDialog(false)
       setRenameFilePath(null)
-      queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
+      // Small delay to let qBittorrent process the rename internally
+      await new Promise(resolve => setTimeout(resolve, 500))
+      // Force immediate refresh with cache bypass
+      try {
+        const freshFiles = await api.getTorrentFiles(instanceId, variables.hash, { refresh: true })
+        queryClient.setQueryData(["torrent-files", instanceId, variables.hash], freshFiles)
+      } catch {
+        // Refresh failed, invalidate to trigger background refetch
+        queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
+      }
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "Failed to rename file"
@@ -358,16 +391,27 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   // Rename folder state
   const [showRenameFolderDialog, setShowRenameFolderDialog] = useState(false)
+  const [renameFolderPath, setRenameFolderPath] = useState<string | null>(null)
 
   // Rename folder mutation
   const renameFolderMutation = useMutation<void, unknown, { hash: string; oldPath: string; newPath: string }>({
     mutationFn: async ({ hash, oldPath, newPath }) => {
       await api.renameTorrentFolder(instanceId, hash, oldPath, newPath)
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: async (_data, variables) => {
       toast.success("Folder renamed successfully")
       setShowRenameFolderDialog(false)
-      queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
+      setRenameFolderPath(null)
+      // Small delay to let qBittorrent process the rename internally
+      await new Promise(resolve => setTimeout(resolve, 500))
+      // Force immediate refresh with cache bypass
+      try {
+        const freshFiles = await api.getTorrentFiles(instanceId, variables.hash, { refresh: true })
+        queryClient.setQueryData(["torrent-files", instanceId, variables.hash], freshFiles)
+      } catch {
+        // Refresh failed, invalidate to trigger background refetch
+        queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
+      }
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "Failed to rename folder"
@@ -530,8 +574,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     renameFolderMutation.mutate({ hash: torrent.hash, oldPath, newPath })
   }, [renameFolderMutation, torrent])
 
-  const handleRenameFolderDialogOpen = useCallback(async () => {
+  const handleRenameFolderDialogOpen = useCallback(async (folderPath?: string) => {
     await refreshTorrentFiles()
+    setRenameFolderPath(folderPath ?? null)
     setShowRenameFolderDialog(true)
   }, [refreshTorrentFiles])
 
@@ -1225,143 +1270,69 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
             </ScrollArea>
           </TabsContent>
 
-          <TabsContent value="content" className="m-0 h-full">
-            <ScrollArea className="h-full">
-              <div className="p-4 sm:p-6">
-                {activeTab === "content" && loadingFiles && !files ? (
-                  <div className="flex items-center justify-center p-8">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div>
-                ) : files && files.length > 0 ? (
-                  <div className="space-y-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex flex-col gap-1">
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">File Contents</h3>
-                        <span className="text-xs text-muted-foreground">
-                          {supportsFilePriority
-                            ? `${selectedFileCount} of ${totalFiles} selected`
-                            : `${files.length} file${files.length !== 1 ? "s" : ""}`}
-                        </span>
-                      </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => { void handleRenameFolderDialogOpen() }}
-                              disabled={incognitoMode || renameFolderMutation.isPending || !files || files.length === 0}
-                            >
-                              <FolderPen className="h-4 w-4 mr-2" />
-                              Rename Folder
-                            </Button>
-                        {supportsFilePriority ? (
-                          <>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={handleSelectAllFiles}
-                              disabled={!canSelectAll || setFilePriorityMutation.isPending}
-                            >
-                              Select All
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={handleDeselectAllFiles}
-                              disabled={!canDeselectAll || setFilePriorityMutation.isPending}
-                            >
-                              Deselect All
-                            </Button>
-                          </>
-                        ) : (
-                          <div className="text-xs text-muted-foreground max-w-sm">
-                            Selective downloads require a qBittorrent instance with Web API 2.0.0 or newer.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      {files.map((file) => {
-                        const displayFileName = incognitoMode ? getLinuxFileName(torrent.hash, file.index) : file.name
-                        const progressPercent = file.progress * 100
-                        const isComplete = progressPercent === 100
-                        const isSkipped = file.priority === 0
-                        const isPending = pendingFileIndices.has(file.index)
-
-                        return (
-                          <div
-                            key={file.index}
-                            className={cn(
-                              "bg-card/50 backdrop-blur-sm border border-border/50 rounded-lg p-4 transition-all",
-                              !isSkipped && "hover:border-border",
-                              isSkipped && "opacity-80"
-                            )}
-                          >
-                            <div className="space-y-3">
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="flex flex-1 items-start gap-3 min-w-0">
-                                  {supportsFilePriority && (
-                                    <Checkbox
-                                      checked={!isSkipped}
-                                      disabled={isPending || !supportsFilePriority}
-                                      onCheckedChange={(checked) => handleToggleFileDownload(file, checked === true)}
-                                      aria-label={isSkipped ? "Select file for download" : "Skip file download"}
-                                      className="mt-0.5 shrink-0"
-                                    />
-                                  )}
-                                  <div className="flex-1 min-w-0">
-                                    <p
-                                      className={cn(
-                                        "text-xs sm:text-sm font-mono break-all text-muted-foreground",
-                                        isSkipped && supportsFilePriority && "text-muted-foreground/70"
-                                      )}
-                                    >
-                                      {displayFileName}
-                                    </p>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-2 shrink-0">
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8"
-                                    onClick={() => { void handleRenameFileClick(file.name) }}
-                                    disabled={incognitoMode || renameFileMutation.isPending}
-                                    title="Rename file"
-                                  >
-                                    <Pencil className="h-4 w-4" />
-                                  </Button>
-                                  {isSkipped && supportsFilePriority && (
-                                    <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
-                                      Skipped
-                                    </Badge>
-                                  )}
-                                  <Badge variant={isComplete ? "default" : "secondary"} className="text-xs">
-                                    {formatBytes(file.size)}
-                                  </Badge>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                <Progress value={progressPercent} className="flex-1 h-1.5" />
-                                {isPending && (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                                )}
-                                <span className={cn("text-xs font-medium", isComplete ? "text-green-500" : "text-muted-foreground")}>
-                                  {Math.round(progressPercent)}%
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-                    No files found
-                  </div>
-                )}
+          <TabsContent value="content" className="m-0 h-full flex flex-col overflow-hidden">
+            {activeTab === "content" && loadingFiles && !files ? (
+              <div className="flex items-center justify-center p-8 flex-1">
+                <Loader2 className="h-6 w-6 animate-spin" />
               </div>
-            </ScrollArea>
+            ) : files && files.length > 0 ? (
+              <>
+                <div className="flex items-start justify-between gap-3 px-4 sm:px-6 py-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+                  <div>
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">File Contents</h3>
+                    <span className="text-xs text-muted-foreground">
+                      {supportsFilePriority
+                        ? `${selectedFileCount} of ${totalFiles} selected`
+                        : `${files.length} file${files.length !== 1 ? "s" : ""}`}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {supportsFilePriority && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          onClick={handleSelectAllFiles}
+                          disabled={!canSelectAll || setFilePriorityMutation.isPending}
+                        >
+                          All
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          onClick={handleDeselectAllFiles}
+                          disabled={!canDeselectAll || setFilePriorityMutation.isPending}
+                        >
+                          None
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <ScrollArea className="flex-1 min-h-0 w-full [&>[data-slot=scroll-area-viewport]]:!overflow-x-hidden">
+                  <div className="p-4 sm:p-6 pb-8">
+                    <TorrentFileTree
+                      key={torrent.hash}
+                      files={files}
+                      supportsFilePriority={supportsFilePriority}
+                      pendingFileIndices={pendingFileIndices}
+                      incognitoMode={incognitoMode}
+                      torrentHash={torrent.hash}
+                      onToggleFile={handleToggleFileDownload}
+                      onToggleFolder={handleToggleFolderDownload}
+                      onRenameFile={handleRenameFileClick}
+                      onRenameFolder={(folderPath) => { void handleRenameFolderDialogOpen(folderPath) }}
+                    />
+                  </div>
+                </ScrollArea>
+              </>
+            ) : (
+              <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
+                No files found
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="crossseed" className="m-0 h-full">
@@ -1791,6 +1762,7 @@ tracker.example.com:8080
         isLoading={loadingFiles}
         onConfirm={handleRenameFolderConfirm}
         isPending={renameFolderMutation.isPending}
+        initialPath={renameFolderPath ?? undefined}
       />
     </div>
   )
