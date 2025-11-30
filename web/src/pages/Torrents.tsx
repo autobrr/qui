@@ -289,7 +289,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
       >
         <SheetContent
           side="right"
-          className="w-full md:w-[640px] lg:w-[720px] xl:w-[800px] p-0 gap-0"
+          className="w-full md:w-[640px] p-0 gap-0"
         >
           <SheetHeader className="sr-only">
             <VisuallyHidden>
