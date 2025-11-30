@@ -166,7 +166,9 @@ func (r completionSettingsPatchRequest) isEmpty() bool {
 		r.Categories == nil &&
 		r.Tags == nil &&
 		r.ExcludeCategories == nil &&
-		r.ExcludeTags == nil
+		r.ExcludeTags == nil &&
+		r.DelayMinutes == nil &&
+		r.PreImportCategories == nil
 }
 
 func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, patch automationSettingsPatchRequest) {
@@ -613,11 +615,13 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 	completion := models.DefaultCrossSeedCompletionSettings()
 	if req.Completion != nil {
 		completion = models.CrossSeedCompletionSettings{
-			Enabled:           req.Completion.Enabled,
-			Categories:        req.Completion.Categories,
-			Tags:              req.Completion.Tags,
-			ExcludeCategories: req.Completion.ExcludeCategories,
-			ExcludeTags:       req.Completion.ExcludeTags,
+			Enabled:             req.Completion.Enabled,
+			Categories:          req.Completion.Categories,
+			Tags:                req.Completion.Tags,
+			ExcludeCategories:   req.Completion.ExcludeCategories,
+			ExcludeTags:         req.Completion.ExcludeTags,
+			DelayMinutes:        req.Completion.DelayMinutes,
+			PreImportCategories: req.Completion.PreImportCategories,
 		}
 	}
 

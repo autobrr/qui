@@ -2818,18 +2818,31 @@ func (s *Service) pendingCompletionsWorker() {
 				Msg("[CROSSSEED-COMPLETION] Added torrent to pending completions queue")
 
 		case <-ticker.C:
+			// Snapshot pending completions under lock, then release before I/O
 			s.pendingCompletionsMu.Lock()
 			if len(s.pendingCompletions) == 0 {
 				s.pendingCompletionsMu.Unlock()
 				continue
 			}
 
-			// Load settings once per tick
+			// Group by instance for batched API calls
+			byInstance := make(map[int][]string)
+			for _, req := range s.pendingCompletions {
+				byInstance[req.instanceID] = append(byInstance[req.instanceID], req.hash)
+			}
+
+			// Create a copy to process (to avoid holding lock during API calls)
+			toProcess := make(map[string]*pendingCompletion)
+			for k, v := range s.pendingCompletions {
+				toProcess[k] = v
+			}
+			s.pendingCompletionsMu.Unlock()
+
+			// Load settings (DB call) after releasing lock
 			ctx := s.pendingCompletionsCtx
 			settings, err := s.GetAutomationSettings(ctx)
 			if err != nil {
 				log.Warn().Err(err).Msg("[CROSSSEED-COMPLETION] Failed to load settings for pending completions check")
-				s.pendingCompletionsMu.Unlock()
 				continue
 			}
 			if settings == nil {
@@ -2841,20 +2854,6 @@ func (s *Service) pendingCompletionsWorker() {
 				preImportCategories[strings.ToLower(strings.TrimSpace(cat))] = struct{}{}
 			}
 			hasPreImportCategories := len(preImportCategories) > 0
-
-			// Group by instance for batched API calls
-			byInstance := make(map[int][]string)
-			for key, req := range s.pendingCompletions {
-				byInstance[req.instanceID] = append(byInstance[req.instanceID], req.hash)
-				_ = key // avoid unused variable warning
-			}
-
-			// Create a copy of keys to process (to avoid holding lock during API calls)
-			toProcess := make(map[string]*pendingCompletion)
-			for k, v := range s.pendingCompletions {
-				toProcess[k] = v
-			}
-			s.pendingCompletionsMu.Unlock()
 
 			now := time.Now()
 
@@ -2952,8 +2951,10 @@ func (s *Service) pendingCompletionsWorker() {
 
 // triggerPendingCompletionSearch executes the cross-seed search for a pending completion.
 func (s *Service) triggerPendingCompletionSearch(ctx context.Context, req *pendingCompletion, settings *models.CrossSeedAutomationSettings) {
-	// Get current torrent state
-	torrents, err := s.syncManager.GetTorrents(ctx, req.instanceID, qbt.TorrentFilterOptions{Hashes: []string{req.hash}})
+	// Get current torrent state with a bounded timeout
+	apiCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	torrents, err := s.syncManager.GetTorrents(apiCtx, req.instanceID, qbt.TorrentFilterOptions{Hashes: []string{req.hash}})
+	cancel()
 	if err != nil || len(torrents) == 0 {
 		log.Warn().
 			Err(err).
