@@ -1778,3 +1778,30 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 	w.Header().Set("X-Data-Source", "fresh")
 	RespondJSON(w, http.StatusOK, response)
 }
+
+func (h *TorrentsHandler) GetDirectoryContent(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		log.Error().Err(err).Msg("Invalid instance ID")
+		http.Error(w, "Invalid instance ID", http.StatusBadRequest)
+		return
+	}
+
+	dirPath := r.URL.Query().Get("dirPath")
+	if strings.TrimSpace(dirPath) == "" {
+		http.Error(w, "Invalid directory path", http.StatusBadRequest)
+		return
+	}
+
+	response, err := h.syncManager.GetDirectoryContentCtx(r.Context(), instanceID, dirPath)
+	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getDirectoryContent") {
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get directory contents")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, response)
+}
