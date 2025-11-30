@@ -57,7 +57,7 @@ interface TorrentContextMenuProps {
   selectedHashes: string[]
   selectedTorrents: Torrent[]
   effectiveSelectionCount: number
-  onTorrentSelect?: (torrent: Torrent | null) => void
+  onTorrentSelect?: (torrent: Torrent | null, initialTab?: string) => void
   onAction: (action: TorrentAction, hashes: string[], options?: { enable?: boolean }) => void
   onPrepareDelete: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareTags: (action: "add" | "set" | "remove", hashes: string[], torrents?: Torrent[]) => void
@@ -103,8 +103,8 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   onPrepareReannounce,
   onPrepareLocation,
   onPrepareRenameTorrent,
-  onPrepareRenameFile,
-  onPrepareRenameFolder,
+  onPrepareRenameFile: _onPrepareRenameFile,
+  onPrepareRenameFolder: _onPrepareRenameFolder,
   availableCategories = {},
   onSetCategory,
   isPending = false,
@@ -379,8 +379,8 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           type="context"
           hashCount={count}
           onRenameTorrent={() => onPrepareRenameTorrent(hashes, torrents)}
-          onRenameFile={() => onPrepareRenameFile(hashes, torrents)}
-          onRenameFolder={() => onPrepareRenameFolder(hashes, torrents)}
+          onRenameFile={() => onTorrentSelect?.(torrent, "content")}
+          onRenameFolder={() => onTorrentSelect?.(torrent, "content")}
           isPending={isPending}
           capabilities={capabilities}
         />
