@@ -213,11 +213,11 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
 
           <CollapsibleContent>
             <div className="px-4 pb-4 space-y-4">
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <p className="text-sm text-muted-foreground">
                   Manage Torznab indexers powered by Jackett, Prowlarr, or native tracker endpoints
                 </p>
-                <div className="flex flex-wrap gap-2 justify-end shrink-0">
+                <div className="flex flex-wrap gap-2 shrink-0">
                   <Button
                     variant="outline"
                     size="sm"
@@ -341,7 +341,7 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
 
   if (withContainer) {
     return (
-      <div className="container mx-auto space-y-4 p-6">
+      <div className="container mx-auto space-y-4 p-4 lg:p-6">
         {content}
       </div>
     )

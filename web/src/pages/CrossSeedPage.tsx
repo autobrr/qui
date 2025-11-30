@@ -876,8 +876,8 @@ export function CrossSeedPage() {
 
 
   return (
-    <div className="space-y-6 p-6 pb-16">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-6 p-4 lg:p-6 pb-16">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Cross-Seed</h1>
           <p className="text-sm text-muted-foreground">
@@ -910,7 +910,7 @@ export function CrossSeedPage() {
         </Alert>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2 mb-6">
+      <div className="grid gap-4 md:grid-cols-2 mb-6">
         <Card className="h-full">
           <CardHeader className="space-y-2">
             <div className="flex items-center justify-between gap-3">
@@ -991,7 +991,7 @@ export function CrossSeedPage() {
             </CardHeader>
             <CardContent className="space-y-5">
 
-          <div className="grid gap-5 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="automation-enabled" className="flex items-center gap-2">
                 <Switch
@@ -1023,7 +1023,7 @@ export function CrossSeedPage() {
             </div>
           </div>
 
-          <div className="grid gap-5 md:grid-cols-1">
+          <div className="grid gap-4">
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <Label htmlFor="automation-interval">RSS run interval (minutes)</Label>
@@ -1062,7 +1062,7 @@ export function CrossSeedPage() {
             </div>
           </div>
 
-          <div className="grid gap-5 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label>Target instances</Label>
               <MultiSelect
@@ -1125,10 +1125,10 @@ export function CrossSeedPage() {
               </span>
               <div className="flex items-center gap-1.5">
                 {groupedRuns.scheduled.length > 0 && (
-                  <Badge variant="secondary" className="text-[10px]">{groupedRuns.scheduled.length} scheduled</Badge>
+                  <Badge variant="secondary" className="text-xs">{groupedRuns.scheduled.length} scheduled</Badge>
                 )}
                 {groupedRuns.manual.length > 0 && (
-                  <Badge variant="outline" className="text-[10px]">{groupedRuns.manual.length} manual</Badge>
+                  <Badge variant="outline" className="text-xs">{groupedRuns.manual.length} manual</Badge>
                 )}
               </div>
             </CollapsibleTrigger>
@@ -1142,30 +1142,30 @@ export function CrossSeedPage() {
                       group === "scheduled" ? "Scheduled" : group === "manual" ? "Manual" : "Other"
                     return (
                       <div key={group} className="space-y-2">
-                        <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+                        <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
                           <span>{title}</span>
-                          <span className="text-[10px] normal-case tracking-normal">(last {data.length})</span>
+                          <span className="text-xs normal-case tracking-normal">(last {data.length})</span>
                         </div>
                         <div className="space-y-2">
                           {data.map(run => (
                             <div key={run.id} className="rounded border p-3 space-y-2 bg-muted/40">
                               <div className="flex items-center justify-between text-sm">
-                                <Badge variant={getRunStatusVariant(run.status)} className="uppercase text-[11px] tracking-wide">
+                                <Badge variant={getRunStatusVariant(run.status)} className="uppercase text-xs tracking-wide">
                                   {run.status}
                                 </Badge>
                                 <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
                               </div>
                               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                <Badge variant="secondary" className="text-[11px]">
+                                <Badge variant="secondary" className="text-xs">
                                   Added {run.torrentsAdded}
                                 </Badge>
-                                <Badge variant="outline" className="text-[11px]">
+                                <Badge variant="outline" className="text-xs">
                                   Skipped {run.torrentsSkipped}
                                 </Badge>
-                                <Badge variant={run.torrentsFailed > 0 ? "destructive" : "outline"} className="text-[11px]">
+                                <Badge variant={run.torrentsFailed > 0 ? "destructive" : "outline"} className="text-xs">
                                   Failed {run.torrentsFailed}
                                 </Badge>
-                                <span className="text-[11px]">{run.totalFeedItems} feed items</span>
+                                <span className="text-xs">{run.totalFeedItems} feed items</span>
                               </div>
                             </div>
                           ))}
@@ -1180,48 +1180,46 @@ export function CrossSeedPage() {
             </CollapsibleContent>
           </Collapsible>
         </CardContent>
-        <CardFooter className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <CardFooter className="flex flex-col-reverse gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-2 text-xs">
             <Switch id="automation-dry-run" checked={dryRun} onCheckedChange={value => setDryRun(!!value)} />
             <Label htmlFor="automation-dry-run">Dry run</Label>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-            <div className="flex items-center gap-2">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    onClick={handleTriggerAutomationRun}
-                    disabled={runButtonDisabled}
-                    className="disabled:cursor-not-allowed disabled:pointer-events-auto"
-                  >
-                    {triggerRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
-                    Run now
-                  </Button>
-                </TooltipTrigger>
-                {runButtonDisabledReason && (
-                  <TooltipContent align="end" className="max-w-xs text-xs">
-                    {runButtonDisabledReason}
-                  </TooltipContent>
-                )}
-              </Tooltip>
-              <Button
-                onClick={handleSaveAutomation}
-                disabled={patchSettingsMutation.isPending}
-              >
-                {patchSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save RSS automation settings
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  // Reset to defaults without triggering reinitialization
-                  setAutomationForm(DEFAULT_AUTOMATION_FORM)
-                }}
-              >
-                Reset
-              </Button>
-            </div>
+          <div className="flex flex-col gap-2 w-full md:w-auto md:flex-row">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  onClick={handleTriggerAutomationRun}
+                  disabled={runButtonDisabled}
+                  className="disabled:cursor-not-allowed disabled:pointer-events-auto"
+                >
+                  {triggerRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+                  Run now
+                </Button>
+              </TooltipTrigger>
+              {runButtonDisabledReason && (
+                <TooltipContent align="end" className="max-w-xs text-xs">
+                  {runButtonDisabledReason}
+                </TooltipContent>
+              )}
+            </Tooltip>
+            <Button
+              onClick={handleSaveAutomation}
+              disabled={patchSettingsMutation.isPending}
+            >
+              {patchSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save RSS automation settings
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                // Reset to defaults without triggering reinitialization
+                setAutomationForm(DEFAULT_AUTOMATION_FORM)
+              }}
+            >
+              Reset
+            </Button>
           </div>
         </CardFooter>
       </Card>
@@ -1240,7 +1238,7 @@ export function CrossSeedPage() {
               onCheckedChange={value => setCompletionForm(prev => ({ ...prev, enabled: !!value }))}
             />
           </div>
-          <div className="grid gap-5 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="completion-categories">Categories (allow list)</Label>
               <Input
@@ -1262,7 +1260,7 @@ export function CrossSeedPage() {
               <p className="text-xs text-muted-foreground">Stop completion searches for matching categories.</p>
             </div>
           </div>
-          <div className="grid gap-5 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="completion-tags">Tags (allow list)</Label>
               <Input
@@ -1313,7 +1311,7 @@ export function CrossSeedPage() {
             </AlertDescription>
           </Alert>
 
-          <div className="grid gap-5 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-3">
               <Label htmlFor="search-interval">Interval between torrents (seconds)</Label>
               <Input
@@ -1358,7 +1356,7 @@ export function CrossSeedPage() {
             </div>
           </div>
 
-          <div className="grid gap-5 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-3">
               <Label>Categories</Label>
               <MultiSelect
@@ -1408,7 +1406,7 @@ export function CrossSeedPage() {
             </div>
           </div>
 
-          <div className="grid gap-5 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-3">
               <Label>Source instance</Label>
               <Select
@@ -1485,7 +1483,7 @@ export function CrossSeedPage() {
                     <span className="text-muted-foreground">Est. completion:</span>
                     <span className="font-medium">
                       {formatDateValue(estimatedCompletionInfo.eta)}
-                      <span className="text-[10px] text-muted-foreground font-normal ml-2">
+                      <span className="text-xs text-muted-foreground font-normal ml-2">
                         ≈ {estimatedCompletionInfo.remaining} torrents remaining @ {estimatedCompletionInfo.interval}s intervals
                       </span>
                     </span>
@@ -1513,16 +1511,16 @@ export function CrossSeedPage() {
                       <div className="space-y-1.5 max-w-[80%]">
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-medium leading-tight">{result.torrentName}</p>
-                          <Badge variant="secondary" className="text-[11px]">{result.indexerName || "Indexer"}</Badge>
+                          <Badge variant="secondary" className="text-xs">{result.indexerName || "Indexer"}</Badge>
                         </div>
-                        <p className="text-[10px] text-muted-foreground">{formatDateValue(result.processedAt)}</p>
+                        <p className="text-xs text-muted-foreground">{formatDateValue(result.processedAt)}</p>
                       </div>
                       <Badge variant="default">Added</Badge>
                     </li>
                   ))}
                 </ul>
               )}
-              <p className="text-[10px] text-muted-foreground">Shows the last 10 additions during this run. List clears when the run stops.</p>
+              <p className="text-xs text-muted-foreground">Shows the last 10 additions during this run. List clears when the run stops.</p>
             </CollapsibleContent>
           </Collapsible>
         </CardContent>
@@ -1795,7 +1793,7 @@ export function CrossSeedPage() {
                   </TooltipContent>
                 </Tooltip>
               </div>
-              <Badge variant="outline" className="text-[11px]">{ignorePatternCount} pattern{ignorePatternCount === 1 ? "" : "s"}</Badge>
+              <Badge variant="outline" className="text-xs">{ignorePatternCount} pattern{ignorePatternCount === 1 ? "" : "s"}</Badge>
             </div>
             <Textarea
               id="global-ignore-patterns"

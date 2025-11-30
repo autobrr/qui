@@ -262,7 +262,7 @@ function HistoryRow({ entry, onClick }: HistoryRowProps) {
 
   return (
     <div
-      className="flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm hover:bg-muted/50 cursor-pointer transition-colors"
+      className="flex flex-col gap-1.5 p-2 rounded bg-muted/30 text-sm hover:bg-muted/50 cursor-pointer transition-colors md:flex-row md:items-center md:justify-between md:gap-2"
       onClick={onClick}
     >
       <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -286,7 +286,7 @@ function HistoryRow({ entry, onClick }: HistoryRowProps) {
           </Badge>
         )}
       </div>
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex items-center gap-2 shrink-0 pl-5 md:pl-0">
         {entry.status === "success" && (
           <span className={`text-xs ${entry.resultCount > 0 ? "text-primary" : "text-muted-foreground"}`}>
             {entry.resultCount} results
@@ -300,10 +300,10 @@ function HistoryRow({ entry, onClick }: HistoryRowProps) {
         <span className="text-xs text-muted-foreground">
           {entry.priority}
         </span>
-        <span className="text-xs text-muted-foreground w-12 text-right">
+        <span className="text-xs text-muted-foreground">
           {durationStr}
         </span>
-        <span className="text-xs text-muted-foreground">
+        <span className="text-xs text-muted-foreground ml-auto md:ml-0">
           {formatRelativeTime(new Date(entry.completedAt))}
         </span>
       </div>
