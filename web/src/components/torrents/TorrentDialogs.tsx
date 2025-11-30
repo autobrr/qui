@@ -857,15 +857,6 @@ export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
                 />
               </div>
 
-              {/* Preview of new path - only show when file is in a subfolder */}
-              {folderPath && hasChanges && newPath && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Preview</Label>
-                  <div className="text-xs font-mono text-foreground bg-muted/50 rounded px-2.5 py-1.5 break-all">
-                    {newPath}
-                  </div>
-                </div>
-              )}
             </>
           )}
         </div>
@@ -1052,15 +1043,6 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
                 />
               </div>
 
-              {/* Preview of new path */}
-              {hasChanges && newPath && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Preview</Label>
-                  <div className="text-xs font-mono text-foreground bg-muted/50 rounded px-2.5 py-1.5 break-all">
-                    {newPath}
-                  </div>
-                </div>
-              )}
 
               <p className="text-xs text-muted-foreground">
                 All files inside this folder will be moved to the new location.

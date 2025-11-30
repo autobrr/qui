@@ -10,7 +10,7 @@ import { cn, formatBytes } from "@/lib/utils"
 import type { TorrentFile } from "@/types"
 import * as AccordionPrimitive from "@radix-ui/react-accordion"
 import { ChevronRight, FilePen, FolderPen, Loader2 } from "lucide-react"
-import { memo, useCallback, useMemo, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useState } from "react"
 
 interface TorrentFileTreeProps {
   files: TorrentFile[]
@@ -453,6 +453,36 @@ export const TorrentFileTree = memo(function TorrentFileTree({
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     () => new Set(allFolderIds)
   )
+
+  // Keep expandedFolders in sync when folder paths change (e.g., after rename)
+  // - Add newly appearing folders as expanded
+  // - Remove folders that no longer exist
+  useEffect(() => {
+    setExpandedFolders((prev) => {
+      const allFolderSet = new Set(allFolderIds)
+      let changed = false
+      const next = new Set<string>()
+
+      // Keep existing expanded folders that still exist
+      for (const id of prev) {
+        if (allFolderSet.has(id)) {
+          next.add(id)
+        } else {
+          changed = true
+        }
+      }
+
+      // Add new folders as expanded by default
+      for (const id of allFolderIds) {
+        if (!prev.has(id)) {
+          next.add(id)
+          changed = true
+        }
+      }
+
+      return changed ? next : prev
+    })
+  }, [allFolderIds])
 
   const handleToggleExpanded = useCallback((folderId: string) => {
     setExpandedFolders((prev) => {
