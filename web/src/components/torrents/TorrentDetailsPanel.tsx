@@ -40,6 +40,8 @@ import { TorrentFileTree } from "./TorrentFileTree"
 interface TorrentDetailsPanelProps {
   instanceId: number;
   torrent: Torrent | null;
+  initialTab?: string;
+  onInitialTabConsumed?: () => void;
 }
 
 const TAB_VALUES = ["general", "trackers", "peers", "content", "crossseed"] as const
@@ -70,8 +72,16 @@ function getTrackerStatusBadge(status: number) {
   }
 }
 
-export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent }: TorrentDetailsPanelProps) {
+export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent, initialTab, onInitialTabConsumed }: TorrentDetailsPanelProps) {
   const [activeTab, setActiveTab] = usePersistedTabState<TabValue>(TAB_STORAGE_KEY, DEFAULT_TAB, isTabValue)
+
+  // Apply initialTab override when provided
+  useEffect(() => {
+    if (initialTab && isTabValue(initialTab)) {
+      setActiveTab(initialTab)
+      onInitialTabConsumed?.()
+    }
+  }, [initialTab, onInitialTabConsumed, setActiveTab])
   const [showAddPeersDialog, setShowAddPeersDialog] = useState(false)
   const { formatTimestamp } = useDateTimeFormatters()
   const [showBanPeerDialog, setShowBanPeerDialog] = useState(false)

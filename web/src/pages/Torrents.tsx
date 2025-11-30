@@ -33,7 +33,9 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   // Sidebar width: 320px normal, 260px dense
   const sidebarWidth = viewMode === "dense" ? "16.25rem" : "20rem"
   const [selectedTorrent, setSelectedTorrent] = useState<Torrent | null>(null)
+  const [initialDetailsTab, setInitialDetailsTab] = useState<string | undefined>(undefined)
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
+  const handleInitialTabConsumed = useCallback(() => setInitialDetailsTab(undefined), [])
   // Navigation is handled by parent component via onSearchChange prop
 
   // Check if add torrent modal should be open
@@ -85,14 +87,16 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   const [useSubcategories, setUseSubcategories] = useState<boolean>(false)
   const [lastInstanceId, setLastInstanceId] = useState<number | null>(null)
 
-  const handleTorrentSelect = (torrent: Torrent | null) => {
-    // Toggle selection: if the same torrent is clicked, deselect it
-    if (torrent && selectedTorrent?.hash === torrent.hash) {
+  const handleTorrentSelect = useCallback((torrent: Torrent | null, initialTab?: string) => {
+    // Toggle selection: if the same torrent is clicked without a tab override, deselect it
+    if (torrent && selectedTorrent?.hash === torrent.hash && !initialTab) {
       setSelectedTorrent(null)
+      setInitialDetailsTab(undefined)
     } else {
       setSelectedTorrent(torrent)
+      setInitialDetailsTab(initialTab)
     }
-  }
+  }, [selectedTorrent?.hash])
 
   // Clear selected torrent and mark data as potentially stale when instance changes
   // Don't immediately clear torrentCounts/categories/tags to prevent showing 0 values
@@ -302,6 +306,8 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
             <TorrentDetailsPanel
               instanceId={instanceId}
               torrent={selectedTorrent}
+              initialTab={initialDetailsTab}
+              onInitialTabConsumed={handleInitialTabConsumed}
             />
           )}
         </SheetContent>

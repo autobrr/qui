@@ -244,7 +244,6 @@ interface FolderRowProps {
   supportsFilePriority: boolean
   incognitoMode: boolean
   onToggle: (folderPath: string, selected: boolean) => void
-  onExpandToggle: () => void
   onRename: (folderPath: string) => void
 }
 
@@ -255,7 +254,6 @@ const FolderRow = memo(function FolderRow({
   supportsFilePriority,
   incognitoMode,
   onToggle,
-  onExpandToggle,
   onRename,
 }: FolderRowProps) {
   const progressPercent = node.totalSize > 0
@@ -287,7 +285,6 @@ const FolderRow = memo(function FolderRow({
             "hover:bg-muted/50"
           )}
           style={{ paddingLeft: `${indent}px` }}
-          onClick={onExpandToggle}
         >
           <div className="flex items-center gap-2 min-w-0">
             <ChevronRight
@@ -361,7 +358,6 @@ interface TreeNodeProps {
   onToggleFolder: (folderPath: string, selected: boolean) => void
   onRenameFile: (filePath: string) => void
   onRenameFolder: (folderPath: string) => void
-  onToggleExpanded: (folderId: string) => void
 }
 
 const TreeNode = memo(function TreeNode({
@@ -375,7 +371,6 @@ const TreeNode = memo(function TreeNode({
   onToggleFolder,
   onRenameFile,
   onRenameFolder,
-  onToggleExpanded,
 }: TreeNodeProps) {
   if (node.kind === "file" && node.file) {
     return (
@@ -405,7 +400,6 @@ const TreeNode = memo(function TreeNode({
               supportsFilePriority={supportsFilePriority}
               incognitoMode={incognitoMode}
               onToggle={onToggleFolder}
-              onExpandToggle={() => onToggleExpanded(node.id)}
               onRename={onRenameFolder}
             />
           </div>
@@ -425,7 +419,6 @@ const TreeNode = memo(function TreeNode({
             onToggleFolder={onToggleFolder}
             onRenameFile={onRenameFile}
             onRenameFolder={onRenameFolder}
-            onToggleExpanded={onToggleExpanded}
           />
         ))}
       </AccordionPrimitive.Content>
@@ -483,18 +476,6 @@ export const TorrentFileTree = memo(function TorrentFileTree({
       return changed ? next : prev
     })
   }, [allFolderIds])
-
-  const handleToggleExpanded = useCallback((folderId: string) => {
-    setExpandedFolders((prev) => {
-      const next = new Set(prev)
-      if (next.has(folderId)) {
-        next.delete(folderId)
-      } else {
-        next.add(folderId)
-      }
-      return next
-    })
-  }, [])
 
   const expandedArray = useMemo(
     () => Array.from(expandedFolders),
@@ -560,7 +541,6 @@ export const TorrentFileTree = memo(function TorrentFileTree({
             onToggleFolder={onToggleFolder}
             onRenameFile={onRenameFile}
             onRenameFolder={onRenameFolder}
-            onToggleExpanded={handleToggleExpanded}
           />
         ))}
       </AccordionPrimitive.Root>
