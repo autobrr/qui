@@ -214,50 +214,50 @@ func (s *TorznabIndexerStore) CreateWithIndexerID(ctx context.Context, name, bas
 		timeoutSeconds = 30
 	}
 
+	var insertedID int64
+
 	// Begin transaction for string interning and insert
-	tx, err := s.db.BeginTx(ctx, nil)
+	err = s.db.WithTx(ctx, nil, func(tx dbinterface.TxQuerier) error {
+		// Intern strings into string_pool (name, baseURL, optionally indexerID)
+		stringsToIntern := []string{name, baseURL}
+		if indexerID != "" {
+			stringsToIntern = append(stringsToIntern, indexerID)
+		}
+
+		ids, err := dbinterface.InternStrings(ctx, tx, stringsToIntern...)
+		if err != nil {
+			return fmt.Errorf("failed to intern strings: %w", err)
+		}
+		nameID, baseURLID := ids[0], ids[1]
+
+		var indexerIDStringID sql.NullInt64
+		if indexerID != "" {
+			indexerIDStringID = sql.NullInt64{Int64: ids[2], Valid: true}
+		}
+
+		query := `
+			INSERT INTO torznab_indexers (name_id, base_url_id, indexer_id_string_id, backend, api_key_encrypted, enabled, priority, timeout_seconds)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`
+
+		result, err := tx.ExecContext(ctx, query, nameID, baseURLID, indexerIDStringID, backend, encryptedAPIKey, enabled, priority, timeoutSeconds)
+		if err != nil {
+			return fmt.Errorf("failed to create torznab indexer: %w", err)
+		}
+
+		insertedID, err = result.LastInsertId()
+		if err != nil {
+			return fmt.Errorf("failed to get last insert ID: %w", err)
+		}
+
+		return nil
+	})
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Intern strings into string_pool (name, baseURL, optionally indexerID)
-	stringsToIntern := []string{name, baseURL}
-	if indexerID != "" {
-		stringsToIntern = append(stringsToIntern, indexerID)
+		return nil, err
 	}
 
-	ids, err := dbinterface.InternStrings(ctx, tx, stringsToIntern...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to intern strings: %w", err)
-	}
-	nameID, baseURLID := ids[0], ids[1]
-
-	var indexerIDStringID sql.NullInt64
-	if indexerID != "" {
-		indexerIDStringID = sql.NullInt64{Int64: ids[2], Valid: true}
-	}
-
-	query := `
-		INSERT INTO torznab_indexers (name_id, base_url_id, indexer_id_string_id, backend, api_key_encrypted, enabled, priority, timeout_seconds)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`
-
-	result, err := tx.ExecContext(ctx, query, nameID, baseURLID, indexerIDStringID, backend, encryptedAPIKey, enabled, priority, timeoutSeconds)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create torznab indexer: %w", err)
-	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get last insert ID: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return s.Get(ctx, int(id))
+	return s.Get(ctx, int(insertedID))
 }
 
 // Get retrieves a Torznab indexer by ID using the view
@@ -518,9 +518,8 @@ func (s *TorznabIndexerStore) Update(ctx context.Context, id int, params Torznab
 	}
 
 	// Handle API key update
-	var encryptedAPIKey string
 	if params.APIKey != "" {
-		encryptedAPIKey, err = s.encryptor.Encrypt(params.APIKey)
+		encryptedAPIKey, err := s.encryptor.Encrypt(params.APIKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to encrypt API key: %w", err)
 		}
@@ -528,51 +527,49 @@ func (s *TorznabIndexerStore) Update(ctx context.Context, id int, params Torznab
 	}
 
 	// Begin transaction for string interning and update
-	tx, err := s.db.BeginTx(ctx, nil)
+	err = s.db.WithTx(ctx, nil, func(tx dbinterface.TxQuerier) error {
+		// Intern strings into string_pool
+		stringsToIntern := []string{existing.Name, existing.BaseURL}
+		if existing.IndexerID != "" {
+			stringsToIntern = append(stringsToIntern, existing.IndexerID)
+		}
+		ids, err := dbinterface.InternStrings(ctx, tx, stringsToIntern...)
+		if err != nil {
+			return fmt.Errorf("failed to intern strings: %w", err)
+		}
+		nameID, baseURLID := ids[0], ids[1]
+		var indexerIDStringID sql.NullInt64
+		if existing.IndexerID != "" {
+			indexerIDStringID = sql.NullInt64{Int64: ids[2], Valid: true}
+		}
+
+		query := `
+			UPDATE torznab_indexers
+			SET name_id = ?, base_url_id = ?, indexer_id_string_id = ?, backend = ?, api_key_encrypted = ?, enabled = ?, priority = ?, timeout_seconds = ?
+			WHERE id = ?
+		`
+
+		_, err = tx.ExecContext(ctx, query,
+			nameID,
+			baseURLID,
+			indexerIDStringID,
+			existing.Backend,
+			existing.APIKeyEncrypted,
+			existing.Enabled,
+			existing.Priority,
+			existing.TimeoutSeconds,
+			id,
+		)
+
+		if err != nil {
+			return fmt.Errorf("failed to update torznab indexer: %w", err)
+		}
+
+		return nil
+	})
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Intern strings into string_pool
-	stringsToIntern := []string{existing.Name, existing.BaseURL}
-	if existing.IndexerID != "" {
-		stringsToIntern = append(stringsToIntern, existing.IndexerID)
-	}
-	ids, err := dbinterface.InternStrings(ctx, tx, stringsToIntern...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to intern strings: %w", err)
-	}
-	nameID, baseURLID := ids[0], ids[1]
-	var indexerIDStringID sql.NullInt64
-	if existing.IndexerID != "" {
-		indexerIDStringID = sql.NullInt64{Int64: ids[2], Valid: true}
-	}
-
-	query := `
-		UPDATE torznab_indexers
-		SET name_id = ?, base_url_id = ?, indexer_id_string_id = ?, backend = ?, api_key_encrypted = ?, enabled = ?, priority = ?, timeout_seconds = ?
-		WHERE id = ?
-	`
-
-	_, err = tx.ExecContext(ctx, query,
-		nameID,
-		baseURLID,
-		indexerIDStringID,
-		existing.Backend,
-		existing.APIKeyEncrypted,
-		existing.Enabled,
-		existing.Priority,
-		existing.TimeoutSeconds,
-		id,
-	)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to update torznab indexer: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+		return nil, err
 	}
 
 	return s.Get(ctx, id)
@@ -676,66 +673,58 @@ func (s *TorznabIndexerStore) GetCapabilities(ctx context.Context, indexerID int
 
 // SetCapabilities replaces all capabilities for an indexer
 func (s *TorznabIndexerStore) SetCapabilities(ctx context.Context, indexerID int, capabilities []string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Delete existing capabilities
-	_, err = tx.ExecContext(ctx, "DELETE FROM torznab_indexer_capabilities WHERE indexer_id = ?", indexerID)
-	if err != nil {
-		return fmt.Errorf("failed to delete existing capabilities: %w", err)
-	}
-
-	// Insert new capabilities
-	if len(capabilities) > 0 {
-		// Intern capability strings
-		capIDs, err := dbinterface.InternStrings(ctx, tx, capabilities...)
+	return s.db.WithTx(ctx, nil, func(tx dbinterface.TxQuerier) error {
+		// Delete existing capabilities
+		_, err := tx.ExecContext(ctx, "DELETE FROM torznab_indexer_capabilities WHERE indexer_id = ?", indexerID)
 		if err != nil {
-			return fmt.Errorf("failed to intern capability strings: %w", err)
+			return fmt.Errorf("failed to delete existing capabilities: %w", err)
 		}
 
-		// Build bulk insert query
-		queryTemplate := "INSERT INTO torznab_indexer_capabilities (indexer_id, capability_type_id) VALUES %s"
-		const capabilityBatchSize = 200 // Keep under SQLite's 999 variable limit (200 * 2 = 400 placeholders)
-		fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 2, capabilityBatchSize)
-
-		// Batch insert capabilities
-		args := make([]interface{}, 0, capabilityBatchSize*2)
-		for i := 0; i < len(capIDs); i += capabilityBatchSize {
-			end := i + capabilityBatchSize
-			if end > len(capIDs) {
-				end = len(capIDs)
-			}
-			batch := capIDs[i:end]
-
-			// Reset args for this batch
-			args = args[:0]
-			var query string
-			if len(batch) == capabilityBatchSize {
-				query = fullBatchQuery
-			} else {
-				// Build query for partial final batch
-				query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 2, len(batch))
-			}
-
-			for _, capID := range batch {
-				args = append(args, indexerID, capID)
-			}
-
-			_, err = tx.ExecContext(ctx, query, args...)
+		// Insert new capabilities
+		if len(capabilities) > 0 {
+			// Intern capability strings
+			capIDs, err := dbinterface.InternStrings(ctx, tx, capabilities...)
 			if err != nil {
-				return fmt.Errorf("failed to insert capabilities batch: %w", err)
+				return fmt.Errorf("failed to intern capability strings: %w", err)
+			}
+
+			// Build bulk insert query
+			queryTemplate := "INSERT INTO torznab_indexer_capabilities (indexer_id, capability_type_id) VALUES %s"
+			const capabilityBatchSize = 200 // Keep under SQLite's 999 variable limit (200 * 2 = 400 placeholders)
+			fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 2, capabilityBatchSize)
+
+			// Batch insert capabilities
+			args := make([]interface{}, 0, capabilityBatchSize*2)
+			for i := 0; i < len(capIDs); i += capabilityBatchSize {
+				end := i + capabilityBatchSize
+				if end > len(capIDs) {
+					end = len(capIDs)
+				}
+				batch := capIDs[i:end]
+
+				// Reset args for this batch
+				args = args[:0]
+				var query string
+				if len(batch) == capabilityBatchSize {
+					query = fullBatchQuery
+				} else {
+					// Build query for partial final batch
+					query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 2, len(batch))
+				}
+
+				for _, capID := range batch {
+					args = append(args, indexerID, capID)
+				}
+
+				_, err = tx.ExecContext(ctx, query, args...)
+				if err != nil {
+					return fmt.Errorf("failed to insert capabilities batch: %w", err)
+				}
 			}
 		}
-	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return nil
+		return nil
+	})
 }
 
 // GetCategories retrieves all categories for an indexer
@@ -771,139 +760,123 @@ func (s *TorznabIndexerStore) GetCategories(ctx context.Context, indexerID int) 
 
 // SetCategories replaces all categories for an indexer
 func (s *TorznabIndexerStore) SetCategories(ctx context.Context, indexerID int, categories []TorznabIndexerCategory) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Delete existing categories
-	_, err = tx.ExecContext(ctx, "DELETE FROM torznab_indexer_categories WHERE indexer_id = ?", indexerID)
-	if err != nil {
-		return fmt.Errorf("failed to delete existing categories: %w", err)
-	}
-
-	// Insert new categories
-	if len(categories) > 0 {
-		unique := make(map[int]TorznabIndexerCategory, len(categories))
-		for _, cat := range categories {
-			if _, exists := unique[cat.CategoryID]; !exists {
-				unique[cat.CategoryID] = cat
-			}
-		}
-
-		ordered := make([]TorznabIndexerCategory, 0, len(unique))
-		for _, cat := range unique {
-			ordered = append(ordered, cat)
-		}
-		sort.Slice(ordered, func(i, j int) bool { return ordered[i].CategoryID < ordered[j].CategoryID })
-
-		names := make([]string, len(ordered))
-		for i, cat := range ordered {
-			names[i] = cat.CategoryName
-		}
-		nameIDs, err := dbinterface.InternStrings(ctx, tx, names...)
+	return s.db.WithTx(ctx, nil, func(tx dbinterface.TxQuerier) error {
+		// Delete existing categories
+		_, err := tx.ExecContext(ctx, "DELETE FROM torznab_indexer_categories WHERE indexer_id = ?", indexerID)
 		if err != nil {
-			return fmt.Errorf("failed to intern category names: %w", err)
+			return fmt.Errorf("failed to delete existing categories: %w", err)
 		}
 
-		// Build bulk insert query
-		queryTemplate := "INSERT INTO torznab_indexer_categories (indexer_id, category_id, category_name_id, parent_category_id) VALUES %s"
-		const categoryBatchSize = 200 // Keep under SQLite's 999 variable limit (200 * 4 = 800 placeholders)
-		fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 4, categoryBatchSize)
-
-		// Batch insert categories
-		args := make([]interface{}, 0, categoryBatchSize*4)
-		for i := 0; i < len(ordered); i += categoryBatchSize {
-			end := i + categoryBatchSize
-			if end > len(ordered) {
-				end = len(ordered)
-			}
-			batch := ordered[i:end]
-
-			// Reset args for this batch
-			args = args[:0]
-			var query string
-			if len(batch) == categoryBatchSize {
-				query = fullBatchQuery
-			} else {
-				// Build query for partial final batch
-				query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 4, len(batch))
+		// Insert new categories
+		if len(categories) > 0 {
+			unique := make(map[int]TorznabIndexerCategory, len(categories))
+			for _, cat := range categories {
+				if _, exists := unique[cat.CategoryID]; !exists {
+					unique[cat.CategoryID] = cat
+				}
 			}
 
-			for j, cat := range batch {
-				nameID := nameIDs[i+j]
-				args = append(args, indexerID, cat.CategoryID, nameID, cat.ParentCategory)
+			ordered := make([]TorznabIndexerCategory, 0, len(unique))
+			for _, cat := range unique {
+				ordered = append(ordered, cat)
 			}
+			sort.Slice(ordered, func(i, j int) bool { return ordered[i].CategoryID < ordered[j].CategoryID })
 
-			_, err = tx.ExecContext(ctx, query, args...)
+			names := make([]string, len(ordered))
+			for i, cat := range ordered {
+				names[i] = cat.CategoryName
+			}
+			nameIDs, err := dbinterface.InternStrings(ctx, tx, names...)
 			if err != nil {
-				return fmt.Errorf("failed to insert categories batch: %w", err)
+				return fmt.Errorf("failed to intern category names: %w", err)
+			}
+
+			// Build bulk insert query
+			queryTemplate := "INSERT INTO torznab_indexer_categories (indexer_id, category_id, category_name_id, parent_category_id) VALUES %s"
+			const categoryBatchSize = 200 // Keep under SQLite's 999 variable limit (200 * 4 = 800 placeholders)
+			fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 4, categoryBatchSize)
+
+			// Batch insert categories
+			args := make([]interface{}, 0, categoryBatchSize*4)
+			for i := 0; i < len(ordered); i += categoryBatchSize {
+				end := i + categoryBatchSize
+				if end > len(ordered) {
+					end = len(ordered)
+				}
+				batch := ordered[i:end]
+
+				// Reset args for this batch
+				args = args[:0]
+				var query string
+				if len(batch) == categoryBatchSize {
+					query = fullBatchQuery
+				} else {
+					// Build query for partial final batch
+					query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 4, len(batch))
+				}
+
+				for j, cat := range batch {
+					nameID := nameIDs[i+j]
+					args = append(args, indexerID, cat.CategoryID, nameID, cat.ParentCategory)
+				}
+
+				_, err = tx.ExecContext(ctx, query, args...)
+				if err != nil {
+					return fmt.Errorf("failed to insert categories batch: %w", err)
+				}
 			}
 		}
-	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return nil
+		return nil
+	})
 }
 
 // RecordError records an error for an indexer
 func (s *TorznabIndexerStore) RecordError(ctx context.Context, indexerID int, errorMessage, errorCode string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Intern error message
-	ids, err := dbinterface.InternStrings(ctx, tx, errorMessage)
-	if err != nil {
-		return fmt.Errorf("failed to intern error message: %w", err)
-	}
-	errorMessageID := ids[0]
-
-	// Check if there's a recent unresolved error with the same message
-	var existingID sql.NullInt64
-	err = tx.QueryRowContext(ctx, `
-		SELECT id FROM torznab_indexer_errors
-		WHERE indexer_id = ? AND error_message_id = ? AND resolved_at IS NULL
-		ORDER BY occurred_at DESC
-		LIMIT 1
-	`, indexerID, errorMessageID).Scan(&existingID)
-
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("failed to check for existing error: %w", err)
-	}
-
-	if existingID.Valid {
-		// Increment error count for existing error
-		_, err = tx.ExecContext(ctx, `
-			UPDATE torznab_indexer_errors
-			SET error_count = error_count + 1, occurred_at = CURRENT_TIMESTAMP
-			WHERE id = ?
-		`, existingID.Int64)
+	return s.db.WithTx(ctx, nil, func(tx dbinterface.TxQuerier) error {
+		// Intern error message
+		ids, err := dbinterface.InternStrings(ctx, tx, errorMessage)
 		if err != nil {
-			return fmt.Errorf("failed to increment error count: %w", err)
+			return fmt.Errorf("failed to intern error message: %w", err)
 		}
-	} else {
-		// Insert new error
-		_, err = tx.ExecContext(ctx, `
-			INSERT INTO torznab_indexer_errors (indexer_id, error_message_id, error_code)
-			VALUES (?, ?, ?)
-		`, indexerID, errorMessageID, errorCode)
-		if err != nil {
-			return fmt.Errorf("failed to insert error: %w", err)
+		errorMessageID := ids[0]
+
+		// Check if there's a recent unresolved error with the same message
+		var existingID sql.NullInt64
+		err = tx.QueryRowContext(ctx, `
+			SELECT id FROM torznab_indexer_errors
+			WHERE indexer_id = ? AND error_message_id = ? AND resolved_at IS NULL
+			ORDER BY occurred_at DESC
+			LIMIT 1
+		`, indexerID, errorMessageID).Scan(&existingID)
+
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("failed to check for existing error: %w", err)
 		}
-	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
+		if existingID.Valid {
+			// Increment error count for existing error
+			_, err = tx.ExecContext(ctx, `
+				UPDATE torznab_indexer_errors
+				SET error_count = error_count + 1, occurred_at = CURRENT_TIMESTAMP
+				WHERE id = ?
+			`, existingID.Int64)
+			if err != nil {
+				return fmt.Errorf("failed to increment error count: %w", err)
+			}
+		} else {
+			// Insert new error
+			_, err = tx.ExecContext(ctx, `
+				INSERT INTO torznab_indexer_errors (indexer_id, error_message_id, error_code)
+				VALUES (?, ?, ?)
+			`, indexerID, errorMessageID, errorCode)
+			if err != nil {
+				return fmt.Errorf("failed to insert error: %w", err)
+			}
+		}
 
-	return nil
+		return nil
+	})
 }
 
 // ResolveErrors marks all unresolved errors for an indexer as resolved

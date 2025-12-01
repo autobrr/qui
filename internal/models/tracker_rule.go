@@ -293,19 +293,14 @@ func (s *TrackerRuleStore) Delete(ctx context.Context, instanceID int, id int) e
 }
 
 func (s *TrackerRuleStore) Reorder(ctx context.Context, instanceID int, orderedIDs []int) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	for idx, id := range orderedIDs {
-		if _, err := tx.ExecContext(ctx, `UPDATE tracker_rules SET sort_order = ? WHERE id = ? AND instance_id = ?`, idx+1, id, instanceID); err != nil {
-			return err
+	return s.db.WithTx(ctx, nil, func(tx dbinterface.TxQuerier) error {
+		for idx, id := range orderedIDs {
+			if _, err := tx.ExecContext(ctx, `UPDATE tracker_rules SET sort_order = ? WHERE id = ? AND instance_id = ?`, idx+1, id, instanceID); err != nil {
+				return err
+			}
 		}
-	}
-
-	return tx.Commit()
+		return nil
+	})
 }
 
 func nullableString(value *string) any {

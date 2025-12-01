@@ -138,7 +138,9 @@ func validateBlobPath(baseDir, blobPath string) string {
 		return ""
 	}
 	rel := filepath.Clean(blobPath)
-	if filepath.IsAbs(rel) || strings.HasPrefix(rel, "..") {
+	// Check for absolute paths (both Windows and Unix style)
+	// On Windows, filepath.IsAbs doesn't catch Unix-style paths like "/etc/passwd"
+	if filepath.IsAbs(rel) || strings.HasPrefix(rel, "..") || strings.HasPrefix(blobPath, "/") {
 		return ""
 	}
 	absBase, err := filepath.Abs(baseDir)
