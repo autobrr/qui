@@ -2470,13 +2470,12 @@ func (s *Service) processCrossSeedCandidate(
 		options["tags"] = strings.Join(finalTags, ",")
 	}
 
-	// Simplified cross-seed add strategy:
-	// 1. Always use TMM=true with category - let qBittorrent manage save path
-	// 2. alignCrossSeedContentPaths will rename torrent/folders/files to match existing
-	// 3. After rename, paths will match existing torrent and recheck will find files
-	//
-	// This is much simpler than trying to calculate the perfect save path for every
-	// edge case (spaces vs dots, different folder names, etc.)
+	// Cross-seed add strategy:
+	// 1. Use TMM only when matched torrent uses TMM and we're not overriding the category
+	// 2. When UseCategoryFromIndexer is enabled, always use explicit save path since the
+	//    indexer category may have a different save path than where files actually are
+	// 3. alignCrossSeedContentPaths will rename torrent/folders/files to match existing
+	// 4. After rename, paths will match existing torrent and recheck will find files
 
 	// Set contentLayout based on folder structure (reusing sourceRoot/candidateRoot from above):
 	// - Single file source → folder candidate: use Subfolder so qBittorrent creates folder
@@ -2492,14 +2491,18 @@ func (s *Service) processCrossSeedCandidate(
 	}
 	// Otherwise: don't set contentLayout, let qBittorrent use Original behavior
 
-	// Use TMM=true only when:
-	// 1. We have a category to assign
-	// 2. Not an episode matched to season pack (those need explicit content path)
-	// 3. The matched torrent also has TMM enabled (respects user's path management choice)
-	//
-	// When matched torrent has TMM disabled, the user has manually placed it at a custom
-	// save path. We must use explicit save path to ensure cross-seed lands in the same location.
-	if category != "" && !isEpisodeInPack && matchedTorrent.AutoManaged {
+	// Check if UseCategoryFromIndexer is enabled - if so, we must use explicit save path
+	// because the indexer category may have a different save path configured than where
+	// the matched torrent's files actually are.
+	var useCategoryFromIndexer bool
+	if settings, err := s.GetAutomationSettings(ctx); err == nil && settings != nil {
+		useCategoryFromIndexer = settings.UseCategoryFromIndexer
+	}
+
+	// Determine whether to use TMM or explicit save path
+	useTMM := shouldUseTMM(category, isEpisodeInPack, matchedTorrent.AutoManaged, useCategoryFromIndexer)
+
+	if useTMM {
 		options["autoTMM"] = "true"
 		log.Debug().
 			Int("instanceID", candidate.InstanceID).
@@ -2508,7 +2511,7 @@ func (s *Service) processCrossSeedCandidate(
 			Str("matchedTorrent", matchedTorrent.Name).
 			Msg("Adding cross-seed with TMM enabled (matched torrent uses TMM)")
 	} else {
-		// No category, episode-in-pack, or matched torrent has TMM disabled - use explicit save path
+		// Use explicit save path to ensure cross-seed lands where files exist
 		options["autoTMM"] = "false"
 		savePath := props.SavePath
 		if isEpisodeInPack && matchedTorrent.ContentPath != "" {
@@ -2525,6 +2528,7 @@ func (s *Service) processCrossSeedCandidate(
 			Str("matchedTorrent", matchedTorrent.Name).
 			Bool("isEpisodeInPack", isEpisodeInPack).
 			Bool("matchedAutoTMM", matchedTorrent.AutoManaged).
+			Bool("useCategoryFromIndexer", useCategoryFromIndexer).
 			Msg("Adding cross-seed without TMM, using explicit save path")
 	}
 
@@ -2611,7 +2615,7 @@ func (s *Service) processCrossSeedCandidate(
 		Str("matchedHash", matchedTorrent.Hash).
 		Str("matchType", matchType).
 		Str("category", category).
-		Bool("autoTMM", category != "" && !isEpisodeInPack && matchedTorrent.AutoManaged).
+		Bool("autoTMM", useTMM).
 		Bool("isEpisodeInPack", isEpisodeInPack).
 		Bool("hasExtraFiles", hasExtraFiles)
 	if needsRecheckAndResume {
@@ -6476,6 +6480,31 @@ func (s *Service) determineCrossSeedCategory(ctx context.Context, req *CrossSeed
 	}
 
 	return matchedCategory
+}
+
+// shouldUseTMM determines whether to use qBittorrent's Automatic Torrent Management for a cross-seed.
+// Returns true only when all conditions are met:
+//   - A category is being assigned
+//   - Not an episode matched to a season pack (needs explicit content path)
+//   - The matched torrent has TMM enabled (respects user's path management choice)
+//   - UseCategoryFromIndexer is NOT enabled (indexer categories may have different save paths)
+//
+// When this returns false, the caller should use an explicit save path from the matched torrent
+// to ensure the cross-seed lands where the files actually exist.
+func shouldUseTMM(category string, isEpisodeInPack, matchedAutoManaged, useCategoryFromIndexer bool) bool {
+	if category == "" {
+		return false
+	}
+	if isEpisodeInPack {
+		return false
+	}
+	if !matchedAutoManaged {
+		return false
+	}
+	if useCategoryFromIndexer {
+		return false
+	}
+	return true
 }
 
 // buildCrossSeedTags merges source-specific tags with optional matched torrent tags.
