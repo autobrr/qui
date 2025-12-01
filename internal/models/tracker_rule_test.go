@@ -190,3 +190,72 @@ func TestNullableHelpers(t *testing.T) {
 		assert.Equal(t, 0, boolToInt(false))
 	})
 }
+
+func TestTrackerRuleStruct(t *testing.T) {
+	t.Parallel()
+
+	t.Run("TrackerDomains populated from pattern", func(t *testing.T) {
+		t.Parallel()
+
+		rule := &TrackerRule{
+			ID:             1,
+			InstanceID:     1,
+			Name:           "Test Rule",
+			TrackerPattern: "tracker1.com,tracker2.com",
+		}
+		rule.TrackerDomains = splitPatterns(rule.TrackerPattern)
+
+		assert.Len(t, rule.TrackerDomains, 2)
+		assert.Equal(t, "tracker1.com", rule.TrackerDomains[0])
+		assert.Equal(t, "tracker2.com", rule.TrackerDomains[1])
+	})
+
+	t.Run("all optional fields nil", func(t *testing.T) {
+		t.Parallel()
+
+		rule := &TrackerRule{
+			ID:         1,
+			InstanceID: 1,
+			Name:       "Minimal Rule",
+			Enabled:    true,
+		}
+
+		assert.Nil(t, rule.Category)
+		assert.Nil(t, rule.Tag)
+		assert.Nil(t, rule.UploadLimitKiB)
+		assert.Nil(t, rule.DownloadLimitKiB)
+		assert.Nil(t, rule.RatioLimit)
+		assert.Nil(t, rule.SeedingTimeLimitMinutes)
+	})
+
+	t.Run("all optional fields set", func(t *testing.T) {
+		t.Parallel()
+
+		category := "Movies"
+		tag := "private"
+		uploadLimit := int64(1000)
+		downloadLimit := int64(2000)
+		ratioLimit := 2.5
+		seedingTime := int64(10080)
+
+		rule := &TrackerRule{
+			ID:                      1,
+			InstanceID:              1,
+			Name:                    "Full Rule",
+			Category:                &category,
+			Tag:                     &tag,
+			UploadLimitKiB:          &uploadLimit,
+			DownloadLimitKiB:        &downloadLimit,
+			RatioLimit:              &ratioLimit,
+			SeedingTimeLimitMinutes: &seedingTime,
+			Enabled:                 true,
+		}
+
+		assert.Equal(t, "Movies", *rule.Category)
+		assert.Equal(t, "private", *rule.Tag)
+		assert.Equal(t, int64(1000), *rule.UploadLimitKiB)
+		assert.Equal(t, int64(2000), *rule.DownloadLimitKiB)
+		assert.Equal(t, 2.5, *rule.RatioLimit)
+		assert.Equal(t, int64(10080), *rule.SeedingTimeLimitMinutes)
+	})
+}
