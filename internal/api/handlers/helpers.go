@@ -80,7 +80,11 @@ func DecodeJSONOptional[T any](w http.ResponseWriter, r *http.Request, dest *T) 
 // Returns the value and true on success, or 0 and false if invalid (error already sent).
 // The displayName is used in error messages (e.g., "instance ID" for user-friendly output).
 func ParseIntParam(w http.ResponseWriter, r *http.Request, paramName, displayName string) (int, bool) {
-	value, err := strconv.Atoi(chi.URLParam(r, paramName))
+	str, ok := ParseStringParam(w, r, paramName, displayName)
+	if !ok {
+		return 0, false
+	}
+	value, err := strconv.Atoi(str)
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid "+displayName)
 		return 0, false
@@ -107,7 +111,11 @@ func ParsePositiveIntParam(w http.ResponseWriter, r *http.Request, paramName, di
 // Returns the value and true on success, or 0 and false if invalid (error already sent).
 // The displayName is used in error messages (e.g., "run ID" for user-friendly output).
 func ParseIntParam64(w http.ResponseWriter, r *http.Request, paramName, displayName string) (int64, bool) {
-	value, err := strconv.ParseInt(chi.URLParam(r, paramName), 10, 64)
+	str, ok := ParseStringParam(w, r, paramName, displayName)
+	if !ok {
+		return 0, false
+	}
+	value, err := strconv.ParseInt(str, 10, 64)
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid "+displayName)
 		return 0, false
