@@ -12,6 +12,8 @@ import (
 )
 
 func TestDefaultConfig(t *testing.T) {
+	t.Parallel()
+
 	cfg := DefaultConfig()
 
 	assert.Equal(t, 20*time.Second, cfg.ScanInterval)
@@ -20,6 +22,8 @@ func TestDefaultConfig(t *testing.T) {
 }
 
 func TestNewService(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		cfg      Config
@@ -82,6 +86,8 @@ func TestNewService(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			svc := NewService(tt.cfg, nil, nil, nil)
 
 			require.NotNil(t, svc)
@@ -93,6 +99,8 @@ func TestNewService(t *testing.T) {
 }
 
 func TestLimitHashBatch(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		hashes   []string
@@ -151,6 +159,8 @@ func TestLimitHashBatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := limitHashBatch(tt.hashes, tt.max)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -158,6 +168,8 @@ func TestLimitHashBatch(t *testing.T) {
 }
 
 func TestMatchesTracker(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		pattern  string
@@ -270,6 +282,8 @@ func TestMatchesTracker(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := matchesTracker(tt.pattern, tt.domains)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -277,6 +291,8 @@ func TestMatchesTracker(t *testing.T) {
 }
 
 func TestTorrentHasTag(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		tags      string
@@ -347,6 +363,8 @@ func TestTorrentHasTag(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := torrentHasTag(tt.tags, tt.candidate)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -354,6 +372,8 @@ func TestTorrentHasTag(t *testing.T) {
 }
 
 func TestSanitizeTrackerHost(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		urlOrHost string
@@ -413,6 +433,8 @@ func TestSanitizeTrackerHost(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := sanitizeTrackerHost(tt.urlOrHost)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -420,7 +442,11 @@ func TestSanitizeTrackerHost(t *testing.T) {
 }
 
 func TestService_NilSafety(t *testing.T) {
+	t.Parallel()
+
 	t.Run("Start with nil service", func(t *testing.T) {
+		t.Parallel()
+
 		var s *Service
 		// Should not panic
 		s.Start(nil)

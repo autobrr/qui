@@ -13,6 +13,8 @@ import (
 )
 
 func TestHostValidation(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		input    string
@@ -110,6 +112,8 @@ func TestHostValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := validateAndNormalizeHost(tt.input)
 			if tt.wantErr {
 				assert.Error(t, err, "expected error for input %q", tt.input)

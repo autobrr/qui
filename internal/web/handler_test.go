@@ -39,6 +39,8 @@ func createMockFS() fs.FS {
 }
 
 func TestNewHandler(t *testing.T) {
+	t.Parallel()
+
 	mockFS := createMockFS()
 
 	tests := []struct {
@@ -55,6 +57,8 @@ func TestNewHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			h := NewHandler(tt.version, tt.baseURL, tt.fs)
 
 			require.NotNil(t, h)
@@ -66,6 +70,8 @@ func TestNewHandler(t *testing.T) {
 }
 
 func TestHandler_ServeAssets_JSFile(t *testing.T) {
+	t.Parallel()
+
 	mockFS := createMockFS()
 	h := NewHandler("1.0.0", "/", mockFS)
 
@@ -83,6 +89,8 @@ func TestHandler_ServeAssets_JSFile(t *testing.T) {
 }
 
 func TestHandler_ServeAssets_CSSFile(t *testing.T) {
+	t.Parallel()
+
 	mockFS := createMockFS()
 	h := NewHandler("1.0.0", "/", mockFS)
 
@@ -100,6 +108,8 @@ func TestHandler_ServeAssets_CSSFile(t *testing.T) {
 }
 
 func TestHandler_ServeAssets_Favicon(t *testing.T) {
+	t.Parallel()
+
 	mockFS := createMockFS()
 	h := NewHandler("1.0.0", "/", mockFS)
 
@@ -116,6 +126,8 @@ func TestHandler_ServeAssets_Favicon(t *testing.T) {
 }
 
 func TestHandler_ServeAssets_NotFound(t *testing.T) {
+	t.Parallel()
+
 	mockFS := createMockFS()
 	h := NewHandler("1.0.0", "/", mockFS)
 
@@ -133,6 +145,8 @@ func TestHandler_ServeAssets_NotFound(t *testing.T) {
 }
 
 func TestHandler_ServeSPA(t *testing.T) {
+	t.Parallel()
+
 	mockFS := createMockFS()
 	h := NewHandler("1.0.0", "/", mockFS)
 
@@ -148,6 +162,8 @@ func TestHandler_ServeSPA(t *testing.T) {
 
 	for _, path := range paths {
 		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+
 			req := httptest.NewRequest(http.MethodGet, path, nil)
 			rec := httptest.NewRecorder()
 
@@ -161,6 +177,8 @@ func TestHandler_ServeSPA(t *testing.T) {
 }
 
 func TestHandler_ServeSPA_InjectsBaseURL(t *testing.T) {
+	t.Parallel()
+
 	mockFS := createMockFS()
 	h := NewHandler("1.0.0", "/qui/", mockFS)
 
@@ -179,6 +197,8 @@ func TestHandler_ServeSPA_InjectsBaseURL(t *testing.T) {
 }
 
 func TestHandler_ServeSPA_InjectsVersion(t *testing.T) {
+	t.Parallel()
+
 	mockFS := createMockFS()
 	h := NewHandler("2.5.0-beta", "/", mockFS)
 
@@ -195,6 +215,8 @@ func TestHandler_ServeSPA_InjectsVersion(t *testing.T) {
 }
 
 func TestHandler_NilFS(t *testing.T) {
+	t.Parallel()
+
 	h := NewHandler("1.0.0", "/", nil)
 
 	r := chi.NewRouter()
@@ -210,6 +232,8 @@ func TestHandler_NilFS(t *testing.T) {
 }
 
 func TestHandler_BaseURLPathRewriting(t *testing.T) {
+	t.Parallel()
+
 	mockFS := createMockFS()
 	h := NewHandler("1.0.0", "/myapp/", mockFS)
 
@@ -217,6 +241,8 @@ func TestHandler_BaseURLPathRewriting(t *testing.T) {
 	h.RegisterRoutes(r)
 
 	t.Run("registerSW.js path rewriting", func(t *testing.T) {
+		t.Parallel()
+
 		req := httptest.NewRequest(http.MethodGet, "/registerSW.js", nil)
 		rec := httptest.NewRecorder()
 
@@ -229,6 +255,8 @@ func TestHandler_BaseURLPathRewriting(t *testing.T) {
 	})
 
 	t.Run("manifest.webmanifest path rewriting", func(t *testing.T) {
+		t.Parallel()
+
 		req := httptest.NewRequest(http.MethodGet, "/manifest.webmanifest", nil)
 		rec := httptest.NewRecorder()
 
@@ -241,6 +269,8 @@ func TestHandler_BaseURLPathRewriting(t *testing.T) {
 }
 
 func TestHandler_CacheHeaders(t *testing.T) {
+	t.Parallel()
+
 	// Create FS with hashed asset filename
 	mockFS := fstest.MapFS{
 		"index.html": &fstest.MapFile{
@@ -263,6 +293,8 @@ func TestHandler_CacheHeaders(t *testing.T) {
 	h.RegisterRoutes(r)
 
 	t.Run("hashed JS file gets immutable cache", func(t *testing.T) {
+		t.Parallel()
+
 		req := httptest.NewRequest(http.MethodGet, "/assets/app-abc123.js", nil)
 		rec := httptest.NewRecorder()
 
@@ -273,6 +305,8 @@ func TestHandler_CacheHeaders(t *testing.T) {
 	})
 
 	t.Run("hashed CSS file gets immutable cache", func(t *testing.T) {
+		t.Parallel()
+
 		req := httptest.NewRequest(http.MethodGet, "/assets/style-def456.css", nil)
 		rec := httptest.NewRecorder()
 
@@ -283,6 +317,8 @@ func TestHandler_CacheHeaders(t *testing.T) {
 	})
 
 	t.Run("non-hashed file doesn't get immutable cache", func(t *testing.T) {
+		t.Parallel()
+
 		req := httptest.NewRequest(http.MethodGet, "/assets/app.js", nil)
 		rec := httptest.NewRecorder()
 
@@ -295,6 +331,8 @@ func TestHandler_CacheHeaders(t *testing.T) {
 }
 
 func TestMIMETypes(t *testing.T) {
+	t.Parallel()
+
 	mockFS := fstest.MapFS{
 		"index.html":        &fstest.MapFile{Data: []byte(`<html></html>`)},
 		"assets/test.js":    &fstest.MapFile{Data: []byte(`var a=1;`)},
@@ -325,6 +363,8 @@ func TestMIMETypes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
+			t.Parallel()
+
 			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
 			rec := httptest.NewRecorder()
 

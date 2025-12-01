@@ -15,6 +15,8 @@ import (
 )
 
 func TestLogger_Success(t *testing.T) {
+	t.Parallel()
+
 	var logBuf bytes.Buffer
 	logger := zerolog.New(&logBuf).Level(zerolog.TraceLevel)
 
@@ -40,6 +42,8 @@ func TestLogger_Success(t *testing.T) {
 }
 
 func TestLogger_DifferentStatusCodes(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name       string
 		statusCode int
@@ -53,6 +57,8 @@ func TestLogger_DifferentStatusCodes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			var logBuf bytes.Buffer
 			logger := zerolog.New(&logBuf).Level(zerolog.TraceLevel)
 
@@ -71,6 +77,8 @@ func TestLogger_DifferentStatusCodes(t *testing.T) {
 }
 
 func TestLogger_DifferentMethods(t *testing.T) {
+	t.Parallel()
+
 	methods := []string{
 		http.MethodGet,
 		http.MethodPost,
@@ -81,6 +89,8 @@ func TestLogger_DifferentMethods(t *testing.T) {
 
 	for _, method := range methods {
 		t.Run(method, func(t *testing.T) {
+			t.Parallel()
+
 			var logBuf bytes.Buffer
 			logger := zerolog.New(&logBuf).Level(zerolog.TraceLevel)
 
@@ -100,6 +110,8 @@ func TestLogger_DifferentMethods(t *testing.T) {
 }
 
 func TestLogger_PanicRecovery(t *testing.T) {
+	t.Parallel()
+
 	var logBuf bytes.Buffer
 	logger := zerolog.New(&logBuf).Level(zerolog.TraceLevel)
 
@@ -124,6 +136,8 @@ func TestLogger_PanicRecovery(t *testing.T) {
 }
 
 func TestLogger_TracesLatency(t *testing.T) {
+	t.Parallel()
+
 	var logBuf bytes.Buffer
 	logger := zerolog.New(&logBuf).Level(zerolog.TraceLevel)
 
@@ -142,6 +156,8 @@ func TestLogger_TracesLatency(t *testing.T) {
 }
 
 func TestLogger_BytesInOut(t *testing.T) {
+	t.Parallel()
+
 	var logBuf bytes.Buffer
 	logger := zerolog.New(&logBuf).Level(zerolog.TraceLevel)
 
@@ -163,6 +179,8 @@ func TestLogger_BytesInOut(t *testing.T) {
 }
 
 func TestLogger_UserAgent(t *testing.T) {
+	t.Parallel()
+
 	var logBuf bytes.Buffer
 	logger := zerolog.New(&logBuf).Level(zerolog.TraceLevel)
 
@@ -181,6 +199,8 @@ func TestLogger_UserAgent(t *testing.T) {
 }
 
 func TestChiMiddlewareExports(t *testing.T) {
+	t.Parallel()
+
 	// Verify middleware exports are not nil
 	assert.NotNil(t, RequestID)
 	assert.NotNil(t, Recoverer)

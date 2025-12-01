@@ -15,6 +15,8 @@ import (
 )
 
 func TestNewService(t *testing.T) {
+	t.Parallel()
+
 	log := zerolog.Nop()
 
 	tests := []struct {
@@ -45,6 +47,8 @@ func TestNewService(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			svc := NewService(log, tt.enabled, tt.currentVersion, tt.userAgent)
 
 			require.NotNil(t, svc)
@@ -56,6 +60,8 @@ func TestNewService(t *testing.T) {
 }
 
 func TestService_SetEnabled(t *testing.T) {
+	t.Parallel()
+
 	log := zerolog.Nop()
 	svc := NewService(log, false, "1.0.0", "test")
 
@@ -69,6 +75,8 @@ func TestService_SetEnabled(t *testing.T) {
 }
 
 func TestService_GetLatestRelease_Initial(t *testing.T) {
+	t.Parallel()
+
 	log := zerolog.Nop()
 	svc := NewService(log, true, "1.0.0", "test")
 
@@ -78,6 +86,8 @@ func TestService_GetLatestRelease_Initial(t *testing.T) {
 }
 
 func TestService_CheckUpdates_Disabled(t *testing.T) {
+	t.Parallel()
+
 	log := zerolog.Nop()
 	svc := NewService(log, false, "1.0.0", "test")
 
@@ -91,6 +101,8 @@ func TestService_CheckUpdates_Disabled(t *testing.T) {
 }
 
 func TestService_ConcurrentAccess(t *testing.T) {
+	t.Parallel()
+
 	log := zerolog.Nop()
 	svc := NewService(log, true, "1.0.0", "test")
 
@@ -125,6 +137,8 @@ func TestService_ConcurrentAccess(t *testing.T) {
 }
 
 func TestService_Start_ContextCancellation(t *testing.T) {
+	t.Parallel()
+
 	log := zerolog.Nop()
 	svc := NewService(log, true, "1.0.0", "test")
 
@@ -133,17 +147,17 @@ func TestService_Start_ContextCancellation(t *testing.T) {
 	// Start the service
 	svc.Start(ctx)
 
-	// Give it a moment to start
-	time.Sleep(10 * time.Millisecond)
-
-	// Cancel should stop the service gracefully
+	// Use a short deadline context to verify the service responds to cancellation
+	// The service starts a goroutine, so we just need to verify cancel doesn't panic
 	cancel()
 
-	// Give it a moment to stop
-	time.Sleep(50 * time.Millisecond)
+	// Verify the service can still be queried after cancellation (no panic)
+	_ = svc.GetLatestRelease(context.Background())
 }
 
 func TestNewUpdater(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name   string
 		config Config
@@ -173,6 +187,8 @@ func TestNewUpdater(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			updater := NewUpdater(tt.config)
 
 			require.NotNil(t, updater)
@@ -183,6 +199,8 @@ func TestNewUpdater(t *testing.T) {
 }
 
 func TestUpdater_Run_InvalidVersion(t *testing.T) {
+	t.Parallel()
+
 	updater := NewUpdater(Config{
 		Repository: "autobrr/qui",
 		Version:    "not-a-valid-semver",

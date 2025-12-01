@@ -15,6 +15,8 @@ import (
 )
 
 func TestNewMetricsServer(t *testing.T) {
+	t.Parallel()
+
 	manager := NewMetricsManager(nil, nil)
 
 	tests := []struct {
@@ -69,6 +71,8 @@ func TestNewMetricsServer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			server := NewMetricsServer(manager, tt.host, tt.port, tt.basicAuthUsers)
 
 			require.NotNil(t, server)
@@ -81,6 +85,8 @@ func TestNewMetricsServer(t *testing.T) {
 }
 
 func TestMetricsServer_MetricsEndpoint(t *testing.T) {
+	t.Parallel()
+
 	manager := NewMetricsManager(nil, nil)
 	server := NewMetricsServer(manager, "localhost", 9090, "")
 
@@ -99,10 +105,14 @@ func TestMetricsServer_MetricsEndpoint(t *testing.T) {
 }
 
 func TestMetricsServer_MetricsEndpointWithBasicAuth(t *testing.T) {
+	t.Parallel()
+
 	manager := NewMetricsManager(nil, nil)
 	server := NewMetricsServer(manager, "localhost", 9090, "admin:secret")
 
 	t.Run("without credentials", func(t *testing.T) {
+		t.Parallel()
+
 		req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 		rec := httptest.NewRecorder()
 
@@ -112,6 +122,8 @@ func TestMetricsServer_MetricsEndpointWithBasicAuth(t *testing.T) {
 	})
 
 	t.Run("with wrong credentials", func(t *testing.T) {
+		t.Parallel()
+
 		req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 		req.SetBasicAuth("admin", "wrong")
 		rec := httptest.NewRecorder()
@@ -122,6 +134,8 @@ func TestMetricsServer_MetricsEndpointWithBasicAuth(t *testing.T) {
 	})
 
 	t.Run("with correct credentials", func(t *testing.T) {
+		t.Parallel()
+
 		req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 		req.SetBasicAuth("admin", "secret")
 		rec := httptest.NewRecorder()
@@ -133,6 +147,8 @@ func TestMetricsServer_MetricsEndpointWithBasicAuth(t *testing.T) {
 }
 
 func TestMetricsServer_NonMetricsEndpoint(t *testing.T) {
+	t.Parallel()
+
 	manager := NewMetricsManager(nil, nil)
 	server := NewMetricsServer(manager, "localhost", 9090, "")
 
@@ -182,6 +198,8 @@ func TestMetricsServer_Shutdown(t *testing.T) {
 }
 
 func TestBasicAuth(t *testing.T) {
+	t.Parallel()
+
 	users := map[string]string{
 		"user1": "pass1",
 		"user2": "pass2",
@@ -231,6 +249,8 @@ func TestBasicAuth(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			if tt.username != "" || tt.password != "" {
 				req.SetBasicAuth(tt.username, tt.password)

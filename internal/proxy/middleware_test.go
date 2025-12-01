@@ -17,6 +17,8 @@ import (
 )
 
 func TestGetClientAPIKeyFromContext(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		setup    func() context.Context
@@ -63,6 +65,8 @@ func TestGetClientAPIKeyFromContext(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctx := tt.setup()
 			result := GetClientAPIKeyFromContext(ctx)
 
@@ -79,6 +83,8 @@ func TestGetClientAPIKeyFromContext(t *testing.T) {
 }
 
 func TestGetInstanceIDFromContext(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		setup    func() context.Context
@@ -116,6 +122,8 @@ func TestGetInstanceIDFromContext(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctx := tt.setup()
 			result := GetInstanceIDFromContext(ctx)
 			assert.Equal(t, tt.expected, result)
@@ -124,6 +132,8 @@ func TestGetInstanceIDFromContext(t *testing.T) {
 }
 
 func TestMin(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		a, b     int
@@ -139,6 +149,8 @@ func TestMin(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := min(tt.a, tt.b)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -146,6 +158,8 @@ func TestMin(t *testing.T) {
 }
 
 func TestUserAgentOrUnknown(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		userAgent string
@@ -158,6 +172,8 @@ func TestUserAgentOrUnknown(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			r := httptest.NewRequest(http.MethodGet, "/test", nil)
 			if tt.userAgent != "" {
 				r.Header.Set("User-Agent", tt.userAgent)
@@ -260,6 +276,8 @@ func TestCleanupStaleDebouncers(t *testing.T) {
 }
 
 func TestContextKeys(t *testing.T) {
+	t.Parallel()
+
 	// Test that context keys are distinct
 	assert.NotEqual(t, ClientAPIKeyContextKey, InstanceIDContextKey)
 
