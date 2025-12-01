@@ -4,11 +4,8 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
-	"strconv"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
@@ -49,20 +46,18 @@ type ClientAPIKeyWithInstance struct {
 // CreateClientAPIKey handles POST /api/client-api-keys
 func (h *ClientAPIKeysHandler) CreateClientAPIKey(w http.ResponseWriter, r *http.Request) {
 	var req CreateClientAPIKeyRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Error().Err(err).Msg("Failed to decode create client API key request")
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
 	// Validate required fields
 	if req.ClientName == "" {
-		http.Error(w, "Client name is required", http.StatusBadRequest)
+		RespondError(w, http.StatusBadRequest, "Client name is required")
 		return
 	}
 
 	if req.InstanceID == 0 {
-		http.Error(w, "Instance ID is required", http.StatusBadRequest)
+		RespondError(w, http.StatusBadRequest, "Instance ID is required")
 		return
 	}
 
@@ -71,11 +66,11 @@ func (h *ClientAPIKeysHandler) CreateClientAPIKey(w http.ResponseWriter, r *http
 	instance, err := h.instanceStore.Get(ctx, req.InstanceID)
 	if err != nil {
 		if err == models.ErrInstanceNotFound {
-			http.Error(w, "Instance not found", http.StatusNotFound)
+			RespondError(w, http.StatusNotFound, "Instance not found")
 			return
 		}
 		log.Error().Err(err).Int("instanceId", req.InstanceID).Msg("Failed to get instance")
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		RespondError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 
@@ -83,7 +78,7 @@ func (h *ClientAPIKeysHandler) CreateClientAPIKey(w http.ResponseWriter, r *http
 	rawKey, clientAPIKey, err := h.clientAPIKeyStore.Create(ctx, req.ClientName, req.InstanceID)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create client API key")
-		http.Error(w, "Failed to create API key", http.StatusInternalServerError)
+		RespondError(w, http.StatusInternalServerError, "Failed to create API key")
 		return
 	}
 
@@ -97,8 +92,7 @@ func (h *ClientAPIKeysHandler) CreateClientAPIKey(w http.ResponseWriter, r *http
 		ProxyURL:     proxyURL,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	RespondJSON(w, http.StatusOK, response)
 }
 
 // ListClientAPIKeys handles GET /api/client-api-keys
@@ -109,7 +103,7 @@ func (h *ClientAPIKeysHandler) ListClientAPIKeys(w http.ResponseWriter, r *http.
 	clientAPIKeys, err := h.clientAPIKeyStore.GetAll(ctx)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get client API keys")
-		http.Error(w, "Failed to get API keys", http.StatusInternalServerError)
+		RespondError(w, http.StatusInternalServerError, "Failed to get API keys")
 		return
 	}
 
@@ -134,32 +128,24 @@ func (h *ClientAPIKeysHandler) ListClientAPIKeys(w http.ResponseWriter, r *http.
 		})
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(enrichedKeys)
+	RespondJSON(w, http.StatusOK, enrichedKeys)
 }
 
 // DeleteClientAPIKey handles DELETE /api/client-api-keys/{id}
 func (h *ClientAPIKeysHandler) DeleteClientAPIKey(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	if idStr == "" {
-		http.Error(w, "Missing API key ID", http.StatusBadRequest)
-		return
-	}
-
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		http.Error(w, "Invalid API key ID", http.StatusBadRequest)
+	id, ok := ParseIntParam(w, r, "id")
+	if !ok {
 		return
 	}
 
 	ctx := r.Context()
 	if err := h.clientAPIKeyStore.Delete(ctx, id); err != nil {
 		if err == models.ErrClientAPIKeyNotFound {
-			http.Error(w, "API key not found", http.StatusNotFound)
+			RespondError(w, http.StatusNotFound, "API key not found")
 			return
 		}
 		log.Error().Err(err).Int("keyId", id).Msg("Failed to delete client API key")
-		http.Error(w, "Failed to delete API key", http.StatusInternalServerError)
+		RespondError(w, http.StatusInternalServerError, "Failed to delete API key")
 		return
 	}
 

@@ -5,7 +5,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -94,9 +93,7 @@ func (h *JackettHandler) Routes(r chi.Router) {
 // @Router /api/torznab/cross-seed/search [post]
 func (h *JackettHandler) CrossSeedSearch(w http.ResponseWriter, r *http.Request) {
 	var req jackett.TorznabSearchRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Error().Err(err).Msg("Failed to decode cross-seed search request")
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -165,9 +162,7 @@ func (h *JackettHandler) CrossSeedSearch(w http.ResponseWriter, r *http.Request)
 // @Router /api/torznab/search [post]
 func (h *JackettHandler) Search(w http.ResponseWriter, r *http.Request) {
 	var req jackett.TorznabSearchRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Error().Err(err).Msg("Failed to decode search request")
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -267,8 +262,7 @@ func (h *JackettHandler) UpdateSearchCacheSettings(w http.ResponseWriter, r *htt
 		TTLMinutes int `json:"ttlMinutes"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 	if req.TTLMinutes < jackett.MinSearchCacheTTLMinutes {
@@ -336,9 +330,7 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 		Capabilities   []string `json:"capabilities,omitempty"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Error().Err(err).Msg("Failed to decode create indexer request")
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -492,9 +484,7 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 		Capabilities   []string `json:"capabilities,omitempty"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Error().Err(err).Msg("Failed to decode update indexer request")
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -774,9 +764,7 @@ func (h *JackettHandler) DiscoverIndexers(w http.ResponseWriter, r *http.Request
 		APIKey  string `json:"api_key"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Error().Err(err).Msg("Failed to decode discover request")
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 

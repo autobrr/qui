@@ -5,14 +5,10 @@ package handlers
 
 import (
 	"database/sql"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
@@ -76,8 +72,8 @@ func (p *TrackerRulePayload) toModel(instanceID int, id int) *models.TrackerRule
 }
 
 func (h *TrackerRuleHandler) List(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := parseInstanceID(w, r)
-	if err != nil {
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -92,14 +88,13 @@ func (h *TrackerRuleHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *TrackerRuleHandler) Create(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := parseInstanceID(w, r)
-	if err != nil {
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
 	var payload TrackerRulePayload
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request payload")
+	if !DecodeJSON(w, r, &payload) {
 		return
 	}
 
@@ -124,8 +119,8 @@ func (h *TrackerRuleHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *TrackerRuleHandler) Update(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := parseInstanceID(w, r)
-	if err != nil {
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -135,8 +130,7 @@ func (h *TrackerRuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var payload TrackerRulePayload
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request payload")
+	if !DecodeJSON(w, r, &payload) {
 		return
 	}
 
@@ -166,8 +160,8 @@ func (h *TrackerRuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *TrackerRuleHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := parseInstanceID(w, r)
-	if err != nil {
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -190,15 +184,18 @@ func (h *TrackerRuleHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *TrackerRuleHandler) Reorder(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := parseInstanceID(w, r)
-	if err != nil {
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
 	var payload struct {
 		OrderedIDs []int `json:"orderedIds"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || len(payload.OrderedIDs) == 0 {
+	if !DecodeJSON(w, r, &payload) {
+		return
+	}
+	if len(payload.OrderedIDs) == 0 {
 		RespondError(w, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
@@ -213,8 +210,8 @@ func (h *TrackerRuleHandler) Reorder(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *TrackerRuleHandler) ApplyNow(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := parseInstanceID(w, r)
-	if err != nil {
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -227,16 +224,6 @@ func (h *TrackerRuleHandler) ApplyNow(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RespondJSON(w, http.StatusAccepted, map[string]string{"status": "applied"})
-}
-
-func parseInstanceID(w http.ResponseWriter, r *http.Request) (int, error) {
-	instanceIDStr := chi.URLParam(r, "instanceID")
-	instanceID, err := strconv.Atoi(instanceIDStr)
-	if err != nil || instanceID <= 0 {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
-		return 0, fmt.Errorf("invalid instance ID: %s", instanceIDStr)
-	}
-	return instanceID, nil
 }
 
 func cleanStringPtr(value *string) *string {

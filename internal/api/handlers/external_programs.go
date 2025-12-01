@@ -13,12 +13,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 
 	shellquote "github.com/Hellseher/go-shellquote"
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/domain"
@@ -58,9 +56,7 @@ func (h *ExternalProgramsHandler) ListExternalPrograms(w http.ResponseWriter, r 
 // CreateExternalProgram handles POST /api/external-programs
 func (h *ExternalProgramsHandler) CreateExternalProgram(w http.ResponseWriter, r *http.Request) {
 	var req models.ExternalProgramCreate
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Error().Err(err).Msg("Failed to decode create external program request")
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -100,22 +96,13 @@ func (h *ExternalProgramsHandler) CreateExternalProgram(w http.ResponseWriter, r
 
 // UpdateExternalProgram handles PUT /api/external-programs/{id}
 func (h *ExternalProgramsHandler) UpdateExternalProgram(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	if idStr == "" {
-		http.Error(w, "Missing program ID", http.StatusBadRequest)
-		return
-	}
-
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		http.Error(w, "Invalid program ID", http.StatusBadRequest)
+	id, ok := ParseIntParam(w, r, "id")
+	if !ok {
 		return
 	}
 
 	var req models.ExternalProgramUpdate
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Error().Err(err).Msg("Failed to decode update external program request")
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -158,15 +145,8 @@ func (h *ExternalProgramsHandler) UpdateExternalProgram(w http.ResponseWriter, r
 
 // DeleteExternalProgram handles DELETE /api/external-programs/{id}
 func (h *ExternalProgramsHandler) DeleteExternalProgram(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	if idStr == "" {
-		http.Error(w, "Missing program ID", http.StatusBadRequest)
-		return
-	}
-
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		http.Error(w, "Invalid program ID", http.StatusBadRequest)
+	id, ok := ParseIntParam(w, r, "id")
+	if !ok {
 		return
 	}
 
@@ -187,9 +167,7 @@ func (h *ExternalProgramsHandler) DeleteExternalProgram(w http.ResponseWriter, r
 // ExecuteExternalProgram handles POST /api/external-programs/execute
 func (h *ExternalProgramsHandler) ExecuteExternalProgram(w http.ResponseWriter, r *http.Request) {
 	var req models.ExternalProgramExecute
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Error().Err(err).Msg("Failed to decode execute external program request")
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 

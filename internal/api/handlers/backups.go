@@ -16,11 +16,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/andybalholm/brotli"
-	"github.com/go-chi/chi/v5"
 	kgzip "github.com/klauspost/compress/gzip"
 	"github.com/klauspost/compress/zstd"
 	"github.com/rs/zerolog/log"
@@ -174,9 +172,8 @@ type backupSettingsRequest struct {
 }
 
 func (h *BackupsHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -190,15 +187,13 @@ func (h *BackupsHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BackupsHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
 	var req backupSettingsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -246,15 +241,13 @@ type restoreRequest struct {
 }
 
 func (h *BackupsHandler) TriggerBackup(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
 	var req triggerBackupRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSONOptional(w, r, &req) {
 		return
 	}
 
@@ -308,30 +301,17 @@ type backupRunsResponse struct {
 }
 
 func (h *BackupsHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
-	limit := 25
-	offset := 0
+	pagination := ParsePagination(r, 25, 100)
 
-	if v := r.URL.Query().Get("limit"); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= 100 {
-			limit = parsed
-		}
-	}
-	if v := r.URL.Query().Get("offset"); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil && parsed >= 0 {
-			offset = parsed
-		}
-	}
-
-	requestedLimit := limit
+	requestedLimit := pagination.Limit
 	effectiveLimit := requestedLimit + 1
 
-	runs, err := h.service.ListRuns(r.Context(), instanceID, effectiveLimit, offset)
+	runs, err := h.service.ListRuns(r.Context(), instanceID, effectiveLimit, pagination.Offset)
 	if err != nil {
 		RespondError(w, http.StatusInternalServerError, "Failed to list backup runs")
 		return
@@ -365,15 +345,13 @@ func (h *BackupsHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BackupsHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
-	runID, err := strconv.ParseInt(chi.URLParam(r, "runID"), 10, 64)
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid run ID")
+	runID, ok := ParseIntParam64(w, r, "runID", "run ID")
+	if !ok {
 		return
 	}
 
@@ -405,15 +383,13 @@ func (h *BackupsHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 // Query parameters:
 //   - format: compression format (zip, tar.gz, tar.zst, tar.br, tar.xz, tar) - defaults to zip
 func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
-	runID, err := strconv.ParseInt(chi.URLParam(r, "runID"), 10, 64)
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid run ID")
+	runID, ok := ParseIntParam64(w, r, "runID", "run ID")
+	if !ok {
 		return
 	}
 
@@ -654,9 +630,8 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BackupsHandler) ImportManifest(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -982,21 +957,18 @@ func extractTarReaderToDisk(r io.Reader) (*ExtractedArchive, error) {
 }
 
 func (h *BackupsHandler) DownloadTorrentBlob(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
-	runID, err := strconv.ParseInt(chi.URLParam(r, "runID"), 10, 64)
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid run ID")
+	runID, ok := ParseIntParam64(w, r, "runID", "run ID")
+	if !ok {
 		return
 	}
 
-	torrentHash := strings.TrimSpace(chi.URLParam(r, "torrentHash"))
-	if torrentHash == "" {
-		RespondError(w, http.StatusBadRequest, "Invalid torrent hash")
+	torrentHash, ok := ParseTorrentHash(w, r)
+	if !ok {
 		return
 	}
 
@@ -1095,15 +1067,13 @@ serve:
 }
 
 func (h *BackupsHandler) DeleteRun(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
-	runID, err := strconv.ParseInt(chi.URLParam(r, "runID"), 10, 64)
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid run ID")
+	runID, ok := ParseIntParam64(w, r, "runID", "run ID")
+	if !ok {
 		return
 	}
 
@@ -1131,9 +1101,8 @@ func (h *BackupsHandler) DeleteRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BackupsHandler) DeleteAllRuns(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -1146,15 +1115,13 @@ func (h *BackupsHandler) DeleteAllRuns(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BackupsHandler) PreviewRestore(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
-	runID, err := strconv.ParseInt(chi.URLParam(r, "runID"), 10, 64)
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid run ID")
+	runID, ok := ParseIntParam64(w, r, "runID", "run ID")
+	if !ok {
 		return
 	}
 
@@ -1164,8 +1131,7 @@ func (h *BackupsHandler) PreviewRestore(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var req restoreRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSONOptional(w, r, &req) {
 		return
 	}
 
@@ -1190,15 +1156,13 @@ func (h *BackupsHandler) PreviewRestore(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *BackupsHandler) ExecuteRestore(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
-	runID, err := strconv.ParseInt(chi.URLParam(r, "runID"), 10, 64)
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid run ID")
+	runID, ok := ParseIntParam64(w, r, "runID", "run ID")
+	if !ok {
 		return
 	}
 
@@ -1208,8 +1172,7 @@ func (h *BackupsHandler) ExecuteRestore(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var req restoreRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSONOptional(w, r, &req) {
 		return
 	}
 

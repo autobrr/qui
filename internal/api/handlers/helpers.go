@@ -6,6 +6,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -73,6 +74,17 @@ func DecodeJSON[T any](w http.ResponseWriter, r *http.Request, dest *T) bool {
 	return true
 }
 
+// DecodeJSONOptional decodes the request body into the provided struct.
+// Returns true if decoding succeeds or body is empty (io.EOF).
+// Returns false only on actual decode errors (error already sent to client).
+func DecodeJSONOptional[T any](w http.ResponseWriter, r *http.Request, dest *T) bool {
+	if err := json.NewDecoder(r.Body).Decode(dest); err != nil && err != io.EOF {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return false
+	}
+	return true
+}
+
 // ParseTorrentHash extracts and validates the torrent hash from URL parameters.
 // Returns the hash and true on success, or empty string and false if missing (error already sent).
 func ParseTorrentHash(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -115,4 +127,45 @@ func ParseIntParam(w http.ResponseWriter, r *http.Request, paramName string) (in
 		return 0, false
 	}
 	return value, true
+}
+
+// ParseIntParam64 extracts and validates a generic int64 URL parameter.
+// Returns the value and true on success, or 0 and false if invalid (error already sent).
+// The displayName is used in error messages (e.g., "run ID" for user-friendly output).
+func ParseIntParam64(w http.ResponseWriter, r *http.Request, paramName, displayName string) (int64, bool) {
+	value, err := strconv.ParseInt(chi.URLParam(r, paramName), 10, 64)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid "+displayName)
+		return 0, false
+	}
+	return value, true
+}
+
+// PaginationParams holds parsed pagination parameters.
+type PaginationParams struct {
+	Limit  int
+	Offset int
+}
+
+// ParsePagination extracts and validates pagination parameters from query string.
+// Uses provided defaults and enforces maxLimit. Invalid values are silently ignored.
+func ParsePagination(r *http.Request, defaultLimit, maxLimit int) PaginationParams {
+	p := PaginationParams{Limit: defaultLimit, Offset: 0}
+
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			if parsed > maxLimit {
+				parsed = maxLimit
+			}
+			p.Limit = parsed
+		}
+	}
+
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed >= 0 {
+			p.Offset = parsed
+		}
+	}
+
+	return p
 }

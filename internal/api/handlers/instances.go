@@ -5,7 +5,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"slices"
@@ -13,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/domain"
@@ -44,9 +42,8 @@ func NewInstancesHandler(instanceStore *models.InstanceStore, reannounceStore *m
 
 // GetInstanceCapabilities returns lightweight capability metadata for an instance.
 func (h *InstancesHandler) GetInstanceCapabilities(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -81,9 +78,8 @@ func (h *InstancesHandler) GetInstanceCapabilities(w http.ResponseWriter, r *htt
 
 // GetReannounceActivity returns recent reannounce events for an instance.
 func (h *InstancesHandler) GetReannounceActivity(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 	if h.reannounceSvc == nil {
@@ -113,9 +109,8 @@ func (h *InstancesHandler) GetReannounceActivity(w http.ResponseWriter, r *http.
 // reannounce monitoring scope and either have tracker problems or are still
 // waiting for their initial tracker contact.
 func (h *InstancesHandler) GetReannounceCandidates(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 	if h.reannounceSvc == nil {
@@ -461,8 +456,7 @@ func (h *InstancesHandler) UpdateInstanceOrder(w http.ResponseWriter, r *http.Re
 		InstanceIDs []int `json:"instanceIds"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -521,8 +515,7 @@ func (h *InstancesHandler) UpdateInstanceOrder(w http.ResponseWriter, r *http.Re
 // CreateInstance creates a new instance
 func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request) {
 	var req CreateInstanceRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -558,16 +551,13 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 
 // UpdateInstance updates an existing instance
 func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
 	var req UpdateInstanceRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -638,10 +628,8 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 
 // DeleteInstance deletes an instance
 func (h *InstancesHandler) DeleteInstance(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -667,15 +655,13 @@ func (h *InstancesHandler) DeleteInstance(w http.ResponseWriter, r *http.Request
 
 // UpdateInstanceStatus toggles whether an instance should be actively polled
 func (h *InstancesHandler) UpdateInstanceStatus(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
 	var req UpdateInstanceStatusRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -705,10 +691,8 @@ func (h *InstancesHandler) UpdateInstanceStatus(w http.ResponseWriter, r *http.R
 
 // TestConnection tests the connection to an instance
 func (h *InstancesHandler) TestConnection(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 

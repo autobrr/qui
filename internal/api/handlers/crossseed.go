@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -331,10 +330,8 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 // @Security ApiKeyAuth
 // @Router /api/cross-seed/torrents/{instanceID}/{hash}/analyze [get]
 func (h *CrossSeedHandler) AnalyzeTorrentForSearch(w http.ResponseWriter, r *http.Request) {
-	instanceIDStr := chi.URLParam(r, "instanceID")
-	instanceID, err := strconv.Atoi(instanceIDStr)
-	if err != nil || instanceID <= 0 {
-		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -372,10 +369,8 @@ func (h *CrossSeedHandler) AnalyzeTorrentForSearch(w http.ResponseWriter, r *htt
 // @Security ApiKeyAuth
 // @Router /api/cross-seed/torrents/{instanceID}/{hash}/async-status [get]
 func (h *CrossSeedHandler) GetAsyncFilteringStatus(w http.ResponseWriter, r *http.Request) {
-	instanceIDStr := chi.URLParam(r, "instanceID")
-	instanceID, err := strconv.Atoi(instanceIDStr)
-	if err != nil || instanceID <= 0 {
-		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -415,10 +410,8 @@ func (h *CrossSeedHandler) GetAsyncFilteringStatus(w http.ResponseWriter, r *htt
 // @Security ApiKeyAuth
 // @Router /api/cross-seed/torrents/{instanceID}/{hash}/search [post]
 func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.Request) {
-	instanceIDStr := chi.URLParam(r, "instanceID")
-	instanceID, err := strconv.Atoi(instanceIDStr)
-	if err != nil || instanceID <= 0 {
-		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -430,13 +423,7 @@ func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.R
 
 	var opts crossseed.TorrentSearchOptions
 	if r.Body != nil {
-		if err := json.NewDecoder(r.Body).Decode(&opts); err != nil && !errors.Is(err, io.EOF) {
-			log.Error().
-				Err(err).
-				Int("instanceID", instanceID).
-				Str("hash", hash).
-				Msg("Failed to decode torrent search request")
-			RespondError(w, http.StatusBadRequest, "Invalid request body")
+		if !DecodeJSONOptional(w, r, &opts) {
 			return
 		}
 	}
@@ -471,9 +458,7 @@ func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.R
 // @Router /api/cross-seed/apply [post]
 func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) {
 	var req crossseed.AutobrrApplyRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Error().Err(err).Msg("Failed to decode autobrr apply request")
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -503,10 +488,8 @@ func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) 
 // @Security ApiKeyAuth
 // @Router /api/cross-seed/torrents/{instanceID}/{hash}/apply [post]
 func (h *CrossSeedHandler) ApplyTorrentSearchResults(w http.ResponseWriter, r *http.Request) {
-	instanceIDStr := chi.URLParam(r, "instanceID")
-	instanceID, err := strconv.Atoi(instanceIDStr)
-	if err != nil || instanceID <= 0 {
-		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -517,13 +500,7 @@ func (h *CrossSeedHandler) ApplyTorrentSearchResults(w http.ResponseWriter, r *h
 	}
 
 	var req crossseed.ApplyTorrentSearchRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Error().
-			Err(err).
-			Int("instanceID", instanceID).
-			Str("hash", hash).
-			Msg("Failed to decode cross-seed apply request")
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -597,8 +574,7 @@ func (h *CrossSeedHandler) GetAutomationSettings(w http.ResponseWriter, r *http.
 // @Router /api/cross-seed/settings [put]
 func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *http.Request) {
 	var req automationSettingsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -671,8 +647,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 // @Router /api/cross-seed/settings [patch]
 func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *http.Request) {
 	var req automationSettingsPatchRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 	if req.isEmpty() {
@@ -739,21 +714,9 @@ func (h *CrossSeedHandler) GetAutomationStatus(w http.ResponseWriter, r *http.Re
 // @Security ApiKeyAuth
 // @Router /api/cross-seed/runs [get]
 func (h *CrossSeedHandler) ListAutomationRuns(w http.ResponseWriter, r *http.Request) {
-	limit := 25
-	offset := 0
+	pagination := ParsePagination(r, 25, 200)
 
-	if v := r.URL.Query().Get("limit"); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= 200 {
-			limit = parsed
-		}
-	}
-	if v := r.URL.Query().Get("offset"); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil && parsed >= 0 {
-			offset = parsed
-		}
-	}
-
-	runs, err := h.service.ListAutomationRuns(r.Context(), limit, offset)
+	runs, err := h.service.ListAutomationRuns(r.Context(), pagination.Limit, pagination.Offset)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to list cross-seed automation runs")
 		RespondError(w, http.StatusInternalServerError, "Failed to list automation runs")
@@ -779,8 +742,7 @@ func (h *CrossSeedHandler) ListAutomationRuns(w http.ResponseWriter, r *http.Req
 // @Router /api/cross-seed/run [post]
 func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.Request) {
 	var req automationRunRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSONOptional(w, r, &req) {
 		return
 	}
 
@@ -848,8 +810,7 @@ func (h *CrossSeedHandler) GetSearchSettings(w http.ResponseWriter, r *http.Requ
 // @Router /api/cross-seed/search/settings [patch]
 func (h *CrossSeedHandler) PatchSearchSettings(w http.ResponseWriter, r *http.Request) {
 	var patch searchSettingsPatchRequest
-	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &patch) {
 		return
 	}
 	if patch.isEmpty() {
@@ -891,8 +852,7 @@ func (h *CrossSeedHandler) PatchSearchSettings(w http.ResponseWriter, r *http.Re
 // @Router /api/cross-seed/search/run [post]
 func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request) {
 	var req searchRunRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 	if req.InstanceID <= 0 {
@@ -984,26 +944,15 @@ func (h *CrossSeedHandler) ListSearchRunHistory(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	limit := 25
-	if v := r.URL.Query().Get("limit"); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= 200 {
-			limit = parsed
-		}
-	}
-	offset := 0
-	if v := r.URL.Query().Get("offset"); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil && parsed >= 0 {
-			offset = parsed
-		}
-	}
+	pagination := ParsePagination(r, 25, 200)
 
-	runs, err := h.service.ListSearchRuns(r.Context(), instanceID, limit, offset)
+	runs, err := h.service.ListSearchRuns(r.Context(), instanceID, pagination.Limit, pagination.Offset)
 	if err != nil {
 		log.Error().
 			Err(err).
 			Int("instanceID", instanceID).
-			Int("limit", limit).
-			Int("offset", offset).
+			Int("limit", pagination.Limit).
+			Int("offset", pagination.Offset).
 			Msg("Failed to list cross-seed search runs")
 		RespondError(w, http.StatusInternalServerError, "Failed to list search runs")
 		return
@@ -1025,10 +974,8 @@ func (h *CrossSeedHandler) ListSearchRunHistory(w http.ResponseWriter, r *http.R
 // @Security ApiKeyAuth
 // @Router /api/instances/{instanceID}/cross-seed/status [get]
 func (h *CrossSeedHandler) GetCrossSeedStatus(w http.ResponseWriter, r *http.Request) {
-	instanceIDStr := chi.URLParam(r, "instanceID")
-	instanceID, err := strconv.Atoi(instanceIDStr)
-	if err != nil || instanceID <= 0 {
-		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -1052,9 +999,7 @@ func (h *CrossSeedHandler) GetCrossSeedStatus(w http.ResponseWriter, r *http.Req
 // @Router /api/cross-seed/webhook/check [post]
 func (h *CrossSeedHandler) WebhookCheck(w http.ResponseWriter, r *http.Request) {
 	var req crossseed.WebhookCheckRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Error().Err(err).Msg("Failed to decode webhook check request")
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
