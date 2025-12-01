@@ -30,6 +30,8 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/pkg/hashutil"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // FilesManager interface for caching torrent files.
@@ -76,9 +78,9 @@ func forceFilesRefresh(ctx context.Context) bool {
 // CacheMetadata provides information about cache state
 type CacheMetadata struct {
 	Source      string `json:"source"`      // "cache" or "fresh"
+	NextRefresh string `json:"nextRefresh"` // When next refresh will occur (ISO 8601 string)
 	Age         int    `json:"age"`         // Age in seconds
 	IsStale     bool   `json:"isStale"`     // Whether data is stale
-	NextRefresh string `json:"nextRefresh"` // When next refresh will occur (ISO 8601 string)
 }
 
 // TorrentResponse represents a response containing torrents with stats
@@ -105,16 +107,16 @@ type CrossInstanceTorrentView struct {
 type TorrentResponse struct {
 	Torrents               []TorrentView              `json:"torrents"`
 	CrossInstanceTorrents  []CrossInstanceTorrentView `json:"cross_instance_torrents,omitempty"`
-	Total                  int                        `json:"total"`
 	Stats                  *TorrentStats              `json:"stats,omitempty"`
 	Counts                 *TorrentCounts             `json:"counts,omitempty"`      // Include counts for sidebar
 	Categories             map[string]qbt.Category    `json:"categories,omitempty"`  // Include categories for sidebar
 	Tags                   []string                   `json:"tags,omitempty"`        // Include tags for sidebar
 	ServerState            *qbt.ServerState           `json:"serverState,omitempty"` // Include server state for Dashboard
-	UseSubcategories       bool                       `json:"useSubcategories"`      // Whether subcategories are enabled
-	HasMore                bool                       `json:"hasMore"`               // Whether more pages are available
-	SessionID              string                     `json:"sessionId,omitempty"`   // Optional session tracking
 	CacheMetadata          *CacheMetadata             `json:"cacheMetadata,omitempty"`
+	SessionID              string                     `json:"sessionId,omitempty"` // Optional session tracking
+	Total                  int                        `json:"total"`
+	UseSubcategories       bool                       `json:"useSubcategories"` // Whether subcategories are enabled
+	HasMore                bool                       `json:"hasMore"`          // Whether more pages are available
 	TrackerHealthSupported bool                       `json:"trackerHealthSupported"`
 	IsCrossInstance        bool                       `json:"isCrossInstance"` // Whether this is a cross-instance response
 	PartialResults         bool                       `json:"partialResults"`  // Whether some instances failed to respond
@@ -122,6 +124,9 @@ type TorrentResponse struct {
 
 // TorrentStats represents aggregated torrent statistics
 type TorrentStats struct {
+	TotalSize          int64 `json:"totalSize"`
+	TotalRemainingSize int64 `json:"totalRemainingSize"`
+	TotalSeedingSize   int64 `json:"totalSeedingSize"`
 	Total              int   `json:"total"`
 	Downloading        int   `json:"downloading"`
 	Seeding            int   `json:"seeding"`
@@ -130,18 +135,15 @@ type TorrentStats struct {
 	Checking           int   `json:"checking"`
 	TotalDownloadSpeed int   `json:"totalDownloadSpeed"`
 	TotalUploadSpeed   int   `json:"totalUploadSpeed"`
-	TotalSize          int64 `json:"totalSize"`
-	TotalRemainingSize int64 `json:"totalRemainingSize"`
-	TotalSeedingSize   int64 `json:"totalSeedingSize"`
 }
 
 // DuplicateTorrentMatch represents an existing torrent that matches one or more requested hashes.
 type DuplicateTorrentMatch struct {
+	MatchedHashes []string `json:"matched_hashes,omitempty"`
 	Hash          string   `json:"hash"`
 	InfohashV1    string   `json:"infohash_v1,omitempty"`
 	InfohashV2    string   `json:"infohash_v2,omitempty"`
 	Name          string   `json:"name"`
-	MatchedHashes []string `json:"matched_hashes,omitempty"`
 }
 
 // SyncManager manages torrent operations
@@ -174,9 +176,9 @@ type ResumeWhenCompleteOptions struct {
 
 // OptimisticTorrentUpdate represents a temporary optimistic update to a torrent
 type OptimisticTorrentUpdate struct {
+	UpdatedAt     time.Time        `json:"updatedAt"`
 	State         qbt.TorrentState `json:"state"`
 	OriginalState qbt.TorrentState `json:"originalState"`
-	UpdatedAt     time.Time        `json:"updatedAt"`
 	Action        string           `json:"action"`
 }
 
@@ -1406,8 +1408,9 @@ type normalizedHashes struct {
 	lookup               []string
 }
 
+// canonicalizeHash normalizes a hash using hashutil.Normalize.
 func canonicalizeHash(hash string) string {
-	return strings.ToLower(strings.TrimSpace(hash))
+	return hashutil.Normalize(hash)
 }
 
 func normalizeHashes(hashes []string) normalizedHashes {
@@ -1524,7 +1527,7 @@ func (sm *SyncManager) primaryTrackerDomain(torrent qbt.Torrent) string {
 }
 
 func trackerMessageMatches(message string, patterns []string) bool {
-	text := strings.TrimSpace(strings.ToLower(message))
+	text := stringutils.InternNormalized(message)
 	if text == "" {
 		return false
 	}
@@ -1744,6 +1747,8 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 	if domain != unknown {
 		domain = strings.Trim(domain, "[]")
 		domain = strings.ToLower(domain)
+		// Intern the domain string for memory efficiency - tracker domains are highly repetitive
+		domain = stringutils.Intern(domain)
 	} else {
 		domain = unknown
 	}
@@ -2212,15 +2217,14 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 
 	pending := make(map[string]string, len(hashes))
 	for _, hash := range hashes {
-		canonicalHash := strings.TrimSpace(hash)
-		normalizedHash := strings.ToLower(canonicalHash)
+		normalizedHash := hashutil.Normalize(hash)
 		if normalizedHash == "" {
 			continue
 		}
 		if _, exists := pending[normalizedHash]; exists {
 			continue
 		}
-		pending[normalizedHash] = canonicalHash
+		pending[normalizedHash] = normalizedHash
 	}
 
 	if len(pending) == 0 {
@@ -2265,7 +2269,7 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 
 			var resumeList []string
 			for _, torrent := range torrents {
-				normalizedHash := strings.ToLower(strings.TrimSpace(torrent.Hash))
+				normalizedHash := hashutil.Normalize(torrent.Hash)
 				if _, watching := pending[normalizedHash]; !watching {
 					continue
 				}
@@ -2293,7 +2297,7 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 			sm.syncAfterModification(instanceID, client, "resume_when_complete")
 
 			for _, hash := range resumeList {
-				delete(pending, strings.ToLower(strings.TrimSpace(hash)))
+				delete(pending, hashutil.Normalize(hash))
 			}
 		}
 	}()
@@ -3293,7 +3297,7 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 		torrent := &torrents[i]
 		key := &keys[i]
 
-		key.hash = strings.ToLower(strings.TrimSpace(torrent.Hash))
+		key.hash = hashutil.Normalize(torrent.Hash)
 
 		addCandidate := func(candidate string) {
 			candidate = strings.TrimSpace(candidate)

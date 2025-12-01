@@ -15,30 +15,30 @@ var (
 
 // ProductLicense represents a product license in the database
 type ProductLicense struct {
-	ID                int        `json:"id"`
+	ActivatedAt       time.Time  `json:"activatedAt"`
+	LastValidated     time.Time  `json:"lastValidated"`
+	CreatedAt         time.Time  `json:"createdAt"`
+	UpdatedAt         time.Time  `json:"updatedAt"`
+	ExpiresAt         *time.Time `json:"expiresAt,omitempty"`
+	PolarCustomerID   *string    `json:"polarCustomerId,omitempty"`
+	PolarProductID    *string    `json:"polarProductId,omitempty"`
 	LicenseKey        string     `json:"licenseKey"`
 	ProductName       string     `json:"productName"`
 	Status            string     `json:"status"`
-	ActivatedAt       time.Time  `json:"activatedAt"`
-	ExpiresAt         *time.Time `json:"expiresAt,omitempty"`
-	LastValidated     time.Time  `json:"lastValidated"`
-	PolarCustomerID   *string    `json:"polarCustomerId,omitempty"`
-	PolarProductID    *string    `json:"polarProductId,omitempty"`
 	PolarActivationID string     `json:"polarActivationId,omitempty"`
 	Username          string     `json:"username"`
-	CreatedAt         time.Time  `json:"createdAt"`
-	UpdatedAt         time.Time  `json:"updatedAt"`
+	ID                int        `json:"id"`
 }
 
 // LicenseInfo contains license validation information
 type LicenseInfo struct {
+	ExpiresAt    *time.Time `json:"expiresAt,omitempty"`
 	Key          string     `json:"key"`
 	ProductName  string     `json:"productName"`
 	CustomerID   string     `json:"customerId"`
 	ProductID    string     `json:"productId"`
-	ExpiresAt    *time.Time `json:"expiresAt,omitempty"`
-	Valid        bool       `json:"valid"`
 	ErrorMessage string     `json:"errorMessage,omitempty"`
+	Valid        bool       `json:"valid"`
 }
 
 // LicenseStatus constants

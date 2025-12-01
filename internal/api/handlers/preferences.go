@@ -4,11 +4,8 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
-	"strconv"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -32,10 +29,8 @@ func NewPreferencesHandler(syncManager *qbittorrent.SyncManager) *PreferencesHan
 // For now, current_network_interface and current_interface_address show actual values but
 // cannot be configured with proper dropdown selections.
 func (h *PreferencesHandler) GetPreferences(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		log.Error().Err(err).Msg("Invalid instance ID")
-		http.Error(w, "Invalid instance ID", http.StatusBadRequest)
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -45,31 +40,22 @@ func (h *PreferencesHandler) GetPreferences(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get app preferences")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(prefs); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode preferences response")
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
-	}
+	RespondJSON(w, http.StatusOK, prefs)
 }
 
 // UpdatePreferences updates specific preference fields
 func (h *PreferencesHandler) UpdatePreferences(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		log.Error().Err(err).Msg("Invalid instance ID")
-		http.Error(w, "Invalid instance ID", http.StatusBadRequest)
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
 	var prefs map[string]any
-	if err := json.NewDecoder(r.Body).Decode(&prefs); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Invalid request body")
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	if !DecodeJSON(w, r, &prefs) {
 		return
 	}
 
@@ -81,7 +67,7 @@ func (h *PreferencesHandler) UpdatePreferences(w http.ResponseWriter, r *http.Re
 			return
 		}
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to set app preferences")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -92,24 +78,17 @@ func (h *PreferencesHandler) UpdatePreferences(w http.ResponseWriter, r *http.Re
 			return
 		}
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get updated preferences")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(updatedPrefs); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode updated preferences response")
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
-	}
+	RespondJSON(w, http.StatusOK, updatedPrefs)
 }
 
 // GetAlternativeSpeedLimitsMode returns the current alternative speed limits mode
 func (h *PreferencesHandler) GetAlternativeSpeedLimitsMode(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		log.Error().Err(err).Msg("Invalid instance ID")
-		http.Error(w, "Invalid instance ID", http.StatusBadRequest)
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -119,24 +98,17 @@ func (h *PreferencesHandler) GetAlternativeSpeedLimitsMode(w http.ResponseWriter
 			return
 		}
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get alternative speed limits mode")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]bool{"enabled": enabled}); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode alternative speed limits mode response")
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
-	}
+	RespondJSON(w, http.StatusOK, map[string]bool{"enabled": enabled})
 }
 
 // ToggleAlternativeSpeedLimits toggles alternative speed limits on/off
 func (h *PreferencesHandler) ToggleAlternativeSpeedLimits(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		log.Error().Err(err).Msg("Invalid instance ID")
-		http.Error(w, "Invalid instance ID", http.StatusBadRequest)
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -145,7 +117,7 @@ func (h *PreferencesHandler) ToggleAlternativeSpeedLimits(w http.ResponseWriter,
 			return
 		}
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to toggle alternative speed limits")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -156,14 +128,9 @@ func (h *PreferencesHandler) ToggleAlternativeSpeedLimits(w http.ResponseWriter,
 			return
 		}
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get updated alternative speed limits mode")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]bool{"enabled": enabled}); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode toggle response")
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
-	}
+	RespondJSON(w, http.StatusOK, map[string]bool{"enabled": enabled})
 }

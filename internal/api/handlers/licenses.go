@@ -4,7 +4,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
@@ -80,12 +79,7 @@ func (h *LicenseHandler) Routes(r chi.Router) {
 // ActivateLicense activates a license
 func (h *LicenseHandler) ActivateLicense(w http.ResponseWriter, r *http.Request) {
 	var req ActivateLicenseRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Error().Err(err).Msg("Failed to decode activate license request")
-		RespondJSON(w, http.StatusBadRequest, ActivateLicenseResponse{
-			Valid: false,
-			Error: "Invalid request body",
-		})
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -137,12 +131,7 @@ func (h *LicenseHandler) ActivateLicense(w http.ResponseWriter, r *http.Request)
 // ValidateLicense validates a license
 func (h *LicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Request) {
 	var req ValidateLicenseRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Error().Err(err).Msg("Failed to decode validate license request")
-		RespondJSON(w, http.StatusBadRequest, ValidateLicenseResponse{
-			Valid: false,
-			Error: "Invalid request body",
-		})
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -242,11 +231,8 @@ func (h *LicenseHandler) GetAllLicenses(w http.ResponseWriter, r *http.Request) 
 
 // DeleteLicense removes a license from the system
 func (h *LicenseHandler) DeleteLicense(w http.ResponseWriter, r *http.Request) {
-	licenseKey := chi.URLParam(r, "licenseKey")
-	if licenseKey == "" {
-		RespondJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "License key is required",
-		})
+	licenseKey, ok := ParseStringParam(w, r, "licenseKey", "License key")
+	if !ok {
 		return
 	}
 

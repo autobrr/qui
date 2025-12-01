@@ -14,14 +14,14 @@ import (
 
 // TorznabTorrentCacheEntry represents a cached torrent payload downloaded from an indexer.
 type TorznabTorrentCacheEntry struct {
-	IndexerID   int
+	TorrentData []byte
 	CacheKey    string
 	GUID        string
 	DownloadURL string
 	InfoHash    string
 	Title       string
 	SizeBytes   int64
-	TorrentData []byte
+	IndexerID   int
 }
 
 // TorznabTorrentCacheStore manages cached Torznab torrent files.

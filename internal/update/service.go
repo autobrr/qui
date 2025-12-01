@@ -18,13 +18,12 @@ const defaultCheckInterval = 2 * time.Hour
 // Service periodically checks api.autobrr.com for new qui releases and caches the latest result.
 type Service struct {
 	log            zerolog.Logger
-	currentVersion string
-
-	mu             sync.RWMutex
+	lastChecked    time.Time
 	releaseChecker *version.Checker
 	latestRelease  *version.Release
-	lastChecked    time.Time
+	currentVersion string
 	lastTag        string
+	mu             sync.RWMutex
 	isEnabled      bool
 }
 
@@ -125,5 +124,7 @@ func (s *Service) CheckUpdateAvailable(ctx context.Context) (*version.Release, e
 
 // SetEnabled toggles whether periodic update checks should run.
 func (s *Service) SetEnabled(enabled bool) {
+	s.mu.Lock()
 	s.isEnabled = enabled
+	s.mu.Unlock()
 }

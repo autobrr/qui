@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/buildinfo"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/prowlarr"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 const maxTorrentDownloadBytes int64 = 16 << 20 // 16 MiB safety limit for torrent blobs
@@ -363,9 +364,11 @@ func (c *Client) Download(ctx context.Context, downloadURL string) ([]byte, erro
 // convertRssToResults converts go-jackett RSS response to our Result format
 func (c *Client) convertRssToResults(rss gojackett.Rss) []Result {
 	results := make([]Result, 0, len(rss.Channel.Item))
+	// Intern the tracker name once since it's the same for all results
+	tracker := stringutils.Intern(rss.Channel.Title)
 	for _, item := range rss.Channel.Item {
 		result := Result{
-			Tracker:              rss.Channel.Title,
+			Tracker:              tracker,
 			Title:                item.Title,
 			Link:                 item.Enclosure.URL,
 			Details:              item.Comments,
@@ -390,19 +393,20 @@ func (c *Client) convertRssToResults(rss gojackett.Rss) []Result {
 			}
 		}
 
-		// Set first category if available
+		// Set first category if available (intern since categories repeat)
 		if len(item.Category) > 0 {
-			result.Category = item.Category[0]
+			result.Category = stringutils.Intern(item.Category[0])
 		}
 
-		// Parse torznab attributes into a lookup map
+		// Parse torznab attributes into a lookup map with interned keys/values
 		attrMap := make(map[string]string, len(item.Attr))
 		for _, attr := range item.Attr {
-			name := strings.ToLower(strings.TrimSpace(attr.Name))
+			name := stringutils.InternNormalized(attr.Name)
 			if name == "" {
 				continue
 			}
-			attrMap[name] = attr.Value
+			// Intern values since many are repeated (category names, factors, etc.)
+			attrMap[name] = stringutils.Intern(attr.Value)
 			switch name {
 			case "seeders":
 				if v, err := strconv.Atoi(attr.Value); err == nil {
@@ -421,7 +425,7 @@ func (c *Client) convertRssToResults(rss gojackett.Rss) []Result {
 					result.UploadVolumeFactor = v
 				}
 			case "imdb":
-				result.Imdb = attr.Value
+				result.Imdb = stringutils.Intern(attr.Value)
 			}
 		}
 		result.Attributes = attrMap

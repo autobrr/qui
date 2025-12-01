@@ -5,7 +5,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"slices"
@@ -13,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/domain"
@@ -44,9 +42,8 @@ func NewInstancesHandler(instanceStore *models.InstanceStore, reannounceStore *m
 
 // GetInstanceCapabilities returns lightweight capability metadata for an instance.
 func (h *InstancesHandler) GetInstanceCapabilities(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -81,9 +78,8 @@ func (h *InstancesHandler) GetInstanceCapabilities(w http.ResponseWriter, r *htt
 
 // GetReannounceActivity returns recent reannounce events for an instance.
 func (h *InstancesHandler) GetReannounceActivity(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 	if h.reannounceSvc == nil {
@@ -113,9 +109,8 @@ func (h *InstancesHandler) GetReannounceActivity(w http.ResponseWriter, r *http.
 // reannounce monitoring scope and either have tracker problems or are still
 // waiting for their initial tracker contact.
 func (h *InstancesHandler) GetReannounceCandidates(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 	if h.reannounceSvc == nil {
@@ -190,38 +185,43 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 	return responses
 }
 
+// baseInstanceResponse creates the common response fields from an instance model.
+// This is the shared foundation for both quick and full instance responses.
+func baseInstanceResponse(instance *models.Instance) InstanceResponse {
+	connectionStatus := ""
+	if !instance.IsActive {
+		connectionStatus = "disabled"
+	}
+	return InstanceResponse{
+		ID:               instance.ID,
+		Name:             instance.Name,
+		Host:             instance.Host,
+		Username:         instance.Username,
+		BasicUsername:    instance.BasicUsername,
+		TLSSkipVerify:    instance.TLSSkipVerify,
+		SortOrder:        instance.SortOrder,
+		IsActive:         instance.IsActive,
+		ConnectionStatus: connectionStatus,
+	}
+}
+
 // buildInstanceResponse creates a consistent response for an instance
 func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *models.Instance) InstanceResponse {
+	response := baseInstanceResponse(instance)
+
 	// Use cached connection status only, do not test connection synchronously
 	client, _ := h.clientPool.GetClientOffline(ctx, instance.ID)
 	healthy := client != nil && client.IsHealthy() && instance.IsActive
 
-	var connectionStatus string
-	if !instance.IsActive {
-		connectionStatus = "disabled"
-	} else if client != nil {
+	if instance.IsActive && client != nil {
 		if status := strings.TrimSpace(client.GetCachedConnectionStatus()); status != "" {
-			connectionStatus = strings.ToLower(status)
+			response.ConnectionStatus = strings.ToLower(status)
 		}
 	}
 
 	decryptionErrorInstances := h.clientPool.GetInstancesWithDecryptionErrors()
-	hasDecryptionError := slices.Contains(decryptionErrorInstances, instance.ID)
-
-	response := InstanceResponse{
-		ID:                 instance.ID,
-		Name:               instance.Name,
-		Host:               instance.Host,
-		Username:           instance.Username,
-		BasicUsername:      instance.BasicUsername,
-		TLSSkipVerify:      instance.TLSSkipVerify,
-		Connected:          healthy,
-		HasDecryptionError: hasDecryptionError,
-		ConnectionStatus:   connectionStatus,
-		SortOrder:          instance.SortOrder,
-		IsActive:           instance.IsActive,
-	}
-
+	response.HasDecryptionError = slices.Contains(decryptionErrorInstances, instance.ID)
+	response.Connected = healthy
 	response.ReannounceSettings = h.getReannounceSettingsPayload(ctx, instance.ID)
 
 	// Fetch recent errors for disconnected instances
@@ -240,23 +240,9 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 
 // buildQuickInstanceResponse creates a response without testing connection
 func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance) InstanceResponse {
-	connectionStatus := ""
-	if !instance.IsActive {
-		connectionStatus = "disabled"
-	}
-	return InstanceResponse{
-		ID:                 instance.ID,
-		Name:               instance.Name,
-		Host:               instance.Host,
-		Username:           instance.Username,
-		BasicUsername:      instance.BasicUsername,
-		TLSSkipVerify:      instance.TLSSkipVerify,
-		Connected:          false, // Will be updated asynchronously
-		HasDecryptionError: false,
-		SortOrder:          instance.SortOrder,
-		IsActive:           instance.IsActive,
-		ConnectionStatus:   connectionStatus,
-	}
+	return baseInstanceResponse(instance)
+	// Connected and HasDecryptionError default to false
+	// Will be updated asynchronously
 }
 
 // testConnectionAsync tests connection in background and updates cache
@@ -461,8 +447,7 @@ func (h *InstancesHandler) UpdateInstanceOrder(w http.ResponseWriter, r *http.Re
 		InstanceIDs []int `json:"instanceIds"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -521,8 +506,7 @@ func (h *InstancesHandler) UpdateInstanceOrder(w http.ResponseWriter, r *http.Re
 // CreateInstance creates a new instance
 func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request) {
 	var req CreateInstanceRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -558,16 +542,13 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 
 // UpdateInstance updates an existing instance
 func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
 	var req UpdateInstanceRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -638,10 +619,8 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 
 // DeleteInstance deletes an instance
 func (h *InstancesHandler) DeleteInstance(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -667,15 +646,13 @@ func (h *InstancesHandler) DeleteInstance(w http.ResponseWriter, r *http.Request
 
 // UpdateInstanceStatus toggles whether an instance should be actively polled
 func (h *InstancesHandler) UpdateInstanceStatus(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
 	var req UpdateInstanceStatusRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -705,10 +682,8 @@ func (h *InstancesHandler) UpdateInstanceStatus(w http.ResponseWriter, r *http.R
 
 // TestConnection tests the connection to an instance
 func (h *InstancesHandler) TestConnection(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 

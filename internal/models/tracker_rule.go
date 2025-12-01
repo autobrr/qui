@@ -14,21 +14,21 @@ import (
 )
 
 type TrackerRule struct {
-	ID                      int       `json:"id"`
-	InstanceID              int       `json:"instanceId"`
-	Name                    string    `json:"name"`
-	TrackerPattern          string    `json:"trackerPattern"`
-	TrackerDomains          []string  `json:"trackerDomains,omitempty"`
-	Category                *string   `json:"category,omitempty"`
-	Tag                     *string   `json:"tag,omitempty"`
-	UploadLimitKiB          *int64    `json:"uploadLimitKiB,omitempty"`
-	DownloadLimitKiB        *int64    `json:"downloadLimitKiB,omitempty"`
-	RatioLimit              *float64  `json:"ratioLimit,omitempty"`
-	SeedingTimeLimitMinutes *int64    `json:"seedingTimeLimitMinutes,omitempty"`
-	Enabled                 bool      `json:"enabled"`
-	SortOrder               int       `json:"sortOrder"`
 	CreatedAt               time.Time `json:"createdAt"`
 	UpdatedAt               time.Time `json:"updatedAt"`
+	TrackerDomains          []string  `json:"trackerDomains,omitempty"`
+	UploadLimitKiB          *int64    `json:"uploadLimitKiB,omitempty"`
+	DownloadLimitKiB        *int64    `json:"downloadLimitKiB,omitempty"`
+	SeedingTimeLimitMinutes *int64    `json:"seedingTimeLimitMinutes,omitempty"`
+	RatioLimit              *float64  `json:"ratioLimit,omitempty"`
+	Category                *string   `json:"category,omitempty"`
+	Tag                     *string   `json:"tag,omitempty"`
+	Name                    string    `json:"name"`
+	TrackerPattern          string    `json:"trackerPattern"`
+	ID                      int       `json:"id"`
+	InstanceID              int       `json:"instanceId"`
+	SortOrder               int       `json:"sortOrder"`
+	Enabled                 bool      `json:"enabled"`
 }
 
 type TrackerRuleStore struct {
@@ -293,19 +293,14 @@ func (s *TrackerRuleStore) Delete(ctx context.Context, instanceID int, id int) e
 }
 
 func (s *TrackerRuleStore) Reorder(ctx context.Context, instanceID int, orderedIDs []int) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	for idx, id := range orderedIDs {
-		if _, err := tx.ExecContext(ctx, `UPDATE tracker_rules SET sort_order = ? WHERE id = ? AND instance_id = ?`, idx+1, id, instanceID); err != nil {
-			return err
+	return s.db.WithTx(ctx, nil, func(tx dbinterface.TxQuerier) error {
+		for idx, id := range orderedIDs {
+			if _, err := tx.ExecContext(ctx, `UPDATE tracker_rules SET sort_order = ? WHERE id = ? AND instance_id = ?`, idx+1, id, instanceID); err != nil {
+				return err
+			}
 		}
-	}
-
-	return tx.Commit()
+		return nil
+	})
 }
 
 func nullableString(value *string) any {

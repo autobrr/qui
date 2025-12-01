@@ -32,6 +32,10 @@ type Querier interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (TxQuerier, error)
+	// WithTx executes the given function within a transaction.
+	// If the function returns an error, the transaction is rolled back.
+	// If the function returns nil, the transaction is committed.
+	WithTx(ctx context.Context, opts *sql.TxOptions, fn func(tx TxQuerier) error) error
 }
 
 // DeferForeignKeyChecks defers foreign key constraint checks for the given transaction

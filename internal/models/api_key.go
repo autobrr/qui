@@ -5,7 +5,6 @@ package models
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -13,6 +12,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/autobrr/qui/internal/crypto"
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
@@ -20,11 +20,11 @@ var ErrAPIKeyNotFound = errors.New("api key not found")
 var ErrInvalidAPIKey = errors.New("invalid api key")
 
 type APIKey struct {
-	ID         int        `json:"id"`
-	KeyHash    string     `json:"-"`
-	Name       string     `json:"name"`
 	CreatedAt  time.Time  `json:"createdAt"`
 	LastUsedAt *time.Time `json:"lastUsedAt,omitempty"`
+	KeyHash    string     `json:"-"`
+	Name       string     `json:"name"`
+	ID         int        `json:"id"`
 }
 
 type APIKeyStore struct {
@@ -37,11 +37,7 @@ func NewAPIKeyStore(db dbinterface.Querier) *APIKeyStore {
 
 // GenerateAPIKey generates a new API key
 func GenerateAPIKey() (string, error) {
-	bytes := make([]byte, 32)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(bytes), nil
+	return crypto.GenerateSecureToken(32)
 }
 
 // HashAPIKey creates a SHA256 hash of the API key
@@ -60,47 +56,40 @@ func (s *APIKeyStore) Create(ctx context.Context, name string) (string, *APIKey,
 	// Hash the key for storage
 	keyHash := HashAPIKey(rawKey)
 
-	// Start a transaction
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Intern the name
-	ids, err := dbinterface.InternStringNullable(ctx, tx, &name)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to intern name: %w", err)
-	}
-
-	// Insert the API key
 	apiKey := &APIKey{}
-	var createdAt, lastUsedAt sql.NullTime
-	err = tx.QueryRowContext(ctx, `
+
+	// Start a transaction
+	if err := s.db.WithTx(ctx, nil, func(tx dbinterface.TxQuerier) error {
+		ids, err := dbinterface.InternStringNullable(ctx, tx, &name)
+		if err != nil {
+			return fmt.Errorf("failed to intern name: %w", err)
+		}
+
+		// Insert the API key
+		var createdAt, lastUsedAt sql.NullTime
+		if err := tx.QueryRowContext(ctx, `
 		INSERT INTO api_keys (key_hash, name_id) 
 		VALUES (?, ?)
 		RETURNING id, key_hash, created_at, last_used_at
 	`, keyHash, ids[0]).Scan(
-		&apiKey.ID,
-		&apiKey.KeyHash,
-		&createdAt,
-		&lastUsedAt,
-	)
+			&apiKey.ID,
+			&apiKey.KeyHash,
+			&createdAt,
+			&lastUsedAt,
+		); err != nil {
+			return err
+		}
 
-	if err != nil {
-		return "", nil, err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return "", nil, fmt.Errorf("failed to commit transaction: %w", err)
+		apiKey.CreatedAt = createdAt.Time
+		if lastUsedAt.Valid {
+			apiKey.LastUsedAt = &lastUsedAt.Time
+		}
+		return nil
+	}); err != nil {
+		return "", nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
 	apiKey.Name = name
-	apiKey.CreatedAt = createdAt.Time
-	if lastUsedAt.Valid {
-		apiKey.LastUsedAt = &lastUsedAt.Time
-	}
-
 	// Return both the raw key (to show user once) and the model
 	return rawKey, apiKey, nil
 }
@@ -200,67 +189,49 @@ func (s *APIKeyStore) List(ctx context.Context) ([]*APIKey, error) {
 }
 
 func (s *APIKeyStore) UpdateLastUsed(ctx context.Context, id int) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	query := `
+	return s.db.WithTx(ctx, nil, func(tx dbinterface.TxQuerier) error {
+		query := `
 		UPDATE api_keys 
 		SET last_used_at = CURRENT_TIMESTAMP 
-		WHERE id = ?
-	`
+		WHERE id = ?`
 
-	result, err := tx.ExecContext(ctx, query, id)
-	if err != nil {
-		return err
-	}
+		result, err := tx.ExecContext(ctx, query, id)
+		if err != nil {
+			return err
+		}
 
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
 
-	if rows == 0 {
-		return ErrAPIKeyNotFound
-	}
+		if rows == 0 {
+			return ErrAPIKeyNotFound
+		}
 
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return nil
+		return nil
+	})
 }
 
 func (s *APIKeyStore) Delete(ctx context.Context, id int) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
+	return s.db.WithTx(ctx, nil, func(tx dbinterface.TxQuerier) error {
+		query := `DELETE FROM api_keys WHERE id = ?`
 
-	query := `DELETE FROM api_keys WHERE id = ?`
+		result, err := tx.ExecContext(ctx, query, id)
+		if err != nil {
+			return err
+		}
 
-	result, err := tx.ExecContext(ctx, query, id)
-	if err != nil {
-		return err
-	}
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
 
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rows == 0 {
-		return ErrAPIKeyNotFound
-	}
-
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return nil
+		if rows == 0 {
+			return ErrAPIKeyNotFound
+		}
+		return nil
+	})
 }
 
 // ValidateAPIKey validates a raw API key and returns the associated APIKey if valid

@@ -4,7 +4,6 @@
 package stringutils
 
 import (
-	"strings"
 	"time"
 
 	"github.com/autobrr/autobrr/pkg/ttlcache"
@@ -16,12 +15,16 @@ const defaultNormalizerTTL = 5 * time.Minute
 type TransformFunc[K, V any] func(K) V
 
 // Normalizer caches transformed results so we do not repeatedly transform the same inputs.
+// Transform functions should use interning (e.g., stringutils.Intern) to deduplicate
+// the resulting strings in memory.
 type Normalizer[K comparable, V any] struct {
 	cache     *ttlcache.Cache[K, V]
 	transform TransformFunc[K, V]
 }
 
-// NewNormalizer returns a normalizer with the provided TTL and transform function for cached entries.
+// NewNormalizer returns a normalizer with the provided TTL and transform function.
+// The transform function is only called once per unique key (until TTL expires),
+// so it should intern the result to avoid duplicate allocations across keys.
 func NewNormalizer[K comparable, V any](ttl time.Duration, transform TransformFunc[K, V]) *Normalizer[K, V] {
 	cache := ttlcache.New(ttlcache.Options[K, V]{}.
 		SetDefaultTTL(ttl))
@@ -31,17 +34,26 @@ func NewNormalizer[K comparable, V any](ttl time.Duration, transform TransformFu
 	}
 }
 
-// NewDefaultNormalizer returns a normalizer using the default TTL and default transform (ToLower + TrimSpace).
+// NewInternNormalizer returns a normalizer with the provided TTL and transform function.
+// Alias for NewNormalizer for clarity when using with interning transforms.
+func NewInternNormalizer[K comparable, V any](ttl time.Duration, transform TransformFunc[K, V]) *Normalizer[K, V] {
+	return NewNormalizer(ttl, transform)
+}
+
+// NewDefaultNormalizer returns a normalizer using the default TTL and default transform
+// (ToLower + TrimSpace + Intern).
 func NewDefaultNormalizer() *Normalizer[string, string] {
 	return NewNormalizer(defaultNormalizerTTL, defaultTransform)
 }
 
-// defaultTransform is the default transformation function for strings.
+// defaultTransform normalizes and interns the string.
+// The result is cached by Normalizer, and interning ensures identical
+// normalized strings share memory across different cache entries.
 func defaultTransform(s string) string {
-	return strings.ToLower(strings.TrimSpace(s))
+	return InternNormalized(s)
 }
 
-// Normalize returns the transformed value.
+// Normalize returns the transformed value, using the cache to avoid repeated transforms.
 func (n *Normalizer[K, V]) Normalize(key K) V {
 	if cached, ok := n.cache.Get(key); ok {
 		return cached

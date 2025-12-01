@@ -19,51 +19,51 @@ import (
 
 // TorznabSearchCacheEntry captures a cached Torznab search response.
 type TorznabSearchCacheEntry struct {
-	ID                 int64
-	CacheKey           string
-	Scope              string
-	Query              string
-	Categories         []int
-	IndexerIDs         []int
-	RequestFingerprint string
-	ResponseData       []byte
-	TotalResults       int
 	CachedAt           time.Time
 	LastUsedAt         time.Time
 	ExpiresAt          time.Time
+	ResponseData       []byte
+	Categories         []int
+	IndexerIDs         []int
+	CacheKey           string
+	Scope              string
+	Query              string
+	RequestFingerprint string
+	ID                 int64
 	HitCount           int64
+	TotalResults       int
 }
 
 // TorznabSearchCacheStats provides aggregated cache metrics for observability.
 type TorznabSearchCacheStats struct {
-	Entries         int64      `json:"entries"`
-	TotalHits       int64      `json:"totalHits"`
-	ApproxSizeBytes int64      `json:"approxSizeBytes"`
 	OldestCachedAt  *time.Time `json:"oldestCachedAt,omitempty"`
 	NewestCachedAt  *time.Time `json:"newestCachedAt,omitempty"`
 	LastUsedAt      *time.Time `json:"lastUsedAt,omitempty"`
-	Enabled         bool       `json:"enabled"`
+	Entries         int64      `json:"entries"`
+	TotalHits       int64      `json:"totalHits"`
+	ApproxSizeBytes int64      `json:"approxSizeBytes"`
 	TTLMinutes      int        `json:"ttlMinutes"`
+	Enabled         bool       `json:"enabled"`
 }
 
 // TorznabRecentSearch captures metadata about a cached search request for UI consumption.
 type TorznabRecentSearch struct {
+	CachedAt     time.Time  `json:"cachedAt"`
+	ExpiresAt    time.Time  `json:"expiresAt"`
+	LastUsedAt   *time.Time `json:"lastUsedAt,omitempty"`
+	Categories   []int      `json:"categories"`
+	IndexerIDs   []int      `json:"indexerIds"`
 	CacheKey     string     `json:"cacheKey"`
 	Scope        string     `json:"scope"`
 	Query        string     `json:"query"`
-	Categories   []int      `json:"categories"`
-	IndexerIDs   []int      `json:"indexerIds"`
-	TotalResults int        `json:"totalResults"`
-	CachedAt     time.Time  `json:"cachedAt"`
-	LastUsedAt   *time.Time `json:"lastUsedAt,omitempty"`
-	ExpiresAt    time.Time  `json:"expiresAt"`
 	HitCount     int64      `json:"hitCount"`
+	TotalResults int        `json:"totalResults"`
 }
 
 // TorznabSearchCacheSettings tracks persisted cache configuration.
 type TorznabSearchCacheSettings struct {
-	TTLMinutes int
 	UpdatedAt  *time.Time
+	TTLMinutes int
 }
 
 // TorznabSearchCacheStore persists search cache entries.

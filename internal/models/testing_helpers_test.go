@@ -75,3 +75,21 @@ func (m *mockQuerier) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinter
 	}
 	return &mockTx{Tx: tx}, nil
 }
+
+func (m *mockQuerier) WithTx(ctx context.Context, opts *sql.TxOptions, fn func(tx dbinterface.TxQuerier) error) error {
+	tx, err := m.BeginTx(ctx, opts)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			_ = tx.Rollback()
+			panic(p)
+		}
+	}()
+	if err := fn(tx); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}

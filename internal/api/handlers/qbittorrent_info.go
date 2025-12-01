@@ -7,9 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"strconv"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
@@ -46,10 +44,8 @@ type QBittorrentAppInfo struct {
 // GetQBittorrentAppInfo returns qBittorrent application version and build information
 func (h *QBittorrentInfoHandler) GetQBittorrentAppInfo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	instanceIDStr := chi.URLParam(r, "instanceID")
-	instanceID, err := strconv.Atoi(instanceIDStr)
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 

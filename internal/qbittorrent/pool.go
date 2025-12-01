@@ -45,8 +45,8 @@ type failureInfo struct {
 }
 
 type decryptionErrorInfo struct {
-	logged    bool
 	lastError time.Time
+	logged    bool
 }
 
 // ClientPool manages multiple qBittorrent client connections

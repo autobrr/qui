@@ -30,6 +30,7 @@ import (
 	"golang.org/x/text/transform"
 
 	"github.com/autobrr/qui/pkg/httphelpers"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 const (
@@ -552,10 +553,10 @@ func sanitizeHost(host string) string {
 	}
 
 	if strings.Contains(hostname, ":") {
-		return "[" + hostname + "]"
+		return stringutils.Intern("[" + hostname + "]")
 	}
 
-	return hostname
+	return stringutils.Intern(hostname)
 }
 
 // safeFilename normalises a host into a filesystem-friendly base name.

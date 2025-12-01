@@ -18,6 +18,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // Config controls how often rules are re-applied and how long to debounce repeats.
@@ -288,7 +289,7 @@ func matchesTracker(pattern string, domains []string) bool {
 	})
 
 	for _, token := range tokens {
-		normalized := strings.ToLower(strings.TrimSpace(token))
+		normalized := stringutils.InternNormalized(token)
 		if normalized == "" {
 			continue
 		}

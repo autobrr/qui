@@ -815,6 +815,83 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 	}, nil
 }
 
+// WithTx executes the given function within a transaction.
+// If the function returns an error, the transaction is rolled back.
+// If the function returns nil, the transaction is committed.
+// This eliminates boilerplate for transaction handling throughout the codebase.
+//
+// Example usage:
+//
+//	err := db.WithTx(ctx, nil, func(tx dbinterface.TxQuerier) error {
+//	    _, err := tx.ExecContext(ctx, "INSERT INTO ...")
+//	    return err
+//	})
+func (db *DB) WithTx(ctx context.Context, opts *sql.TxOptions, fn func(tx dbinterface.TxQuerier) error) error {
+	tx, err := db.BeginTx(ctx, opts)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	// Always rollback on panic or error; commit on success
+	defer func() {
+		if p := recover(); p != nil {
+			_ = tx.Rollback()
+			panic(p) // Re-panic after rollback
+		}
+	}()
+
+	if err := fn(tx); err != nil {
+		if rbErr := tx.Rollback(); rbErr != nil {
+			return fmt.Errorf("failed to rollback transaction: %w (original error: %v)", rbErr, err)
+		}
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	return nil
+}
+
+// WithTxResult executes the given function within a transaction and returns a result.
+// If the function returns an error, the transaction is rolled back and the zero value is returned.
+// If the function returns nil, the transaction is committed and the result is returned.
+//
+// Example usage:
+//
+//	instance, err := WithTxResult(db, ctx, nil, func(tx dbinterface.TxQuerier) (*Instance, error) {
+//	    // ... create instance using tx ...
+//	    return &instance, nil
+//	})
+func WithTxResult[T any](db *DB, ctx context.Context, opts *sql.TxOptions, fn func(tx dbinterface.TxQuerier) (T, error)) (T, error) {
+	var zero T
+	tx, err := db.BeginTx(ctx, opts)
+	if err != nil {
+		return zero, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	// Always rollback on panic or error; commit on success
+	defer func() {
+		if p := recover(); p != nil {
+			_ = tx.Rollback()
+			panic(p) // Re-panic after rollback
+		}
+	}()
+
+	result, err := fn(tx)
+	if err != nil {
+		if rbErr := tx.Rollback(); rbErr != nil {
+			return zero, fmt.Errorf("failed to rollback transaction: %w (original error: %v)", rbErr, err)
+		}
+		return zero, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return zero, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	return result, nil
+}
+
 func (db *DB) Close() error {
 	db.closeOnce.Do(func() {
 		// Cancel cleanup goroutine

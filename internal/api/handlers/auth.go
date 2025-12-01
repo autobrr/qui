@@ -5,15 +5,12 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/alexedwards/scs/v2"
-	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/auth"
@@ -105,8 +102,7 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req SetupRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -227,8 +223,7 @@ func (h *AuthHandler) warmSession(ctx context.Context) {
 // Login handles user login
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -368,8 +363,7 @@ func (h *AuthHandler) CheckSetupRequired(w http.ResponseWriter, r *http.Request)
 // ChangePassword handles password change requests
 func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	var req ChangePasswordRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -399,8 +393,7 @@ type CreateAPIKeyRequest struct {
 // CreateAPIKey creates a new API key
 func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	var req CreateAPIKeyRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -440,16 +433,8 @@ func (h *AuthHandler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 
 // DeleteAPIKey deletes an API key
 func (h *AuthHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
-	// Get API key ID from URL parameter
-	idStr := chi.URLParam(r, "id")
-	if idStr == "" {
-		RespondError(w, http.StatusBadRequest, "API key ID is required")
-		return
-	}
-
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid API key ID")
+	id, ok := ParseIntParam(w, r, "id", "API key ID")
+	if !ok {
 		return
 	}
 

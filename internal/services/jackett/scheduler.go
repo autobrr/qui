@@ -73,11 +73,11 @@ type RateLimitOptions struct {
 }
 
 type RateLimitWaitError struct {
-	IndexerID   int
-	IndexerName string
 	Wait        time.Duration
 	MaxWait     time.Duration
 	Priority    RateLimitPriority
+	IndexerName string
+	IndexerID   int
 }
 
 func (e *RateLimitWaitError) Error() string {
@@ -360,10 +360,10 @@ type workerTask struct {
 
 type taskItem struct {
 	task     workerTask
-	priority int
 	created  time.Time
-	index    int
 	started  time.Time // When execution began (for duration tracking)
+	priority int
+	index    int
 }
 
 type taskHeap []*taskItem
@@ -393,9 +393,9 @@ func (h *taskHeap) Pop() any {
 
 // jobState tracks completion status for a multi-indexer job.
 type jobState struct {
+	callbacks      JobCallbacks
 	totalTasks     int
 	completedTasks int
-	callbacks      JobCallbacks
 }
 
 // searchScheduler coordinates Torznab searches with dispatch-time rate limiting.
@@ -943,12 +943,12 @@ func (s *searchScheduler) Stop() {
 
 // SchedulerTaskStatus represents a single task's status
 type SchedulerTaskStatus struct {
+	CreatedAt   time.Time `json:"createdAt"`
+	Priority    string    `json:"priority"`
+	IndexerName string    `json:"indexerName"`
 	JobID       uint64    `json:"jobId"`
 	TaskID      uint64    `json:"taskId"`
 	IndexerID   int       `json:"indexerId"`
-	IndexerName string    `json:"indexerName"`
-	Priority    string    `json:"priority"`
-	CreatedAt   time.Time `json:"createdAt"`
 	IsRSS       bool      `json:"isRss"`
 }
 

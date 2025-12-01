@@ -5,18 +5,14 @@ package models
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
 	"database/sql"
-	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/autobrr/qui/internal/crypto"
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
@@ -62,22 +58,27 @@ func MustTorznabBackend(value string) TorznabBackend {
 
 // TorznabIndexer represents a Torznab API indexer (Jackett, Prowlarr, etc.)
 type TorznabIndexer struct {
-	ID              int                      `json:"id"`
-	Name            string                   `json:"name"`
-	BaseURL         string                   `json:"base_url"`
-	IndexerID       string                   `json:"indexer_id"` // Jackett/Prowlarr indexer ID (e.g., "aither")
-	Backend         TorznabBackend           `json:"backend"`
-	APIKeyEncrypted string                   `json:"-"`
-	Enabled         bool                     `json:"enabled"`
-	Priority        int                      `json:"priority"`
-	TimeoutSeconds  int                      `json:"timeout_seconds"`
-	Capabilities    []string                 `json:"capabilities"`
-	Categories      []TorznabIndexerCategory `json:"categories"`
-	LastTestAt      *time.Time               `json:"last_test_at,omitempty"`
-	LastTestStatus  string                   `json:"last_test_status"`
-	LastTestError   *string                  `json:"last_test_error,omitempty"`
-	CreatedAt       time.Time                `json:"created_at"`
-	UpdatedAt       time.Time                `json:"updated_at"`
+	// 24-byte fields first (time.Time, slices)
+	CreatedAt    time.Time                `json:"created_at"`
+	UpdatedAt    time.Time                `json:"updated_at"`
+	Capabilities []string                 `json:"capabilities"`
+	Categories   []TorznabIndexerCategory `json:"categories"`
+	// Pointer fields (8 bytes)
+	LastTestAt    *time.Time `json:"last_test_at,omitempty"`
+	LastTestError *string    `json:"last_test_error,omitempty"`
+	// 16-byte string fields
+	Name            string         `json:"name"`
+	BaseURL         string         `json:"base_url"`
+	IndexerID       string         `json:"indexer_id"` // Jackett/Prowlarr indexer ID (e.g., "aither")
+	APIKeyEncrypted string         `json:"-"`
+	LastTestStatus  string         `json:"last_test_status"`
+	Backend         TorznabBackend `json:"backend"`
+	// int fields (8 bytes on 64-bit)
+	ID             int `json:"id"`
+	Priority       int `json:"priority"`
+	TimeoutSeconds int `json:"timeout_seconds"`
+	// bool fields (1 byte)
+	Enabled bool `json:"enabled"`
 }
 
 // TorznabIndexerUpdateParams captures optional fields for updating an indexer.
@@ -100,135 +101,85 @@ type TorznabIndexerCapability struct {
 
 // TorznabIndexerCategory represents a category supported by an indexer
 type TorznabIndexerCategory struct {
-	IndexerID      int    `json:"indexer_id"`
-	CategoryID     int    `json:"category_id"`
 	CategoryName   string `json:"category_name"`
 	ParentCategory *int   `json:"parent_category_id,omitempty"`
+	IndexerID      int    `json:"indexer_id"`
+	CategoryID     int    `json:"category_id"`
 }
 
 // TorznabIndexerCooldown captures a persisted rate-limit suspension window for an indexer.
 type TorznabIndexerCooldown struct {
-	IndexerID int           `json:"indexer_id"`
 	ResumeAt  time.Time     `json:"resume_at"`
 	Cooldown  time.Duration `json:"cooldown"`
 	Reason    string        `json:"reason,omitempty"`
+	IndexerID int           `json:"indexer_id"`
 }
 
 // TorznabIndexerError represents an error that occurred with an indexer
 type TorznabIndexerError struct {
-	ID           int        `json:"id"`
-	IndexerID    int        `json:"indexer_id"`
-	ErrorMessage string     `json:"error_message"`
-	ErrorCode    string     `json:"error_code"`
 	OccurredAt   time.Time  `json:"occurred_at"`
 	ResolvedAt   *time.Time `json:"resolved_at,omitempty"`
+	ErrorMessage string     `json:"error_message"`
+	ErrorCode    string     `json:"error_code"`
+	ID           int        `json:"id"`
+	IndexerID    int        `json:"indexer_id"`
 	ErrorCount   int        `json:"error_count"`
 }
 
 // TorznabIndexerLatency represents a latency measurement
 type TorznabIndexerLatency struct {
+	MeasuredAt    time.Time `json:"measured_at"`
+	OperationType string    `json:"operation_type"`
 	ID            int       `json:"id"`
 	IndexerID     int       `json:"indexer_id"`
-	OperationType string    `json:"operation_type"`
 	LatencyMs     int       `json:"latency_ms"`
 	Success       bool      `json:"success"`
-	MeasuredAt    time.Time `json:"measured_at"`
 }
 
 // TorznabIndexerLatencyStats represents aggregated latency statistics
 type TorznabIndexerLatencyStats struct {
-	IndexerID          int       `json:"indexer_id"`
-	OperationType      string    `json:"operation_type"`
-	TotalRequests      int       `json:"total_requests"`
-	SuccessfulRequests int       `json:"successful_requests"`
+	LastMeasuredAt     time.Time `json:"last_measured_at"`
 	AvgLatencyMs       *float64  `json:"avg_latency_ms,omitempty"`
+	SuccessRatePct     float64   `json:"success_rate_pct"`
+	OperationType      string    `json:"operation_type"`
 	MinLatencyMs       *int      `json:"min_latency_ms,omitempty"`
 	MaxLatencyMs       *int      `json:"max_latency_ms,omitempty"`
-	SuccessRatePct     float64   `json:"success_rate_pct"`
-	LastMeasuredAt     time.Time `json:"last_measured_at"`
+	IndexerID          int       `json:"indexer_id"`
+	TotalRequests      int       `json:"total_requests"`
+	SuccessfulRequests int       `json:"successful_requests"`
 }
 
 // TorznabIndexerHealth represents the health status of an indexer
 type TorznabIndexerHealth struct {
-	IndexerID        int        `json:"indexer_id"`
-	IndexerName      string     `json:"indexer_name"`
-	Enabled          bool       `json:"enabled"`
-	LastTestStatus   string     `json:"last_test_status"`
-	ErrorsLast24h    int        `json:"errors_last_24h"`
-	UnresolvedErrors int        `json:"unresolved_errors"`
+	LastMeasuredAt   *time.Time `json:"last_measured_at,omitempty"`
 	AvgLatencyMs     *float64   `json:"avg_latency_ms,omitempty"`
 	SuccessRatePct   *float64   `json:"success_rate_pct,omitempty"`
+	IndexerName      string     `json:"indexer_name"`
+	LastTestStatus   string     `json:"last_test_status"`
 	RequestsLast7d   *int       `json:"requests_last_7d,omitempty"`
-	LastMeasuredAt   *time.Time `json:"last_measured_at,omitempty"`
+	IndexerID        int        `json:"indexer_id"`
+	ErrorsLast24h    int        `json:"errors_last_24h"`
+	UnresolvedErrors int        `json:"unresolved_errors"`
+	Enabled          bool       `json:"enabled"`
 }
 
 // TorznabIndexerStore manages Torznab indexers in the database
 type TorznabIndexerStore struct {
-	db            dbinterface.Querier
-	encryptionKey []byte
+	db        dbinterface.Querier
+	encryptor *crypto.AESEncryptor
 }
 
 // NewTorznabIndexerStore creates a new TorznabIndexerStore
 func NewTorznabIndexerStore(db dbinterface.Querier, encryptionKey []byte) (*TorznabIndexerStore, error) {
-	if len(encryptionKey) != 32 {
-		return nil, errors.New("encryption key must be 32 bytes")
+	encryptor, err := crypto.NewAESEncryptor(encryptionKey)
+	if err != nil {
+		return nil, err
 	}
 
 	return &TorznabIndexerStore{
-		db:            db,
-		encryptionKey: encryptionKey,
+		db:        db,
+		encryptor: encryptor,
 	}, nil
-}
-
-// encrypt encrypts a string using AES-GCM
-func (s *TorznabIndexerStore) encrypt(plaintext string) (string, error) {
-	block, err := aes.NewCipher(s.encryptionKey)
-	if err != nil {
-		return "", err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", err
-	}
-
-	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
-	return base64.StdEncoding.EncodeToString(ciphertext), nil
-}
-
-// decrypt decrypts a string encrypted with encrypt
-func (s *TorznabIndexerStore) decrypt(ciphertext string) (string, error) {
-	data, err := base64.StdEncoding.DecodeString(ciphertext)
-	if err != nil {
-		return "", err
-	}
-
-	block, err := aes.NewCipher(s.encryptionKey)
-	if err != nil {
-		return "", err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	if len(data) < gcm.NonceSize() {
-		return "", errors.New("malformed ciphertext")
-	}
-
-	nonce, ciphertextBytes := data[:gcm.NonceSize()], data[gcm.NonceSize():]
-	plaintext, err := gcm.Open(nil, nonce, ciphertextBytes, nil)
-	if err != nil {
-		return "", err
-	}
-
-	return string(plaintext), nil
 }
 
 // Create creates a new Torznab indexer
@@ -258,7 +209,7 @@ func (s *TorznabIndexerStore) CreateWithIndexerID(ctx context.Context, name, bas
 	}
 
 	// Encrypt API key
-	encryptedAPIKey, err := s.encrypt(apiKey)
+	encryptedAPIKey, err := s.encryptor.Encrypt(apiKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt API key: %w", err)
 	}
@@ -268,50 +219,50 @@ func (s *TorznabIndexerStore) CreateWithIndexerID(ctx context.Context, name, bas
 		timeoutSeconds = 30
 	}
 
+	var insertedID int64
+
 	// Begin transaction for string interning and insert
-	tx, err := s.db.BeginTx(ctx, nil)
+	err = s.db.WithTx(ctx, nil, func(tx dbinterface.TxQuerier) error {
+		// Intern strings into string_pool (name, baseURL, optionally indexerID)
+		stringsToIntern := []string{name, baseURL}
+		if indexerID != "" {
+			stringsToIntern = append(stringsToIntern, indexerID)
+		}
+
+		ids, err := dbinterface.InternStrings(ctx, tx, stringsToIntern...)
+		if err != nil {
+			return fmt.Errorf("failed to intern strings: %w", err)
+		}
+		nameID, baseURLID := ids[0], ids[1]
+
+		var indexerIDStringID sql.NullInt64
+		if indexerID != "" {
+			indexerIDStringID = sql.NullInt64{Int64: ids[2], Valid: true}
+		}
+
+		query := `
+			INSERT INTO torznab_indexers (name_id, base_url_id, indexer_id_string_id, backend, api_key_encrypted, enabled, priority, timeout_seconds)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`
+
+		result, err := tx.ExecContext(ctx, query, nameID, baseURLID, indexerIDStringID, backend, encryptedAPIKey, enabled, priority, timeoutSeconds)
+		if err != nil {
+			return fmt.Errorf("failed to create torznab indexer: %w", err)
+		}
+
+		insertedID, err = result.LastInsertId()
+		if err != nil {
+			return fmt.Errorf("failed to get last insert ID: %w", err)
+		}
+
+		return nil
+	})
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Intern strings into string_pool (name, baseURL, optionally indexerID)
-	stringsToIntern := []string{name, baseURL}
-	if indexerID != "" {
-		stringsToIntern = append(stringsToIntern, indexerID)
+		return nil, err
 	}
 
-	ids, err := dbinterface.InternStrings(ctx, tx, stringsToIntern...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to intern strings: %w", err)
-	}
-	nameID, baseURLID := ids[0], ids[1]
-
-	var indexerIDStringID sql.NullInt64
-	if indexerID != "" {
-		indexerIDStringID = sql.NullInt64{Int64: ids[2], Valid: true}
-	}
-
-	query := `
-		INSERT INTO torznab_indexers (name_id, base_url_id, indexer_id_string_id, backend, api_key_encrypted, enabled, priority, timeout_seconds)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`
-
-	result, err := tx.ExecContext(ctx, query, nameID, baseURLID, indexerIDStringID, backend, encryptedAPIKey, enabled, priority, timeoutSeconds)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create torznab indexer: %w", err)
-	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get last insert ID: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return s.Get(ctx, int(id))
+	return s.Get(ctx, int(insertedID))
 }
 
 // Get retrieves a Torznab indexer by ID using the view
@@ -572,9 +523,8 @@ func (s *TorznabIndexerStore) Update(ctx context.Context, id int, params Torznab
 	}
 
 	// Handle API key update
-	var encryptedAPIKey string
 	if params.APIKey != "" {
-		encryptedAPIKey, err = s.encrypt(params.APIKey)
+		encryptedAPIKey, err := s.encryptor.Encrypt(params.APIKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to encrypt API key: %w", err)
 		}
@@ -582,51 +532,49 @@ func (s *TorznabIndexerStore) Update(ctx context.Context, id int, params Torznab
 	}
 
 	// Begin transaction for string interning and update
-	tx, err := s.db.BeginTx(ctx, nil)
+	err = s.db.WithTx(ctx, nil, func(tx dbinterface.TxQuerier) error {
+		// Intern strings into string_pool
+		stringsToIntern := []string{existing.Name, existing.BaseURL}
+		if existing.IndexerID != "" {
+			stringsToIntern = append(stringsToIntern, existing.IndexerID)
+		}
+		ids, err := dbinterface.InternStrings(ctx, tx, stringsToIntern...)
+		if err != nil {
+			return fmt.Errorf("failed to intern strings: %w", err)
+		}
+		nameID, baseURLID := ids[0], ids[1]
+		var indexerIDStringID sql.NullInt64
+		if existing.IndexerID != "" {
+			indexerIDStringID = sql.NullInt64{Int64: ids[2], Valid: true}
+		}
+
+		query := `
+			UPDATE torznab_indexers
+			SET name_id = ?, base_url_id = ?, indexer_id_string_id = ?, backend = ?, api_key_encrypted = ?, enabled = ?, priority = ?, timeout_seconds = ?
+			WHERE id = ?
+		`
+
+		_, err = tx.ExecContext(ctx, query,
+			nameID,
+			baseURLID,
+			indexerIDStringID,
+			existing.Backend,
+			existing.APIKeyEncrypted,
+			existing.Enabled,
+			existing.Priority,
+			existing.TimeoutSeconds,
+			id,
+		)
+
+		if err != nil {
+			return fmt.Errorf("failed to update torznab indexer: %w", err)
+		}
+
+		return nil
+	})
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Intern strings into string_pool
-	stringsToIntern := []string{existing.Name, existing.BaseURL}
-	if existing.IndexerID != "" {
-		stringsToIntern = append(stringsToIntern, existing.IndexerID)
-	}
-	ids, err := dbinterface.InternStrings(ctx, tx, stringsToIntern...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to intern strings: %w", err)
-	}
-	nameID, baseURLID := ids[0], ids[1]
-	var indexerIDStringID sql.NullInt64
-	if existing.IndexerID != "" {
-		indexerIDStringID = sql.NullInt64{Int64: ids[2], Valid: true}
-	}
-
-	query := `
-		UPDATE torznab_indexers
-		SET name_id = ?, base_url_id = ?, indexer_id_string_id = ?, backend = ?, api_key_encrypted = ?, enabled = ?, priority = ?, timeout_seconds = ?
-		WHERE id = ?
-	`
-
-	_, err = tx.ExecContext(ctx, query,
-		nameID,
-		baseURLID,
-		indexerIDStringID,
-		existing.Backend,
-		existing.APIKeyEncrypted,
-		existing.Enabled,
-		existing.Priority,
-		existing.TimeoutSeconds,
-		id,
-	)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to update torznab indexer: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+		return nil, err
 	}
 
 	return s.Get(ctx, id)
@@ -681,7 +629,7 @@ func (s *TorznabIndexerStore) UpdateTestStatus(ctx context.Context, id int, stat
 
 // GetDecryptedAPIKey returns the decrypted API key for an indexer
 func (s *TorznabIndexerStore) GetDecryptedAPIKey(indexer *TorznabIndexer) (string, error) {
-	return s.decrypt(indexer.APIKeyEncrypted)
+	return s.encryptor.Decrypt(indexer.APIKeyEncrypted)
 }
 
 // Test tests the connection to a Torznab indexer by querying its capabilities
@@ -730,66 +678,58 @@ func (s *TorznabIndexerStore) GetCapabilities(ctx context.Context, indexerID int
 
 // SetCapabilities replaces all capabilities for an indexer
 func (s *TorznabIndexerStore) SetCapabilities(ctx context.Context, indexerID int, capabilities []string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Delete existing capabilities
-	_, err = tx.ExecContext(ctx, "DELETE FROM torznab_indexer_capabilities WHERE indexer_id = ?", indexerID)
-	if err != nil {
-		return fmt.Errorf("failed to delete existing capabilities: %w", err)
-	}
-
-	// Insert new capabilities
-	if len(capabilities) > 0 {
-		// Intern capability strings
-		capIDs, err := dbinterface.InternStrings(ctx, tx, capabilities...)
+	return s.db.WithTx(ctx, nil, func(tx dbinterface.TxQuerier) error {
+		// Delete existing capabilities
+		_, err := tx.ExecContext(ctx, "DELETE FROM torznab_indexer_capabilities WHERE indexer_id = ?", indexerID)
 		if err != nil {
-			return fmt.Errorf("failed to intern capability strings: %w", err)
+			return fmt.Errorf("failed to delete existing capabilities: %w", err)
 		}
 
-		// Build bulk insert query
-		queryTemplate := "INSERT INTO torznab_indexer_capabilities (indexer_id, capability_type_id) VALUES %s"
-		const capabilityBatchSize = 200 // Keep under SQLite's 999 variable limit (200 * 2 = 400 placeholders)
-		fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 2, capabilityBatchSize)
-
-		// Batch insert capabilities
-		args := make([]interface{}, 0, capabilityBatchSize*2)
-		for i := 0; i < len(capIDs); i += capabilityBatchSize {
-			end := i + capabilityBatchSize
-			if end > len(capIDs) {
-				end = len(capIDs)
-			}
-			batch := capIDs[i:end]
-
-			// Reset args for this batch
-			args = args[:0]
-			var query string
-			if len(batch) == capabilityBatchSize {
-				query = fullBatchQuery
-			} else {
-				// Build query for partial final batch
-				query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 2, len(batch))
-			}
-
-			for _, capID := range batch {
-				args = append(args, indexerID, capID)
-			}
-
-			_, err = tx.ExecContext(ctx, query, args...)
+		// Insert new capabilities
+		if len(capabilities) > 0 {
+			// Intern capability strings
+			capIDs, err := dbinterface.InternStrings(ctx, tx, capabilities...)
 			if err != nil {
-				return fmt.Errorf("failed to insert capabilities batch: %w", err)
+				return fmt.Errorf("failed to intern capability strings: %w", err)
+			}
+
+			// Build bulk insert query
+			queryTemplate := "INSERT INTO torznab_indexer_capabilities (indexer_id, capability_type_id) VALUES %s"
+			const capabilityBatchSize = 200 // Keep under SQLite's 999 variable limit (200 * 2 = 400 placeholders)
+			fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 2, capabilityBatchSize)
+
+			// Batch insert capabilities
+			args := make([]interface{}, 0, capabilityBatchSize*2)
+			for i := 0; i < len(capIDs); i += capabilityBatchSize {
+				end := i + capabilityBatchSize
+				if end > len(capIDs) {
+					end = len(capIDs)
+				}
+				batch := capIDs[i:end]
+
+				// Reset args for this batch
+				args = args[:0]
+				var query string
+				if len(batch) == capabilityBatchSize {
+					query = fullBatchQuery
+				} else {
+					// Build query for partial final batch
+					query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 2, len(batch))
+				}
+
+				for _, capID := range batch {
+					args = append(args, indexerID, capID)
+				}
+
+				_, err = tx.ExecContext(ctx, query, args...)
+				if err != nil {
+					return fmt.Errorf("failed to insert capabilities batch: %w", err)
+				}
 			}
 		}
-	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return nil
+		return nil
+	})
 }
 
 // GetCategories retrieves all categories for an indexer
@@ -825,139 +765,123 @@ func (s *TorznabIndexerStore) GetCategories(ctx context.Context, indexerID int) 
 
 // SetCategories replaces all categories for an indexer
 func (s *TorznabIndexerStore) SetCategories(ctx context.Context, indexerID int, categories []TorznabIndexerCategory) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Delete existing categories
-	_, err = tx.ExecContext(ctx, "DELETE FROM torznab_indexer_categories WHERE indexer_id = ?", indexerID)
-	if err != nil {
-		return fmt.Errorf("failed to delete existing categories: %w", err)
-	}
-
-	// Insert new categories
-	if len(categories) > 0 {
-		unique := make(map[int]TorznabIndexerCategory, len(categories))
-		for _, cat := range categories {
-			if _, exists := unique[cat.CategoryID]; !exists {
-				unique[cat.CategoryID] = cat
-			}
-		}
-
-		ordered := make([]TorznabIndexerCategory, 0, len(unique))
-		for _, cat := range unique {
-			ordered = append(ordered, cat)
-		}
-		sort.Slice(ordered, func(i, j int) bool { return ordered[i].CategoryID < ordered[j].CategoryID })
-
-		names := make([]string, len(ordered))
-		for i, cat := range ordered {
-			names[i] = cat.CategoryName
-		}
-		nameIDs, err := dbinterface.InternStrings(ctx, tx, names...)
+	return s.db.WithTx(ctx, nil, func(tx dbinterface.TxQuerier) error {
+		// Delete existing categories
+		_, err := tx.ExecContext(ctx, "DELETE FROM torznab_indexer_categories WHERE indexer_id = ?", indexerID)
 		if err != nil {
-			return fmt.Errorf("failed to intern category names: %w", err)
+			return fmt.Errorf("failed to delete existing categories: %w", err)
 		}
 
-		// Build bulk insert query
-		queryTemplate := "INSERT INTO torznab_indexer_categories (indexer_id, category_id, category_name_id, parent_category_id) VALUES %s"
-		const categoryBatchSize = 200 // Keep under SQLite's 999 variable limit (200 * 4 = 800 placeholders)
-		fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 4, categoryBatchSize)
-
-		// Batch insert categories
-		args := make([]interface{}, 0, categoryBatchSize*4)
-		for i := 0; i < len(ordered); i += categoryBatchSize {
-			end := i + categoryBatchSize
-			if end > len(ordered) {
-				end = len(ordered)
-			}
-			batch := ordered[i:end]
-
-			// Reset args for this batch
-			args = args[:0]
-			var query string
-			if len(batch) == categoryBatchSize {
-				query = fullBatchQuery
-			} else {
-				// Build query for partial final batch
-				query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 4, len(batch))
+		// Insert new categories
+		if len(categories) > 0 {
+			unique := make(map[int]TorznabIndexerCategory, len(categories))
+			for _, cat := range categories {
+				if _, exists := unique[cat.CategoryID]; !exists {
+					unique[cat.CategoryID] = cat
+				}
 			}
 
-			for j, cat := range batch {
-				nameID := nameIDs[i+j]
-				args = append(args, indexerID, cat.CategoryID, nameID, cat.ParentCategory)
+			ordered := make([]TorznabIndexerCategory, 0, len(unique))
+			for _, cat := range unique {
+				ordered = append(ordered, cat)
 			}
+			sort.Slice(ordered, func(i, j int) bool { return ordered[i].CategoryID < ordered[j].CategoryID })
 
-			_, err = tx.ExecContext(ctx, query, args...)
+			names := make([]string, len(ordered))
+			for i, cat := range ordered {
+				names[i] = cat.CategoryName
+			}
+			nameIDs, err := dbinterface.InternStrings(ctx, tx, names...)
 			if err != nil {
-				return fmt.Errorf("failed to insert categories batch: %w", err)
+				return fmt.Errorf("failed to intern category names: %w", err)
+			}
+
+			// Build bulk insert query
+			queryTemplate := "INSERT INTO torznab_indexer_categories (indexer_id, category_id, category_name_id, parent_category_id) VALUES %s"
+			const categoryBatchSize = 200 // Keep under SQLite's 999 variable limit (200 * 4 = 800 placeholders)
+			fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 4, categoryBatchSize)
+
+			// Batch insert categories
+			args := make([]interface{}, 0, categoryBatchSize*4)
+			for i := 0; i < len(ordered); i += categoryBatchSize {
+				end := i + categoryBatchSize
+				if end > len(ordered) {
+					end = len(ordered)
+				}
+				batch := ordered[i:end]
+
+				// Reset args for this batch
+				args = args[:0]
+				var query string
+				if len(batch) == categoryBatchSize {
+					query = fullBatchQuery
+				} else {
+					// Build query for partial final batch
+					query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 4, len(batch))
+				}
+
+				for j, cat := range batch {
+					nameID := nameIDs[i+j]
+					args = append(args, indexerID, cat.CategoryID, nameID, cat.ParentCategory)
+				}
+
+				_, err = tx.ExecContext(ctx, query, args...)
+				if err != nil {
+					return fmt.Errorf("failed to insert categories batch: %w", err)
+				}
 			}
 		}
-	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return nil
+		return nil
+	})
 }
 
 // RecordError records an error for an indexer
 func (s *TorznabIndexerStore) RecordError(ctx context.Context, indexerID int, errorMessage, errorCode string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Intern error message
-	ids, err := dbinterface.InternStrings(ctx, tx, errorMessage)
-	if err != nil {
-		return fmt.Errorf("failed to intern error message: %w", err)
-	}
-	errorMessageID := ids[0]
-
-	// Check if there's a recent unresolved error with the same message
-	var existingID sql.NullInt64
-	err = tx.QueryRowContext(ctx, `
-		SELECT id FROM torznab_indexer_errors
-		WHERE indexer_id = ? AND error_message_id = ? AND resolved_at IS NULL
-		ORDER BY occurred_at DESC
-		LIMIT 1
-	`, indexerID, errorMessageID).Scan(&existingID)
-
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("failed to check for existing error: %w", err)
-	}
-
-	if existingID.Valid {
-		// Increment error count for existing error
-		_, err = tx.ExecContext(ctx, `
-			UPDATE torznab_indexer_errors
-			SET error_count = error_count + 1, occurred_at = CURRENT_TIMESTAMP
-			WHERE id = ?
-		`, existingID.Int64)
+	return s.db.WithTx(ctx, nil, func(tx dbinterface.TxQuerier) error {
+		// Intern error message
+		ids, err := dbinterface.InternStrings(ctx, tx, errorMessage)
 		if err != nil {
-			return fmt.Errorf("failed to increment error count: %w", err)
+			return fmt.Errorf("failed to intern error message: %w", err)
 		}
-	} else {
-		// Insert new error
-		_, err = tx.ExecContext(ctx, `
-			INSERT INTO torznab_indexer_errors (indexer_id, error_message_id, error_code)
-			VALUES (?, ?, ?)
-		`, indexerID, errorMessageID, errorCode)
-		if err != nil {
-			return fmt.Errorf("failed to insert error: %w", err)
+		errorMessageID := ids[0]
+
+		// Check if there's a recent unresolved error with the same message
+		var existingID sql.NullInt64
+		err = tx.QueryRowContext(ctx, `
+			SELECT id FROM torznab_indexer_errors
+			WHERE indexer_id = ? AND error_message_id = ? AND resolved_at IS NULL
+			ORDER BY occurred_at DESC
+			LIMIT 1
+		`, indexerID, errorMessageID).Scan(&existingID)
+
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("failed to check for existing error: %w", err)
 		}
-	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
+		if existingID.Valid {
+			// Increment error count for existing error
+			_, err = tx.ExecContext(ctx, `
+				UPDATE torznab_indexer_errors
+				SET error_count = error_count + 1, occurred_at = CURRENT_TIMESTAMP
+				WHERE id = ?
+			`, existingID.Int64)
+			if err != nil {
+				return fmt.Errorf("failed to increment error count: %w", err)
+			}
+		} else {
+			// Insert new error
+			_, err = tx.ExecContext(ctx, `
+				INSERT INTO torznab_indexer_errors (indexer_id, error_message_id, error_code)
+				VALUES (?, ?, ?)
+			`, indexerID, errorMessageID, errorCode)
+			if err != nil {
+				return fmt.Errorf("failed to insert error: %w", err)
+			}
+		}
 
-	return nil
+		return nil
+	})
 }
 
 // ResolveErrors marks all unresolved errors for an indexer as resolved
