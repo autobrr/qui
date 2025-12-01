@@ -16,6 +16,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/hashutil"
 )
 
 // Config controls the background scan cadence and debounce behavior.
@@ -733,21 +734,9 @@ func splitTags(raw string) []string {
 	return cleaned
 }
 
+// normalizeHashes normalizes and deduplicates hashes using hashutil.
 func normalizeHashes(hashes []string) []string {
-	result := make([]string, 0, len(hashes))
-	seen := make(map[string]struct{}, len(hashes))
-	for _, hash := range hashes {
-		norm := strings.ToUpper(strings.TrimSpace(hash))
-		if norm == "" {
-			continue
-		}
-		if _, exists := seen[norm]; exists {
-			continue
-		}
-		seen[norm] = struct{}{}
-		result = append(result, norm)
-	}
-	return result
+	return hashutil.NormalizeAllUpper(hashes)
 }
 
 // DebugState returns current job counts for observability.

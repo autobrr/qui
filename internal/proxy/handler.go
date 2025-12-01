@@ -27,6 +27,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/reannounce"
+	"github.com/autobrr/qui/pkg/hashutil"
 	"github.com/autobrr/qui/pkg/httphelpers"
 )
 
@@ -53,6 +54,44 @@ const (
 
 // missingProxyContextSampler throttles repeated missing-context warnings to avoid log floods.
 var missingProxyContextSampler = &zerolog.BasicSampler{N: 100}
+
+// Query parameter sets for qBittorrent API endpoints.
+// These define the allowed parameters for each endpoint to prevent unexpected parameters from being passed.
+var (
+	// torrentsInfoParams are allowed for /api/v2/torrents/info endpoint
+	torrentsInfoParams = map[string]struct{}{
+		"filter":   {},
+		"category": {},
+		"tag":      {},
+		"sort":     {},
+		"reverse":  {},
+		"limit":    {},
+		"offset":   {},
+		"hashes":   {},
+	}
+	// torrentsSearchParams are allowed for custom search endpoint
+	torrentsSearchParams = map[string]struct{}{
+		"search":   {},
+		"filter":   {},
+		"category": {},
+		"tag":      {},
+		"sort":     {},
+		"reverse":  {},
+		"limit":    {},
+		"offset":   {},
+	}
+	// torrentHashOnlyParams are allowed for endpoints requiring only hash parameter
+	torrentHashOnlyParams = map[string]struct{}{
+		"hash": {},
+	}
+	// torrentFilesParams are allowed for /api/v2/torrents/files endpoint
+	torrentFilesParams = map[string]struct{}{
+		"hash":    {},
+		"indexes": {},
+	}
+	// emptyParams is used for endpoints that accept no query parameters
+	emptyParams = map[string]struct{}{}
+)
 
 type basicAuthCredentials struct {
 	username string
@@ -622,40 +661,16 @@ func restoreBody(r *http.Request, body []byte) {
 	r.ContentLength = int64(len(body))
 }
 
+// normalizeHashes normalizes hashes to uppercase, removing duplicates.
+// Uses hashutil.NormalizeAllUpper for consistent hash handling across the codebase.
 func normalizeHashes(hashes []string) []string {
-	result := make([]string, 0, len(hashes))
-	seen := make(map[string]struct{}, len(hashes))
-	for _, hash := range hashes {
-		trimmed := strings.ToUpper(strings.TrimSpace(hash))
-		if trimmed == "" {
-			continue
-		}
-		if _, ok := seen[trimmed]; ok {
-			continue
-		}
-		seen[trimmed] = struct{}{}
-		result = append(result, trimmed)
-	}
-	return result
+	return hashutil.NormalizeAllUpper(hashes)
 }
 
+// difference returns hashes in 'all' that are not in 'subset'.
+// Uses hashutil.Difference for consistent hash comparison across the codebase.
 func difference(all, subset []string) []string {
-	if len(subset) == 0 {
-		return append([]string{}, all...)
-	}
-	remaining := make([]string, 0, len(all))
-	set := make(map[string]int, len(subset))
-	for _, val := range subset {
-		set[val]++
-	}
-	for _, val := range all {
-		if count, ok := set[val]; ok && count > 0 {
-			set[val] = count - 1
-			continue
-		}
-		remaining = append(remaining, val)
-	}
-	return remaining
+	return hashutil.Difference(all, subset)
 }
 
 func generateLoginCookieValue() (string, error) {
@@ -733,17 +748,7 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
 	// Extract standard qBittorrent API parameters (no advanced filtering)
-	allowedParams := map[string]struct{}{
-		"filter":   {},
-		"category": {},
-		"tag":      {},
-		"sort":     {},
-		"reverse":  {},
-		"limit":    {},
-		"offset":   {},
-		"hashes":   {},
-	}
-	if !h.validateQueryParams(w, r, allowedParams, "torrents/info") {
+	if !h.validateQueryParams(w, r, torrentsInfoParams, "torrents/info") {
 		return
 	}
 
@@ -869,17 +874,7 @@ func (h *Handler) handleTorrentSearch(w http.ResponseWriter, r *http.Request) {
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
 	// Extract qBittorrent API parameters
-	allowedParams := map[string]struct{}{
-		"search":   {},
-		"filter":   {},
-		"category": {},
-		"tag":      {},
-		"sort":     {},
-		"reverse":  {},
-		"limit":    {},
-		"offset":   {},
-	}
-	if !h.validateQueryParams(w, r, allowedParams, "torrents/search") {
+	if !h.validateQueryParams(w, r, torrentsSearchParams, "torrents/search") {
 		return
 	}
 
@@ -978,7 +973,7 @@ func (h *Handler) handleCategories(w http.ResponseWriter, r *http.Request) {
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
 	// Categories endpoint doesn't accept query parameters
-	if !h.validateQueryParams(w, r, map[string]struct{}{}, "torrents/categories") {
+	if !h.validateQueryParams(w, r, emptyParams, "torrents/categories") {
 		return
 	}
 
@@ -1016,7 +1011,7 @@ func (h *Handler) handleTags(w http.ResponseWriter, r *http.Request) {
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
 	// Tags endpoint doesn't accept query parameters
-	if !h.validateQueryParams(w, r, map[string]struct{}{}, "torrents/tags") {
+	if !h.validateQueryParams(w, r, emptyParams, "torrents/tags") {
 		return
 	}
 
@@ -1053,10 +1048,7 @@ func (h *Handler) handleTorrentProperties(w http.ResponseWriter, r *http.Request
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
-	allowedParams := map[string]struct{}{
-		"hash": {},
-	}
-	if !h.validateQueryParams(w, r, allowedParams, "torrents/properties") {
+	if !h.validateQueryParams(w, r, torrentHashOnlyParams, "torrents/properties") {
 		return
 	}
 
@@ -1097,10 +1089,7 @@ func (h *Handler) handleTorrentTrackers(w http.ResponseWriter, r *http.Request) 
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
-	allowedParams := map[string]struct{}{
-		"hash": {},
-	}
-	if !h.validateQueryParams(w, r, allowedParams, "torrents/trackers") {
+	if !h.validateQueryParams(w, r, torrentHashOnlyParams, "torrents/trackers") {
 		return
 	}
 
@@ -1216,11 +1205,7 @@ func (h *Handler) handleTorrentFiles(w http.ResponseWriter, r *http.Request) {
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
-	allowedParams := map[string]struct{}{
-		"hash":    {},
-		"indexes": {},
-	}
-	if !h.validateQueryParams(w, r, allowedParams, "torrents/files") {
+	if !h.validateQueryParams(w, r, torrentFilesParams, "torrents/files") {
 		return
 	}
 

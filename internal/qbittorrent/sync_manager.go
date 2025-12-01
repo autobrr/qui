@@ -30,6 +30,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/pkg/hashutil"
 )
 
 // FilesManager interface for caching torrent files.
@@ -1406,8 +1407,9 @@ type normalizedHashes struct {
 	lookup               []string
 }
 
+// canonicalizeHash normalizes a hash using hashutil.Normalize.
 func canonicalizeHash(hash string) string {
-	return strings.ToLower(strings.TrimSpace(hash))
+	return hashutil.Normalize(hash)
 }
 
 func normalizeHashes(hashes []string) normalizedHashes {

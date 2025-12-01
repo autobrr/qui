@@ -357,11 +357,7 @@ func (h *BackupsHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 
 	run, err := h.service.GetRun(r.Context(), runID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			RespondError(w, http.StatusNotFound, "Backup run not found")
-			return
-		}
-		RespondError(w, http.StatusInternalServerError, "Failed to load backup run")
+		RespondDBError(w, err, "Backup run not found", "Failed to load backup run")
 		return
 	}
 
@@ -395,11 +391,7 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 
 	run, err := h.service.GetRun(r.Context(), runID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			RespondError(w, http.StatusNotFound, "Backup run not found")
-			return
-		}
-		RespondError(w, http.StatusInternalServerError, "Failed to load backup run")
+		RespondDBError(w, err, "Backup run not found", "Failed to load backup run")
 		return
 	}
 
@@ -974,11 +966,7 @@ func (h *BackupsHandler) DownloadTorrentBlob(w http.ResponseWriter, r *http.Requ
 
 	run, err := h.service.GetRun(r.Context(), runID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			RespondError(w, http.StatusNotFound, "Backup run not found")
-			return
-		}
-		RespondError(w, http.StatusInternalServerError, "Failed to load backup run")
+		RespondDBError(w, err, "Backup run not found", "Failed to load backup run")
 		return
 	}
 
@@ -989,11 +977,7 @@ func (h *BackupsHandler) DownloadTorrentBlob(w http.ResponseWriter, r *http.Requ
 
 	item, err := h.service.GetItem(r.Context(), runID, torrentHash)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			RespondError(w, http.StatusNotFound, "Torrent not found in backup")
-			return
-		}
-		RespondError(w, http.StatusInternalServerError, "Failed to load backup item")
+		RespondDBError(w, err, "Torrent not found in backup", "Failed to load backup item")
 		return
 	}
 
@@ -1079,11 +1063,7 @@ func (h *BackupsHandler) DeleteRun(w http.ResponseWriter, r *http.Request) {
 
 	run, err := h.service.GetRun(r.Context(), runID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			RespondError(w, http.StatusNotFound, "Backup run not found")
-			return
-		}
-		RespondError(w, http.StatusInternalServerError, "Failed to load backup run")
+		RespondDBError(w, err, "Backup run not found", "Failed to load backup run")
 		return
 	}
 
@@ -1126,7 +1106,7 @@ func (h *BackupsHandler) PreviewRestore(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := h.ensureRunOwnership(r.Context(), instanceID, runID); err != nil {
-		h.respondRunError(w, err)
+		RespondDBError(w, err, "Backup run not found", "Failed to load backup run")
 		return
 	}
 
@@ -1167,7 +1147,7 @@ func (h *BackupsHandler) ExecuteRestore(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := h.ensureRunOwnership(r.Context(), instanceID, runID); err != nil {
-		h.respondRunError(w, err)
+		RespondDBError(w, err, "Backup run not found", "Failed to load backup run")
 		return
 	}
 
@@ -1220,12 +1200,4 @@ func (h *BackupsHandler) ensureRunOwnership(ctx context.Context, instanceID int,
 		return sql.ErrNoRows
 	}
 	return nil
-}
-
-func (h *BackupsHandler) respondRunError(w http.ResponseWriter, err error) {
-	if errors.Is(err, sql.ErrNoRows) {
-		RespondError(w, http.StatusNotFound, "Backup run not found")
-		return
-	}
-	RespondError(w, http.StatusInternalServerError, "Failed to load backup run")
 }

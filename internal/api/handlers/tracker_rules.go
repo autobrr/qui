@@ -148,11 +148,8 @@ func (h *TrackerRuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			log.Error().Err(err).Int("instanceID", instanceID).Int("ruleID", ruleID).Msg("tracker rule not found for update")
-			RespondError(w, http.StatusNotFound, "Tracker rule not found")
-			return
 		}
-		log.Error().Err(err).Int("instanceID", instanceID).Int("ruleID", ruleID).Msg("failed to update tracker rule")
-		RespondError(w, http.StatusInternalServerError, "Failed to update tracker rule")
+		RespondDBError(w, err, "Tracker rule not found", "Failed to update tracker rule")
 		return
 	}
 
@@ -171,12 +168,7 @@ func (h *TrackerRuleHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.Delete(r.Context(), instanceID, ruleID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			RespondError(w, http.StatusNotFound, "Tracker rule not found")
-			return
-		}
-		log.Error().Err(err).Int("instanceID", instanceID).Int("ruleID", ruleID).Msg("failed to delete tracker rule")
-		RespondError(w, http.StatusInternalServerError, "Failed to delete tracker rule")
+		RespondDBError(w, err, "Tracker rule not found", "Failed to delete tracker rule")
 		return
 	}
 

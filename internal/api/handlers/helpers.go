@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
@@ -168,4 +169,26 @@ func ParsePagination(r *http.Request, defaultLimit, maxLimit int) PaginationPara
 	}
 
 	return p
+}
+
+// RespondNotFoundIfNoRows checks if err is sql.ErrNoRows and responds with 404 and the given message.
+// Returns true if the error was handled, false otherwise.
+func RespondNotFoundIfNoRows(w http.ResponseWriter, err error, notFoundMessage string) bool {
+	if errors.Is(err, sql.ErrNoRows) {
+		RespondError(w, http.StatusNotFound, notFoundMessage)
+		return true
+	}
+	return false
+}
+
+// RespondDBError handles database errors with common patterns:
+// - sql.ErrNoRows -> 404 with notFoundMessage
+// - other errors -> 500 with fallbackMessage
+// Always returns true (error was handled).
+func RespondDBError(w http.ResponseWriter, err error, notFoundMessage, fallbackMessage string) {
+	if errors.Is(err, sql.ErrNoRows) {
+		RespondError(w, http.StatusNotFound, notFoundMessage)
+		return
+	}
+	RespondError(w, http.StatusInternalServerError, fallbackMessage)
 }

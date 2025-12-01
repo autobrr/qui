@@ -185,38 +185,43 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 	return responses
 }
 
+// baseInstanceResponse creates the common response fields from an instance model.
+// This is the shared foundation for both quick and full instance responses.
+func baseInstanceResponse(instance *models.Instance) InstanceResponse {
+	connectionStatus := ""
+	if !instance.IsActive {
+		connectionStatus = "disabled"
+	}
+	return InstanceResponse{
+		ID:               instance.ID,
+		Name:             instance.Name,
+		Host:             instance.Host,
+		Username:         instance.Username,
+		BasicUsername:    instance.BasicUsername,
+		TLSSkipVerify:    instance.TLSSkipVerify,
+		SortOrder:        instance.SortOrder,
+		IsActive:         instance.IsActive,
+		ConnectionStatus: connectionStatus,
+	}
+}
+
 // buildInstanceResponse creates a consistent response for an instance
 func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *models.Instance) InstanceResponse {
+	response := baseInstanceResponse(instance)
+
 	// Use cached connection status only, do not test connection synchronously
 	client, _ := h.clientPool.GetClientOffline(ctx, instance.ID)
 	healthy := client != nil && client.IsHealthy() && instance.IsActive
 
-	var connectionStatus string
-	if !instance.IsActive {
-		connectionStatus = "disabled"
-	} else if client != nil {
+	if instance.IsActive && client != nil {
 		if status := strings.TrimSpace(client.GetCachedConnectionStatus()); status != "" {
-			connectionStatus = strings.ToLower(status)
+			response.ConnectionStatus = strings.ToLower(status)
 		}
 	}
 
 	decryptionErrorInstances := h.clientPool.GetInstancesWithDecryptionErrors()
-	hasDecryptionError := slices.Contains(decryptionErrorInstances, instance.ID)
-
-	response := InstanceResponse{
-		ID:                 instance.ID,
-		Name:               instance.Name,
-		Host:               instance.Host,
-		Username:           instance.Username,
-		BasicUsername:      instance.BasicUsername,
-		TLSSkipVerify:      instance.TLSSkipVerify,
-		Connected:          healthy,
-		HasDecryptionError: hasDecryptionError,
-		ConnectionStatus:   connectionStatus,
-		SortOrder:          instance.SortOrder,
-		IsActive:           instance.IsActive,
-	}
-
+	response.HasDecryptionError = slices.Contains(decryptionErrorInstances, instance.ID)
+	response.Connected = healthy
 	response.ReannounceSettings = h.getReannounceSettingsPayload(ctx, instance.ID)
 
 	// Fetch recent errors for disconnected instances
@@ -235,23 +240,9 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 
 // buildQuickInstanceResponse creates a response without testing connection
 func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance) InstanceResponse {
-	connectionStatus := ""
-	if !instance.IsActive {
-		connectionStatus = "disabled"
-	}
-	return InstanceResponse{
-		ID:                 instance.ID,
-		Name:               instance.Name,
-		Host:               instance.Host,
-		Username:           instance.Username,
-		BasicUsername:      instance.BasicUsername,
-		TLSSkipVerify:      instance.TLSSkipVerify,
-		Connected:          false, // Will be updated asynchronously
-		HasDecryptionError: false,
-		SortOrder:          instance.SortOrder,
-		IsActive:           instance.IsActive,
-		ConnectionStatus:   connectionStatus,
-	}
+	return baseInstanceResponse(instance)
+	// Connected and HasDecryptionError default to false
+	// Will be updated asynchronously
 }
 
 // testConnectionAsync tests connection in background and updates cache

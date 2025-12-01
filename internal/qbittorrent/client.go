@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
@@ -15,6 +16,8 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/pkg/hashutil"
 )
 
 var (
@@ -31,17 +34,19 @@ var (
 
 type Client struct {
 	*qbt.Client
-	instanceID              int
-	webAPIVersion           string
-	supportsSetTags         bool
-	supportsTorrentCreation bool
-	supportsTorrentExport   bool
-	supportsTrackerEditing  bool
-	supportsRenameTorrent   bool
-	supportsRenameFile      bool
-	supportsRenameFolder    bool
-	supportsFilePriority    bool
-	supportsSubcategories   bool
+	instanceID    int
+	webAPIVersion string
+	// Capability flags use atomic.Bool for lock-free reads.
+	// These are set together in applyCapabilitiesLocked() and read individually via Supports*() methods.
+	supportsSetTags         atomic.Bool
+	supportsTorrentCreation atomic.Bool
+	supportsTorrentExport   atomic.Bool
+	supportsTrackerEditing  atomic.Bool
+	supportsRenameTorrent   atomic.Bool
+	supportsRenameFile      atomic.Bool
+	supportsRenameFolder    atomic.Bool
+	supportsFilePriority    atomic.Bool
+	supportsSubcategories   atomic.Bool
 	lastHealthCheck         time.Time
 	isHealthy               bool
 	syncManager             *qbt.SyncManager
@@ -179,22 +184,18 @@ func (c *Client) IsHealthy() bool {
 	return c.isHealthy
 }
 
+// Capability accessors use atomic loads for lock-free reads.
+
 func (c *Client) SupportsTorrentCreation() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsTorrentCreation
+	return c.supportsTorrentCreation.Load()
 }
 
 func (c *Client) SupportsTrackerEditing() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsTrackerEditing
+	return c.supportsTrackerEditing.Load()
 }
 
 func (c *Client) SupportsTorrentExport() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsTorrentExport
+	return c.supportsTorrentExport.Load()
 }
 
 // RefreshCapabilities fetches the latest WebAPI version information and recalculates feature support flags.
@@ -238,15 +239,16 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 		return
 	}
 
-	c.supportsSetTags = !v.LessThan(setTagsMinVersion)
-	c.supportsTorrentCreation = !v.LessThan(torrentCreationMinVersion)
-	c.supportsTorrentExport = !v.LessThan(exportTorrentMinVersion)
-	c.supportsTrackerEditing = !v.LessThan(trackerEditingMinVersion)
-	c.supportsFilePriority = !v.LessThan(filePriorityMinVersion)
-	c.supportsRenameTorrent = !v.LessThan(renameTorrentMinVersion)
-	c.supportsRenameFile = !v.LessThan(renameFileMinVersion)
-	c.supportsRenameFolder = !v.LessThan(renameFolderMinVersion)
-	c.supportsSubcategories = !v.LessThan(subcategoriesMinVersion)
+	// Use atomic stores for capability flags (lock-free reads)
+	c.supportsSetTags.Store(!v.LessThan(setTagsMinVersion))
+	c.supportsTorrentCreation.Store(!v.LessThan(torrentCreationMinVersion))
+	c.supportsTorrentExport.Store(!v.LessThan(exportTorrentMinVersion))
+	c.supportsTrackerEditing.Store(!v.LessThan(trackerEditingMinVersion))
+	c.supportsFilePriority.Store(!v.LessThan(filePriorityMinVersion))
+	c.supportsRenameTorrent.Store(!v.LessThan(renameTorrentMinVersion))
+	c.supportsRenameFile.Store(!v.LessThan(renameFileMinVersion))
+	c.supportsRenameFolder.Store(!v.LessThan(renameFolderMinVersion))
+	c.supportsSubcategories.Store(!v.LessThan(subcategoriesMinVersion))
 }
 
 func (c *Client) updateServerState(data *qbt.MainData) {
@@ -332,33 +334,23 @@ func (c *Client) UpdateWithPeersData(hash string, data *qbt.TorrentPeersResponse
 }
 
 func (c *Client) SupportsRenameTorrent() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsRenameTorrent
+	return c.supportsRenameTorrent.Load()
 }
 
 func (c *Client) SupportsRenameFile() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsRenameFile
+	return c.supportsRenameFile.Load()
 }
 
 func (c *Client) SupportsRenameFolder() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsRenameFolder
+	return c.supportsRenameFolder.Load()
 }
 
 func (c *Client) SupportsFilePriority() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsFilePriority
+	return c.supportsFilePriority.Load()
 }
 
 func (c *Client) SupportsSubcategories() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsSubcategories
+	return c.supportsSubcategories.Load()
 }
 
 // getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)
@@ -388,9 +380,7 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 }
 
 func (c *Client) SupportsSetTags() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsSetTags
+	return c.supportsSetTags.Load()
 }
 
 func (c *Client) SupportsTrackerHealth() bool {
@@ -525,8 +515,9 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 	}
 }
 
+// normalizeHashForCompletion normalizes a hash using hashutil.NormalizeUpper.
 func normalizeHashForCompletion(hash string) string {
-	return strings.ToUpper(strings.TrimSpace(hash))
+	return hashutil.NormalizeUpper(hash)
 }
 
 func isTorrentComplete(t *qbt.Torrent) bool {
