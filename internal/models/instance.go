@@ -194,101 +194,98 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		encryptedBasicPassword = &encrypted
 	}
 
-	// Start a transaction to ensure atomicity
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Intern all strings in a single call
-	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &name, &normalizedHost, &username, basicUsername)
-	if err != nil {
-		return nil, fmt.Errorf("failed to intern strings: %w", err)
-	}
-
-	// Ensure required fields (name, host, username) have valid IDs
-	// If username is empty (localhost bypass), get ID of empty string from string_pool
-	nameID := allIDs[0].Int64
-	hostID := allIDs[1].Int64
-
-	var usernameID int64
-	if allIDs[2].Valid {
-		usernameID = allIDs[2].Int64
-	} else {
-		// Username was empty - query for empty string ID from string_pool (for localhost bypass)
-		// The empty string is inserted during migration
-		err := tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ''").Scan(&usernameID)
+	var instance *Instance
+	err = s.db.WithTx(ctx, nil, func(tx dbinterface.TxQuerier) error {
+		// Intern all strings in a single call
+		allIDs, err := dbinterface.InternStringNullable(ctx, tx, &name, &normalizedHost, &username, basicUsername)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get empty username ID: %w (database migration may be incomplete)", err)
+			return fmt.Errorf("failed to intern strings: %w", err)
 		}
-	}
 
-	// Insert instance with the interned IDs
-	var instanceID int
-	var passwordEncrypted sql.NullString
-	var basicPasswordEncrypted sql.NullString
-	var tlsSkipVerifyResult bool
-	var sortOrder int
-	var isActive bool
+		// Ensure required fields (name, host, username) have valid IDs
+		// If username is empty (localhost bypass), get ID of empty string from string_pool
+		nameID := allIDs[0].Int64
+		hostID := allIDs[1].Int64
 
-	err = tx.QueryRowContext(ctx, `
-		WITH next_sort AS (
-			SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM instances
+		var usernameID int64
+		if allIDs[2].Valid {
+			usernameID = allIDs[2].Int64
+		} else {
+			// Username was empty - query for empty string ID from string_pool (for localhost bypass)
+			// The empty string is inserted during migration
+			err := tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ''").Scan(&usernameID)
+			if err != nil {
+				return fmt.Errorf("failed to get empty username ID: %w (database migration may be incomplete)", err)
+			}
+		}
+
+		// Insert instance with the interned IDs
+		var instanceID int
+		var passwordEncrypted sql.NullString
+		var basicPasswordEncrypted sql.NullString
+		var tlsSkipVerifyResult bool
+		var sortOrder int
+		var isActive bool
+
+		err = tx.QueryRowContext(ctx, `
+			WITH next_sort AS (
+				SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM instances
+			)
+			INSERT INTO instances (
+				name_id,
+				host_id,
+				username_id,
+				password_encrypted,
+				basic_username_id,
+				basic_password_encrypted,
+				tls_skip_verify,
+				sort_order
+			)
+			SELECT ?, ?, ?, ?, ?, ?, ?, next_order FROM next_sort
+			RETURNING id, password_encrypted, basic_password_encrypted, tls_skip_verify, sort_order, is_active
+		`,
+			nameID,
+			hostID,
+			usernameID,
+			encryptedPassword,
+			allIDs[3],
+			encryptedBasicPassword,
+			tlsSkipVerify,
+		).Scan(
+			&instanceID,
+			&passwordEncrypted,
+			&basicPasswordEncrypted,
+			&tlsSkipVerifyResult,
+			&sortOrder,
+			&isActive,
 		)
-		INSERT INTO instances (
-			name_id,
-			host_id,
-			username_id,
-			password_encrypted,
-			basic_username_id,
-			basic_password_encrypted,
-			tls_skip_verify,
-			sort_order
-		)
-		SELECT ?, ?, ?, ?, ?, ?, ?, next_order FROM next_sort
-		RETURNING id, password_encrypted, basic_password_encrypted, tls_skip_verify, sort_order, is_active
-	`,
-		nameID,
-		hostID,
-		usernameID,
-		encryptedPassword,
-		allIDs[3],
-		encryptedBasicPassword,
-		tlsSkipVerify,
-	).Scan(
-		&instanceID,
-		&passwordEncrypted,
-		&basicPasswordEncrypted,
-		&tlsSkipVerifyResult,
-		&sortOrder,
-		&isActive,
-	)
 
+		if err != nil {
+			return err
+		}
+
+		instance = &Instance{
+			ID:                instanceID,
+			Name:              name,
+			Host:              normalizedHost,
+			Username:          username,
+			PasswordEncrypted: passwordEncrypted.String,
+			TLSSkipVerify:     tlsSkipVerifyResult,
+			SortOrder:         sortOrder,
+			IsActive:          isActive,
+		}
+
+		if basicUsername != nil {
+			instance.BasicUsername = basicUsername
+		}
+		if basicPasswordEncrypted.Valid {
+			instance.BasicPasswordEncrypted = &basicPasswordEncrypted.String
+		}
+
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-
-	instance := &Instance{
-		ID:                instanceID,
-		Name:              name,
-		Host:              normalizedHost,
-		Username:          username,
-		PasswordEncrypted: passwordEncrypted.String,
-		TLSSkipVerify:     tlsSkipVerifyResult,
-		SortOrder:         sortOrder,
-		IsActive:          isActive,
-	}
-
-	if basicUsername != nil {
-		instance.BasicUsername = basicUsername
-	}
-	if basicPasswordEncrypted.Valid {
-		instance.BasicPasswordEncrypted = &basicPasswordEncrypted.String
-	}
-
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return instance, nil
@@ -422,137 +419,130 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		return nil, err
 	}
 
-	// Start a transaction
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
+	err = s.db.WithTx(ctx, nil, func(tx dbinterface.TxQuerier) error {
+		// Prepare strings to intern - always intern name, host, username
+		// Also intern basic_username if it's provided and not empty
+		var basicUsernameToIntern *string
+		if basicUsername != nil && *basicUsername != "" {
+			basicUsernameToIntern = basicUsername
+		}
 
-	// Prepare strings to intern - always intern name, host, username
-	// Also intern basic_username if it's provided and not empty
-	var basicUsernameToIntern *string
-	if basicUsername != nil && *basicUsername != "" {
-		basicUsernameToIntern = basicUsername
-	}
-
-	// Intern all strings in a single call
-	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &name, &normalizedHost, &username, basicUsernameToIntern)
-	if err != nil {
-		return nil, fmt.Errorf("failed to intern strings: %w", err)
-	}
-
-	// Ensure required fields (name, host, username) have valid IDs
-	// If username is empty (localhost bypass), get ID of empty string from string_pool
-	nameID := allIDs[0].Int64
-	hostID := allIDs[1].Int64
-
-	var usernameID int64
-	if allIDs[2].Valid {
-		usernameID = allIDs[2].Int64
-	} else {
-		// Username was empty - query for empty string ID from string_pool (for localhost bypass)
-		// The empty string is inserted during migration
-		err := tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ''").Scan(&usernameID)
+		// Intern all strings in a single call
+		allIDs, err := dbinterface.InternStringNullable(ctx, tx, &name, &normalizedHost, &username, basicUsernameToIntern)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get empty username ID: %w (database migration may be incomplete)", err)
+			return fmt.Errorf("failed to intern strings: %w", err)
 		}
-	}
 
-	// Build UPDATE query
-	query := "UPDATE instances SET name_id = ?, host_id = ?, username_id = ?"
-	args := []any{nameID, hostID, usernameID}
+		// Ensure required fields (name, host, username) have valid IDs
+		// If username is empty (localhost bypass), get ID of empty string from string_pool
+		nameID := allIDs[0].Int64
+		hostID := allIDs[1].Int64
 
-	// Handle basic_username update
-	if basicUsername != nil {
-		if *basicUsername == "" {
-			// Empty string explicitly provided - clear the basic username
-			query += ", basic_username_id = NULL"
+		var usernameID int64
+		if allIDs[2].Valid {
+			usernameID = allIDs[2].Int64
 		} else {
-			// Basic username provided - use the already interned ID
-			query += ", basic_username_id = ?"
-			args = append(args, allIDs[3])
-		}
-	}
-
-	// Handle password update - encrypt if provided
-	if password != "" {
-		encryptedPassword, err := s.encryptor.Encrypt(password)
-		if err != nil {
-			return nil, fmt.Errorf("failed to encrypt password: %w", err)
-		}
-		query += ", password_encrypted = ?"
-		args = append(args, encryptedPassword)
-	}
-
-	// Handle basic password update
-	if basicPassword != nil {
-		if *basicPassword == "" {
-			// Empty string explicitly provided - clear the basic password
-			query += ", basic_password_encrypted = NULL"
-		} else {
-			// Basic password provided - encrypt and update
-			encryptedBasicPassword, err := s.encryptor.Encrypt(*basicPassword)
+			// Username was empty - query for empty string ID from string_pool (for localhost bypass)
+			// The empty string is inserted during migration
+			err := tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ''").Scan(&usernameID)
 			if err != nil {
-				return nil, fmt.Errorf("failed to encrypt basic auth password: %w", err)
+				return fmt.Errorf("failed to get empty username ID: %w (database migration may be incomplete)", err)
 			}
-			query += ", basic_password_encrypted = ?"
-			args = append(args, encryptedBasicPassword)
 		}
-	}
 
-	if tlsSkipVerify != nil {
-		query += ", tls_skip_verify = ?"
-		args = append(args, *tlsSkipVerify)
-	}
+		// Build UPDATE query
+		query := "UPDATE instances SET name_id = ?, host_id = ?, username_id = ?"
+		args := []any{nameID, hostID, usernameID}
 
-	query += " WHERE id = ?"
-	args = append(args, id)
+		// Handle basic_username update
+		if basicUsername != nil {
+			if *basicUsername == "" {
+				// Empty string explicitly provided - clear the basic username
+				query += ", basic_username_id = NULL"
+			} else {
+				// Basic username provided - use the already interned ID
+				query += ", basic_username_id = ?"
+				args = append(args, allIDs[3])
+			}
+		}
 
-	result, err := tx.ExecContext(ctx, query, args...)
+		// Handle password update - encrypt if provided
+		if password != "" {
+			encryptedPassword, err := s.encryptor.Encrypt(password)
+			if err != nil {
+				return fmt.Errorf("failed to encrypt password: %w", err)
+			}
+			query += ", password_encrypted = ?"
+			args = append(args, encryptedPassword)
+		}
+
+		// Handle basic password update
+		if basicPassword != nil {
+			if *basicPassword == "" {
+				// Empty string explicitly provided - clear the basic password
+				query += ", basic_password_encrypted = NULL"
+			} else {
+				// Basic password provided - encrypt and update
+				encryptedBasicPassword, err := s.encryptor.Encrypt(*basicPassword)
+				if err != nil {
+					return fmt.Errorf("failed to encrypt basic auth password: %w", err)
+				}
+				query += ", basic_password_encrypted = ?"
+				args = append(args, encryptedBasicPassword)
+			}
+		}
+
+		if tlsSkipVerify != nil {
+			query += ", tls_skip_verify = ?"
+			args = append(args, *tlsSkipVerify)
+		}
+
+		query += " WHERE id = ?"
+		args = append(args, id)
+
+		result, err := tx.ExecContext(ctx, query, args...)
+		if err != nil {
+			return err
+		}
+
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+
+		if rows == 0 {
+			return ErrInstanceNotFound
+		}
+
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return nil, err
-	}
-
-	if rows == 0 {
-		return nil, ErrInstanceNotFound
-	}
-
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return s.Get(ctx, id)
 }
 
 func (s *InstanceStore) SetActiveState(ctx context.Context, id int, active bool) (*Instance, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
+	err := s.db.WithTx(ctx, nil, func(tx dbinterface.TxQuerier) error {
+		result, err := tx.ExecContext(ctx, `UPDATE instances SET is_active = ? WHERE id = ?`, active, id)
+		if err != nil {
+			return err
+		}
 
-	result, err := tx.ExecContext(ctx, `UPDATE instances SET is_active = ? WHERE id = ?`, active, id)
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+
+		if rows == 0 {
+			return ErrInstanceNotFound
+		}
+
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return nil, err
-	}
-
-	if rows == 0 {
-		return nil, ErrInstanceNotFound
-	}
-
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return s.Get(ctx, id)
