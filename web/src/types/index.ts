@@ -1312,8 +1312,6 @@ export interface CrossSeedCompletionSettings {
   tags: string[]
   excludeCategories: string[]
   excludeTags: string[]
-  delayMinutes: number
-  preImportCategories: string[]
 }
 
 export interface CrossSeedCompletionSettingsPatch {
@@ -1322,8 +1320,6 @@ export interface CrossSeedCompletionSettingsPatch {
   tags?: string[]
   excludeCategories?: string[]
   excludeTags?: string[]
-  delayMinutes?: number
-  preImportCategories?: string[]
 }
 
 export interface CrossSeedAutomationSettings {

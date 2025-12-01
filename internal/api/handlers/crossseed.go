@@ -43,13 +43,11 @@ type automationSettingsRequest struct {
 }
 
 type completionSettingsRequest struct {
-	Enabled             bool     `json:"enabled"`
-	Categories          []string `json:"categories"`
-	Tags                []string `json:"tags"`
-	ExcludeCategories   []string `json:"excludeCategories"`
-	ExcludeTags         []string `json:"excludeTags"`
-	DelayMinutes        int      `json:"delayMinutes"`
-	PreImportCategories []string `json:"preImportCategories"`
+	Enabled           bool     `json:"enabled"`
+	Categories        []string `json:"categories"`
+	Tags              []string `json:"tags"`
+	ExcludeCategories []string `json:"excludeCategories"`
+	ExcludeTags       []string `json:"excludeTags"`
 }
 
 type automationSettingsPatchRequest struct {
@@ -75,13 +73,11 @@ type automationSettingsPatchRequest struct {
 }
 
 type completionSettingsPatchRequest struct {
-	Enabled             *bool     `json:"enabled,omitempty"`
-	Categories          *[]string `json:"categories,omitempty"`
-	Tags                *[]string `json:"tags,omitempty"`
-	ExcludeCategories   *[]string `json:"excludeCategories,omitempty"`
-	ExcludeTags         *[]string `json:"excludeTags,omitempty"`
-	DelayMinutes        *int      `json:"delayMinutes,omitempty"`
-	PreImportCategories *[]string `json:"preImportCategories,omitempty"`
+	Enabled           *bool     `json:"enabled,omitempty"`
+	Categories        *[]string `json:"categories,omitempty"`
+	Tags              *[]string `json:"tags,omitempty"`
+	ExcludeCategories *[]string `json:"excludeCategories,omitempty"`
+	ExcludeTags       *[]string `json:"excludeTags,omitempty"`
 }
 
 type optionalString struct {
@@ -166,9 +162,7 @@ func (r completionSettingsPatchRequest) isEmpty() bool {
 		r.Categories == nil &&
 		r.Tags == nil &&
 		r.ExcludeCategories == nil &&
-		r.ExcludeTags == nil &&
-		r.DelayMinutes == nil &&
-		r.PreImportCategories == nil
+		r.ExcludeTags == nil
 }
 
 func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, patch automationSettingsPatchRequest) {
@@ -253,12 +247,6 @@ func applyCompletionSettingsPatch(dest *models.CrossSeedCompletionSettings, patc
 	}
 	if patch.ExcludeTags != nil {
 		dest.ExcludeTags = *patch.ExcludeTags
-	}
-	if patch.DelayMinutes != nil {
-		dest.DelayMinutes = *patch.DelayMinutes
-	}
-	if patch.PreImportCategories != nil {
-		dest.PreImportCategories = *patch.PreImportCategories
 	}
 }
 
@@ -615,13 +603,11 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 	completion := models.DefaultCrossSeedCompletionSettings()
 	if req.Completion != nil {
 		completion = models.CrossSeedCompletionSettings{
-			Enabled:             req.Completion.Enabled,
-			Categories:          req.Completion.Categories,
-			Tags:                req.Completion.Tags,
-			ExcludeCategories:   req.Completion.ExcludeCategories,
-			ExcludeTags:         req.Completion.ExcludeTags,
-			DelayMinutes:        req.Completion.DelayMinutes,
-			PreImportCategories: req.Completion.PreImportCategories,
+			Enabled:           req.Completion.Enabled,
+			Categories:        req.Completion.Categories,
+			Tags:              req.Completion.Tags,
+			ExcludeCategories: req.Completion.ExcludeCategories,
+			ExcludeTags:       req.Completion.ExcludeTags,
 		}
 	}
 
