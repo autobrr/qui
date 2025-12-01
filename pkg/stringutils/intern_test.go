@@ -111,6 +111,28 @@ func TestInternNormalized(t *testing.T) {
 	}
 }
 
+func TestInternNormalizedUpper(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"empty", "", ""},
+		{"simple", "hello", "HELLO"},
+		{"lowercase with spaces", "  hello  ", "HELLO"},
+		{"mixed case", "HeLLo WoRLd", "HELLO WORLD"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := InternNormalizedUpper(tt.input)
+			if got != tt.want {
+				t.Errorf("InternNormalizedUpper() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestMakeHandle(t *testing.T) {
 	h1 := MakeHandle("hello")
 	h2 := MakeHandle("hello")

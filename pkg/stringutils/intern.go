@@ -59,6 +59,16 @@ func InternNormalized(s string) string {
 	return unique.Make(normalized).Value()
 }
 
+// InternNormalizedUpper interns a trimmed and uppercased version of the string.
+// This is useful for case-insensitive matching where uppercase is preferred.
+func InternNormalizedUpper(s string) string {
+	normalized := strings.ToUpper(strings.TrimSpace(s))
+	if normalized == "" {
+		return ""
+	}
+	return unique.Make(normalized).Value()
+}
+
 // Handle wraps unique.Handle for type-safe interned string references.
 // This provides a lighter-weight comparison mechanism when you need
 // to frequently compare strings for equality.

@@ -7,7 +7,8 @@ package hashutil
 
 import (
 	"strings"
-	"unique"
+
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // Normalize canonicalizes a torrent hash by trimming whitespace and converting to lowercase.
@@ -15,22 +16,14 @@ import (
 // The returned string is interned using Go's unique package for memory efficiency,
 // as torrent hashes are frequently compared and stored.
 func Normalize(hash string) string {
-	normalized := strings.ToLower(strings.TrimSpace(hash))
-	if normalized == "" {
-		return ""
-	}
-	return unique.Make(normalized).Value()
+	return stringutils.InternNormalized(hash)
 }
 
 // NormalizeUpper canonicalizes a torrent hash by trimming whitespace and converting to uppercase.
 // Returns an empty string if the input is blank.
 // The returned string is interned using Go's unique package for memory efficiency.
 func NormalizeUpper(hash string) string {
-	normalized := strings.ToUpper(strings.TrimSpace(hash))
-	if normalized == "" {
-		return ""
-	}
-	return unique.Make(normalized).Value()
+	return stringutils.InternNormalizedUpper(hash)
 }
 
 // NormalizeAll normalizes a slice of hashes to lowercase, removing empty entries and duplicates.
