@@ -1624,8 +1624,14 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 		return torrents, trackerMap, nil
 	}
 
-	// Tracker health enrichment is now supported for all qBittorrent versions
+	// PERFORMANCE FIX: Only support tracker health for qBittorrent 5.1+ (Web API 2.11.4+)
+	// that has the IncludeTrackers option. Older versions would require individual API
+	// calls per torrent which is catastrophic for performance on large instances.
 	if !client.supportsTrackerInclude() {
+		log.Debug().
+			Int("instanceID", client.instanceID).
+			Str("webAPIVersion", client.GetWebAPIVersion()).
+			Msg("Skipping tracker hydration - version does not support IncludeTrackers (requires qBittorrent 5.1+)")
 		return torrents, trackerMap, nil
 	}
 
@@ -1633,6 +1639,7 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 		trackerMap = make(map[string][]qbt.TorrentTracker)
 	}
 
+	// Use existing tracker data if already present on torrents
 	for i := range torrents {
 		if len(torrents[i].Trackers) > 0 {
 			trackerMap[torrents[i].Hash] = torrents[i].Trackers
@@ -1834,13 +1841,20 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 
 // calculateCountsFromTorrentsWithTrackers calculates counts using MainData's tracker information
 // This gives us the REAL tracker-to-torrent mapping from qBittorrent
+//
+// PERFORMANCE NOTE: This function NO LONGER calls enrichTorrentsWithTrackerData for sidebar counts.
+// Tracker health status counts (unregistered, tracker_down) will only be accurate when:
+// 1. Torrents have already been enriched (e.g., when filtering/sorting by tracker health)
+// 2. The trackerMap parameter contains pre-fetched tracker data
+//
+// This dramatically improves performance for large instances by avoiding O(n) API calls
+// on every request just to display sidebar counts.
 
 func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker, trackerHealthSupported bool, useSubcategories bool) (*TorrentCounts, map[string][]qbt.TorrentTracker, []qbt.Torrent) {
-	var enriched []qbt.Torrent
-	if trackerHealthSupported {
-		enriched, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, allTorrents, trackerMap)
-		allTorrents = enriched
-	}
+	// PERFORMANCE FIX: Don't enrich torrents just for counts. This was calling
+	// hydrateTorrentsWithTrackers on EVERY request which is catastrophic for performance.
+	// Tracker health counts in the sidebar will be 0 unless torrents were already enriched
+	// (e.g., when actually filtering or sorting by tracker health status).
 
 	// Initialize counts
 	counts := &TorrentCounts{
@@ -1854,6 +1868,16 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Conte
 		Tags:       make(map[string]int),
 		Trackers:   make(map[string]int),
 		Total:      len(allTorrents),
+	}
+
+	// If we have pre-enriched tracker data from a previous operation (e.g., filtering),
+	// apply it to torrents so countTorrentStatuses can detect tracker health issues
+	if len(trackerMap) > 0 {
+		for i := range allTorrents {
+			if trackers, ok := trackerMap[allTorrents[i].Hash]; ok && len(allTorrents[i].Trackers) == 0 {
+				allTorrents[i].Trackers = trackers
+			}
+		}
 	}
 
 	// Build a torrent map for O(1) lookups
@@ -2310,10 +2334,13 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	// Get all torrents from sync manager
 	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
 
-	// Enrich torrents with tracker data so downstream calculations can inspect tracker errors
-	if enriched, _, _ := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil); len(enriched) > 0 {
-		torrents = enriched
-	}
+	// PERFORMANCE FIX: Do NOT enrich torrents with tracker data here.
+	// This was calling hydrateTorrentsWithTrackers on every stats request which is
+	// extremely expensive for large instances. Tracker health detection should only
+	// happen when explicitly filtering/sorting by tracker status.
+	//
+	// If tracker data is needed for specific operations, the caller should explicitly
+	// request it or use a dedicated endpoint.
 
 	// Build a map for O(1) lookups during optimistic updates
 	torrentMap := make(map[string]*qbt.Torrent, len(torrents))
