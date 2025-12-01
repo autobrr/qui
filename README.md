@@ -361,7 +361,7 @@ Downloaded backups can be imported into any qui instance. Useful for migrating t
 qui includes intelligent cross-seeding capabilities that help you automatically find and add matching torrents across different trackers. This allows you to seed the same content on multiple trackers.
 
 > [!NOTE]
-> qui adds cross-seeded torrents with **Automatic Torrent Management (AutoTMM)** enabled, inheriting the category from the matched torrent. This reuses existing files directly without creating hardlinks. Ensure your torrents use category-based paths rather than custom save paths.
+> qui adds cross-seeded torrents by inheriting the **Automatic Torrent Management (AutoTMM)** state from the matched torrent. If the matched torrent uses AutoTMM, the cross-seed will too; if the matched torrent has a custom save path (AutoTMM disabled), the cross-seed will use the same explicit path. This reuses existing files directly without creating hardlinks.
 
 ### Prerequisites
 
@@ -421,16 +421,8 @@ qui takes a different approach than the [cross-seed](https://github.com/cross-se
 | Aspect | cross-seed | qui |
 |--------|-----------|-----|
 | **File handling** | Creates hardlinks/symlinks to a separate directory | Reuses existing files directly |
-| **AutoTMM** | Disabled (uses explicit save paths) | Enabled (relies on category-based paths) |
+| **AutoTMM** | Disabled (uses explicit save paths) | Inherits from matched torrent |
 | **Category** | Uses dedicated `linkCategory` (e.g., "cross-seed-link") | Inherits matched torrent's category |
-
-> [!IMPORTANT]
-> **Migrating from cross-seed?** Ensure your setup uses AutoTMM:
-> 1. Configure categories in qBittorrent with appropriate default save paths
-> 2. Enable AutoTMM on existing torrents (right-click → Automatic Torrent Management → Enable)
-> 3. Remove any custom save paths from torrents you want to cross-seed
->
-> Torrents with custom save paths (AutoTMM disabled) won't work correctly with qui's cross-seed feature.
 
 ### Global Settings
 
