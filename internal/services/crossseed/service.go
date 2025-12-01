@@ -2492,19 +2492,23 @@ func (s *Service) processCrossSeedCandidate(
 	}
 	// Otherwise: don't set contentLayout, let qBittorrent use Original behavior
 
-	// Use TMM=true when we have a category, EXCEPT for episodes matched to season packs.
-	// Episodes need ATM disabled to use the season pack's content path directly,
-	// otherwise qBittorrent would place them in the category's default save path.
-	if category != "" && !isEpisodeInPack {
+	// Use TMM=true only when:
+	// 1. We have a category to assign
+	// 2. Not an episode matched to season pack (those need explicit content path)
+	// 3. The matched torrent also has TMM enabled (respects user's path management choice)
+	//
+	// When matched torrent has TMM disabled, the user has manually placed it at a custom
+	// save path. We must use explicit save path to ensure cross-seed lands in the same location.
+	if category != "" && !isEpisodeInPack && matchedTorrent.AutoManaged {
 		options["autoTMM"] = "true"
 		log.Debug().
 			Int("instanceID", candidate.InstanceID).
 			Str("torrentName", torrentName).
 			Str("category", category).
 			Str("matchedTorrent", matchedTorrent.Name).
-			Msg("Adding cross-seed with TMM enabled, will rename to match existing torrent")
+			Msg("Adding cross-seed with TMM enabled (matched torrent uses TMM)")
 	} else {
-		// No category or episode-in-pack - use explicit save path
+		// No category, episode-in-pack, or matched torrent has TMM disabled - use explicit save path
 		options["autoTMM"] = "false"
 		savePath := props.SavePath
 		if isEpisodeInPack && matchedTorrent.ContentPath != "" {
@@ -2520,6 +2524,7 @@ func (s *Service) processCrossSeedCandidate(
 			Str("savePath", savePath).
 			Str("matchedTorrent", matchedTorrent.Name).
 			Bool("isEpisodeInPack", isEpisodeInPack).
+			Bool("matchedAutoTMM", matchedTorrent.AutoManaged).
 			Msg("Adding cross-seed without TMM, using explicit save path")
 	}
 
@@ -2606,7 +2611,7 @@ func (s *Service) processCrossSeedCandidate(
 		Str("matchedHash", matchedTorrent.Hash).
 		Str("matchType", matchType).
 		Str("category", category).
-		Bool("autoTMM", category != "" && !isEpisodeInPack).
+		Bool("autoTMM", category != "" && !isEpisodeInPack && matchedTorrent.AutoManaged).
 		Bool("isEpisodeInPack", isEpisodeInPack).
 		Bool("hasExtraFiles", hasExtraFiles)
 	if needsRecheckAndResume {
