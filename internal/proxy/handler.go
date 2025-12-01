@@ -250,6 +250,110 @@ func bufferRequestBody(r *http.Request) ([]byte, error) {
 	return bodyBytes, nil
 }
 
+// CacheInvalidationMode determines how hashes are extracted and invalidated
+type CacheInvalidationMode int
+
+const (
+	// InvalidateSingleHash - form param is "hash" (single hash)
+	InvalidateSingleHash CacheInvalidationMode = iota
+	// InvalidateMultipleHashes - form param is "hashes" (pipe-separated)
+	InvalidateMultipleHashes
+)
+
+// cacheInvalidationConfig configures the cache invalidation behavior
+type cacheInvalidationConfig struct {
+	mode       CacheInvalidationMode
+	logContext string // e.g., "setLocation", "renameFile"
+}
+
+// handleWithCacheInvalidation wraps proxy forwarding with file cache invalidation.
+// It buffers the request body, parses form data to get hash(es), defers cache invalidation
+// with panic recovery, then forwards the request to qBittorrent.
+func (h *Handler) handleWithCacheInvalidation(w http.ResponseWriter, r *http.Request, config cacheInvalidationConfig) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	// Buffer body so we can parse form and still forward to proxy
+	bodyBytes, err := bufferRequestBody(r)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msgf("Failed to read %s body", config.logContext)
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msgf("Failed to parse %s form", config.logContext)
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	// Extract hash(es) based on mode
+	var hashList []string
+	var logField string
+	if config.mode == InvalidateSingleHash {
+		hash := r.Form.Get("hash")
+		logField = hash
+		if hash != "" {
+			hashList = []string{hash}
+		}
+	} else {
+		hashes := r.Form.Get("hashes")
+		logField = hashes
+		if hashes != "" {
+			hashList = strings.Split(hashes, "|")
+		}
+	}
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Str("hashes", logField).
+		Msgf("Intercepting %s request for cache invalidation", config.logContext)
+
+	// Defer cache invalidation to ensure it happens even if proxy panics
+	defer func() {
+		panicValue := recover()
+		if panicValue != nil {
+			log.Error().Interface("panic", panicValue).Int("instanceId", instanceID).
+				Msgf("Recovered from panic during %s cache invalidation", config.logContext)
+		}
+
+		if len(hashList) > 0 {
+			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			failedInvalidations := 0
+			for _, hash := range hashList {
+				hash = strings.TrimSpace(hash)
+				if hash == "" {
+					continue
+				}
+				if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
+					failedInvalidations++
+					log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+						Msgf("Failed to invalidate file cache after %s", config.logContext)
+				}
+			}
+			if failedInvalidations > 0 && len(hashList) > 1 {
+				log.Warn().Int("instanceId", instanceID).Int("failed", failedInvalidations).Int("total", len(hashList)).
+					Msgf("Some file cache invalidations failed after %s - cache may be stale", config.logContext)
+			}
+		}
+
+		if panicValue != nil {
+			panic(panicValue)
+		}
+	}()
+
+	// Restore body for proxy
+	restoreBody(r, bodyBytes)
+
+	// Forward to qBittorrent
+	h.proxy.ServeHTTP(w, r)
+}
+
 // errorHandler handles proxy errors
 func (h *Handler) errorHandler(w http.ResponseWriter, r *http.Request, err error) {
 	ctx := r.Context()
@@ -1216,79 +1320,12 @@ func (h *Handler) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleSetLocation handles /api/v2/torrents/setLocation and invalidates file cache
+// handleSetLocation handles /api/v2/torrents/setLocation and invalidates file cache
 func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	instanceID := GetInstanceIDFromContext(ctx)
-	clientAPIKey := GetClientAPIKeyFromContext(ctx)
-
-	// Buffer body so we can parse form and still forward to proxy
-	bodyBytes, err := bufferRequestBody(r)
-	if err != nil {
-		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to read setLocation body")
-		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
-		return
-	}
-
-	// Parse form data
-	if err := r.ParseForm(); err != nil {
-		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to parse setLocation form")
-		http.Error(w, "Invalid form data", http.StatusBadRequest)
-		return
-	}
-
-	hashes := r.Form.Get("hashes")
-
-	log.Debug().
-		Int("instanceId", instanceID).
-		Str("client", clientAPIKey.ClientName).
-		Str("hashes", hashes).
-		Msg("Intercepting setLocation request for cache invalidation")
-
-	// Defer cache invalidation to ensure it happens even if proxy panics
-	// Use background context with timeout to avoid cancellation issues
-	defer func() {
-		// Capture panic value if any
-		panicValue := recover()
-		if panicValue != nil {
-			log.Error().Interface("panic", panicValue).Int("instanceId", instanceID).
-				Msg("Recovered from panic during setLocation cache invalidation")
-		}
-
-		if hashes != "" {
-			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-
-			hashList := strings.Split(hashes, "|")
-			failedInvalidations := 0
-			for _, hash := range hashList {
-				hash = strings.TrimSpace(hash)
-				if hash == "" {
-					continue
-				}
-				if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
-					failedInvalidations++
-					log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
-						Msg("Failed to invalidate file cache after setLocation")
-				}
-			}
-			// Log summary if any invalidations failed
-			if failedInvalidations > 0 {
-				log.Warn().Int("instanceId", instanceID).Int("failed", failedInvalidations).Int("total", len(hashList)).
-					Msg("Some file cache invalidations failed after setLocation - cache may be stale")
-			}
-		}
-
-		// Re-panic with captured value to preserve stack trace
-		if panicValue != nil {
-			panic(panicValue)
-		}
-	}()
-
-	// Restore body for proxy
-	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-
-	// Forward to qBittorrent
-	h.proxy.ServeHTTP(w, r)
+	h.handleWithCacheInvalidation(w, r, cacheInvalidationConfig{
+		mode:       InvalidateMultipleHashes,
+		logContext: "setLocation",
+	})
 }
 
 func (h *Handler) handleReannounce(w http.ResponseWriter, r *http.Request) {
@@ -1349,197 +1386,24 @@ func (h *Handler) handleReannounce(w http.ResponseWriter, r *http.Request) {
 
 // handleRenameFile handles /api/v2/torrents/renameFile and invalidates file cache
 func (h *Handler) handleRenameFile(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	instanceID := GetInstanceIDFromContext(ctx)
-	clientAPIKey := GetClientAPIKeyFromContext(ctx)
-
-	// Buffer body so we can parse form and still forward to proxy
-	bodyBytes, err := bufferRequestBody(r)
-	if err != nil {
-		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to read renameFile body")
-		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
-		return
-	}
-
-	// Parse form data
-	if err := r.ParseForm(); err != nil {
-		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to parse renameFile form")
-		http.Error(w, "Invalid form data", http.StatusBadRequest)
-		return
-	}
-
-	hash := r.Form.Get("hash")
-
-	log.Debug().
-		Int("instanceId", instanceID).
-		Str("client", clientAPIKey.ClientName).
-		Str("hash", hash).
-		Msg("Intercepting renameFile request for cache invalidation")
-
-	// Defer cache invalidation to ensure it happens even if proxy panics
-	defer func() {
-		// Capture panic value if any
-		panicValue := recover()
-		if panicValue != nil {
-			log.Error().Interface("panic", panicValue).Int("instanceId", instanceID).
-				Msg("Recovered from panic during renameFile cache invalidation")
-		}
-
-		if hash != "" {
-			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-
-			if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
-				log.Error().Err(err).Int("instanceId", instanceID).Str("hash", hash).
-					Msg("CRITICAL: Failed to invalidate file cache after renameFile - cache is now stale")
-			}
-		}
-
-		// Re-panic with captured value to preserve stack trace
-		if panicValue != nil {
-			panic(panicValue)
-		}
-	}()
-
-	// Restore body for proxy
-	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-
-	// Forward to qBittorrent
-	h.proxy.ServeHTTP(w, r)
+	h.handleWithCacheInvalidation(w, r, cacheInvalidationConfig{
+		mode:       InvalidateSingleHash,
+		logContext: "renameFile",
+	})
 }
 
 // handleRenameFolder handles /api/v2/torrents/renameFolder and invalidates file cache
 func (h *Handler) handleRenameFolder(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	instanceID := GetInstanceIDFromContext(ctx)
-	clientAPIKey := GetClientAPIKeyFromContext(ctx)
-
-	// Buffer body so we can parse form and still forward to proxy
-	bodyBytes, err := bufferRequestBody(r)
-	if err != nil {
-		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to read renameFolder body")
-		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
-		return
-	}
-
-	// Parse form data
-	if err := r.ParseForm(); err != nil {
-		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to parse renameFolder form")
-		http.Error(w, "Invalid form data", http.StatusBadRequest)
-		return
-	}
-
-	hash := r.Form.Get("hash")
-
-	log.Debug().
-		Int("instanceId", instanceID).
-		Str("client", clientAPIKey.ClientName).
-		Str("hash", hash).
-		Msg("Intercepting renameFolder request for cache invalidation")
-
-	// Defer cache invalidation to ensure it happens even if proxy panics
-	defer func() {
-		// Capture panic value if any
-		panicValue := recover()
-		if panicValue != nil {
-			log.Error().Interface("panic", panicValue).Int("instanceId", instanceID).
-				Msg("Recovered from panic during renameFolder cache invalidation")
-		}
-
-		if hash != "" {
-			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-
-			if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
-				log.Error().Err(err).Int("instanceId", instanceID).Str("hash", hash).
-					Msg("CRITICAL: Failed to invalidate file cache after renameFolder - cache is now stale")
-			}
-		}
-
-		// Re-panic with captured value to preserve stack trace
-		if panicValue != nil {
-			panic(panicValue)
-		}
-	}()
-
-	// Restore body for proxy
-	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-
-	// Forward to qBittorrent
-	h.proxy.ServeHTTP(w, r)
+	h.handleWithCacheInvalidation(w, r, cacheInvalidationConfig{
+		mode:       InvalidateSingleHash,
+		logContext: "renameFolder",
+	})
 }
 
 // handleDeleteTorrents handles /api/v2/torrents/delete and invalidates file cache
 func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	instanceID := GetInstanceIDFromContext(ctx)
-	clientAPIKey := GetClientAPIKeyFromContext(ctx)
-
-	// Buffer body so we can parse form and still forward to proxy
-	bodyBytes, err := bufferRequestBody(r)
-	if err != nil {
-		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to read delete body")
-		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
-		return
-	}
-
-	// Parse form data
-	if err := r.ParseForm(); err != nil {
-		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to parse delete form")
-		http.Error(w, "Invalid form data", http.StatusBadRequest)
-		return
-	}
-
-	hashes := r.Form.Get("hashes")
-
-	log.Debug().
-		Int("instanceId", instanceID).
-		Str("client", clientAPIKey.ClientName).
-		Str("hashes", hashes).
-		Msg("Intercepting delete request for cache invalidation")
-
-	// Defer cache invalidation to ensure it happens even if proxy panics
-	defer func() {
-		// Capture panic value if any
-		panicValue := recover()
-		if panicValue != nil {
-			log.Error().Interface("panic", panicValue).Int("instanceId", instanceID).
-				Msg("Recovered from panic during delete cache invalidation")
-		}
-
-		if hashes != "" {
-			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-
-			hashList := strings.Split(hashes, "|")
-			failedInvalidations := 0
-			for _, hash := range hashList {
-				hash = strings.TrimSpace(hash)
-				if hash == "" {
-					continue
-				}
-				if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
-					failedInvalidations++
-					log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
-						Msg("Failed to invalidate file cache after delete")
-				}
-			}
-			// Log summary if any invalidations failed
-			if failedInvalidations > 0 {
-				log.Warn().Int("instanceId", instanceID).Int("failed", failedInvalidations).Int("total", len(hashList)).
-					Msg("Some file cache invalidations failed after delete - cache may be stale")
-			}
-		}
-
-		// Re-panic with captured value to preserve stack trace
-		if panicValue != nil {
-			panic(panicValue)
-		}
-	}()
-
-	// Restore body for proxy
-	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-
-	// Forward to qBittorrent
-	h.proxy.ServeHTTP(w, r)
+	h.handleWithCacheInvalidation(w, r, cacheInvalidationConfig{
+		mode:       InvalidateMultipleHashes,
+		logContext: "delete",
+	})
 }

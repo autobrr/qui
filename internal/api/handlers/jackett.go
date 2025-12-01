@@ -442,9 +442,8 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 // @Security ApiKeyAuth
 // @Router /api/torznab/indexers/{indexerID} [get]
 func (h *JackettHandler) GetIndexer(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+	id, ok := ParseIndexerID(w, r)
+	if !ok {
 		return
 	}
 
@@ -476,9 +475,8 @@ func (h *JackettHandler) GetIndexer(w http.ResponseWriter, r *http.Request) {
 // @Security ApiKeyAuth
 // @Router /api/torznab/indexers/{indexerID} [put]
 func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+	id, ok := ParseIndexerID(w, r)
+	if !ok {
 		return
 	}
 
@@ -599,13 +597,12 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 // @Security ApiKeyAuth
 // @Router /api/torznab/indexers/{indexerID} [delete]
 func (h *JackettHandler) DeleteIndexer(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+	id, ok := ParseIndexerID(w, r)
+	if !ok {
 		return
 	}
 
-	err = h.indexerStore.Delete(r.Context(), id)
+	err := h.indexerStore.Delete(r.Context(), id)
 	if err != nil {
 		if err == models.ErrTorznabIndexerNotFound {
 			RespondError(w, http.StatusNotFound, "Indexer not found")
@@ -639,9 +636,8 @@ func (h *JackettHandler) DeleteIndexer(w http.ResponseWriter, r *http.Request) {
 // @Security ApiKeyAuth
 // @Router /api/torznab/indexers/{indexerID}/test [post]
 func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+	id, ok := ParseIndexerID(w, r)
+	if !ok {
 		return
 	}
 
@@ -730,9 +726,8 @@ func (h *JackettHandler) SyncIndexerCaps(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+	id, ok := ParseIndexerID(w, r)
+	if !ok {
 		return
 	}
 
@@ -836,9 +831,8 @@ func (h *JackettHandler) GetAllHealth(w http.ResponseWriter, r *http.Request) {
 // @Security ApiKeyAuth
 // @Router /api/torznab/indexers/{indexerID}/health [get]
 func (h *JackettHandler) GetIndexerHealth(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+	id, ok := ParseIndexerID(w, r)
+	if !ok {
 		return
 	}
 
@@ -869,9 +863,8 @@ func (h *JackettHandler) GetIndexerHealth(w http.ResponseWriter, r *http.Request
 // @Security ApiKeyAuth
 // @Router /api/torznab/indexers/{indexerID}/errors [get]
 func (h *JackettHandler) GetIndexerErrors(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+	id, ok := ParseIndexerID(w, r)
+	if !ok {
 		return
 	}
 
@@ -904,9 +897,8 @@ func (h *JackettHandler) GetIndexerErrors(w http.ResponseWriter, r *http.Request
 // @Security ApiKeyAuth
 // @Router /api/torznab/indexers/{indexerID}/stats [get]
 func (h *JackettHandler) GetIndexerStats(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+	id, ok := ParseIndexerID(w, r)
+	if !ok {
 		return
 	}
 

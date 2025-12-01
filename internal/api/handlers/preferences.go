@@ -6,9 +6,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -32,10 +30,8 @@ func NewPreferencesHandler(syncManager *qbittorrent.SyncManager) *PreferencesHan
 // For now, current_network_interface and current_interface_address show actual values but
 // cannot be configured with proper dropdown selections.
 func (h *PreferencesHandler) GetPreferences(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		log.Error().Err(err).Msg("Invalid instance ID")
-		http.Error(w, "Invalid instance ID", http.StatusBadRequest)
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -59,10 +55,8 @@ func (h *PreferencesHandler) GetPreferences(w http.ResponseWriter, r *http.Reque
 
 // UpdatePreferences updates specific preference fields
 func (h *PreferencesHandler) UpdatePreferences(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		log.Error().Err(err).Msg("Invalid instance ID")
-		http.Error(w, "Invalid instance ID", http.StatusBadRequest)
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -106,10 +100,8 @@ func (h *PreferencesHandler) UpdatePreferences(w http.ResponseWriter, r *http.Re
 
 // GetAlternativeSpeedLimitsMode returns the current alternative speed limits mode
 func (h *PreferencesHandler) GetAlternativeSpeedLimitsMode(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		log.Error().Err(err).Msg("Invalid instance ID")
-		http.Error(w, "Invalid instance ID", http.StatusBadRequest)
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -133,10 +125,8 @@ func (h *PreferencesHandler) GetAlternativeSpeedLimitsMode(w http.ResponseWriter
 
 // ToggleAlternativeSpeedLimits toggles alternative speed limits on/off
 func (h *PreferencesHandler) ToggleAlternativeSpeedLimits(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		log.Error().Err(err).Msg("Invalid instance ID")
-		http.Error(w, "Invalid instance ID", http.StatusBadRequest)
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 

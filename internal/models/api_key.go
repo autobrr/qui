@@ -5,7 +5,6 @@ package models
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -13,6 +12,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/autobrr/qui/internal/crypto"
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
@@ -37,11 +37,7 @@ func NewAPIKeyStore(db dbinterface.Querier) *APIKeyStore {
 
 // GenerateAPIKey generates a new API key
 func GenerateAPIKey() (string, error) {
-	bytes := make([]byte, 32)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(bytes), nil
+	return crypto.GenerateSecureToken(32)
 }
 
 // HashAPIKey creates a SHA256 hash of the API key

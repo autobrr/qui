@@ -5,18 +5,14 @@ package models
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
 	"database/sql"
-	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/autobrr/qui/internal/crypto"
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
@@ -164,71 +160,21 @@ type TorznabIndexerHealth struct {
 
 // TorznabIndexerStore manages Torznab indexers in the database
 type TorznabIndexerStore struct {
-	db            dbinterface.Querier
-	encryptionKey []byte
+	db        dbinterface.Querier
+	encryptor *crypto.AESEncryptor
 }
 
 // NewTorznabIndexerStore creates a new TorznabIndexerStore
 func NewTorznabIndexerStore(db dbinterface.Querier, encryptionKey []byte) (*TorznabIndexerStore, error) {
-	if len(encryptionKey) != 32 {
-		return nil, errors.New("encryption key must be 32 bytes")
+	encryptor, err := crypto.NewAESEncryptor(encryptionKey)
+	if err != nil {
+		return nil, err
 	}
 
 	return &TorznabIndexerStore{
-		db:            db,
-		encryptionKey: encryptionKey,
+		db:        db,
+		encryptor: encryptor,
 	}, nil
-}
-
-// encrypt encrypts a string using AES-GCM
-func (s *TorznabIndexerStore) encrypt(plaintext string) (string, error) {
-	block, err := aes.NewCipher(s.encryptionKey)
-	if err != nil {
-		return "", err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", err
-	}
-
-	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
-	return base64.StdEncoding.EncodeToString(ciphertext), nil
-}
-
-// decrypt decrypts a string encrypted with encrypt
-func (s *TorznabIndexerStore) decrypt(ciphertext string) (string, error) {
-	data, err := base64.StdEncoding.DecodeString(ciphertext)
-	if err != nil {
-		return "", err
-	}
-
-	block, err := aes.NewCipher(s.encryptionKey)
-	if err != nil {
-		return "", err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	if len(data) < gcm.NonceSize() {
-		return "", errors.New("malformed ciphertext")
-	}
-
-	nonce, ciphertextBytes := data[:gcm.NonceSize()], data[gcm.NonceSize():]
-	plaintext, err := gcm.Open(nil, nonce, ciphertextBytes, nil)
-	if err != nil {
-		return "", err
-	}
-
-	return string(plaintext), nil
 }
 
 // Create creates a new Torznab indexer
@@ -258,7 +204,7 @@ func (s *TorznabIndexerStore) CreateWithIndexerID(ctx context.Context, name, bas
 	}
 
 	// Encrypt API key
-	encryptedAPIKey, err := s.encrypt(apiKey)
+	encryptedAPIKey, err := s.encryptor.Encrypt(apiKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt API key: %w", err)
 	}
@@ -574,7 +520,7 @@ func (s *TorznabIndexerStore) Update(ctx context.Context, id int, params Torznab
 	// Handle API key update
 	var encryptedAPIKey string
 	if params.APIKey != "" {
-		encryptedAPIKey, err = s.encrypt(params.APIKey)
+		encryptedAPIKey, err = s.encryptor.Encrypt(params.APIKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to encrypt API key: %w", err)
 		}
@@ -681,7 +627,7 @@ func (s *TorznabIndexerStore) UpdateTestStatus(ctx context.Context, id int, stat
 
 // GetDecryptedAPIKey returns the decrypted API key for an indexer
 func (s *TorznabIndexerStore) GetDecryptedAPIKey(indexer *TorznabIndexer) (string, error) {
-	return s.decrypt(indexer.APIKeyEncrypted)
+	return s.encryptor.Decrypt(indexer.APIKeyEncrypted)
 }
 
 // Test tests the connection to a Torznab indexer by querying its capabilities

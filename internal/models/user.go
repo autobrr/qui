@@ -31,37 +31,33 @@ func NewUserStore(db dbinterface.Querier) *UserStore {
 }
 
 func (s *UserStore) Create(ctx context.Context, username, passwordHash string) (*User, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
+	var user *User
 
-	query := `
-		INSERT INTO user (id, username, password_hash) 
-		VALUES (1, ?, ?)
-		RETURNING id, username, password_hash
-	`
+	err := s.db.WithTx(ctx, nil, func(tx dbinterface.TxQuerier) error {
+		query := `
+			INSERT INTO user (id, username, password_hash) 
+			VALUES (1, ?, ?)
+			RETURNING id, username, password_hash
+		`
 
-	user := &User{}
-	err = tx.QueryRowContext(ctx, query, username, passwordHash).Scan(
-		&user.ID,
-		&user.Username,
-		&user.PasswordHash,
-	)
-
-	if err != nil {
-		var sqlErr *sqlite.Error
-		if errors.As(err, &sqlErr) {
-			// UNIQUE constraint on username or CHECK constraint on id = 1
-			if sqlErr.Code() == lib.SQLITE_CONSTRAINT_UNIQUE || sqlErr.Code() == lib.SQLITE_CONSTRAINT_CHECK {
-				return nil, ErrUserAlreadyExists
+		user = &User{}
+		if err := tx.QueryRowContext(ctx, query, username, passwordHash).Scan(
+			&user.ID,
+			&user.Username,
+			&user.PasswordHash,
+		); err != nil {
+			var sqlErr *sqlite.Error
+			if errors.As(err, &sqlErr) {
+				// UNIQUE constraint on username or CHECK constraint on id = 1
+				if sqlErr.Code() == lib.SQLITE_CONSTRAINT_UNIQUE || sqlErr.Code() == lib.SQLITE_CONSTRAINT_CHECK {
+					return ErrUserAlreadyExists
+				}
 			}
+			return err
 		}
-		return nil, err
-	}
-
-	if err = tx.Commit(); err != nil {
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 
@@ -117,37 +113,29 @@ func (s *UserStore) GetByUsername(ctx context.Context, username string) (*User, 
 }
 
 func (s *UserStore) UpdatePassword(ctx context.Context, passwordHash string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
+	return s.db.WithTx(ctx, nil, func(tx dbinterface.TxQuerier) error {
+		query := `
+			UPDATE user 
+			SET password_hash = ? 
+			WHERE id = 1
+		`
 
-	query := `
-		UPDATE user 
-		SET password_hash = ? 
-		WHERE id = 1
-	`
+		result, err := tx.ExecContext(ctx, query, passwordHash)
+		if err != nil {
+			return err
+		}
 
-	result, err := tx.ExecContext(ctx, query, passwordHash)
-	if err != nil {
-		return err
-	}
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
 
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
+		if rows == 0 {
+			return ErrUserNotFound
+		}
 
-	if rows == 0 {
-		return ErrUserNotFound
-	}
-
-	if err = tx.Commit(); err != nil {
-		return err
-	}
-
-	return nil
+		return nil
+	})
 }
 
 func (s *UserStore) Exists(ctx context.Context) (bool, error) {

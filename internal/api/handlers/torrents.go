@@ -61,9 +61,8 @@ func NewTorrentsHandler(syncManager *qbittorrent.SyncManager) *TorrentsHandler {
 // ListTorrents returns paginated torrents for an instance with enhanced metadata
 func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -163,9 +162,8 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 
 // CheckDuplicates validates if any of the provided hashes already exist in qBittorrent.
 func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -173,8 +171,7 @@ func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request
 		Hashes []string `json:"hashes"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -235,15 +232,13 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
 	// Parse multipart form
-	err = r.ParseMultipartForm(addTorrentMaxFormMemory)
-	if err != nil {
+	if err := r.ParseMultipartForm(addTorrentMaxFormMemory); err != nil {
 		if errors.Is(err, multipart.ErrMessageTooLarge) {
 			RespondError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("Upload exceeded %d MB limit", addTorrentMaxFormMemory>>20))
 			return
@@ -487,15 +482,13 @@ type BulkActionRequest struct {
 // BulkAction performs bulk operations on torrents
 func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
 	var req BulkActionRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -574,6 +567,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Perform bulk action based on type
+	var err error
 	switch req.Action {
 	case "addTags":
 		if req.Tags == "" {
@@ -657,9 +651,8 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 // GetCategories returns all categories
 func (h *TorrentsHandler) GetCategories(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -680,9 +673,8 @@ func (h *TorrentsHandler) GetCategories(w http.ResponseWriter, r *http.Request) 
 // CreateCategory creates a new category
 func (h *TorrentsHandler) CreateCategory(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -690,8 +682,7 @@ func (h *TorrentsHandler) CreateCategory(w http.ResponseWriter, r *http.Request)
 		Name     string `json:"name"`
 		SavePath string `json:"savePath"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -717,9 +708,8 @@ func (h *TorrentsHandler) CreateCategory(w http.ResponseWriter, r *http.Request)
 // EditCategory edits an existing category
 func (h *TorrentsHandler) EditCategory(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -727,8 +717,7 @@ func (h *TorrentsHandler) EditCategory(w http.ResponseWriter, r *http.Request) {
 		Name     string `json:"name"`
 		SavePath string `json:"savePath"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -754,17 +743,15 @@ func (h *TorrentsHandler) EditCategory(w http.ResponseWriter, r *http.Request) {
 // RemoveCategories removes categories
 func (h *TorrentsHandler) RemoveCategories(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
 	var req struct {
 		Categories []string `json:"categories"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -790,9 +777,8 @@ func (h *TorrentsHandler) RemoveCategories(w http.ResponseWriter, r *http.Reques
 // GetTags returns all tags
 func (h *TorrentsHandler) GetTags(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -813,9 +799,8 @@ func (h *TorrentsHandler) GetTags(w http.ResponseWriter, r *http.Request) {
 // GetActiveTrackers returns all active tracker domains with their URLs
 func (h *TorrentsHandler) GetActiveTrackers(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -836,17 +821,15 @@ func (h *TorrentsHandler) GetActiveTrackers(w http.ResponseWriter, r *http.Reque
 // CreateTags creates new tags
 func (h *TorrentsHandler) CreateTags(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
 	var req struct {
 		Tags []string `json:"tags"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -872,17 +855,15 @@ func (h *TorrentsHandler) CreateTags(w http.ResponseWriter, r *http.Request) {
 // DeleteTags deletes tags
 func (h *TorrentsHandler) DeleteTags(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
 	var req struct {
 		Tags []string `json:"tags"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -908,15 +889,13 @@ func (h *TorrentsHandler) DeleteTags(w http.ResponseWriter, r *http.Request) {
 // GetTorrentProperties returns detailed properties for a specific torrent
 func (h *TorrentsHandler) GetTorrentProperties(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID and hash from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
-	hash := chi.URLParam(r, "hash")
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+	hash, ok := ParseTorrentHash(w, r)
+	if !ok {
 		return
 	}
 
@@ -937,15 +916,13 @@ func (h *TorrentsHandler) GetTorrentProperties(w http.ResponseWriter, r *http.Re
 // GetTorrentTrackers returns trackers for a specific torrent
 func (h *TorrentsHandler) GetTorrentTrackers(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID and hash from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
-	hash := chi.URLParam(r, "hash")
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+	hash, ok := ParseTorrentHash(w, r)
+	if !ok {
 		return
 	}
 
@@ -972,21 +949,18 @@ type EditTrackerRequest struct {
 // EditTorrentTracker edits a tracker URL for a specific torrent
 func (h *TorrentsHandler) EditTorrentTracker(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID and hash from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
-	hash := chi.URLParam(r, "hash")
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+	hash, ok := ParseTorrentHash(w, r)
+	if !ok {
 		return
 	}
 
 	var req EditTrackerRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -996,8 +970,7 @@ func (h *TorrentsHandler) EditTorrentTracker(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Edit tracker
-	err = h.syncManager.EditTorrentTracker(r.Context(), instanceID, hash, req.OldURL, req.NewURL)
-	if err != nil {
+	if err := h.syncManager.EditTorrentTracker(r.Context(), instanceID, hash, req.OldURL, req.NewURL); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:editTracker") {
 			return
 		}
@@ -1017,21 +990,18 @@ type AddTrackerRequest struct {
 // AddTorrentTrackers adds trackers to a specific torrent
 func (h *TorrentsHandler) AddTorrentTrackers(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID and hash from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
-	hash := chi.URLParam(r, "hash")
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+	hash, ok := ParseTorrentHash(w, r)
+	if !ok {
 		return
 	}
 
 	var req AddTrackerRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -1041,8 +1011,7 @@ func (h *TorrentsHandler) AddTorrentTrackers(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Add trackers
-	err = h.syncManager.AddTorrentTrackers(r.Context(), instanceID, hash, req.URLs)
-	if err != nil {
+	if err := h.syncManager.AddTorrentTrackers(r.Context(), instanceID, hash, req.URLs); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:addTrackers") {
 			return
 		}
@@ -1062,21 +1031,18 @@ type RemoveTrackerRequest struct {
 // RemoveTorrentTrackers removes trackers from a specific torrent
 func (h *TorrentsHandler) RemoveTorrentTrackers(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID and hash from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
-	hash := chi.URLParam(r, "hash")
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+	hash, ok := ParseTorrentHash(w, r)
+	if !ok {
 		return
 	}
 
 	var req RemoveTrackerRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -1086,8 +1052,7 @@ func (h *TorrentsHandler) RemoveTorrentTrackers(w http.ResponseWriter, r *http.R
 	}
 
 	// Remove trackers
-	err = h.syncManager.RemoveTorrentTrackers(r.Context(), instanceID, hash, req.URLs)
-	if err != nil {
+	if err := h.syncManager.RemoveTorrentTrackers(r.Context(), instanceID, hash, req.URLs); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:removeTrackers") {
 			return
 		}
@@ -1101,15 +1066,13 @@ func (h *TorrentsHandler) RemoveTorrentTrackers(w http.ResponseWriter, r *http.R
 
 // RenameTorrent updates the display name for a torrent
 func (h *TorrentsHandler) RenameTorrent(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
-	hash := chi.URLParam(r, "hash")
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+	hash, ok := ParseTorrentHash(w, r)
+	if !ok {
 		return
 	}
 
@@ -1117,8 +1080,7 @@ func (h *TorrentsHandler) RenameTorrent(w http.ResponseWriter, r *http.Request) 
 		Name string `json:"name"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -1141,15 +1103,13 @@ func (h *TorrentsHandler) RenameTorrent(w http.ResponseWriter, r *http.Request) 
 
 // RenameTorrentFile renames a file within a torrent
 func (h *TorrentsHandler) RenameTorrentFile(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
-	hash := chi.URLParam(r, "hash")
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+	hash, ok := ParseTorrentHash(w, r)
+	if !ok {
 		return
 	}
 
@@ -1158,8 +1118,7 @@ func (h *TorrentsHandler) RenameTorrentFile(w http.ResponseWriter, r *http.Reque
 		NewPath string `json:"newPath"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -1182,15 +1141,13 @@ func (h *TorrentsHandler) RenameTorrentFile(w http.ResponseWriter, r *http.Reque
 
 // RenameTorrentFolder renames a folder within a torrent
 func (h *TorrentsHandler) RenameTorrentFolder(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
-	hash := chi.URLParam(r, "hash")
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+	hash, ok := ParseTorrentHash(w, r)
+	if !ok {
 		return
 	}
 
@@ -1199,8 +1156,7 @@ func (h *TorrentsHandler) RenameTorrentFolder(w http.ResponseWriter, r *http.Req
 		NewPath string `json:"newPath"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -1224,15 +1180,13 @@ func (h *TorrentsHandler) RenameTorrentFolder(w http.ResponseWriter, r *http.Req
 // GetTorrentFiles returns files information for a specific torrent
 func (h *TorrentsHandler) GetTorrentPeers(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID and hash from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
-	hash := chi.URLParam(r, "hash")
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+	hash, ok := ParseTorrentHash(w, r)
+	if !ok {
 		return
 	}
 
@@ -1303,15 +1257,13 @@ func (h *TorrentsHandler) GetTorrentPeers(w http.ResponseWriter, r *http.Request
 
 func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID and hash from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
-	hash := chi.URLParam(r, "hash")
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+	hash, ok := ParseTorrentHash(w, r)
+	if !ok {
 		return
 	}
 
@@ -1350,9 +1302,8 @@ type SetTorrentFilePriorityRequest struct {
 
 // SetTorrentFilePriority updates the download priority for one or more files in a torrent.
 func (h *TorrentsHandler) SetTorrentFilePriority(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -1363,8 +1314,7 @@ func (h *TorrentsHandler) SetTorrentFilePriority(w http.ResponseWriter, r *http.
 	}
 
 	var req SetTorrentFilePriorityRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -1399,9 +1349,8 @@ func (h *TorrentsHandler) SetTorrentFilePriority(w http.ResponseWriter, r *http.
 
 // ExportTorrent streams the .torrent file for a specific torrent
 func (h *TorrentsHandler) ExportTorrent(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -1446,9 +1395,8 @@ func (h *TorrentsHandler) ExportTorrent(w http.ResponseWriter, r *http.Request) 
 // AddPeers adds peers to torrents
 func (h *TorrentsHandler) AddPeers(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -1458,8 +1406,7 @@ func (h *TorrentsHandler) AddPeers(w http.ResponseWriter, r *http.Request) {
 		Peers  []string `json:"peers"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -1469,8 +1416,7 @@ func (h *TorrentsHandler) AddPeers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add peers
-	err = h.syncManager.AddPeersToTorrents(r.Context(), instanceID, req.Hashes, req.Peers)
-	if err != nil {
+	if err := h.syncManager.AddPeersToTorrents(r.Context(), instanceID, req.Hashes, req.Peers); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:addPeers") {
 			return
 		}
@@ -1485,9 +1431,8 @@ func (h *TorrentsHandler) AddPeers(w http.ResponseWriter, r *http.Request) {
 // BanPeers bans peers permanently
 func (h *TorrentsHandler) BanPeers(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -1496,8 +1441,7 @@ func (h *TorrentsHandler) BanPeers(w http.ResponseWriter, r *http.Request) {
 		Peers []string `json:"peers"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -1507,8 +1451,7 @@ func (h *TorrentsHandler) BanPeers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Ban peers
-	err = h.syncManager.BanPeers(r.Context(), instanceID, req.Peers)
-	if err != nil {
+	if err := h.syncManager.BanPeers(r.Context(), instanceID, req.Peers); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:banPeers") {
 			return
 		}
@@ -1522,15 +1465,13 @@ func (h *TorrentsHandler) BanPeers(w http.ResponseWriter, r *http.Request) {
 
 // CreateTorrent creates a new torrent file from source path
 func (h *TorrentsHandler) CreateTorrent(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
 	var req qbt.TorrentCreationParams
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
+	if !DecodeJSON(w, r, &req) {
 		return
 	}
 
@@ -1562,9 +1503,8 @@ func (h *TorrentsHandler) CreateTorrent(w http.ResponseWriter, r *http.Request) 
 
 // GetTorrentCreationStatus gets status of torrent creation tasks
 func (h *TorrentsHandler) GetTorrentCreationStatus(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -1594,9 +1534,8 @@ func (h *TorrentsHandler) GetTorrentCreationStatus(w http.ResponseWriter, r *htt
 // GetActiveTaskCount returns the number of active torrent creation tasks
 // This is a lightweight endpoint optimized for polling the badge count
 func (h *TorrentsHandler) GetActiveTaskCount(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -1606,9 +1545,8 @@ func (h *TorrentsHandler) GetActiveTaskCount(w http.ResponseWriter, r *http.Requ
 
 // DownloadTorrentCreationFile downloads the torrent file for a completed task
 func (h *TorrentsHandler) DownloadTorrentCreationFile(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -1657,9 +1595,8 @@ func (h *TorrentsHandler) DownloadTorrentCreationFile(w http.ResponseWriter, r *
 
 // DeleteTorrentCreationTask deletes a torrent creation task
 func (h *TorrentsHandler) DeleteTorrentCreationTask(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	instanceID, ok := ParseInstanceID(w, r)
+	if !ok {
 		return
 	}
 
@@ -1669,8 +1606,7 @@ func (h *TorrentsHandler) DeleteTorrentCreationTask(w http.ResponseWriter, r *ht
 		return
 	}
 
-	err = h.syncManager.DeleteTorrentCreationTask(r.Context(), instanceID, taskID)
-	if err != nil {
+	if err := h.syncManager.DeleteTorrentCreationTask(r.Context(), instanceID, taskID); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:deleteCreationTask") {
 			return
 		}

@@ -129,10 +129,8 @@ func (h *TrackerRuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ruleIDStr := chi.URLParam(r, "ruleID")
-	ruleID, err := strconv.Atoi(ruleIDStr)
-	if err != nil || ruleID <= 0 {
-		RespondError(w, http.StatusBadRequest, "Invalid rule ID")
+	ruleID, ok := ParseRuleID(w, r)
+	if !ok {
 		return
 	}
 
@@ -173,10 +171,8 @@ func (h *TrackerRuleHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ruleIDStr := chi.URLParam(r, "ruleID")
-	ruleID, err := strconv.Atoi(ruleIDStr)
-	if err != nil || ruleID <= 0 {
-		RespondError(w, http.StatusBadRequest, "Invalid rule ID")
+	ruleID, ok := ParseRuleID(w, r)
+	if !ok {
 		return
 	}
 

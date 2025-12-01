@@ -5,19 +5,15 @@ package models
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/autobrr/qui/internal/crypto"
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/domain"
 )
@@ -125,70 +121,20 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 }
 
 type InstanceStore struct {
-	db            dbinterface.Querier
-	encryptionKey []byte
+	db        dbinterface.Querier
+	encryptor *crypto.AESEncryptor
 }
 
 func NewInstanceStore(db dbinterface.Querier, encryptionKey []byte) (*InstanceStore, error) {
-	if len(encryptionKey) != 32 {
-		return nil, errors.New("encryption key must be 32 bytes")
+	encryptor, err := crypto.NewAESEncryptor(encryptionKey)
+	if err != nil {
+		return nil, err
 	}
 
 	return &InstanceStore{
-		db:            db,
-		encryptionKey: encryptionKey,
+		db:        db,
+		encryptor: encryptor,
 	}, nil
-}
-
-// encrypt encrypts a string using AES-GCM
-func (s *InstanceStore) encrypt(plaintext string) (string, error) {
-	block, err := aes.NewCipher(s.encryptionKey)
-	if err != nil {
-		return "", err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", err
-	}
-
-	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
-	return base64.StdEncoding.EncodeToString(ciphertext), nil
-}
-
-// decrypt decrypts a string encrypted with encrypt
-func (s *InstanceStore) decrypt(ciphertext string) (string, error) {
-	data, err := base64.StdEncoding.DecodeString(ciphertext)
-	if err != nil {
-		return "", err
-	}
-
-	block, err := aes.NewCipher(s.encryptionKey)
-	if err != nil {
-		return "", err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	if len(data) < gcm.NonceSize() {
-		return "", errors.New("malformed ciphertext")
-	}
-
-	nonce, ciphertextBytes := data[:gcm.NonceSize()], data[gcm.NonceSize():]
-	plaintext, err := gcm.Open(nil, nonce, ciphertextBytes, nil)
-	if err != nil {
-		return "", err
-	}
-
-	return string(plaintext), nil
 }
 
 // validateAndNormalizeHost validates and normalizes a qBittorrent instance host URL
@@ -233,7 +179,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		return nil, err
 	}
 	// Encrypt the password
-	encryptedPassword, err := s.encrypt(password)
+	encryptedPassword, err := s.encryptor.Encrypt(password)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt password: %w", err)
 	}
@@ -241,7 +187,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	// Encrypt basic auth password if provided
 	var encryptedBasicPassword *string
 	if basicPassword != nil && *basicPassword != "" {
-		encrypted, err := s.encrypt(*basicPassword)
+		encrypted, err := s.encryptor.Encrypt(*basicPassword)
 		if err != nil {
 			return nil, fmt.Errorf("failed to encrypt basic auth password: %w", err)
 		}
@@ -531,7 +477,7 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 
 	// Handle password update - encrypt if provided
 	if password != "" {
-		encryptedPassword, err := s.encrypt(password)
+		encryptedPassword, err := s.encryptor.Encrypt(password)
 		if err != nil {
 			return nil, fmt.Errorf("failed to encrypt password: %w", err)
 		}
@@ -546,7 +492,7 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 			query += ", basic_password_encrypted = NULL"
 		} else {
 			// Basic password provided - encrypt and update
-			encryptedBasicPassword, err := s.encrypt(*basicPassword)
+			encryptedBasicPassword, err := s.encryptor.Encrypt(*basicPassword)
 			if err != nil {
 				return nil, fmt.Errorf("failed to encrypt basic auth password: %w", err)
 			}
@@ -693,7 +639,7 @@ func (s *InstanceStore) Delete(ctx context.Context, id int) error {
 
 // GetDecryptedPassword returns the decrypted password for an instance
 func (s *InstanceStore) GetDecryptedPassword(instance *Instance) (string, error) {
-	return s.decrypt(instance.PasswordEncrypted)
+	return s.encryptor.Decrypt(instance.PasswordEncrypted)
 }
 
 // GetDecryptedBasicPassword returns the decrypted basic auth password for an instance
@@ -701,7 +647,7 @@ func (s *InstanceStore) GetDecryptedBasicPassword(instance *Instance) (*string, 
 	if instance.BasicPasswordEncrypted == nil {
 		return nil, nil
 	}
-	decrypted, err := s.decrypt(*instance.BasicPasswordEncrypted)
+	decrypted, err := s.encryptor.Decrypt(*instance.BasicPasswordEncrypted)
 	if err != nil {
 		return nil, err
 	}
