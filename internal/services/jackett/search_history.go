@@ -12,34 +12,36 @@ const defaultHistoryCapacity = 500
 
 // SearchHistoryEntry captures details of a completed search task.
 type SearchHistoryEntry struct {
-	ID     uint64 `json:"id"`
-	JobID  uint64 `json:"jobId"`
-	TaskID uint64 `json:"taskId"`
-
-	// Indexer details
-	IndexerID   int    `json:"indexerId"`
-	IndexerName string `json:"indexerName"`
+	StartedAt   time.Time `json:"startedAt"`
+	CompletedAt time.Time `json:"completedAt"`
 
 	// Search parameters
+	Params      map[string]string `json:"params,omitempty"` // Raw params sent to indexer
+	Categories  []int             `json:"categories,omitempty"`
 	Query       string            `json:"query,omitempty"`
 	ReleaseName string            `json:"releaseName,omitempty"` // Original full release name
-	Params      map[string]string `json:"params,omitempty"`      // Raw params sent to indexer
-	Categories  []int             `json:"categories,omitempty"`
 	ContentType string            `json:"contentType,omitempty"`
 	Priority    string            `json:"priority"`
 	SearchMode  string            `json:"searchMode,omitempty"`
 
-	// Results
-	Status      string `json:"status"` // success, error, skipped, rate_limited
-	ResultCount int    `json:"resultCount"`
+	// Indexer details
+	IndexerName string `json:"indexerName"`
 
-	// Timing
-	StartedAt   time.Time `json:"startedAt"`
-	CompletedAt time.Time `json:"completedAt"`
-	DurationMs  int       `json:"durationMs"`
+	// Results
+	Status string `json:"status"` // success, error, skipped, rate_limited
 
 	// Error details (if applicable)
 	ErrorMessage string `json:"errorMessage,omitempty"`
+
+	ID     uint64 `json:"id"`
+	JobID  uint64 `json:"jobId"`
+	TaskID uint64 `json:"taskId"`
+
+	IndexerID   int `json:"indexerId"`
+	ResultCount int `json:"resultCount"`
+
+	// Timing
+	DurationMs int `json:"durationMs"`
 }
 
 // SearchHistoryResponse is the API response for search history queries.
@@ -147,11 +149,11 @@ func (b *SearchHistoryBuffer) Count() int {
 
 // Stats returns basic statistics about the buffer.
 type SearchHistoryStats struct {
-	Count       int            `json:"count"`
-	Capacity    int            `json:"capacity"`
 	ByStatus    map[string]int `json:"byStatus"`
 	ByPriority  map[string]int `json:"byPriority"`
 	AvgDuration float64        `json:"avgDurationMs"`
+	Count       int            `json:"count"`
+	Capacity    int            `json:"capacity"`
 }
 
 func (b *SearchHistoryBuffer) Stats() SearchHistoryStats {
@@ -216,10 +218,10 @@ const defaultOutcomeCapacity = 1000
 
 // IndexerOutcome represents the cross-seed outcome for a specific indexer's search results.
 type IndexerOutcome struct {
-	Outcome    string    `json:"outcome"`              // "added", "failed", "no_match", ""
-	AddedCount int       `json:"addedCount,omitempty"` // Number of torrents added from this indexer
-	Message    string    `json:"message,omitempty"`
 	RecordedAt time.Time `json:"recordedAt"`
+	Outcome    string    `json:"outcome"` // "added", "failed", "no_match", ""
+	Message    string    `json:"message,omitempty"`
+	AddedCount int       `json:"addedCount,omitempty"` // Number of torrents added from this indexer
 }
 
 // indexerOutcomeKey uniquely identifies an indexer's results within a job.

@@ -19,12 +19,12 @@ import (
 
 // Config holds the options for constructing a Client.
 type Config struct {
+	HTTPClient *http.Client
 	Host       string
 	APIKey     string
-	Timeout    int
-	HTTPClient *http.Client
 	UserAgent  string
 	Version    string
+	Timeout    int
 }
 
 // TorznabError represents a Torznab error response
@@ -74,33 +74,33 @@ func NewClient(cfg Config) *Client {
 
 // Indexer represents a configured Prowlarr indexer returned by the API.
 type Indexer struct {
-	ID                 int    `json:"id"`
 	Name               string `json:"name"`
 	Description        string `json:"description"`
 	Implementation     string `json:"implementation"`
 	ImplementationName string `json:"implementationName"`
-	Enable             bool   `json:"enable"`
 	Protocol           string `json:"protocol"` // "unknown", "usenet", "torrent"
+	ID                 int    `json:"id"`
+	Enable             bool   `json:"enable"`
 }
 
 // IndexerDetail represents detailed information about a Prowlarr indexer
 type IndexerDetail struct {
-	ID                 int            `json:"id"`
+	Fields             []IndexerField `json:"fields"`
 	Name               string         `json:"name"`
 	Description        string         `json:"description"`
 	Implementation     string         `json:"implementation"`
 	ImplementationName string         `json:"implementationName"`
+	ID                 int            `json:"id"`
 	Enable             bool           `json:"enable"`
-	Fields             []IndexerField `json:"fields"`
 }
 
 // IndexerField represents a configuration field for an indexer
 type IndexerField struct {
-	Order    int    `json:"order"`
+	Value    any    `json:"value"`
 	Name     string `json:"name"`
 	Label    string `json:"label"`
-	Value    any    `json:"value"`
 	Type     string `json:"type"`
+	Order    int    `json:"order"`
 	Advanced bool   `json:"advanced"`
 }
 

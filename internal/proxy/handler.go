@@ -33,7 +33,6 @@ import (
 
 // Handler manages reverse proxy requests to qBittorrent instances
 type Handler struct {
-	basePath          string
 	clientPool        *qbittorrent.ClientPool
 	clientAPIKeyStore *models.ClientAPIKeyStore
 	instanceStore     *models.InstanceStore
@@ -42,6 +41,7 @@ type Handler struct {
 	reannounceService *reannounce.Service
 	bufferPool        *BufferPool
 	proxy             *httputil.ReverseProxy
+	basePath          string
 }
 
 const (
@@ -99,10 +99,10 @@ type basicAuthCredentials struct {
 }
 
 type proxyContext struct {
-	instanceID  int
 	instanceURL *url.URL
 	httpClient  *http.Client
 	basicAuth   *basicAuthCredentials
+	instanceID  int
 }
 
 // syncManagerFetcher is a function type for fetching data from the sync manager.

@@ -24,42 +24,42 @@ type PathMapping struct {
 
 // ExternalProgram represents a configured external program that can be executed from the torrent context menu
 type ExternalProgram struct {
-	ID           int           `json:"id"`
+	CreatedAt    time.Time     `json:"created_at"`
+	UpdatedAt    time.Time     `json:"updated_at"`
+	PathMappings []PathMapping `json:"path_mappings"`
 	Name         string        `json:"name"`
 	Path         string        `json:"path"`
 	ArgsTemplate string        `json:"args_template"`
+	ID           int           `json:"id"`
 	Enabled      bool          `json:"enabled"`
 	UseTerminal  bool          `json:"use_terminal"`
-	PathMappings []PathMapping `json:"path_mappings"`
-	CreatedAt    time.Time     `json:"created_at"`
-	UpdatedAt    time.Time     `json:"updated_at"`
 }
 
 // ExternalProgramCreate represents the data needed to create a new external program
 type ExternalProgramCreate struct {
+	PathMappings []PathMapping `json:"path_mappings"`
 	Name         string        `json:"name"`
 	Path         string        `json:"path"`
 	ArgsTemplate string        `json:"args_template"`
 	Enabled      bool          `json:"enabled"`
 	UseTerminal  bool          `json:"use_terminal"`
-	PathMappings []PathMapping `json:"path_mappings"`
 }
 
 // ExternalProgramUpdate represents the data needed to update an external program
 type ExternalProgramUpdate struct {
+	PathMappings []PathMapping `json:"path_mappings"`
 	Name         string        `json:"name"`
 	Path         string        `json:"path"`
 	ArgsTemplate string        `json:"args_template"`
 	Enabled      bool          `json:"enabled"`
 	UseTerminal  bool          `json:"use_terminal"`
-	PathMappings []PathMapping `json:"path_mappings"`
 }
 
 // ExternalProgramExecute represents a request to execute an external program with torrent data
 type ExternalProgramExecute struct {
+	Hashes     []string `json:"hashes"`
 	ProgramID  int      `json:"program_id"`
 	InstanceID int      `json:"instance_id"`
-	Hashes     []string `json:"hashes"`
 }
 
 type ExternalProgramStore struct {

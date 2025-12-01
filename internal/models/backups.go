@@ -16,21 +16,21 @@ import (
 )
 
 type BackupSettings struct {
+	CreatedAt         time.Time `json:"createdAt"`
+	UpdatedAt         time.Time `json:"updatedAt"`
+	CustomPath        *string   `json:"customPath,omitempty"`
 	InstanceID        int       `json:"instanceId"`
+	KeepHourly        int       `json:"keepHourly"`
+	KeepDaily         int       `json:"keepDaily"`
+	KeepWeekly        int       `json:"keepWeekly"`
+	KeepMonthly       int       `json:"keepMonthly"`
 	Enabled           bool      `json:"enabled"`
 	HourlyEnabled     bool      `json:"hourlyEnabled"`
 	DailyEnabled      bool      `json:"dailyEnabled"`
 	WeeklyEnabled     bool      `json:"weeklyEnabled"`
 	MonthlyEnabled    bool      `json:"monthlyEnabled"`
-	KeepHourly        int       `json:"keepHourly"`
-	KeepDaily         int       `json:"keepDaily"`
-	KeepWeekly        int       `json:"keepWeekly"`
-	KeepMonthly       int       `json:"keepMonthly"`
 	IncludeCategories bool      `json:"includeCategories"`
 	IncludeTags       bool      `json:"includeTags"`
-	CustomPath        *string   `json:"customPath,omitempty"`
-	CreatedAt         time.Time `json:"createdAt"`
-	UpdatedAt         time.Time `json:"updatedAt"`
 }
 
 func DefaultBackupSettings(instanceID int) *BackupSettings {
@@ -74,39 +74,39 @@ const (
 )
 
 type BackupRun struct {
-	ID             int64                       `json:"id"`
-	InstanceID     int                         `json:"instanceId"`
-	Kind           BackupRunKind               `json:"kind"`
-	Status         BackupRunStatus             `json:"status"`
-	RequestedBy    string                      `json:"requestedBy"`
 	RequestedAt    time.Time                   `json:"requestedAt"`
+	CategoryCounts map[string]int              `json:"categoryCounts,omitempty"`
+	Categories     map[string]CategorySnapshot `json:"categories,omitempty"`
+	Tags           []string                    `json:"tags,omitempty"`
 	StartedAt      *time.Time                  `json:"startedAt,omitempty"`
 	CompletedAt    *time.Time                  `json:"completedAt,omitempty"`
 	ArchivePath    *string                     `json:"archivePath,omitempty"`
 	ManifestPath   *string                     `json:"manifestPath,omitempty"`
-	TotalBytes     int64                       `json:"totalBytes"`
-	TorrentCount   int                         `json:"torrentCount"`
-	CategoryCounts map[string]int              `json:"categoryCounts,omitempty"`
 	ErrorMessage   *string                     `json:"errorMessage,omitempty"`
-	Categories     map[string]CategorySnapshot `json:"categories,omitempty"`
-	Tags           []string                    `json:"tags,omitempty"`
 	categoriesJSON *string
 	tagsJSON       *string
+	Kind           BackupRunKind   `json:"kind"`
+	Status         BackupRunStatus `json:"status"`
+	RequestedBy    string          `json:"requestedBy"`
+	TotalBytes     int64           `json:"totalBytes"`
+	ID             int64           `json:"id"`
+	InstanceID     int             `json:"instanceId"`
+	TorrentCount   int             `json:"torrentCount"`
 }
 
 type BackupItem struct {
-	ID              int64     `json:"id"`
-	RunID           int64     `json:"runId"`
+	CreatedAt       time.Time `json:"createdAt"`
 	TorrentHash     string    `json:"torrentHash"`
 	Name            string    `json:"name"`
 	Category        *string   `json:"category,omitempty"`
-	SizeBytes       int64     `json:"sizeBytes"`
 	ArchiveRelPath  *string   `json:"archiveRelPath,omitempty"`
 	InfoHashV1      *string   `json:"infohashV1,omitempty"`
 	InfoHashV2      *string   `json:"infohashV2,omitempty"`
 	Tags            *string   `json:"tags,omitempty"`
 	TorrentBlobPath *string   `json:"torrentBlobPath,omitempty"`
-	CreatedAt       time.Time `json:"createdAt"`
+	SizeBytes       int64     `json:"sizeBytes"`
+	ID              int64     `json:"id"`
+	RunID           int64     `json:"runId"`
 }
 
 type CategorySnapshot struct {

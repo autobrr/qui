@@ -14,21 +14,21 @@ import (
 )
 
 type TrackerRule struct {
-	ID                      int       `json:"id"`
-	InstanceID              int       `json:"instanceId"`
-	Name                    string    `json:"name"`
-	TrackerPattern          string    `json:"trackerPattern"`
-	TrackerDomains          []string  `json:"trackerDomains,omitempty"`
-	Category                *string   `json:"category,omitempty"`
-	Tag                     *string   `json:"tag,omitempty"`
-	UploadLimitKiB          *int64    `json:"uploadLimitKiB,omitempty"`
-	DownloadLimitKiB        *int64    `json:"downloadLimitKiB,omitempty"`
-	RatioLimit              *float64  `json:"ratioLimit,omitempty"`
-	SeedingTimeLimitMinutes *int64    `json:"seedingTimeLimitMinutes,omitempty"`
-	Enabled                 bool      `json:"enabled"`
-	SortOrder               int       `json:"sortOrder"`
 	CreatedAt               time.Time `json:"createdAt"`
 	UpdatedAt               time.Time `json:"updatedAt"`
+	TrackerDomains          []string  `json:"trackerDomains,omitempty"`
+	UploadLimitKiB          *int64    `json:"uploadLimitKiB,omitempty"`
+	DownloadLimitKiB        *int64    `json:"downloadLimitKiB,omitempty"`
+	SeedingTimeLimitMinutes *int64    `json:"seedingTimeLimitMinutes,omitempty"`
+	RatioLimit              *float64  `json:"ratioLimit,omitempty"`
+	Category                *string   `json:"category,omitempty"`
+	Tag                     *string   `json:"tag,omitempty"`
+	Name                    string    `json:"name"`
+	TrackerPattern          string    `json:"trackerPattern"`
+	ID                      int       `json:"id"`
+	InstanceID              int       `json:"instanceId"`
+	SortOrder               int       `json:"sortOrder"`
+	Enabled                 bool      `json:"enabled"`
 }
 
 type TrackerRuleStore struct {

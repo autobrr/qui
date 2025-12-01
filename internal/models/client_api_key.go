@@ -16,12 +16,12 @@ import (
 var ErrClientAPIKeyNotFound = errors.New("client api key not found")
 
 type ClientAPIKey struct {
-	ID         int        `json:"id"`
-	KeyHash    string     `json:"-"`
-	ClientName string     `json:"clientName"`
-	InstanceID int        `json:"instanceId"`
 	CreatedAt  time.Time  `json:"createdAt"`
 	LastUsedAt *time.Time `json:"lastUsedAt,omitempty"`
+	KeyHash    string     `json:"-"`
+	ClientName string     `json:"clientName"`
+	ID         int        `json:"id"`
+	InstanceID int        `json:"instanceId"`
 }
 
 type ClientAPIKeyStore struct {

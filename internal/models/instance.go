@@ -21,16 +21,19 @@ import (
 var ErrInstanceNotFound = errors.New("instance not found")
 
 type Instance struct {
-	ID                     int     `json:"id"`
+	// 8-byte aligned fields first (strings are 16 bytes each: pointer + length)
 	Name                   string  `json:"name"`
 	Host                   string  `json:"host"`
 	Username               string  `json:"username"`
 	PasswordEncrypted      string  `json:"-"`
 	BasicUsername          *string `json:"basic_username,omitempty"`
 	BasicPasswordEncrypted *string `json:"-"`
-	TLSSkipVerify          bool    `json:"tlsSkipVerify"`
-	SortOrder              int     `json:"sortOrder"`
-	IsActive               bool    `json:"isActive"`
+	// int fields (8 bytes on 64-bit)
+	ID        int `json:"id"`
+	SortOrder int `json:"sortOrder"`
+	// bool fields packed together (1 byte each)
+	TLSSkipVerify bool `json:"tlsSkipVerify"`
+	IsActive      bool `json:"isActive"`
 }
 
 func (i Instance) MarshalJSON() ([]byte, error) {

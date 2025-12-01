@@ -58,22 +58,27 @@ func MustTorznabBackend(value string) TorznabBackend {
 
 // TorznabIndexer represents a Torznab API indexer (Jackett, Prowlarr, etc.)
 type TorznabIndexer struct {
-	ID              int                      `json:"id"`
-	Name            string                   `json:"name"`
-	BaseURL         string                   `json:"base_url"`
-	IndexerID       string                   `json:"indexer_id"` // Jackett/Prowlarr indexer ID (e.g., "aither")
-	Backend         TorznabBackend           `json:"backend"`
-	APIKeyEncrypted string                   `json:"-"`
-	Enabled         bool                     `json:"enabled"`
-	Priority        int                      `json:"priority"`
-	TimeoutSeconds  int                      `json:"timeout_seconds"`
-	Capabilities    []string                 `json:"capabilities"`
-	Categories      []TorznabIndexerCategory `json:"categories"`
-	LastTestAt      *time.Time               `json:"last_test_at,omitempty"`
-	LastTestStatus  string                   `json:"last_test_status"`
-	LastTestError   *string                  `json:"last_test_error,omitempty"`
-	CreatedAt       time.Time                `json:"created_at"`
-	UpdatedAt       time.Time                `json:"updated_at"`
+	// 24-byte fields first (time.Time, slices)
+	CreatedAt    time.Time                `json:"created_at"`
+	UpdatedAt    time.Time                `json:"updated_at"`
+	Capabilities []string                 `json:"capabilities"`
+	Categories   []TorznabIndexerCategory `json:"categories"`
+	// Pointer fields (8 bytes)
+	LastTestAt    *time.Time `json:"last_test_at,omitempty"`
+	LastTestError *string    `json:"last_test_error,omitempty"`
+	// 16-byte string fields
+	Name            string         `json:"name"`
+	BaseURL         string         `json:"base_url"`
+	IndexerID       string         `json:"indexer_id"` // Jackett/Prowlarr indexer ID (e.g., "aither")
+	APIKeyEncrypted string         `json:"-"`
+	LastTestStatus  string         `json:"last_test_status"`
+	Backend         TorznabBackend `json:"backend"`
+	// int fields (8 bytes on 64-bit)
+	ID             int `json:"id"`
+	Priority       int `json:"priority"`
+	TimeoutSeconds int `json:"timeout_seconds"`
+	// bool fields (1 byte)
+	Enabled bool `json:"enabled"`
 }
 
 // TorznabIndexerUpdateParams captures optional fields for updating an indexer.
@@ -96,66 +101,66 @@ type TorznabIndexerCapability struct {
 
 // TorznabIndexerCategory represents a category supported by an indexer
 type TorznabIndexerCategory struct {
-	IndexerID      int    `json:"indexer_id"`
-	CategoryID     int    `json:"category_id"`
 	CategoryName   string `json:"category_name"`
 	ParentCategory *int   `json:"parent_category_id,omitempty"`
+	IndexerID      int    `json:"indexer_id"`
+	CategoryID     int    `json:"category_id"`
 }
 
 // TorznabIndexerCooldown captures a persisted rate-limit suspension window for an indexer.
 type TorznabIndexerCooldown struct {
-	IndexerID int           `json:"indexer_id"`
 	ResumeAt  time.Time     `json:"resume_at"`
 	Cooldown  time.Duration `json:"cooldown"`
 	Reason    string        `json:"reason,omitempty"`
+	IndexerID int           `json:"indexer_id"`
 }
 
 // TorznabIndexerError represents an error that occurred with an indexer
 type TorznabIndexerError struct {
-	ID           int        `json:"id"`
-	IndexerID    int        `json:"indexer_id"`
-	ErrorMessage string     `json:"error_message"`
-	ErrorCode    string     `json:"error_code"`
 	OccurredAt   time.Time  `json:"occurred_at"`
 	ResolvedAt   *time.Time `json:"resolved_at,omitempty"`
+	ErrorMessage string     `json:"error_message"`
+	ErrorCode    string     `json:"error_code"`
+	ID           int        `json:"id"`
+	IndexerID    int        `json:"indexer_id"`
 	ErrorCount   int        `json:"error_count"`
 }
 
 // TorznabIndexerLatency represents a latency measurement
 type TorznabIndexerLatency struct {
+	MeasuredAt    time.Time `json:"measured_at"`
+	OperationType string    `json:"operation_type"`
 	ID            int       `json:"id"`
 	IndexerID     int       `json:"indexer_id"`
-	OperationType string    `json:"operation_type"`
 	LatencyMs     int       `json:"latency_ms"`
 	Success       bool      `json:"success"`
-	MeasuredAt    time.Time `json:"measured_at"`
 }
 
 // TorznabIndexerLatencyStats represents aggregated latency statistics
 type TorznabIndexerLatencyStats struct {
-	IndexerID          int       `json:"indexer_id"`
-	OperationType      string    `json:"operation_type"`
-	TotalRequests      int       `json:"total_requests"`
-	SuccessfulRequests int       `json:"successful_requests"`
+	LastMeasuredAt     time.Time `json:"last_measured_at"`
 	AvgLatencyMs       *float64  `json:"avg_latency_ms,omitempty"`
+	SuccessRatePct     float64   `json:"success_rate_pct"`
+	OperationType      string    `json:"operation_type"`
 	MinLatencyMs       *int      `json:"min_latency_ms,omitempty"`
 	MaxLatencyMs       *int      `json:"max_latency_ms,omitempty"`
-	SuccessRatePct     float64   `json:"success_rate_pct"`
-	LastMeasuredAt     time.Time `json:"last_measured_at"`
+	IndexerID          int       `json:"indexer_id"`
+	TotalRequests      int       `json:"total_requests"`
+	SuccessfulRequests int       `json:"successful_requests"`
 }
 
 // TorznabIndexerHealth represents the health status of an indexer
 type TorznabIndexerHealth struct {
-	IndexerID        int        `json:"indexer_id"`
-	IndexerName      string     `json:"indexer_name"`
-	Enabled          bool       `json:"enabled"`
-	LastTestStatus   string     `json:"last_test_status"`
-	ErrorsLast24h    int        `json:"errors_last_24h"`
-	UnresolvedErrors int        `json:"unresolved_errors"`
+	LastMeasuredAt   *time.Time `json:"last_measured_at,omitempty"`
 	AvgLatencyMs     *float64   `json:"avg_latency_ms,omitempty"`
 	SuccessRatePct   *float64   `json:"success_rate_pct,omitempty"`
+	IndexerName      string     `json:"indexer_name"`
+	LastTestStatus   string     `json:"last_test_status"`
 	RequestsLast7d   *int       `json:"requests_last_7d,omitempty"`
-	LastMeasuredAt   *time.Time `json:"last_measured_at,omitempty"`
+	IndexerID        int        `json:"indexer_id"`
+	ErrorsLast24h    int        `json:"errors_last_24h"`
+	UnresolvedErrors int        `json:"unresolved_errors"`
+	Enabled          bool       `json:"enabled"`
 }
 
 // TorznabIndexerStore manages Torznab indexers in the database

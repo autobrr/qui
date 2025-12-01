@@ -15,12 +15,12 @@ import (
 type Debouncer struct {
 	submissions chan func()
 	timer       <-chan time.Time
+	done        chan struct{}
 	latest      func()
+	delay       time.Duration
 	mu          sync.RWMutex
 	submitMu    sync.Mutex
-	delay       time.Duration
 	stopped     atomic.Bool
-	done        chan struct{}
 }
 
 // New creates a new Debouncer with the specified delay.

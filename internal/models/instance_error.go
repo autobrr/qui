@@ -25,11 +25,11 @@ const (
 )
 
 type InstanceError struct {
-	ID           int       `json:"id"`
-	InstanceID   int       `json:"instanceId"`
+	OccurredAt   time.Time `json:"occurredAt"`
 	ErrorType    string    `json:"errorType"`
 	ErrorMessage string    `json:"errorMessage"`
-	OccurredAt   time.Time `json:"occurredAt"`
+	ID           int       `json:"id"`
+	InstanceID   int       `json:"instanceId"`
 }
 
 type InstanceErrorStore struct {

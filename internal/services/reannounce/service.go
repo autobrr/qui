@@ -48,8 +48,8 @@ type Service struct {
 
 type reannounceJob struct {
 	lastRequested time.Time
-	isRunning     bool
 	lastCompleted time.Time
+	isRunning     bool
 }
 
 // ActivityOutcome describes a high-level outcome for a reannounce attempt.
@@ -63,13 +63,13 @@ const (
 
 // ActivityEvent records a single reannounce attempt outcome per instance/hash.
 type ActivityEvent struct {
-	InstanceID  int             `json:"instanceId"`
+	Timestamp   time.Time       `json:"timestamp"`
+	Outcome     ActivityOutcome `json:"outcome"`
 	Hash        string          `json:"hash"`
 	TorrentName string          `json:"torrentName"`
 	Trackers    string          `json:"trackers"`
-	Outcome     ActivityOutcome `json:"outcome"`
 	Reason      string          `json:"reason"`
-	Timestamp   time.Time       `json:"timestamp"`
+	InstanceID  int             `json:"instanceId"`
 }
 
 const defaultHistorySize = 50
@@ -86,14 +86,14 @@ const (
 // MonitoredTorrent represents a torrent that currently falls within the tracker
 // reannounce monitoring scope for an instance.
 type MonitoredTorrent struct {
-	InstanceID        int                   `json:"instanceId"`
+	State             MonitoredTorrentState `json:"state"`
 	Hash              string                `json:"hash"`
 	TorrentName       string                `json:"torrentName"`
 	Trackers          string                `json:"trackers"`
-	TimeActiveSeconds int64                 `json:"timeActiveSeconds"`
 	Category          string                `json:"category"`
 	Tags              string                `json:"tags"`
-	State             MonitoredTorrentState `json:"state"`
+	TimeActiveSeconds int64                 `json:"timeActiveSeconds"`
+	InstanceID        int                   `json:"instanceId"`
 	HasTrackerProblem bool                  `json:"hasTrackerProblem"`
 	WaitingForInitial bool                  `json:"waitingForInitial"`
 }

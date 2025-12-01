@@ -18,52 +18,54 @@ import (
 // CrossSeedAutomationSettings controls automatic cross-seed behaviour.
 // Contains both RSS Automation-specific settings and global cross-seed settings.
 type CrossSeedAutomationSettings struct {
-	// RSS Automation settings
-	Enabled            bool     `json:"enabled"`            // Enable/disable RSS automation
-	RunIntervalMinutes int      `json:"runIntervalMinutes"` // RSS: interval between RSS feed polls (min: 30 minutes, default: 120)
-	StartPaused        bool     `json:"startPaused"`        // RSS: start added torrents paused
-	Category           *string  `json:"category,omitempty"` // RSS: category for added torrents
-	IgnorePatterns     []string `json:"ignorePatterns"`     // RSS: file patterns to ignore
-	TargetInstanceIDs  []int    `json:"targetInstanceIds"`  // RSS: instances to add cross-seeds to
-	TargetIndexerIDs   []int    `json:"targetIndexerIds"`   // RSS: indexers to poll for RSS feeds
-	MaxResultsPerRun   int      `json:"maxResultsPerRun"`   // Deprecated: automation processes full feeds; retained for backward compatibility
-
-	// Global cross-seed settings (apply to both RSS Automation and Seeded Torrent Search)
-	FindIndividualEpisodes       bool                        `json:"findIndividualEpisodes"`       // Match season packs with individual episodes
-	SizeMismatchTolerancePercent float64                     `json:"sizeMismatchTolerancePercent"` // Size tolerance for matching (default: 5%)
-	UseCategoryFromIndexer       bool                        `json:"useCategoryFromIndexer"`       // Use indexer name as category for cross-seeds
-	RunExternalProgramID         *int                        `json:"runExternalProgramId"`         // Optional external program to run after successful cross-seed injection
-	Completion                   CrossSeedCompletionSettings `json:"completion"`                   // Automatic search on torrent completion
-
+	// 24-byte fields first (time.Time, slices, nested structs)
+	CreatedAt  time.Time                   `json:"createdAt"`
+	UpdatedAt  time.Time                   `json:"updatedAt"`
+	Completion CrossSeedCompletionSettings `json:"completion"` // Automatic search on torrent completion
+	// Slices (24 bytes each: pointer + length + capacity)
+	IgnorePatterns    []string `json:"ignorePatterns"`    // RSS: file patterns to ignore
+	TargetInstanceIDs []int    `json:"targetInstanceIds"` // RSS: instances to add cross-seeds to
+	TargetIndexerIDs  []int    `json:"targetIndexerIds"`  // RSS: indexers to poll for RSS feeds
 	// Source-specific tagging: tags applied based on how the cross-seed was discovered.
 	// Each defaults to ["cross-seed"]. Users can add source-specific tags like "rss", "seeded-search", etc.
 	RSSAutomationTags    []string `json:"rssAutomationTags"`    // Tags for RSS automation results
 	SeededSearchTags     []string `json:"seededSearchTags"`     // Tags for seeded torrent search results
 	CompletionSearchTags []string `json:"completionSearchTags"` // Tags for completion-triggered search results
 	WebhookTags          []string `json:"webhookTags"`          // Tags for /apply webhook results
-	InheritSourceTags    bool     `json:"inheritSourceTags"`    // Also copy tags from the matched source torrent
-
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	// float64 (8 bytes)
+	SizeMismatchTolerancePercent float64 `json:"sizeMismatchTolerancePercent"` // Size tolerance for matching (default: 5%)
+	// Pointer fields (8 bytes)
+	Category             *string `json:"category,omitempty"`   // RSS: category for added torrents
+	RunExternalProgramID *int    `json:"runExternalProgramId"` // Optional external program to run after successful cross-seed injection
+	// int fields (8 bytes on 64-bit)
+	RunIntervalMinutes int `json:"runIntervalMinutes"` // RSS: interval between RSS feed polls (min: 30 minutes, default: 120)
+	MaxResultsPerRun   int `json:"maxResultsPerRun"`   // Deprecated: automation processes full feeds; retained for backward compatibility
+	// bool fields packed together (1 byte each)
+	Enabled                bool `json:"enabled"`                // Enable/disable RSS automation
+	StartPaused            bool `json:"startPaused"`            // RSS: start added torrents paused
+	FindIndividualEpisodes bool `json:"findIndividualEpisodes"` // Match season packs with individual episodes
+	UseCategoryFromIndexer bool `json:"useCategoryFromIndexer"` // Use indexer name as category for cross-seeds
+	InheritSourceTags      bool `json:"inheritSourceTags"`      // Also copy tags from the matched source torrent
 }
 
 // CrossSeedCompletionSettings controls automatic searches triggered when torrents complete.
 type CrossSeedCompletionSettings struct {
-	Enabled           bool     `json:"enabled"`
+	// Slices (24 bytes each)
 	Categories        []string `json:"categories"`
 	Tags              []string `json:"tags"`
 	ExcludeCategories []string `json:"excludeCategories"`
 	ExcludeTags       []string `json:"excludeTags"`
-	// DelayMinutes is the time to wait after completion before triggering the cross-seed search.
-	// This allows *arr applications (Sonarr, Radarr) to import and move files first.
-	// If PreImportCategories is configured and a category change is detected, the search
-	// triggers immediately without waiting for the full delay.
-	DelayMinutes int `json:"delayMinutes"`
 	// PreImportCategories are categories that indicate a torrent is waiting for *arr import.
 	// When a torrent completes in one of these categories and later changes to a different
 	// category, the cross-seed search triggers immediately (skipping remaining delay).
 	// This allows faster processing when *arr import completes quickly.
 	PreImportCategories []string `json:"preImportCategories"`
+	// DelayMinutes is the time to wait after completion before triggering the cross-seed search.
+	// This allows *arr applications (Sonarr, Radarr) to import and move files first.
+	// If PreImportCategories is configured and a category change is detected, the search
+	// triggers immediately without waiting for the full delay.
+	DelayMinutes int  `json:"delayMinutes"`
+	Enabled      bool `json:"enabled"`
 }
 
 // DefaultCrossSeedCompletionSettings returns defaults for completion-triggered automation.
@@ -109,14 +111,17 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 
 // CrossSeedSearchSettings stores defaults for manual seeded torrent searches.
 type CrossSeedSearchSettings struct {
-	InstanceID      *int      `json:"instanceId"`
-	Categories      []string  `json:"categories"`
-	Tags            []string  `json:"tags"`
-	IndexerIDs      []int     `json:"indexerIds"`
-	IntervalSeconds int       `json:"intervalSeconds"`
-	CooldownMinutes int       `json:"cooldownMinutes"`
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
+	// 24-byte fields (time.Time, slices)
+	CreatedAt  time.Time `json:"createdAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+	Categories []string  `json:"categories"`
+	Tags       []string  `json:"tags"`
+	IndexerIDs []int     `json:"indexerIds"`
+	// Pointer fields (8 bytes)
+	InstanceID *int `json:"instanceId"`
+	// int fields (8 bytes on 64-bit)
+	IntervalSeconds int `json:"intervalSeconds"`
+	CooldownMinutes int `json:"cooldownMinutes"`
 }
 
 // DefaultCrossSeedSearchSettings returns defaults for seeded torrent searches.
@@ -155,32 +160,37 @@ const (
 
 // CrossSeedRunResult summarises the outcome for a single instance.
 type CrossSeedRunResult struct {
-	InstanceID         int     `json:"instanceId"`
 	InstanceName       string  `json:"instanceName"`
-	Success            bool    `json:"success"`
 	Status             string  `json:"status"`
 	Message            string  `json:"message,omitempty"`
 	MatchedTorrentHash *string `json:"matchedTorrentHash,omitempty"`
 	MatchedTorrentName *string `json:"matchedTorrentName,omitempty"`
+	InstanceID         int     `json:"instanceId"`
+	Success            bool    `json:"success"`
 }
 
 // CrossSeedRun stores the persisted automation run metadata.
 type CrossSeedRun struct {
-	ID              int64                `json:"id"`
-	TriggeredBy     string               `json:"triggeredBy"`
-	Mode            CrossSeedRunMode     `json:"mode"`
-	Status          CrossSeedRunStatus   `json:"status"`
-	StartedAt       time.Time            `json:"startedAt"`
-	CompletedAt     *time.Time           `json:"completedAt,omitempty"`
-	TotalFeedItems  int                  `json:"totalFeedItems"`
-	CandidatesFound int                  `json:"candidatesFound"`
-	TorrentsAdded   int                  `json:"torrentsAdded"`
-	TorrentsFailed  int                  `json:"torrentsFailed"`
-	TorrentsSkipped int                  `json:"torrentsSkipped"`
-	Message         *string              `json:"message,omitempty"`
-	ErrorMessage    *string              `json:"errorMessage,omitempty"`
-	Results         []CrossSeedRunResult `json:"results,omitempty"`
-	CreatedAt       time.Time            `json:"createdAt"`
+	// 24-byte fields first (time.Time, slices)
+	StartedAt time.Time            `json:"startedAt"`
+	CreatedAt time.Time            `json:"createdAt"`
+	Results   []CrossSeedRunResult `json:"results,omitempty"`
+	// Pointer fields (8 bytes)
+	CompletedAt  *time.Time `json:"completedAt,omitempty"`
+	Message      *string    `json:"message,omitempty"`
+	ErrorMessage *string    `json:"errorMessage,omitempty"`
+	// String fields (16 bytes each)
+	TriggeredBy string             `json:"triggeredBy"`
+	Mode        CrossSeedRunMode   `json:"mode"`
+	Status      CrossSeedRunStatus `json:"status"`
+	// int64 fields (8 bytes)
+	ID int64 `json:"id"`
+	// int fields (8 bytes on 64-bit, but logically smaller)
+	TotalFeedItems  int `json:"totalFeedItems"`
+	CandidatesFound int `json:"candidatesFound"`
+	TorrentsAdded   int `json:"torrentsAdded"`
+	TorrentsFailed  int `json:"torrentsFailed"`
+	TorrentsSkipped int `json:"torrentsSkipped"`
 }
 
 // CrossSeedSearchRunStatus represents the lifecycle state of an automated search pass.
@@ -201,35 +211,40 @@ type CrossSeedSearchFilters struct {
 
 // CrossSeedSearchResult records the outcome of processing a single torrent during a search run.
 type CrossSeedSearchResult struct {
+	ProcessedAt  time.Time `json:"processedAt"`
 	TorrentHash  string    `json:"torrentHash"`
 	TorrentName  string    `json:"torrentName"`
 	IndexerName  string    `json:"indexerName"`
 	ReleaseTitle string    `json:"releaseTitle"`
-	Added        bool      `json:"added"`
 	Message      string    `json:"message,omitempty"`
-	ProcessedAt  time.Time `json:"processedAt"`
+	Added        bool      `json:"added"`
 }
 
 // CrossSeedSearchRun stores metadata for library search automation runs.
 type CrossSeedSearchRun struct {
-	ID              int64                    `json:"id"`
-	InstanceID      int                      `json:"instanceId"`
-	Status          CrossSeedSearchRunStatus `json:"status"`
-	StartedAt       time.Time                `json:"startedAt"`
-	CompletedAt     *time.Time               `json:"completedAt,omitempty"`
-	TotalTorrents   int                      `json:"totalTorrents"`
-	Processed       int                      `json:"processed"`
-	TorrentsAdded   int                      `json:"torrentsAdded"`
-	TorrentsFailed  int                      `json:"torrentsFailed"`
-	TorrentsSkipped int                      `json:"torrentsSkipped"`
-	Message         *string                  `json:"message,omitempty"`
-	ErrorMessage    *string                  `json:"errorMessage,omitempty"`
-	Filters         CrossSeedSearchFilters   `json:"filters"`
-	IndexerIDs      []int                    `json:"indexerIds"`
-	IntervalSeconds int                      `json:"intervalSeconds"`
-	CooldownMinutes int                      `json:"cooldownMinutes"`
-	Results         []CrossSeedSearchResult  `json:"results"`
-	CreatedAt       time.Time                `json:"createdAt"`
+	// 24-byte fields first (time.Time, slices, nested structs)
+	StartedAt  time.Time               `json:"startedAt"`
+	CreatedAt  time.Time               `json:"createdAt"`
+	Filters    CrossSeedSearchFilters  `json:"filters"`
+	IndexerIDs []int                   `json:"indexerIds"`
+	Results    []CrossSeedSearchResult `json:"results"`
+	// Pointer fields (8 bytes)
+	CompletedAt  *time.Time `json:"completedAt,omitempty"`
+	Message      *string    `json:"message,omitempty"`
+	ErrorMessage *string    `json:"errorMessage,omitempty"`
+	// String fields (16 bytes)
+	Status CrossSeedSearchRunStatus `json:"status"`
+	// int64 fields (8 bytes)
+	ID int64 `json:"id"`
+	// int fields (8 bytes on 64-bit)
+	InstanceID      int `json:"instanceId"`
+	TotalTorrents   int `json:"totalTorrents"`
+	Processed       int `json:"processed"`
+	TorrentsAdded   int `json:"torrentsAdded"`
+	TorrentsFailed  int `json:"torrentsFailed"`
+	TorrentsSkipped int `json:"torrentsSkipped"`
+	IntervalSeconds int `json:"intervalSeconds"`
+	CooldownMinutes int `json:"cooldownMinutes"`
 }
 
 // CrossSeedFeedItemStatus tracks processing state for feed items.
@@ -244,14 +259,14 @@ const (
 
 // CrossSeedFeedItem tracks GUIDs pulled from indexers to avoid duplicates.
 type CrossSeedFeedItem struct {
-	GUID        string                  `json:"guid"`
-	IndexerID   int                     `json:"indexerId"`
-	Title       string                  `json:"title"`
 	FirstSeenAt time.Time               `json:"firstSeenAt"`
 	LastSeenAt  time.Time               `json:"lastSeenAt"`
+	GUID        string                  `json:"guid"`
+	Title       string                  `json:"title"`
 	LastStatus  CrossSeedFeedItemStatus `json:"lastStatus"`
 	LastRunID   *int64                  `json:"lastRunId,omitempty"`
 	InfoHash    *string                 `json:"infoHash,omitempty"`
+	IndexerID   int                     `json:"indexerId"`
 }
 
 // CrossSeedStore persists automation settings, runs, and feed items.

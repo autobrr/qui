@@ -20,11 +20,11 @@ var ErrAPIKeyNotFound = errors.New("api key not found")
 var ErrInvalidAPIKey = errors.New("invalid api key")
 
 type APIKey struct {
-	ID         int        `json:"id"`
-	KeyHash    string     `json:"-"`
-	Name       string     `json:"name"`
 	CreatedAt  time.Time  `json:"createdAt"`
 	LastUsedAt *time.Time `json:"lastUsedAt,omitempty"`
+	KeyHash    string     `json:"-"`
+	Name       string     `json:"name"`
+	ID         int        `json:"id"`
 }
 
 type APIKeyStore struct {

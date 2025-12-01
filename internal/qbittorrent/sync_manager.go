@@ -77,9 +77,9 @@ func forceFilesRefresh(ctx context.Context) bool {
 // CacheMetadata provides information about cache state
 type CacheMetadata struct {
 	Source      string `json:"source"`      // "cache" or "fresh"
+	NextRefresh string `json:"nextRefresh"` // When next refresh will occur (ISO 8601 string)
 	Age         int    `json:"age"`         // Age in seconds
 	IsStale     bool   `json:"isStale"`     // Whether data is stale
-	NextRefresh string `json:"nextRefresh"` // When next refresh will occur (ISO 8601 string)
 }
 
 // TorrentResponse represents a response containing torrents with stats
@@ -106,16 +106,16 @@ type CrossInstanceTorrentView struct {
 type TorrentResponse struct {
 	Torrents               []TorrentView              `json:"torrents"`
 	CrossInstanceTorrents  []CrossInstanceTorrentView `json:"cross_instance_torrents,omitempty"`
-	Total                  int                        `json:"total"`
 	Stats                  *TorrentStats              `json:"stats,omitempty"`
 	Counts                 *TorrentCounts             `json:"counts,omitempty"`      // Include counts for sidebar
 	Categories             map[string]qbt.Category    `json:"categories,omitempty"`  // Include categories for sidebar
 	Tags                   []string                   `json:"tags,omitempty"`        // Include tags for sidebar
 	ServerState            *qbt.ServerState           `json:"serverState,omitempty"` // Include server state for Dashboard
-	UseSubcategories       bool                       `json:"useSubcategories"`      // Whether subcategories are enabled
-	HasMore                bool                       `json:"hasMore"`               // Whether more pages are available
-	SessionID              string                     `json:"sessionId,omitempty"`   // Optional session tracking
 	CacheMetadata          *CacheMetadata             `json:"cacheMetadata,omitempty"`
+	SessionID              string                     `json:"sessionId,omitempty"` // Optional session tracking
+	Total                  int                        `json:"total"`
+	UseSubcategories       bool                       `json:"useSubcategories"` // Whether subcategories are enabled
+	HasMore                bool                       `json:"hasMore"`          // Whether more pages are available
 	TrackerHealthSupported bool                       `json:"trackerHealthSupported"`
 	IsCrossInstance        bool                       `json:"isCrossInstance"` // Whether this is a cross-instance response
 	PartialResults         bool                       `json:"partialResults"`  // Whether some instances failed to respond
@@ -123,6 +123,9 @@ type TorrentResponse struct {
 
 // TorrentStats represents aggregated torrent statistics
 type TorrentStats struct {
+	TotalSize          int64 `json:"totalSize"`
+	TotalRemainingSize int64 `json:"totalRemainingSize"`
+	TotalSeedingSize   int64 `json:"totalSeedingSize"`
 	Total              int   `json:"total"`
 	Downloading        int   `json:"downloading"`
 	Seeding            int   `json:"seeding"`
@@ -131,18 +134,15 @@ type TorrentStats struct {
 	Checking           int   `json:"checking"`
 	TotalDownloadSpeed int   `json:"totalDownloadSpeed"`
 	TotalUploadSpeed   int   `json:"totalUploadSpeed"`
-	TotalSize          int64 `json:"totalSize"`
-	TotalRemainingSize int64 `json:"totalRemainingSize"`
-	TotalSeedingSize   int64 `json:"totalSeedingSize"`
 }
 
 // DuplicateTorrentMatch represents an existing torrent that matches one or more requested hashes.
 type DuplicateTorrentMatch struct {
+	MatchedHashes []string `json:"matched_hashes,omitempty"`
 	Hash          string   `json:"hash"`
 	InfohashV1    string   `json:"infohash_v1,omitempty"`
 	InfohashV2    string   `json:"infohash_v2,omitempty"`
 	Name          string   `json:"name"`
-	MatchedHashes []string `json:"matched_hashes,omitempty"`
 }
 
 // SyncManager manages torrent operations
@@ -175,9 +175,9 @@ type ResumeWhenCompleteOptions struct {
 
 // OptimisticTorrentUpdate represents a temporary optimistic update to a torrent
 type OptimisticTorrentUpdate struct {
+	UpdatedAt     time.Time        `json:"updatedAt"`
 	State         qbt.TorrentState `json:"state"`
 	OriginalState qbt.TorrentState `json:"originalState"`
-	UpdatedAt     time.Time        `json:"updatedAt"`
 	Action        string           `json:"action"`
 }
 

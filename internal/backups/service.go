@@ -43,9 +43,9 @@ type Config struct {
 }
 
 type BackupProgress struct {
+	Percentage float64
 	Current    int
 	Total      int
-	Percentage float64
 }
 
 type missingTorrent struct {
@@ -84,26 +84,26 @@ type job struct {
 
 // Manifest captures details about a backup run and its contents for API responses and archived metadata.
 type Manifest struct {
-	InstanceID   int                                `json:"instanceId"`
-	Kind         string                             `json:"kind"`
 	GeneratedAt  time.Time                          `json:"generatedAt"`
-	TorrentCount int                                `json:"torrentCount"`
 	Categories   map[string]models.CategorySnapshot `json:"categories,omitempty"`
 	Tags         []string                           `json:"tags,omitempty"`
 	Items        []ManifestItem                     `json:"items"`
+	Kind         string                             `json:"kind"`
+	InstanceID   int                                `json:"instanceId"`
+	TorrentCount int                                `json:"torrentCount"`
 }
 
 // ManifestItem describes a single torrent contained in a backup archive.
 type ManifestItem struct {
+	Tags        []string `json:"tags,omitempty"`
 	Hash        string   `json:"hash"`
 	Name        string   `json:"name"`
-	Category    *string  `json:"category,omitempty"`
-	SizeBytes   int64    `json:"sizeBytes"`
 	ArchivePath string   `json:"archivePath"`
+	TorrentBlob string   `json:"torrentBlob,omitempty"`
+	Category    *string  `json:"category,omitempty"`
 	InfoHashV1  *string  `json:"infohashV1,omitempty"`
 	InfoHashV2  *string  `json:"infohashV2,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
-	TorrentBlob string   `json:"torrentBlob,omitempty"`
+	SizeBytes   int64    `json:"sizeBytes"`
 }
 
 func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager, jackettSvc interface{}, cfg Config) *Service {
@@ -489,14 +489,14 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 }
 
 type backupResult struct {
+	categories      map[string]models.CategorySnapshot
+	categoryCounts  map[string]int
+	tags            []string
+	items           []models.BackupItem
+	settings        *models.BackupSettings
 	manifestRelPath *string
 	totalBytes      int64
 	torrentCount    int
-	categoryCounts  map[string]int
-	items           []models.BackupItem
-	settings        *models.BackupSettings
-	categories      map[string]models.CategorySnapshot
-	tags            []string
 }
 
 func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, error) {
