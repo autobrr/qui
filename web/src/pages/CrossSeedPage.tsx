@@ -919,14 +919,14 @@ export function CrossSeedPage() {
 
       <Alert className="border-border rounded-xl bg-card">
         <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-        <AlertTitle>AutoTMM required</AlertTitle>
+        <AlertTitle>How cross-seeding works</AlertTitle>
         <AlertDescription className="space-y-1">
           <p>
-            qui adds cross-seeded torrents with <strong>Automatic Torrent Management (AutoTMM)</strong> enabled,
-            inheriting the category from the matched torrent. This reuses existing files directly. No hardlinking.
+            qui inherits the <strong>Automatic Torrent Management (AutoTMM)</strong> state from the matched torrent.
+            If the source uses AutoTMM, the cross-seed will too; if the source has a custom save path, the cross-seed uses the same path.
+            Files are reused directly without hardlinking.
           </p>
           <p className="text-muted-foreground">
-            Ensure your torrents use category-based paths rather than custom save paths.{" "}
             <a
               href="https://github.com/autobrr/qui#how-qui-differs-from-cross-seed"
               target="_blank"
