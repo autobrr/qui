@@ -154,6 +154,7 @@ type searchContext struct {
 	rateLimit      *RateLimitOptions
 	requireSuccess bool
 	releaseName    string // Original full release name for debugging/history
+	skipHistory    bool   // Skip recording this search in history buffer
 }
 
 type searchPriorityKey struct{}
@@ -592,6 +593,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 		searchMode:     searchMode,
 		requireSuccess: len(req.IndexerIDs) > 0,
 		releaseName:    req.ReleaseName,
+		skipHistory:    req.SkipHistory,
 	}, RateLimitPriorityInteractive)
 
 	cacheEnabled := s.shouldUseSearchCache()
@@ -723,7 +725,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 				Msg("Torznab search returning partial results due to deadline")
 		}
 
-		if cacheEnabled && cacheSig != nil && len(networkCoverage) > 0 {
+		if cacheEnabled && cacheSig != nil && len(networkCoverage) > 0 && !req.SkipHistory {
 			now := time.Now().UTC()
 			ttl := s.cacheTTL()
 			if response.Cache == nil && ttl > 0 {

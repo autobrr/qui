@@ -235,6 +235,7 @@ func (s *TorznabSearchCacheStore) RecentSearches(ctx context.Context, scope stri
 		       total_results, cached_at, last_used_at, expires_at, hit_count
 		FROM torznab_search_cache
 		WHERE TRIM(COALESCE(query, '')) != ''
+		  AND LOWER(TRIM(COALESCE(query, ''))) != 'test'
 	`
 
 	var args []any
