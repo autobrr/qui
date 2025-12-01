@@ -375,7 +375,7 @@ func TestTorznabTorrentCacheStore_Cleanup(t *testing.T) {
 		require.NoError(t, err)
 
 		// Immediate cleanup won't delete anything since last_used_at is now
-		deleted, err := store.Cleanup(ctx, 1*time.Nanosecond)
+		deleted, err := store.Cleanup(ctx, 1*time.Second)
 		require.NoError(t, err)
 		// Entry was just stored, so it shouldn't be deleted
 		assert.Equal(t, int64(0), deleted)

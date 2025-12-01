@@ -125,5 +125,7 @@ func (s *Service) CheckUpdateAvailable(ctx context.Context) (*version.Release, e
 
 // SetEnabled toggles whether periodic update checks should run.
 func (s *Service) SetEnabled(enabled bool) {
+	s.mu.Lock()
 	s.isEnabled = enabled
+	s.mu.Unlock()
 }
