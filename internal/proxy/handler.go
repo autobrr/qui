@@ -105,6 +105,93 @@ type proxyContext struct {
 	basicAuth   *basicAuthCredentials
 }
 
+// syncManagerFetcher is a function type for fetching data from the sync manager.
+// It takes context, instanceID, and optional hash parameter, returning the data or error.
+type syncManagerFetcher[T any] func(ctx context.Context, instanceID int, hash string) (T, error)
+
+// handleSyncManagerRequest is a generic handler for sync manager endpoints that follow the pattern:
+// 1. Get context/instanceID
+// 2. Validate query params
+// 3. Log debug message
+// 4. Call sync manager method
+// 5. Handle error
+// 6. Encode JSON response
+func handleSyncManagerRequest[T any](
+	h *Handler,
+	w http.ResponseWriter,
+	r *http.Request,
+	allowedParams map[string]struct{},
+	endpointName string,
+	logMessage string,
+	fetch syncManagerFetcher[T],
+	nilCheck bool, // whether to check for nil result
+) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	if !h.validateQueryParams(w, r, allowedParams, endpointName) {
+		return
+	}
+
+	hash := r.URL.Query().Get("hash")
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Str("hash", hash).
+		Msg(logMessage)
+
+	result, err := fetch(ctx, instanceID, hash)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceId", instanceID).
+			Str("hash", hash).
+			Msgf("Failed to get %s", endpointName)
+		h.writeProxyError(w)
+		return
+	}
+
+	// Optional nil check for pointer types
+	if nilCheck {
+		// Use reflection to check for nil interface value
+		if isNilInterface(result) {
+			log.Warn().
+				Int("instanceId", instanceID).
+				Str("hash", hash).
+				Msgf("%s not found", endpointName)
+			h.writeProxyError(w)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceId", instanceID).
+			Msgf("Failed to encode %s response", endpointName)
+	}
+}
+
+// isNilInterface checks if an interface value is nil (handles typed nil)
+func isNilInterface(v any) bool {
+	if v == nil {
+		return true
+	}
+	switch val := v.(type) {
+	case *qbt.TorrentFiles:
+		return val == nil
+	case *qbt.TorrentProperties:
+		return val == nil
+	default:
+		return false
+	}
+}
+
 // NewHandler creates a new proxy handler
 func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.ClientAPIKeyStore, instanceStore *models.InstanceStore, syncManager *qbittorrent.SyncManager, cache *reannounce.SettingsCache, svc *reannounce.Service, baseURL string) *Handler {
 	bufferPool := NewBufferPool()
@@ -968,160 +1055,38 @@ func (h *Handler) handleTorrentSearch(w http.ResponseWriter, r *http.Request) {
 
 // handleCategories handles /api/v2/torrents/categories requests
 func (h *Handler) handleCategories(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	instanceID := GetInstanceIDFromContext(ctx)
-	clientAPIKey := GetClientAPIKeyFromContext(ctx)
-
-	// Categories endpoint doesn't accept query parameters
-	if !h.validateQueryParams(w, r, emptyParams, "torrents/categories") {
-		return
-	}
-
-	log.Debug().
-		Int("instanceId", instanceID).
-		Str("client", clientAPIKey.ClientName).
-		Msg("Handling categories request via qui sync manager")
-
-	categories, err := h.syncManager.GetCategories(ctx, instanceID)
-	if err != nil {
-		log.Error().
-			Err(err).
-			Int("instanceId", instanceID).
-			Msg("Failed to get categories")
-		h.writeProxyError(w)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	encoder := json.NewEncoder(w)
-	if err := encoder.Encode(categories); err != nil {
-		log.Error().
-			Err(err).
-			Int("instanceId", instanceID).
-			Msg("Failed to encode categories response")
-	}
+	handleSyncManagerRequest(h, w, r, emptyParams, "torrents/categories",
+		"Handling categories request via qui sync manager",
+		func(ctx context.Context, instanceID int, _ string) (map[string]qbt.Category, error) {
+			return h.syncManager.GetCategories(ctx, instanceID)
+		}, false)
 }
 
 // handleTags handles /api/v2/torrents/tags requests
 func (h *Handler) handleTags(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	instanceID := GetInstanceIDFromContext(ctx)
-	clientAPIKey := GetClientAPIKeyFromContext(ctx)
-
-	// Tags endpoint doesn't accept query parameters
-	if !h.validateQueryParams(w, r, emptyParams, "torrents/tags") {
-		return
-	}
-
-	log.Debug().
-		Int("instanceId", instanceID).
-		Str("client", clientAPIKey.ClientName).
-		Msg("Handling tags request via qui sync manager")
-
-	tags, err := h.syncManager.GetTags(ctx, instanceID)
-	if err != nil {
-		log.Error().
-			Err(err).
-			Int("instanceId", instanceID).
-			Msg("Failed to get tags")
-		h.writeProxyError(w)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	encoder := json.NewEncoder(w)
-	if err := encoder.Encode(tags); err != nil {
-		log.Error().
-			Err(err).
-			Int("instanceId", instanceID).
-			Msg("Failed to encode tags response")
-	}
+	handleSyncManagerRequest(h, w, r, emptyParams, "torrents/tags",
+		"Handling tags request via qui sync manager",
+		func(ctx context.Context, instanceID int, _ string) ([]string, error) {
+			return h.syncManager.GetTags(ctx, instanceID)
+		}, false)
 }
 
 // handleTorrentProperties handles /api/v2/torrents/properties requests
 func (h *Handler) handleTorrentProperties(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	instanceID := GetInstanceIDFromContext(ctx)
-	clientAPIKey := GetClientAPIKeyFromContext(ctx)
-
-	if !h.validateQueryParams(w, r, torrentHashOnlyParams, "torrents/properties") {
-		return
-	}
-
-	hash := r.URL.Query().Get("hash")
-
-	log.Debug().
-		Int("instanceId", instanceID).
-		Str("client", clientAPIKey.ClientName).
-		Str("hash", hash).
-		Msg("Handling torrent properties request via qui sync manager")
-
-	properties, err := h.syncManager.GetTorrentProperties(ctx, instanceID, hash)
-	if err != nil {
-		log.Error().
-			Err(err).
-			Int("instanceId", instanceID).
-			Str("hash", hash).
-			Msg("Failed to get torrent properties")
-		h.writeProxyError(w)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	encoder := json.NewEncoder(w)
-	if err := encoder.Encode(properties); err != nil {
-		log.Error().
-			Err(err).
-			Int("instanceId", instanceID).
-			Msg("Failed to encode properties response")
-	}
+	handleSyncManagerRequest(h, w, r, torrentHashOnlyParams, "torrents/properties",
+		"Handling torrent properties request via qui sync manager",
+		func(ctx context.Context, instanceID int, hash string) (*qbt.TorrentProperties, error) {
+			return h.syncManager.GetTorrentProperties(ctx, instanceID, hash)
+		}, false)
 }
 
 // handleTorrentTrackers handles /api/v2/torrents/trackers requests
 func (h *Handler) handleTorrentTrackers(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	instanceID := GetInstanceIDFromContext(ctx)
-	clientAPIKey := GetClientAPIKeyFromContext(ctx)
-
-	if !h.validateQueryParams(w, r, torrentHashOnlyParams, "torrents/trackers") {
-		return
-	}
-
-	hash := r.URL.Query().Get("hash")
-
-	log.Debug().
-		Int("instanceId", instanceID).
-		Str("client", clientAPIKey.ClientName).
-		Str("hash", hash).
-		Msg("Handling torrent trackers request via qui sync manager")
-
-	trackers, err := h.syncManager.GetTorrentTrackers(ctx, instanceID, hash)
-	if err != nil {
-		log.Error().
-			Err(err).
-			Int("instanceId", instanceID).
-			Str("hash", hash).
-			Msg("Failed to get torrent trackers")
-		h.writeProxyError(w)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	encoder := json.NewEncoder(w)
-	if err := encoder.Encode(trackers); err != nil {
-		log.Error().
-			Err(err).
-			Int("instanceId", instanceID).
-			Msg("Failed to encode trackers response")
-	}
+	handleSyncManagerRequest(h, w, r, torrentHashOnlyParams, "torrents/trackers",
+		"Handling torrent trackers request via qui sync manager",
+		func(ctx context.Context, instanceID int, hash string) ([]qbt.TorrentTracker, error) {
+			return h.syncManager.GetTorrentTrackers(ctx, instanceID, hash)
+		}, false)
 }
 
 // handleTorrentPeers handles /api/v2/sync/torrentPeers requests
@@ -1201,51 +1166,11 @@ func (h *Handler) handleTorrentPeers(w http.ResponseWriter, r *http.Request) {
 
 // handleTorrentFiles handles /api/v2/torrents/files requests
 func (h *Handler) handleTorrentFiles(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	instanceID := GetInstanceIDFromContext(ctx)
-	clientAPIKey := GetClientAPIKeyFromContext(ctx)
-
-	if !h.validateQueryParams(w, r, torrentFilesParams, "torrents/files") {
-		return
-	}
-
-	hash := r.URL.Query().Get("hash")
-
-	log.Debug().
-		Int("instanceId", instanceID).
-		Str("client", clientAPIKey.ClientName).
-		Str("hash", hash).
-		Msg("Handling torrent files request via qui sync manager")
-
-	files, err := h.syncManager.GetTorrentFiles(ctx, instanceID, hash)
-	if err != nil {
-		log.Error().
-			Err(err).
-			Int("instanceId", instanceID).
-			Str("hash", hash).
-			Msg("Failed to get torrent files")
-		h.writeProxyError(w)
-		return
-	}
-	if files == nil {
-		log.Warn().
-			Int("instanceId", instanceID).
-			Str("hash", hash).
-			Msg("Torrent files not found")
-		h.writeProxyError(w)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	encoder := json.NewEncoder(w)
-	if err := encoder.Encode(files); err != nil {
-		log.Error().
-			Err(err).
-			Int("instanceId", instanceID).
-			Msg("Failed to encode files response")
-	}
+	handleSyncManagerRequest(h, w, r, torrentFilesParams, "torrents/files",
+		"Handling torrent files request via qui sync manager",
+		func(ctx context.Context, instanceID int, hash string) (*qbt.TorrentFiles, error) {
+			return h.syncManager.GetTorrentFiles(ctx, instanceID, hash)
+		}, true)
 }
 
 // handleAuthLogin handles /api/v2/auth/login requests (ceremonial - proxy already authenticated)
