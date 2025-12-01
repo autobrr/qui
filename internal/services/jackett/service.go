@@ -725,7 +725,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 				Msg("Torznab search returning partial results due to deadline")
 		}
 
-		if cacheEnabled && cacheSig != nil && len(networkCoverage) > 0 {
+		if cacheEnabled && cacheSig != nil && len(networkCoverage) > 0 && !req.SkipHistory {
 			now := time.Now().UTC()
 			ttl := s.cacheTTL()
 			if response.Cache == nil && ttl > 0 {
