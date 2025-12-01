@@ -2615,7 +2615,7 @@ func (s *Service) processCrossSeedCandidate(
 		Str("matchedHash", matchedTorrent.Hash).
 		Str("matchType", matchType).
 		Str("category", category).
-		Bool("autoTMM", category != "" && !isEpisodeInPack && matchedTorrent.AutoManaged).
+		Bool("autoTMM", useTMM).
 		Bool("isEpisodeInPack", isEpisodeInPack).
 		Bool("hasExtraFiles", hasExtraFiles)
 	if needsRecheckAndResume {
