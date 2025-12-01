@@ -662,17 +662,25 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 		Msg("Testing torznab indexer connectivity")
 
 	// Run a lightweight search via the service to validate connectivity
-	// Use CacheModeBypass to prevent test searches from cluttering recent search history
+	// Use CacheModeBypass and SkipHistory to prevent test searches from cluttering search history
 	testReq := &jackett.TorznabSearchRequest{
-		Query:      "test",
-		Limit:      1,
-		IndexerIDs: []int{id},
-		CacheMode:  jackett.CacheModeBypass,
+		Query:       "test",
+		Limit:       1,
+		IndexerIDs:  []int{id},
+		CacheMode:   jackett.CacheModeBypass,
+		SkipHistory: true,
 		OnAllComplete: func(*jackett.SearchResponse, error) {
 			// Ignore results for connectivity test
 		},
 	}
-	err = h.service.SearchGeneric(r.Context(), testReq)
+
+	// Use a detached context for test searches - the HTTP request lifecycle should not
+	// cancel the scheduler task since SearchGeneric returns immediately after scheduling.
+	// Note: We intentionally don't defer cancel() here because the search is async.
+	// The context will be cleaned up when the timeout expires.
+	testCtx, _ := context.WithTimeout(context.Background(), 30*time.Second)
+
+	err = h.service.SearchGeneric(testCtx, testReq)
 
 	// Update test status in database
 	if err != nil {
