@@ -561,7 +561,7 @@ func TestAuthHandler_DeleteAPIKey(t *testing.T) {
 		sessionManager.LoadAndSave(http.HandlerFunc(handler.DeleteAPIKey)).ServeHTTP(rec, req)
 
 		assert.Equal(t, http.StatusBadRequest, rec.Code)
-		assert.Contains(t, rec.Body.String(), "API key ID is required")
+		assert.Contains(t, rec.Body.String(), "Invalid API key ID")
 	})
 
 	t.Run("invalid id format", func(t *testing.T) {

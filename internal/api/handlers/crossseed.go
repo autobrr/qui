@@ -335,9 +335,8 @@ func (h *CrossSeedHandler) AnalyzeTorrentForSearch(w http.ResponseWriter, r *htt
 		return
 	}
 
-	hash := strings.TrimSpace(chi.URLParam(r, "hash"))
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "hash is required")
+	hash, ok := ParseTorrentHash(w, r)
+	if !ok {
 		return
 	}
 
@@ -374,9 +373,8 @@ func (h *CrossSeedHandler) GetAsyncFilteringStatus(w http.ResponseWriter, r *htt
 		return
 	}
 
-	hash := strings.TrimSpace(chi.URLParam(r, "hash"))
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "hash is required")
+	hash, ok := ParseTorrentHash(w, r)
+	if !ok {
 		return
 	}
 
@@ -415,9 +413,8 @@ func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	hash := strings.TrimSpace(chi.URLParam(r, "hash"))
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "hash is required")
+	hash, ok := ParseTorrentHash(w, r)
+	if !ok {
 		return
 	}
 
@@ -493,9 +490,8 @@ func (h *CrossSeedHandler) ApplyTorrentSearchResults(w http.ResponseWriter, r *h
 		return
 	}
 
-	hash := strings.TrimSpace(chi.URLParam(r, "hash"))
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "hash is required")
+	hash, ok := ParseTorrentHash(w, r)
+	if !ok {
 		return
 	}
 

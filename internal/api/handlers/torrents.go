@@ -19,7 +19,6 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -1307,9 +1306,8 @@ func (h *TorrentsHandler) SetTorrentFilePriority(w http.ResponseWriter, r *http.
 		return
 	}
 
-	hash := chi.URLParam(r, "hash")
-	if strings.TrimSpace(hash) == "" {
-		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+	hash, ok := ParseTorrentHash(w, r)
+	if !ok {
 		return
 	}
 
@@ -1354,9 +1352,8 @@ func (h *TorrentsHandler) ExportTorrent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	hash := strings.TrimSpace(chi.URLParam(r, "hash"))
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+	hash, ok := ParseTorrentHash(w, r)
+	if !ok {
 		return
 	}
 
@@ -1550,9 +1547,8 @@ func (h *TorrentsHandler) DownloadTorrentCreationFile(w http.ResponseWriter, r *
 		return
 	}
 
-	taskID := chi.URLParam(r, "taskID")
-	if taskID == "" {
-		RespondError(w, http.StatusBadRequest, "Task ID is required")
+	taskID, ok := ParseStringParam(w, r, "taskID", "Task ID")
+	if !ok {
 		return
 	}
 
@@ -1600,9 +1596,8 @@ func (h *TorrentsHandler) DeleteTorrentCreationTask(w http.ResponseWriter, r *ht
 		return
 	}
 
-	taskID := chi.URLParam(r, "taskID")
-	if taskID == "" {
-		RespondError(w, http.StatusBadRequest, "Task ID is required")
+	taskID, ok := ParseStringParam(w, r, "taskID", "Task ID")
+	if !ok {
 		return
 	}
 

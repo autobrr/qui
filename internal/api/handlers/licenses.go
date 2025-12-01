@@ -231,11 +231,8 @@ func (h *LicenseHandler) GetAllLicenses(w http.ResponseWriter, r *http.Request) 
 
 // DeleteLicense removes a license from the system
 func (h *LicenseHandler) DeleteLicense(w http.ResponseWriter, r *http.Request) {
-	licenseKey := chi.URLParam(r, "licenseKey")
-	if licenseKey == "" {
-		RespondJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "License key is required",
-		})
+	licenseKey, ok := ParseStringParam(w, r, "licenseKey", "License key")
+	if !ok {
 		return
 	}
 

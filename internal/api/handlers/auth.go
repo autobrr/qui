@@ -8,11 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/alexedwards/scs/v2"
-	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/auth"
@@ -435,16 +433,8 @@ func (h *AuthHandler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 
 // DeleteAPIKey deletes an API key
 func (h *AuthHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
-	// Get API key ID from URL parameter
-	idStr := chi.URLParam(r, "id")
-	if idStr == "" {
-		RespondError(w, http.StatusBadRequest, "API key ID is required")
-		return
-	}
-
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid API key ID")
+	id, ok := ParseIntParam(w, r, "id", "API key ID")
+	if !ok {
 		return
 	}
 

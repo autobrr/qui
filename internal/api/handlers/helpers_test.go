@@ -535,25 +535,28 @@ func TestParseIntParam(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		paramValue string
-		paramName  string
-		wantValue  int
-		wantOK     bool
+		name        string
+		paramValue  string
+		paramName   string
+		displayName string
+		wantValue   int
+		wantOK      bool
 	}{
 		{
-			name:       "valid int",
-			paramValue: "42",
-			paramName:  "id",
-			wantValue:  42,
-			wantOK:     true,
+			name:        "valid int",
+			paramValue:  "42",
+			paramName:   "id",
+			displayName: "item ID",
+			wantValue:   42,
+			wantOK:      true,
 		},
 		{
-			name:       "invalid int",
-			paramValue: "abc",
-			paramName:  "id",
-			wantValue:  0,
-			wantOK:     false,
+			name:        "invalid int",
+			paramValue:  "abc",
+			paramName:   "id",
+			displayName: "item ID",
+			wantValue:   0,
+			wantOK:      false,
 		},
 	}
 
@@ -566,7 +569,7 @@ func TestParseIntParam(t *testing.T) {
 			var gotOK bool
 
 			r.Get("/items/{id}", func(w http.ResponseWriter, r *http.Request) {
-				gotValue, gotOK = ParseIntParam(w, r, tt.paramName)
+				gotValue, gotOK = ParseIntParam(w, r, tt.paramName, tt.displayName)
 			})
 
 			req := httptest.NewRequest("GET", "/items/"+tt.paramValue, nil)

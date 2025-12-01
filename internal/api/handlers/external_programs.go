@@ -96,7 +96,7 @@ func (h *ExternalProgramsHandler) CreateExternalProgram(w http.ResponseWriter, r
 
 // UpdateExternalProgram handles PUT /api/external-programs/{id}
 func (h *ExternalProgramsHandler) UpdateExternalProgram(w http.ResponseWriter, r *http.Request) {
-	id, ok := ParseIntParam(w, r, "id")
+	id, ok := ParseIntParam(w, r, "id", "program ID")
 	if !ok {
 		return
 	}
@@ -145,7 +145,7 @@ func (h *ExternalProgramsHandler) UpdateExternalProgram(w http.ResponseWriter, r
 
 // DeleteExternalProgram handles DELETE /api/external-programs/{id}
 func (h *ExternalProgramsHandler) DeleteExternalProgram(w http.ResponseWriter, r *http.Request) {
-	id, ok := ParseIntParam(w, r, "id")
+	id, ok := ParseIntParam(w, r, "id", "program ID")
 	if !ok {
 		return
 	}

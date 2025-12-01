@@ -133,7 +133,7 @@ func (h *ClientAPIKeysHandler) ListClientAPIKeys(w http.ResponseWriter, r *http.
 
 // DeleteClientAPIKey handles DELETE /api/client-api-keys/{id}
 func (h *ClientAPIKeysHandler) DeleteClientAPIKey(w http.ResponseWriter, r *http.Request) {
-	id, ok := ParseIntParam(w, r, "id")
+	id, ok := ParseIntParam(w, r, "id", "API key ID")
 	if !ok {
 		return
 	}
