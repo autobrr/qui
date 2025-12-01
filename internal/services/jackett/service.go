@@ -24,8 +24,10 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
+	"github.com/autobrr/qui/pkg/hashutil"
 	"github.com/autobrr/qui/pkg/prowlarr"
 	"github.com/autobrr/qui/pkg/releases"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // IndexerStore defines the interface for indexer storage operations
@@ -1171,7 +1173,7 @@ func (s *Service) persistSearchCacheEntry(ctx context.Context, scope string, sig
 }
 
 func canonicalizeQuery(q string) string {
-	return strings.ToLower(strings.TrimSpace(q))
+	return stringutils.InternNormalized(q)
 }
 
 func canonicalizeIntSlice(values []int) []int {
@@ -2660,7 +2662,7 @@ func supportsAnyCapability(current []string, required []string) bool {
 		return true
 	}
 	for _, candidate := range required {
-		candidate = strings.ToLower(strings.TrimSpace(candidate))
+		candidate = stringutils.InternNormalized(candidate)
 		if candidate == "" {
 			continue
 		}
@@ -2725,9 +2727,10 @@ func (s *Service) convertResults(results []Result) []SearchResult {
 		var source, collection, group string
 		if r.Title != "" {
 			parsed := s.releaseParser.Parse(r.Title)
-			source = parsed.Source
-			collection = parsed.Collection
-			group = parsed.Group
+			// Intern these since they're repeated across many releases
+			source = stringutils.Intern(parsed.Source)
+			collection = stringutils.Intern(parsed.Collection)
+			group = stringutils.Intern(parsed.Group)
 		}
 
 		leechers := r.Peers - r.Seeders
@@ -2736,7 +2739,7 @@ func (s *Service) convertResults(results []Result) []SearchResult {
 		}
 
 		result := SearchResult{
-			Indexer:              r.Tracker,
+			Indexer:              r.Tracker, // Already interned from convertRssToResults
 			IndexerID:            r.IndexerID,
 			Title:                r.Title,
 			DownloadURL:          r.Link,
@@ -2745,7 +2748,7 @@ func (s *Service) convertResults(results []Result) []SearchResult {
 			Seeders:              r.Seeders,
 			Leechers:             leechers, // Peers includes seeders
 			CategoryID:           s.parseCategoryID(r.Category),
-			CategoryName:         r.Category,
+			CategoryName:         r.Category, // Already interned from convertRssToResults
 			PublishDate:          r.PublishDate,
 			DownloadVolumeFactor: r.DownloadVolumeFactor,
 			UploadVolumeFactor:   r.UploadVolumeFactor,
@@ -2880,10 +2883,11 @@ func extractInfoHashFromAttributes(attrs map[string]string) string {
 	for _, key := range infohashAttributeKeys {
 		if value, ok := attrs[key]; ok {
 			// Validate that it's a valid hex string (40 chars for SHA1, 64 for SHA256)
-			value = strings.TrimSpace(strings.ToLower(value))
+			value = strings.TrimSpace(value)
 			if len(value) == 40 || len(value) == 64 {
 				if _, err := hex.DecodeString(value); err == nil {
-					return value
+					// Use hashutil.Normalize for interned, lowercase hashes
+					return hashutil.Normalize(value)
 				}
 			}
 		}
@@ -2961,7 +2965,7 @@ func normalizeCaps(caps []string) []string {
 	seen := make(map[string]struct{}, len(caps))
 	result := make([]string, 0, len(caps))
 	for _, cap := range caps {
-		trimmed := strings.TrimSpace(strings.ToLower(cap))
+		trimmed := stringutils.InternNormalized(cap)
 		if trimmed == "" {
 			continue
 		}
@@ -2980,10 +2984,10 @@ func indexerHasCapabilities(current []string, required []string) bool {
 	}
 	available := make(map[string]struct{}, len(current))
 	for _, cap := range current {
-		available[strings.TrimSpace(strings.ToLower(cap))] = struct{}{}
+		available[stringutils.InternNormalized(cap)] = struct{}{}
 	}
 	for _, need := range required {
-		if _, ok := available[strings.ToLower(need)]; !ok {
+		if _, ok := available[stringutils.InternNormalized(need)]; !ok {
 			return false
 		}
 	}
@@ -3465,7 +3469,8 @@ func (s *Service) GetEnabledTrackerDomains(ctx context.Context) ([]string, error
 	return domains, nil
 }
 
-// extractDomainFromURL extracts the domain from a URL string
+// extractDomainFromURL extracts the domain from a URL string.
+// The returned domain is interned for memory efficiency since tracker domains are highly repetitive.
 func extractDomainFromURL(urlStr string) string {
 	if urlStr == "" {
 		return ""
@@ -3492,7 +3497,8 @@ func extractDomainFromURL(urlStr string) string {
 		}
 	}
 
-	return hostname
+	// Intern the domain for memory efficiency - tracker domains are highly repetitive
+	return stringutils.Intern(hostname)
 }
 
 // TrackerDomainInfo represents detailed information about a tracker domain

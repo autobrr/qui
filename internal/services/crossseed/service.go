@@ -43,6 +43,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/hashutil"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -2619,7 +2620,7 @@ func (s *Service) processCrossSeedCandidate(
 }
 
 func normalizeHash(hash string) string {
-	return strings.ToLower(strings.TrimSpace(hash))
+	return hashutil.Normalize(hash)
 }
 
 // queueRecheckResume adds a torrent to the recheck resume queue.
@@ -2715,13 +2716,13 @@ func (s *Service) recheckResumeWorker() {
 				// Build lookup map by hash
 				torrentByHash := make(map[string]qbt.Torrent, len(torrents))
 				for _, t := range torrents {
-					torrentByHash[strings.ToLower(t.Hash)] = t
+					torrentByHash[hashutil.Normalize(t.Hash)] = t
 				}
 
 				// Process each pending torrent for this instance
 				for _, hash := range hashes {
 					req := pending[hash]
-					torrent, found := torrentByHash[strings.ToLower(hash)]
+					torrent, found := torrentByHash[hashutil.Normalize(hash)]
 					if !found {
 						log.Debug().
 							Int("instanceID", instanceID).
@@ -2851,7 +2852,7 @@ func (s *Service) pendingCompletionsWorker() {
 
 			preImportCategories := make(map[string]struct{})
 			for _, cat := range settings.Completion.PreImportCategories {
-				preImportCategories[strings.ToLower(strings.TrimSpace(cat))] = struct{}{}
+				preImportCategories[stringutils.InternNormalized(cat)] = struct{}{}
 			}
 			hasPreImportCategories := len(preImportCategories) > 0
 
@@ -2874,7 +2875,7 @@ func (s *Service) pendingCompletionsWorker() {
 				// Build lookup by hash
 				torrentByHash := make(map[string]qbt.Torrent, len(torrents))
 				for _, t := range torrents {
-					torrentByHash[strings.ToLower(t.Hash)] = t
+					torrentByHash[hashutil.Normalize(t.Hash)] = t
 				}
 
 				// Check each pending completion for this instance
@@ -2886,7 +2887,7 @@ func (s *Service) pendingCompletionsWorker() {
 					}
 
 					// Look up current torrent state
-					torrent, found := torrentByHash[strings.ToLower(hash)]
+					torrent, found := torrentByHash[hashutil.Normalize(hash)]
 					if !found {
 						// Torrent was removed - clean up
 						log.Debug().

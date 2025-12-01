@@ -50,6 +50,22 @@ func TestNewNormalizer(t *testing.T) {
 	assert.NotNil(t, normalizer.transform)
 }
 
+func TestNewInternNormalizer(t *testing.T) {
+	t.Parallel()
+
+	transform := func(s string) string {
+		return Intern(strings.ToUpper(s))
+	}
+
+	normalizer := NewInternNormalizer(time.Minute, transform)
+	assert.NotNil(t, normalizer)
+	assert.NotNil(t, normalizer.cache)
+	assert.NotNil(t, normalizer.transform)
+
+	result := normalizer.Normalize("hello")
+	assert.Equal(t, "HELLO", result)
+}
+
 func TestNewDefaultNormalizer(t *testing.T) {
 	t.Parallel()
 
@@ -67,11 +83,11 @@ func TestNormalizer_Normalize(t *testing.T) {
 
 		normalizer := NewDefaultNormalizer()
 
-		// First call - not cached
+		// First call
 		result := normalizer.Normalize("  HELLO  ")
 		assert.Equal(t, "hello", result)
 
-		// Second call - should use cache
+		// Second call - same result (interned)
 		result = normalizer.Normalize("  HELLO  ")
 		assert.Equal(t, "hello", result)
 	})
@@ -80,10 +96,10 @@ func TestNormalizer_Normalize(t *testing.T) {
 		t.Parallel()
 
 		transform := func(s string) string {
-			return strings.ToUpper(strings.TrimSpace(s))
+			return Intern(strings.ToUpper(strings.TrimSpace(s)))
 		}
 
-		normalizer := NewNormalizer(time.Minute, transform)
+		normalizer := NewInternNormalizer(time.Minute, transform)
 
 		result := normalizer.Normalize("  hello  ")
 		assert.Equal(t, "HELLO", result)
@@ -111,15 +127,15 @@ func TestNormalizer_Normalize(t *testing.T) {
 		transform := func(n int) string {
 			switch n {
 			case 1:
-				return "one"
+				return Intern("one")
 			case 2:
-				return "two"
+				return Intern("two")
 			default:
-				return "other"
+				return Intern("other")
 			}
 		}
 
-		normalizer := NewNormalizer[int, string](time.Minute, transform)
+		normalizer := NewInternNormalizer(time.Minute, transform)
 
 		assert.Equal(t, "one", normalizer.Normalize(1))
 		assert.Equal(t, "two", normalizer.Normalize(2))
@@ -133,24 +149,27 @@ func TestNormalizer_Clear(t *testing.T) {
 	callCount := 0
 	transform := func(s string) string {
 		callCount++
-		return strings.ToLower(s)
+		return Intern(strings.ToLower(s))
 	}
 
-	normalizer := NewNormalizer(time.Minute, transform)
+	normalizer := NewInternNormalizer(time.Minute, transform)
 
 	// First call
-	_ = normalizer.Normalize("HELLO")
+	result1 := normalizer.Normalize("HELLO")
+	assert.Equal(t, "hello", result1)
 	assert.Equal(t, 1, callCount)
 
 	// Second call - should use cache, no new transform
-	_ = normalizer.Normalize("HELLO")
+	result2 := normalizer.Normalize("HELLO")
+	assert.Equal(t, "hello", result2)
 	assert.Equal(t, 1, callCount)
 
 	// Clear the cache entry
 	normalizer.Clear("HELLO")
 
 	// Third call - should transform again
-	_ = normalizer.Normalize("HELLO")
+	result3 := normalizer.Normalize("HELLO")
+	assert.Equal(t, "hello", result3)
 	assert.Equal(t, 2, callCount)
 }
 
@@ -162,4 +181,29 @@ func TestDefaultNormalizer_StaticInstance(t *testing.T) {
 
 	result := DefaultNormalizer.Normalize("  TEST  ")
 	assert.Equal(t, "test", result)
+}
+
+func BenchmarkNormalizer(b *testing.B) {
+	normalizer := NewDefaultNormalizer()
+	inputs := []string{"HELLO", "  WORLD  ", "TeSt", "already lowercase"}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, input := range inputs {
+			_ = normalizer.Normalize(input)
+		}
+	}
+}
+
+func BenchmarkNormalizerParallel(b *testing.B) {
+	normalizer := NewDefaultNormalizer()
+	inputs := []string{"HELLO", "  WORLD  ", "TeSt", "already lowercase"}
+
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			_ = normalizer.Normalize(inputs[i%len(inputs)])
+			i++
+		}
+	})
 }

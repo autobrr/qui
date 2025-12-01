@@ -4,10 +4,10 @@
 package releases
 
 import (
-	"strings"
 	"time"
 
 	"github.com/autobrr/autobrr/pkg/ttlcache"
+	"github.com/autobrr/qui/pkg/stringutils"
 	"github.com/moistari/rls"
 )
 
@@ -35,7 +35,7 @@ func (p *Parser) Parse(name string) *rls.Release {
 	if p == nil {
 		return &rls.Release{}
 	}
-	key := strings.TrimSpace(name)
+	key := stringutils.InternTrimmed(name)
 	if key == "" {
 		return &rls.Release{}
 	}
@@ -54,7 +54,7 @@ func (p *Parser) Clear(name string) {
 	if p == nil {
 		return
 	}
-	key := strings.TrimSpace(name)
+	key := stringutils.InternTrimmed(name)
 	if key == "" {
 		return
 	}

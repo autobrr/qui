@@ -15,6 +15,7 @@ import (
 	"time"
 
 	gojackett "github.com/autobrr/qui/pkg/gojackett"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // Config holds the options for constructing a Client.
@@ -340,7 +341,8 @@ func ExtractDomainFromIndexerFields(fields []IndexerField) string {
 	return ""
 }
 
-// extractDomainFromURL extracts the domain from a URL string (copied from jackett service)
+// extractDomainFromURL extracts the domain from a URL string.
+// The returned domain is interned for memory efficiency since tracker domains are highly repetitive.
 func extractDomainFromURL(urlStr string) string {
 	if urlStr == "" {
 		return ""
@@ -367,5 +369,6 @@ func extractDomainFromURL(urlStr string) string {
 		}
 	}
 
-	return hostname
+	// Intern the domain for memory efficiency - tracker domains are highly repetitive
+	return stringutils.Intern(hostname)
 }

@@ -13,6 +13,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/hashutil"
 )
 
 // RestoreMode controls how a snapshot should be applied to a live qBittorrent instance.
@@ -219,7 +220,7 @@ func applyRestorePlanOptions(plan *RestorePlan, opts *RestorePlanOptions) {
 
 	exclude := make(map[string]struct{}, len(opts.ExcludeHashes))
 	for _, hash := range opts.ExcludeHashes {
-		normalized := strings.TrimSpace(strings.ToLower(hash))
+		normalized := hashutil.Normalize(hash)
 		if normalized == "" {
 			continue
 		}
@@ -236,7 +237,7 @@ func applyRestorePlanOptions(plan *RestorePlan, opts *RestorePlanOptions) {
 		}
 		filtered := items[:0]
 		for _, item := range items {
-			hash := strings.TrimSpace(strings.ToLower(item.Manifest.Hash))
+			hash := hashutil.Normalize(item.Manifest.Hash)
 			if _, skip := exclude[hash]; skip {
 				continue
 			}
@@ -251,7 +252,7 @@ func applyRestorePlanOptions(plan *RestorePlan, opts *RestorePlanOptions) {
 		}
 		filtered := items[:0]
 		for _, item := range items {
-			hash := strings.TrimSpace(strings.ToLower(item.Hash))
+			hash := hashutil.Normalize(item.Hash)
 			if _, skip := exclude[hash]; skip {
 				continue
 			}
@@ -266,7 +267,7 @@ func applyRestorePlanOptions(plan *RestorePlan, opts *RestorePlanOptions) {
 		}
 		filtered := items[:0]
 		for _, hash := range items {
-			normalized := strings.TrimSpace(strings.ToLower(hash))
+			normalized := hashutil.Normalize(hash)
 			if _, skip := exclude[normalized]; skip {
 				continue
 			}
@@ -318,7 +319,7 @@ func (s *Service) loadSnapshotState(ctx context.Context, runID int64) (*Snapshot
 
 	torrents := make(map[string]SnapshotTorrent, len(manifest.Items))
 	for _, item := range manifest.Items {
-		hash := strings.ToLower(strings.TrimSpace(item.Hash))
+		hash := hashutil.Normalize(item.Hash)
 		if hash == "" {
 			continue
 		}
@@ -405,7 +406,7 @@ func (s *Service) loadLiveState(ctx context.Context, instanceID int) (*LiveState
 
 	liveTorrents := make(map[string]LiveTorrent, len(torrents))
 	for _, torrent := range torrents {
-		hash := strings.ToLower(strings.TrimSpace(torrent.Hash))
+		hash := hashutil.Normalize(torrent.Hash)
 		if hash == "" {
 			continue
 		}
@@ -549,7 +550,7 @@ func buildTorrentPlan(snapshot map[string]SnapshotTorrent, live map[string]LiveT
 	plan := TorrentPlan{}
 
 	for hash, snap := range snapshot {
-		normalizedHash := strings.ToLower(strings.TrimSpace(hash))
+		normalizedHash := hashutil.Normalize(hash)
 		if normalizedHash == "" {
 			continue
 		}
@@ -579,7 +580,7 @@ func buildTorrentPlan(snapshot map[string]SnapshotTorrent, live map[string]LiveT
 
 	if includeDeletes {
 		for hash := range live {
-			normalizedHash := strings.ToLower(strings.TrimSpace(hash))
+			normalizedHash := hashutil.Normalize(hash)
 			if normalizedHash == "" {
 				continue
 			}
@@ -602,7 +603,7 @@ func buildTorrentPlan(snapshot map[string]SnapshotTorrent, live map[string]LiveT
 
 func snapshotTorrentToManifestItem(t SnapshotTorrent) ManifestItem {
 	manifest := ManifestItem{
-		Hash:        strings.ToLower(strings.TrimSpace(t.Hash)),
+		Hash:        hashutil.Normalize(t.Hash),
 		Name:        t.Name,
 		ArchivePath: t.ArchivePath,
 		SizeBytes:   t.SizeBytes,

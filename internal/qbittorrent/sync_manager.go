@@ -31,6 +31,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/pkg/hashutil"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // FilesManager interface for caching torrent files.
@@ -1526,7 +1527,7 @@ func (sm *SyncManager) primaryTrackerDomain(torrent qbt.Torrent) string {
 }
 
 func trackerMessageMatches(message string, patterns []string) bool {
-	text := strings.TrimSpace(strings.ToLower(message))
+	text := stringutils.InternNormalized(message)
 	if text == "" {
 		return false
 	}
@@ -1746,6 +1747,8 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 	if domain != unknown {
 		domain = strings.Trim(domain, "[]")
 		domain = strings.ToLower(domain)
+		// Intern the domain string for memory efficiency - tracker domains are highly repetitive
+		domain = stringutils.Intern(domain)
 	} else {
 		domain = unknown
 	}
@@ -2214,15 +2217,14 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 
 	pending := make(map[string]string, len(hashes))
 	for _, hash := range hashes {
-		canonicalHash := strings.TrimSpace(hash)
-		normalizedHash := strings.ToLower(canonicalHash)
+		normalizedHash := hashutil.Normalize(hash)
 		if normalizedHash == "" {
 			continue
 		}
 		if _, exists := pending[normalizedHash]; exists {
 			continue
 		}
-		pending[normalizedHash] = canonicalHash
+		pending[normalizedHash] = normalizedHash
 	}
 
 	if len(pending) == 0 {
@@ -2267,7 +2269,7 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 
 			var resumeList []string
 			for _, torrent := range torrents {
-				normalizedHash := strings.ToLower(strings.TrimSpace(torrent.Hash))
+				normalizedHash := hashutil.Normalize(torrent.Hash)
 				if _, watching := pending[normalizedHash]; !watching {
 					continue
 				}
@@ -2295,7 +2297,7 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 			sm.syncAfterModification(instanceID, client, "resume_when_complete")
 
 			for _, hash := range resumeList {
-				delete(pending, strings.ToLower(strings.TrimSpace(hash)))
+				delete(pending, hashutil.Normalize(hash))
 			}
 		}
 	}()
@@ -3295,7 +3297,7 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 		torrent := &torrents[i]
 		key := &keys[i]
 
-		key.hash = strings.ToLower(strings.TrimSpace(torrent.Hash))
+		key.hash = hashutil.Normalize(torrent.Hash)
 
 		addCandidate := func(candidate string) {
 			candidate = strings.TrimSpace(candidate)
