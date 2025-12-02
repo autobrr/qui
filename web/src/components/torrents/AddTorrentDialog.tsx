@@ -492,26 +492,16 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     mutationFn: async (data: FormData) => {
       // Use the user's explicit TMM choice
       const autoTMM = data.autoTMM
-
       // When autoTMM is enabled, temp path settings aren't visible/relevant
-      if (!autoTMM) {
-        // Check if temp path settings have changed from instance preferences
-        const tempPathChanged =
-          data.tempPathEnabled !== (preferences?.temp_path_enabled ?? false) ||
-          (data.tempPathEnabled && data.tempPath !== (preferences?.temp_path || ""))
-
-        // If temp path settings changed, update instance preferences first
-        if (tempPathChanged) {
-          await api.updateInstancePreferences(instanceId, {
-            temp_path_enabled: data.tempPathEnabled,
-            temp_path: data.tempPathEnabled ? data.tempPath : undefined,
-          })
-        }
-      }
+      const tempPathChanged =
+          !autoTMM && (data.tempPathEnabled !== (preferences?.temp_path_enabled ?? false) ||
+        (data.tempPathEnabled && data.tempPath !== (preferences?.temp_path || "")))
 
       const submitData: Parameters<typeof api.addTorrent>[1] = {
         startPaused: data.startPaused,
         savePath: !autoTMM && data.savePath ? data.savePath : undefined,
+        useDownloadPath: tempPathChanged ? data.tempPathEnabled : undefined,
+        downloadPath: tempPathChanged && data.tempPathEnabled ? data.tempPath : undefined,
         autoTMM: autoTMM,
         category: data.category === "__none__" ? undefined : data.category || undefined,
         tags: data.tags.length > 0 ? data.tags : undefined,

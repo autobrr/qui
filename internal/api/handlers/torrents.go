@@ -218,15 +218,6 @@ func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request
 	}{Duplicates: matches})
 }
 
-// AddTorrentRequest represents a request to add a torrent
-type AddTorrentRequest struct {
-	Category     string   `json:"category,omitempty"`
-	Tags         []string `json:"tags,omitempty"`
-	StartPaused  bool     `json:"start_paused,omitempty"`
-	SkipChecking bool     `json:"skip_checking,omitempty"`
-	SavePath     string   `json:"save_path,omitempty"`
-}
-
 // AddTorrent adds a new torrent
 func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	// Set a reasonable timeout for the entire operation
@@ -386,12 +377,24 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		options["autoTMM"] = "false"
 	}
 
+	// useDownloadPath and downloadPath are not officially documented by the qBittorrent API, but are defined here:
+	// https://github.com/qbittorrent/qBittorrent/blob/f68bc3fef9a64e2fa81225c4661b713a10017dee/src/webui/api/torrentscontroller.cpp#L1019-L1020
+	if useDownloadPath := r.FormValue("useDownloadPath"); useDownloadPath != "" {
+		options["useDownloadPath"] = useDownloadPath
+	}
+
+	if downloadPath := r.FormValue("downloadPath"); downloadPath != "" {
+		options["downloadPath"] = downloadPath
+	}
+
 	// Handle autoTMM explicitly if provided
 	if autoTMM := r.FormValue("autoTMM"); autoTMM != "" {
 		options["autoTMM"] = autoTMM
 		// If autoTMM is true, remove savepath to let qBittorrent handle it
 		if autoTMM == "true" {
 			delete(options, "savepath")
+			delete(options, "useDownloadPath")
+			delete(options, "downloadPath")
 		}
 	}
 

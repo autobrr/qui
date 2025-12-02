@@ -553,6 +553,8 @@ class ApiClient {
       tags?: string[]
       startPaused?: boolean
       savePath?: string
+      useDownloadPath?: boolean
+      downloadPath?: string
       autoTMM?: boolean
       skipHashCheck?: boolean
       sequentialDownload?: boolean
@@ -586,6 +588,8 @@ class ApiClient {
     if (data.rename) formData.append("rename", data.rename)
     // Only send savePath if autoTMM is false or undefined
     if (data.savePath && !data.autoTMM) formData.append("savepath", data.savePath)
+    if (data.useDownloadPath) formData.append("useDownloadPath", data.useDownloadPath.toString())
+    if (data.downloadPath) formData.append("downloadPath", data.downloadPath)
 
     const response = await fetch(`${API_BASE}/instances/${instanceId}/torrents`, {
       method: "POST",
