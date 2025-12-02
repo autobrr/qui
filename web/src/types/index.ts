@@ -1333,6 +1333,7 @@ export interface CrossSeedAutomationSettings {
   findIndividualEpisodes: boolean
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
+  useCrossCategorySuffix: boolean
   runExternalProgramId?: number | null
   completion?: CrossSeedCompletionSettings
   // Source-specific tagging
@@ -1356,6 +1357,7 @@ export interface CrossSeedAutomationSettingsPatch {
   findIndividualEpisodes?: boolean
   sizeMismatchTolerancePercent?: number
   useCategoryFromIndexer?: boolean
+  useCrossCategorySuffix?: boolean
   runExternalProgramId?: number | null
   completion?: CrossSeedCompletionSettingsPatch
   // Source-specific tagging

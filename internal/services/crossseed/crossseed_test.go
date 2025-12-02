@@ -1412,6 +1412,7 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 			},
 			settings: &models.CrossSeedAutomationSettings{
 				UseCategoryFromIndexer: true,
+				UseCrossCategorySuffix: true,
 			},
 			inheritSourceTags:     false,
 			expectedBaseCategory:  "IndexerCat",

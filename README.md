@@ -422,7 +422,7 @@ qui takes a different approach than the [cross-seed](https://github.com/cross-se
 |--------|-----------|-----|
 | **File handling** | Creates hardlinks/symlinks to a separate directory | Reuses existing files directly |
 | **AutoTMM** | Disabled (uses explicit save paths) | Inherits from matched torrent |
-| **Category** | Uses dedicated `linkCategory` (e.g., "cross-seed-link") | Inherits matched torrent's category |
+| **Category** | Uses dedicated `linkCategory` (e.g., "cross-seed-link") | Uses matched torrent's category with `.cross` suffix (configurable) |
 
 ### Global Settings
 
@@ -432,7 +432,11 @@ Configure matching behavior in the **Global rules** tab on the Cross-Seed page.
 
 - **Find individual episodes** - When enabled, season packs also match individual episodes. When disabled, season packs only match other season packs. Episodes are added with AutoTMM disabled to prevent save path conflicts.
 - **Size mismatch tolerance** - Maximum size difference percentage (default: 5%). Also determines auto-resume threshold after recheck.
-- **Use indexer name as category** - Set the qBittorrent category to the indexer name instead of inheriting from the matched torrent.
+
+#### Categories
+
+- **Add .cross category suffix** (default: enabled) - Appends `.cross` to cross-seed categories (e.g., `movies` → `movies.cross`). This prevents Sonarr/Radarr from importing cross-seeded files as duplicates, since *arr apps typically monitor specific categories. Disable this for full Automatic Torrent Management (AutoTMM) support where cross-seeds should use identical categories and save paths as the source torrent.
+- **Use indexer name as category** - Set the qBittorrent category to the indexer name instead of inheriting from the matched torrent. When combined with the `.cross` suffix, produces categories like `BTN.cross`.
 
 #### Source Tagging
 

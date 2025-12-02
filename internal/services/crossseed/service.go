@@ -6317,28 +6317,40 @@ func (s *Service) ensureCrossCategory(ctx context.Context, instanceID int, cross
 
 // determineCrossSeedCategory selects the category to apply to a cross-seeded torrent.
 // Returns (baseCategory, crossCategory) where baseCategory is used to look up save_path
-// and crossCategory is the final category name with .cross suffix.
+// and crossCategory is the final category name (with .cross suffix if enabled).
 func (s *Service) determineCrossSeedCategory(ctx context.Context, req *CrossSeedRequest, matchedTorrent *qbt.Torrent) (baseCategory, crossCategory string) {
 	var matchedCategory string
 	if matchedTorrent != nil {
 		matchedCategory = matchedTorrent.Category
 	}
 
+	// Load settings once to check both UseCategoryFromIndexer and UseCrossCategorySuffix
+	var settings *models.CrossSeedAutomationSettings
+	if s != nil {
+		settings, _ = s.GetAutomationSettings(ctx)
+	}
+
+	// Helper to apply .cross suffix only if enabled in settings
+	applySuffix := func(cat string) string {
+		if settings != nil && !settings.UseCrossCategorySuffix {
+			return cat
+		}
+		return appendCrossSuffix(cat)
+	}
+
 	if req == nil {
-		return matchedCategory, appendCrossSuffix(matchedCategory)
+		return matchedCategory, applySuffix(matchedCategory)
 	}
 
 	if req.Category != "" {
-		return req.Category, appendCrossSuffix(req.Category)
+		return req.Category, applySuffix(req.Category)
 	}
 
-	if req.IndexerName != "" && s != nil {
-		if settings, err := s.GetAutomationSettings(ctx); err == nil && settings != nil && settings.UseCategoryFromIndexer {
-			return req.IndexerName, appendCrossSuffix(req.IndexerName)
-		}
+	if req.IndexerName != "" && settings != nil && settings.UseCategoryFromIndexer {
+		return req.IndexerName, applySuffix(req.IndexerName)
 	}
 
-	return matchedCategory, appendCrossSuffix(matchedCategory)
+	return matchedCategory, applySuffix(matchedCategory)
 }
 
 // shouldUseTMM determines whether to use qBittorrent's Automatic Torrent Management for a cross-seed.

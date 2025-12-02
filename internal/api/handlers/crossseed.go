@@ -38,6 +38,7 @@ type automationSettingsRequest struct {
 	FindIndividualEpisodes       bool                       `json:"findIndividualEpisodes"`
 	SizeMismatchTolerancePercent float64                    `json:"sizeMismatchTolerancePercent"`
 	UseCategoryFromIndexer       bool                       `json:"useCategoryFromIndexer"`
+	UseCrossCategorySuffix       bool                       `json:"useCrossCategorySuffix"`
 	RunExternalProgramID         *int                       `json:"runExternalProgramId"`
 	Completion                   *completionSettingsRequest `json:"completion"`
 }
@@ -62,6 +63,7 @@ type automationSettingsPatchRequest struct {
 	FindIndividualEpisodes       *bool                           `json:"findIndividualEpisodes,omitempty"`
 	SizeMismatchTolerancePercent *float64                        `json:"sizeMismatchTolerancePercent,omitempty"`
 	UseCategoryFromIndexer       *bool                           `json:"useCategoryFromIndexer,omitempty"`
+	UseCrossCategorySuffix       *bool                           `json:"useCrossCategorySuffix,omitempty"`
 	RunExternalProgramID         optionalInt                     `json:"runExternalProgramId"`
 	Completion                   *completionSettingsPatchRequest `json:"completion,omitempty"`
 	// Source-specific tagging
@@ -148,6 +150,7 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.FindIndividualEpisodes == nil &&
 		r.SizeMismatchTolerancePercent == nil &&
 		r.UseCategoryFromIndexer == nil &&
+		r.UseCrossCategorySuffix == nil &&
 		!r.RunExternalProgramID.Set &&
 		(r.Completion == nil || r.Completion.isEmpty()) &&
 		r.RSSAutomationTags == nil &&
@@ -207,6 +210,9 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	}
 	if patch.UseCategoryFromIndexer != nil {
 		settings.UseCategoryFromIndexer = *patch.UseCategoryFromIndexer
+	}
+	if patch.UseCrossCategorySuffix != nil {
+		settings.UseCrossCategorySuffix = *patch.UseCrossCategorySuffix
 	}
 	if patch.RunExternalProgramID.Set {
 		settings.RunExternalProgramID = patch.RunExternalProgramID.Value
@@ -623,6 +629,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		FindIndividualEpisodes:       req.FindIndividualEpisodes,
 		SizeMismatchTolerancePercent: req.SizeMismatchTolerancePercent,
 		UseCategoryFromIndexer:       req.UseCategoryFromIndexer,
+		UseCrossCategorySuffix:       req.UseCrossCategorySuffix,
 		RunExternalProgramID:         req.RunExternalProgramID,
 		Completion:                   completion,
 	}

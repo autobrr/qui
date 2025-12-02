@@ -43,6 +43,9 @@ type CrossSeedAutomationSettings struct {
 	WebhookTags          []string `json:"webhookTags"`          // Tags for /apply webhook results
 	InheritSourceTags    bool     `json:"inheritSourceTags"`    // Also copy tags from the matched source torrent
 
+	// Category isolation: add .cross suffix to prevent *arr import loops
+	UseCrossCategorySuffix bool `json:"useCrossCategorySuffix"` // Add .cross suffix to categories (e.g., movies → movies.cross)
+
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
@@ -90,8 +93,10 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		CompletionSearchTags: []string{"cross-seed"},
 		WebhookTags:          []string{"cross-seed"},
 		InheritSourceTags:    false, // Don't copy source torrent tags by default
-		CreatedAt:            time.Now().UTC(),
-		UpdatedAt:            time.Now().UTC(),
+		// Category isolation - default to true for backwards compatibility
+		UseCrossCategorySuffix: true,
+		CreatedAt:              time.Now().UTC(),
+		UpdatedAt:              time.Now().UTC(),
 	}
 }
 
@@ -262,7 +267,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		       completion_enabled, completion_categories, completion_tags,
 		       completion_exclude_categories, completion_exclude_tags,
 		       rss_automation_tags, seeded_search_tags, completion_search_tags,
-		       webhook_tags, inherit_source_tags,
+		       webhook_tags, inherit_source_tags, use_cross_category_suffix,
 		       created_at, updated_at
 		FROM cross_seed_settings
 		WHERE id = 1
@@ -303,6 +308,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&completionSearchTags,
 		&webhookTags,
 		&settings.InheritSourceTags,
+		&settings.UseCrossCategorySuffix,
 		&createdAt,
 		&updatedAt,
 	)
@@ -436,9 +442,9 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			completion_enabled, completion_categories, completion_tags,
 			completion_exclude_categories, completion_exclude_tags,
 			rss_automation_tags, seeded_search_tags, completion_search_tags,
-			webhook_tags, inherit_source_tags
+			webhook_tags, inherit_source_tags, use_cross_category_suffix
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -462,7 +468,8 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			seeded_search_tags = excluded.seeded_search_tags,
 			completion_search_tags = excluded.completion_search_tags,
 			webhook_tags = excluded.webhook_tags,
-			inherit_source_tags = excluded.inherit_source_tags
+			inherit_source_tags = excluded.inherit_source_tags,
+			use_cross_category_suffix = excluded.use_cross_category_suffix
 	`
 
 	// Convert *int to any for proper SQL handling
@@ -500,6 +507,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		completionSearchTags,
 		webhookTags,
 		settings.InheritSourceTags,
+		settings.UseCrossCategorySuffix,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("upsert settings: %w", err)

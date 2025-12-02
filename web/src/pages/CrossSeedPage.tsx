@@ -61,6 +61,7 @@ interface GlobalCrossSeedSettings {
   findIndividualEpisodes: boolean
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
+  useCrossCategorySuffix: boolean
   runExternalProgramId?: number | null
   ignorePatterns: string
   // Source-specific tagging
@@ -97,6 +98,7 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   findIndividualEpisodes: false,
   sizeMismatchTolerancePercent: 5.0,
   useCategoryFromIndexer: false,
+  useCrossCategorySuffix: true,
   runExternalProgramId: null,
   ignorePatterns: "",
   // Source-specific tagging defaults
@@ -341,6 +343,7 @@ export function CrossSeedPage() {
         findIndividualEpisodes: settings.findIndividualEpisodes,
         sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent ?? 5.0,
         useCategoryFromIndexer: settings.useCategoryFromIndexer ?? false,
+        useCrossCategorySuffix: settings.useCrossCategorySuffix ?? true,
         runExternalProgramId: settings.runExternalProgramId ?? null,
         ignorePatterns: Array.isArray(settings.ignorePatterns)
           ? settings.ignorePatterns.join("\n")
@@ -460,6 +463,7 @@ export function CrossSeedPage() {
           findIndividualEpisodes: settings.findIndividualEpisodes,
           sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent,
           useCategoryFromIndexer: settings.useCategoryFromIndexer,
+          useCrossCategorySuffix: settings.useCrossCategorySuffix ?? true,
           runExternalProgramId: settings.runExternalProgramId ?? null,
           ignorePatterns: ignorePatterns.length > 0 ? ignorePatterns.join(", ") : "",
           rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
@@ -473,6 +477,7 @@ export function CrossSeedPage() {
       findIndividualEpisodes: globalSource.findIndividualEpisodes,
       sizeMismatchTolerancePercent: globalSource.sizeMismatchTolerancePercent,
       useCategoryFromIndexer: globalSource.useCategoryFromIndexer,
+      useCrossCategorySuffix: globalSource.useCrossCategorySuffix,
       runExternalProgramId: globalSource.runExternalProgramId,
       ignorePatterns: normalizeIgnorePatterns(globalSource.ignorePatterns),
       // Source-specific tagging
@@ -1647,6 +1652,17 @@ export function CrossSeedPage() {
               <div className="space-y-1">
                 <p className="text-sm font-medium leading-none">Categories & automation</p>
                 <p className="text-xs text-muted-foreground">Control categories and post-processing for injected torrents.</p>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="global-use-cross-category-suffix" className="font-medium">Add .cross category suffix</Label>
+                  <p className="text-xs text-muted-foreground">Append .cross to categories (e.g., movies → movies.cross) to prevent Sonarr/Radarr import loops. Disable for full TMM support.</p>
+                </div>
+                <Switch
+                  id="global-use-cross-category-suffix"
+                  checked={globalSettings.useCrossCategorySuffix}
+                  onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, useCrossCategorySuffix: !!value }))}
+                />
               </div>
               <div className="flex items-center justify-between gap-3">
                 <div className="space-y-0.5">
