@@ -2390,6 +2390,24 @@ func (s *Service) processCrossSeedCandidate(
 	sourceRoot := detectCommonRoot(sourceFiles)
 	candidateRoot := detectCommonRoot(candidateFiles)
 
+	// Log first file from each for debugging
+	sourceFirstFile := ""
+	if len(sourceFiles) > 0 {
+		sourceFirstFile = sourceFiles[0].Name
+	}
+	candidateFirstFile := ""
+	if len(candidateFiles) > 0 {
+		candidateFirstFile = candidateFiles[0].Name
+	}
+	log.Debug().
+		Str("sourceRoot", sourceRoot).
+		Str("candidateRoot", candidateRoot).
+		Int("sourceFileCount", len(sourceFiles)).
+		Int("candidateFileCount", len(candidateFiles)).
+		Str("sourceFirstFile", sourceFirstFile).
+		Str("candidateFirstFile", candidateFirstFile).
+		Msg("[CROSSSEED] Detected folder structure for layout decision")
+
 	// Detect episode matched to season pack - these need special handling
 	// to use the season pack's content path instead of category save path
 	matchedRelease := s.releaseCache.Parse(matchedTorrent.Name)
@@ -2444,39 +2462,67 @@ func (s *Service) processCrossSeedCandidate(
 	// 4. After rename, paths will match existing torrent and recheck will find files
 
 	// Set contentLayout based on folder structure (reusing sourceRoot/candidateRoot from above):
-	// - Single file source → folder candidate: use Subfolder so qBittorrent creates folder
-	//   EXCEPT for episodes in packs: these use ContentPath directly, no subfolder needed
-	// - Folder source → single file candidate: use NoSubfolder to strip folder
-	// - Otherwise: preserve original structure
+	// The CANDIDATE is what already exists on disk (the matched torrent).
+	// The SOURCE is what we're adding (the cross-seed torrent).
+	// We need the source to match the candidate's structure so paths align with existing files.
+	//
+	// - Bare source + folder candidate: use Subfolder to wrap source in folder
+	//   qBittorrent strips the file extension from torrent name when creating the subfolder
+	//   (e.g., "Movie.mkv" torrent → "Movie/" folder), matching the candidate's structure.
+	//   EXCEPT for episodes in packs: these use ContentPath directly, no layout change needed
+	// - Folder source + bare candidate: use NoSubfolder to strip source's folder
+	// - Same layout: use Original to preserve structure
 	if sourceRoot == "" && candidateRoot != "" && !isEpisodeInPack {
-		// Single file going into folder - need Subfolder to create folder structure
+		// Source is bare file, candidate has folder - wrap source in folder to match
 		options["contentLayout"] = "Subfolder"
+		log.Debug().
+			Str("sourceRoot", sourceRoot).
+			Str("candidateRoot", candidateRoot).
+			Bool("isEpisodeInPack", isEpisodeInPack).
+			Str("contentLayout", "Subfolder").
+			Msg("[CROSSSEED] Layout mismatch: bare file source, folder candidate - wrapping in subfolder")
 	} else if sourceRoot != "" && candidateRoot == "" {
-		// Folder source going to single file - strip folder
+		// Source has folder, candidate is bare file - strip source's folder to match
 		options["contentLayout"] = "NoSubfolder"
+		log.Debug().
+			Str("sourceRoot", sourceRoot).
+			Str("candidateRoot", candidateRoot).
+			Str("contentLayout", "NoSubfolder").
+			Msg("[CROSSSEED] Layout mismatch: folder source, bare file candidate - stripping folder")
+	} else {
+		// Same layout - explicitly set Original to override qBittorrent's default preference
+		// (prevents qBittorrent from wrapping bare files in folders if user has "Create subfolder" as default)
+		options["contentLayout"] = "Original"
 	}
-	// Otherwise: don't set contentLayout, let qBittorrent use Original behavior
 
-	// Always use explicit save path for cross-seeds with .cross categories
-	// This ensures cross-seeds land where files exist, regardless of TMM settings
-	options["autoTMM"] = "false"
-	savePath := categorySavePath
-	if savePath == "" {
-		savePath = props.SavePath
-	}
+	// Determine save path strategy:
+	// - For partial-in-pack (episode into season pack): use explicit ContentPath, TMM off
+	// - For regular cross-seeds: let TMM handle it since .cross category has same save_path
 	if isEpisodeInPack && matchedTorrent.ContentPath != "" {
-		// Episode into season pack: use the season pack's content path
-		savePath = matchedTorrent.ContentPath
-	}
-	if savePath != "" {
-		options["savepath"] = savePath
+		// Episode into season pack: use the season pack's content path explicitly
+		options["autoTMM"] = "false"
+		options["savepath"] = matchedTorrent.ContentPath
+	} else if crossCategory != "" {
+		// Regular cross-seed with .cross category: TMM will use category's save_path
+		options["autoTMM"] = "true"
+	} else {
+		// No category - use explicit save path
+		options["autoTMM"] = "false"
+		savePath := categorySavePath
+		if savePath == "" {
+			savePath = props.SavePath
+		}
+		if savePath != "" {
+			options["savepath"] = savePath
+		}
 	}
 	log.Debug().
 		Int("instanceID", candidate.InstanceID).
 		Str("torrentName", torrentName).
 		Str("baseCategory", baseCategory).
 		Str("crossCategory", crossCategory).
-		Str("savePath", savePath).
+		Str("savePath", options["savepath"]).
+		Str("autoTMM", options["autoTMM"]).
 		Str("matchedTorrent", matchedTorrent.Name).
 		Bool("isEpisodeInPack", isEpisodeInPack).
 		Msg("[CROSSSEED] Adding cross-seed with .cross category")

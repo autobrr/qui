@@ -257,7 +257,7 @@ func TestNeedsRenameAlignment(t *testing.T) {
 			matchedName:    "Movie.2024",
 			sourceFiles:    qbt.TorrentFiles{{Name: "Movie.2024.mkv", Size: 1000}},
 			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2024/Movie.2024.mkv", Size: 1000}},
-			expectedResult: false, // handled by contentLayout=Subfolder
+			expectedResult: false, // handled by contentLayout=Subfolder (wraps source in folder, qBit strips .mkv)
 		},
 		{
 			name:           "folder to single file - no alignment needed (uses NoSubfolder layout)",
@@ -265,7 +265,7 @@ func TestNeedsRenameAlignment(t *testing.T) {
 			matchedName:    "Movie.2024.mkv",
 			sourceFiles:    qbt.TorrentFiles{{Name: "Movie.2024/Movie.2024.mkv", Size: 1000}},
 			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2024.mkv", Size: 1000}},
-			expectedResult: false, // handled by contentLayout=NoSubfolder
+			expectedResult: false, // handled by contentLayout=NoSubfolder (strips source's folder)
 		},
 	}
 
