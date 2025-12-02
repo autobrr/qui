@@ -1471,16 +1471,15 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc := &Service{
-				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
-					if tt.settings != nil {
-						return tt.settings, nil
-					}
-					return defaultSettings, nil
-				},
+			svc := &Service{}
+
+			// Use tt.settings if provided, otherwise use defaultSettings
+			settings := tt.settings
+			if settings == nil {
+				settings = defaultSettings
 			}
 
-			baseCategory, crossCategory := svc.determineCrossSeedCategory(context.Background(), tt.request, &tt.matched)
+			baseCategory, crossCategory := svc.determineCrossSeedCategory(context.Background(), tt.request, &tt.matched, settings)
 			assert.Equal(t, tt.expectedBaseCategory, baseCategory)
 			assert.Equal(t, tt.expectedCrossCategory, crossCategory)
 

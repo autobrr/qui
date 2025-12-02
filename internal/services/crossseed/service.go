@@ -883,8 +883,6 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 	}
 
 	// Execute cross-seed search immediately
-	// Note: With .cross category suffixing, delay is no longer needed as cross-seeds
-	// are isolated in their own categories and won't cause *arr import loops
 	err = s.executeCompletionSearch(ctx, instanceID, &torrent, settings)
 	if err != nil {
 		log.Warn().
@@ -2415,10 +2413,10 @@ func (s *Service) processCrossSeedCandidate(
 		sourceRelease.Series > 0 && sourceRelease.Episode > 0 &&
 		matchedRelease.Series > 0 && matchedRelease.Episode == 0
 
-	// Determine final category to apply (with .cross suffix for isolation)
-	baseCategory, crossCategory := s.determineCrossSeedCategory(ctx, req, matchedTorrent)
+	// Determine final category to apply (with optional .cross suffix for isolation)
+	baseCategory, crossCategory := s.determineCrossSeedCategory(ctx, req, matchedTorrent, nil)
 
-	// Determine the save_path for the .cross category
+	// Determine the save_path for the cross-seed category
 	// Priority: base category's configured save_path > matched torrent's save_path
 	var categorySavePath string
 	if crossCategory != "" {
@@ -2435,12 +2433,12 @@ func (s *Service) processCrossSeedCandidate(
 			categorySavePath = props.SavePath
 		}
 
-		// Ensure the .cross category exists with the correct save_path
+		// Ensure the cross-seed category exists with the correct save_path
 		if err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath); err != nil {
 			log.Warn().Err(err).
 				Str("category", crossCategory).
 				Str("savePath", categorySavePath).
-				Msg("[CROSSSEED] Failed to ensure .cross category exists, continuing without category")
+				Msg("[CROSSSEED] Failed to ensure category exists, continuing without category")
 			crossCategory = "" // Clear category to proceed without it
 		}
 	}
@@ -2455,9 +2453,8 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Cross-seed add strategy:
-	// With .cross categories, we always use explicit save path to ensure:
-	// 1. The .cross category uses the same save_path as the base category
-	// 2. Cross-seeds are isolated from *arr applications (no import loops)
+	// 1. Category uses same save_path as the base category (or matched torrent's path)
+	// 2. When .cross suffix is enabled, cross-seeds are isolated from *arr applications
 	// 3. alignCrossSeedContentPaths will rename torrent/folders/files to match existing
 	// 4. After rename, paths will match existing torrent and recheck will find files
 
@@ -2497,13 +2494,13 @@ func (s *Service) processCrossSeedCandidate(
 
 	// Determine save path strategy:
 	// - For partial-in-pack (episode into season pack): use explicit ContentPath, TMM off
-	// - For regular cross-seeds: let TMM handle it since .cross category has same save_path
+	// - For regular cross-seeds with category: let TMM handle it using category's save_path
 	if isEpisodeInPack && matchedTorrent.ContentPath != "" {
 		// Episode into season pack: use the season pack's content path explicitly
 		options["autoTMM"] = "false"
 		options["savepath"] = matchedTorrent.ContentPath
 	} else if crossCategory != "" {
-		// Regular cross-seed with .cross category: TMM will use category's save_path
+		// Regular cross-seed with category: TMM will use category's save_path
 		options["autoTMM"] = "true"
 	} else {
 		// No category - use explicit save path
@@ -2525,7 +2522,7 @@ func (s *Service) processCrossSeedCandidate(
 		Str("autoTMM", options["autoTMM"]).
 		Str("matchedTorrent", matchedTorrent.Name).
 		Bool("isEpisodeInPack", isEpisodeInPack).
-		Msg("[CROSSSEED] Adding cross-seed with .cross category")
+		Msg("[CROSSSEED] Adding cross-seed torrent")
 
 	// Add the torrent
 	err = s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options)
@@ -6261,6 +6258,22 @@ func (s *Service) isSizeWithinTolerance(sourceSize, candidateSize int64, toleran
 	return candidateSizeFloat >= minAcceptableSize && candidateSizeFloat <= maxAcceptableSize
 }
 
+// normalizePath normalizes a file path for comparison by:
+// - Converting backslashes to forward slashes
+// - Removing trailing slashes
+// - Cleaning the path (removing . and .. where possible)
+func normalizePath(p string) string {
+	if p == "" {
+		return ""
+	}
+	// Convert backslashes to forward slashes for cross-platform comparison
+	p = strings.ReplaceAll(p, "\\", "/")
+	// Clean the path and remove trailing slashes
+	p = filepath.Clean(p)
+	p = strings.TrimSuffix(p, "/")
+	return p
+}
+
 // appendCrossSuffix adds the .cross suffix to a category name.
 // Returns empty string for empty input, and avoids double-suffixing.
 func appendCrossSuffix(category string) string {
@@ -6290,7 +6303,8 @@ func (s *Service) ensureCrossCategory(ctx context.Context, instanceID int, cross
 	// Check if category already exists
 	if existing, exists := categories[crossCategory]; exists {
 		// Category exists - check if save_path differs (informational warning only)
-		if savePath != "" && existing.SavePath != "" && existing.SavePath != savePath {
+		// Normalize paths for comparison (handle trailing slashes, backslashes)
+		if savePath != "" && existing.SavePath != "" && normalizePath(existing.SavePath) != normalizePath(savePath) {
 			log.Warn().
 				Int("instanceID", instanceID).
 				Str("category", crossCategory).
@@ -6310,7 +6324,7 @@ func (s *Service) ensureCrossCategory(ctx context.Context, instanceID int, cross
 		Int("instanceID", instanceID).
 		Str("category", crossCategory).
 		Str("savePath", savePath).
-		Msg("[CROSSSEED] Created .cross category for cross-seed")
+		Msg("[CROSSSEED] Created category for cross-seed")
 
 	return nil
 }
@@ -6318,15 +6332,15 @@ func (s *Service) ensureCrossCategory(ctx context.Context, instanceID int, cross
 // determineCrossSeedCategory selects the category to apply to a cross-seeded torrent.
 // Returns (baseCategory, crossCategory) where baseCategory is used to look up save_path
 // and crossCategory is the final category name (with .cross suffix if enabled).
-func (s *Service) determineCrossSeedCategory(ctx context.Context, req *CrossSeedRequest, matchedTorrent *qbt.Torrent) (baseCategory, crossCategory string) {
+// If settings is nil, it will be loaded from the database.
+func (s *Service) determineCrossSeedCategory(ctx context.Context, req *CrossSeedRequest, matchedTorrent *qbt.Torrent, settings *models.CrossSeedAutomationSettings) (baseCategory, crossCategory string) {
 	var matchedCategory string
 	if matchedTorrent != nil {
 		matchedCategory = matchedTorrent.Category
 	}
 
-	// Load settings once to check both UseCategoryFromIndexer and UseCrossCategorySuffix
-	var settings *models.CrossSeedAutomationSettings
-	if s != nil {
+	// Load settings if not provided by caller
+	if settings == nil && s != nil {
 		settings, _ = s.GetAutomationSettings(ctx)
 	}
 
