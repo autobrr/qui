@@ -61,9 +61,9 @@ export function useCrossSeedWarning({
     }
 
     // Build expression: ContentPath == "path1" || ContentPath == "path2"
-    // Escape quotes in paths
+    // Escape backslashes first (for Windows paths), then quotes
     const conditions = Array.from(paths).map(
-      (p) => `ContentPath == "${p.replace(/"/g, '\\"')}"`
+      (p) => `ContentPath == "${p.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
     )
     const expression = conditions.join(" || ")
 

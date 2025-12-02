@@ -93,14 +93,12 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   excludeHashes = [],
   onComplete,
 }: TorrentManagementBarProps) {
-  if (typeof instanceId !== "number" || instanceId <= 0) {
-    return null
-  }
-
   const selectionCount = totalSelectionCount || selectedHashes.length
+  // Safe instanceId for hooks - guard at end handles invalid values
+  const safeInstanceId = typeof instanceId === "number" && instanceId > 0 ? instanceId : 0
 
   // Use shared metadata hook to leverage cache from table and filter sidebar
-  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId)
+  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(safeInstanceId)
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
   const preferences = metadata?.preferences
@@ -109,7 +107,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   const isLoadingCategoriesData = isMetadataLoading && Object.keys(availableCategories).length === 0
 
   // Get capabilities to check subcategory support
-  const { data: capabilities } = useInstanceCapabilities(instanceId)
+  const { data: capabilities } = useInstanceCapabilities(safeInstanceId)
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
   const allowSubcategories =
     supportsSubcategories && (preferences?.use_subcategories ?? false)
@@ -162,7 +160,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     prepareRecheckAction,
     prepareReannounceAction,
   } = useTorrentActions({
-    instanceId,
+    instanceId: safeInstanceId,
     onActionComplete: (action) => {
       if (action === TORRENT_ACTIONS.DELETE) {
         onComplete?.()
@@ -172,7 +170,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
 
   // Cross-seed warning for delete dialog
   const crossSeedWarning = useCrossSeedWarning({
-    instanceId,
+    instanceId: safeInstanceId,
     instanceName: instance?.name ?? "",
     torrents: selectedTorrents,
     enabled: showDeleteDialog,
@@ -351,10 +349,10 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   }, [handleSetSpeedLimits, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
 
   const hasSelection = selectionCount > 0 || isAllSelected
-  const isDisabled = !instanceId || !hasSelection
+  const isDisabled = !safeInstanceId || !hasSelection
 
   // Keep this guard after hooks so their invocation order stays stable.
-  if (!hasSelection) {
+  if (!safeInstanceId || !hasSelection) {
     return null
   }
 
