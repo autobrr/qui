@@ -1786,8 +1786,8 @@ func (h *TorrentsHandler) GetDirectoryContent(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	dirPath := r.URL.Query().Get("dirPath")
-	if strings.TrimSpace(dirPath) == "" {
+	dirPath := strings.TrimSpace(r.URL.Query().Get("dirPath"))
+	if dirPath == "" {
 		RespondError(w, http.StatusBadRequest, "Invalid directory path")
 		return
 	}
