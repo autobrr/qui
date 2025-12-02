@@ -3,16 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog"
+import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -57,8 +48,6 @@ import {
   Trash2
 } from "lucide-react"
 import { memo, useCallback, useMemo } from "react"
-import { CrossSeedWarning } from "./CrossSeedWarning"
-import { DeleteFilesPreference } from "./DeleteFilesPreference"
 import {
   AddTagsDialog,
   SetCategoryDialog,
@@ -620,45 +609,21 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         </div>
       </div>
 
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent className="max-w-xl">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete {totalSelectionCount || selectedHashes.length} torrent(s)?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. The torrents will be removed from qBittorrent.
-              {deleteDialogTotalSize > 0 && (
-                <span className="block mt-2 text-xs text-muted-foreground">
-                  Total size: {deleteDialogFormattedSize}
-                </span>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <DeleteFilesPreference
-            id="deleteFiles"
-            checked={deleteFiles}
-            onCheckedChange={setDeleteFiles}
-            isLocked={isDeleteFilesLocked}
-            onToggleLock={toggleDeleteFilesLock}
-          />
-          <CrossSeedWarning
-            affectedTorrents={crossSeedWarning.affectedTorrents}
-            isLoading={crossSeedWarning.isLoading}
-            hasWarning={crossSeedWarning.hasWarning}
-            deleteFiles={deleteFiles}
-            deleteCrossSeeds={deleteCrossSeeds}
-            onDeleteCrossSeedsChange={setDeleteCrossSeeds}
-          />
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteWrapper}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteTorrentDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        count={totalSelectionCount || selectedHashes.length}
+        totalSize={deleteDialogTotalSize}
+        formattedSize={deleteDialogFormattedSize}
+        deleteFiles={deleteFiles}
+        onDeleteFilesChange={setDeleteFiles}
+        isDeleteFilesLocked={isDeleteFilesLocked}
+        onToggleDeleteFilesLock={toggleDeleteFilesLock}
+        deleteCrossSeeds={deleteCrossSeeds}
+        onDeleteCrossSeedsChange={setDeleteCrossSeeds}
+        crossSeedWarning={crossSeedWarning}
+        onConfirm={handleDeleteWrapper}
+      />
 
       {/* Add Tags Dialog */}
       <AddTagsDialog
