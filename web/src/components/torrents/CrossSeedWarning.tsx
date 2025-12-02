@@ -102,8 +102,8 @@ export function CrossSeedWarning({
             isDestructive ? "text-destructive" : "text-blue-600 dark:text-blue-400"
           )}>
             {isDestructive
-              ? "This will break cross-seeded torrents"
-              : "Cross-seeded torrents detected (safe to remove)"}
+              ? "Deleting files will break these cross-seeds"
+              : "Cross-seeds detected — data will be preserved"}
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {affectedTorrents.length} {affectedTorrents.length === 1 ? "torrent shares" : "torrents share"} these files
@@ -115,7 +115,9 @@ export function CrossSeedWarning({
                   : `${uniqueTrackers.size} trackers`}
               </span>
             )}
-            {!isDestructive && " — data will be preserved"}
+            {isDestructive
+              ? " — they will need to redownload"
+              : " — unaffected by this removal"}
           </p>
         </div>
       </div>
