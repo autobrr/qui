@@ -1782,14 +1782,13 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 func (h *TorrentsHandler) GetDirectoryContent(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
-		log.Error().Err(err).Msg("Invalid instance ID")
-		http.Error(w, "Invalid instance ID", http.StatusBadRequest)
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
 		return
 	}
 
 	dirPath := r.URL.Query().Get("dirPath")
 	if strings.TrimSpace(dirPath) == "" {
-		http.Error(w, "Invalid directory path", http.StatusBadRequest)
+		RespondError(w, http.StatusBadRequest, "Invalid directory path")
 		return
 	}
 
@@ -1797,7 +1796,7 @@ func (h *TorrentsHandler) GetDirectoryContent(w http.ResponseWriter, r *http.Req
 	if raw := strings.TrimSpace(r.URL.Query().Get("withMetadata")); raw != "" {
 		parsed, err := strconv.ParseBool(raw)
 		if err != nil {
-			http.Error(w, "Invalid withMetadata", http.StatusBadRequest)
+			RespondError(w, http.StatusBadRequest, "Invalid withMetadata")
 			return
 		}
 		withMetadata = parsed
@@ -1809,7 +1808,7 @@ func (h *TorrentsHandler) GetDirectoryContent(w http.ResponseWriter, r *http.Req
 			return
 		}
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get directory contents")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		RespondError(w, http.StatusInternalServerError, "Failed to get directory contents")
 		return
 	}
 
