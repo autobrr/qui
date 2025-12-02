@@ -145,6 +145,17 @@ type DuplicateTorrentMatch struct {
 }
 
 // SyncManager manages torrent operations
+// TrackerHealthCounts holds cached tracker health status counts and hash sets for an instance.
+// These are refreshed in the background to avoid blocking API requests.
+// The counts are used for sidebar display, while the hash sets enable per-torrent health display.
+type TrackerHealthCounts struct {
+	Unregistered    int                 // count for sidebar
+	TrackerDown     int                 // count for sidebar
+	UnregisteredSet map[string]struct{} // hashes of unregistered torrents
+	TrackerDownSet  map[string]struct{} // hashes of tracker_down torrents
+	UpdatedAt       time.Time
+}
+
 type SyncManager struct {
 	clientPool   *ClientPool
 	exprCache    *ttlcache.Cache[string, *vm.Program]
@@ -162,6 +173,12 @@ type SyncManager struct {
 	fileFetchSemMu         sync.Mutex
 	fileFetchSem           map[int]chan struct{}
 	fileFetchMaxConcurrent int
+
+	// Background tracker health cache - refreshed periodically per instance
+	trackerHealthMu      sync.RWMutex
+	trackerHealthCache   map[int]*TrackerHealthCounts
+	trackerHealthCancel  map[int]context.CancelFunc // cancel funcs for background loops
+	trackerHealthRefresh time.Duration              // refresh interval (default 60s)
 }
 
 // ResumeWhenCompleteOptions configure resume monitoring behavior.
@@ -190,7 +207,16 @@ func NewSyncManager(clientPool *ClientPool) *SyncManager {
 		syncDebounceMinJitter:  10 * time.Millisecond,
 		fileFetchSem:           make(map[int]chan struct{}),
 		fileFetchMaxConcurrent: 16,
+		trackerHealthCache:     make(map[int]*TrackerHealthCounts),
+		trackerHealthCancel:    make(map[int]context.CancelFunc),
+		trackerHealthRefresh:   60 * time.Second,
 	}
+
+	// Set up bidirectional reference for background task notifications
+	if clientPool != nil {
+		clientPool.SetSyncManager(sm)
+	}
+
 	return sm
 }
 
@@ -207,6 +233,121 @@ func (sm *SyncManager) getFilesManager() FilesManager {
 		return nil
 	}
 	return v.(FilesManager)
+}
+
+// StartTrackerHealthRefresh starts a background goroutine that periodically refreshes
+// tracker health counts for the given instance. This avoids blocking API requests
+// while still providing accurate unregistered/tracker_down counts in the sidebar.
+func (sm *SyncManager) StartTrackerHealthRefresh(instanceID int) {
+	sm.trackerHealthMu.Lock()
+	// Cancel any existing refresh loop for this instance
+	if cancel, exists := sm.trackerHealthCancel[instanceID]; exists {
+		cancel()
+	}
+
+	// Use context.Background() to ensure the background loop isn't tied to any request lifetime
+	refreshCtx, cancel := context.WithCancel(context.Background())
+	sm.trackerHealthCancel[instanceID] = cancel
+	sm.trackerHealthMu.Unlock()
+
+	go sm.trackerHealthRefreshLoop(refreshCtx, instanceID)
+}
+
+// StopTrackerHealthRefresh stops the background tracker health refresh for an instance.
+func (sm *SyncManager) StopTrackerHealthRefresh(instanceID int) {
+	sm.trackerHealthMu.Lock()
+	defer sm.trackerHealthMu.Unlock()
+
+	if cancel, exists := sm.trackerHealthCancel[instanceID]; exists {
+		cancel()
+		delete(sm.trackerHealthCancel, instanceID)
+	}
+	delete(sm.trackerHealthCache, instanceID)
+}
+
+// trackerHealthRefreshLoop runs in the background and periodically refreshes tracker health counts.
+func (sm *SyncManager) trackerHealthRefreshLoop(ctx context.Context, instanceID int) {
+	// Do an initial refresh immediately
+	sm.refreshTrackerHealthCounts(ctx, instanceID)
+
+	ticker := time.NewTicker(sm.trackerHealthRefresh)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Debug().Int("instanceID", instanceID).Msg("Stopping tracker health refresh loop")
+			return
+		case <-ticker.C:
+			sm.refreshTrackerHealthCounts(ctx, instanceID)
+		}
+	}
+}
+
+// refreshTrackerHealthCounts fetches tracker data and calculates health counts and hash sets.
+func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceID int) {
+	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("Failed to get client for tracker health refresh")
+		return
+	}
+
+	// Only refresh for clients that support IncludeTrackers (qBittorrent 5.1+)
+	if !client.supportsTrackerInclude() {
+		return
+	}
+
+	// Get all torrents from the sync manager
+	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
+	if len(torrents) == 0 {
+		sm.trackerHealthMu.Lock()
+		sm.trackerHealthCache[instanceID] = &TrackerHealthCounts{
+			UnregisteredSet: make(map[string]struct{}),
+			TrackerDownSet:  make(map[string]struct{}),
+			UpdatedAt:       time.Now(),
+		}
+		sm.trackerHealthMu.Unlock()
+		return
+	}
+
+	// Enrich torrents with tracker data
+	enriched, _, _ := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil)
+
+	// Build counts and hash sets
+	counts := &TrackerHealthCounts{
+		UnregisteredSet: make(map[string]struct{}),
+		TrackerDownSet:  make(map[string]struct{}),
+		UpdatedAt:       time.Now(),
+	}
+	for _, t := range enriched {
+		if sm.torrentIsUnregistered(t) {
+			counts.Unregistered++
+			counts.UnregisteredSet[t.Hash] = struct{}{}
+		}
+		if sm.torrentTrackerIsDown(t) {
+			counts.TrackerDown++
+			counts.TrackerDownSet[t.Hash] = struct{}{}
+		}
+	}
+
+	sm.trackerHealthMu.Lock()
+	sm.trackerHealthCache[instanceID] = counts
+	sm.trackerHealthMu.Unlock()
+
+	log.Debug().
+		Int("instanceID", instanceID).
+		Int("unregistered", counts.Unregistered).
+		Int("trackerDown", counts.TrackerDown).
+		Int("totalTorrents", len(torrents)).
+		Msg("Refreshed tracker health counts")
+}
+
+// GetTrackerHealthCounts returns the cached tracker health counts for an instance.
+// Returns nil if no cached counts are available.
+func (sm *SyncManager) GetTrackerHealthCounts(instanceID int) *TrackerHealthCounts {
+	sm.trackerHealthMu.RLock()
+	defer sm.trackerHealthMu.RUnlock()
+	return sm.trackerHealthCache[instanceID]
 }
 
 func (sm *SyncManager) getTorrentFilesClient(ctx context.Context, instanceID int) (torrentFilesClient, error) {
@@ -644,13 +785,27 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	}
 
 	// Convert to UI view models with tracker health metadata
+	// Use cached hash sets for tracker health when torrents aren't enriched
+	var cachedHealth *TrackerHealthCounts
+	if trackerHealthSupported {
+		cachedHealth = sm.GetTrackerHealthCounts(instanceID)
+	}
+
 	var paginatedViews []TorrentView
 	if len(paginatedTorrents) > 0 {
 		paginatedViews = make([]TorrentView, len(paginatedTorrents))
 		for i, torrent := range paginatedTorrents {
 			view := TorrentView{Torrent: torrent}
+			// First try to determine health from enriched tracker data
 			if health := sm.determineTrackerHealth(torrent); health != "" {
 				view.TrackerHealth = health
+			} else if cachedHealth != nil {
+				// Fall back to cached hash sets if torrent wasn't enriched
+				if _, ok := cachedHealth.UnregisteredSet[torrent.Hash]; ok {
+					view.TrackerHealth = TrackerHealthUnregistered
+				} else if _, ok := cachedHealth.TrackerDownSet[torrent.Hash]; ok {
+					view.TrackerHealth = TrackerHealthDown
+				}
 			}
 			paginatedViews[i] = view
 		}
@@ -1839,22 +1994,13 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 	}
 }
 
-// calculateCountsFromTorrentsWithTrackers calculates counts using MainData's tracker information
-// This gives us the REAL tracker-to-torrent mapping from qBittorrent
+// calculateCountsFromTorrentsWithTrackers calculates counts using MainData's tracker information.
+// This gives us the REAL tracker-to-torrent mapping from qBittorrent.
 //
-// PERFORMANCE NOTE: This function NO LONGER calls enrichTorrentsWithTrackerData for sidebar counts.
-// Tracker health status counts (unregistered, tracker_down) will only be accurate when:
-// 1. Torrents have already been enriched (e.g., when filtering/sorting by tracker health)
-// 2. The trackerMap parameter contains pre-fetched tracker data
-//
-// This dramatically improves performance for large instances by avoiding O(n) API calls
-// on every request just to display sidebar counts.
-
-func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker, trackerHealthSupported bool, useSubcategories bool) (*TorrentCounts, map[string][]qbt.TorrentTracker, []qbt.Torrent) {
-	// PERFORMANCE FIX: Don't enrich torrents just for counts. This was calling
-	// hydrateTorrentsWithTrackers on EVERY request which is catastrophic for performance.
-	// Tracker health counts in the sidebar will be 0 unless torrents were already enriched
-	// (e.g., when actually filtering or sorting by tracker health status).
+// Tracker health counts (unregistered, tracker_down) are fetched from a background cache
+// that is refreshed every 60 seconds per instance. This avoids blocking API requests
+// while still providing accurate counts in the sidebar for qBittorrent 5.1+ users.
+func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker, _ bool, useSubcategories bool) (*TorrentCounts, map[string][]qbt.TorrentTracker, []qbt.Torrent) {
 
 	// Initialize counts
 	counts := &TorrentCounts{
@@ -2013,6 +2159,15 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Conte
 
 		// Replace the original counts with aggregated ones
 		counts.Categories = aggregatedCounts
+	}
+
+	// Use cached tracker health counts for unregistered/tracker_down
+	// These are refreshed in the background to avoid blocking API requests
+	if client != nil {
+		if cached := sm.GetTrackerHealthCounts(client.instanceID); cached != nil {
+			counts.Status["unregistered"] = cached.Unregistered
+			counts.Status["tracker_down"] = cached.TrackerDown
+		}
 	}
 
 	return counts, trackerMap, allTorrents
@@ -2334,13 +2489,8 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	// Get all torrents from sync manager
 	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
 
-	// PERFORMANCE FIX: Do NOT enrich torrents with tracker data here.
-	// This was calling hydrateTorrentsWithTrackers on every stats request which is
-	// extremely expensive for large instances. Tracker health detection should only
-	// happen when explicitly filtering/sorting by tracker status.
-	//
-	// If tracker data is needed for specific operations, the caller should explicitly
-	// request it or use a dedicated endpoint.
+	// NOTE: Tracker health counts (unregistered/tracker_down) are handled via
+	// background cache refresh, not inline enrichment. See StartTrackerHealthRefresh.
 
 	// Build a map for O(1) lookups during optimistic updates
 	torrentMap := make(map[string]*qbt.Torrent, len(torrents))

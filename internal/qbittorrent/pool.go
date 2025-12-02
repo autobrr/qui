@@ -64,6 +64,7 @@ type ClientPool struct {
 	failureTracker    map[int]*failureInfo
 	decryptionTracker map[int]*decryptionErrorInfo
 	completionHandler TorrentCompletionHandler
+	syncManager       *SyncManager // Reference for starting background tasks
 }
 
 // NewClientPool creates a new client pool
@@ -104,6 +105,14 @@ func (cp *ClientPool) SetTorrentCompletionHandler(handler TorrentCompletionHandl
 	for _, client := range clients {
 		client.SetTorrentCompletionHandler(handler)
 	}
+}
+
+// SetSyncManager sets the SyncManager reference for starting background tasks.
+// This creates a bidirectional relationship: ClientPool -> SyncManager for notifications.
+func (cp *ClientPool) SetSyncManager(sm *SyncManager) {
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
+	cp.syncManager = sm
 }
 
 // getInstanceLock gets or creates a per-instance creation lock
@@ -251,6 +260,14 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 		// Don't fail client creation for sync manager issues
 	}
 
+	// Start background tracker health refresh if SyncManager is set
+	cp.mu.RLock()
+	sm := cp.syncManager
+	cp.mu.RUnlock()
+	if sm != nil {
+		sm.StartTrackerHealthRefresh(instanceID)
+	}
+
 	return client, nil
 }
 
@@ -258,7 +275,13 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 func (cp *ClientPool) RemoveClient(instanceID int) {
 	cp.mu.Lock()
 	delete(cp.clients, instanceID)
+	sm := cp.syncManager
 	cp.mu.Unlock()
+
+	// Stop background tracker health refresh
+	if sm != nil {
+		sm.StopTrackerHealthRefresh(instanceID)
+	}
 
 	// Also clean up the per-instance lock to prevent memory leaks
 	cp.creationMu.Lock()
