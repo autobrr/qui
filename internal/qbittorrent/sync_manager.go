@@ -311,7 +311,13 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 	}
 
 	// Enrich torrents with tracker data
-	enriched, _, _ := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil)
+	enriched, _, remaining := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil)
+	if len(remaining) > 0 {
+		log.Debug().
+			Int("instanceID", instanceID).
+			Int("failedToEnrich", len(remaining)).
+			Msg("Some torrents failed tracker enrichment during health refresh")
+	}
 
 	// Build counts and hash sets
 	counts := &TrackerHealthCounts{
