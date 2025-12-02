@@ -106,7 +106,7 @@ export function CrossSeedWarning({
               : "Cross-seeded torrents detected (safe to remove)"}
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {affectedTorrents.length} {affectedTorrents.length === 1 ? "torrent shares" : "torrents share"} {isDestructive ? "" : "these "}files
+            {affectedTorrents.length} {affectedTorrents.length === 1 ? "torrent shares" : "torrents share"} these files
             {instanceCount > 1 && ` across ${instanceCount} instances`}
             {uniqueTrackers.size > 0 && (
               <span className="ml-1">
