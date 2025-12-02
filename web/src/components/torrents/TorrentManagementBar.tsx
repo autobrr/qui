@@ -29,8 +29,10 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
+import { useInstances } from "@/hooks/useInstances"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
 import { formatBytes } from "@/lib/utils"
@@ -55,6 +57,7 @@ import {
   Trash2
 } from "lucide-react"
 import { memo, useCallback, useMemo } from "react"
+import { CrossSeedWarning } from "./CrossSeedWarning"
 import { DeleteFilesPreference } from "./DeleteFilesPreference"
 import {
   AddTagsDialog,
@@ -111,6 +114,10 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   const allowSubcategories =
     supportsSubcategories && (preferences?.use_subcategories ?? false)
 
+  // Get instance name for cross-seed warning
+  const { instances } = useInstances()
+  const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
+
   // Use the shared torrent actions hook
   const {
     showDeleteDialog,
@@ -161,6 +168,14 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         onComplete?.()
       }
     },
+  })
+
+  // Cross-seed warning for delete dialog
+  const crossSeedWarning = useCrossSeedWarning({
+    instanceId,
+    instanceName: instance?.name ?? "",
+    torrents: selectedTorrents,
+    enabled: showDeleteDialog,
   })
 
   // Wrapper functions to adapt hook handlers to component needs
@@ -602,7 +617,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       </div>
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-xl">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {totalSelectionCount || selectedHashes.length} torrent(s)?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -620,6 +635,12 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
             onCheckedChange={setDeleteFiles}
             isLocked={isDeleteFilesLocked}
             onToggleLock={toggleDeleteFilesLock}
+          />
+          <CrossSeedWarning
+            affectedTorrents={crossSeedWarning.affectedTorrents}
+            isLoading={crossSeedWarning.isLoading}
+            hasWarning={crossSeedWarning.hasWarning}
+            deleteFiles={deleteFiles}
           />
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>

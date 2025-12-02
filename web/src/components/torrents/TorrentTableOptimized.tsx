@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useKeyboardNavigation } from "@/hooks/useKeyboardNavigation"
@@ -43,7 +44,7 @@ import { useVirtualizer } from "@tanstack/react-virtual"
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
 import { TorrentContextMenu } from "./TorrentContextMenu"
-import { TORRENT_SORT_OPTIONS, type TorrentSortOptionValue, getDefaultSortOrder } from "./torrentSortOptions"
+import { TORRENT_SORT_OPTIONS, getDefaultSortOrder, type TorrentSortOptionValue } from "./torrentSortOptions"
 
 import {
   AlertDialog,
@@ -125,6 +126,7 @@ import {
 } from "lucide-react"
 import { createPortal } from "react-dom"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
+import { CrossSeedWarning } from "./CrossSeedWarning"
 import { DeleteFilesPreference } from "./DeleteFilesPreference"
 import { DraggableTableHeader } from "./DraggableTableHeader"
 import { SelectAllHotkey } from "./SelectAllHotkey"
@@ -828,6 +830,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         resetSelectionState()
       }
     },
+  })
+
+  // Cross-seed warning for delete dialog
+  const crossSeedWarning = useCrossSeedWarning({
+    instanceId,
+    instanceName: instance?.name ?? "",
+    torrents: contextTorrents,
+    enabled: showDeleteDialog,
   })
 
   // Fetch metadata using shared hook
@@ -2913,7 +2923,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       </div>
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
+        <AlertDialogContent className="!max-w-2xl">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -2931,6 +2941,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
             onCheckedChange={setDeleteFiles}
             isLocked={isDeleteFilesLocked}
             onToggleLock={toggleDeleteFilesLock}
+          />
+          <CrossSeedWarning
+            affectedTorrents={crossSeedWarning.affectedTorrents}
+            isLoading={crossSeedWarning.isLoading}
+            hasWarning={crossSeedWarning.hasWarning}
+            deleteFiles={deleteFiles}
           />
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
