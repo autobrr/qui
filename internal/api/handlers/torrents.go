@@ -1793,14 +1793,14 @@ func (h *TorrentsHandler) GetDirectoryContent(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	withMetadataParam := chi.URLParam(r, "withMetadata")
-	if withMetadataParam == "" {
-		withMetadataParam = "false"
-	}
-	withMetadata, err := strconv.ParseBool(withMetadataParam)
-	if err != nil {
-		http.Error(w, "Invalid withMetadata", http.StatusBadRequest)
-		return
+	withMetadata := false
+	if raw := strings.TrimSpace(r.URL.Query().Get("withMetadata")); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			http.Error(w, "Invalid withMetadata", http.StatusBadRequest)
+			return
+		}
+		withMetadata = parsed
 	}
 
 	response, err := h.syncManager.GetDirectoryContentCtx(r.Context(), instanceID, dirPath, withMetadata)
