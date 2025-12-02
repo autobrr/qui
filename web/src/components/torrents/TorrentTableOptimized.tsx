@@ -768,6 +768,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     setDeleteFiles,
     isDeleteFilesLocked,
     toggleDeleteFilesLock,
+    deleteCrossSeeds,
+    setDeleteCrossSeeds,
     showAddTagsDialog,
     setShowAddTagsDialog,
     showSetTagsDialog,
@@ -1976,15 +1978,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   ])
 
   const handleDeleteWrapper = useCallback(() => {
+    // Include cross-seed hashes if user opted to delete them
+    const hashesToDelete = deleteCrossSeeds
+      ? [...contextHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)]
+      : contextHashes
     handleDelete(
-      contextHashes,
+      hashesToDelete,
       isAllSelected,
       selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
       contextClientMeta
     )
-  }, [handleDelete, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleDelete, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta, deleteCrossSeeds, crossSeedWarning.affectedTorrents])
 
   const handleAddTagsWrapper = useCallback((tags: string[]) => {
     handleAddTags(
@@ -2947,6 +2953,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
             isLoading={crossSeedWarning.isLoading}
             hasWarning={crossSeedWarning.hasWarning}
             deleteFiles={deleteFiles}
+            deleteCrossSeeds={deleteCrossSeeds}
+            onDeleteCrossSeedsChange={setDeleteCrossSeeds}
           />
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>

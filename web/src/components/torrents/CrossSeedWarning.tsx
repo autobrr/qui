@@ -6,6 +6,7 @@
 import { useState } from "react"
 import { AlertTriangle, ChevronDown, ChevronRight, GitBranch, Info, Loader2 } from "lucide-react"
 
+import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
 import type { CrossSeedTorrent } from "@/lib/cross-seed-utils"
 import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
@@ -15,6 +16,8 @@ interface CrossSeedWarningProps {
   isLoading: boolean
   hasWarning: boolean
   deleteFiles: boolean
+  deleteCrossSeeds: boolean
+  onDeleteCrossSeedsChange: (checked: boolean) => void
   className?: string
 }
 
@@ -36,6 +39,8 @@ export function CrossSeedWarning({
   isLoading,
   hasWarning,
   deleteFiles,
+  deleteCrossSeeds,
+  onDeleteCrossSeedsChange,
   className,
 }: CrossSeedWarningProps) {
   const [isExpanded, setIsExpanded] = useState(false)
@@ -70,7 +75,8 @@ export function CrossSeedWarning({
   )
 
   const instanceCount = Object.keys(byInstance).length
-  const isDestructive = deleteFiles
+  // Show destructive styling if deleting files OR if user opted to delete cross-seeds
+  const isDestructive = deleteFiles || deleteCrossSeeds
 
   // Collect unique trackers for summary
   const uniqueTrackers = new Set<string>()
@@ -101,9 +107,11 @@ export function CrossSeedWarning({
             "text-sm font-medium",
             isDestructive ? "text-destructive" : "text-blue-600 dark:text-blue-400"
           )}>
-            {isDestructive
-              ? "Deleting files will break these cross-seeds"
-              : "Cross-seeds detected — data will be preserved"}
+            {deleteCrossSeeds
+              ? "These cross-seeds will also be deleted"
+              : deleteFiles
+                ? "Deleting files will break these cross-seeds"
+                : "Cross-seeds detected — data will be preserved"}
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {affectedTorrents.length} {affectedTorrents.length === 1 ? "torrent shares" : "torrents share"} these files
@@ -115,11 +123,28 @@ export function CrossSeedWarning({
                   : `${uniqueTrackers.size} trackers`}
               </span>
             )}
-            {isDestructive
-              ? " — they will need to redownload"
-              : " — unaffected by this removal"}
+            {deleteCrossSeeds
+              ? " — will be removed along with selection"
+              : deleteFiles
+                ? " — they will need to redownload"
+                : " — unaffected by this removal"}
           </p>
         </div>
+      </div>
+
+      {/* Delete cross-seeds option */}
+      <div className="mt-3 flex items-center gap-2">
+        <Checkbox
+          id="deleteCrossSeeds"
+          checked={deleteCrossSeeds}
+          onCheckedChange={(checked) => onDeleteCrossSeedsChange(checked === true)}
+        />
+        <label
+          htmlFor="deleteCrossSeeds"
+          className="text-xs cursor-pointer select-none"
+        >
+          Also delete these cross-seeded torrents
+        </label>
       </div>
 
       {/* Expandable torrent list */}

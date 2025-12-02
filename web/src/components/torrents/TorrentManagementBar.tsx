@@ -124,6 +124,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     setDeleteFiles,
     isDeleteFilesLocked,
     toggleDeleteFilesLock,
+    deleteCrossSeeds,
+    setDeleteCrossSeeds,
     showAddTagsDialog,
     setShowAddTagsDialog,
     showSetTagsDialog,
@@ -213,15 +215,19 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   }, [handleAction, actionHashes, actionOptions])
 
   const handleDeleteWrapper = useCallback(() => {
+    // Include cross-seed hashes if user opted to delete them
+    const hashesToDelete = deleteCrossSeeds
+      ? [...selectedHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)]
+      : selectedHashes
     handleDelete(
-      selectedHashes,
+      hashesToDelete,
       isAllSelected,
       filters,
       search,
       excludeHashes,
       clientMeta
     )
-  }, [handleDelete, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
+  }, [handleDelete, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta, deleteCrossSeeds, crossSeedWarning.affectedTorrents])
 
   const handleAddTagsWrapper = useCallback((tags: string[]) => {
     handleAddTags(
@@ -639,6 +645,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
             isLoading={crossSeedWarning.isLoading}
             hasWarning={crossSeedWarning.hasWarning}
             deleteFiles={deleteFiles}
+            deleteCrossSeeds={deleteCrossSeeds}
+            onDeleteCrossSeedsChange={setDeleteCrossSeeds}
           />
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>

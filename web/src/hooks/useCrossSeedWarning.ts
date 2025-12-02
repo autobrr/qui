@@ -7,7 +7,7 @@ import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 
 import { api } from "@/lib/api"
-import type { CrossSeedTorrent } from "@/lib/cross-seed-utils"
+import { searchCrossSeedMatches, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
 import type { Torrent } from "@/types"
 
 interface UseCrossSeedWarningOptions {
@@ -40,62 +40,56 @@ export function useCrossSeedWarning({
   torrents,
   enabled,
 }: UseCrossSeedWarningOptions): CrossSeedWarningResult {
-  // Build the expression filter for content_path matching
-  const { expr, hashesBeingDeleted } = useMemo(() => {
-    if (!enabled || torrents.length === 0) {
-      return { expr: "", hashesBeingDeleted: new Set<string>() }
-    }
+  // Get the first torrent to search for cross-seeds (typically deleting one at a time)
+  const torrent = torrents[0]
+  const hashesBeingDeleted = useMemo(
+    () => new Set(torrents.map(t => t.hash)),
+    [torrents]
+  )
 
-    const hashes = new Set<string>()
-    const paths = new Set<string>()
+  // Fetch instance info
+  const { data: instances } = useQuery({
+    queryKey: ["instances"],
+    queryFn: api.getInstances,
+    enabled: enabled && !!torrent,
+    staleTime: 60000,
+  })
 
-    for (const t of torrents) {
-      hashes.add(t.hash)
-      if (t.content_path) {
-        paths.add(t.content_path)
-      }
-    }
+  const instance = useMemo(
+    () => instances?.find(i => i.id === instanceId),
+    [instances, instanceId]
+  )
 
-    if (paths.size === 0) {
-      return { expr: "", hashesBeingDeleted: hashes }
-    }
+  // Fetch torrent files for deep matching
+  const { data: torrentFiles } = useQuery({
+    queryKey: ["torrent-files-crossseed-warning", instanceId, torrent?.hash],
+    queryFn: () => api.getTorrentFiles(instanceId, torrent!.hash),
+    enabled: enabled && !!torrent,
+    staleTime: 60000,
+  })
 
-    // Build expression: ContentPath == "path1" || ContentPath == "path2"
-    // Escape backslashes first (for Windows paths), then quotes
-    const conditions = Array.from(paths).map(
-      (p) => `ContentPath == "${p.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
-    )
-    const expression = conditions.join(" || ")
-
-    return { expr: expression, hashesBeingDeleted: hashes }
-  }, [enabled, torrents])
-
-  // Query for torrents matching the content paths
-  const { data, isLoading } = useQuery({
-    queryKey: ["cross-seed-warning", instanceId, expr],
-    queryFn: () =>
-      api.getTorrents(instanceId, {
-        filters: {
-          status: [],
-          excludeStatus: [],
-          categories: [],
-          excludeCategories: [],
-          tags: [],
-          excludeTags: [],
-          trackers: [],
-          excludeTrackers: [],
-          expr,
-        },
-        limit: 100, // Reasonable limit for warning display
-      }),
-    enabled: enabled && expr.length > 0,
-    staleTime: 10000, // 10 seconds - data might change
+  // Search for cross-seeds using the same logic as TorrentContextMenu
+  const { data: matches, isLoading } = useQuery({
+    queryKey: ["cross-seed-warning", instanceId, torrent?.hash, torrent?.infohash_v1],
+    queryFn: async () => {
+      if (!instance || !torrent) return []
+      return searchCrossSeedMatches(
+        torrent,
+        instance,
+        instanceId,
+        torrentFiles || [],
+        torrent.infohash_v1 || torrent.hash,
+        torrent.infohash_v2
+      )
+    },
+    enabled: enabled && !!torrent && !!instance,
+    staleTime: 10000,
     gcTime: 30000,
   })
 
-  // Filter out torrents being deleted and add matchType
+  // Filter out torrents being deleted
   const result = useMemo((): CrossSeedWarningResult => {
-    if (!enabled || expr.length === 0) {
+    if (!enabled || !torrent) {
       return {
         affectedTorrents: [],
         isLoading: false,
@@ -103,7 +97,7 @@ export function useCrossSeedWarning({
       }
     }
 
-    if (isLoading || !data?.torrents) {
+    if (isLoading || !matches) {
       return {
         affectedTorrents: [],
         isLoading: true,
@@ -111,28 +105,20 @@ export function useCrossSeedWarning({
       }
     }
 
-    const affectedTorrents: CrossSeedTorrent[] = []
-
-    for (const t of data.torrents) {
-      // Skip torrents being deleted
-      if (hashesBeingDeleted.has(t.hash)) {
-        continue
-      }
-
-      affectedTorrents.push({
-        ...t,
-        instanceId,
-        instanceName,
-        matchType: "content_path",
-      })
-    }
+    // Filter out torrents that are being deleted and ensure they're on this instance
+    const affectedTorrents = matches.filter(
+      t => !hashesBeingDeleted.has(t.hash) && t.instanceId === instanceId
+    ).map(t => ({
+      ...t,
+      instanceName,
+    }))
 
     return {
       affectedTorrents,
       isLoading: false,
       hasWarning: affectedTorrents.length > 0,
     }
-  }, [enabled, expr, isLoading, data, hashesBeingDeleted, instanceId, instanceName])
+  }, [enabled, torrent, isLoading, matches, hashesBeingDeleted, instanceId, instanceName])
 
   return result
 }
