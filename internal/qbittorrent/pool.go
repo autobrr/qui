@@ -273,6 +273,12 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 
 // RemoveClient removes a client from the pool
 func (cp *ClientPool) RemoveClient(instanceID int) {
+	// Acquire per-instance lock to serialize with createClientWithTimeout.
+	// This prevents a race where StartTrackerHealthRefresh could be called
+	// after StopTrackerHealthRefresh for the same instance.
+	instanceLock := cp.getInstanceLock(instanceID)
+	instanceLock.Lock()
+
 	cp.mu.Lock()
 	delete(cp.clients, instanceID)
 	sm := cp.syncManager
@@ -283,7 +289,9 @@ func (cp *ClientPool) RemoveClient(instanceID int) {
 		sm.StopTrackerHealthRefresh(instanceID)
 	}
 
-	// Also clean up the per-instance lock to prevent memory leaks
+	instanceLock.Unlock()
+
+	// Clean up the per-instance lock after unlocking to prevent memory leaks
 	cp.creationMu.Lock()
 	delete(cp.creationLocks, instanceID)
 	cp.creationMu.Unlock()
@@ -361,9 +369,9 @@ func (cp *ClientPool) GetErrorStore() *models.InstanceErrorStore {
 // Close closes all clients and releases resources
 func (cp *ClientPool) Close() error {
 	cp.mu.Lock()
-	defer cp.mu.Unlock()
 
 	if cp.closed {
+		cp.mu.Unlock()
 		return nil
 	}
 
@@ -371,11 +379,23 @@ func (cp *ClientPool) Close() error {
 	close(cp.stopHealth)
 	cp.healthTicker.Stop()
 
-	// Clear all clients and failure tracking
+	// Collect instance IDs and syncManager reference before releasing lock
+	instanceIDs := make([]int, 0, len(cp.clients))
 	for id := range cp.clients {
+		instanceIDs = append(instanceIDs, id)
 		delete(cp.clients, id)
 	}
+	sm := cp.syncManager
 	cp.failureTracker = make(map[int]*failureInfo)
+
+	cp.mu.Unlock()
+
+	// Stop all background tracker health refresh goroutines
+	if sm != nil {
+		for _, id := range instanceIDs {
+			sm.StopTrackerHealthRefresh(id)
+		}
+	}
 
 	// Release resources
 	cp.cache.Close()
