@@ -69,7 +69,7 @@ export function useCrossSeedWarning({
   })
 
   // Search for cross-seeds using the same logic as TorrentContextMenu
-  const { data: matches, isLoading } = useQuery({
+  const { data: matches, isLoading, isError } = useQuery({
     queryKey: ["cross-seed-warning", instanceId, torrent?.hash, torrent?.infohash_v1],
     queryFn: async () => {
       if (!instance || !torrent) return []
@@ -97,10 +97,19 @@ export function useCrossSeedWarning({
       }
     }
 
-    if (isLoading || !matches) {
+    if (isLoading || (!matches && !isError)) {
       return {
         affectedTorrents: [],
         isLoading: true,
+        hasWarning: false,
+      }
+    }
+
+    // On error or no matches, gracefully degrade - user can still delete
+    if (!matches) {
+      return {
+        affectedTorrents: [],
+        isLoading: false,
         hasWarning: false,
       }
     }
@@ -118,7 +127,7 @@ export function useCrossSeedWarning({
       isLoading: false,
       hasWarning: affectedTorrents.length > 0,
     }
-  }, [enabled, torrent, isLoading, matches, hashesBeingDeleted, instanceId, instanceName])
+  }, [enabled, torrent, isLoading, isError, matches, hashesBeingDeleted, instanceId, instanceName])
 
   return result
 }
