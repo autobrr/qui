@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useDeferredValue } from "react";
 
 export function usePathAutocomplete(
   onSuggestionSelect: (path: string) => void,
@@ -6,6 +6,7 @@ export function usePathAutocomplete(
 ) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [inputValue, setInputValue] = useState("");
+  const deferredInput = useDeferredValue(inputValue);
   const [highlightedIndex, setHighlightedIndex] = useState<number>(-1); // -1 = none
 
   const cache = useRef<Map<string, string[]>>(new Map());
@@ -63,14 +64,14 @@ export function usePathAutocomplete(
   );
 
   useEffect(() => {
-    if (!inputValue?.trim()) {
+    if (!deferredInput?.trim()) {
       setSuggestions([]);
       setHighlightedIndex(-1);
       return;
     }
 
-    const parentPath = getParentPath(inputValue);
-    const filterTerm = getFilterTerm(inputValue).toLowerCase();
+    const parentPath = getParentPath(deferredInput);
+    const filterTerm = getFilterTerm(deferredInput).toLowerCase();
 
     let cancelled = false;
 
@@ -89,7 +90,7 @@ export function usePathAutocomplete(
     return () => {
       cancelled = true;
     };
-  }, [inputValue, fetchDirectoryContent, getFilterTerm, getParentPath]);
+  }, [deferredInput, fetchDirectoryContent, getFilterTerm, getParentPath]);
 
   const selectSuggestion = useCallback(
     (entry: string) => {
