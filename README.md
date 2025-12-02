@@ -507,7 +507,7 @@ In your autobrr filter, go to **External** tab → **Add new**:
 | On Error | `Reject` |
 | Endpoint | `http://localhost:7476/api/cross-seed/webhook/check` |
 | HTTP Method | `POST` |
-| HTTP Request Headers | `X-API-Key=YOUR_QUI_API_KEY,Content-Type=application/json` |
+| HTTP Request Headers | `X-API-Key=YOUR_QUI_API_KEY` |
 | Expected HTTP Status Code | `200` |
 
 **Data (JSON):**
