@@ -3542,13 +3542,13 @@ func (sm *SyncManager) SetAppPreferences(ctx context.Context, instanceID int, pr
 }
 
 // GetDirectoryContentCtx lists folders inside a directory (for autocomplete).
-func (sm *SyncManager) GetDirectoryContentCtx(ctx context.Context, instanceID int, dirPath string) ([]string, error) {
+func (sm *SyncManager) GetDirectoryContentCtx(ctx context.Context, instanceID int, dirPath string, withMetadata bool) (any, error) {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
 
-	content, err := client.GetDirectoryContentCtx(ctx, dirPath)
+	content, err := client.GetDirectoryContentCtx(ctx, dirPath, withMetadata)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get directory contents: %w", err)
 	}
