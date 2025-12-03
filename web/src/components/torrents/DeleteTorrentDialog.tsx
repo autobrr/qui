@@ -48,11 +48,16 @@ export function DeleteTorrentDialog({
   crossSeedWarning,
   onConfirm,
 }: DeleteTorrentDialogProps) {
+  // Include cross-seeds in the displayed count when selected
+  const displayCount = deleteCrossSeeds
+    ? count + crossSeedWarning.affectedTorrents.length
+    : count
+
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="!max-w-2xl">
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete {count} torrent(s)?</AlertDialogTitle>
+          <AlertDialogTitle>Delete {displayCount} torrent(s)?</AlertDialogTitle>
           <AlertDialogDescription>
             This action cannot be undone. The torrents will be removed from qBittorrent.
             {totalSize > 0 && (
