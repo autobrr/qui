@@ -84,6 +84,11 @@ func (k releaseKey) String() string {
 	return fmt.Sprintf("%d|%d|%d|%d|%d", k.series, k.episode, k.year, k.month, k.day)
 }
 
+// isXXX checks if a release is adult/XXX content.
+func isXXX(release *rls.Release) bool {
+	return isAdultContent(release)
+}
+
 // releasesMatch checks if two releases are related using fuzzy matching.
 // This allows matching similar content that isn't exactly the same.
 func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEpisodes bool) bool {
@@ -121,6 +126,20 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	// Year should match if both are present.
 	if source.Year > 0 && candidate.Year > 0 && source.Year != candidate.Year {
 		return false
+	}
+
+	// For XXX/adult content with date-based releases (0day), require exact date match (year/month/day).
+	// This prevents different scenes/episodes from matching just because they share the same title.
+	if isXXX(source) && isXXX(candidate) {
+		if source.Year > 0 && source.Month > 0 && source.Day > 0 &&
+			candidate.Year > 0 && candidate.Month > 0 && candidate.Day > 0 {
+			// Both have full dates - require exact match
+			if source.Year != candidate.Year ||
+				source.Month != candidate.Month ||
+				source.Day != candidate.Day {
+				return false
+			}
+		}
 	}
 
 	// For non-TV content where rls has inferred a concrete content type (movie, music,
