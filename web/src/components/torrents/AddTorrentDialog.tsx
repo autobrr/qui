@@ -46,6 +46,7 @@ import { AlertCircle, Link, Loader2, Plus, Upload, X } from "lucide-react"
 import parseTorrent from "parse-torrent"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useDropzone } from "react-dropzone"
+import {useInstanceCapabilities} from "@/hooks/useInstanceCapabilities.ts";
 
 // Extract info hash from magnet link
 function extractHashFromMagnet(magnetUrl: string): string | null {
@@ -184,6 +185,9 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const categories = metadata?.categories
   const availableTags = metadata?.tags
   const preferences = metadata?.preferences
+
+  const { data: capabilities } = useInstanceCapabilities(instanceId)
+  const supportsTorrentTmpPath = capabilities?.supportsTorrentTmpPath ?? false
 
   // Reset tag state when dialog closes
   useEffect(() => {
@@ -1235,46 +1239,54 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                             )}
                           </form.Field>
 
-                          <form.Field name="tempPathEnabled">
-                            {(field) => (
-                              <div className="space-y-2">
-                                <div className="flex items-center gap-2">
-                                  <Switch
-                                    id="tempPathEnabled"
-                                    checked={field.state.value}
-                                    onCheckedChange={field.handleChange}
-                                  />
-                                  <Label htmlFor="tempPathEnabled" className="text-sm font-medium">Use Temporary Path</Label>
-                                </div>
-                                <p className="text-xs text-muted-foreground">
-                                  Download to temporary path before moving to save path
-                                </p>
-                              </div>
-                            )}
-                          </form.Field>
+                            {supportsTorrentTmpPath ? (
+                                <>
+                                    <form.Field name="tempPathEnabled">
+                                        {(field) => (
+                                            <div className="space-y-2">
+                                                <div className="flex items-center gap-2">
+                                                    <Switch
+                                                        id="tempPathEnabled"
+                                                        checked={field.state.value}
+                                                        onCheckedChange={field.handleChange}
+                                                    />
+                                                    <Label htmlFor="tempPathEnabled" className="text-sm font-medium">Use
+                                                        Temporary Path</Label>
+                                                </div>
+                                                <p className="text-xs text-muted-foreground">
+                                                    Download to temporary path before moving to save path
+                                                </p>
+                                            </div>
+                                        )}
+                                    </form.Field>
 
-                          <form.Field name="tempPath">
-                            {(field) => (
-                              <form.Subscribe selector={(state) => state.values.tempPathEnabled}>
-                                {(tempPathEnabled) => {
-                                  return (
-                                    <div className="space-y-2 pl-4 border-l-2 border-primary border-opacity-50 data-[temp-path-enabled=true]:block hidden" data-temp-path-enabled={tempPathEnabled}>
-                                      <Label htmlFor="tempPath">Temporary Download Path</Label>
-                                      <Input
-                                        id="tempPath"
-                                        placeholder={preferences?.temp_path || "Leave empty for default"}
-                                        value={field.state.value}
-                                        onBlur={field.handleBlur}
-                                        onChange={(e) => field.handleChange(e.target.value)} />
-                                      <p className="text-xs text-muted-foreground">
-                                        Torrents will be downloaded here before moving to save path
-                                      </p>
-                                    </div>
-                                  )
-                                }}
-                              </form.Subscribe>
-                            )}
-                          </form.Field>
+                                    <form.Field name="tempPath">
+                                        {(field) => (
+                                            <form.Subscribe selector={(state) => state.values.tempPathEnabled}>
+                                                {(tempPathEnabled) => {
+                                                    return (
+                                                        <div
+                                                            className="space-y-2 pl-4 border-l-2 border-primary border-opacity-50 data-[temp-path-enabled=true]:block hidden"
+                                                            data-temp-path-enabled={tempPathEnabled}>
+                                                            <Label htmlFor="tempPath">Temporary Download Path</Label>
+                                                            <Input
+                                                                id="tempPath"
+                                                                placeholder={preferences?.temp_path || "Leave empty for default"}
+                                                                value={field.state.value}
+                                                                onBlur={field.handleBlur}
+                                                                onChange={(e) => field.handleChange(e.target.value)}/>
+                                                            <p className="text-xs text-muted-foreground">
+                                                                Torrents will be downloaded here before moving to save
+                                                                path
+                                                            </p>
+                                                        </div>
+                                                    )
+                                                }}
+                                            </form.Subscribe>
+                                        )}
+                                    </form.Field>
+                                </>
+                            ) : null}
                         </>
                       ) : (
                         <div className="space-y-2">
