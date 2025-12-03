@@ -85,6 +85,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     isLocked: isDeleteFilesLocked,
     toggleLock: toggleDeleteFilesLock,
   } = usePersistedDeleteFiles(false)
+  const [deleteCrossSeeds, setDeleteCrossSeeds] = useState(false)
   const [showAddTagsDialog, setShowAddTagsDialog] = useState(false)
   const [showSetTagsDialog, setShowSetTagsDialog] = useState(false)
   const [showRemoveTagsDialog, setShowRemoveTagsDialog] = useState(false)
@@ -217,6 +218,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       // Close dialogs after successful action
       if (variables.action === "delete") {
         setShowDeleteDialog(false)
+        setDeleteCrossSeeds(false)
       } else if (variables.action === "addTags") {
         setShowAddTagsDialog(false)
       } else if (variables.action === "setTags") {
@@ -392,6 +394,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       clientCount,
     })
     setShowDeleteDialog(false)
+    setDeleteCrossSeeds(false)
     setContextHashes([])
     setContextTorrents([])
   }, [mutation, deleteFiles])
@@ -729,7 +732,13 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
   const prepareDeleteAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
     setContextHashes(hashes)
     if (torrents) setContextTorrents(torrents)
+    setDeleteCrossSeeds(false) // Reset on open to avoid stale state from previous dialog
     setShowDeleteDialog(true)
+  }, [])
+
+  const closeDeleteDialog = useCallback(() => {
+    setShowDeleteDialog(false)
+    setDeleteCrossSeeds(false)
   }, [])
 
   const prepareTagsAction = useCallback((action: "add" | "set" | "remove", hashes: string[], torrents?: Torrent[]) => {
@@ -819,10 +828,13 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     // State
     showDeleteDialog,
     setShowDeleteDialog,
+    closeDeleteDialog,
     deleteFiles,
     setDeleteFiles,
     isDeleteFilesLocked,
     toggleDeleteFilesLock,
+    deleteCrossSeeds,
+    setDeleteCrossSeeds,
     showAddTagsDialog,
     setShowAddTagsDialog,
     showSetTagsDialog,
