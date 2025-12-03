@@ -291,7 +291,7 @@ export function CrossSeedWarning({
                       <TooltipContent side="bottom" align="start" className="max-w-sm">
                         <div className="space-y-0.5">
                           {torrents.slice(8).map((t) => (
-                            <p key={t.hash} className="truncate text-xs">
+                            <p key={`${t.hash}-${t.instanceId}`} className="truncate text-xs">
                               {incognitoMode ? getLinuxIsoName(t.hash) : t.name}
                             </p>
                           ))}
