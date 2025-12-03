@@ -260,11 +260,12 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 		// Don't fail client creation for sync manager issues
 	}
 
-	// Start background tracker health refresh if SyncManager is set
+	// Start background tracker health refresh if SyncManager is set and pool isn't closed
 	cp.mu.RLock()
 	sm := cp.syncManager
+	closed := cp.closed
 	cp.mu.RUnlock()
-	if sm != nil {
+	if sm != nil && !closed {
 		sm.StartTrackerHealthRefresh(instanceID)
 	}
 
