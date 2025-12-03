@@ -63,42 +63,26 @@ export function CrossSeedWarning({
     return (
       <div
         className={cn(
-          "group relative rounded-lg border py-3 px-4 transition-all duration-300",
+          "group relative rounded-lg border py-2 px-3 transition-all duration-300",
           isHighRisk
             ? "border-amber-500/40 bg-amber-500/5 hover:border-amber-500/60 hover:bg-amber-500/10"
             : "border-border/50 bg-muted/30 hover:border-border hover:bg-muted/50",
           className
         )}
       >
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className={cn(
-              "flex items-center justify-center rounded-full p-2 transition-colors",
-              isHighRisk
-                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                : "bg-muted text-muted-foreground"
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            {isHighRisk ? (
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            ) : (
+              <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+            )}
+            <p className={cn(
+              "text-xs font-medium truncate",
+              isHighRisk ? "text-amber-700 dark:text-amber-300" : "text-foreground"
             )}>
-              {isHighRisk ? (
-                <AlertTriangle className="h-4 w-4" />
-              ) : (
-                <Search className="h-4 w-4" />
-              )}
-            </div>
-            <div className="min-w-0">
-              <p className={cn(
-                "text-sm font-medium",
-                isHighRisk ? "text-amber-700 dark:text-amber-300" : "text-foreground"
-              )}>
-                {isHighRisk ? "Check for cross-seeds first" : "Cross-seeds not checked"}
-              </p>
-              <p className="text-xs text-muted-foreground truncate">
-                {isHighRisk
-                  ? "Deleting files may break other torrents sharing this data"
-                  : totalToCheck > 1
-                    ? `${totalToCheck} torrents to scan for shared files`
-                    : "Other torrents may be sharing these files"}
-              </p>
-            </div>
+              {isHighRisk ? "Check for cross-seeds" : "Cross-seeds not checked"}
+            </p>
           </div>
 
           <Button
@@ -107,14 +91,14 @@ export function CrossSeedWarning({
             size="sm"
             onClick={onSearch}
             className={cn(
-              "shrink-0 gap-2 text-xs transition-all",
+              "shrink-0 h-7 px-2 text-xs transition-all",
               isHighRisk
                 ? "bg-amber-600 hover:bg-amber-700 text-white shadow-sm"
                 : "hover:bg-accent"
             )}
           >
-            <Search className="h-3.5 w-3.5" />
-            Check now
+            <Search className="h-3 w-3 mr-1" />
+            Check
           </Button>
         </div>
       </div>

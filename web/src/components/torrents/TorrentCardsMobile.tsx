@@ -3,16 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -74,8 +64,10 @@ import {
   X
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
+import { useInstances } from "@/hooks/useInstances"
 import { AddTorrentDialog } from "./AddTorrentDialog"
-import { DeleteFilesPreference } from "./DeleteFilesPreference"
+import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import { RemoveTagsDialog, SetCategoryDialog, SetLocationDialog, SetTagsDialog } from "./TorrentDialogs"
 // import { createPortal } from 'react-dom'
 // Columns dropdown removed on mobile
@@ -1026,11 +1018,13 @@ export function TorrentCardsMobile({
   // Use the shared torrent actions hook
   const {
     showDeleteDialog,
-    setShowDeleteDialog,
+    closeDeleteDialog,
     deleteFiles,
     setDeleteFiles,
     isDeleteFilesLocked,
     toggleDeleteFilesLock,
+    deleteCrossSeeds,
+    setDeleteCrossSeeds,
     showSetTagsDialog,
     setShowSetTagsDialog,
     showRemoveTagsDialog,
@@ -1048,6 +1042,7 @@ export function TorrentCardsMobile({
     handleSetLocation,
     handleSetShareLimit,
     handleSetSpeedLimits,
+    prepareDeleteAction,
     prepareLocationAction,
   } = useTorrentActions({
     instanceId,
@@ -1066,6 +1061,10 @@ export function TorrentCardsMobile({
   // so select-all actions only forward the sidebar filters. If column filters
   // are ever added to this view, ensure the combined filters (including expr)
   // are passed into these bulk action payloads similar to the desktop table.
+
+  // Get instance info for cross-seed warning
+  const { instances } = useInstances()
+  const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
 
   const { data: metadata } = useInstanceMetadata(instanceId)
   const availableTags = metadata?.tags || []
@@ -1248,6 +1247,21 @@ export function TorrentCardsMobile({
   }, [isAllSelected, stats?.totalSize, excludedFromSelectAll, torrents, selectedHashes])
 
   const selectedFormattedSize = useMemo(() => formatBytes(selectedTotalSize), [selectedTotalSize])
+
+  // Torrents to check for cross-seeds (either single torrent or selected torrents)
+  const deleteTorrents = useMemo(() => {
+    if (torrentToDelete) {
+      return [torrentToDelete]
+    }
+    return torrents.filter(t => selectedHashes.has(t.hash))
+  }, [torrentToDelete, torrents, selectedHashes])
+
+  // Cross-seed warning for delete dialog
+  const crossSeedWarning = useCrossSeedWarning({
+    instanceId,
+    instanceName: instance?.name ?? "",
+    torrents: deleteTorrents,
+  })
 
   // Load more rows as user scrolls (progressive loading + backend pagination)
   const loadMore = useCallback((): void => {
@@ -1520,6 +1534,12 @@ export function TorrentCardsMobile({
       hashes = Array.from(selectedHashes)
     }
 
+    // Include cross-seed hashes if user opted to delete them
+    const crossSeedHashes = deleteCrossSeeds
+      ? crossSeedWarning.affectedTorrents.map(t => t.hash)
+      : []
+    const hashesToDelete = [...hashes, ...crossSeedHashes]
+
     let visibleHashes: string[]
     if (torrentToDelete) {
       visibleHashes = [torrentToDelete.hash]
@@ -1531,6 +1551,9 @@ export function TorrentCardsMobile({
       visibleHashes = Array.from(selectedHashes)
     }
 
+    // Include cross-seeds in visible hashes for optimistic updates
+    const visibleHashesToDelete = [...visibleHashes, ...crossSeedHashes]
+
     let totalSelected: number
     if (torrentToDelete) {
       totalSelected = 1
@@ -1540,19 +1563,22 @@ export function TorrentCardsMobile({
       totalSelected = visibleHashes.length
     }
 
+    // Add cross-seed count
+    const totalToDelete = totalSelected + crossSeedHashes.length
+
     await handleDelete(
-      hashes,
+      hashesToDelete,
       !torrentToDelete && isAllSelected,
       !torrentToDelete && isAllSelected ? filters : undefined,
       !torrentToDelete && isAllSelected ? effectiveSearch : undefined,
       !torrentToDelete && isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
       {
-        clientHashes: visibleHashes,
-        totalSelected,
+        clientHashes: visibleHashesToDelete,
+        totalSelected: totalToDelete,
       }
     )
     setTorrentToDelete(null)
-  }, [torrentToDelete, isAllSelected, selectedHashes, handleDelete, filters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount])
+  }, [torrentToDelete, isAllSelected, selectedHashes, handleDelete, filters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount, deleteCrossSeeds, crossSeedWarning.affectedTorrents])
 
   const handleSetTagsWrapper = useCallback(async (tags: string[]) => {
     const hashes = isAllSelected ? [] : actionTorrents.map(t => t.hash)
@@ -2090,7 +2116,10 @@ export function TorrentCardsMobile({
             <Button
               variant="destructive"
               onClick={() => {
-                setShowDeleteDialog(true)
+                prepareDeleteAction(
+                  isAllSelected ? [] : Array.from(selectedHashes),
+                  getSelectedTorrents
+                )
                 setShowActionsSheet(false)
               }}
               className="justify-start !bg-destructive !text-destructive-foreground"
@@ -2103,39 +2132,27 @@ export function TorrentCardsMobile({
       </Sheet>
 
       {/* Delete confirmation dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Delete {torrentToDelete ? "1" : (isAllSelected ? `all ${effectiveSelectionCount}` : effectiveSelectionCount)} torrent(s)?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone.
-              {selectedTotalSize > 0 && (
-                <span className="block mt-2 text-xs text-muted-foreground">
-                  Total size: {selectedFormattedSize}
-                </span>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <DeleteFilesPreference
-            id="deleteFiles"
-            checked={deleteFiles}
-            onCheckedChange={setDeleteFiles}
-            isLocked={isDeleteFilesLocked}
-            onToggleLock={toggleDeleteFilesLock}
-          />
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteWrapper}
-              className="bg-destructive text-destructive-foreground"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteTorrentDialog
+        open={showDeleteDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeDeleteDialog()
+            crossSeedWarning.reset()
+            setTorrentToDelete(null)
+          }
+        }}
+        count={torrentToDelete ? 1 : effectiveSelectionCount}
+        totalSize={selectedTotalSize}
+        formattedSize={selectedFormattedSize}
+        deleteFiles={deleteFiles}
+        onDeleteFilesChange={setDeleteFiles}
+        isDeleteFilesLocked={isDeleteFilesLocked}
+        onToggleDeleteFilesLock={toggleDeleteFilesLock}
+        deleteCrossSeeds={deleteCrossSeeds}
+        onDeleteCrossSeedsChange={setDeleteCrossSeeds}
+        crossSeedWarning={crossSeedWarning}
+        onConfirm={handleDeleteWrapper}
+      />
 
       {/* Tags dialog */}
       <SetTagsDialog
