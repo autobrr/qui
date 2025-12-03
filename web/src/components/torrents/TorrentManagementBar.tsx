@@ -108,7 +108,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   // Use the shared torrent actions hook
   const {
     showDeleteDialog,
-    setShowDeleteDialog,
+    closeDeleteDialog,
     deleteFiles,
     setDeleteFiles,
     isDeleteFilesLocked,
@@ -164,7 +164,6 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     instanceId: safeInstanceId,
     instanceName: instance?.name ?? "",
     torrents: selectedTorrents,
-    enabled: showDeleteDialog,
   })
 
   // Wrapper functions to adapt hook handlers to component needs
@@ -208,13 +207,19 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     const hashesToDelete = deleteCrossSeeds
       ? [...selectedHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)]
       : selectedHashes
+
+    // Update count to include cross-seeds for accurate toast message
+    const deleteClientMeta = deleteCrossSeeds
+      ? { clientHashes: hashesToDelete, totalSelected: hashesToDelete.length }
+      : clientMeta
+
     handleDelete(
       hashesToDelete,
       isAllSelected,
       filters,
       search,
       excludeHashes,
-      clientMeta
+      deleteClientMeta
     )
   }, [handleDelete, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta, deleteCrossSeeds, crossSeedWarning.affectedTorrents])
 
@@ -611,7 +616,12 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
 
       <DeleteTorrentDialog
         open={showDeleteDialog}
-        onOpenChange={setShowDeleteDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeDeleteDialog()
+            crossSeedWarning.reset()
+          }
+        }}
         count={totalSelectionCount || selectedHashes.length}
         totalSize={deleteDialogTotalSize}
         formattedSize={deleteDialogFormattedSize}

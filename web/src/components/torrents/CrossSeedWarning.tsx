@@ -3,21 +3,27 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, GitBranch, Info, Loader2, Search, XCircle } from "lucide-react"
 import { useState } from "react"
-import { AlertTriangle, ChevronDown, ChevronRight, GitBranch, Info, Loader2 } from "lucide-react"
 
+import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { cn } from "@/lib/utils"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import type { CrossSeedSearchState } from "@/hooks/useCrossSeedWarning"
 import type { CrossSeedTorrent } from "@/lib/cross-seed-utils"
 import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
+import { cn } from "@/lib/utils"
 
 interface CrossSeedWarningProps {
   affectedTorrents: CrossSeedTorrent[]
-  isLoading: boolean
+  searchState: CrossSeedSearchState
   hasWarning: boolean
   deleteFiles: boolean
   deleteCrossSeeds: boolean
   onDeleteCrossSeedsChange: (checked: boolean) => void
+  onSearch: () => void
+  totalToCheck: number
+  checkedCount: number
   className?: string
 }
 
@@ -36,31 +42,129 @@ function getTrackerDomain(trackerUrl: string | undefined): string | null {
 
 export function CrossSeedWarning({
   affectedTorrents,
-  isLoading,
+  searchState,
   hasWarning,
   deleteFiles,
   deleteCrossSeeds,
   onDeleteCrossSeedsChange,
+  onSearch,
+  totalToCheck,
+  checkedCount,
   className,
 }: CrossSeedWarningProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [incognitoMode] = useIncognitoMode()
 
-  // Loading state - subtle inline indicator
-  if (isLoading) {
+  // Idle state - show search prompt with contextual urgency
+  if (searchState === "idle") {
+    // More prominent when deleting files (higher risk of breaking cross-seeds)
+    const isHighRisk = deleteFiles
+
     return (
-      <div className={cn("flex items-center gap-2 py-2 text-xs text-muted-foreground", className)}>
-        <Loader2 className="h-3 w-3 animate-spin" />
-        <span>Checking for cross-seeded torrents...</span>
+      <div
+        className={cn(
+          "group relative rounded-lg border py-3 px-4 transition-all duration-300",
+          isHighRisk
+            ? "border-amber-500/40 bg-amber-500/5 hover:border-amber-500/60 hover:bg-amber-500/10"
+            : "border-border/50 bg-muted/30 hover:border-border hover:bg-muted/50",
+          className
+        )}
+      >
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={cn(
+              "flex items-center justify-center rounded-full p-2 transition-colors",
+              isHighRisk
+                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                : "bg-muted text-muted-foreground"
+            )}>
+              {isHighRisk ? (
+                <AlertTriangle className="h-4 w-4" />
+              ) : (
+                <Search className="h-4 w-4" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className={cn(
+                "text-sm font-medium",
+                isHighRisk ? "text-amber-700 dark:text-amber-300" : "text-foreground"
+              )}>
+                {isHighRisk ? "Check for cross-seeds first" : "Cross-seeds not checked"}
+              </p>
+              <p className="text-xs text-muted-foreground truncate">
+                {isHighRisk
+                  ? "Deleting files may break other torrents sharing this data"
+                  : totalToCheck > 1
+                    ? `${totalToCheck} torrents to scan for shared files`
+                    : "Other torrents may be sharing these files"}
+              </p>
+            </div>
+          </div>
+
+          <Button
+            type="button"
+            variant={isHighRisk ? "default" : "outline"}
+            size="sm"
+            onClick={onSearch}
+            className={cn(
+              "shrink-0 gap-2 text-xs transition-all",
+              isHighRisk
+                ? "bg-amber-600 hover:bg-amber-700 text-white shadow-sm"
+                : "hover:bg-accent"
+            )}
+          >
+            <Search className="h-3.5 w-3.5" />
+            Check now
+          </Button>
+        </div>
       </div>
     )
   }
 
-  // No cross-seeds found
-  if (!hasWarning) {
-    return null
+  // Searching state - show progress
+  if (searchState === "searching") {
+    return (
+      <div className={cn("flex items-center gap-2 py-2 text-xs text-muted-foreground", className)}>
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <span>
+          Checking for cross-seeds
+          {totalToCheck > 1 && ` (${checkedCount}/${totalToCheck})`}
+          ...
+        </span>
+      </div>
+    )
   }
 
+  // Error state
+  if (searchState === "error") {
+    return (
+      <div className={cn("flex items-center gap-2 py-2 text-xs text-muted-foreground", className)}>
+        <XCircle className="h-3.5 w-3.5 text-destructive" />
+        <span>Failed to check for cross-seeds</span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onSearch}
+          className="h-6 px-2 text-xs"
+        >
+          Retry
+        </Button>
+      </div>
+    )
+  }
+
+  // Complete state - no cross-seeds found
+  if (searchState === "complete" && !hasWarning) {
+    return (
+      <div className={cn("flex items-center gap-2 py-2 text-xs text-muted-foreground", className)}>
+        <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+        <span>No cross-seeds found</span>
+      </div>
+    )
+  }
+
+  // Complete state - cross-seeds found, show warning
   // Group by instance
   const byInstance = affectedTorrents.reduce<Record<string, CrossSeedTorrent[]>>(
     (acc, torrent) => {
@@ -194,9 +298,22 @@ export function CrossSeedWarning({
                     )
                   })}
                   {torrents.length > 8 && (
-                    <p className="text-[10px] text-muted-foreground pt-0.5">
-                      + {torrents.length - 8} more
-                    </p>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <p className="text-[10px] text-muted-foreground pt-0.5 cursor-help hover:text-foreground transition-colors w-fit">
+                          + {torrents.length - 8} more
+                        </p>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" align="start" className="max-w-sm">
+                        <div className="space-y-0.5">
+                          {torrents.slice(8).map((t) => (
+                            <p key={t.hash} className="truncate text-xs">
+                              {incognitoMode ? getLinuxIsoName(t.hash) : t.name}
+                            </p>
+                          ))}
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
                   )}
                 </div>
               </div>

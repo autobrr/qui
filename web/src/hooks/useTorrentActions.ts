@@ -732,7 +732,13 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
   const prepareDeleteAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
     setContextHashes(hashes)
     if (torrents) setContextTorrents(torrents)
+    setDeleteCrossSeeds(false) // Reset on open to avoid stale state from previous dialog
     setShowDeleteDialog(true)
+  }, [])
+
+  const closeDeleteDialog = useCallback(() => {
+    setShowDeleteDialog(false)
+    setDeleteCrossSeeds(false)
   }, [])
 
   const prepareTagsAction = useCallback((action: "add" | "set" | "remove", hashes: string[], torrents?: Torrent[]) => {
@@ -822,6 +828,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     // State
     showDeleteDialog,
     setShowDeleteDialog,
+    closeDeleteDialog,
     deleteFiles,
     setDeleteFiles,
     isDeleteFilesLocked,

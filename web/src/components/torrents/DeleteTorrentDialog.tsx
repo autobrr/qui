@@ -71,11 +71,14 @@ export function DeleteTorrentDialog({
         />
         <CrossSeedWarning
           affectedTorrents={crossSeedWarning.affectedTorrents}
-          isLoading={crossSeedWarning.isLoading}
+          searchState={crossSeedWarning.searchState}
           hasWarning={crossSeedWarning.hasWarning}
           deleteFiles={deleteFiles}
           deleteCrossSeeds={deleteCrossSeeds}
           onDeleteCrossSeedsChange={onDeleteCrossSeedsChange}
+          onSearch={crossSeedWarning.search}
+          totalToCheck={crossSeedWarning.totalToCheck}
+          checkedCount={crossSeedWarning.checkedCount}
         />
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>

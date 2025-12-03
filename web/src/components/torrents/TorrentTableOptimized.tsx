@@ -752,7 +752,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Use the shared torrent actions hook
   const {
     showDeleteDialog,
-    setShowDeleteDialog,
+    closeDeleteDialog,
     deleteFiles,
     setDeleteFiles,
     isDeleteFilesLocked,
@@ -828,7 +828,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     instanceId,
     instanceName: instance?.name ?? "",
     torrents: contextTorrents,
-    enabled: showDeleteDialog,
   })
 
   // Fetch metadata using shared hook
@@ -1971,13 +1970,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     const hashesToDelete = deleteCrossSeeds
       ? [...contextHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)]
       : contextHashes
+
+    // Update count to include cross-seeds for accurate toast message
+    const deleteClientMeta = deleteCrossSeeds
+      ? { clientHashes: hashesToDelete, totalSelected: hashesToDelete.length }
+      : contextClientMeta
+
     handleDelete(
       hashesToDelete,
       isAllSelected,
       selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
-      contextClientMeta
+      deleteClientMeta
     )
   }, [handleDelete, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta, deleteCrossSeeds, crossSeedWarning.affectedTorrents])
 
@@ -2919,7 +2924,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
       <DeleteTorrentDialog
         open={showDeleteDialog}
-        onOpenChange={setShowDeleteDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeDeleteDialog()
+            crossSeedWarning.reset()
+          }
+        }}
         count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
         totalSize={deleteDialogTotalSize}
         formattedSize={deleteDialogFormattedSize}
