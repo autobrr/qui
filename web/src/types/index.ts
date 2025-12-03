@@ -135,6 +135,7 @@ export interface InstanceCapabilities {
   supportsRenameFolder: boolean
   supportsFilePriority: boolean
   supportsSubcategories: boolean
+  supportsTorrentTmpPath: boolean
   webAPIVersion?: string
 }
 
