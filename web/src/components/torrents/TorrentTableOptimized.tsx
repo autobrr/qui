@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useKeyboardNavigation } from "@/hooks/useKeyboardNavigation"
@@ -43,18 +44,9 @@ import { useVirtualizer } from "@tanstack/react-virtual"
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
 import { TorrentContextMenu } from "./TorrentContextMenu"
-import { TORRENT_SORT_OPTIONS, type TorrentSortOptionValue, getDefaultSortOrder } from "./torrentSortOptions"
+import { TORRENT_SORT_OPTIONS, getDefaultSortOrder, type TorrentSortOptionValue } from "./torrentSortOptions"
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog"
+import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -125,7 +117,6 @@ import {
 } from "lucide-react"
 import { createPortal } from "react-dom"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
-import { DeleteFilesPreference } from "./DeleteFilesPreference"
 import { DraggableTableHeader } from "./DraggableTableHeader"
 import { SelectAllHotkey } from "./SelectAllHotkey"
 import {
@@ -761,11 +752,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Use the shared torrent actions hook
   const {
     showDeleteDialog,
-    setShowDeleteDialog,
+    closeDeleteDialog,
     deleteFiles,
     setDeleteFiles,
     isDeleteFilesLocked,
     toggleDeleteFilesLock,
+    deleteCrossSeeds,
+    setDeleteCrossSeeds,
     showAddTagsDialog,
     setShowAddTagsDialog,
     showSetTagsDialog,
@@ -828,6 +821,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         resetSelectionState()
       }
     },
+  })
+
+  // Cross-seed warning for delete dialog
+  const crossSeedWarning = useCrossSeedWarning({
+    instanceId,
+    instanceName: instance?.name ?? "",
+    torrents: contextTorrents,
   })
 
   // Fetch metadata using shared hook
@@ -1966,15 +1966,25 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   ])
 
   const handleDeleteWrapper = useCallback(() => {
+    // Include cross-seed hashes if user opted to delete them
+    const hashesToDelete = deleteCrossSeeds
+      ? [...contextHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)]
+      : contextHashes
+
+    // Update count to include cross-seeds for accurate toast message
+    const deleteClientMeta = deleteCrossSeeds
+      ? { clientHashes: hashesToDelete, totalSelected: hashesToDelete.length }
+      : contextClientMeta
+
     handleDelete(
-      contextHashes,
+      hashesToDelete,
       isAllSelected,
       selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
-      contextClientMeta
+      deleteClientMeta
     )
-  }, [handleDelete, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleDelete, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta, deleteCrossSeeds, crossSeedWarning.affectedTorrents])
 
   const handleAddTagsWrapper = useCallback((tags: string[]) => {
     handleAddTags(
@@ -2912,37 +2922,26 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         </div>
       </div>
 
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. The torrents will be removed from qBittorrent.
-              {deleteDialogTotalSize > 0 && (
-                <span className="block mt-2 text-xs text-muted-foreground">
-                  Total size: {deleteDialogFormattedSize}
-                </span>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <DeleteFilesPreference
-            id="deleteFiles"
-            checked={deleteFiles}
-            onCheckedChange={setDeleteFiles}
-            isLocked={isDeleteFilesLocked}
-            onToggleLock={toggleDeleteFilesLock}
-          />
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteWrapper}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteTorrentDialog
+        open={showDeleteDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeDeleteDialog()
+            crossSeedWarning.reset()
+          }
+        }}
+        count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+        totalSize={deleteDialogTotalSize}
+        formattedSize={deleteDialogFormattedSize}
+        deleteFiles={deleteFiles}
+        onDeleteFilesChange={setDeleteFiles}
+        isDeleteFilesLocked={isDeleteFilesLocked}
+        onToggleDeleteFilesLock={toggleDeleteFilesLock}
+        deleteCrossSeeds={deleteCrossSeeds}
+        onDeleteCrossSeedsChange={setDeleteCrossSeeds}
+        crossSeedWarning={crossSeedWarning}
+        onConfirm={handleDeleteWrapper}
+      />
 
       {/* Add Tags Dialog */}
       <AddTagsDialog
