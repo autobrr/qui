@@ -740,8 +740,8 @@ func (s *searchScheduler) handleTaskCompleteLocked(item *taskItem, results []Res
 		go task.callbacks.OnComplete(task.jobID, task.indexer, results, coverage, err)
 	}
 
-	// Record search history
-	if s.historyRecorder != nil {
+	// Record search history (unless explicitly skipped, e.g., for connectivity tests)
+	if s.historyRecorder != nil && (task.meta == nil || !task.meta.skipHistory) {
 		completedAt := time.Now()
 		entry := SearchHistoryEntry{
 			JobID:       task.jobID,

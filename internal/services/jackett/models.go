@@ -37,6 +37,8 @@ type TorznabSearchRequest struct {
 	IndexerIDs []int `json:"indexer_ids,omitempty"`
 	// CacheMode controls cache behaviour (""=default, "bypass" = skip cache)
 	CacheMode string `json:"cache_mode,omitempty"`
+	// SkipHistory prevents recording this search in the history buffer
+	SkipHistory bool `json:"-"`
 	// OnComplete is called when a search job for an indexer completes
 	OnComplete func(jobID uint64, indexerID int, err error) `json:"-"`
 	// OnAllComplete is called when all search jobs complete with the final results
