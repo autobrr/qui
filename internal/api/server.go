@@ -33,6 +33,7 @@ import (
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/services/trackerrules"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
 	"github.com/autobrr/qui/internal/web/swagger"
@@ -63,6 +64,8 @@ type Server struct {
 	crossSeedService     *crossseed.Service
 	jackettService       *jackett.Service
 	torznabIndexerStore  *models.TorznabIndexerStore
+	trackerRuleStore     *models.TrackerRuleStore
+	trackerRuleService   *trackerrules.Service
 }
 
 type Dependencies struct {
@@ -87,6 +90,8 @@ type Dependencies struct {
 	CrossSeedService     *crossseed.Service
 	JackettService       *jackett.Service
 	TorznabIndexerStore  *models.TorznabIndexerStore
+	TrackerRuleStore     *models.TrackerRuleStore
+	TrackerRuleService   *trackerrules.Service
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -118,6 +123,8 @@ func NewServer(deps *Dependencies) *Server {
 		reannounceService:    deps.ReannounceService,
 		jackettService:       deps.JackettService,
 		torznabIndexerStore:  deps.TorznabIndexerStore,
+		trackerRuleStore:     deps.TrackerRuleStore,
+		trackerRuleService:   deps.TrackerRuleService,
 	}
 
 	return &s
@@ -242,7 +249,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		return nil, err
 	}
 	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.instanceReannounce, s.reannounceCache, s.clientPool, s.syncManager, s.reannounceService)
-	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager)
+	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
 	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.clientPool, s.config.Config)
@@ -253,6 +260,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.reannounceCache, s.reannounceService, s.config.Config.BaseURL)
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
 	crossSeedHandler := handlers.NewCrossSeedHandler(s.crossSeedService)
+	trackerRulesHandler := handlers.NewTrackerRuleHandler(s.trackerRuleStore, s.trackerRuleService)
 
 	// Torznab/Jackett handler
 	var jackettHandler *handlers.JackettHandler
@@ -396,6 +404,19 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					// Trackers
 					r.Get("/trackers", torrentsHandler.GetActiveTrackers)
 
+					// Tracker rules
+					r.Route("/tracker-rules", func(r chi.Router) {
+						r.Get("/", trackerRulesHandler.List)
+						r.Post("/", trackerRulesHandler.Create)
+						r.Put("/order", trackerRulesHandler.Reorder)
+						r.Post("/apply", trackerRulesHandler.ApplyNow)
+
+						r.Route("/{ruleID}", func(r chi.Router) {
+							r.Put("/", trackerRulesHandler.Update)
+							r.Delete("/", trackerRulesHandler.Delete)
+						})
+					})
+
 					// Preferences
 					r.Get("/preferences", preferencesHandler.GetPreferences)
 					r.Patch("/preferences", preferencesHandler.UpdatePreferences)
@@ -413,6 +434,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					r.Route("/backups", func(r chi.Router) {
 						r.Get("/settings", backupsHandler.GetSettings)
 						r.Put("/settings", backupsHandler.UpdateSettings)
+						r.Post("/import", backupsHandler.ImportManifest)
 						r.Post("/run", backupsHandler.TriggerBackup)
 						r.Get("/runs", backupsHandler.ListRuns)
 						r.Delete("/runs", backupsHandler.DeleteAllRuns)

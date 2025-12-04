@@ -14,7 +14,7 @@ import {
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,11 +23,13 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { api } from "@/lib/api"
 import type { TorznabIndexer } from "@/types"
-import { ChevronDown, Plus, RefreshCw, Trash2 } from "lucide-react"
+import { ChevronDown, Database, Plus, RefreshCw, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { AutodiscoveryDialog } from "./AutodiscoveryDialog"
+import { IndexerActivityPanel } from "./IndexerActivityPanel"
 import { IndexerDialog } from "./IndexerDialog"
+import { SearchHistoryPanel } from "./SearchHistoryPanel"
 import { IndexerTable } from "./IndexerTable"
 
 interface IndexersPageProps {
@@ -43,6 +45,7 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
   const [editingIndexer, setEditingIndexer] = useState<TorznabIndexer | null>(null)
   const [deleteIndexerId, setDeleteIndexerId] = useState<number | null>(null)
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false)
+  const [indexersOpen, setIndexersOpen] = useState(true)
 
   const loadIndexers = async () => {
     try {
@@ -112,11 +115,15 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
   }
 
   const handleTest = async (id: number) => {
+    updateIndexerTestState(id, "testing", undefined)
     try {
       await api.testTorznabIndexer(id)
+      updateIndexerTestState(id, "ok", undefined)
       toast.success("Connection test successful")
     } catch (error) {
-      toast.error("Connection test failed")
+      const errorMsg = error instanceof Error ? error.message : "Connection test failed"
+      updateIndexerTestState(id, "error", errorMsg)
+      toast.error(errorMsg)
     }
   }
 
@@ -126,34 +133,52 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
       return
     }
 
-    let successCount = 0
-    let failCount = 0
-    const results: { name: string; success: boolean; error?: string }[] = []
+    const toastId = toast.loading(`Testing ${indexersToTest.length} indexers...`)
+    // mark all as in-flight immediately to avoid stale status while we fire requests
+    indexersToTest.forEach(idx => updateIndexerTestState(idx.id, "testing", undefined))
 
-    toast.info(`Testing ${indexersToTest.length} indexers...`)
+    const results = await Promise.all(
+      indexersToTest.map(async (indexer) => {
+        try {
+          await api.testTorznabIndexer(indexer.id)
+          updateIndexerTestState(indexer.id, "ok", undefined)
+          return { name: indexer.name, success: true as const }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error)
+          updateIndexerTestState(indexer.id, "error", errorMsg)
+          console.error(`Failed to test ${indexer.name}:`, error)
+          return { name: indexer.name, success: false as const, error: errorMsg }
+        }
+      })
+    )
 
-    for (const indexer of indexersToTest) {
-      try {
-        await api.testTorznabIndexer(indexer.id)
-        successCount++
-        results.push({ name: indexer.name, success: true })
-      } catch (error) {
-        failCount++
-        const errorMsg = error instanceof Error ? error.message : String(error)
-        results.push({ name: indexer.name, success: false, error: errorMsg })
-        console.error(`Failed to test ${indexer.name}:`, error)
-      }
-    }
-
-    await loadIndexers()
+    const successCount = results.filter(r => r.success).length
+    const failCount = results.length - successCount
 
     if (failCount === 0) {
-      toast.success(`All ${successCount} indexers tested successfully`)
+      toast.success(`All ${successCount} indexers tested successfully`, { id: toastId })
     } else {
-      toast.warning(`${successCount} passed, ${failCount} failed`)
+      toast.warning(`${successCount} passed, ${failCount} failed`, { id: toastId })
       const failedNames = results.filter((result) => !result.success).map((result) => result.name).join(", ")
       toast.error(`Failed indexers: ${failedNames}`)
     }
+  }
+
+  const updateIndexerTestState = (id: number, status: string, errorMsg?: string) => {
+    const now = new Date().toISOString()
+    setIndexers(prev =>
+      prev.map(idx => {
+        if (idx.id !== id) {
+          return idx
+        }
+        return {
+          ...idx,
+          last_test_status: status,
+          last_test_error: errorMsg,
+          last_test_at: now
+        }
+      })
+    )
   }
 
   const handleDialogClose = () => {
@@ -163,78 +188,92 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
     loadIndexers()
   }
 
+  const enabledCount = indexers.filter(idx => idx.enabled).length
+  const capsCount = indexers.filter(idx => idx.capabilities && idx.capabilities.length > 0).length
+
   const content = (
     <>
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <CardTitle>Torznab Indexers</CardTitle>
-              <CardDescription>
-                Manage Torznab indexers powered by Jackett, Prowlarr, or native tracker endpoints
-                {indexers.length > 0 && (
-                  <span className="block mt-1">
-                    {indexers.filter(idx => idx.enabled).length} enabled, {' '}
-                    {indexers.filter(idx => idx.capabilities && idx.capabilities.length > 0).length} with capabilities
-                  </span>
-                )}
-              </CardDescription>
+      {indexers.length > 0 && <SearchHistoryPanel />}
+      {indexers.length > 0 && <IndexerActivityPanel />}
+
+      <Collapsible open={indexersOpen} onOpenChange={setIndexersOpen}>
+        <div className="rounded-xl border bg-card text-card-foreground shadow-sm">
+          <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-4 hover:cursor-pointer text-left hover:bg-muted/50 transition-colors rounded-xl">
+            <div className="flex items-center gap-2">
+              <Database className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Torznab Indexers</span>
+              {indexers.length > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  {enabledCount} enabled, {capsCount} with capabilities
+                </span>
+              )}
             </div>
-            <div className="flex flex-wrap gap-2 justify-end">
-              <Button
-                variant="outline"
-                onClick={() => setShowDeleteAllDialog(true)}
-                disabled={loading || indexers.length === 0}
-              >
-                <Trash2 className="h-4 w-4" />
-                Delete All
-              </Button>
-              <div className="flex">
-                <Button
-                  onClick={() => setAutodiscoveryOpen(true)}
-                  className="rounded-r-none"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Discover
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button className="rounded-l-none border-l px-2">
-                      <ChevronDown className="h-4 w-4" />
+            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${indexersOpen ? "rotate-180" : ""}`} />
+          </CollapsibleTrigger>
+
+          <CollapsibleContent>
+            <div className="px-4 pb-4 space-y-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Manage Torznab indexers powered by Jackett, Prowlarr, or native tracker endpoints
+                </p>
+                <div className="flex flex-wrap gap-2 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowDeleteAllDialog(true)}
+                    disabled={loading || indexers.length === 0}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete All
+                  </Button>
+                  <div className="flex">
+                    <Button
+                      size="sm"
+                      onClick={() => setAutodiscoveryOpen(true)}
+                      className="rounded-r-none"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Discover
                     </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => setAddDialogOpen(true)}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add single
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="sm" className="rounded-l-none border-l px-2">
+                          <ChevronDown className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setAddDialogOpen(true)}>
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add single
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
               </div>
+              <IndexerTable
+                indexers={indexers}
+                loading={loading}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                onTest={handleTest}
+                onTestAll={handleTestAll}
+                onSyncCaps={async (id) => {
+                  try {
+                    const updated = await api.syncTorznabCaps(id)
+                    toast.success("Capabilities synced from backend")
+                    setIndexers((prev) => prev.map((idx) => (idx.id === updated.id ? updated : idx)))
+                  } catch (error) {
+                    const message = error instanceof Error ? error.message : "Failed to sync caps"
+                    toast.error(message)
+                  }
+                }}
+              />
             </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <IndexerTable
-            indexers={indexers}
-            loading={loading}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-            onTest={handleTest}
-            onTestAll={handleTestAll}
-            onSyncCaps={async (id) => {
-              try {
-                const updated = await api.syncTorznabCaps(id)
-                toast.success("Capabilities synced from backend")
-                setIndexers((prev) => prev.map((idx) => (idx.id === updated.id ? updated : idx)))
-              } catch (error) {
-                const message = error instanceof Error ? error.message : "Failed to sync caps"
-                toast.error(message)
-              }
-            }}
-          />
-        </CardContent>
-      </Card>
+          </CollapsibleContent>
+        </div>
+      </Collapsible>
 
       <IndexerDialog
         open={addDialogOpen}
@@ -302,7 +341,7 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
 
   if (withContainer) {
     return (
-      <div className="container mx-auto space-y-4 p-6">
+      <div className="container mx-auto space-y-4 p-4 lg:p-6">
         {content}
       </div>
     )

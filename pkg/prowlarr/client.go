@@ -8,12 +8,13 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
-	gojackett "github.com/kylesanderson/go-jackett"
+	gojackett "github.com/autobrr/qui/pkg/gojackett"
 )
 
 // Config holds the options for constructing a Client.
@@ -22,6 +23,14 @@ type Config struct {
 	APIKey     string
 	Timeout    int
 	HTTPClient *http.Client
+	UserAgent  string
+	Version    string
+}
+
+// TorznabError represents a Torznab error response
+type TorznabError struct {
+	Code    string `xml:"code,attr"`
+	Message string `xml:",chardata"`
 }
 
 // Client provides a minimal Prowlarr API wrapper suitable for Torznab-style access.
@@ -29,6 +38,8 @@ type Client struct {
 	host       string
 	apiKey     string
 	httpClient *http.Client
+	userAgent  string
+	version    string
 }
 
 // NewClient constructs a new Client using the provided configuration.
@@ -43,10 +54,21 @@ func NewClient(cfg Config) *Client {
 		client = &http.Client{Timeout: timeout}
 	}
 
+	ua := strings.TrimSpace(cfg.UserAgent)
+	if ua == "" {
+		ua = "qui"
+	}
+	version := strings.TrimSpace(cfg.Version)
+	if version != "" && !strings.Contains(ua, version) {
+		ua = fmt.Sprintf("%s/%s", ua, version)
+	}
+
 	return &Client{
 		host:       strings.TrimRight(cfg.Host, "/"),
 		apiKey:     cfg.APIKey,
 		httpClient: client,
+		userAgent:  ua,
+		version:    version,
 	}
 }
 
@@ -58,6 +80,7 @@ type Indexer struct {
 	Implementation     string `json:"implementation"`
 	ImplementationName string `json:"implementationName"`
 	Enable             bool   `json:"enable"`
+	Protocol           string `json:"protocol"` // "unknown", "usenet", "torrent"
 }
 
 // IndexerDetail represents detailed information about a Prowlarr indexer
@@ -120,6 +143,7 @@ func (c *Client) SearchIndexer(ctx context.Context, indexerID string, params map
 		return rss, fmt.Errorf("failed to build prowlarr request: %w", err)
 	}
 	req.URL.RawQuery = query.Encode()
+	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -131,7 +155,24 @@ func (c *Client) SearchIndexer(ctx context.Context, indexerID string, params map
 		return rss, fmt.Errorf("prowlarr returned status %d", resp.StatusCode)
 	}
 
-	if err := xml.NewDecoder(resp.Body).Decode(&rss); err != nil {
+	// Read the response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return rss, fmt.Errorf("failed to read prowlarr response: %w", err)
+	}
+
+	// Check if the response is an error
+	bodyStr := strings.TrimSpace(string(body))
+	if strings.HasPrefix(bodyStr, "<error") {
+		var torznabErr TorznabError
+		if err := xml.Unmarshal(body, &torznabErr); err != nil {
+			return rss, fmt.Errorf("failed to decode torznab error response: %w", err)
+		}
+		return rss, fmt.Errorf("torznab error %s: %s", torznabErr.Code, torznabErr.Message)
+	}
+
+	// Decode the RSS response
+	if err := xml.Unmarshal(body, &rss); err != nil {
 		return rss, fmt.Errorf("failed to decode prowlarr response: %w", err)
 	}
 
@@ -159,6 +200,7 @@ func (c *Client) GetIndexers(ctx context.Context) ([]Indexer, error) {
 	if c.apiKey != "" {
 		req.Header.Set("X-Api-Key", c.apiKey)
 	}
+	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -206,6 +248,7 @@ func (c *Client) GetIndexer(ctx context.Context, indexerID int) (*IndexerDetail,
 	if c.apiKey != "" {
 		req.Header.Set("X-Api-Key", c.apiKey)
 	}
+	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

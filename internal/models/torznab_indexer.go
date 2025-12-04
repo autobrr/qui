@@ -62,38 +62,34 @@ func MustTorznabBackend(value string) TorznabBackend {
 
 // TorznabIndexer represents a Torznab API indexer (Jackett, Prowlarr, etc.)
 type TorznabIndexer struct {
-	ID                 int                      `json:"id"`
-	Name               string                   `json:"name"`
-	BaseURL            string                   `json:"base_url"`
-	IndexerID          string                   `json:"indexer_id"` // Jackett/Prowlarr indexer ID (e.g., "aither")
-	Backend            TorznabBackend           `json:"backend"`
-	APIKeyEncrypted    string                   `json:"-"`
-	Enabled            bool                     `json:"enabled"`
-	Priority           int                      `json:"priority"`
-	TimeoutSeconds     int                      `json:"timeout_seconds"`
-	HourlyRequestLimit *int                     `json:"hourly_request_limit,omitempty"`
-	DailyRequestLimit  *int                     `json:"daily_request_limit,omitempty"`
-	Capabilities       []string                 `json:"capabilities"`
-	Categories         []TorznabIndexerCategory `json:"categories"`
-	LastTestAt         *time.Time               `json:"last_test_at,omitempty"`
-	LastTestStatus     string                   `json:"last_test_status"`
-	LastTestError      *string                  `json:"last_test_error,omitempty"`
-	CreatedAt          time.Time                `json:"created_at"`
-	UpdatedAt          time.Time                `json:"updated_at"`
+	ID              int                      `json:"id"`
+	Name            string                   `json:"name"`
+	BaseURL         string                   `json:"base_url"`
+	IndexerID       string                   `json:"indexer_id"` // Jackett/Prowlarr indexer ID (e.g., "aither")
+	Backend         TorznabBackend           `json:"backend"`
+	APIKeyEncrypted string                   `json:"-"`
+	Enabled         bool                     `json:"enabled"`
+	Priority        int                      `json:"priority"`
+	TimeoutSeconds  int                      `json:"timeout_seconds"`
+	Capabilities    []string                 `json:"capabilities"`
+	Categories      []TorznabIndexerCategory `json:"categories"`
+	LastTestAt      *time.Time               `json:"last_test_at,omitempty"`
+	LastTestStatus  string                   `json:"last_test_status"`
+	LastTestError   *string                  `json:"last_test_error,omitempty"`
+	CreatedAt       time.Time                `json:"created_at"`
+	UpdatedAt       time.Time                `json:"updated_at"`
 }
 
 // TorznabIndexerUpdateParams captures optional fields for updating an indexer.
 type TorznabIndexerUpdateParams struct {
-	Name               string
-	BaseURL            string
-	IndexerID          *string
-	Backend            *TorznabBackend
-	APIKey             string
-	Enabled            *bool
-	Priority           *int
-	TimeoutSeconds     *int
-	HourlyRequestLimit *int
-	DailyRequestLimit  *int
+	Name           string
+	BaseURL        string
+	IndexerID      *string
+	Backend        *TorznabBackend
+	APIKey         string
+	Enabled        *bool
+	Priority       *int
+	TimeoutSeconds *int
 }
 
 // TorznabIndexerCapability represents a search capability
@@ -321,7 +317,7 @@ func (s *TorznabIndexerStore) CreateWithIndexerID(ctx context.Context, name, bas
 // Get retrieves a Torznab indexer by ID using the view
 func (s *TorznabIndexerStore) Get(ctx context.Context, id int) (*TorznabIndexer, error) {
 	query := `
-		SELECT id, name, base_url, indexer_id, backend, api_key_encrypted, enabled, priority, timeout_seconds, hourly_request_limit, daily_request_limit, last_test_at, last_test_status, last_test_error, created_at, updated_at
+		SELECT id, name, base_url, indexer_id, backend, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
 		FROM torznab_indexers_view
 		WHERE id = ?
 	`
@@ -329,8 +325,6 @@ func (s *TorznabIndexerStore) Get(ctx context.Context, id int) (*TorznabIndexer,
 	var indexer TorznabIndexer
 	var indexerID sql.NullString
 	var backendStr string
-	var hourlyLimit sql.NullInt64
-	var dailyLimit sql.NullInt64
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&indexer.ID,
 		&indexer.Name,
@@ -341,8 +335,6 @@ func (s *TorznabIndexerStore) Get(ctx context.Context, id int) (*TorznabIndexer,
 		&indexer.Enabled,
 		&indexer.Priority,
 		&indexer.TimeoutSeconds,
-		&hourlyLimit,
-		&dailyLimit,
 		&indexer.LastTestAt,
 		&indexer.LastTestStatus,
 		&indexer.LastTestError,
@@ -351,14 +343,6 @@ func (s *TorznabIndexerStore) Get(ctx context.Context, id int) (*TorznabIndexer,
 	)
 	if indexerID.Valid {
 		indexer.IndexerID = indexerID.String
-	}
-	if hourlyLimit.Valid {
-		value := int(hourlyLimit.Int64)
-		indexer.HourlyRequestLimit = &value
-	}
-	if dailyLimit.Valid {
-		value := int(dailyLimit.Int64)
-		indexer.DailyRequestLimit = &value
 	}
 	if backendStr == "" {
 		indexer.Backend = TorznabBackendJackett
@@ -397,7 +381,7 @@ func (s *TorznabIndexerStore) Get(ctx context.Context, id int) (*TorznabIndexer,
 // List retrieves all Torznab indexers using the view, ordered by priority (descending) and name
 func (s *TorznabIndexerStore) List(ctx context.Context) ([]*TorznabIndexer, error) {
 	query := `
-		SELECT id, name, base_url, indexer_id, backend, api_key_encrypted, enabled, priority, timeout_seconds, hourly_request_limit, daily_request_limit, last_test_at, last_test_status, last_test_error, created_at, updated_at
+		SELECT id, name, base_url, indexer_id, backend, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
 		FROM torznab_indexers_view
 		ORDER BY priority DESC, name ASC
 	`
@@ -413,8 +397,6 @@ func (s *TorznabIndexerStore) List(ctx context.Context) ([]*TorznabIndexer, erro
 		var indexer TorznabIndexer
 		var indexerID sql.NullString
 		var backendStr string
-		var hourlyLimit sql.NullInt64
-		var dailyLimit sql.NullInt64
 		err := rows.Scan(
 			&indexer.ID,
 			&indexer.Name,
@@ -425,8 +407,6 @@ func (s *TorznabIndexerStore) List(ctx context.Context) ([]*TorznabIndexer, erro
 			&indexer.Enabled,
 			&indexer.Priority,
 			&indexer.TimeoutSeconds,
-			&hourlyLimit,
-			&dailyLimit,
 			&indexer.LastTestAt,
 			&indexer.LastTestStatus,
 			&indexer.LastTestError,
@@ -438,14 +418,6 @@ func (s *TorznabIndexerStore) List(ctx context.Context) ([]*TorznabIndexer, erro
 		}
 		if indexerID.Valid {
 			indexer.IndexerID = indexerID.String
-		}
-		if hourlyLimit.Valid {
-			value := int(hourlyLimit.Int64)
-			indexer.HourlyRequestLimit = &value
-		}
-		if dailyLimit.Valid {
-			value := int(dailyLimit.Int64)
-			indexer.DailyRequestLimit = &value
 		}
 		if backendStr == "" {
 			indexer.Backend = TorznabBackendJackett
@@ -484,7 +456,7 @@ func (s *TorznabIndexerStore) List(ctx context.Context) ([]*TorznabIndexer, erro
 // ListEnabled retrieves all enabled Torznab indexers using the view, ordered by priority
 func (s *TorznabIndexerStore) ListEnabled(ctx context.Context) ([]*TorznabIndexer, error) {
 	query := `
-		SELECT id, name, base_url, indexer_id, backend, api_key_encrypted, enabled, priority, timeout_seconds, hourly_request_limit, daily_request_limit, last_test_at, last_test_status, last_test_error, created_at, updated_at
+		SELECT id, name, base_url, indexer_id, backend, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
 		FROM torznab_indexers_view
 		WHERE enabled = 1
 		ORDER BY priority DESC, name ASC
@@ -501,8 +473,6 @@ func (s *TorznabIndexerStore) ListEnabled(ctx context.Context) ([]*TorznabIndexe
 		var indexer TorznabIndexer
 		var indexerID sql.NullString
 		var backendStr string
-		var hourlyLimit sql.NullInt64
-		var dailyLimit sql.NullInt64
 		err := rows.Scan(
 			&indexer.ID,
 			&indexer.Name,
@@ -513,8 +483,6 @@ func (s *TorznabIndexerStore) ListEnabled(ctx context.Context) ([]*TorznabIndexe
 			&indexer.Enabled,
 			&indexer.Priority,
 			&indexer.TimeoutSeconds,
-			&hourlyLimit,
-			&dailyLimit,
 			&indexer.LastTestAt,
 			&indexer.LastTestStatus,
 			&indexer.LastTestError,
@@ -526,14 +494,6 @@ func (s *TorznabIndexerStore) ListEnabled(ctx context.Context) ([]*TorznabIndexe
 		}
 		if indexerID.Valid {
 			indexer.IndexerID = indexerID.String
-		}
-		if hourlyLimit.Valid {
-			value := int(hourlyLimit.Int64)
-			indexer.HourlyRequestLimit = &value
-		}
-		if dailyLimit.Valid {
-			value := int(dailyLimit.Int64)
-			indexer.DailyRequestLimit = &value
 		}
 		if backendStr == "" {
 			indexer.Backend = TorznabBackendJackett
@@ -593,22 +553,6 @@ func (s *TorznabIndexerStore) Update(ctx context.Context, id int, params Torznab
 	if params.TimeoutSeconds != nil {
 		existing.TimeoutSeconds = *params.TimeoutSeconds
 	}
-	if params.HourlyRequestLimit != nil {
-		if *params.HourlyRequestLimit <= 0 {
-			existing.HourlyRequestLimit = nil
-		} else {
-			limit := *params.HourlyRequestLimit
-			existing.HourlyRequestLimit = &limit
-		}
-	}
-	if params.DailyRequestLimit != nil {
-		if *params.DailyRequestLimit <= 0 {
-			existing.DailyRequestLimit = nil
-		} else {
-			limit := *params.DailyRequestLimit
-			existing.DailyRequestLimit = &limit
-		}
-	}
 	if params.IndexerID != nil {
 		existing.IndexerID = strings.TrimSpace(*params.IndexerID)
 	}
@@ -661,19 +605,9 @@ func (s *TorznabIndexerStore) Update(ctx context.Context, id int, params Torznab
 
 	query := `
 		UPDATE torznab_indexers
-		SET name_id = ?, base_url_id = ?, indexer_id_string_id = ?, backend = ?, api_key_encrypted = ?, enabled = ?, priority = ?, timeout_seconds = ?, hourly_request_limit = ?, daily_request_limit = ?
+		SET name_id = ?, base_url_id = ?, indexer_id_string_id = ?, backend = ?, api_key_encrypted = ?, enabled = ?, priority = ?, timeout_seconds = ?
 		WHERE id = ?
 	`
-
-	var hourlyLimit sql.NullInt64
-	if existing.HourlyRequestLimit != nil {
-		hourlyLimit = sql.NullInt64{Int64: int64(*existing.HourlyRequestLimit), Valid: true}
-	}
-
-	var dailyLimit sql.NullInt64
-	if existing.DailyRequestLimit != nil {
-		dailyLimit = sql.NullInt64{Int64: int64(*existing.DailyRequestLimit), Valid: true}
-	}
 
 	_, err = tx.ExecContext(ctx, query,
 		nameID,
@@ -684,8 +618,6 @@ func (s *TorznabIndexerStore) Update(ctx context.Context, id int, params Torznab
 		existing.Enabled,
 		existing.Priority,
 		existing.TimeoutSeconds,
-		hourlyLimit,
-		dailyLimit,
 		id,
 	)
 
@@ -818,11 +750,37 @@ func (s *TorznabIndexerStore) SetCapabilities(ctx context.Context, indexerID int
 			return fmt.Errorf("failed to intern capability strings: %w", err)
 		}
 
-		// Insert capabilities
-		for _, capID := range capIDs {
-			_, err = tx.ExecContext(ctx, "INSERT INTO torznab_indexer_capabilities (indexer_id, capability_type_id) VALUES (?, ?)", indexerID, capID)
+		// Build bulk insert query
+		queryTemplate := "INSERT INTO torznab_indexer_capabilities (indexer_id, capability_type_id) VALUES %s"
+		const capabilityBatchSize = 200 // Keep under SQLite's 999 variable limit (200 * 2 = 400 placeholders)
+		fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 2, capabilityBatchSize)
+
+		// Batch insert capabilities
+		args := make([]interface{}, 0, capabilityBatchSize*2)
+		for i := 0; i < len(capIDs); i += capabilityBatchSize {
+			end := i + capabilityBatchSize
+			if end > len(capIDs) {
+				end = len(capIDs)
+			}
+			batch := capIDs[i:end]
+
+			// Reset args for this batch
+			args = args[:0]
+			var query string
+			if len(batch) == capabilityBatchSize {
+				query = fullBatchQuery
+			} else {
+				// Build query for partial final batch
+				query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 2, len(batch))
+			}
+
+			for _, capID := range batch {
+				args = append(args, indexerID, capID)
+			}
+
+			_, err = tx.ExecContext(ctx, query, args...)
 			if err != nil {
-				return fmt.Errorf("failed to insert capability: %w", err)
+				return fmt.Errorf("failed to insert capabilities batch: %w", err)
 			}
 		}
 	}
@@ -903,10 +861,38 @@ func (s *TorznabIndexerStore) SetCategories(ctx context.Context, indexerID int, 
 			return fmt.Errorf("failed to intern category names: %w", err)
 		}
 
-		for i, cat := range ordered {
-			_, err = tx.ExecContext(ctx, "INSERT INTO torznab_indexer_categories (indexer_id, category_id, category_name_id, parent_category_id) VALUES (?, ?, ?, ?)", indexerID, cat.CategoryID, nameIDs[i], cat.ParentCategory)
+		// Build bulk insert query
+		queryTemplate := "INSERT INTO torznab_indexer_categories (indexer_id, category_id, category_name_id, parent_category_id) VALUES %s"
+		const categoryBatchSize = 200 // Keep under SQLite's 999 variable limit (200 * 4 = 800 placeholders)
+		fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 4, categoryBatchSize)
+
+		// Batch insert categories
+		args := make([]interface{}, 0, categoryBatchSize*4)
+		for i := 0; i < len(ordered); i += categoryBatchSize {
+			end := i + categoryBatchSize
+			if end > len(ordered) {
+				end = len(ordered)
+			}
+			batch := ordered[i:end]
+
+			// Reset args for this batch
+			args = args[:0]
+			var query string
+			if len(batch) == categoryBatchSize {
+				query = fullBatchQuery
+			} else {
+				// Build query for partial final batch
+				query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 4, len(batch))
+			}
+
+			for j, cat := range batch {
+				nameID := nameIDs[i+j]
+				args = append(args, indexerID, cat.CategoryID, nameID, cat.ParentCategory)
+			}
+
+			_, err = tx.ExecContext(ctx, query, args...)
 			if err != nil {
-				return fmt.Errorf("failed to insert category: %w", err)
+				return fmt.Errorf("failed to insert categories batch: %w", err)
 			}
 		}
 	}
@@ -1028,56 +1014,6 @@ func (s *TorznabIndexerStore) RecordLatency(ctx context.Context, indexerID int, 
 	`, indexerID, operationType, latencyMs, success)
 	if err != nil {
 		return fmt.Errorf("failed to record latency: %w", err)
-	}
-	return nil
-}
-
-// CountRequests returns how many requests were recorded for an indexer within the provided window.
-func (s *TorznabIndexerStore) CountRequests(ctx context.Context, indexerID int, window time.Duration) (int, error) {
-	if window <= 0 {
-		return 0, errors.New("window must be positive")
-	}
-	since := time.Now().Add(-window)
-	var count int
-	err := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*)
-		FROM torznab_indexer_latency
-		WHERE indexer_id = ? AND measured_at >= ?
-	`, indexerID, since.UTC()).Scan(&count)
-	if err != nil {
-		return 0, fmt.Errorf("count torznab requests: %w", err)
-	}
-	return count, nil
-}
-
-// UpdateRequestLimits updates the persisted hourly/daily request caps for an indexer.
-func (s *TorznabIndexerStore) UpdateRequestLimits(ctx context.Context, indexerID int, hourly, daily *int) error {
-	setParts := make([]string, 0, 2)
-	args := make([]any, 0, 3)
-	if hourly != nil {
-		if *hourly <= 0 {
-			setParts = append(setParts, "hourly_request_limit = NULL")
-		} else {
-			setParts = append(setParts, "hourly_request_limit = ?")
-			args = append(args, *hourly)
-		}
-	}
-	if daily != nil {
-		if *daily <= 0 {
-			setParts = append(setParts, "daily_request_limit = NULL")
-		} else {
-			setParts = append(setParts, "daily_request_limit = ?")
-			args = append(args, *daily)
-		}
-	}
-	if len(setParts) == 0 {
-		return nil
-	}
-	setParts = append(setParts, "updated_at = CURRENT_TIMESTAMP")
-	query := fmt.Sprintf("UPDATE torznab_indexers SET %s WHERE id = ?", strings.Join(setParts, ", "))
-	args = append(args, indexerID)
-	if _, err := s.db.ExecContext(ctx, query, args...); err != nil {
-		return fmt.Errorf("update torznab request limits: %w", err)
 	}
 	return nil
 }

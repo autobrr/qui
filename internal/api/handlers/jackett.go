@@ -71,6 +71,12 @@ func (h *JackettHandler) Routes(r chi.Router) {
 			r.Get("/", h.GetSearchCacheStats)
 			r.Put("/settings", h.UpdateSearchCacheSettings)
 		})
+
+		// Search history - completed searches
+		r.Get("/search/history", h.GetSearchHistory)
+
+		// Activity status
+		r.Get("/activity", h.GetActivityStatus)
 	})
 }
 
@@ -104,13 +110,41 @@ func (h *JackettHandler) CrossSeedSearch(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Search for cross-seeds
-	response, err := h.service.Search(r.Context(), &req)
+	respCh := make(chan *jackett.SearchResponse, 1)
+	errCh := make(chan error, 1)
+	req.OnAllComplete = func(resp *jackett.SearchResponse, err error) {
+		if err != nil {
+			errCh <- err
+		} else {
+			respCh <- resp
+		}
+	}
+	err := h.service.Search(r.Context(), &req)
 	if err != nil {
 		log.Error().
 			Err(err).
 			Str("query", req.Query).
 			Msg("Failed to search Jackett for cross-seeds")
 		RespondError(w, http.StatusInternalServerError, "Failed to search for cross-seeds")
+		return
+	}
+
+	var response *jackett.SearchResponse
+	select {
+	case response = <-respCh:
+		// continue
+	case err := <-errCh:
+		log.Error().
+			Err(err).
+			Str("query", req.Query).
+			Msg("Failed to search Jackett for cross-seeds")
+		RespondError(w, http.StatusInternalServerError, "Failed to search for cross-seeds")
+		return
+	case <-time.After(5 * time.Minute):
+		log.Error().
+			Str("query", req.Query).
+			Msg("Cross-seed search timed out")
+		RespondError(w, http.StatusInternalServerError, "Search timed out")
 		return
 	}
 
@@ -147,13 +181,41 @@ func (h *JackettHandler) Search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Perform search
-	response, err := h.service.SearchGeneric(r.Context(), &req)
+	respCh := make(chan *jackett.SearchResponse, 1)
+	errCh := make(chan error, 1)
+	req.OnAllComplete = func(resp *jackett.SearchResponse, err error) {
+		if err != nil {
+			errCh <- err
+		} else {
+			respCh <- resp
+		}
+	}
+	err := h.service.SearchGeneric(r.Context(), &req)
 	if err != nil {
 		log.Error().
 			Err(err).
 			Str("query", req.Query).
 			Msg("Failed to search Jackett")
 		RespondError(w, http.StatusInternalServerError, "Failed to search")
+		return
+	}
+
+	var response *jackett.SearchResponse
+	select {
+	case response = <-respCh:
+		// continue
+	case err := <-errCh:
+		log.Error().
+			Err(err).
+			Str("query", req.Query).
+			Msg("Failed to search Jackett")
+		RespondError(w, http.StatusInternalServerError, "Failed to search")
+		return
+	case <-time.After(5 * time.Minute):
+		log.Error().
+			Str("query", req.Query).
+			Msg("Search timed out")
+		RespondError(w, http.StatusInternalServerError, "Search timed out")
 		return
 	}
 
@@ -600,13 +662,25 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 		Msg("Testing torznab indexer connectivity")
 
 	// Run a lightweight search via the service to validate connectivity
-	// Use CacheModeBypass to prevent test searches from cluttering recent search history
-	_, err = h.service.SearchGeneric(r.Context(), &jackett.TorznabSearchRequest{
-		Query:      "test",
-		Limit:      1,
-		IndexerIDs: []int{id},
-		CacheMode:  jackett.CacheModeBypass,
-	})
+	// Use CacheModeBypass and SkipHistory to prevent test searches from cluttering search history
+	testReq := &jackett.TorznabSearchRequest{
+		Query:       "test",
+		Limit:       1,
+		IndexerIDs:  []int{id},
+		CacheMode:   jackett.CacheModeBypass,
+		SkipHistory: true,
+		OnAllComplete: func(*jackett.SearchResponse, error) {
+			// Ignore results for connectivity test
+		},
+	}
+
+	// Use a detached context for test searches - the HTTP request lifecycle should not
+	// cancel the scheduler task since SearchGeneric returns immediately after scheduling.
+	// Note: We intentionally don't defer cancel() here because the search is async.
+	// The context will be cleaned up when the timeout expires.
+	testCtx, _ := context.WithTimeout(context.Background(), 30*time.Second)
+
+	err = h.service.SearchGeneric(testCtx, testReq)
 
 	// Update test status in database
 	if err != nil {
@@ -852,4 +926,55 @@ func (h *JackettHandler) GetIndexerStats(w http.ResponseWriter, r *http.Request)
 	}
 
 	RespondJSON(w, http.StatusOK, stats)
+}
+
+// GetSearchHistory godoc
+// @Summary Get search history
+// @Description Returns recent completed searches from the in-memory history buffer
+// @Tags torznab
+// @Produce json
+// @Param limit query int false "Maximum number of entries to return (default: 50, max: 500)"
+// @Success 200 {object} jackett.SearchHistoryResponseWithOutcome
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/torznab/search/history [get]
+func (h *JackettHandler) GetSearchHistory(w http.ResponseWriter, r *http.Request) {
+	limit := 50
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
+			limit = parsed
+			if limit > 500 {
+				limit = 500
+			}
+		}
+	}
+
+	history, err := h.service.GetSearchHistory(r.Context(), limit)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get search history")
+		RespondError(w, http.StatusInternalServerError, "Failed to get search history")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, history)
+}
+
+// GetActivityStatus godoc
+// @Summary Get scheduler and indexer activity status
+// @Description Returns current scheduler state including queued tasks, in-flight jobs, and rate-limited indexers
+// @Tags torznab
+// @Produce json
+// @Success 200 {object} jackett.ActivityStatus
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/torznab/activity [get]
+func (h *JackettHandler) GetActivityStatus(w http.ResponseWriter, r *http.Request) {
+	status, err := h.service.GetActivityStatus(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get activity status")
+		RespondError(w, http.StatusInternalServerError, "Failed to get activity status")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, status)
 }

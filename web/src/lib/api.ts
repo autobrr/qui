@@ -4,6 +4,7 @@
  */
 
 import type {
+  AddTorrentResponse,
   AppPreferences,
   AsyncIndexerFilteringState,
   AuthResponse,
@@ -12,26 +13,27 @@ import type {
   BackupRunsResponse,
   BackupSettings,
   Category,
+  CrossInstanceTorrent,
   CrossSeedApplyResponse,
   CrossSeedAutomationSettings,
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
-  CrossInstanceTorrent,
   CrossSeedInstanceResult,
   CrossSeedRun,
+  CrossSeedSearchRun,
+  CrossSeedSearchSettings,
+  CrossSeedSearchSettingsPatch,
+  CrossSeedSearchStatus,
   CrossSeedTorrentInfo,
   CrossSeedTorrentSearchResponse,
   CrossSeedTorrentSearchSelection,
-  CrossSeedSearchSettings,
-  CrossSeedSearchSettingsPatch,
-  CrossSeedSearchRun,
-  CrossSeedSearchStatus,
   DuplicateTorrentMatch,
   ExternalProgram,
   ExternalProgramCreate,
   ExternalProgramExecute,
   ExternalProgramExecuteResponse,
   ExternalProgramUpdate,
+  IndexerActivityStatus,
   InstanceCapabilities,
   InstanceFormData,
   InstanceReannounceActivity,
@@ -42,6 +44,7 @@ import type {
   RestoreMode,
   RestorePlan,
   RestoreResult,
+  SearchHistoryResponse,
   SortedPeersResponse,
   TorrentCreationParams,
   TorrentCreationTask,
@@ -56,12 +59,14 @@ import type {
   TorznabIndexerFormData,
   TorznabIndexerHealth,
   TorznabIndexerLatencyStats,
-  TorznabSearchRequest,
-  TorznabSearchResult,
-  TorznabSearchResponse,
+  TorznabRecentSearch,
   TorznabSearchCacheMetadata,
   TorznabSearchCacheStats,
-  TorznabRecentSearch,
+  TorznabSearchRequest,
+  TorznabSearchResponse,
+  TorznabSearchResult,
+  TrackerRule,
+  TrackerRuleInput,
   User
 } from "@/types"
 import { getApiBaseUrl, withBasePath } from "./base-url"
@@ -371,6 +376,25 @@ class ApiClient {
     })
   }
 
+  async importBackupManifest(instanceId: number, manifestFile: File): Promise<BackupRun> {
+    const formData = new FormData()
+    formData.append("archive", manifestFile)
+
+    const response = await fetch(`${API_BASE}/instances/${instanceId}/backups/import`, {
+      method: "POST",
+      body: formData,
+      credentials: "include",
+    })
+
+    if (!response.ok) {
+      const errorMessage = await this.extractErrorMessage(response)
+      this.handleAuthError(response.status, `/instances/${instanceId}/backups/import`, errorMessage)
+      throw new Error(errorMessage)
+    }
+
+    return response.json()
+  }
+
   async previewRestore(
     instanceId: number,
     runId: number,
@@ -400,8 +424,12 @@ class ApiClient {
     })
   }
 
-  getBackupDownloadUrl(instanceId: number, runId: number): string {
-    return withBasePath(`/api/instances/${instanceId}/backups/runs/${runId}/download`)
+  getBackupDownloadUrl(instanceId: number, runId: number, format?: string): string {
+    const url = new URL(withBasePath(`/api/instances/${instanceId}/backups/runs/${runId}/download`), window.location.origin)
+    if (format && format !== 'zip') {
+      url.searchParams.set('format', format)
+    }
+    return url.toString()
   }
 
   getBackupTorrentDownloadUrl(instanceId: number, runId: number, torrentHash: string): string {
@@ -526,6 +554,8 @@ class ApiClient {
       tags?: string[]
       startPaused?: boolean
       savePath?: string
+      useDownloadPath?: boolean
+      downloadPath?: string
       autoTMM?: boolean
       skipHashCheck?: boolean
       sequentialDownload?: boolean
@@ -536,8 +566,9 @@ class ApiClient {
       limitSeedTime?: number
       contentLayout?: string
       rename?: string
+      indexerId?: number
     }
-  ): Promise<{ success: boolean; message?: string }> {
+  ): Promise<AddTorrentResponse> {
     const formData = new FormData()
     // Append each file with the same field name "torrent"
     if (data.torrentFiles) {
@@ -559,6 +590,9 @@ class ApiClient {
     if (data.rename) formData.append("rename", data.rename)
     // Only send savePath if autoTMM is false or undefined
     if (data.savePath && !data.autoTMM) formData.append("savepath", data.savePath)
+    if (data.useDownloadPath !== undefined) formData.append("useDownloadPath", data.useDownloadPath.toString())
+    if (data.downloadPath) formData.append("downloadPath", data.downloadPath)
+    if (data.indexerId) formData.append("indexer_id", data.indexerId.toString())
 
     const response = await fetch(`${API_BASE}/instances/${instanceId}/torrents`, {
       method: "POST",
@@ -1217,6 +1251,43 @@ class ApiClient {
     return this.request(`/instances/${instanceId}/trackers`)
   }
 
+  async listTrackerRules(instanceId: number): Promise<TrackerRule[]> {
+    return this.request(`/instances/${instanceId}/tracker-rules`)
+  }
+
+  async createTrackerRule(instanceId: number, payload: TrackerRuleInput): Promise<TrackerRule> {
+    return this.request(`/instances/${instanceId}/tracker-rules`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async updateTrackerRule(instanceId: number, ruleId: number, payload: TrackerRuleInput): Promise<TrackerRule> {
+    return this.request(`/instances/${instanceId}/tracker-rules/${ruleId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async deleteTrackerRule(instanceId: number, ruleId: number): Promise<void> {
+    return this.request(`/instances/${instanceId}/tracker-rules/${ruleId}`, {
+      method: "DELETE",
+    })
+  }
+
+  async reorderTrackerRules(instanceId: number, orderedIds: number[]): Promise<void> {
+    return this.request(`/instances/${instanceId}/tracker-rules/order`, {
+      method: "PUT",
+      body: JSON.stringify({ orderedIds }),
+    })
+  }
+
+  async applyTrackerRules(instanceId: number): Promise<void> {
+    return this.request(`/instances/${instanceId}/tracker-rules/apply`, {
+      method: "POST",
+    })
+  }
+
   // User endpoints
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {
     return this.request("/auth/change-password", {
@@ -1465,6 +1536,15 @@ class ApiClient {
     return this.request<{ status: string }>(`/torznab/indexers/${id}/test`, {
       method: "POST",
     })
+  }
+
+  async getIndexerActivityStatus(): Promise<IndexerActivityStatus> {
+    return this.request<IndexerActivityStatus>("/torznab/activity")
+  }
+
+  async getSearchHistory(limit?: number): Promise<SearchHistoryResponse> {
+    const params = limit ? `?limit=${limit}` : ""
+    return this.request<SearchHistoryResponse>(`/torznab/search/history${params}`)
   }
 
   async discoverJackettIndexers(baseUrl: string, apiKey: string): Promise<JackettIndexer[]> {

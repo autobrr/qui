@@ -16,7 +16,10 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 		RunIntervalMinutes:           120,
 		StartPaused:                  true,
 		Category:                     stringPtr("tv"),
-		Tags:                         []string{"old"},
+		RSSAutomationTags:            []string{"old"},
+		SeededSearchTags:             []string{"old"},
+		CompletionSearchTags:         []string{"old"},
+		WebhookTags:                  []string{"old"},
 		IgnorePatterns:               []string{".nfo"},
 		TargetInstanceIDs:            []int{1},
 		TargetIndexerIDs:             []int{2},
@@ -40,7 +43,8 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 		RunIntervalMinutes:           ptrInt(45),
 		StartPaused:                  ptrBool(false),
 		Category:                     optionalString{Set: true, Value: &newCategory},
-		Tags:                         &[]string{"new"},
+		RSSAutomationTags:            &[]string{"new"},
+		SeededSearchTags:             &[]string{"new-seeded"},
 		IgnorePatterns:               &[]string{"*.srr"},
 		TargetInstanceIDs:            &[]int{3, 4},
 		TargetIndexerIDs:             &[]int{7},
@@ -72,8 +76,18 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 	if existing.Category == nil || *existing.Category != "movies" {
 		t.Fatalf("expected category 'movies', got %#v", existing.Category)
 	}
-	if len(existing.Tags) != 1 || existing.Tags[0] != "new" {
-		t.Fatalf("unexpected tags: %#v", existing.Tags)
+	if len(existing.RSSAutomationTags) != 1 || existing.RSSAutomationTags[0] != "new" {
+		t.Fatalf("unexpected rss automation tags: %#v", existing.RSSAutomationTags)
+	}
+	if len(existing.SeededSearchTags) != 1 || existing.SeededSearchTags[0] != "new-seeded" {
+		t.Fatalf("unexpected seeded search tags: %#v", existing.SeededSearchTags)
+	}
+	// CompletionSearchTags and WebhookTags were not patched, should remain unchanged
+	if len(existing.CompletionSearchTags) != 1 || existing.CompletionSearchTags[0] != "old" {
+		t.Fatalf("unexpected completion search tags: %#v", existing.CompletionSearchTags)
+	}
+	if len(existing.WebhookTags) != 1 || existing.WebhookTags[0] != "old" {
+		t.Fatalf("unexpected webhook tags: %#v", existing.WebhookTags)
 	}
 	if len(existing.IgnorePatterns) != 1 || existing.IgnorePatterns[0] != "*.srr" {
 		t.Fatalf("unexpected ignore patterns: %#v", existing.IgnorePatterns)
@@ -117,10 +131,13 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 
 func TestApplyAutomationSettingsPatch_PreservesUnspecifiedFields(t *testing.T) {
 	existing := models.CrossSeedAutomationSettings{
-		Enabled:            true,
-		RunIntervalMinutes: 60,
-		Category:           stringPtr("tv"),
-		Tags:               []string{"keep"},
+		Enabled:              true,
+		RunIntervalMinutes:   60,
+		Category:             stringPtr("tv"),
+		RSSAutomationTags:    []string{"keep"},
+		SeededSearchTags:     []string{"keep-seeded"},
+		CompletionSearchTags: []string{"keep-completion"},
+		WebhookTags:          []string{"keep-webhook"},
 		Completion: models.CrossSeedCompletionSettings{
 			Enabled: true,
 			Tags:    []string{"keep-tag"},
@@ -143,8 +160,11 @@ func TestApplyAutomationSettingsPatch_PreservesUnspecifiedFields(t *testing.T) {
 	if existing.Category != nil {
 		t.Fatalf("expected category to be cleared")
 	}
-	if len(existing.Tags) != 1 || existing.Tags[0] != "keep" {
-		t.Fatalf("expected tags to stay unchanged, got %#v", existing.Tags)
+	if len(existing.RSSAutomationTags) != 1 || existing.RSSAutomationTags[0] != "keep" {
+		t.Fatalf("expected rss automation tags to stay unchanged, got %#v", existing.RSSAutomationTags)
+	}
+	if len(existing.SeededSearchTags) != 1 || existing.SeededSearchTags[0] != "keep-seeded" {
+		t.Fatalf("expected seeded search tags to stay unchanged, got %#v", existing.SeededSearchTags)
 	}
 	if !existing.Completion.Enabled || existing.Completion.Tags[0] != "keep-tag" {
 		t.Fatalf("expected completion to stay unchanged, got %#v", existing.Completion)

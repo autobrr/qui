@@ -11,6 +11,7 @@ import { TorrentTableResponsive } from "@/components/torrents/TorrentTableRespon
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { VisuallyHidden } from "@/components/ui/visually-hidden"
+import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilters } from "@/hooks/usePersistedFilters"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { cn } from "@/lib/utils"
@@ -27,8 +28,14 @@ interface TorrentsProps {
 export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) {
   const [filters, setFilters] = usePersistedFilters(instanceId)
   const [filterSidebarCollapsed] = usePersistedFilterSidebarState(false)
+  const { viewMode } = usePersistedCompactViewState("normal")
+
+  // Sidebar width: 320px normal, 260px dense
+  const sidebarWidth = viewMode === "dense" ? "16.25rem" : "20rem"
   const [selectedTorrent, setSelectedTorrent] = useState<Torrent | null>(null)
+  const [initialDetailsTab, setInitialDetailsTab] = useState<string | undefined>(undefined)
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
+  const handleInitialTabConsumed = useCallback(() => setInitialDetailsTab(undefined), [])
   // Navigation is handled by parent component via onSearchChange prop
 
   // Check if add torrent modal should be open
@@ -80,14 +87,16 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   const [useSubcategories, setUseSubcategories] = useState<boolean>(false)
   const [lastInstanceId, setLastInstanceId] = useState<number | null>(null)
 
-  const handleTorrentSelect = (torrent: Torrent | null) => {
-    // Toggle selection: if the same torrent is clicked, deselect it
-    if (torrent && selectedTorrent?.hash === torrent.hash) {
+  const handleTorrentSelect = useCallback((torrent: Torrent | null, initialTab?: string) => {
+    // Toggle selection: if the same torrent is clicked without a tab override, deselect it
+    if (torrent && selectedTorrent?.hash === torrent.hash && !initialTab) {
       setSelectedTorrent(null)
+      setInitialDetailsTab(undefined)
     } else {
       setSelectedTorrent(torrent)
+      setInitialDetailsTab(initialTab)
     }
-  }
+  }, [selectedTorrent?.hash])
 
   // Clear selected torrent and mark data as potentially stale when instance changes
   // Don't immediately clear torrentCounts/categories/tags to prevent showing 0 values
@@ -193,16 +202,18 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
       {/* Desktop Sidebar - slides in on tablet/desktop */}
       <div
         className={cn(
-          "hidden md:flex shrink-0 h-full overflow-hidden transition-[flex-basis] duration-300 ease-in-out",
-          filterSidebarCollapsed ? "basis-0" : "basis-[20rem]"
+          "hidden md:flex shrink-0 h-full overflow-hidden transition-[flex-basis,width] duration-300 ease-in-out",
+          filterSidebarCollapsed && "basis-0"
         )}
+        style={{ flexBasis: filterSidebarCollapsed ? 0 : sidebarWidth }}
         aria-hidden={filterSidebarCollapsed}
       >
         <div
           className={cn(
-            "w-[20rem] overflow-hidden transition-[transform,opacity] duration-300 ease-in-out",
-            filterSidebarCollapsed? "-translate-x-full opacity-0 pointer-events-none": "translate-x-0 opacity-100"
+            "overflow-hidden transition-[transform,opacity,width] duration-300 ease-in-out",
+            filterSidebarCollapsed ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100"
           )}
+          style={{ width: sidebarWidth }}
         >
           <FilterSidebar
             key={`filter-sidebar-${instanceId}`}
@@ -282,7 +293,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
       >
         <SheetContent
           side="right"
-          className="w-full sm:w-[480px] md:w-[540px] lg:w-[600px] xl:w-[640px] p-0 gap-0"
+          className="w-full md:w-[640px] p-0 gap-0"
         >
           <SheetHeader className="sr-only">
             <VisuallyHidden>
@@ -295,6 +306,8 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
             <TorrentDetailsPanel
               instanceId={instanceId}
               torrent={selectedTorrent}
+              initialTab={initialDetailsTab}
+              onInitialTabConsumed={handleInitialTabConsumed}
             />
           )}
         </SheetContent>

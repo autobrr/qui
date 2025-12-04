@@ -423,9 +423,10 @@ func TestSelectCacheEntryForCoveragePrefersMostCoverage(t *testing.T) {
 }
 
 type fakeSearchCache struct {
-	fetchFn func(context.Context, string) (*models.TorznabSearchCacheEntry, bool, error)
-	findFn  func(context.Context, string, string) ([]*models.TorznabSearchCacheEntry, error)
-	storeFn func(context.Context, *models.TorznabSearchCacheEntry) error
+	fetchFn  func(context.Context, string) (*models.TorznabSearchCacheEntry, bool, error)
+	findFn   func(context.Context, string, string) ([]*models.TorznabSearchCacheEntry, error)
+	storeFn  func(context.Context, *models.TorznabSearchCacheEntry) error
+	rebaseFn func(context.Context, int) (int64, error)
 }
 
 func (f *fakeSearchCache) Fetch(ctx context.Context, key string) (*models.TorznabSearchCacheEntry, bool, error) {
@@ -463,6 +464,141 @@ func (f *fakeSearchCache) InvalidateByIndexerIDs(context.Context, []int) (int64,
 	return 0, nil
 }
 
+func (f *fakeSearchCache) Stats(context.Context) (*models.TorznabSearchCacheStats, error) {
+	return &models.TorznabSearchCacheStats{}, nil
+}
+
+func (f *fakeSearchCache) RecentSearches(context.Context, string, int) ([]*models.TorznabRecentSearch, error) {
+	return nil, nil
+}
+
+func (f *fakeSearchCache) UpdateSettings(_ context.Context, ttlMinutes int) (*models.TorznabSearchCacheSettings, error) {
+	return &models.TorznabSearchCacheSettings{TTLMinutes: ttlMinutes}, nil
+}
+
+func (f *fakeSearchCache) RebaseTTL(ctx context.Context, ttlMinutes int) (int64, error) {
+	if f.rebaseFn != nil {
+		return f.rebaseFn(ctx, ttlMinutes)
+	}
+	return 0, nil
+}
+
+func TestSearchGenericFallsBackToCacheOnError(t *testing.T) {
+	store := &mockTorznabIndexerStore{
+		indexers: []*models.TorznabIndexer{
+			{ID: 1, Name: "First", Enabled: true},
+			{ID: 2, Name: "Second", Enabled: true},
+		},
+	}
+	s := NewService(store)
+	s.searchCacheEnabled = true
+	s.searchCacheTTL = time.Hour
+
+	cachePayload, err := json.Marshal(&SearchResponse{
+		Results: []SearchResult{
+			{Title: "Cached Result", IndexerID: 1, Indexer: "First"},
+		},
+		Total: 1,
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal cache payload: %v", err)
+	}
+
+	s.searchCache = &fakeSearchCache{
+		fetchFn: func(context.Context, string) (*models.TorznabSearchCacheEntry, bool, error) {
+			return &models.TorznabSearchCacheEntry{
+				ID:                 1,
+				CacheKey:           "cache-key",
+				Scope:              searchCacheScopeGeneral,
+				Query:              "batman begins 1080p",
+				Categories:         []int{CategoryMovies},
+				IndexerIDs:         []int{1},
+				RequestFingerprint: "fp",
+				ResponseData:       cachePayload,
+				TotalResults:       1,
+				CachedAt:           time.Now().Add(-30 * time.Minute),
+				LastUsedAt:         time.Now().Add(-30 * time.Minute),
+				ExpiresAt:          time.Now().Add(30 * time.Minute),
+			}, true, nil
+		},
+	}
+
+	s.searchExecutor = func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error) {
+		return nil, nil, errors.New("rate limited")
+	}
+
+	req := &TorznabSearchRequest{Query: "batman begins 1080p"}
+	respCh := make(chan *SearchResponse, 1)
+	errCh := make(chan error, 1)
+	req.OnAllComplete = func(resp *SearchResponse, err error) {
+		if err != nil {
+			errCh <- err
+		} else {
+			respCh <- resp
+		}
+	}
+
+	searchErr := s.SearchGeneric(context.Background(), req)
+	if searchErr != nil {
+		t.Fatalf("SearchGeneric returned error: %v", searchErr)
+	}
+
+	var resp *SearchResponse
+	select {
+	case resp = <-respCh:
+		// continue
+	case err := <-errCh:
+		t.Fatalf("SearchGeneric callback returned error: %v", err)
+	case <-time.After(1 * time.Second):
+		t.Fatal("SearchGeneric timed out")
+	}
+
+	if resp == nil {
+		t.Fatal("expected response")
+	}
+	if resp.Cache == nil || resp.Cache.Source != searchCacheSourceCache {
+		t.Fatalf("expected cache metadata from cache source, got %+v", resp.Cache)
+	}
+	if resp.Total != 1 || len(resp.Results) != 1 {
+		t.Fatalf("expected cached result only, got %+v", resp.Results)
+	}
+	if !resp.Partial {
+		t.Fatalf("expected partial response when falling back to cache after failure")
+	}
+}
+
+func TestUpdateSearchCacheSettingsSetsTTLBeforeRebase(t *testing.T) {
+	t.Parallel()
+
+	store := &mockTorznabIndexerStore{}
+	service := NewService(store)
+	service.searchCacheEnabled = true
+	service.searchCacheTTL = 24 * time.Hour
+
+	var observedTTL time.Duration
+	cache := &fakeSearchCache{
+		rebaseFn: func(_ context.Context, ttlMinutes int) (int64, error) {
+			observedTTL = service.searchCacheTTL
+			if ttlMinutes != 2880 {
+				t.Fatalf("expected ttlMinutes to be 2880, got %d", ttlMinutes)
+			}
+			return 0, nil
+		},
+	}
+	service.searchCache = cache
+
+	if _, err := service.UpdateSearchCacheSettings(context.Background(), 2880); err != nil {
+		t.Fatalf("UpdateSearchCacheSettings returned error: %v", err)
+	}
+
+	if observedTTL != 48*time.Hour {
+		t.Fatalf("expected searchCacheTTL to be updated before rebase, got %s", observedTTL)
+	}
+	if service.searchCacheTTL != 48*time.Hour {
+		t.Fatalf("expected final searchCacheTTL to be 48h, got %s", service.searchCacheTTL)
+	}
+}
+
 func TestSearchCachesAfterDeadlineWhenCoverageComplete(t *testing.T) {
 	store := &mockTorznabIndexerStore{
 		indexers: []*models.TorznabIndexer{
@@ -496,10 +632,31 @@ func TestSearchCachesAfterDeadlineWhenCoverageComplete(t *testing.T) {
 	}
 
 	req := &TorznabSearchRequest{Query: "Example", Categories: []int{CategoryTV}}
-	resp, err := service.Search(context.Background(), req)
-	if err != nil {
-		t.Fatalf("Search returned error: %v", err)
+	respCh := make(chan *SearchResponse, 1)
+	errCh := make(chan error, 1)
+	req.OnAllComplete = func(resp *SearchResponse, err error) {
+		if err != nil {
+			errCh <- err
+		} else {
+			respCh <- resp
+		}
 	}
+
+	searchErr := service.Search(context.Background(), req)
+	if searchErr != nil {
+		t.Fatalf("Search returned error: %v", searchErr)
+	}
+
+	var resp *SearchResponse
+	select {
+	case resp = <-respCh:
+		// continue
+	case err := <-errCh:
+		t.Fatalf("Search callback returned error: %v", err)
+	case <-time.After(1 * time.Second):
+		t.Fatal("Search timed out")
+	}
+
 	if resp == nil {
 		t.Fatal("expected response")
 	}
@@ -545,10 +702,31 @@ func TestSearchCachesPartialCoverageAfterDeadline(t *testing.T) {
 	}
 
 	req := &TorznabSearchRequest{Query: "Example", Categories: []int{CategoryTV}}
-	resp, err := service.Search(context.Background(), req)
-	if err != nil {
-		t.Fatalf("Search returned error: %v", err)
+	respCh := make(chan *SearchResponse, 1)
+	errCh := make(chan error, 1)
+	req.OnAllComplete = func(resp *SearchResponse, err error) {
+		if err != nil {
+			errCh <- err
+		} else {
+			respCh <- resp
+		}
 	}
+
+	searchErr := service.Search(context.Background(), req)
+	if searchErr != nil {
+		t.Fatalf("Search returned error: %v", searchErr)
+	}
+
+	var resp *SearchResponse
+	select {
+	case resp = <-respCh:
+		// continue
+	case err := <-errCh:
+		t.Fatalf("Search callback returned error: %v", err)
+	case <-time.After(1 * time.Second):
+		t.Fatal("Search timed out")
+	}
+
 	if resp == nil {
 		t.Fatal("expected response")
 	}
@@ -561,18 +739,6 @@ func TestSearchCachesPartialCoverageAfterDeadline(t *testing.T) {
 	if !slices.Equal(stored.IndexerIDs, []int{1, 2}) {
 		t.Fatalf("stored coverage mismatch: %+v", stored.IndexerIDs)
 	}
-}
-
-func (f *fakeSearchCache) Stats(context.Context) (*models.TorznabSearchCacheStats, error) {
-	return nil, nil
-}
-
-func (f *fakeSearchCache) RecentSearches(context.Context, string, int) ([]*models.TorznabRecentSearch, error) {
-	return nil, nil
-}
-
-func (f *fakeSearchCache) UpdateSettings(context.Context, int) (*models.TorznabSearchCacheSettings, error) {
-	return nil, nil
 }
 
 func TestBuildSearchParams(t *testing.T) {
@@ -921,7 +1087,8 @@ func TestSearchAutoDetectCategories(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := s.Search(context.Background(), tt.req)
+			tt.req.OnAllComplete = func(*SearchResponse, error) {}
+			err := s.Search(context.Background(), tt.req)
 			// Error expected since no indexers configured
 			if err == nil || err.Error() != "query is required" {
 				// Check that categories were set
@@ -967,11 +1134,31 @@ func TestSearchGenericAutoDetectCategories(t *testing.T) {
 	store := &mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{}}
 	s := NewService(store)
 	req := &TorznabSearchRequest{Query: "Breaking Bad S01"}
-
-	resp, err := s.SearchGeneric(context.Background(), req)
-	if err != nil {
-		t.Fatalf("SearchGeneric returned error: %v", err)
+	respCh := make(chan *SearchResponse, 1)
+	errCh := make(chan error, 1)
+	req.OnAllComplete = func(resp *SearchResponse, err error) {
+		if err != nil {
+			errCh <- err
+		} else {
+			respCh <- resp
+		}
 	}
+
+	searchErr := s.SearchGeneric(context.Background(), req)
+	if searchErr != nil {
+		t.Fatalf("SearchGeneric returned error: %v", searchErr)
+	}
+
+	var resp *SearchResponse
+	select {
+	case resp = <-respCh:
+		// continue
+	case err := <-errCh:
+		t.Fatalf("SearchGeneric callback returned error: %v", err)
+	case <-time.After(1 * time.Second):
+		t.Fatal("SearchGeneric timed out")
+	}
+
 	if resp == nil {
 		t.Fatalf("expected response, got nil")
 	}
@@ -1012,10 +1199,31 @@ func TestSearchWithLimit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp, err := s.Search(context.Background(), tt.req)
-			if err != nil {
-				t.Fatalf("Search() error = %v", err)
+			respCh := make(chan *SearchResponse, 1)
+			errCh := make(chan error, 1)
+			tt.req.OnAllComplete = func(resp *SearchResponse, err error) {
+				if err != nil {
+					errCh <- err
+				} else {
+					respCh <- resp
+				}
 			}
+
+			searchErr := s.Search(context.Background(), tt.req)
+			if searchErr != nil {
+				t.Fatalf("Search() error = %v", searchErr)
+			}
+
+			var resp *SearchResponse
+			select {
+			case resp = <-respCh:
+				// continue
+			case err := <-errCh:
+				t.Fatalf("Search callback error = %v", err)
+			case <-time.After(1 * time.Second):
+				t.Fatal("Search timed out")
+			}
+
 			if resp.Total != tt.expectedTotal {
 				t.Errorf("Total = %d, want %d", resp.Total, tt.expectedTotal)
 			}
@@ -1035,6 +1243,15 @@ func TestSearchGenericWithIndexerIDs(t *testing.T) {
 		},
 	}
 	s := NewService(store)
+	s.searchExecutor = func(ctx context.Context, idxs []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
+		coverage := make([]int, 0, len(idxs))
+		for _, idx := range idxs {
+			if idx != nil && idx.Enabled {
+				coverage = append(coverage, idx.ID)
+			}
+		}
+		return []Result{}, coverage, nil
+	}
 
 	tests := []struct {
 		name        string
@@ -1047,7 +1264,7 @@ func TestSearchGenericWithIndexerIDs(t *testing.T) {
 				Query:      "test",
 				IndexerIDs: []int{1},
 			},
-			shouldError: true,
+			shouldError: false,
 		},
 		{
 			name: "search multiple indexers",
@@ -1055,7 +1272,7 @@ func TestSearchGenericWithIndexerIDs(t *testing.T) {
 				Query:      "test",
 				IndexerIDs: []int{1, 2},
 			},
-			shouldError: true,
+			shouldError: false,
 		},
 		{
 			name: "search disabled indexer returns empty",
@@ -1070,21 +1287,41 @@ func TestSearchGenericWithIndexerIDs(t *testing.T) {
 			req: &TorznabSearchRequest{
 				Query: "test",
 			},
-			shouldError: true,
+			shouldError: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp, err := s.SearchGeneric(context.Background(), tt.req)
-			if tt.shouldError && err == nil {
+			respCh := make(chan *SearchResponse, 1)
+			errCh := make(chan error, 1)
+			tt.req.OnAllComplete = func(resp *SearchResponse, err error) {
+				if err != nil {
+					errCh <- err
+				} else {
+					respCh <- resp
+				}
+			}
+
+			searchErr := s.SearchGeneric(context.Background(), tt.req)
+			if tt.shouldError && searchErr == nil {
 				t.Error("SearchGeneric() expected error, got nil")
 			}
-			if !tt.shouldError && err != nil {
-				t.Errorf("SearchGeneric() unexpected error = %v", err)
+			if !tt.shouldError && searchErr != nil {
+				t.Errorf("SearchGeneric() unexpected error = %v", searchErr)
 			}
-			if !tt.shouldError && resp == nil {
-				t.Error("SearchGeneric() returned nil response")
+			if !tt.shouldError {
+				var resp *SearchResponse
+				select {
+				case resp = <-respCh:
+					if resp == nil {
+						t.Error("SearchGeneric() returned nil response")
+					}
+				case err := <-errCh:
+					t.Errorf("SearchGeneric() callback error = %v", err)
+				case <-time.After(1 * time.Second):
+					t.Fatal("SearchGeneric timed out")
+				}
 			}
 		})
 	}
@@ -1103,11 +1340,31 @@ func TestSearchRespectsRequestedIndexerIDs(t *testing.T) {
 		Query:      "Example.Show.S01",
 		IndexerIDs: []int{999}, // request an indexer that does not exist/enabled
 	}
-
-	resp, err := s.Search(context.Background(), req)
-	if err != nil {
-		t.Fatalf("Search() error = %v", err)
+	respCh := make(chan *SearchResponse, 1)
+	errCh := make(chan error, 1)
+	req.OnAllComplete = func(resp *SearchResponse, err error) {
+		if err != nil {
+			errCh <- err
+		} else {
+			respCh <- resp
+		}
 	}
+
+	searchErr := s.Search(context.Background(), req)
+	if searchErr != nil {
+		t.Fatalf("Search() error = %v", searchErr)
+	}
+
+	var resp *SearchResponse
+	select {
+	case resp = <-respCh:
+		// continue
+	case err := <-errCh:
+		t.Fatalf("Search callback error = %v", err)
+	case <-time.After(1 * time.Second):
+		t.Fatal("Search timed out")
+	}
+
 	if resp == nil {
 		t.Fatal("expected response, got nil")
 	}
@@ -1219,14 +1476,6 @@ func (m *mockTorznabIndexerStore) RecordLatency(ctx context.Context, indexerID i
 }
 
 func (m *mockTorznabIndexerStore) RecordError(ctx context.Context, indexerID int, errorMessage, errorCode string) error {
-	return nil
-}
-
-func (m *mockTorznabIndexerStore) CountRequests(ctx context.Context, indexerID int, window time.Duration) (int, error) {
-	return 0, nil
-}
-
-func (m *mockTorznabIndexerStore) UpdateRequestLimits(ctx context.Context, indexerID int, hourly, daily *int) error {
 	return nil
 }
 
@@ -1436,8 +1685,7 @@ func TestProwlarrYearParameterWorkaround(t *testing.T) {
 			maps.Copy(inputParams, tt.inputParams)
 
 			// Call the actual service method to apply the workaround
-			ctx := context.Background()
-			service.applyProwlarrWorkaround(ctx, indexer, inputParams)
+			service.applyProwlarrWorkaround(indexer, inputParams)
 
 			// Assert expected parameter values
 			for key, expectedValue := range tt.expected {

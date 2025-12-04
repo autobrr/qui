@@ -40,13 +40,15 @@ import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
 import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
 import { api } from "@/lib/api"
 import { cn } from '@/lib/utils'
-import type { Torrent } from "@/types"
+import type { AddTorrentResponse, Torrent } from "@/types"
+import { toast } from "sonner"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, Link, Loader2, Plus, Upload, X } from "lucide-react"
 import parseTorrent from "parse-torrent"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useDropzone } from "react-dropzone"
+import {useInstanceCapabilities} from "@/hooks/useInstanceCapabilities.ts";
 
 // Extract info hash from magnet link
 function extractHashFromMagnet(magnetUrl: string): string | null {
@@ -101,7 +103,7 @@ async function parseTorrentFile(file: File): Promise<string | null> {
 
 export type AddTorrentDropPayload =
   | { type: "file"; files: File[] }
-  | { type: "url"; urls: string[] }
+  | { type: "url"; urls: string[]; indexerId?: number }
 
 interface AddTorrentDialogProps {
   instanceId: number
@@ -133,6 +135,7 @@ interface FormData {
   rename: string
   tempPathEnabled: boolean
   tempPath: string
+  indexerId?: number
 }
 
 interface DuplicateEntryDetails {
@@ -185,6 +188,9 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const categories = metadata?.categories
   const availableTags = metadata?.tags
   const preferences = metadata?.preferences
+
+  const { data: capabilities } = useInstanceCapabilities(instanceId)
+  const supportsTorrentTmpPath = capabilities?.supportsTorrentTmpPath ?? false
 
   // Reset tag state when dialog closes
   useEffect(() => {
@@ -493,26 +499,16 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     mutationFn: async (data: FormData) => {
       // Use the user's explicit TMM choice
       const autoTMM = data.autoTMM
-
       // When autoTMM is enabled, temp path settings aren't visible/relevant
-      if (!autoTMM) {
-        // Check if temp path settings have changed from instance preferences
-        const tempPathChanged =
-          data.tempPathEnabled !== (preferences?.temp_path_enabled ?? false) ||
-          (data.tempPathEnabled && data.tempPath !== (preferences?.temp_path || ""))
-
-        // If temp path settings changed, update instance preferences first
-        if (tempPathChanged) {
-          await api.updateInstancePreferences(instanceId, {
-            temp_path_enabled: data.tempPathEnabled,
-            temp_path: data.tempPathEnabled ? data.tempPath : undefined,
-          })
-        }
-      }
+      const tempPathChanged =
+          !autoTMM && (data.tempPathEnabled !== (preferences?.temp_path_enabled ?? false) ||
+        (data.tempPathEnabled && data.tempPath !== (preferences?.temp_path || "")))
 
       const submitData: Parameters<typeof api.addTorrent>[1] = {
         startPaused: data.startPaused,
         savePath: !autoTMM && data.savePath ? data.savePath : undefined,
+        useDownloadPath: tempPathChanged ? data.tempPathEnabled : undefined,
+        downloadPath: tempPathChanged && data.tempPathEnabled ? data.tempPath : undefined,
         autoTMM: autoTMM,
         category: data.category === "__none__" ? undefined : data.category || undefined,
         tags: data.tags.length > 0 ? data.tags : undefined,
@@ -531,11 +527,14 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
         submitData.torrentFiles = data.torrentFiles
       } else if (activeTab === "url" && data.urls) {
         submitData.urls = data.urls.split("\n").map(u => u.trim()).filter(Boolean)
+        if (data.indexerId) {
+          submitData.indexerId = data.indexerId
+        }
       }
 
       return api.addTorrent(instanceId, submitData)
     },
-    onSuccess: () => {
+    onSuccess: (response: AddTorrentResponse) => {
       // Add small delay to allow qBittorrent to process the new torrent
       setTimeout(() => {
         // Use refetch instead of invalidate to avoid loading state
@@ -551,6 +550,34 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
           type: "active",
         })
       }, 500) // Give qBittorrent time to process
+
+      // Show appropriate toast based on results
+      if (response.failed === 0) {
+        toast.success(response.added === 1
+          ? "Torrent added successfully"
+          : `${response.added} torrents added successfully`)
+      } else if (response.added === 0) {
+        // All failed
+        const failedDetails = [
+          ...(response.failedURLs?.map(f => `${f.url}: ${f.error}`) ?? []),
+          ...(response.failedFiles?.map(f => `${f.filename}: ${f.error}`) ?? [])
+        ]
+        toast.error(`Failed to add ${response.failed} torrent(s)`, {
+          description: failedDetails.length > 0 ? failedDetails.slice(0, 3).join("\n") : undefined,
+          duration: 5000,
+        })
+      } else {
+        // Partial success
+        const failedDetails = [
+          ...(response.failedURLs?.map(f => `${f.url}: ${f.error}`) ?? []),
+          ...(response.failedFiles?.map(f => `${f.filename}: ${f.error}`) ?? [])
+        ]
+        toast.warning(`Added ${response.added}, failed ${response.failed}`, {
+          description: failedDetails.length > 0 ? failedDetails.slice(0, 3).join("\n") : undefined,
+          duration: 5000,
+        })
+      }
+
       setOpen(false)
       form.reset()
       setSelectedTags([])
@@ -579,6 +606,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       rename: "",
       tempPathEnabled: preferences?.temp_path_enabled ?? false,
       tempPath: preferences?.temp_path || "",
+      indexerId: undefined as number | undefined,
     },
     onSubmit: async ({ value }) => {
       // Use the currently selected tags
@@ -717,6 +745,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       setShowFileList(false)
       form.setFieldValue("urls", urls.join("\n"))
       form.setFieldValue("torrentFiles", null)
+      form.setFieldValue("indexerId", dropPayload.indexerId)
       if (fileInputRef.current) {
         fileInputRef.current.value = ""
       }
@@ -1304,23 +1333,26 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                             )}
                           </form.Field>
 
-                          <form.Field name="tempPathEnabled">
-                            {(field) => (
-                              <div className="space-y-2">
-                                <div className="flex items-center gap-2">
-                                  <Switch
-                                    id="tempPathEnabled"
-                                    checked={field.state.value}
-                                    onCheckedChange={field.handleChange}
-                                  />
-                                  <Label htmlFor="tempPathEnabled" className="text-sm font-medium">Use Temporary Path</Label>
-                                </div>
-                                <p className="text-xs text-muted-foreground">
-                                  Download to temporary path before moving to save path
-                                </p>
-                              </div>
-                            )}
-                          </form.Field>
+                            {supportsTorrentTmpPath ? (
+                                <>
+                                    <form.Field name="tempPathEnabled">
+                                        {(field) => (
+                                            <div className="space-y-2">
+                                                <div className="flex items-center gap-2">
+                                                    <Switch
+                                                        id="tempPathEnabled"
+                                                        checked={field.state.value}
+                                                        onCheckedChange={field.handleChange}
+                                                    />
+                                                    <Label htmlFor="tempPathEnabled" className="text-sm font-medium">Use
+                                                        Temporary Path</Label>
+                                                </div>
+                                                <p className="text-xs text-muted-foreground">
+                                                    Download to temporary path before moving to save path
+                                                </p>
+                                            </div>
+                                        )}
+                                    </form.Field>
 
                           <form.Field name="tempPath">
                             {(field) => (
@@ -1375,6 +1407,33 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                               </form.Subscribe>
                             )}
                           </form.Field>
+                                    <form.Field name="tempPath">
+                                        {(field) => (
+                                            <form.Subscribe selector={(state) => state.values.tempPathEnabled}>
+                                                {(tempPathEnabled) => {
+                                                    return (
+                                                        <div
+                                                            className="space-y-2 pl-4 border-l-2 border-primary border-opacity-50 data-[temp-path-enabled=true]:block hidden"
+                                                            data-temp-path-enabled={tempPathEnabled}>
+                                                            <Label htmlFor="tempPath">Temporary Download Path</Label>
+                                                            <Input
+                                                                id="tempPath"
+                                                                placeholder={preferences?.temp_path || "Leave empty for default"}
+                                                                value={field.state.value}
+                                                                onBlur={field.handleBlur}
+                                                                onChange={(e) => field.handleChange(e.target.value)}/>
+                                                            <p className="text-xs text-muted-foreground">
+                                                                Torrents will be downloaded here before moving to save
+                                                                path
+                                                            </p>
+                                                        </div>
+                                                    )
+                                                }}
+                                            </form.Subscribe>
+                                        )}
+                                    </form.Field>
+                                </>
+                            ) : null}
                         </>
                       ) : (
                         <div className="space-y-2">
