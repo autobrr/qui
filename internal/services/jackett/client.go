@@ -30,7 +30,12 @@ type DownloadError struct {
 }
 
 func (e *DownloadError) Error() string {
-	return fmt.Sprintf("torrent download returned status %d", e.StatusCode)
+	return fmt.Sprintf("torrent download from %s returned status %d", e.URL, e.StatusCode)
+}
+
+func (e *DownloadError) Is(target error) bool {
+	_, ok := target.(*DownloadError)
+	return ok
 }
 
 // IsRateLimited returns true if this error indicates rate limiting (HTTP 429).

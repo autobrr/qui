@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"regexp"
 	"slices"
@@ -841,7 +842,9 @@ type DownloadRateLimitError struct {
 	IndexerID   int
 	IndexerName string
 	ResumeAt    time.Time
-	Queued      bool
+	// Queued indicates whether the request was queued for automatic retry.
+	// TODO: Set to true when download retry queue is implemented.
+	Queued bool
 }
 
 func (e *DownloadRateLimitError) Error() string {
@@ -851,11 +854,16 @@ func (e *DownloadRateLimitError) Error() string {
 	return fmt.Sprintf("indexer %s rate-limited until %s", e.IndexerName, e.ResumeAt.Format(time.RFC3339))
 }
 
-// download retry configuration
+func (e *DownloadRateLimitError) Is(target error) bool {
+	_, ok := target.(*DownloadRateLimitError)
+	return ok
+}
+
+// Download retry configuration for transient failures.
 const (
-	downloadMaxRetries     = 3
-	downloadInitialBackoff = 2 * time.Second
-	downloadMaxBackoff     = 30 * time.Second
+	downloadMaxRetries     = 3                // maximum retry attempts
+	downloadInitialBackoff = 2 * time.Second  // initial backoff before retry
+	downloadMaxBackoff     = 30 * time.Second // maximum backoff cap
 )
 
 // DownloadTorrent fetches the raw torrent bytes for a specific indexer result.
@@ -876,7 +884,6 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 		cacheKey = downloadURL
 	}
 
-	// Check cache first
 	if s.torrentCache != nil {
 		cacheCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		data, ok, err := s.torrentCache.Fetch(cacheCtx, req.IndexerID, cacheKey, defaultTorrentCacheTTL)
@@ -884,17 +891,15 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 		if err == nil && ok {
 			return data, nil
 		} else if err != nil {
-			log.Debug().Err(err).Msg("torznab torrent cache fetch failed")
+			log.Warn().Err(err).Int("indexerID", req.IndexerID).Msg("torznab torrent cache fetch failed")
 		}
 	}
 
-	// Load indexer details
 	indexer, err := s.indexerStore.Get(ctx, req.IndexerID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load indexer %d: %w", req.IndexerID, err)
 	}
 
-	// Check rate limiter before attempting download
 	if s.rateLimiter != nil {
 		if inCooldown, resumeAt := s.rateLimiter.IsInCooldown(req.IndexerID); inCooldown {
 			log.Debug().
@@ -964,7 +969,7 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 					TorrentData: data,
 				}
 				if cacheErr := s.torrentCache.Store(ctx, entry); cacheErr != nil {
-					log.Debug().Err(cacheErr).Msg("failed to cache torznab torrent payload")
+					log.Warn().Err(cacheErr).Int("indexerID", req.IndexerID).Str("title", req.Title).Msg("failed to cache torznab torrent payload")
 				}
 				s.maybeScheduleTorrentCacheCleanup()
 			}
@@ -1032,6 +1037,8 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 }
 
 // isRetryableDownloadError determines if a download error is worth retrying.
+// Server errors (5xx) and network errors are retried; client errors (4xx) are not.
+// Note: 429 rate limits are handled separately before this check.
 func isRetryableDownloadError(err error) bool {
 	if err == nil {
 		return false
@@ -1039,16 +1046,18 @@ func isRetryableDownloadError(err error) bool {
 
 	var dlErr *DownloadError
 	if errors.As(err, &dlErr) {
-		// Retry on server errors (5xx) but not client errors (4xx except 429 which is handled separately)
 		return dlErr.StatusCode >= 500 && dlErr.StatusCode < 600
 	}
 
-	// Retry on network errors
-	errStr := err.Error()
-	return strings.Contains(errStr, "connection refused") ||
-		strings.Contains(errStr, "connection reset") ||
-		strings.Contains(errStr, "timeout") ||
-		strings.Contains(errStr, "temporary failure")
+	// Check for timeout errors
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+
+	// Check for specific syscall errors (connection refused, reset, etc.)
+	var opErr *net.OpError
+	return errors.As(err, &opErr)
 }
 
 func collectIndexerIDs(indexers []*models.TorznabIndexer) []int {
