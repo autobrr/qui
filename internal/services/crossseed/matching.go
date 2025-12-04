@@ -319,12 +319,54 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		}
 	}
 
+	// Language must match if both are present (FRENCH vs ENGLISH are different audio/subs)
+	if len(source.Language) > 0 && len(candidate.Language) > 0 {
+		sourceLanguage := joinNormalizedSlice(source.Language)
+		candidateLanguage := joinNormalizedSlice(candidate.Language)
+		if sourceLanguage != candidateLanguage {
+			logRejection("language_mismatch", "sourceLanguage", sourceLanguage, "candidateLanguage", candidateLanguage)
+			return false
+		}
+	}
+
+	// Version must match if both are present (v2 often has different files than v1)
+	sourceVersion := s.stringNormalizer.Normalize(source.Version)
+	candidateVersion := s.stringNormalizer.Normalize(candidate.Version)
+	if sourceVersion != "" && candidateVersion != "" && sourceVersion != candidateVersion {
+		logRejection("version_mismatch", "sourceVersion", sourceVersion, "candidateVersion", candidateVersion)
+		return false
+	}
+
+	// Disc must match if both are present (Disc1 vs Disc2 are different content)
+	sourceDisc := s.stringNormalizer.Normalize(source.Disc)
+	candidateDisc := s.stringNormalizer.Normalize(candidate.Disc)
+	if sourceDisc != "" && candidateDisc != "" && sourceDisc != candidateDisc {
+		logRejection("disc_mismatch", "sourceDisc", sourceDisc, "candidateDisc", candidateDisc)
+		return false
+	}
+
+	// Platform must match if both are present (Windows vs macOS are different binaries)
+	sourcePlatform := s.stringNormalizer.Normalize(source.Platform)
+	candidatePlatform := s.stringNormalizer.Normalize(candidate.Platform)
+	if sourcePlatform != "" && candidatePlatform != "" && sourcePlatform != candidatePlatform {
+		logRejection("platform_mismatch", "sourcePlatform", sourcePlatform, "candidatePlatform", candidatePlatform)
+		return false
+	}
+
+	// Architecture must match if both are present (x64 vs x86 are different binaries)
+	sourceArch := s.stringNormalizer.Normalize(source.Arch)
+	candidateArch := s.stringNormalizer.Normalize(candidate.Arch)
+	if sourceArch != "" && candidateArch != "" && sourceArch != candidateArch {
+		logRejection("arch_mismatch", "sourceArch", sourceArch, "candidateArch", candidateArch)
+		return false
+	}
+
 	// Certain variant tags must match for safe cross-seeding.
 	// IMAX/HYBRID always require exact match (different video masters).
 	// REPACK/PROPER require exact match for non-pack content, but season packs
 	// are exempt since a pack might contain a REPACK of just one episode.
-	if !checkVariantsCompatible(source, candidate) {
-		logRejection("variant_mismatch")
+	if compatible, mismatchVariant := checkVariantsCompatible(source, candidate); !compatible {
+		logRejection("variant_mismatch", "mismatchVariant", mismatchVariant)
 		return false
 	}
 
