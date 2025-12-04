@@ -99,6 +99,7 @@ import {
   BrickWallFire,
   ChevronDown,
   ChevronUp,
+  AlertTriangle,
   Columns3,
   EthernetPort,
   Eye,
@@ -785,6 +786,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     setShowRecheckDialog,
     showReannounceDialog,
     setShowReannounceDialog,
+    showTmmDialog,
+    setShowTmmDialog,
+    pendingTmmEnable,
+    showLocationWarningDialog,
+    setShowLocationWarningDialog,
     contextHashes,
     contextTorrents,
     isPending,
@@ -802,6 +808,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     handleSetSpeedLimits,
     handleRecheck,
     handleReannounce,
+    handleTmmConfirm,
+    proceedToLocationDialog,
     prepareDeleteAction,
     prepareTagsAction,
     prepareCategoryAction,
@@ -814,6 +822,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     prepareRenameFolderAction,
     prepareRecheckAction,
     prepareReannounceAction,
+    prepareTmmAction,
   } = useTorrentActions({
     instanceId,
     onActionComplete: (action) => {
@@ -2524,6 +2533,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       onPrepareRenameFolder={prepareRenameFolderAction}
                       onPrepareRecheck={prepareRecheckAction}
                       onPrepareReannounce={prepareReannounceAction}
+                      onPrepareTmm={prepareTmmAction}
                       availableCategories={availableCategories}
                       onSetCategory={handleSetCategoryDirect}
                       isPending={isPending}
@@ -2623,6 +2633,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                     onPrepareRenameFolder={prepareRenameFolderAction}
                     onPrepareRecheck={prepareRecheckAction}
                     onPrepareReannounce={prepareReannounceAction}
+                    onPrepareTmm={prepareTmmAction}
                     availableCategories={availableCategories}
                     onSetCategory={handleSetCategoryDirect}
                     isPending={isPending}
@@ -3087,6 +3098,52 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
             </Button>
             <Button onClick={handleReannounceWrapper} disabled={isPending}>
               Reannounce
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* TMM Confirmation Dialog */}
+      <Dialog open={showTmmDialog} onOpenChange={setShowTmmDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-warning" />
+              {pendingTmmEnable ? "Enable" : "Disable"} TMM for {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?
+            </DialogTitle>
+            <DialogDescription>
+              Automatic Torrent Management will move files based on category settings. This may affect cross-seeded torrents sharing the same data.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTmmDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => handleTmmConfirm(contextHashes)} disabled={isPending}>
+              {pendingTmmEnable ? "Enable" : "Disable"} TMM
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Location Warning Dialog */}
+      <Dialog open={showLocationWarningDialog} onOpenChange={setShowLocationWarningDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-warning" />
+              Set Location for {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?
+            </DialogTitle>
+            <DialogDescription>
+              Changing the save location will move files on disk. This may affect cross-seeded torrents sharing the same data.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowLocationWarningDialog(false)}>
+              Cancel
+            </Button>
+            <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={proceedToLocationDialog} disabled={isPending}>
+              Continue
             </Button>
           </DialogFooter>
         </DialogContent>
