@@ -835,7 +835,32 @@ func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int, callb
 	return nil
 }
 
+// DownloadRateLimitError indicates that a download was blocked due to rate limiting.
+// It includes retry information to help callers decide whether to queue for later.
+type DownloadRateLimitError struct {
+	IndexerID   int
+	IndexerName string
+	ResumeAt    time.Time
+	Queued      bool
+}
+
+func (e *DownloadRateLimitError) Error() string {
+	if e.Queued {
+		return fmt.Sprintf("indexer %s rate-limited, queued for retry at %s", e.IndexerName, e.ResumeAt.Format(time.RFC3339))
+	}
+	return fmt.Sprintf("indexer %s rate-limited until %s", e.IndexerName, e.ResumeAt.Format(time.RFC3339))
+}
+
+// download retry configuration
+const (
+	downloadMaxRetries     = 3
+	downloadInitialBackoff = 2 * time.Second
+	downloadMaxBackoff     = 30 * time.Second
+)
+
 // DownloadTorrent fetches the raw torrent bytes for a specific indexer result.
+// It respects rate limits, retries on transient failures, and records 429 responses
+// in the shared rate limiter to prevent hammering indexers.
 func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadRequest) ([]byte, error) {
 	if req.IndexerID <= 0 {
 		return nil, fmt.Errorf("indexer ID must be positive")
@@ -851,6 +876,7 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 		cacheKey = downloadURL
 	}
 
+	// Check cache first
 	if s.torrentCache != nil {
 		cacheCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		data, ok, err := s.torrentCache.Fetch(cacheCtx, req.IndexerID, cacheKey, defaultTorrentCacheTTL)
@@ -862,9 +888,28 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 		}
 	}
 
+	// Load indexer details
 	indexer, err := s.indexerStore.Get(ctx, req.IndexerID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load indexer %d: %w", req.IndexerID, err)
+	}
+
+	// Check rate limiter before attempting download
+	if s.rateLimiter != nil {
+		if inCooldown, resumeAt := s.rateLimiter.IsInCooldown(req.IndexerID); inCooldown {
+			log.Debug().
+				Int("indexerID", req.IndexerID).
+				Str("indexer", indexer.Name).
+				Time("resumeAt", resumeAt).
+				Str("title", req.Title).
+				Msg("[DOWNLOAD] Skipping download - indexer in rate limit cooldown")
+			return nil, &DownloadRateLimitError{
+				IndexerID:   req.IndexerID,
+				IndexerName: indexer.Name,
+				ResumeAt:    resumeAt,
+				Queued:      false,
+			}
+		}
 	}
 
 	apiKey, err := s.indexerStore.GetDecryptedAPIKey(indexer)
@@ -873,28 +918,137 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 	}
 
 	client := NewClient(indexer.BaseURL, apiKey, indexer.Backend, indexer.TimeoutSeconds)
-	data, err := client.Download(ctx, downloadURL)
-	if err != nil {
-		return nil, fmt.Errorf("torrent download failed: %w", err)
+
+	// Retry loop with exponential backoff
+	var lastErr error
+	backoff := downloadInitialBackoff
+
+	for attempt := 0; attempt <= downloadMaxRetries; attempt++ {
+		if attempt > 0 {
+			log.Debug().
+				Int("indexerID", req.IndexerID).
+				Str("indexer", indexer.Name).
+				Int("attempt", attempt).
+				Dur("backoff", backoff).
+				Str("title", req.Title).
+				Msg("[DOWNLOAD] Retrying download after backoff")
+
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(backoff):
+			}
+
+			// Exponential backoff with cap
+			backoff = time.Duration(float64(backoff) * 2)
+			if backoff > downloadMaxBackoff {
+				backoff = downloadMaxBackoff
+			}
+		}
+
+		data, err := client.Download(ctx, downloadURL)
+		if err == nil {
+			// Success - record in rate limiter and cache
+			if s.rateLimiter != nil {
+				s.rateLimiter.RecordSuccess(req.IndexerID)
+			}
+
+			if s.torrentCache != nil {
+				entry := &models.TorznabTorrentCacheEntry{
+					IndexerID:   req.IndexerID,
+					CacheKey:    cacheKey,
+					GUID:        strings.TrimSpace(req.GUID),
+					DownloadURL: downloadURL,
+					Title:       strings.TrimSpace(req.Title),
+					SizeBytes:   req.Size,
+					TorrentData: data,
+				}
+				if cacheErr := s.torrentCache.Store(ctx, entry); cacheErr != nil {
+					log.Debug().Err(cacheErr).Msg("failed to cache torznab torrent payload")
+				}
+				s.maybeScheduleTorrentCacheCleanup()
+			}
+
+			if attempt > 0 {
+				log.Info().
+					Int("indexerID", req.IndexerID).
+					Str("indexer", indexer.Name).
+					Int("attempts", attempt+1).
+					Str("title", req.Title).
+					Msg("[DOWNLOAD] Download succeeded after retry")
+			}
+
+			return data, nil
+		}
+
+		lastErr = err
+
+		// Check if this is a rate limit error (429)
+		var dlErr *DownloadError
+		if errors.As(err, &dlErr) && dlErr.IsRateLimited() {
+			// Record failure in rate limiter with escalating backoff
+			var cooldown time.Duration
+			if s.rateLimiter != nil {
+				cooldown = s.rateLimiter.RecordFailure(req.IndexerID)
+			} else {
+				cooldown = 5 * time.Minute // fallback
+			}
+			resumeAt := time.Now().Add(cooldown)
+
+			log.Warn().
+				Int("indexerID", req.IndexerID).
+				Str("indexer", indexer.Name).
+				Dur("cooldown", cooldown).
+				Time("resumeAt", resumeAt).
+				Str("title", req.Title).
+				Msg("[DOWNLOAD] Rate limited by indexer - cooldown applied")
+
+			// Persist cooldown if enabled
+			s.persistRateLimitCooldown(req.IndexerID, resumeAt, cooldown, "download_rate_limited")
+
+			return nil, &DownloadRateLimitError{
+				IndexerID:   req.IndexerID,
+				IndexerName: indexer.Name,
+				ResumeAt:    resumeAt,
+				Queued:      false,
+			}
+		}
+
+		// For other errors, check if retryable
+		if !isRetryableDownloadError(err) {
+			break
+		}
+
+		log.Debug().
+			Err(err).
+			Int("indexerID", req.IndexerID).
+			Str("indexer", indexer.Name).
+			Int("attempt", attempt).
+			Str("title", req.Title).
+			Msg("[DOWNLOAD] Download failed with retryable error")
 	}
 
-	if s.torrentCache != nil {
-		entry := &models.TorznabTorrentCacheEntry{
-			IndexerID:   req.IndexerID,
-			CacheKey:    cacheKey,
-			GUID:        strings.TrimSpace(req.GUID),
-			DownloadURL: downloadURL,
-			Title:       strings.TrimSpace(req.Title),
-			SizeBytes:   req.Size,
-			TorrentData: data,
-		}
-		if err := s.torrentCache.Store(ctx, entry); err != nil {
-			log.Debug().Err(err).Msg("failed to cache torznab torrent payload")
-		}
-		s.maybeScheduleTorrentCacheCleanup()
+	return nil, fmt.Errorf("torrent download failed after %d attempts: %w", downloadMaxRetries+1, lastErr)
+}
+
+// isRetryableDownloadError determines if a download error is worth retrying.
+func isRetryableDownloadError(err error) bool {
+	if err == nil {
+		return false
 	}
 
-	return data, nil
+	var dlErr *DownloadError
+	if errors.As(err, &dlErr) {
+		// Retry on server errors (5xx) but not client errors (4xx except 429 which is handled separately)
+		return dlErr.StatusCode >= 500 && dlErr.StatusCode < 600
+	}
+
+	// Retry on network errors
+	errStr := err.Error()
+	return strings.Contains(errStr, "connection refused") ||
+		strings.Contains(errStr, "connection reset") ||
+		strings.Contains(errStr, "timeout") ||
+		strings.Contains(errStr, "temporary failure")
 }
 
 func collectIndexerIDs(indexers []*models.TorznabIndexer) []int {
