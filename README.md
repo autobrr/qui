@@ -400,13 +400,6 @@ Triggers a cross-seed search when torrents finish downloading. Configure in the 
 - **Categories/Tags** - Filter which completed torrents trigger searches
 - **Exclude categories/tags** - Skip torrents matching these filters
 
-**Import timing settings** help when using Sonarr, Radarr, or similar *arr applications:
-
-- **Delay (minutes)** - Wait after completion before searching, giving *arr apps time to import and recategorize
-- **Pre-import categories** - Categories like `sonarr` or `radarr` that indicate pending import. When a torrent's category changes away from these, the search triggers immediately (skipping remaining delay)
-
-Example: Set delay to `5` minutes with `sonarr` and `radarr` as pre-import categories. Searches wait up to 5 minutes, but fire immediately when Sonarr/Radarr recategorizes.
-
 #### Manual Search
 
 Right-click any torrent in the list to access cross-seed actions:
@@ -421,7 +414,7 @@ qui takes a different approach than the [cross-seed](https://github.com/cross-se
 | Aspect | cross-seed | qui |
 |--------|-----------|-----|
 | **File handling** | Creates hardlinks/symlinks to a separate directory | Reuses existing files directly |
-| **AutoTMM** | Disabled (uses explicit save paths) | Inherits from matched torrent |
+| **AutoTMM** | Disabled (uses explicit save paths) | Inherits from matched torrent (unless "Use indexer name as category" is enabled) |
 | **Category** | Uses dedicated `linkCategory` (e.g., "cross-seed-link") | Uses matched torrent's category with `.cross` suffix (configurable) |
 
 ### Global Settings
@@ -436,7 +429,7 @@ Configure matching behavior in the **Global rules** tab on the Cross-Seed page.
 #### Categories
 
 - **Add .cross category suffix** (default: enabled) - Appends `.cross` to cross-seed categories (e.g., `movies` → `movies.cross`). This prevents Sonarr/Radarr from importing cross-seeded files as duplicates, since *arr apps typically monitor specific categories. Disable this for full Automatic Torrent Management (AutoTMM) support where cross-seeds should use identical categories and save paths as the source torrent.
-- **Use indexer name as category** - Set the qBittorrent category to the indexer name instead of inheriting from the matched torrent. Uses explicit save paths (AutoTMM disabled). Mutually exclusive with `.cross` suffix.
+- **Use indexer name as category** - Set the qBittorrent category to the indexer name instead of inheriting from the matched torrent. Uses explicit save paths, so AutoTMM is always disabled for these cross-seeds regardless of the source torrent's AutoTMM state (see [how qui differs from cross-seed](#how-qui-differs-from-cross-seed)). Mutually exclusive with `.cross` suffix.
 
 #### Source Tagging
 
