@@ -122,6 +122,7 @@ import { SelectAllHotkey } from "./SelectAllHotkey"
 import {
   AddTagsDialog,
   CreateAndAssignCategoryDialog,
+  LocationWarningDialog,
   RemoveTagsDialog,
   RenameTorrentDialog,
   RenameTorrentFileDialog,
@@ -130,7 +131,8 @@ import {
   SetLocationDialog,
   SetTagsDialog,
   ShareLimitDialog,
-  SpeedLimitsDialog
+  SpeedLimitsDialog,
+  TmmConfirmDialog
 } from "./TorrentDialogs"
 import { TorrentDropZone } from "./TorrentDropZone"
 import { createColumns, type TableViewMode } from "./TorrentTableColumns"
@@ -785,6 +787,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     setShowRecheckDialog,
     showReannounceDialog,
     setShowReannounceDialog,
+    showTmmDialog,
+    setShowTmmDialog,
+    pendingTmmEnable,
+    showLocationWarningDialog,
+    setShowLocationWarningDialog,
     contextHashes,
     contextTorrents,
     isPending,
@@ -802,6 +809,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     handleSetSpeedLimits,
     handleRecheck,
     handleReannounce,
+    handleTmmConfirm,
+    proceedToLocationDialog,
     prepareDeleteAction,
     prepareTagsAction,
     prepareCategoryAction,
@@ -814,6 +823,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     prepareRenameFolderAction,
     prepareRecheckAction,
     prepareReannounceAction,
+    prepareTmmAction,
   } = useTorrentActions({
     instanceId,
     onActionComplete: (action) => {
@@ -2120,6 +2130,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     )
   }, [handleReannounce, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
+  const handleTmmConfirmWrapper = useCallback(() => {
+    handleTmmConfirm(
+      contextHashes,
+      isAllSelected,
+      selectAllFilters ?? filters,
+      effectiveSearch,
+      Array.from(excludedFromSelectAll),
+      contextClientMeta
+    )
+  }, [handleTmmConfirm, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+
   const handleSetShareLimitWrapper = useCallback((
     ratioLimit: number,
     seedingTimeLimit: number,
@@ -2524,6 +2545,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       onPrepareRenameFolder={prepareRenameFolderAction}
                       onPrepareRecheck={prepareRecheckAction}
                       onPrepareReannounce={prepareReannounceAction}
+                      onPrepareTmm={prepareTmmAction}
                       availableCategories={availableCategories}
                       onSetCategory={handleSetCategoryDirect}
                       isPending={isPending}
@@ -2623,6 +2645,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                     onPrepareRenameFolder={prepareRenameFolderAction}
                     onPrepareRecheck={prepareRecheckAction}
                     onPrepareReannounce={prepareReannounceAction}
+                    onPrepareTmm={prepareTmmAction}
                     availableCategories={availableCategories}
                     onSetCategory={handleSetCategoryDirect}
                     isPending={isPending}
@@ -3091,6 +3114,25 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* TMM Confirmation Dialog */}
+      <TmmConfirmDialog
+        open={showTmmDialog}
+        onOpenChange={setShowTmmDialog}
+        count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+        enable={pendingTmmEnable}
+        onConfirm={handleTmmConfirmWrapper}
+        isPending={isPending}
+      />
+
+      {/* Location Warning Dialog */}
+      <LocationWarningDialog
+        open={showLocationWarningDialog}
+        onOpenChange={setShowLocationWarningDialog}
+        count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+        onConfirm={proceedToLocationDialog}
+        isPending={isPending}
+      />
 
       {/* Instance Preferences Dialog */}
       {instance && (

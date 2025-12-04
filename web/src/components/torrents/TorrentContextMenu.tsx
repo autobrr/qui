@@ -67,7 +67,8 @@ interface TorrentContextMenuProps {
   onPrepareSpeedLimits: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareRecheck: (hashes: string[], count?: number) => void
   onPrepareReannounce: (hashes: string[], count?: number) => void
-  onPrepareLocation: (hashes: string[], torrents?: Torrent[]) => void
+  onPrepareLocation: (hashes: string[], torrents?: Torrent[], count?: number) => void
+  onPrepareTmm?: (hashes: string[], count: number, enable: boolean) => void
   onPrepareRenameTorrent: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareRenameFile: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareRenameFolder: (hashes: string[], torrents?: Torrent[]) => void
@@ -105,6 +106,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   onPrepareRenameTorrent,
   onPrepareRenameFile: _onPrepareRenameFile,
   onPrepareRenameFolder: _onPrepareRenameFolder,
+  onPrepareTmm,
   availableCategories = {},
   onSetCategory,
   isPending = false,
@@ -240,6 +242,18 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     }
   }, [onSetCategory, hashes])
 
+  const handleTmmToggle = useCallback((enable: boolean) => {
+    if (onPrepareTmm) {
+      onPrepareTmm(hashes, count, enable)
+    } else {
+      onAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, hashes, { enable })
+    }
+  }, [onPrepareTmm, onAction, hashes, count])
+
+  const handleLocationClick = useCallback(() => {
+    onPrepareLocation(hashes, torrents, count)
+  }, [onPrepareLocation, hashes, torrents, count])
+
   const supportsTorrentExport = capabilities?.supportsTorrentExport ?? true
 
   return (
@@ -369,7 +383,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           useSubcategories={useSubcategories}
         />
         <ContextMenuItem
-          onClick={() => onPrepareLocation(hashes, torrents)}
+          onClick={handleLocationClick}
           disabled={isPending}
         >
           <FolderOpen className="mr-2 h-4 w-4" />
@@ -403,14 +417,14 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
         {mixed ? (
           <>
             <ContextMenuItem
-              onClick={() => onAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, hashes, { enable: true })}
+              onClick={() => handleTmmToggle(true)}
               disabled={isPending}
             >
               <Sparkles className="mr-2 h-4 w-4" />
               Enable TMM {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
             </ContextMenuItem>
             <ContextMenuItem
-              onClick={() => onAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, hashes, { enable: false })}
+              onClick={() => handleTmmToggle(false)}
               disabled={isPending}
             >
               <Settings2 className="mr-2 h-4 w-4" />
@@ -419,7 +433,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           </>
         ) : (
           <ContextMenuItem
-            onClick={() => onAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, hashes, { enable: !allEnabled })}
+            onClick={() => handleTmmToggle(!allEnabled)}
             disabled={isPending}
           >
             {allEnabled ? (

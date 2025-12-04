@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -48,13 +47,16 @@ import {
   Trash2
 } from "lucide-react"
 import { memo, useCallback, useMemo } from "react"
+import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import {
   AddTagsDialog,
+  LocationWarningDialog,
   SetCategoryDialog,
   SetLocationDialog,
   SetTagsDialog,
   ShareLimitDialog,
-  SpeedLimitsDialog
+  SpeedLimitsDialog,
+  TmmConfirmDialog
 } from "./TorrentDialogs"
 
 interface TorrentManagementBarProps {
@@ -131,6 +133,11 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     setShowRecheckDialog,
     showReannounceDialog,
     setShowReannounceDialog,
+    showTmmDialog,
+    setShowTmmDialog,
+    pendingTmmEnable,
+    showLocationWarningDialog,
+    setShowLocationWarningDialog,
     isPending,
     handleAction,
     handleDelete,
@@ -142,6 +149,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     handleSetSpeedLimits,
     handleRecheck,
     handleReannounce,
+    handleTmmConfirm,
+    proceedToLocationDialog,
     prepareDeleteAction,
     prepareTagsAction,
     prepareCategoryAction,
@@ -150,6 +159,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     prepareLocationAction,
     prepareRecheckAction,
     prepareReannounceAction,
+    prepareTmmAction,
   } = useTorrentActions({
     instanceId: safeInstanceId,
     onActionComplete: (action) => {
@@ -347,6 +357,22 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       clientMeta
     )
   }, [handleSetSpeedLimits, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
+
+  const handleTmmClick = useCallback((enable: boolean) => {
+    const count = totalSelectionCount || selectedHashes.length
+    prepareTmmAction(selectedHashes, count, enable)
+  }, [totalSelectionCount, selectedHashes, prepareTmmAction])
+
+  const handleTmmConfirmWrapper = useCallback(() => {
+    handleTmmConfirm(
+      selectedHashes,
+      isAllSelected,
+      filters,
+      search,
+      excludeHashes,
+      clientMeta
+    )
+  }, [handleTmmConfirm, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
 
   const hasSelection = selectionCount > 0 || isAllSelected
   const isDisabled = !safeInstanceId || !hasSelection
@@ -583,7 +609,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => triggerAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, { enable: !allEnabled })}
+                    onClick={() => handleTmmClick(!allEnabled)}
                     disabled={isPending || isDisabled}
                   >
                     <Settings2 className="h-4 w-4" />
@@ -738,6 +764,25 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* TMM Confirmation Dialog */}
+      <TmmConfirmDialog
+        open={showTmmDialog}
+        onOpenChange={setShowTmmDialog}
+        count={totalSelectionCount || selectedHashes.length}
+        enable={pendingTmmEnable}
+        onConfirm={handleTmmConfirmWrapper}
+        isPending={isPending}
+      />
+
+      {/* Location Warning Dialog */}
+      <LocationWarningDialog
+        open={showLocationWarningDialog}
+        onOpenChange={setShowLocationWarningDialog}
+        count={totalSelectionCount || selectedHashes.length}
+        onConfirm={proceedToLocationDialog}
+        isPending={isPending}
+      />
     </>
   )
 })

@@ -563,6 +563,33 @@ When `/check` returns `200 OK`, send the torrent to `/api/cross-seed/apply`:
 
 Cross-seeded torrents are added paused with `skip_checking=true`. qui polls the torrent state and auto-resumes if progress meets the size tolerance threshold. If progress is too low, it remains paused for manual review.
 
+### Troubleshooting
+
+#### Why didn't my cross-seed get added?
+
+**Rate limiting (HTTP 429):** Indexers limit how frequently you can make requests. If you see errors like `"indexer TorrentLeech rate-limited until..."`, qui has recorded the cooldown and will skip that indexer until it's available. Check the **Scheduler Activity** panel on the Indexers page to see which indexers are in cooldown and when they'll be ready.
+
+**Release didn't match:** qui uses strict matching to ensure cross-seeds have identical files. Both releases must match on:
+- Title, year, and release group
+- Resolution (1080p, 2160p)
+- Source (WEB-DL, BluRay) and collection (AMZN, NF)
+- Codec (x264, x265) and HDR format
+- Audio format and channels
+- Language, edition, cut, and version (v2, v3)
+- Variants like IMAX, HYBRID, REPACK, PROPER
+
+**Season pack vs episodes:** By default, season packs only match other season packs. Enable **Find individual episodes** in settings to allow season packs to match individual episode releases.
+
+#### How do I see why a release was filtered?
+
+Enable trace logging to see detailed rejection reasons:
+
+```toml
+loglevel = 'TRACE'
+```
+
+Look for `[CROSSSEED-MATCH] Release filtered` entries showing exactly which field caused the mismatch (e.g., `group_mismatch`, `resolution_mismatch`, `language_mismatch`).
+
 ## Reverse Proxy for External Applications
 
 qui includes a built-in reverse proxy that allows external applications like autobrr, Sonarr, Radarr, and other tools to connect to your qBittorrent instances **without needing qBittorrent credentials**. qui handles authentication transparently, making integration seamless.
@@ -785,6 +812,7 @@ qui automatically detects the features available on each qBittorrent instance an
 | **File Priority Controls** | 4.1.5+ (Web API 2.2.0+) | Enable/disable files and adjust download priority levels |
 | **Rename File** | 4.2.1+ (Web API 2.4.0+) | Rename individual files within torrents |
 | **Rename Folder** | 4.3.3+ (Web API 2.7.0+) | Rename folders within torrents |
+| **Per-Torrent Temporary Download Path** | 4.4.0+ (Web API 2.8.4+) | A custom temporary download path may be set when adding torrents |
 | **Torrent Export (.torrent download)** | 4.5.0+ (Web API 2.8.11+) | Download .torrent files via `/api/v2/torrents/export`; first appeared in 4.5.0beta1 |
 | **Backups (.torrent archive export)** | 4.5.0+ (Web API 2.8.11+) | qui backups rely on `/torrents/export`; the backup UI is hidden when the endpoint is unavailable |
 | **Subcategories** | 4.6.0+ (Web API 2.9.0+) | Support for nested category structures (e.g., `Movies/Action`) |
