@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -94,12 +95,13 @@ func addTorrentWithIndexer(
 ) (addedCount int, failedCount int, lastError error) {
 	if indexerID > 0 && jackettService != nil {
 		for _, url := range urls {
+			url = strings.TrimSpace(url)
 			if url == "" {
 				continue
 			}
 
 			// Magnet links can be added directly to qBittorrent
-			if len(url) > 7 && (url[:7] == "magnet:" || url[:7] == "MAGNET:") {
+			if strings.HasPrefix(strings.ToLower(url), "magnet:") {
 				if err := syncManager.AddTorrentFromURLs(ctx, instanceID, []string{url}, options); err != nil {
 					failedCount++
 					lastError = err
@@ -691,4 +693,177 @@ func BenchmarkAddTorrentWithIndexer(b *testing.B) {
 		mockJackett.downloadTorrentCalls = nil
 		_, _, _ = addTorrentWithIndexer(ctx, mockSync, mockJackett, 1, urls, 42, options)
 	}
+}
+
+// =============================================================================
+// HTTP Handler Integration Tests
+// =============================================================================
+// These tests exercise the actual TorrentsHandler.AddTorrent method to verify
+// error handling and response behavior matches the handler implementation.
+
+// TestAddTorrentHandler_InvalidIndexerID_Returns400 verifies that providing
+// an invalid (non-integer) indexer_id returns a 400 Bad Request error.
+func TestAddTorrentHandler_InvalidIndexerID_Returns400(t *testing.T) {
+	t.Parallel()
+
+	// Create handler with nil dependencies - we won't reach them due to early return
+	handler := NewTorrentsHandler(nil, nil)
+
+	// Create multipart form with invalid indexer_id
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.WriteField("urls", "http://example.com/torrent.torrent")
+	_ = writer.WriteField("indexer_id", "not-a-number")
+	_ = writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/instances/1/torrents", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	// Add chi route context
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("instanceID", "1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+	handler.AddTorrent(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "Invalid indexer_id")
+	assert.Contains(t, w.Body.String(), "not-a-number")
+}
+
+// TestAddTorrentHandler_NegativeIndexerID_Returns400 verifies that providing
+// a negative indexer_id returns a 400 Bad Request error.
+func TestAddTorrentHandler_NegativeIndexerID_Returns400(t *testing.T) {
+	t.Parallel()
+
+	handler := NewTorrentsHandler(nil, nil)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.WriteField("urls", "http://example.com/torrent.torrent")
+	_ = writer.WriteField("indexer_id", "-5")
+	_ = writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/instances/1/torrents", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("instanceID", "1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+	handler.AddTorrent(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "must be a positive integer")
+}
+
+// TestAddTorrentHandler_ZeroIndexerID_Returns400 verifies that providing
+// indexer_id=0 returns a 400 Bad Request error.
+func TestAddTorrentHandler_ZeroIndexerID_Returns400(t *testing.T) {
+	t.Parallel()
+
+	handler := NewTorrentsHandler(nil, nil)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.WriteField("urls", "http://example.com/torrent.torrent")
+	_ = writer.WriteField("indexer_id", "0")
+	_ = writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/instances/1/torrents", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("instanceID", "1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+	handler.AddTorrent(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "must be a positive integer")
+}
+
+// TestAddTorrentHandler_JackettServiceUnavailable_Returns503 verifies that
+// providing a valid indexer_id when jackett service is nil returns 503.
+func TestAddTorrentHandler_JackettServiceUnavailable_Returns503(t *testing.T) {
+	t.Parallel()
+
+	// Create handler with nil jackettService but valid syncManager
+	// We need a non-nil syncManager to get past the URL processing,
+	// but jackettService is nil to trigger the 503
+	handler := NewTorrentsHandler(nil, nil)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.WriteField("urls", "http://example.com/torrent.torrent")
+	_ = writer.WriteField("indexer_id", "42")
+	_ = writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/instances/1/torrents", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("instanceID", "1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+	handler.AddTorrent(w, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	assert.Contains(t, w.Body.String(), "Indexer service is not available")
+}
+
+// TestAddTorrentHandler_NoURLsOrFiles_Returns400 verifies that providing
+// neither URLs nor files returns a 400 Bad Request error.
+func TestAddTorrentHandler_NoURLsOrFiles_Returns400(t *testing.T) {
+	t.Parallel()
+
+	handler := NewTorrentsHandler(nil, nil)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	// Don't add urls or torrent files
+	_ = writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/instances/1/torrents", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("instanceID", "1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+	handler.AddTorrent(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "Either torrent files or URLs are required")
+}
+
+// TestAddTorrentHandler_InvalidInstanceID_Returns400 verifies that providing
+// an invalid instance ID in the URL returns a 400 Bad Request error.
+func TestAddTorrentHandler_InvalidInstanceID_Returns400(t *testing.T) {
+	t.Parallel()
+
+	handler := NewTorrentsHandler(nil, nil)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.WriteField("urls", "http://example.com/torrent.torrent")
+	_ = writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/instances/invalid/torrents", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("instanceID", "invalid")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+	handler.AddTorrent(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "Invalid instance ID")
 }

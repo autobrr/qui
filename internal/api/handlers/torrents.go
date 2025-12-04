@@ -298,8 +298,14 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 			var err error
 			indexerID, err = strconv.Atoi(indexerIDStr)
 			if err != nil {
-				log.Warn().Str("indexer_id", indexerIDStr).Msg("Invalid indexer_id, ignoring")
-				indexerID = 0
+				log.Error().Err(err).Str("indexer_id", indexerIDStr).Msg("Invalid indexer_id provided")
+				RespondError(w, http.StatusBadRequest, fmt.Sprintf("Invalid indexer_id: %q is not a valid integer", indexerIDStr))
+				return
+			}
+			if indexerID <= 0 {
+				log.Error().Int("indexer_id", indexerID).Msg("Invalid indexer_id: must be positive")
+				RespondError(w, http.StatusBadRequest, "Invalid indexer_id: must be a positive integer")
+				return
 			}
 		}
 	}
@@ -409,10 +415,15 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Track results for multiple files
+	// Track results for multiple files/URLs
 	var addedCount int
 	var failedCount int
 	var lastError error
+	type failedURL struct {
+		URL   string `json:"url"`
+		Error string `json:"error"`
+	}
+	var failedURLs []failedURL
 
 	// Add torrent(s)
 	if len(torrentFiles) > 0 {
@@ -437,12 +448,21 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if len(urls) > 0 {
 		// Add from URLs
-		// If indexer_id is provided and jackettService is available, download torrent files
-		// from the indexer first (needed for remote qBittorrent instances that can't reach the indexer)
-		if indexerID > 0 && h.jackettService != nil {
+		// If indexer_id is provided, download torrent files from the indexer first
+		// (needed for remote qBittorrent instances that can't reach the indexer)
+		if indexerID > 0 {
+			if h.jackettService == nil {
+				log.Error().Int("indexerID", indexerID).Int("instanceID", instanceID).
+					Msg("Indexer download requested but jackett service is not available")
+				RespondError(w, http.StatusServiceUnavailable,
+					"Indexer service is not available. Configure an indexer or remove indexer_id to use direct URL method.")
+				return
+			}
+			var skippedEmpty int
 			for _, url := range urls {
 				url = strings.TrimSpace(url)
 				if url == "" {
+					skippedEmpty++
 					continue
 				}
 
@@ -459,6 +479,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 							return
 						}
 						log.Error().Err(err).Int("instanceID", instanceID).Str("url", url).Msg("Failed to add magnet link")
+						failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
 						failedCount++
 						lastError = err
 					} else {
@@ -473,7 +494,8 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					DownloadURL: url,
 				})
 				if err != nil {
-					log.Error().Err(err).Int("indexerID", indexerID).Str("url", url).Msg("Failed to download torrent from indexer")
+					log.Error().Err(err).Int("indexerID", indexerID).Int("instanceID", instanceID).Str("url", url).Msg("Failed to download torrent from indexer")
+					failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
 					failedCount++
 					lastError = err
 					continue
@@ -484,15 +506,20 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
 						return
 					}
-					log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to add downloaded torrent")
+					log.Error().Err(err).Int("instanceID", instanceID).Int("indexerID", indexerID).Str("url", url).Msg("Failed to add downloaded torrent")
+					failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
 					failedCount++
 					lastError = err
 				} else {
 					addedCount++
 				}
 			}
+			if skippedEmpty > 0 {
+				log.Debug().Int("skippedEmpty", skippedEmpty).Int("instanceID", instanceID).
+					Msg("Skipped empty URLs in add torrent request")
+			}
 		} else {
-			// No indexer_id or no jackett service - use URL method directly
+			// No indexer_id - use URL method directly
 			// (works for local qBittorrent instances or magnet links)
 			if err := h.syncManager.AddTorrentFromURLs(ctx, instanceID, urls, options); err != nil {
 				if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
@@ -526,11 +553,15 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		message = "Torrent added successfully"
 	}
 
-	RespondJSON(w, http.StatusCreated, map[string]any{
+	response := map[string]any{
 		"message": message,
 		"added":   addedCount,
 		"failed":  failedCount,
-	})
+	}
+	if len(failedURLs) > 0 {
+		response["failedURLs"] = failedURLs
+	}
+	RespondJSON(w, http.StatusCreated, response)
 }
 
 // BulkActionRequest represents a bulk action request
