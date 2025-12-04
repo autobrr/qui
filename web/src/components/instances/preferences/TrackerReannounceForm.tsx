@@ -302,7 +302,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                         id="max-retries"
                         label="Max Retries"
                         description="Retry attempts per torrent"
-                        tooltip="Maximum number of reannounce attempts for a single torrent before giving up. Some slow trackers may need up to 50 retries (at 7s intervals = ~6 minutes). Range: 1-50."
+                        tooltip="Maximum consecutive retries within a single scan cycle. Each scan can retry up to this many times before waiting for the next cycle. Some slow trackers may need up to 50 retries (at 7s intervals = ~6 minutes). Range: 1-50."
                         min={MIN_MAX_RETRIES}
                         max={MAX_MAX_RETRIES}
                         value={settings.maxRetries}
