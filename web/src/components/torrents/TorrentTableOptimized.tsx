@@ -2805,19 +2805,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
-            {effectiveServerState?.free_space_on_disk !== undefined && effectiveServerState.free_space_on_disk > 0 && (
-              <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="flex items-center h-6 px-2 text-xs text-muted-foreground">
-                      <HardDrive  aria-hidden="true" className="h-3 w-3 mr-1"/>
-                      <span className="ml-auto font-medium truncate">{formatBytes(effectiveServerState.free_space_on_disk)}</span>
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>Free Space</TooltipContent>
-                </Tooltip>
-              </div>
-            )}
             <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
               <ChevronDown className="h-3 w-3 text-muted-foreground"/>
               <span className="font-medium">{formatSpeedWithUnit(stats?.totalDownloadSpeed ?? 0, speedUnit)}</span>
@@ -2925,6 +2912,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                 </span>
               </Button>
             </div>
+            {effectiveServerState?.free_space_on_disk !== undefined && effectiveServerState.free_space_on_disk > 0 && (
+              <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="flex items-center h-6 px-2 text-xs text-muted-foreground">
+                      <HardDrive  aria-hidden="true" className="h-3 w-3 mr-1"/>
+                      <span className="ml-auto font-medium truncate">{formatBytes(effectiveServerState.free_space_on_disk)}</span>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>Free Space</TooltipContent>
+                </Tooltip>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <ExternalIPAddress
                 address={effectiveServerState?.last_external_address_v4}
