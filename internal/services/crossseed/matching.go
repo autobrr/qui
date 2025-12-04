@@ -91,11 +91,34 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		return true
 	}
 
+	// Helper to log rejection at trace level
+	logRejection := func(reason string, extra ...any) {
+		event := log.Trace().
+			Str("sourceTitle", source.Title).
+			Str("candidateTitle", candidate.Title).
+			Str("reason", reason)
+		// Add extra fields in pairs
+		for i := 0; i+1 < len(extra); i += 2 {
+			if key, ok := extra[i].(string); ok {
+				switch v := extra[i+1].(type) {
+				case string:
+					event = event.Str(key, v)
+				case int:
+					event = event.Int(key, v)
+				case bool:
+					event = event.Bool(key, v)
+				}
+			}
+		}
+		event.Msg("[CROSSSEED-MATCH] Release filtered")
+	}
+
 	// Title should match closely but not necessarily exactly.
 	sourceTitleLower := s.stringNormalizer.Normalize(source.Title)
 	candidateTitleLower := s.stringNormalizer.Normalize(candidate.Title)
 
 	if sourceTitleLower == "" || candidateTitleLower == "" {
+		logRejection("empty_title", "sourceNormalized", sourceTitleLower, "candidateNormalized", candidateTitleLower)
 		return false
 	}
 
@@ -107,6 +130,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		if sourceTitleLower != candidateTitleLower &&
 			!strings.Contains(sourceTitleLower, candidateTitleLower) &&
 			!strings.Contains(candidateTitleLower, sourceTitleLower) {
+			logRejection("tv_title_mismatch", "sourceNormalized", sourceTitleLower, "candidateNormalized", candidateTitleLower)
 			return false
 		}
 	} else {
@@ -114,6 +138,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		// match after normalization. This avoids very loose substring matches across
 		// unrelated content types.
 		if sourceTitleLower != candidateTitleLower {
+			logRejection("movie_title_mismatch", "sourceNormalized", sourceTitleLower, "candidateNormalized", candidateTitleLower)
 			return false
 		}
 	}
@@ -124,12 +149,14 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		sourceArtist := s.stringNormalizer.Normalize(source.Artist)
 		candidateArtist := s.stringNormalizer.Normalize(candidate.Artist)
 		if sourceArtist != candidateArtist {
+			logRejection("artist_mismatch", "sourceArtist", sourceArtist, "candidateArtist", candidateArtist)
 			return false
 		}
 	}
 
 	// Year should match if both are present.
 	if source.Year > 0 && candidate.Year > 0 && source.Year != candidate.Year {
+		logRejection("year_mismatch", "sourceYear", source.Year, "candidateYear", candidate.Year)
 		return false
 	}
 
@@ -138,6 +165,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	if source.Year > 0 && source.Month > 0 && source.Day > 0 &&
 		candidate.Year > 0 && candidate.Month > 0 && candidate.Day > 0 {
 		if source.Month != candidate.Month || source.Day != candidate.Day {
+			logRejection("date_mismatch", "sourceDate", fmt.Sprintf("%d-%02d-%02d", source.Year, source.Month, source.Day), "candidateDate", fmt.Sprintf("%d-%02d-%02d", candidate.Year, candidate.Month, candidate.Day))
 			return false
 		}
 	}
@@ -146,6 +174,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	// audiobook, etc.), require the types to match. This prevents, for example,
 	// music releases from matching audiobooks with similar titles.
 	if !isTV && source.Type != 0 && candidate.Type != 0 && source.Type != candidate.Type {
+		logRejection("content_type_mismatch", "sourceType", int(source.Type), "candidateType", int(candidate.Type))
 		return false
 	}
 
@@ -153,14 +182,17 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	if source.Series > 0 || candidate.Series > 0 {
 		// Both must have series info if either does
 		if source.Series > 0 && candidate.Series == 0 {
+			logRejection("missing_series_info", "sourceSeries", source.Series, "candidateSeries", candidate.Series)
 			return false
 		}
 		if candidate.Series > 0 && source.Series == 0 {
+			logRejection("missing_series_info", "sourceSeries", source.Series, "candidateSeries", candidate.Series)
 			return false
 		}
 
 		// Series numbers must match
 		if source.Series > 0 && candidate.Series > 0 && source.Series != candidate.Series {
+			logRejection("season_mismatch", "sourceSeries", source.Series, "candidateSeries", candidate.Series)
 			return false
 		}
 
@@ -171,17 +203,20 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		if !findIndividualEpisodes {
 			// Strict matching: season packs only match season packs, episodes only match episodes
 			if sourceIsPack != candidateIsPack {
-				return false // Don't match season packs with individual episodes
+				logRejection("pack_vs_episode_mismatch", "sourceIsPack", sourceIsPack, "candidateIsPack", candidateIsPack)
+				return false
 			}
 
 			// If both are individual episodes, episodes must match
 			if !sourceIsPack && !candidateIsPack && source.Episode != candidate.Episode {
+				logRejection("episode_mismatch", "sourceEpisode", source.Episode, "candidateEpisode", candidate.Episode)
 				return false
 			}
 		} else {
 			// Flexible matching: allow season packs to match individual episodes
 			// But individual episodes still need exact episode matching
 			if !sourceIsPack && !candidateIsPack && source.Episode != candidate.Episode {
+				logRejection("episode_mismatch", "sourceEpisode", source.Episode, "candidateEpisode", candidate.Episode)
 				return false
 			}
 		}
@@ -196,6 +231,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	if sourceGroup != "" {
 		// If source has a group, candidate must have the same group
 		if candidateGroup == "" || sourceGroup != candidateGroup {
+			logRejection("group_mismatch", "sourceGroup", sourceGroup, "candidateGroup", candidateGroup)
 			return false
 		}
 	}
@@ -205,6 +241,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	sourceSource := s.stringNormalizer.Normalize((source.Source))
 	candidateSource := s.stringNormalizer.Normalize((candidate.Source))
 	if sourceSource != "" && candidateSource != "" && sourceSource != candidateSource {
+		logRejection("source_mismatch", "sourceSource", sourceSource, "candidateSource", candidateSource)
 		return false
 	}
 
@@ -212,6 +249,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	sourceRes := s.stringNormalizer.Normalize((source.Resolution))
 	candidateRes := s.stringNormalizer.Normalize((candidate.Resolution))
 	if sourceRes != "" && candidateRes != "" && sourceRes != candidateRes {
+		logRejection("resolution_mismatch", "sourceRes", sourceRes, "candidateRes", candidateRes)
 		return false
 	}
 
@@ -219,6 +257,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	sourceCollection := s.stringNormalizer.Normalize((source.Collection))
 	candidateCollection := s.stringNormalizer.Normalize((candidate.Collection))
 	if sourceCollection != "" && candidateCollection != "" && sourceCollection != candidateCollection {
+		logRejection("collection_mismatch", "sourceCollection", sourceCollection, "candidateCollection", candidateCollection)
 		return false
 	}
 
@@ -227,6 +266,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		sourceCodec := joinNormalizedSlice(source.Codec)
 		candidateCodec := joinNormalizedSlice(candidate.Codec)
 		if sourceCodec != candidateCodec {
+			logRejection("codec_mismatch", "sourceCodec", sourceCodec, "candidateCodec", candidateCodec)
 			return false
 		}
 	}
@@ -236,6 +276,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		sourceHDR := joinNormalizedSlice(source.HDR)
 		candidateHDR := joinNormalizedSlice(candidate.HDR)
 		if sourceHDR != candidateHDR {
+			logRejection("hdr_mismatch", "sourceHDR", sourceHDR, "candidateHDR", candidateHDR)
 			return false
 		}
 	}
@@ -245,6 +286,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		sourceAudio := joinNormalizedSlice(source.Audio)
 		candidateAudio := joinNormalizedSlice(candidate.Audio)
 		if sourceAudio != candidateAudio {
+			logRejection("audio_mismatch", "sourceAudio", sourceAudio, "candidateAudio", candidateAudio)
 			return false
 		}
 	}
@@ -253,6 +295,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	sourceChannels := s.stringNormalizer.Normalize((source.Channels))
 	candidateChannels := s.stringNormalizer.Normalize((candidate.Channels))
 	if sourceChannels != "" && candidateChannels != "" && sourceChannels != candidateChannels {
+		logRejection("channels_mismatch", "sourceChannels", sourceChannels, "candidateChannels", candidateChannels)
 		return false
 	}
 
@@ -261,6 +304,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		sourceCut := joinNormalizedSlice(source.Cut)
 		candidateCut := joinNormalizedSlice(candidate.Cut)
 		if sourceCut != candidateCut {
+			logRejection("cut_mismatch", "sourceCut", sourceCut, "candidateCut", candidateCut)
 			return false
 		}
 	}
@@ -270,15 +314,59 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		sourceEdition := joinNormalizedSlice(source.Edition)
 		candidateEdition := joinNormalizedSlice(candidate.Edition)
 		if sourceEdition != candidateEdition {
+			logRejection("edition_mismatch", "sourceEdition", sourceEdition, "candidateEdition", candidateEdition)
 			return false
 		}
+	}
+
+	// Language must match if both are present (FRENCH vs ENGLISH are different audio/subs)
+	if len(source.Language) > 0 && len(candidate.Language) > 0 {
+		sourceLanguage := joinNormalizedSlice(source.Language)
+		candidateLanguage := joinNormalizedSlice(candidate.Language)
+		if sourceLanguage != candidateLanguage {
+			logRejection("language_mismatch", "sourceLanguage", sourceLanguage, "candidateLanguage", candidateLanguage)
+			return false
+		}
+	}
+
+	// Version must match if both are present (v2 often has different files than v1)
+	sourceVersion := s.stringNormalizer.Normalize(source.Version)
+	candidateVersion := s.stringNormalizer.Normalize(candidate.Version)
+	if sourceVersion != "" && candidateVersion != "" && sourceVersion != candidateVersion {
+		logRejection("version_mismatch", "sourceVersion", sourceVersion, "candidateVersion", candidateVersion)
+		return false
+	}
+
+	// Disc must match if both are present (Disc1 vs Disc2 are different content)
+	sourceDisc := s.stringNormalizer.Normalize(source.Disc)
+	candidateDisc := s.stringNormalizer.Normalize(candidate.Disc)
+	if sourceDisc != "" && candidateDisc != "" && sourceDisc != candidateDisc {
+		logRejection("disc_mismatch", "sourceDisc", sourceDisc, "candidateDisc", candidateDisc)
+		return false
+	}
+
+	// Platform must match if both are present (Windows vs macOS are different binaries)
+	sourcePlatform := s.stringNormalizer.Normalize(source.Platform)
+	candidatePlatform := s.stringNormalizer.Normalize(candidate.Platform)
+	if sourcePlatform != "" && candidatePlatform != "" && sourcePlatform != candidatePlatform {
+		logRejection("platform_mismatch", "sourcePlatform", sourcePlatform, "candidatePlatform", candidatePlatform)
+		return false
+	}
+
+	// Architecture must match if both are present (x64 vs x86 are different binaries)
+	sourceArch := s.stringNormalizer.Normalize(source.Arch)
+	candidateArch := s.stringNormalizer.Normalize(candidate.Arch)
+	if sourceArch != "" && candidateArch != "" && sourceArch != candidateArch {
+		logRejection("arch_mismatch", "sourceArch", sourceArch, "candidateArch", candidateArch)
+		return false
 	}
 
 	// Certain variant tags must match for safe cross-seeding.
 	// IMAX/HYBRID always require exact match (different video masters).
 	// REPACK/PROPER require exact match for non-pack content, but season packs
 	// are exempt since a pack might contain a REPACK of just one episode.
-	if !checkVariantsCompatible(source, candidate) {
+	if compatible, mismatchVariant := checkVariantsCompatible(source, candidate); !compatible {
+		logRejection("variant_mismatch", "mismatchVariant", mismatchVariant)
 		return false
 	}
 

@@ -38,18 +38,17 @@ type automationSettingsRequest struct {
 	FindIndividualEpisodes       bool                       `json:"findIndividualEpisodes"`
 	SizeMismatchTolerancePercent float64                    `json:"sizeMismatchTolerancePercent"`
 	UseCategoryFromIndexer       bool                       `json:"useCategoryFromIndexer"`
+	UseCrossCategorySuffix       bool                       `json:"useCrossCategorySuffix"`
 	RunExternalProgramID         *int                       `json:"runExternalProgramId"`
 	Completion                   *completionSettingsRequest `json:"completion"`
 }
 
 type completionSettingsRequest struct {
-	Enabled             bool     `json:"enabled"`
-	Categories          []string `json:"categories"`
-	Tags                []string `json:"tags"`
-	ExcludeCategories   []string `json:"excludeCategories"`
-	ExcludeTags         []string `json:"excludeTags"`
-	DelayMinutes        int      `json:"delayMinutes"`
-	PreImportCategories []string `json:"preImportCategories"`
+	Enabled           bool     `json:"enabled"`
+	Categories        []string `json:"categories"`
+	Tags              []string `json:"tags"`
+	ExcludeCategories []string `json:"excludeCategories"`
+	ExcludeTags       []string `json:"excludeTags"`
 }
 
 type automationSettingsPatchRequest struct {
@@ -64,6 +63,7 @@ type automationSettingsPatchRequest struct {
 	FindIndividualEpisodes       *bool                           `json:"findIndividualEpisodes,omitempty"`
 	SizeMismatchTolerancePercent *float64                        `json:"sizeMismatchTolerancePercent,omitempty"`
 	UseCategoryFromIndexer       *bool                           `json:"useCategoryFromIndexer,omitempty"`
+	UseCrossCategorySuffix       *bool                           `json:"useCrossCategorySuffix,omitempty"`
 	RunExternalProgramID         optionalInt                     `json:"runExternalProgramId"`
 	Completion                   *completionSettingsPatchRequest `json:"completion,omitempty"`
 	// Source-specific tagging
@@ -75,13 +75,11 @@ type automationSettingsPatchRequest struct {
 }
 
 type completionSettingsPatchRequest struct {
-	Enabled             *bool     `json:"enabled,omitempty"`
-	Categories          *[]string `json:"categories,omitempty"`
-	Tags                *[]string `json:"tags,omitempty"`
-	ExcludeCategories   *[]string `json:"excludeCategories,omitempty"`
-	ExcludeTags         *[]string `json:"excludeTags,omitempty"`
-	DelayMinutes        *int      `json:"delayMinutes,omitempty"`
-	PreImportCategories *[]string `json:"preImportCategories,omitempty"`
+	Enabled           *bool     `json:"enabled,omitempty"`
+	Categories        *[]string `json:"categories,omitempty"`
+	Tags              *[]string `json:"tags,omitempty"`
+	ExcludeCategories *[]string `json:"excludeCategories,omitempty"`
+	ExcludeTags       *[]string `json:"excludeTags,omitempty"`
 }
 
 type optionalString struct {
@@ -152,6 +150,7 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.FindIndividualEpisodes == nil &&
 		r.SizeMismatchTolerancePercent == nil &&
 		r.UseCategoryFromIndexer == nil &&
+		r.UseCrossCategorySuffix == nil &&
 		!r.RunExternalProgramID.Set &&
 		(r.Completion == nil || r.Completion.isEmpty()) &&
 		r.RSSAutomationTags == nil &&
@@ -166,9 +165,7 @@ func (r completionSettingsPatchRequest) isEmpty() bool {
 		r.Categories == nil &&
 		r.Tags == nil &&
 		r.ExcludeCategories == nil &&
-		r.ExcludeTags == nil &&
-		r.DelayMinutes == nil &&
-		r.PreImportCategories == nil
+		r.ExcludeTags == nil
 }
 
 func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, patch automationSettingsPatchRequest) {
@@ -214,6 +211,9 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	if patch.UseCategoryFromIndexer != nil {
 		settings.UseCategoryFromIndexer = *patch.UseCategoryFromIndexer
 	}
+	if patch.UseCrossCategorySuffix != nil {
+		settings.UseCrossCategorySuffix = *patch.UseCrossCategorySuffix
+	}
 	if patch.RunExternalProgramID.Set {
 		settings.RunExternalProgramID = patch.RunExternalProgramID.Value
 	}
@@ -253,12 +253,6 @@ func applyCompletionSettingsPatch(dest *models.CrossSeedCompletionSettings, patc
 	}
 	if patch.ExcludeTags != nil {
 		dest.ExcludeTags = *patch.ExcludeTags
-	}
-	if patch.DelayMinutes != nil {
-		dest.DelayMinutes = *patch.DelayMinutes
-	}
-	if patch.PreImportCategories != nil {
-		dest.PreImportCategories = *patch.PreImportCategories
 	}
 }
 
@@ -615,14 +609,18 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 	completion := models.DefaultCrossSeedCompletionSettings()
 	if req.Completion != nil {
 		completion = models.CrossSeedCompletionSettings{
-			Enabled:             req.Completion.Enabled,
-			Categories:          req.Completion.Categories,
-			Tags:                req.Completion.Tags,
-			ExcludeCategories:   req.Completion.ExcludeCategories,
-			ExcludeTags:         req.Completion.ExcludeTags,
-			DelayMinutes:        req.Completion.DelayMinutes,
-			PreImportCategories: req.Completion.PreImportCategories,
+			Enabled:           req.Completion.Enabled,
+			Categories:        req.Completion.Categories,
+			Tags:              req.Completion.Tags,
+			ExcludeCategories: req.Completion.ExcludeCategories,
+			ExcludeTags:       req.Completion.ExcludeTags,
 		}
+	}
+
+	// Validate mutual exclusivity: cannot use both indexer category and .cross suffix
+	if req.UseCategoryFromIndexer && req.UseCrossCategorySuffix {
+		RespondError(w, http.StatusBadRequest, "Cannot enable both 'Use indexer name as category' and 'Add .cross category suffix'. These settings are mutually exclusive.")
+		return
 	}
 
 	settings := &models.CrossSeedAutomationSettings{
@@ -637,6 +635,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		FindIndividualEpisodes:       req.FindIndividualEpisodes,
 		SizeMismatchTolerancePercent: req.SizeMismatchTolerancePercent,
 		UseCategoryFromIndexer:       req.UseCategoryFromIndexer,
+		UseCrossCategorySuffix:       req.UseCrossCategorySuffix,
 		RunExternalProgramID:         req.RunExternalProgramID,
 		Completion:                   completion,
 	}
@@ -689,6 +688,12 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 
 	merged := *current
 	applyAutomationSettingsPatch(&merged, req)
+
+	// Validate mutual exclusivity: cannot use both indexer category and .cross suffix
+	if merged.UseCategoryFromIndexer && merged.UseCrossCategorySuffix {
+		RespondError(w, http.StatusBadRequest, "Cannot enable both 'Use indexer name as category' and 'Add .cross category suffix'. These settings are mutually exclusive.")
+		return
+	}
 
 	updated, err := h.service.UpdateAutomationSettings(r.Context(), &merged)
 	if err != nil {

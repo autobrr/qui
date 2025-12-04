@@ -1312,8 +1312,6 @@ export interface CrossSeedCompletionSettings {
   tags: string[]
   excludeCategories: string[]
   excludeTags: string[]
-  delayMinutes: number
-  preImportCategories: string[]
 }
 
 export interface CrossSeedCompletionSettingsPatch {
@@ -1322,8 +1320,6 @@ export interface CrossSeedCompletionSettingsPatch {
   tags?: string[]
   excludeCategories?: string[]
   excludeTags?: string[]
-  delayMinutes?: number
-  preImportCategories?: string[]
 }
 
 export interface CrossSeedAutomationSettings {
@@ -1337,6 +1333,7 @@ export interface CrossSeedAutomationSettings {
   findIndividualEpisodes: boolean
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
+  useCrossCategorySuffix: boolean
   runExternalProgramId?: number | null
   completion?: CrossSeedCompletionSettings
   // Source-specific tagging
@@ -1360,6 +1357,7 @@ export interface CrossSeedAutomationSettingsPatch {
   findIndividualEpisodes?: boolean
   sizeMismatchTolerancePercent?: number
   useCategoryFromIndexer?: boolean
+  useCrossCategorySuffix?: boolean
   runExternalProgramId?: number | null
   completion?: CrossSeedCompletionSettingsPatch
   // Source-specific tagging

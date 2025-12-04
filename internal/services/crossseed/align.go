@@ -59,10 +59,10 @@ func (s *Service) alignCrossSeedContentPaths(
 	expectedCandidateRoot := detectCommonRoot(candidateFiles)
 	isSingleFileToFolder := expectedSourceRoot == "" && expectedCandidateRoot != ""
 
-	// For single-file → folder cases, qBittorrent strips the file extension when creating
-	// the subfolder with contentLayout=Subfolder. Don't rename the display name as that
-	// would cause TMM to try relocating files and break the cross-seed.
-	// Only rename if names differ by more than just the extension.
+	// Determine if we should rename the torrent display name.
+	// For single-file → folder cases with contentLayout=Subfolder, qBittorrent automatically
+	// strips the file extension when creating the subfolder (e.g., "Movie.mkv" → "Movie/").
+	// Don't rename in this case as qBittorrent handles it, and renaming would trigger recheck.
 	shouldRename := shouldRenameTorrentDisplay(sourceRelease, matchedRelease) &&
 		trimmedMatchedName != "" &&
 		trimmedSourceName != trimmedMatchedName &&
@@ -411,9 +411,8 @@ func adjustPathForRootRename(path, oldRoot, newRoot string) string {
 	if path == oldRoot {
 		return newRoot
 	}
-	prefix := oldRoot + "/"
-	if strings.HasPrefix(path, prefix) {
-		return newRoot + "/" + strings.TrimPrefix(path, prefix)
+	if suffix, found := strings.CutPrefix(path, oldRoot+"/"); found {
+		return newRoot + "/" + suffix
 	}
 	return path
 }
@@ -436,9 +435,9 @@ func shouldAlignFilesWithCandidate(newRelease, matchedRelease *rls.Release) bool
 }
 
 // namesMatchIgnoringExtension returns true if two names match after stripping common video file extensions.
-// This is used for single-file → folder cases where qBittorrent strips the extension when creating subfolders.
+// Used for single-file → folder cases where qBittorrent strips the extension when creating subfolders
+// with contentLayout=Subfolder (e.g., "Movie.mkv" becomes folder "Movie/").
 func namesMatchIgnoringExtension(name1, name2 string) bool {
-	// Common video file extensions that qBittorrent strips
 	extensions := []string{".mkv", ".mp4", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".ts", ".m2ts"}
 
 	stripped1 := name1

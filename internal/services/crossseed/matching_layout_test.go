@@ -190,6 +190,14 @@ func (c *candidateSelectionSyncManager) SetTags(context.Context, int, []string, 
 	return nil
 }
 
+func (c *candidateSelectionSyncManager) GetCategories(_ context.Context, _ int) (map[string]qbt.Category, error) {
+	return map[string]qbt.Category{}, nil
+}
+
+func (c *candidateSelectionSyncManager) CreateCategory(_ context.Context, _ int, _, _ string) error {
+	return nil
+}
+
 func TestGetMatchTypeFromTitle_FallbackWhenReleaseKeysMissing(t *testing.T) {
 	t.Parallel()
 
