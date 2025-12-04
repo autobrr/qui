@@ -339,6 +339,24 @@ export interface TorrentResponse {
   isCrossInstance?: boolean
 }
 
+export interface AddTorrentFailedURL {
+  url: string
+  error: string
+}
+
+export interface AddTorrentFailedFile {
+  filename: string
+  error: string
+}
+
+export interface AddTorrentResponse {
+  message: string
+  added: number
+  failed: number
+  failedURLs?: AddTorrentFailedURL[]
+  failedFiles?: AddTorrentFailedFile[]
+}
+
 export interface CrossInstanceTorrent extends Torrent {
   instanceId: number
   instanceName: string

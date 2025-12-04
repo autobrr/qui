@@ -4,6 +4,7 @@
  */
 
 import type {
+  AddTorrentResponse,
   AppPreferences,
   AsyncIndexerFilteringState,
   AuthResponse,
@@ -567,7 +568,7 @@ class ApiClient {
       rename?: string
       indexerId?: number
     }
-  ): Promise<{ success: boolean; message?: string }> {
+  ): Promise<AddTorrentResponse> {
     const formData = new FormData()
     // Append each file with the same field name "torrent"
     if (data.torrentFiles) {
