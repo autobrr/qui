@@ -1354,100 +1354,73 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                                         )}
                                     </form.Field>
 
-                          <form.Field name="tempPath">
-                            {(field) => (
-                              <form.Subscribe selector={(state) => state.values.tempPathEnabled}>
-                                {(tempPathEnabled) => {
-                                  return (
-                                    <div className="space-y-2 pl-4 border-l-2 border-primary border-opacity-50 data-[temp-path-enabled=true]:block hidden" data-temp-path-enabled={tempPathEnabled}>
-                                      <Label htmlFor="tempPath">Temporary Download Path</Label>
-                                      <Input
-                                        id="tempPath"
-                                        ref={tempPathInputRef}
-                                        placeholder={preferences?.temp_path || "Leave empty for default"}
-                                        spellCheck={false}
-                                        value={field.state.value}
-                                        onBlur={field.handleBlur}
-                                        onKeyDown={handleTempKeyDown}
-                                        onChange={(e) => {
-                                          field.handleChange(e.target.value)
-                                          handleTempInputChange(e.target.value)
-                                        }} 
-                                      />
+                                    <form.Field name="tempPath">
+                                      {(field) => (
+                                        <form.Subscribe selector={(state) => state.values.tempPathEnabled}>
+                                          {(tempPathEnabled) => {
+                                            return (
+                                              <div className="space-y-2 pl-4 border-l-2 border-primary border-opacity-50 data-[temp-path-enabled=true]:block hidden" data-temp-path-enabled={tempPathEnabled}>
+                                                <Label htmlFor="tempPath">Temporary Download Path</Label>
+                                                <Input
+                                                  id="tempPath"
+                                                  ref={tempPathInputRef}
+                                                  placeholder={preferences?.temp_path || "Leave empty for default"}
+                                                  spellCheck={false}
+                                                  value={field.state.value}
+                                                  onBlur={field.handleBlur}
+                                                  onKeyDown={handleTempKeyDown}
+                                                  onChange={(e) => {
+                                                    field.handleChange(e.target.value)
+                                                    handleTempInputChange(e.target.value)
+                                                  }} 
+                                                />
                                         
-                                      {showTempSuggestions && tempSuggestions.length > 0 && (
-                                        <div className="z-50 mt-1 w-full rounded-md border bg-popover text-popover-foreground shadow-md">
-                                          <div className="max-h-55 overflow-auto pt-1 pb-1 w-full">
-                                            {tempSuggestions.map((entry, idx) => (
-                                              <button
-                                                key={entry}
-                                                type="button"
-                                                className={
-                                                  cn("w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex items-center",
-                                                  tempHighlightedIndex === idx
-                                                  ? "bg-accent text-accent-foreground"
-                                                  : "hover:bg-accent/70",
+                                                {showTempSuggestions && tempSuggestions.length > 0 && (
+                                                  <div className="z-50 mt-1 w-full rounded-md border bg-popover text-popover-foreground shadow-md">
+                                                    <div className="max-h-55 overflow-auto pt-1 pb-1 w-full">
+                                                      {tempSuggestions.map((entry, idx) => (
+                                                        <button
+                                                          key={entry}
+                                                          type="button"
+                                                          className={
+                                                            cn("w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex items-center",
+                                                            tempHighlightedIndex === idx
+                                                            ? "bg-accent text-accent-foreground"
+                                                            : "hover:bg-accent/70",
+                                                          )}
+                                                          onMouseDown={(e) => e.preventDefault()}
+                                                          onClick={() => handleTempInputSelect(entry)}
+                                                        >
+                                                          <span className="truncate">{entry}</span>
+                                                        </button>
+                                                      ))}
+                                                    </div>
+                                                  </div>
                                                 )}
-                                                onMouseDown={(e) => e.preventDefault()}
-                                                onClick={() => handleTempInputSelect(entry)}
-                                              >
-                                                <span className="truncate">{entry}</span>
-                                              </button>
-                                            ))}
-                                          </div>
-                                        </div>
-                                      )}
 
-                                      <p className="text-xs text-muted-foreground">
-                                        Torrents will be downloaded here before moving to save path
+                                                <p className="text-xs text-muted-foreground">
+                                                  Torrents will be downloaded here before moving to save path
+                                                </p>
+                                              </div>
+                                            )
+                                          }}
+                                        </form.Subscribe>
+                                      )}
+                                    </form.Field>
+                                  </>
+                                ) : (
+                                  <div className="space-y-2">
+                                    <Label>Save Path</Label>
+                                    <div className="px-3 py-2 bg-muted rounded-md">
+                                      <p className="text-sm text-muted-foreground">
+                                        Automatic Torrent Management is enabled. Save path will be determined by category settings.
                                       </p>
                                     </div>
-                                  )
-                                }}
-                              </form.Subscribe>
+                                  </div>
+                                )}
+                              </>
                             )}
-                          </form.Field>
-                                    <form.Field name="tempPath">
-                                        {(field) => (
-                                            <form.Subscribe selector={(state) => state.values.tempPathEnabled}>
-                                                {(tempPathEnabled) => {
-                                                    return (
-                                                        <div
-                                                            className="space-y-2 pl-4 border-l-2 border-primary border-opacity-50 data-[temp-path-enabled=true]:block hidden"
-                                                            data-temp-path-enabled={tempPathEnabled}>
-                                                            <Label htmlFor="tempPath">Temporary Download Path</Label>
-                                                            <Input
-                                                                id="tempPath"
-                                                                placeholder={preferences?.temp_path || "Leave empty for default"}
-                                                                value={field.state.value}
-                                                                onBlur={field.handleBlur}
-                                                                onChange={(e) => field.handleChange(e.target.value)}/>
-                                                            <p className="text-xs text-muted-foreground">
-                                                                Torrents will be downloaded here before moving to save
-                                                                path
-                                                            </p>
-                                                        </div>
-                                                    )
-                                                }}
-                                            </form.Subscribe>
-                                        )}
-                                    </form.Field>
-                                </>
-                            ) : null}
-                        </>
-                      ) : (
-                        <div className="space-y-2">
-                          <Label>Save Path</Label>
-                          <div className="px-3 py-2 bg-muted rounded-md">
-                            <p className="text-sm text-muted-foreground">
-                              Automatic Torrent Management is enabled. Save path will be determined by category settings.
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </form.Field>
+                        </form.Field>
 
 
                 {/* Advanced Options */}
