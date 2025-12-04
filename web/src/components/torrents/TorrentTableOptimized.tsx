@@ -2130,6 +2130,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     )
   }, [handleReannounce, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
+  const handleTmmConfirmWrapper = useCallback(() => {
+    handleTmmConfirm(
+      contextHashes,
+      isAllSelected,
+      selectAllFilters ?? filters,
+      effectiveSearch,
+      Array.from(excludedFromSelectAll),
+      contextClientMeta
+    )
+  }, [handleTmmConfirm, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+
   const handleSetShareLimitWrapper = useCallback((
     ratioLimit: number,
     seedingTimeLimit: number,
@@ -3110,7 +3121,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         onOpenChange={setShowTmmDialog}
         count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
         enable={pendingTmmEnable}
-        onConfirm={() => handleTmmConfirm(contextHashes)}
+        onConfirm={handleTmmConfirmWrapper}
         isPending={isPending}
       />
 

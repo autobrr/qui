@@ -1038,7 +1038,6 @@ export function TorrentCardsMobile({
     pendingTmmEnable,
     showLocationWarningDialog,
     setShowLocationWarningDialog,
-    contextHashes,
     isPending,
     handleAction,
     handleDelete,
@@ -1645,6 +1644,22 @@ export function TorrentCardsMobile({
     )
     setActionTorrents([])
   }, [isAllSelected, actionTorrents, handleSetLocation, filters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount])
+
+  const handleTmmConfirmWrapper = useCallback(() => {
+    const visibleHashes = isAllSelected ? torrents.filter(t => !excludedFromSelectAll.has(t.hash)).map(t => t.hash) : Array.from(selectedHashes)
+    const totalSelected = isAllSelected ? effectiveSelectionCount : visibleHashes.length || 1
+    handleTmmConfirm(
+      isAllSelected ? [] : Array.from(selectedHashes),
+      isAllSelected,
+      isAllSelected ? filters : undefined,
+      isAllSelected ? effectiveSearch : undefined,
+      isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
+      {
+        clientHashes: visibleHashes,
+        totalSelected,
+      }
+    )
+  }, [isAllSelected, selectedHashes, handleTmmConfirm, filters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount])
 
   const getSelectedTorrents = useMemo(() => {
     if (isAllSelected) {
@@ -2287,7 +2302,7 @@ export function TorrentCardsMobile({
         onOpenChange={setShowTmmDialog}
         count={effectiveSelectionCount}
         enable={pendingTmmEnable}
-        onConfirm={() => handleTmmConfirm(contextHashes)}
+        onConfirm={handleTmmConfirmWrapper}
         isPending={isPending}
       />
 
