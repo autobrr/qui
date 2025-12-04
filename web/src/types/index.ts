@@ -55,6 +55,16 @@ export interface InstanceReannounceSettings {
   trackers: string[]
 }
 
+// Reannounce settings constraints - shared across components
+export const REANNOUNCE_CONSTRAINTS = {
+  MIN_INITIAL_WAIT: 5,
+  MIN_INTERVAL: 5,
+  MIN_MAX_AGE: 60,
+  MIN_MAX_RETRIES: 1,
+  MAX_MAX_RETRIES: 50,
+  DEFAULT_MAX_RETRIES: 50,
+} as const
+
 export interface InstanceReannounceActivity {
   instanceId: number
   hash: string

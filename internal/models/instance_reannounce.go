@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -20,6 +21,8 @@ const (
 	defaultReannounceIntervalSecs = 7
 	defaultMaxAgeSeconds          = 600
 	defaultMaxRetries             = 50
+	minMaxRetries                 = 1
+	maxMaxRetries                 = 50
 )
 
 // InstanceReannounceSettings stores per-instance tracker reannounce configuration.
@@ -199,10 +202,18 @@ func sanitizeInstanceReannounceSettings(s *InstanceReannounceSettings) *Instance
 	if clone.MaxAgeSeconds <= 0 {
 		clone.MaxAgeSeconds = defaultMaxAgeSeconds
 	}
-	if clone.MaxRetries <= 0 {
+	if clone.MaxRetries < minMaxRetries {
+		log.Debug().
+			Int("original", s.MaxRetries).
+			Int("sanitized", defaultMaxRetries).
+			Msg("reannounce: MaxRetries below minimum, using default")
 		clone.MaxRetries = defaultMaxRetries
-	} else if clone.MaxRetries > 50 {
-		clone.MaxRetries = 50
+	} else if clone.MaxRetries > maxMaxRetries {
+		log.Debug().
+			Int("original", s.MaxRetries).
+			Int("sanitized", maxMaxRetries).
+			Msg("reannounce: MaxRetries exceeded maximum, clamping")
+		clone.MaxRetries = maxMaxRetries
 	}
 	clone.Categories = sanitizeStringSlice(clone.Categories)
 	clone.Tags = sanitizeStringSlice(clone.Tags)

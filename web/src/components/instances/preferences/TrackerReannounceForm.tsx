@@ -19,7 +19,7 @@ import { useInstances } from "@/hooks/useInstances"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { api } from "@/lib/api"
 import { cn, copyTextToClipboard } from "@/lib/utils"
-import type { InstanceFormData, InstanceReannounceActivity, InstanceReannounceSettings } from "@/types"
+import { REANNOUNCE_CONSTRAINTS, type InstanceFormData, type InstanceReannounceActivity, type InstanceReannounceSettings } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { Copy, Info, RefreshCcw } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
@@ -46,11 +46,6 @@ const DEFAULT_SETTINGS: InstanceReannounceSettings = {
   trackers: [],
 }
 
-const MIN_INITIAL_WAIT = 5
-const MIN_INTERVAL = 5
-const MIN_MAX_AGE = 60
-const MIN_MAX_RETRIES = 1
-const MAX_MAX_RETRIES = 50
 const GLOBAL_SCAN_INTERVAL_SECONDS = 7
 
 type MonitorScopeField = keyof Pick<InstanceReannounceSettings, "categories" | "tags" | "trackers">
@@ -275,7 +270,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                         label="Initial Wait"
                         description="Seconds before first check"
                         tooltip="How long to wait after a torrent is added before checking its status. Gives the tracker time to register it naturally. Minimum 5 seconds."
-                        min={MIN_INITIAL_WAIT}
+                        min={REANNOUNCE_CONSTRAINTS.MIN_INITIAL_WAIT}
                         value={settings.initialWaitSeconds}
                         onChange={(value) => setSettings((prev) => ({ ...prev, initialWaitSeconds: value }))}
                       />
@@ -284,7 +279,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                         label="Retry Interval"
                         description="Seconds between retries"
                         tooltip="How often to retry inside a single reannounce attempt. With Quick Retry enabled, this also becomes the cooldown between scans. Minimum 5 seconds."
-                        min={MIN_INTERVAL}
+                        min={REANNOUNCE_CONSTRAINTS.MIN_INTERVAL}
                         value={settings.reannounceIntervalSeconds}
                         onChange={(value) => setSettings((prev) => ({ ...prev, reannounceIntervalSeconds: value }))}
                       />
@@ -293,7 +288,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                         label="Max Torrent Age"
                         description="Stop monitoring after (s)"
                         tooltip="Stop monitoring torrents older than this (in seconds). Prevents checking old torrents that are permanently dead. Minimum 60 seconds."
-                        min={MIN_MAX_AGE}
+                        min={REANNOUNCE_CONSTRAINTS.MIN_MAX_AGE}
                         value={settings.maxAgeSeconds}
                         onChange={(value) => setSettings((prev) => ({ ...prev, maxAgeSeconds: value }))}
                       />
@@ -302,8 +297,8 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                         label="Max Retries"
                         description="Retry attempts per torrent"
                         tooltip="Maximum consecutive retries within a single scan cycle. Each scan can retry up to this many times before waiting for the next cycle. Some slow trackers may need up to 50 retries (at 7s intervals = ~6 minutes). Range: 1-50."
-                        min={MIN_MAX_RETRIES}
-                        max={MAX_MAX_RETRIES}
+                        min={REANNOUNCE_CONSTRAINTS.MIN_MAX_RETRIES}
+                        max={REANNOUNCE_CONSTRAINTS.MAX_MAX_RETRIES}
                         value={settings.maxRetries}
                         onChange={(value) => setSettings((prev) => ({ ...prev, maxRetries: value }))}
                       />
@@ -712,10 +707,10 @@ function sanitizeSettings(settings: InstanceReannounceSettings): InstanceReannou
 
   return {
     enabled: settings.enabled,
-    initialWaitSeconds: clamp(settings.initialWaitSeconds, DEFAULT_SETTINGS.initialWaitSeconds, MIN_INITIAL_WAIT),
-    reannounceIntervalSeconds: clamp(settings.reannounceIntervalSeconds, DEFAULT_SETTINGS.reannounceIntervalSeconds, MIN_INTERVAL),
-    maxAgeSeconds: clamp(settings.maxAgeSeconds, DEFAULT_SETTINGS.maxAgeSeconds, MIN_MAX_AGE),
-    maxRetries: clamp(settings.maxRetries, DEFAULT_SETTINGS.maxRetries, MIN_MAX_RETRIES, MAX_MAX_RETRIES),
+    initialWaitSeconds: clamp(settings.initialWaitSeconds, DEFAULT_SETTINGS.initialWaitSeconds, REANNOUNCE_CONSTRAINTS.MIN_INITIAL_WAIT),
+    reannounceIntervalSeconds: clamp(settings.reannounceIntervalSeconds, DEFAULT_SETTINGS.reannounceIntervalSeconds, REANNOUNCE_CONSTRAINTS.MIN_INTERVAL),
+    maxAgeSeconds: clamp(settings.maxAgeSeconds, DEFAULT_SETTINGS.maxAgeSeconds, REANNOUNCE_CONSTRAINTS.MIN_MAX_AGE),
+    maxRetries: clamp(settings.maxRetries, DEFAULT_SETTINGS.maxRetries, REANNOUNCE_CONSTRAINTS.MIN_MAX_RETRIES, REANNOUNCE_CONSTRAINTS.MAX_MAX_RETRIES),
     monitorAll: settings.monitorAll,
     excludeCategories: settings.excludeCategories,
     categories: normalizeList(settings.categories),

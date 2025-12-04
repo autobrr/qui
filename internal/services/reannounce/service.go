@@ -513,7 +513,7 @@ func (s *Service) getSettings(ctx context.Context, instanceID int) *models.Insta
 			}
 			return settings
 		}
-		log.Debug().Err(err).Int("instanceID", instanceID).Msg("reannounce: falling back to defaults")
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("reannounce: database error loading settings, using defaults")
 	}
 	return models.DefaultInstanceReannounceSettings(instanceID)
 }
