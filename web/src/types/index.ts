@@ -303,6 +303,7 @@ export interface CacheMetadata {
 export interface TrackerTransferStats {
   uploaded: number
   downloaded: number
+  totalSize: number
   count: number
 }
 

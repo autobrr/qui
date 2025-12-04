@@ -814,6 +814,11 @@ function TrackerIconImage({ tracker, trackerIcons }: TrackerIconImageProps) {
   const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
   const src = trackerIcons?.[trimmed] ?? null
 
+  const handleImageError = () => {
+    console.debug(`[TrackerIconImage] Failed to load icon for tracker: ${trimmed}`, { src })
+    setHasError(true)
+  }
+
   return (
     <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-[10px] font-medium uppercase leading-none flex-shrink-0">
       {src && !hasError ? (
@@ -821,7 +826,7 @@ function TrackerIconImage({ tracker, trackerIcons }: TrackerIconImageProps) {
           src={src}
           alt=""
           className="h-full w-full object-contain rounded-sm"
-          onError={() => setHasError(true)}
+          onError={handleImageError}
         />
       ) : (
         fallbackLetter
@@ -832,6 +837,14 @@ function TrackerIconImage({ tracker, trackerIcons }: TrackerIconImageProps) {
 
 type TrackerSortColumn = "tracker" | "uploaded" | "downloaded" | "ratio" | "count" | "performance"
 type SortDirection = "asc" | "desc"
+
+// Helper to compute ratio display values for tracker stats
+function getTrackerRatioDisplay(uploaded: number, downloaded: number): { isInfinite: boolean; ratio: number; color: string } {
+  const isInfinite = downloaded === 0 && uploaded > 0
+  const ratio = downloaded > 0 ? uploaded / downloaded : 0
+  const color = isInfinite ? "var(--chart-1)" : getRatioColor(ratio)
+  return { isInfinite, ratio, color }
+}
 
 function SortIcon({ column, sortColumn, sortDirection }: { column: TrackerSortColumn; sortColumn: TrackerSortColumn; sortDirection: SortDirection }) {
   if (sortColumn !== column) {
@@ -860,6 +873,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
         if (existing) {
           existing.uploaded += stats.uploaded
           existing.downloaded += stats.downloaded
+          existing.totalSize += stats.totalSize
           existing.count += stats.count
         } else {
           aggregated.set(domain, { ...stats })
@@ -893,8 +907,9 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
         case "count":
           return multiplier * (a.count - b.count)
         case "performance": {
-          const perfA = a.count > 0 ? a.uploaded / a.count : 0
-          const perfB = b.count > 0 ? b.uploaded / b.count : 0
+          // efficiency = uploaded / totalSize (how many times content has been seeded)
+          const perfA = a.totalSize > 0 ? a.uploaded / a.totalSize : 0
+          const perfB = b.totalSize > 0 ? b.uploaded / b.totalSize : 0
           return multiplier * (perfA - perfB)
         }
         default:
@@ -934,12 +949,11 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
     }
   }
 
-  // format performance as GiB/t consistently
-  const formatPerformance = (uploaded: number, count: number): string => {
-    if (count === 0) return "-"
-    const bytesPerTorrent = uploaded / count
-    const gibPerTorrent = bytesPerTorrent / (1024 * 1024 * 1024)
-    return `${gibPerTorrent.toFixed(2)} GiB/t`
+  // format efficiency as multiplier (uploaded / totalSize)
+  const formatEfficiency = (uploaded: number, totalSize: number): string => {
+    if (totalSize === 0) return "-"
+    const efficiency = uploaded / totalSize
+    return `${efficiency.toFixed(2)}x`
   }
 
   // don't show if no tracker data
@@ -984,7 +998,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                            sortColumn === "uploaded" ? "Uploaded" :
                            sortColumn === "downloaded" ? "Downloaded" :
                            sortColumn === "ratio" ? "Ratio" :
-                           sortColumn === "count" ? "Torrents" : "Performance"}
+                           sortColumn === "count" ? "Torrents" : "Efficiency"}
                   </span>
                   {sortDirection === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
                 </Button>
@@ -995,17 +1009,15 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                 <DropdownMenuItem onClick={() => handleSort("downloaded")}>Downloaded</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleSort("ratio")}>Ratio</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleSort("count")}>Torrents</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleSort("performance")}>Performance</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleSort("performance")}>Efficiency</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
 
           {/* Mobile Card Layout */}
           <div className="sm:hidden px-4 space-y-2 py-3">
-            {paginatedTrackerStats.map(({ domain, uploaded, downloaded, count }) => {
-              const isInfiniteRatio = downloaded === 0 && uploaded > 0
-              const ratio = downloaded > 0 ? uploaded / downloaded : 0
-              const ratioColor = isInfiniteRatio ? "var(--chart-1)" : getRatioColor(ratio)
+            {paginatedTrackerStats.map(({ domain, uploaded, downloaded, totalSize, count }) => {
+              const { isInfinite, ratio, color: ratioColor } = getTrackerRatioDisplay(uploaded, downloaded)
               const displayDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
 
               return (
@@ -1045,14 +1057,14 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                       <div className="space-y-1">
                         <div className="text-xs text-muted-foreground">Ratio</div>
                         <div className="font-semibold text-sm" style={{ color: ratioColor }}>
-                          {isInfiniteRatio ? "∞" : ratio.toFixed(2)}
+                          {isInfinite ? "∞" : ratio.toFixed(2)}
                         </div>
                       </div>
 
-                      {/* Performance */}
+                      {/* Efficiency */}
                       <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground">Performance</div>
-                        <div className="font-semibold text-sm">{formatPerformance(uploaded, count)}</div>
+                        <div className="text-xs text-muted-foreground">Efficiency</div>
+                        <div className="font-semibold text-sm">{formatEfficiency(uploaded, totalSize)}</div>
                       </div>
                     </div>
                   </CardContent>
@@ -1067,6 +1079,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
               <TableRow className="bg-muted/50">
                 <TableHead className="w-[40%] pl-4">
                   <button
+                    type="button"
                     onClick={() => handleSort("tracker")}
                     className="flex items-center gap-1.5 hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
                   >
@@ -1076,6 +1089,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                 </TableHead>
                 <TableHead className="text-right">
                   <button
+                    type="button"
                     onClick={() => handleSort("uploaded")}
                     className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
                   >
@@ -1085,6 +1099,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                 </TableHead>
                 <TableHead className="text-right">
                   <button
+                    type="button"
                     onClick={() => handleSort("downloaded")}
                     className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
                   >
@@ -1094,6 +1109,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                 </TableHead>
                 <TableHead className="text-right">
                   <button
+                    type="button"
                     onClick={() => handleSort("ratio")}
                     className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
                   >
@@ -1103,6 +1119,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                 </TableHead>
                 <TableHead className="text-right">
                   <button
+                    type="button"
                     onClick={() => handleSort("count")}
                     className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
                   >
@@ -1114,26 +1131,25 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
+                        type="button"
                         onClick={() => handleSort("performance")}
                         className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors"
                       >
-                        Performance
+                        Efficiency
                         <Info className="h-3.5 w-3.5 text-muted-foreground" />
                         <SortIcon column="performance" sortColumn={sortColumn} sortDirection={sortDirection} />
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="top">
-                      <p className="text-xs">Upload per Torrent = Uploaded ÷ Torrent Count</p>
+                      <p className="text-xs">Seeding Efficiency = Uploaded ÷ Content Size (total size of all torrents)</p>
                     </TooltipContent>
                   </Tooltip>
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedTrackerStats.map(({ domain, uploaded, downloaded, count }) => {
-                const isInfiniteRatio = downloaded === 0 && uploaded > 0
-                const ratio = downloaded > 0 ? uploaded / downloaded : 0
-                const ratioColor = isInfiniteRatio ? "var(--chart-1)" : getRatioColor(ratio)
+              {paginatedTrackerStats.map(({ domain, uploaded, downloaded, totalSize, count }) => {
+                const { isInfinite, ratio, color: ratioColor } = getTrackerRatioDisplay(uploaded, downloaded)
                 const displayDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
 
                 return (
@@ -1151,13 +1167,13 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                       {formatBytes(downloaded)}
                     </TableCell>
                     <TableCell className="text-right font-semibold" style={{ color: ratioColor }}>
-                      {isInfiniteRatio ? "∞" : ratio.toFixed(2)}
+                      {isInfinite ? "∞" : ratio.toFixed(2)}
                     </TableCell>
                     <TableCell className="text-right">
                       {count}
                     </TableCell>
                     <TableCell className="text-right hidden lg:table-cell font-semibold pr-4">
-                      {formatPerformance(uploaded, count)}
+                      {formatEfficiency(uploaded, totalSize)}
                     </TableCell>
                   </TableRow>
                 )

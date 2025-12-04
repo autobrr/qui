@@ -260,6 +260,7 @@ export function getLinuxTracker(hash: string): string {
 export function getLinuxTrackerDomain(hash: string): string {
   return LINUX_TRACKERS[getTrackerIndex(hash)]
 }
+
 // Generate deterministic count value based on name for UI display
 export function getLinuxCount(name: string, max: number = 50): number {
   let hashSum = 0

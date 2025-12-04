@@ -1827,6 +1827,7 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 type TrackerTransferStats struct {
 	Uploaded   int64 `json:"uploaded"`
 	Downloaded int64 `json:"downloaded"`
+	TotalSize  int64 `json:"totalSize"`
 	Count      int   `json:"count"`
 }
 
@@ -2108,17 +2109,29 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 			}
 			counts.Trackers[domain] = len(hashSet)
 
-			// aggregate upload/download for this domain
-			var uploaded, downloaded int64
+			// aggregate upload/download/size for this domain
+			var uploaded, downloaded, totalSize int64
+			var missingCount int
 			for hash := range hashSet {
 				if torrent, ok := torrentMap[hash]; ok {
 					uploaded += torrent.Uploaded
 					downloaded += torrent.Downloaded
+					totalSize += torrent.Size
+				} else {
+					missingCount++
 				}
+			}
+			if missingCount > 0 {
+				log.Debug().
+					Str("domain", domain).
+					Int("missing", missingCount).
+					Int("total", len(hashSet)).
+					Msg("tracker stats aggregation skipped missing torrents")
 			}
 			counts.TrackerTransfers[domain] = TrackerTransferStats{
 				Uploaded:   uploaded,
 				Downloaded: downloaded,
+				TotalSize:  totalSize,
 				Count:      len(hashSet),
 			}
 		}
