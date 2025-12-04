@@ -39,7 +39,8 @@ import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
 import { api } from "@/lib/api"
 import { cn } from '@/lib/utils'
-import type { Torrent } from "@/types"
+import type { AddTorrentResponse, Torrent } from "@/types"
+import { toast } from "sonner"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, Link, Loader2, Plus, Upload, X } from "lucide-react"
@@ -101,7 +102,7 @@ async function parseTorrentFile(file: File): Promise<string | null> {
 
 export type AddTorrentDropPayload =
   | { type: "file"; files: File[] }
-  | { type: "url"; urls: string[] }
+  | { type: "url"; urls: string[]; indexerId?: number }
 
 interface AddTorrentDialogProps {
   instanceId: number
@@ -133,6 +134,7 @@ interface FormData {
   rename: string
   tempPathEnabled: boolean
   tempPath: string
+  indexerId?: number
 }
 
 interface DuplicateEntryDetails {
@@ -524,11 +526,14 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
         submitData.torrentFiles = data.torrentFiles
       } else if (activeTab === "url" && data.urls) {
         submitData.urls = data.urls.split("\n").map(u => u.trim()).filter(Boolean)
+        if (data.indexerId) {
+          submitData.indexerId = data.indexerId
+        }
       }
 
       return api.addTorrent(instanceId, submitData)
     },
-    onSuccess: () => {
+    onSuccess: (response: AddTorrentResponse) => {
       // Add small delay to allow qBittorrent to process the new torrent
       setTimeout(() => {
         // Use refetch instead of invalidate to avoid loading state
@@ -544,6 +549,34 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
           type: "active",
         })
       }, 500) // Give qBittorrent time to process
+
+      // Show appropriate toast based on results
+      if (response.failed === 0) {
+        toast.success(response.added === 1
+          ? "Torrent added successfully"
+          : `${response.added} torrents added successfully`)
+      } else if (response.added === 0) {
+        // All failed
+        const failedDetails = [
+          ...(response.failedURLs?.map(f => `${f.url}: ${f.error}`) ?? []),
+          ...(response.failedFiles?.map(f => `${f.filename}: ${f.error}`) ?? [])
+        ]
+        toast.error(`Failed to add ${response.failed} torrent(s)`, {
+          description: failedDetails.length > 0 ? failedDetails.slice(0, 3).join("\n") : undefined,
+          duration: 5000,
+        })
+      } else {
+        // Partial success
+        const failedDetails = [
+          ...(response.failedURLs?.map(f => `${f.url}: ${f.error}`) ?? []),
+          ...(response.failedFiles?.map(f => `${f.filename}: ${f.error}`) ?? [])
+        ]
+        toast.warning(`Added ${response.added}, failed ${response.failed}`, {
+          description: failedDetails.length > 0 ? failedDetails.slice(0, 3).join("\n") : undefined,
+          duration: 5000,
+        })
+      }
+
       setOpen(false)
       form.reset()
       setSelectedTags([])
@@ -572,6 +605,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       rename: "",
       tempPathEnabled: preferences?.temp_path_enabled ?? false,
       tempPath: preferences?.temp_path || "",
+      indexerId: undefined as number | undefined,
     },
     onSubmit: async ({ value }) => {
       // Use the currently selected tags
@@ -682,6 +716,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       setShowFileList(false)
       form.setFieldValue("urls", urls.join("\n"))
       form.setFieldValue("torrentFiles", null)
+      form.setFieldValue("indexerId", dropPayload.indexerId)
       if (fileInputRef.current) {
         fileInputRef.current.value = ""
       }

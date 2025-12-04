@@ -4,6 +4,7 @@
  */
 
 import type {
+  AddTorrentResponse,
   AppPreferences,
   AsyncIndexerFilteringState,
   AuthResponse,
@@ -12,26 +13,27 @@ import type {
   BackupRunsResponse,
   BackupSettings,
   Category,
+  CrossInstanceTorrent,
   CrossSeedApplyResponse,
   CrossSeedAutomationSettings,
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
-  CrossInstanceTorrent,
   CrossSeedInstanceResult,
   CrossSeedRun,
+  CrossSeedSearchRun,
+  CrossSeedSearchSettings,
+  CrossSeedSearchSettingsPatch,
+  CrossSeedSearchStatus,
   CrossSeedTorrentInfo,
   CrossSeedTorrentSearchResponse,
   CrossSeedTorrentSearchSelection,
-  CrossSeedSearchSettings,
-  CrossSeedSearchSettingsPatch,
-  CrossSeedSearchRun,
-  CrossSeedSearchStatus,
   DuplicateTorrentMatch,
   ExternalProgram,
   ExternalProgramCreate,
   ExternalProgramExecute,
   ExternalProgramExecuteResponse,
   ExternalProgramUpdate,
+  IndexerActivityStatus,
   InstanceCapabilities,
   InstanceFormData,
   InstanceReannounceActivity,
@@ -52,20 +54,19 @@ import type {
   TorrentProperties,
   TorrentResponse,
   TorrentTracker,
-  TrackerRule,
-  TrackerRuleInput,
   TorznabIndexer,
   TorznabIndexerError,
   TorznabIndexerFormData,
   TorznabIndexerHealth,
   TorznabIndexerLatencyStats,
-  IndexerActivityStatus,
-  TorznabSearchRequest,
-  TorznabSearchResult,
-  TorznabSearchResponse,
+  TorznabRecentSearch,
   TorznabSearchCacheMetadata,
   TorznabSearchCacheStats,
-  TorznabRecentSearch,
+  TorznabSearchRequest,
+  TorznabSearchResponse,
+  TorznabSearchResult,
+  TrackerRule,
+  TrackerRuleInput,
   User
 } from "@/types"
 import { getApiBaseUrl, withBasePath } from "./base-url"
@@ -565,8 +566,9 @@ class ApiClient {
       limitSeedTime?: number
       contentLayout?: string
       rename?: string
+      indexerId?: number
     }
-  ): Promise<{ success: boolean; message?: string }> {
+  ): Promise<AddTorrentResponse> {
     const formData = new FormData()
     // Append each file with the same field name "torrent"
     if (data.torrentFiles) {
@@ -590,6 +592,7 @@ class ApiClient {
     if (data.savePath && !data.autoTMM) formData.append("savepath", data.savePath)
     if (data.useDownloadPath !== undefined) formData.append("useDownloadPath", data.useDownloadPath.toString())
     if (data.downloadPath) formData.append("downloadPath", data.downloadPath)
+    if (data.indexerId) formData.append("indexer_id", data.indexerId.toString())
 
     const response = await fetch(`${API_BASE}/instances/${instanceId}/torrents`, {
       method: "POST",
