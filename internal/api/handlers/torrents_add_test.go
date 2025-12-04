@@ -305,7 +305,7 @@ func TestAddTorrentWithIndexer_DownloadFailureContinuesWithOthers(t *testing.T) 
 	}
 	options := map[string]string{"category": "movies"}
 
-	added, failed, err := addTorrentWithIndexerCustom(ctx, mockSync, customJackett, 1, urls, 42, options)
+	added, failed, err := addTorrentWithIndexer(ctx, mockSync, customJackett, 1, urls, 42, options)
 
 	// Last error should be from the failed download
 	require.Error(t, err)
@@ -448,63 +448,9 @@ func (m *customMockJackettService) DownloadTorrent(ctx context.Context, req jack
 	return nil, errors.New("no more responses configured")
 }
 
-// addTorrentWithIndexerCustom is like addTorrentWithIndexer but accepts customMockJackettService
-func addTorrentWithIndexerCustom(
-	ctx context.Context,
-	syncManager syncManagerAdapter,
-	jackettService *customMockJackettService,
-	instanceID int,
-	urls []string,
-	indexerID int,
-	options map[string]string,
-) (addedCount int, failedCount int, lastError error) {
-	if indexerID > 0 && jackettService != nil {
-		for _, url := range urls {
-			if url == "" {
-				continue
-			}
-
-			// Magnet links can be added directly to qBittorrent
-			if len(url) > 7 && (url[:7] == "magnet:" || url[:7] == "MAGNET:") {
-				if err := syncManager.AddTorrentFromURLs(ctx, instanceID, []string{url}, options); err != nil {
-					failedCount++
-					lastError = err
-				} else {
-					addedCount++
-				}
-				continue
-			}
-
-			// Download torrent file from indexer
-			torrentBytes, err := jackettService.DownloadTorrent(ctx, jackett.TorrentDownloadRequest{
-				IndexerID:   indexerID,
-				DownloadURL: url,
-			})
-			if err != nil {
-				failedCount++
-				lastError = err
-				continue
-			}
-
-			// Add torrent from downloaded file content
-			if err := syncManager.AddTorrent(ctx, instanceID, torrentBytes, options); err != nil {
-				failedCount++
-				lastError = err
-			} else {
-				addedCount++
-			}
-		}
-	} else {
-		// No indexer_id or no jackett service - use URL method directly
-		if err := syncManager.AddTorrentFromURLs(ctx, instanceID, urls, options); err != nil {
-			return 0, len(urls), err
-		}
-		addedCount = len(urls)
-	}
-	return addedCount, failedCount, lastError
-}
-
-// TestParseIndexerIDFromForm tests parsing the indexer_id form field
+// TestParseIndexerIDFromForm tests parsing the indexer_id form field.
+// Note: Negative indexer IDs are parsed correctly but treated as "no indexer"
+// by the handler (which checks indexerID > 0), so they effectively behave like 0.
 func TestParseIndexerIDFromForm(t *testing.T) {
 	t.Parallel()
 
@@ -591,8 +537,9 @@ func TestParseIndexerIDFromForm(t *testing.T) {
 	}
 }
 
-// Integration-style test for the full HTTP handler flow
-func TestAddTorrentHandler_IndexerIDInForm(t *testing.T) {
+// TestMultipartFormParsing_IndexerID verifies that indexer_id and related fields
+// are correctly parsed from a multipart form request.
+func TestMultipartFormParsing_IndexerID(t *testing.T) {
 	t.Parallel()
 
 	// Create a multipart form request with indexer_id
@@ -738,8 +685,9 @@ func BenchmarkAddTorrentWithIndexer(b *testing.B) {
 	options := map[string]string{"category": "movies"}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		mockSync.addTorrentCalls = nil
+		mockSync.addTorrentFromURLsCalls = nil
 		mockJackett.downloadTorrentCalls = nil
 		_, _, _ = addTorrentWithIndexer(ctx, mockSync, mockJackett, 1, urls, 42, options)
 	}
