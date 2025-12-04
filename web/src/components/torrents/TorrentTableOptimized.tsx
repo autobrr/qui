@@ -2805,13 +2805,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
-            {serverState?.free_space_on_disk !== undefined && serverState.free_space_on_disk > 0 && (
+            {effectiveServerState?.free_space_on_disk !== undefined && effectiveServerState.free_space_on_disk > 0 && (
               <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="flex items-center h-6 px-2 text-xs text-muted-foreground">
                       <HardDrive  aria-hidden="true" className="h-3 w-3 mr-1"/>
-                      <span className="ml-auto font-medium truncate">{formatBytes(serverState.free_space_on_disk)}</span>
+                      <span className="ml-auto font-medium truncate">{formatBytes(effectiveServerState.free_space_on_disk)}</span>
                     </span>
                   </TooltipTrigger>
                   <TooltipContent>Free Space</TooltipContent>
@@ -2927,12 +2927,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
             </div>
             <div className="flex items-center gap-2">
               <ExternalIPAddress
-                address={serverState?.last_external_address_v4}
+                address={effectiveServerState?.last_external_address_v4}
                 incognitoMode={incognitoMode}
                 label="IPv4"
               />
               <ExternalIPAddress
-                address={serverState?.last_external_address_v6}
+                address={effectiveServerState?.last_external_address_v6}
                 incognitoMode={incognitoMode}
                 label="IPv6"
               />
