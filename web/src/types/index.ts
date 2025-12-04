@@ -44,6 +44,7 @@ export interface InstanceReannounceSettings {
   initialWaitSeconds: number
   reannounceIntervalSeconds: number
   maxAgeSeconds: number
+  maxRetries: number
   aggressive: boolean
   monitorAll: boolean
   excludeCategories: boolean
@@ -53,6 +54,16 @@ export interface InstanceReannounceSettings {
   excludeTrackers: boolean
   trackers: string[]
 }
+
+// Reannounce settings constraints - shared across components
+export const REANNOUNCE_CONSTRAINTS = {
+  MIN_INITIAL_WAIT: 5,
+  MIN_INTERVAL: 5,
+  MIN_MAX_AGE: 60,
+  MIN_MAX_RETRIES: 1,
+  MAX_MAX_RETRIES: 50,
+  DEFAULT_MAX_RETRIES: 50,
+} as const
 
 export interface InstanceReannounceActivity {
   instanceId: number
@@ -135,6 +146,7 @@ export interface InstanceCapabilities {
   supportsRenameFolder: boolean
   supportsFilePriority: boolean
   supportsSubcategories: boolean
+  supportsTorrentTmpPath: boolean
   webAPIVersion?: string
 }
 
@@ -332,6 +344,24 @@ export interface TorrentResponse {
   hasMore?: boolean
   trackerHealthSupported?: boolean
   isCrossInstance?: boolean
+}
+
+export interface AddTorrentFailedURL {
+  url: string
+  error: string
+}
+
+export interface AddTorrentFailedFile {
+  filename: string
+  error: string
+}
+
+export interface AddTorrentResponse {
+  message: string
+  added: number
+  failed: number
+  failedURLs?: AddTorrentFailedURL[]
+  failedFiles?: AddTorrentFailedFile[]
 }
 
 export interface CrossInstanceTorrent extends Torrent {
@@ -1319,8 +1349,6 @@ export interface CrossSeedCompletionSettings {
   tags: string[]
   excludeCategories: string[]
   excludeTags: string[]
-  delayMinutes: number
-  preImportCategories: string[]
 }
 
 export interface CrossSeedCompletionSettingsPatch {
@@ -1329,8 +1357,6 @@ export interface CrossSeedCompletionSettingsPatch {
   tags?: string[]
   excludeCategories?: string[]
   excludeTags?: string[]
-  delayMinutes?: number
-  preImportCategories?: string[]
 }
 
 export interface CrossSeedAutomationSettings {
@@ -1344,6 +1370,7 @@ export interface CrossSeedAutomationSettings {
   findIndividualEpisodes: boolean
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
+  useCrossCategorySuffix: boolean
   runExternalProgramId?: number | null
   completion?: CrossSeedCompletionSettings
   // Source-specific tagging
@@ -1367,6 +1394,7 @@ export interface CrossSeedAutomationSettingsPatch {
   findIndividualEpisodes?: boolean
   sizeMismatchTolerancePercent?: number
   useCategoryFromIndexer?: boolean
+  useCrossCategorySuffix?: boolean
   runExternalProgramId?: number | null
   completion?: CrossSeedCompletionSettingsPatch
   // Source-specific tagging

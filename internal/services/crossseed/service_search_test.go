@@ -280,3 +280,11 @@ func (*queueTestSyncManager) RenameTorrentFile(context.Context, int, string, str
 func (*queueTestSyncManager) RenameTorrentFolder(context.Context, int, string, string, string) error {
 	return nil
 }
+
+func (*queueTestSyncManager) GetCategories(_ context.Context, _ int) (map[string]qbt.Category, error) {
+	return map[string]qbt.Category{}, nil
+}
+
+func (*queueTestSyncManager) CreateCategory(_ context.Context, _ int, _, _ string) error {
+	return nil
+}

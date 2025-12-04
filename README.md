@@ -400,13 +400,6 @@ Triggers a cross-seed search when torrents finish downloading. Configure in the 
 - **Categories/Tags** - Filter which completed torrents trigger searches
 - **Exclude categories/tags** - Skip torrents matching these filters
 
-**Import timing settings** help when using Sonarr, Radarr, or similar *arr applications:
-
-- **Delay (minutes)** - Wait after completion before searching, giving *arr apps time to import and recategorize
-- **Pre-import categories** - Categories like `sonarr` or `radarr` that indicate pending import. When a torrent's category changes away from these, the search triggers immediately (skipping remaining delay)
-
-Example: Set delay to `5` minutes with `sonarr` and `radarr` as pre-import categories. Searches wait up to 5 minutes, but fire immediately when Sonarr/Radarr recategorizes.
-
 #### Manual Search
 
 Right-click any torrent in the list to access cross-seed actions:
@@ -421,8 +414,8 @@ qui takes a different approach than the [cross-seed](https://github.com/cross-se
 | Aspect | cross-seed | qui |
 |--------|-----------|-----|
 | **File handling** | Creates hardlinks/symlinks to a separate directory | Reuses existing files directly |
-| **AutoTMM** | Disabled (uses explicit save paths) | Inherits from matched torrent |
-| **Category** | Uses dedicated `linkCategory` (e.g., "cross-seed-link") | Inherits matched torrent's category |
+| **AutoTMM** | Disabled (uses explicit save paths) | Inherits from matched torrent (unless "Use indexer name as category" is enabled) |
+| **Category** | Uses dedicated `linkCategory` (e.g., "cross-seed-link") | Uses matched torrent's category with `.cross` suffix (configurable) |
 
 ### Global Settings
 
@@ -432,7 +425,11 @@ Configure matching behavior in the **Global rules** tab on the Cross-Seed page.
 
 - **Find individual episodes** - When enabled, season packs also match individual episodes. When disabled, season packs only match other season packs. Episodes are added with AutoTMM disabled to prevent save path conflicts.
 - **Size mismatch tolerance** - Maximum size difference percentage (default: 5%). Also determines auto-resume threshold after recheck.
-- **Use indexer name as category** - Set the qBittorrent category to the indexer name instead of inheriting from the matched torrent.
+
+#### Categories
+
+- **Add .cross category suffix** (default: enabled) - Appends `.cross` to cross-seed categories (e.g., `movies` → `movies.cross`). This prevents Sonarr/Radarr from importing cross-seeded files as duplicates, since *arr apps typically monitor specific categories. Disable this for full Automatic Torrent Management (AutoTMM) support where cross-seeds should use identical categories and save paths as the source torrent.
+- **Use indexer name as category** - Set the qBittorrent category to the indexer name instead of inheriting from the matched torrent. Uses explicit save paths, so AutoTMM is always disabled for these cross-seeds regardless of the source torrent's AutoTMM state (see [how qui differs from cross-seed](#how-qui-differs-from-cross-seed)). Mutually exclusive with `.cross` suffix.
 
 #### Source Tagging
 
@@ -507,7 +504,7 @@ In your autobrr filter, go to **External** tab → **Add new**:
 | On Error | `Reject` |
 | Endpoint | `http://localhost:7476/api/cross-seed/webhook/check` |
 | HTTP Method | `POST` |
-| HTTP Request Headers | `X-API-Key=YOUR_QUI_API_KEY,Content-Type=application/json` |
+| HTTP Request Headers | `X-API-Key=YOUR_QUI_API_KEY` |
 | Expected HTTP Status Code | `200` |
 
 **Data (JSON):**
@@ -565,6 +562,33 @@ When `/check` returns `200 OK`, send the torrent to `/api/cross-seed/apply`:
 - `category` (optional) - Override category (defaults to matched torrent's category)
 
 Cross-seeded torrents are added paused with `skip_checking=true`. qui polls the torrent state and auto-resumes if progress meets the size tolerance threshold. If progress is too low, it remains paused for manual review.
+
+### Troubleshooting
+
+#### Why didn't my cross-seed get added?
+
+**Rate limiting (HTTP 429):** Indexers limit how frequently you can make requests. If you see errors like `"indexer TorrentLeech rate-limited until..."`, qui has recorded the cooldown and will skip that indexer until it's available. Check the **Scheduler Activity** panel on the Indexers page to see which indexers are in cooldown and when they'll be ready.
+
+**Release didn't match:** qui uses strict matching to ensure cross-seeds have identical files. Both releases must match on:
+- Title, year, and release group
+- Resolution (1080p, 2160p)
+- Source (WEB-DL, BluRay) and collection (AMZN, NF)
+- Codec (x264, x265) and HDR format
+- Audio format and channels
+- Language, edition, cut, and version (v2, v3)
+- Variants like IMAX, HYBRID, REPACK, PROPER
+
+**Season pack vs episodes:** By default, season packs only match other season packs. Enable **Find individual episodes** in settings to allow season packs to match individual episode releases.
+
+#### How do I see why a release was filtered?
+
+Enable trace logging to see detailed rejection reasons:
+
+```toml
+loglevel = 'TRACE'
+```
+
+Look for `[CROSSSEED-MATCH] Release filtered` entries showing exactly which field caused the mismatch (e.g., `group_mismatch`, `resolution_mismatch`, `language_mismatch`).
 
 ## Reverse Proxy for External Applications
 
@@ -788,6 +812,7 @@ qui automatically detects the features available on each qBittorrent instance an
 | **File Priority Controls** | 4.1.5+ (Web API 2.2.0+) | Enable/disable files and adjust download priority levels |
 | **Rename File** | 4.2.1+ (Web API 2.4.0+) | Rename individual files within torrents |
 | **Rename Folder** | 4.3.3+ (Web API 2.7.0+) | Rename folders within torrents |
+| **Per-Torrent Temporary Download Path** | 4.4.0+ (Web API 2.8.4+) | A custom temporary download path may be set when adding torrents |
 | **Torrent Export (.torrent download)** | 4.5.0+ (Web API 2.8.11+) | Download .torrent files via `/api/v2/torrents/export`; first appeared in 4.5.0beta1 |
 | **Backups (.torrent archive export)** | 4.5.0+ (Web API 2.8.11+) | qui backups rely on `/torrents/export`; the backup UI is hidden when the endpoint is unavailable |
 | **Subcategories** | 4.6.0+ (Web API 2.9.0+) | Support for nested category structures (e.g., `Movies/Action`) |

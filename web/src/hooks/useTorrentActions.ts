@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { usePersistedDeleteFiles } from "@/hooks/usePersistedDeleteFiles"
 import { api } from "@/lib/api"
 import type { Torrent, TorrentFilters } from "@/types"
-import { usePersistedDeleteFiles } from "@/hooks/usePersistedDeleteFiles"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useState } from "react"
 import { toast } from "sonner"
@@ -85,6 +85,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     isLocked: isDeleteFilesLocked,
     toggleLock: toggleDeleteFilesLock,
   } = usePersistedDeleteFiles(false)
+  const [deleteCrossSeeds, setDeleteCrossSeeds] = useState(false)
   const [showAddTagsDialog, setShowAddTagsDialog] = useState(false)
   const [showSetTagsDialog, setShowSetTagsDialog] = useState(false)
   const [showRemoveTagsDialog, setShowRemoveTagsDialog] = useState(false)
@@ -98,6 +99,9 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
   const [showRenameTorrentDialog, setShowRenameTorrentDialog] = useState(false)
   const [showRenameFileDialog, setShowRenameFileDialog] = useState(false)
   const [showRenameFolderDialog, setShowRenameFolderDialog] = useState(false)
+  const [showTmmDialog, setShowTmmDialog] = useState(false)
+  const [pendingTmmEnable, setPendingTmmEnable] = useState(false)
+  const [showLocationWarningDialog, setShowLocationWarningDialog] = useState(false)
 
   // Context state for dialogs
   const [contextHashes, setContextHashes] = useState<string[]>([])
@@ -217,6 +221,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       // Close dialogs after successful action
       if (variables.action === "delete") {
         setShowDeleteDialog(false)
+        setDeleteCrossSeeds(false)
       } else if (variables.action === "addTags") {
         setShowAddTagsDialog(false)
       } else if (variables.action === "setTags") {
@@ -392,6 +397,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       clientCount,
     })
     setShowDeleteDialog(false)
+    setDeleteCrossSeeds(false)
     setContextHashes([])
     setContextTorrents([])
   }, [mutation, deleteFiles])
@@ -729,7 +735,13 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
   const prepareDeleteAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
     setContextHashes(hashes)
     if (torrents) setContextTorrents(torrents)
+    setDeleteCrossSeeds(false) // Reset on open to avoid stale state from previous dialog
     setShowDeleteDialog(true)
+  }, [])
+
+  const closeDeleteDialog = useCallback(() => {
+    setShowDeleteDialog(false)
+    setDeleteCrossSeeds(false)
   }, [])
 
   const prepareTagsAction = useCallback((action: "add" | "set" | "remove", hashes: string[], torrents?: Torrent[]) => {
@@ -773,9 +785,45 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     }
   }, [handleAction])
 
-  const prepareLocationAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
+  const prepareLocationAction = useCallback((hashes: string[], torrents?: Torrent[], _count?: number) => {
     setContextHashes(hashes)
     if (torrents) setContextTorrents(torrents)
+    setShowLocationWarningDialog(true)
+  }, [])
+
+  const prepareTmmAction = useCallback((hashes: string[], _count?: number, enable?: boolean) => {
+    setContextHashes(hashes)
+    setPendingTmmEnable(enable ?? false)
+    setShowTmmDialog(true)
+  }, [])
+
+  const handleTmmConfirm = useCallback((
+    hashes: string[],
+    isAllSelected?: boolean,
+    filters?: TorrentActionData["filters"],
+    search?: string,
+    excludeHashes?: string[],
+    clientMeta?: ClientMeta
+  ) => {
+    const clientHashes = clientMeta?.clientHashes ?? hashes
+    const clientCount = clientMeta?.totalSelected ?? (clientHashes?.length ?? hashes.length)
+    mutation.mutate({
+      action: TORRENT_ACTIONS.TOGGLE_AUTO_TMM,
+      hashes: isAllSelected ? [] : hashes,
+      enable: pendingTmmEnable,
+      selectAll: isAllSelected,
+      filters: isAllSelected ? filters : undefined,
+      search: isAllSelected ? search : undefined,
+      excludeHashes: isAllSelected ? excludeHashes : undefined,
+      clientHashes,
+      clientCount,
+    })
+    setShowTmmDialog(false)
+    setContextHashes([])
+  }, [mutation, pendingTmmEnable])
+
+  const proceedToLocationDialog = useCallback(() => {
+    setShowLocationWarningDialog(false)
     setShowLocationDialog(true)
   }, [])
 
@@ -819,10 +867,13 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     // State
     showDeleteDialog,
     setShowDeleteDialog,
+    closeDeleteDialog,
     deleteFiles,
     setDeleteFiles,
     isDeleteFilesLocked,
     toggleDeleteFilesLock,
+    deleteCrossSeeds,
+    setDeleteCrossSeeds,
     showAddTagsDialog,
     setShowAddTagsDialog,
     showSetTagsDialog,
@@ -849,6 +900,11 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setShowRenameFileDialog,
     showRenameFolderDialog,
     setShowRenameFolderDialog,
+    showTmmDialog,
+    setShowTmmDialog,
+    pendingTmmEnable,
+    showLocationWarningDialog,
+    setShowLocationWarningDialog,
     contextHashes,
     contextTorrents,
 
@@ -884,6 +940,9 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     prepareRenameTorrentAction,
     prepareRenameFileAction,
     prepareRenameFolderAction,
+    prepareTmmAction,
+    handleTmmConfirm,
+    proceedToLocationDialog,
   }
 }
 
