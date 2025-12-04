@@ -563,6 +563,33 @@ When `/check` returns `200 OK`, send the torrent to `/api/cross-seed/apply`:
 
 Cross-seeded torrents are added paused with `skip_checking=true`. qui polls the torrent state and auto-resumes if progress meets the size tolerance threshold. If progress is too low, it remains paused for manual review.
 
+### Troubleshooting
+
+#### Why didn't my cross-seed get added?
+
+**Rate limiting (HTTP 429):** Indexers limit how frequently you can make requests. If you see errors like `"indexer TorrentLeech rate-limited until..."`, qui has recorded the cooldown and will skip that indexer until it's available. Check the **Scheduler Activity** panel on the Indexers page to see which indexers are in cooldown and when they'll be ready.
+
+**Release didn't match:** qui uses strict matching to ensure cross-seeds have identical files. Both releases must match on:
+- Title, year, and release group
+- Resolution (1080p, 2160p)
+- Source (WEB-DL, BluRay) and collection (AMZN, NF)
+- Codec (x264, x265) and HDR format
+- Audio format and channels
+- Language, edition, cut, and version (v2, v3)
+- Variants like IMAX, HYBRID, REPACK, PROPER
+
+**Season pack vs episodes:** By default, season packs only match other season packs. Enable **Find individual episodes** in settings to allow season packs to match individual episode releases.
+
+#### How do I see why a release was filtered?
+
+Enable trace logging to see detailed rejection reasons:
+
+```toml
+loglevel = 'TRACE'
+```
+
+Look for `[CROSSSEED-MATCH] Release filtered` entries showing exactly which field caused the mismatch (e.g., `group_mismatch`, `resolution_mismatch`, `language_mismatch`).
+
 ## Reverse Proxy for External Applications
 
 qui includes a built-in reverse proxy that allows external applications like autobrr, Sonarr, Radarr, and other tools to connect to your qBittorrent instances **without needing qBittorrent credentials**. qui handles authentication transparently, making integration seamless.

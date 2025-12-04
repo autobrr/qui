@@ -22,6 +22,27 @@ import (
 
 const maxTorrentDownloadBytes int64 = 16 << 20 // 16 MiB safety limit for torrent blobs
 
+// DownloadError represents an HTTP error during torrent download.
+// It preserves the status code for rate-limit detection and retry logic.
+type DownloadError struct {
+	StatusCode int
+	URL        string
+}
+
+func (e *DownloadError) Error() string {
+	return fmt.Sprintf("torrent download from %s returned status %d", e.URL, e.StatusCode)
+}
+
+func (e *DownloadError) Is(target error) bool {
+	_, ok := target.(*DownloadError)
+	return ok
+}
+
+// IsRateLimited returns true if this error indicates rate limiting (HTTP 429).
+func (e *DownloadError) IsRateLimited() bool {
+	return e.StatusCode == http.StatusTooManyRequests
+}
+
 // Client wraps the Torznab backend client implementation
 type Client struct {
 	backend    models.TorznabBackend
@@ -345,7 +366,7 @@ func (c *Client) Download(ctx context.Context, downloadURL string) ([]byte, erro
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("torrent download returned status %d", resp.StatusCode)
+		return nil, &DownloadError{StatusCode: resp.StatusCode, URL: downloadURL}
 	}
 
 	limitedReader := io.LimitReader(resp.Body, maxTorrentDownloadBytes+1)
