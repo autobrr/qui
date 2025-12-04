@@ -61,6 +61,7 @@ interface GlobalCrossSeedSettings {
   findIndividualEpisodes: boolean
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
+  useCrossCategorySuffix: boolean
   runExternalProgramId?: number | null
   ignorePatterns: string
   // Source-specific tagging
@@ -77,8 +78,6 @@ interface CompletionFormState {
   tags: string
   excludeCategories: string
   excludeTags: string
-  delayMinutes: number
-  preImportCategories: string
 }
 
 // RSS Automation constants
@@ -99,6 +98,7 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   findIndividualEpisodes: false,
   sizeMismatchTolerancePercent: 5.0,
   useCategoryFromIndexer: false,
+  useCrossCategorySuffix: true,
   runExternalProgramId: null,
   ignorePatterns: "",
   // Source-specific tagging defaults
@@ -115,8 +115,6 @@ const DEFAULT_COMPLETION_SETTINGS: CrossSeedCompletionSettings = {
   tags: [],
   excludeCategories: [],
   excludeTags: [],
-  delayMinutes: 0,
-  preImportCategories: [],
 }
 
 const DEFAULT_COMPLETION_FORM: CompletionFormState = {
@@ -125,8 +123,6 @@ const DEFAULT_COMPLETION_FORM: CompletionFormState = {
   tags: "",
   excludeCategories: "",
   excludeTags: "",
-  delayMinutes: 0,
-  preImportCategories: "",
 }
 
 function parseList(value: string): string[] {
@@ -347,6 +343,7 @@ export function CrossSeedPage() {
         findIndividualEpisodes: settings.findIndividualEpisodes,
         sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent ?? 5.0,
         useCategoryFromIndexer: settings.useCategoryFromIndexer ?? false,
+        useCrossCategorySuffix: settings.useCrossCategorySuffix ?? true,
         runExternalProgramId: settings.runExternalProgramId ?? null,
         ignorePatterns: Array.isArray(settings.ignorePatterns)
           ? settings.ignorePatterns.join("\n")
@@ -371,8 +368,6 @@ export function CrossSeedPage() {
         tags: completion.tags.join(", "),
         excludeCategories: completion.excludeCategories.join(", "),
         excludeTags: completion.excludeTags.join(", "),
-        delayMinutes: completion.delayMinutes ?? 0,
-        preImportCategories: (completion.preImportCategories ?? []).join(", "),
       })
       setCompletionFormInitialized(true)
     }
@@ -444,8 +439,6 @@ export function CrossSeedPage() {
           tags: completionSource.tags.join(", "),
           excludeCategories: completionSource.excludeCategories.join(", "),
           excludeTags: completionSource.excludeTags.join(", "),
-          delayMinutes: completionSource.delayMinutes ?? 0,
-          preImportCategories: (completionSource.preImportCategories ?? []).join(", "),
         }
 
     return {
@@ -455,8 +448,6 @@ export function CrossSeedPage() {
         tags: parseList(completionState.tags),
         excludeCategories: parseList(completionState.excludeCategories),
         excludeTags: parseList(completionState.excludeTags),
-        delayMinutes: completionState.delayMinutes,
-        preImportCategories: parseList(completionState.preImportCategories),
       },
     }
   }, [settings, completionForm, completionFormInitialized])
@@ -472,6 +463,7 @@ export function CrossSeedPage() {
           findIndividualEpisodes: settings.findIndividualEpisodes,
           sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent,
           useCategoryFromIndexer: settings.useCategoryFromIndexer,
+          useCrossCategorySuffix: settings.useCrossCategorySuffix ?? true,
           runExternalProgramId: settings.runExternalProgramId ?? null,
           ignorePatterns: ignorePatterns.length > 0 ? ignorePatterns.join(", ") : "",
           rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
@@ -485,6 +477,7 @@ export function CrossSeedPage() {
       findIndividualEpisodes: globalSource.findIndividualEpisodes,
       sizeMismatchTolerancePercent: globalSource.sizeMismatchTolerancePercent,
       useCategoryFromIndexer: globalSource.useCategoryFromIndexer,
+      useCrossCategorySuffix: globalSource.useCrossCategorySuffix,
       runExternalProgramId: globalSource.runExternalProgramId,
       ignorePatterns: normalizeIgnorePatterns(globalSource.ignorePatterns),
       // Source-specific tagging
@@ -1300,84 +1293,6 @@ export function CrossSeedPage() {
               <p className="text-xs text-muted-foreground">Skip completion searches when any of these tags are present.</p>
             </div>
           </div>
-          <Separator />
-          <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-4">
-            <div className="space-y-1">
-              <p className="text-sm font-medium leading-none">Import timing</p>
-              <p className="text-xs text-muted-foreground">
-                Delay cross-seed searches to allow Sonarr/Radarr to import and categorize files first.
-                Cross-seeds inherit the source torrent's category, so waiting ensures they get the post-import category.
-              </p>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="completion-delay">Delay (minutes)</Label>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        className="text-muted-foreground hover:text-foreground"
-                        aria-label="Delay help"
-                      >
-                        <Info className="h-4 w-4" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent align="start" className="max-w-xs text-xs">
-                      Wait this long after torrent completion before searching for cross-seeds.
-                      This gives *arr applications time to import files and move the torrent to its final category.
-                      Set to 0 for immediate search.
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-                <Input
-                  id="completion-delay"
-                  type="number"
-                  min={0}
-                  value={completionForm.delayMinutes}
-                  onChange={event => setCompletionForm(prev => ({ ...prev, delayMinutes: Math.max(0, Number(event.target.value) || 0) }))}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {completionForm.delayMinutes === 0
-                    ? "Immediate search on completion (no delay)."
-                    : `Wait ${completionForm.delayMinutes} minute${completionForm.delayMinutes === 1 ? "" : "s"} after completion.`}
-                </p>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="completion-pre-import-categories">Pre-import categories</Label>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        className="text-muted-foreground hover:text-foreground"
-                        aria-label="Pre-import categories help"
-                      >
-                        <Info className="h-4 w-4" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent align="start" className="max-w-xs text-xs">
-                      Categories that indicate a torrent is waiting for *arr import (e.g., "sonarr", "radarr").
-                      If a torrent's category changes from one of these before the delay expires, the search triggers immediately.
-                      Leave blank to always wait the full delay.
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-                <Input
-                  id="completion-pre-import-categories"
-                  placeholder="sonarr, radarr"
-                  value={completionForm.preImportCategories}
-                  onChange={event => setCompletionForm(prev => ({ ...prev, preImportCategories: event.target.value }))}
-                  disabled={completionForm.delayMinutes === 0}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {completionForm.delayMinutes === 0
-                    ? "Enable delay to use pre-import categories."
-                    : "Skip remaining delay when torrent leaves these categories."}
-                </p>
-              </div>
-            </div>
-          </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
           <Button
@@ -1739,12 +1654,25 @@ export function CrossSeedPage() {
               </div>
               <div className="flex items-center justify-between gap-3">
                 <div className="space-y-0.5">
+                  <Label htmlFor="global-use-cross-category-suffix" className="font-medium">Add .cross category suffix</Label>
+                  <p className="text-xs text-muted-foreground">Append .cross to categories (e.g., movies → movies.cross) to prevent Sonarr/Radarr import loops. Disable for full TMM support.</p>
+                </div>
+                <Switch
+                  id="global-use-cross-category-suffix"
+                  checked={globalSettings.useCrossCategorySuffix}
+                  disabled={globalSettings.useCategoryFromIndexer}
+                  onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, useCrossCategorySuffix: !!value }))}
+                />
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
                   <Label htmlFor="global-use-category-from-indexer" className="font-medium">Use indexer name as category</Label>
-                  <p className="text-xs text-muted-foreground">Automatically set qBittorrent category to the indexer name. Save path is inherited by the matched torrent.</p>
+                  <p className="text-xs text-muted-foreground">Automatically set qBittorrent category to the indexer name. Save path is inherited from the matched torrent. Cannot be used with .cross suffix.</p>
                 </div>
                 <Switch
                   id="global-use-category-from-indexer"
                   checked={globalSettings.useCategoryFromIndexer}
+                  disabled={globalSettings.useCrossCategorySuffix}
                   onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, useCategoryFromIndexer: !!value }))}
                 />
               </div>
