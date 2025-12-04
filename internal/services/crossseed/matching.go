@@ -149,6 +149,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		sourceArtist := s.stringNormalizer.Normalize(source.Artist)
 		candidateArtist := s.stringNormalizer.Normalize(candidate.Artist)
 		if sourceArtist != candidateArtist {
+			logRejection("artist_mismatch", "sourceArtist", sourceArtist, "candidateArtist", candidateArtist)
 			return false
 		}
 	}
@@ -164,6 +165,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	if source.Year > 0 && source.Month > 0 && source.Day > 0 &&
 		candidate.Year > 0 && candidate.Month > 0 && candidate.Day > 0 {
 		if source.Month != candidate.Month || source.Day != candidate.Day {
+			logRejection("date_mismatch", "sourceDate", fmt.Sprintf("%d-%02d-%02d", source.Year, source.Month, source.Day), "candidateDate", fmt.Sprintf("%d-%02d-%02d", candidate.Year, candidate.Month, candidate.Day))
 			return false
 		}
 	}
