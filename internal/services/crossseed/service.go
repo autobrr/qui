@@ -2494,16 +2494,17 @@ func (s *Service) processCrossSeedCandidate(
 
 	// Determine save path strategy:
 	// - For partial-in-pack (episode into season pack): use explicit ContentPath, TMM off
-	// - For regular cross-seeds with category: let TMM handle it using category's save_path
+	// - For categories with TMM-enabled source: let TMM handle it
+	// - Otherwise: use explicit save path
 	if isEpisodeInPack && matchedTorrent.ContentPath != "" {
 		// Episode into season pack: use the season pack's content path explicitly
 		options["autoTMM"] = "false"
 		options["savepath"] = matchedTorrent.ContentPath
-	} else if crossCategory != "" {
-		// Regular cross-seed with category: TMM will use category's save_path
+	} else if crossCategory != "" && matchedTorrent.AutoManaged {
+		// Category assigned and source uses TMM: let TMM handle it
 		options["autoTMM"] = "true"
 	} else {
-		// No category - use explicit save path
+		// No category or source doesn't use TMM - use explicit save path
 		options["autoTMM"] = "false"
 		savePath := categorySavePath
 		if savePath == "" {
