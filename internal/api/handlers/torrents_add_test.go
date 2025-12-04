@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -288,15 +289,8 @@ func TestAddTorrentWithIndexer_DownloadFailureContinuesWithOthers(t *testing.T) 
 
 	mockSync := &mockSyncManager{}
 	downloadErr := errors.New("download failed")
-	callCount := 0
-	mockJackett := &mockJackettService{
-		downloadTorrentData: []byte("fake torrent data"),
-	}
-	// Custom behavior: first call fails, second succeeds
-	originalDownload := mockJackett.DownloadTorrent
-	_ = originalDownload // unused, we'll override behavior differently
 
-	// Create a custom mock that fails on first call
+	// Create a custom mock that fails on first call, second succeeds
 	customJackett := &customMockJackettService{
 		responses: []jackettResponse{
 			{err: downloadErr},
@@ -320,7 +314,7 @@ func TestAddTorrentWithIndexer_DownloadFailureContinuesWithOthers(t *testing.T) 
 	assert.Equal(t, 1, failed)
 
 	// Verify both URLs were attempted
-	assert.Equal(t, 2, callCount+len(customJackett.calls))
+	assert.Equal(t, 2, len(customJackett.calls))
 
 	// Verify only the successful download was added
 	require.Len(t, mockSync.addTorrentCalls, 1)
@@ -586,7 +580,7 @@ func TestParseIndexerIDFromForm(t *testing.T) {
 			// Parse indexer_id like the handler does
 			var indexerID int
 			if indexerIDStr := req.FormValue("indexer_id"); indexerIDStr != "" {
-				parsedID, parseErr := parseInt(indexerIDStr)
+				parsedID, parseErr := strconv.Atoi(indexerIDStr)
 				if parseErr == nil {
 					indexerID = parsedID
 				}
@@ -595,29 +589,6 @@ func TestParseIndexerIDFromForm(t *testing.T) {
 			assert.Equal(t, tt.expectedID, indexerID)
 		})
 	}
-}
-
-// parseInt is a helper that mimics strconv.Atoi behavior
-func parseInt(s string) (int, error) {
-	var result int
-	var negative bool
-	if len(s) == 0 {
-		return 0, errors.New("empty string")
-	}
-	if s[0] == '-' {
-		negative = true
-		s = s[1:]
-	}
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return 0, errors.New("invalid character")
-		}
-		result = result*10 + int(c-'0')
-	}
-	if negative {
-		result = -result
-	}
-	return result, nil
 }
 
 // Integration-style test for the full HTTP handler flow
