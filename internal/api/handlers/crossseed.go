@@ -617,6 +617,12 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		}
 	}
 
+	// Validate mutual exclusivity: cannot use both indexer category and .cross suffix
+	if req.UseCategoryFromIndexer && req.UseCrossCategorySuffix {
+		RespondError(w, http.StatusBadRequest, "Cannot enable both 'Use indexer name as category' and 'Add .cross category suffix'. These settings are mutually exclusive.")
+		return
+	}
+
 	settings := &models.CrossSeedAutomationSettings{
 		Enabled:                      req.Enabled,
 		RunIntervalMinutes:           req.RunIntervalMinutes,
@@ -682,6 +688,12 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 
 	merged := *current
 	applyAutomationSettingsPatch(&merged, req)
+
+	// Validate mutual exclusivity: cannot use both indexer category and .cross suffix
+	if merged.UseCategoryFromIndexer && merged.UseCrossCategorySuffix {
+		RespondError(w, http.StatusBadRequest, "Cannot enable both 'Use indexer name as category' and 'Add .cross category suffix'. These settings are mutually exclusive.")
+		return
+	}
 
 	updated, err := h.service.UpdateAutomationSettings(r.Context(), &merged)
 	if err != nil {

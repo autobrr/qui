@@ -1661,17 +1661,19 @@ export function CrossSeedPage() {
                 <Switch
                   id="global-use-cross-category-suffix"
                   checked={globalSettings.useCrossCategorySuffix}
+                  disabled={globalSettings.useCategoryFromIndexer}
                   onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, useCrossCategorySuffix: !!value }))}
                 />
               </div>
               <div className="flex items-center justify-between gap-3">
                 <div className="space-y-0.5">
                   <Label htmlFor="global-use-category-from-indexer" className="font-medium">Use indexer name as category</Label>
-                  <p className="text-xs text-muted-foreground">Automatically set qBittorrent category to the indexer name. Save path is inherited by the matched torrent.</p>
+                  <p className="text-xs text-muted-foreground">Automatically set qBittorrent category to the indexer name. Save path is inherited from the matched torrent. Cannot be used with .cross suffix.</p>
                 </div>
                 <Switch
                   id="global-use-category-from-indexer"
                   checked={globalSettings.useCategoryFromIndexer}
+                  disabled={globalSettings.useCrossCategorySuffix}
                   onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, useCategoryFromIndexer: !!value }))}
                 />
               </div>

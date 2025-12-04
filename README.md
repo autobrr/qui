@@ -436,7 +436,7 @@ Configure matching behavior in the **Global rules** tab on the Cross-Seed page.
 #### Categories
 
 - **Add .cross category suffix** (default: enabled) - Appends `.cross` to cross-seed categories (e.g., `movies` → `movies.cross`). This prevents Sonarr/Radarr from importing cross-seeded files as duplicates, since *arr apps typically monitor specific categories. Disable this for full Automatic Torrent Management (AutoTMM) support where cross-seeds should use identical categories and save paths as the source torrent.
-- **Use indexer name as category** - Set the qBittorrent category to the indexer name instead of inheriting from the matched torrent. When combined with the `.cross` suffix, produces categories like `BTN.cross`.
+- **Use indexer name as category** - Set the qBittorrent category to the indexer name instead of inheriting from the matched torrent.
 
 #### Source Tagging
 
