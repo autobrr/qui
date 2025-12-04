@@ -205,9 +205,9 @@ func sanitizeInstanceReannounceSettings(s *InstanceReannounceSettings) *Instance
 	if clone.MaxRetries < minMaxRetries {
 		log.Debug().
 			Int("original", s.MaxRetries).
-			Int("sanitized", defaultMaxRetries).
-			Msg("reannounce: MaxRetries below minimum, using default")
-		clone.MaxRetries = defaultMaxRetries
+			Int("sanitized", minMaxRetries).
+			Msg("reannounce: MaxRetries below minimum, clamping")
+		clone.MaxRetries = minMaxRetries
 	} else if clone.MaxRetries > maxMaxRetries {
 		log.Debug().
 			Int("original", s.MaxRetries).
