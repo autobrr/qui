@@ -29,7 +29,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import type { Category, Torrent } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { Loader2, Plus, X } from "lucide-react"
+import { AlertTriangle, Loader2, Plus, X } from "lucide-react"
 import type { ChangeEvent, KeyboardEvent } from "react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { buildCategoryTree, type CategoryNode } from "./CategoryTree"
@@ -2166,6 +2166,88 @@ export const SpeedLimitsDialog = memo(function SpeedLimitsDialog({
             disabled={isPending}
           >
             {isPending ? "Setting..." : "Apply Limits"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
+interface TmmConfirmDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  count: number
+  enable: boolean
+  onConfirm: () => void
+  isPending?: boolean
+}
+
+export const TmmConfirmDialog = memo(function TmmConfirmDialog({
+  open,
+  onOpenChange,
+  count,
+  enable,
+  onConfirm,
+  isPending = false,
+}: TmmConfirmDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-warning" />
+            {enable ? "Enable" : "Disable"} TMM for {count} torrent(s)?
+          </DialogTitle>
+          <DialogDescription>
+            Automatic Torrent Management will move files based on category settings. This may affect cross-seeded torrents sharing the same data.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={onConfirm} disabled={isPending}>
+            {enable ? "Enable" : "Disable"} TMM
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
+interface LocationWarningDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  count: number
+  onConfirm: () => void
+  isPending?: boolean
+}
+
+export const LocationWarningDialog = memo(function LocationWarningDialog({
+  open,
+  onOpenChange,
+  count,
+  onConfirm,
+  isPending = false,
+}: LocationWarningDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-warning" />
+            Set Location for {count} torrent(s)?
+          </DialogTitle>
+          <DialogDescription>
+            Changing the save location will move files on disk. This may affect cross-seeded torrents sharing the same data.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={onConfirm} disabled={isPending}>
+            Continue
           </Button>
         </DialogFooter>
       </DialogContent>

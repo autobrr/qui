@@ -99,7 +99,6 @@ import {
   BrickWallFire,
   ChevronDown,
   ChevronUp,
-  AlertTriangle,
   Columns3,
   EthernetPort,
   Eye,
@@ -123,6 +122,7 @@ import { SelectAllHotkey } from "./SelectAllHotkey"
 import {
   AddTagsDialog,
   CreateAndAssignCategoryDialog,
+  LocationWarningDialog,
   RemoveTagsDialog,
   RenameTorrentDialog,
   RenameTorrentFileDialog,
@@ -131,7 +131,8 @@ import {
   SetLocationDialog,
   SetTagsDialog,
   ShareLimitDialog,
-  SpeedLimitsDialog
+  SpeedLimitsDialog,
+  TmmConfirmDialog
 } from "./TorrentDialogs"
 import { TorrentDropZone } from "./TorrentDropZone"
 import { createColumns, type TableViewMode } from "./TorrentTableColumns"
@@ -3104,50 +3105,23 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       </Dialog>
 
       {/* TMM Confirmation Dialog */}
-      <Dialog open={showTmmDialog} onOpenChange={setShowTmmDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-warning" />
-              {pendingTmmEnable ? "Enable" : "Disable"} TMM for {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?
-            </DialogTitle>
-            <DialogDescription>
-              Automatic Torrent Management will move files based on category settings. This may affect cross-seeded torrents sharing the same data.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowTmmDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={() => handleTmmConfirm(contextHashes)} disabled={isPending}>
-              {pendingTmmEnable ? "Enable" : "Disable"} TMM
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <TmmConfirmDialog
+        open={showTmmDialog}
+        onOpenChange={setShowTmmDialog}
+        count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+        enable={pendingTmmEnable}
+        onConfirm={() => handleTmmConfirm(contextHashes)}
+        isPending={isPending}
+      />
 
       {/* Location Warning Dialog */}
-      <Dialog open={showLocationWarningDialog} onOpenChange={setShowLocationWarningDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-warning" />
-              Set Location for {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?
-            </DialogTitle>
-            <DialogDescription>
-              Changing the save location will move files on disk. This may affect cross-seeded torrents sharing the same data.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowLocationWarningDialog(false)}>
-              Cancel
-            </Button>
-            <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={proceedToLocationDialog} disabled={isPending}>
-              Continue
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <LocationWarningDialog
+        open={showLocationWarningDialog}
+        onOpenChange={setShowLocationWarningDialog}
+        count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+        onConfirm={proceedToLocationDialog}
+        isPending={isPending}
+      />
 
       {/* Instance Preferences Dialog */}
       {instance && (

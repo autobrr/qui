@@ -68,7 +68,7 @@ import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { useInstances } from "@/hooks/useInstances"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
-import { RemoveTagsDialog, SetCategoryDialog, SetLocationDialog, SetTagsDialog } from "./TorrentDialogs"
+import { LocationWarningDialog, RemoveTagsDialog, SetCategoryDialog, SetLocationDialog, SetTagsDialog, TmmConfirmDialog } from "./TorrentDialogs"
 // import { createPortal } from 'react-dom'
 // Columns dropdown removed on mobile
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
@@ -1033,6 +1033,12 @@ export function TorrentCardsMobile({
     setShowCategoryDialog,
     showLocationDialog,
     setShowLocationDialog,
+    showTmmDialog,
+    setShowTmmDialog,
+    pendingTmmEnable,
+    showLocationWarningDialog,
+    setShowLocationWarningDialog,
+    contextHashes,
     isPending,
     handleAction,
     handleDelete,
@@ -1044,6 +1050,9 @@ export function TorrentCardsMobile({
     handleSetSpeedLimits,
     prepareDeleteAction,
     prepareLocationAction,
+    prepareTmmAction,
+    handleTmmConfirm,
+    proceedToLocationDialog,
   } = useTorrentActions({
     instanceId,
     onActionComplete: (action) => {
@@ -2030,7 +2039,8 @@ export function TorrentCardsMobile({
                     <Button
                       variant="outline"
                       onClick={() => {
-                        triggerSelectionAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, { enable: true })
+                        const hashes = isAllSelected ? [] : Array.from(selectedHashes)
+                        prepareTmmAction(hashes, effectiveSelectionCount, true)
                         setShowActionsSheet(false)
                       }}
                       className="justify-start"
@@ -2041,7 +2051,8 @@ export function TorrentCardsMobile({
                     <Button
                       variant="outline"
                       onClick={() => {
-                        triggerSelectionAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, { enable: false })
+                        const hashes = isAllSelected ? [] : Array.from(selectedHashes)
+                        prepareTmmAction(hashes, effectiveSelectionCount, false)
                         setShowActionsSheet(false)
                       }}
                       className="justify-start"
@@ -2057,7 +2068,8 @@ export function TorrentCardsMobile({
                 <Button
                   variant="outline"
                   onClick={() => {
-                    triggerSelectionAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, { enable: !allEnabled })
+                    const hashes = isAllSelected ? [] : Array.from(selectedHashes)
+                    prepareTmmAction(hashes, effectiveSelectionCount, !allEnabled)
                     setShowActionsSheet(false)
                   }}
                   className="justify-start"
@@ -2266,6 +2278,25 @@ export function TorrentCardsMobile({
         hashCount={effectiveSelectionCount}
         initialLocation={getCommonSavePath(getSelectedTorrents)}
         onConfirm={handleSetLocationWrapper}
+        isPending={isPending}
+      />
+
+      {/* TMM Confirmation Dialog */}
+      <TmmConfirmDialog
+        open={showTmmDialog}
+        onOpenChange={setShowTmmDialog}
+        count={effectiveSelectionCount}
+        enable={pendingTmmEnable}
+        onConfirm={() => handleTmmConfirm(contextHashes)}
+        isPending={isPending}
+      />
+
+      {/* Location Warning Dialog */}
+      <LocationWarningDialog
+        open={showLocationWarningDialog}
+        onOpenChange={setShowLocationWarningDialog}
+        count={effectiveSelectionCount}
+        onConfirm={proceedToLocationDialog}
         isPending={isPending}
       />
 
