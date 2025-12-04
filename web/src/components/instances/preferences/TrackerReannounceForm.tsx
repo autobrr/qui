@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { buildCategoryTree, type CategoryNode } from "@/components/torrents/CategoryTree"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -14,7 +15,6 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { buildCategoryTree, type CategoryNode } from "@/components/torrents/CategoryTree"
 import { useInstances } from "@/hooks/useInstances"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { api } from "@/lib/api"
@@ -35,6 +35,7 @@ const DEFAULT_SETTINGS: InstanceReannounceSettings = {
   initialWaitSeconds: 15,
   reannounceIntervalSeconds: 7,
   maxAgeSeconds: 600,
+  maxRetries: 50,
   aggressive: false,
   monitorAll: false,
   excludeCategories: false,
@@ -48,6 +49,8 @@ const DEFAULT_SETTINGS: InstanceReannounceSettings = {
 const MIN_INITIAL_WAIT = 5
 const MIN_INTERVAL = 5
 const MIN_MAX_AGE = 60
+const MIN_MAX_RETRIES = 1
+const MAX_MAX_RETRIES = 50
 const GLOBAL_SCAN_INTERVAL_SECONDS = 7
 
 type MonitorScopeField = keyof Pick<InstanceReannounceSettings, "categories" | "tags" | "trackers">
@@ -267,7 +270,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                       <Separator className="flex-1" />
                     </div>
                     
-                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
                       <NumberField
                         id="initial-wait"
                         label="Initial Wait"
@@ -281,7 +284,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                         id="reannounce-interval"
                         label="Retry Interval"
                         description="Seconds between retries"
-                        tooltip="How often to retry inside a single reannounce attempt (up to 3 tries). With Quick Retry enabled, this also becomes the cooldown between scans. Minimum 5 seconds."
+                        tooltip="How often to retry inside a single reannounce attempt. With Quick Retry enabled, this also becomes the cooldown between scans. Minimum 5 seconds."
                         min={MIN_INTERVAL}
                         value={settings.reannounceIntervalSeconds}
                         onChange={(value) => setSettings((prev) => ({ ...prev, reannounceIntervalSeconds: value }))}
@@ -294,6 +297,16 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                         min={MIN_MAX_AGE}
                         value={settings.maxAgeSeconds}
                         onChange={(value) => setSettings((prev) => ({ ...prev, maxAgeSeconds: value }))}
+                      />
+                      <NumberField
+                        id="max-retries"
+                        label="Max Retries"
+                        description="Retry attempts per torrent"
+                        tooltip="Maximum number of reannounce attempts for a single torrent before giving up. Some slow trackers may need up to 50 retries (at 7s intervals = ~6 minutes). Range: 1-50."
+                        min={MIN_MAX_RETRIES}
+                        max={MAX_MAX_RETRIES}
+                        value={settings.maxRetries}
+                        onChange={(value) => setSettings((prev) => ({ ...prev, maxRetries: value }))}
                       />
                     </div>
 
@@ -606,10 +619,11 @@ interface NumberFieldProps {
   tooltip?: string
   value: number
   min: number
+  max?: number
   onChange: (value: number) => void
 }
 
-function NumberField({ id, label, description, tooltip, value, min, onChange }: NumberFieldProps) {
+function NumberField({ id, label, description, tooltip, value, min, max, onChange }: NumberFieldProps) {
   const [inputValue, setInputValue] = useState<string>(() => String(value))
 
   useEffect(() => {
@@ -618,7 +632,10 @@ function NumberField({ id, label, description, tooltip, value, min, onChange }: 
 
   const sanitizeAndCommit = (rawValue: string) => {
     const parsed = Math.floor(Number(rawValue))
-    const sanitized = !rawValue.trim() || !Number.isFinite(parsed) ? Math.max(min, value) : Math.max(min, parsed)
+    let sanitized = !rawValue.trim() || !Number.isFinite(parsed) ? Math.max(min, value) : Math.max(min, parsed)
+    if (max !== undefined) {
+      sanitized = Math.min(max, sanitized)
+    }
     if (sanitized !== value) {
       onChange(sanitized)
     }
@@ -645,6 +662,7 @@ function NumberField({ id, label, description, tooltip, value, min, onChange }: 
         type="number"
         inputMode="numeric"
         min={min}
+        max={max}
         value={inputValue}
         onChange={(event) => {
           const nextValue = event.target.value
@@ -673,6 +691,7 @@ function cloneSettings(settings?: InstanceReannounceSettings): InstanceReannounc
     initialWaitSeconds: settings.initialWaitSeconds,
     reannounceIntervalSeconds: settings.reannounceIntervalSeconds,
     maxAgeSeconds: settings.maxAgeSeconds,
+    maxRetries: settings.maxRetries,
     monitorAll: settings.monitorAll,
     excludeCategories: settings.excludeCategories,
     categories: [...settings.categories],
@@ -685,9 +704,10 @@ function cloneSettings(settings?: InstanceReannounceSettings): InstanceReannounc
 }
 
 function sanitizeSettings(settings: InstanceReannounceSettings): InstanceReannounceSettings {
-  const clamp = (value: number, fallback: number, min: number) => {
+  const clamp = (value: number, fallback: number, min: number, max?: number) => {
     const parsed = Number.isFinite(value) ? Math.floor(value) : fallback
-    return Math.max(min, parsed)
+    const clamped = Math.max(min, parsed)
+    return max !== undefined ? Math.min(max, clamped) : clamped
   }
   const normalizeList = (values: string[]) => values.map((value) => value.trim()).filter(Boolean)
 
@@ -696,6 +716,7 @@ function sanitizeSettings(settings: InstanceReannounceSettings): InstanceReannou
     initialWaitSeconds: clamp(settings.initialWaitSeconds, DEFAULT_SETTINGS.initialWaitSeconds, MIN_INITIAL_WAIT),
     reannounceIntervalSeconds: clamp(settings.reannounceIntervalSeconds, DEFAULT_SETTINGS.reannounceIntervalSeconds, MIN_INTERVAL),
     maxAgeSeconds: clamp(settings.maxAgeSeconds, DEFAULT_SETTINGS.maxAgeSeconds, MIN_MAX_AGE),
+    maxRetries: clamp(settings.maxRetries, DEFAULT_SETTINGS.maxRetries, MIN_MAX_RETRIES, MAX_MAX_RETRIES),
     monitorAll: settings.monitorAll,
     excludeCategories: settings.excludeCategories,
     categories: normalizeList(settings.categories),

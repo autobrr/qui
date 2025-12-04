@@ -409,7 +409,7 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 	}
 	opts := &qbt.ReannounceOptions{
 		Interval:        settings.ReannounceIntervalSeconds,
-		MaxAttempts:     3,
+		MaxAttempts:     settings.MaxRetries,
 		DeleteOnFailure: false,
 	}
 	if err := client.ReannounceTorrentWithRetry(ctx, hash, opts); err != nil {

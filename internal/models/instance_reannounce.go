@@ -19,6 +19,7 @@ const (
 	defaultInitialWaitSeconds     = 15
 	defaultReannounceIntervalSecs = 7
 	defaultMaxAgeSeconds          = 600
+	defaultMaxRetries             = 50
 )
 
 // InstanceReannounceSettings stores per-instance tracker reannounce configuration.
@@ -28,6 +29,7 @@ type InstanceReannounceSettings struct {
 	InitialWaitSeconds        int       `json:"initialWaitSeconds"`
 	ReannounceIntervalSeconds int       `json:"reannounceIntervalSeconds"`
 	MaxAgeSeconds             int       `json:"maxAgeSeconds"`
+	MaxRetries                int       `json:"maxRetries"`
 	Aggressive                bool      `json:"aggressive"`
 	MonitorAll                bool      `json:"monitorAll"`
 	ExcludeCategories         bool      `json:"excludeCategories"`
@@ -57,6 +59,7 @@ func DefaultInstanceReannounceSettings(instanceID int) *InstanceReannounceSettin
 		InitialWaitSeconds:        defaultInitialWaitSeconds,
 		ReannounceIntervalSeconds: defaultReannounceIntervalSecs,
 		MaxAgeSeconds:             defaultMaxAgeSeconds,
+		MaxRetries:                defaultMaxRetries,
 		Aggressive:                false,
 		MonitorAll:                false,
 		ExcludeCategories:         false,
@@ -71,7 +74,7 @@ func DefaultInstanceReannounceSettings(instanceID int) *InstanceReannounceSettin
 // Get returns settings for an instance, falling back to defaults if missing.
 func (s *InstanceReannounceStore) Get(ctx context.Context, instanceID int) (*InstanceReannounceSettings, error) {
 	const query = `SELECT instance_id, enabled, initial_wait_seconds, reannounce_interval_seconds,
-		max_age_seconds, aggressive, monitor_all, categories_json, tags_json, trackers_json, updated_at,
+		max_age_seconds, max_retries, aggressive, monitor_all, categories_json, tags_json, trackers_json, updated_at,
 		exclude_categories, exclude_tags, exclude_trackers
 		FROM instance_reannounce_settings WHERE instance_id = ?`
 
@@ -89,7 +92,7 @@ func (s *InstanceReannounceStore) Get(ctx context.Context, instanceID int) (*Ins
 // List returns settings for all instances that have overrides. Instances without overrides are omitted.
 func (s *InstanceReannounceStore) List(ctx context.Context) ([]*InstanceReannounceSettings, error) {
 	const query = `SELECT instance_id, enabled, initial_wait_seconds, reannounce_interval_seconds,
-		max_age_seconds, aggressive, monitor_all, categories_json, tags_json, trackers_json, updated_at,
+		max_age_seconds, max_retries, aggressive, monitor_all, categories_json, tags_json, trackers_json, updated_at,
 		exclude_categories, exclude_tags, exclude_trackers
 		FROM instance_reannounce_settings`
 
@@ -137,14 +140,15 @@ func (s *InstanceReannounceStore) Upsert(ctx context.Context, settings *Instance
 
 	const stmt = `INSERT INTO instance_reannounce_settings (
 		instance_id, enabled, initial_wait_seconds, reannounce_interval_seconds,
-		max_age_seconds, aggressive, monitor_all, categories_json, tags_json, trackers_json,
+		max_age_seconds, max_retries, aggressive, monitor_all, categories_json, tags_json, trackers_json,
 		exclude_categories, exclude_tags, exclude_trackers)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(instance_id) DO UPDATE SET
 		enabled = excluded.enabled,
 		initial_wait_seconds = excluded.initial_wait_seconds,
 		reannounce_interval_seconds = excluded.reannounce_interval_seconds,
 		max_age_seconds = excluded.max_age_seconds,
+		max_retries = excluded.max_retries,
 		aggressive = excluded.aggressive,
 		monitor_all = excluded.monitor_all,
 		categories_json = excluded.categories_json,
@@ -160,6 +164,7 @@ func (s *InstanceReannounceStore) Upsert(ctx context.Context, settings *Instance
 		coerced.InitialWaitSeconds,
 		coerced.ReannounceIntervalSeconds,
 		coerced.MaxAgeSeconds,
+		coerced.MaxRetries,
 		boolToSQLite(coerced.Aggressive),
 		boolToSQLite(coerced.MonitorAll),
 		catJSON,
@@ -193,6 +198,11 @@ func sanitizeInstanceReannounceSettings(s *InstanceReannounceSettings) *Instance
 	}
 	if clone.MaxAgeSeconds <= 0 {
 		clone.MaxAgeSeconds = defaultMaxAgeSeconds
+	}
+	if clone.MaxRetries <= 0 {
+		clone.MaxRetries = defaultMaxRetries
+	} else if clone.MaxRetries > 50 {
+		clone.MaxRetries = 50
 	}
 	clone.Categories = sanitizeStringSlice(clone.Categories)
 	clone.Tags = sanitizeStringSlice(clone.Tags)
@@ -252,6 +262,7 @@ func scanInstanceReannounceSettings(scanner interface {
 		initialWait          int
 		reannounceInterval   int
 		maxAge               int
+		maxRetries           int
 		aggressiveInt        int
 		monitorAllInt        int
 		catJSON              sql.NullString
@@ -269,6 +280,7 @@ func scanInstanceReannounceSettings(scanner interface {
 		&initialWait,
 		&reannounceInterval,
 		&maxAge,
+		&maxRetries,
 		&aggressiveInt,
 		&monitorAllInt,
 		&catJSON,
@@ -301,6 +313,7 @@ func scanInstanceReannounceSettings(scanner interface {
 		InitialWaitSeconds:        initialWait,
 		ReannounceIntervalSeconds: reannounceInterval,
 		MaxAgeSeconds:             maxAge,
+		MaxRetries:                maxRetries,
 		Aggressive:                aggressiveInt == 1,
 		MonitorAll:                monitorAllInt == 1,
 		ExcludeCategories:         excludeCategoriesInt == 1,

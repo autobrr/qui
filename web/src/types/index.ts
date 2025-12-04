@@ -44,6 +44,7 @@ export interface InstanceReannounceSettings {
   initialWaitSeconds: number
   reannounceIntervalSeconds: number
   maxAgeSeconds: number
+  maxRetries: number
   aggressive: boolean
   monitorAll: boolean
   excludeCategories: boolean
