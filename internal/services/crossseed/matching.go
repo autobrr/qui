@@ -143,10 +143,29 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		}
 	}
 
+	// Artist must match for content with artist metadata (music, 0day scene radio shows, etc.)
+	// This prevents matching different artists with the same show/album title.
+	if source.Artist != "" && candidate.Artist != "" {
+		sourceArtist := s.stringNormalizer.Normalize(source.Artist)
+		candidateArtist := s.stringNormalizer.Normalize(candidate.Artist)
+		if sourceArtist != candidateArtist {
+			return false
+		}
+	}
+
 	// Year should match if both are present.
 	if source.Year > 0 && candidate.Year > 0 && source.Year != candidate.Year {
 		logRejection("year_mismatch", "sourceYear", source.Year, "candidateYear", candidate.Year)
 		return false
+	}
+
+	// For date-based releases (0day scene), require exact date match including month and day.
+	// This prevents matching releases from different dates within the same year.
+	if source.Year > 0 && source.Month > 0 && source.Day > 0 &&
+		candidate.Year > 0 && candidate.Month > 0 && candidate.Day > 0 {
+		if source.Month != candidate.Month || source.Day != candidate.Day {
+			return false
+		}
 	}
 
 	// For non-TV content where rls has inferred a concrete content type (movie, music,
