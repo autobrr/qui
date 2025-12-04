@@ -100,7 +100,7 @@ async function parseTorrentFile(file: File): Promise<string | null> {
 
 export type AddTorrentDropPayload =
   | { type: "file"; files: File[] }
-  | { type: "url"; urls: string[] }
+  | { type: "url"; urls: string[]; indexerId?: number }
 
 interface AddTorrentDialogProps {
   instanceId: number
@@ -132,6 +132,7 @@ interface FormData {
   rename: string
   tempPathEnabled: boolean
   tempPath: string
+  indexerId?: number
 }
 
 interface DuplicateEntryDetails {
@@ -530,6 +531,9 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
         submitData.torrentFiles = data.torrentFiles
       } else if (activeTab === "url" && data.urls) {
         submitData.urls = data.urls.split("\n").map(u => u.trim()).filter(Boolean)
+        if (data.indexerId) {
+          submitData.indexerId = data.indexerId
+        }
       }
 
       return api.addTorrent(instanceId, submitData)
@@ -578,6 +582,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       rename: "",
       tempPathEnabled: preferences?.temp_path_enabled ?? false,
       tempPath: preferences?.temp_path || "",
+      indexerId: undefined as number | undefined,
     },
     onSubmit: async ({ value }) => {
       // Use the currently selected tags
@@ -688,6 +693,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       setShowFileList(false)
       form.setFieldValue("urls", urls.join("\n"))
       form.setFieldValue("torrentFiles", null)
+      form.setFieldValue("indexerId", dropPayload.indexerId)
       if (fileInputRef.current) {
         fileInputRef.current.value = ""
       }

@@ -563,6 +563,7 @@ class ApiClient {
       limitSeedTime?: number
       contentLayout?: string
       rename?: string
+      indexerId?: number
     }
   ): Promise<{ success: boolean; message?: string }> {
     const formData = new FormData()
@@ -586,6 +587,7 @@ class ApiClient {
     if (data.rename) formData.append("rename", data.rename)
     // Only send savePath if autoTMM is false or undefined
     if (data.savePath && !data.autoTMM) formData.append("savepath", data.savePath)
+    if (data.indexerId) formData.append("indexer_id", data.indexerId.toString())
 
     const response = await fetch(`${API_BASE}/instances/${instanceId}/torrents`, {
       method: "POST",

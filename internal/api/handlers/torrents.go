@@ -23,11 +23,13 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/torrentname"
 )
 
 type TorrentsHandler struct {
-	syncManager *qbittorrent.SyncManager
+	syncManager    *qbittorrent.SyncManager
+	jackettService *jackett.Service
 }
 
 // truncateExpr truncates long filter expressions for cleaner logging
@@ -52,9 +54,10 @@ type SortedPeersResponse struct {
 	SortedPeers []SortedPeer `json:"sorted_peers,omitempty"`
 }
 
-func NewTorrentsHandler(syncManager *qbittorrent.SyncManager) *TorrentsHandler {
+func NewTorrentsHandler(syncManager *qbittorrent.SyncManager, jackettService *jackett.Service) *TorrentsHandler {
 	return &TorrentsHandler{
-		syncManager: syncManager,
+		syncManager:    syncManager,
+		jackettService: jackettService,
 	}
 }
 
@@ -278,6 +281,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check for URLs/magnet links if no files
+	var indexerID int
 	if len(torrentFiles) == 0 {
 		urlsParam := r.FormValue("urls")
 		if urlsParam != "" {
@@ -287,6 +291,16 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		} else {
 			RespondError(w, http.StatusBadRequest, "Either torrent files or URLs are required")
 			return
+		}
+
+		// Parse indexer_id if provided (for downloading torrent from indexer)
+		if indexerIDStr := r.FormValue("indexer_id"); indexerIDStr != "" {
+			var err error
+			indexerID, err = strconv.Atoi(indexerIDStr)
+			if err != nil {
+				log.Warn().Str("indexer_id", indexerIDStr).Msg("Invalid indexer_id, ignoring")
+				indexerID = 0
+			}
 		}
 	}
 
@@ -423,15 +437,73 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if len(urls) > 0 {
 		// Add from URLs
-		if err := h.syncManager.AddTorrentFromURLs(ctx, instanceID, urls, options); err != nil {
-			if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
+		// If indexer_id is provided and jackettService is available, download torrent files
+		// from the indexer first (needed for remote qBittorrent instances that can't reach the indexer)
+		if indexerID > 0 && h.jackettService != nil {
+			for _, url := range urls {
+				url = strings.TrimSpace(url)
+				if url == "" {
+					continue
+				}
+
+				// Check if context is already cancelled
+				if ctx.Err() != nil {
+					log.Warn().Int("instanceID", instanceID).Msg("Request cancelled, stopping torrent additions")
+					break
+				}
+
+				// Magnet links can be added directly to qBittorrent
+				if strings.HasPrefix(strings.ToLower(url), "magnet:") {
+					if err := h.syncManager.AddTorrentFromURLs(ctx, instanceID, []string{url}, options); err != nil {
+						if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
+							return
+						}
+						log.Error().Err(err).Int("instanceID", instanceID).Str("url", url).Msg("Failed to add magnet link")
+						failedCount++
+						lastError = err
+					} else {
+						addedCount++
+					}
+					continue
+				}
+
+				// Download torrent file from indexer
+				torrentBytes, err := h.jackettService.DownloadTorrent(ctx, jackett.TorrentDownloadRequest{
+					IndexerID:   indexerID,
+					DownloadURL: url,
+				})
+				if err != nil {
+					log.Error().Err(err).Int("indexerID", indexerID).Str("url", url).Msg("Failed to download torrent from indexer")
+					failedCount++
+					lastError = err
+					continue
+				}
+
+				// Add torrent from downloaded file content
+				if err := h.syncManager.AddTorrent(ctx, instanceID, torrentBytes, options); err != nil {
+					if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
+						return
+					}
+					log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to add downloaded torrent")
+					failedCount++
+					lastError = err
+				} else {
+					addedCount++
+				}
+			}
+		} else {
+			// No indexer_id or no jackett service - use URL method directly
+			// (works for local qBittorrent instances or magnet links)
+			if err := h.syncManager.AddTorrentFromURLs(ctx, instanceID, urls, options); err != nil {
+				if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
+					return
+				}
+				log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to add torrent from URLs")
+				RespondError(w, http.StatusInternalServerError, "Failed to add torrent")
 				return
 			}
-			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to add torrent from URLs")
-			RespondError(w, http.StatusInternalServerError, "Failed to add torrent")
-			return
+			addedCount = len(urls) // Assume all URLs succeeded for simplicity
 		}
-		addedCount = len(urls) // Assume all URLs succeeded for simplicity
 	}
 
 	// Check if any torrents failed
