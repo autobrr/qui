@@ -96,9 +96,8 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
     const visitNodes = (nodes: CategoryNode[]) => {
       for (const node of nodes) {
         flattened.push({
-          label: node.displayName,
+          label: node.name,
           value: node.name,
-          level: node.level,
         })
         visitNodes(node.children)
       }

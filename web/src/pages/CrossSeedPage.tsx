@@ -709,14 +709,13 @@ export function CrossSeedPage() {
       // Build tree from available categories for indentation
       const categories = searchMetadata?.categories ?? {}
       const tree = buildCategoryTree(categories, {})
-      const flattened: { label: string; value: string; level: number }[] = []
+      const flattened: { label: string; value: string }[] = []
 
       const visitNodes = (nodes: CategoryNode[]) => {
         for (const node of nodes) {
           flattened.push({
-            label: node.displayName,
+            label: node.name,
             value: node.name,
-            level: node.level,
           })
           visitNodes(node.children)
         }
@@ -727,7 +726,7 @@ export function CrossSeedPage() {
       // Add any extra categories that were manually typed but not in the list
       const extras = searchCategories.filter(category => !flattened.some(opt => opt.value === category))
       for (const extra of extras) {
-        flattened.push({ label: extra, value: extra, level: 0 })
+        flattened.push({ label: extra, value: extra })
       }
 
       return flattened
