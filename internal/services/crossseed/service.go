@@ -2540,10 +2540,13 @@ func (s *Service) processCrossSeedCandidate(
 
 	// Fail early if no valid save path - don't add orphaned torrents
 	if !hasValidSavePath {
+		result.Status = "no_save_path"
 		result.Message = fmt.Sprintf("No valid save path available (props.SavePath=%q, categorySavePath=%q)", props.SavePath, categorySavePath)
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
+			Str("torrentName", torrentName).
 			Str("torrentHash", torrentHash).
+			Str("matchedName", matchedTorrent.Name).
 			Str("matchedHash", matchedTorrent.Hash).
 			Str("propsSavePath", props.SavePath).
 			Str("categorySavePath", categorySavePath).
