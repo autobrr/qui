@@ -2502,10 +2502,15 @@ func (s *Service) processCrossSeedCandidate(
 	// Cross-seeding MUST always point to where the file actually exists (matched torrent's save path).
 	// TMM can only be enabled if the category's save_path matches the matched torrent's save path,
 	// otherwise qBittorrent would try to relocate the file to the category path.
+	//
+	// hasValidSavePath tracks whether we have a valid path (via TMM or explicit savepath).
+	// If false, we should not resume the torrent as it would download to the wrong location.
+	var hasValidSavePath bool
 	if isEpisodeInPack && matchedTorrent.ContentPath != "" {
 		// Episode into season pack: use the season pack's content path explicitly
 		options["autoTMM"] = "false"
 		options["savepath"] = matchedTorrent.ContentPath
+		hasValidSavePath = true
 	} else {
 		// Always use the matched torrent's save path (where the file actually exists)
 		// Fall back to category path only if matched torrent has no save path
@@ -2523,10 +2528,12 @@ func (s *Service) processCrossSeedCandidate(
 
 		if crossCategory != "" && matchedTorrent.AutoManaged && !useCategoryFromIndexer && categoryPathMatches {
 			options["autoTMM"] = "true"
+			hasValidSavePath = true
 		} else {
 			options["autoTMM"] = "false"
 			if savePath != "" {
 				options["savepath"] = savePath
+				hasValidSavePath = true
 			}
 		}
 	}
@@ -2581,7 +2588,16 @@ func (s *Service) processCrossSeedCandidate(
 	// - hasExtraFiles: we didn't use skip_checking, qBittorrent auto-verifies, but won't reach 100%
 	needsRecheckAndResume := requiresAlignment || hasExtraFiles
 
-	if needsRecheckAndResume {
+	// Only proceed with recheck/resume if we have a valid save path.
+	// Without a valid path, the torrent would download to qBittorrent's default location
+	// where the matched files don't exist.
+	if !hasValidSavePath {
+		log.Warn().
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentHash", torrentHash).
+			Str("matchedHash", matchedTorrent.Hash).
+			Msg("[CROSSSEED] No valid save path available, torrent added but not resumed")
+	} else if needsRecheckAndResume {
 		// Trigger manual recheck for both alignment and hasExtraFiles cases.
 		// qBittorrent does NOT auto-recheck torrents added in stopped/paused state,
 		// even when skip_checking is not set. We must explicitly trigger recheck.
