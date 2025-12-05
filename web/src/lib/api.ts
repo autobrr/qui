@@ -65,6 +65,8 @@ import type {
   TorznabSearchRequest,
   TorznabSearchResponse,
   TorznabSearchResult,
+  TrackerCustomization,
+  TrackerCustomizationInput,
   TrackerRule,
   TrackerRuleInput,
   User
@@ -1494,6 +1496,31 @@ class ApiClient {
     return this.request<ExternalProgramExecuteResponse>("/external-programs/execute", {
       method: "POST",
       body: JSON.stringify(request),
+    })
+  }
+
+  // Tracker Customization endpoints
+  async listTrackerCustomizations(): Promise<TrackerCustomization[]> {
+    return this.request<TrackerCustomization[]>("/tracker-customizations")
+  }
+
+  async createTrackerCustomization(data: TrackerCustomizationInput): Promise<TrackerCustomization> {
+    return this.request<TrackerCustomization>("/tracker-customizations", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateTrackerCustomization(id: number, data: TrackerCustomizationInput): Promise<TrackerCustomization> {
+    return this.request<TrackerCustomization>(`/tracker-customizations/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteTrackerCustomization(id: number): Promise<void> {
+    return this.request(`/tracker-customizations/${id}`, {
+      method: "DELETE",
     })
   }
 

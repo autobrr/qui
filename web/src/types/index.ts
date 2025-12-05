@@ -307,6 +307,19 @@ export interface TrackerTransferStats {
   count: number
 }
 
+export interface TrackerCustomization {
+  id: number
+  displayName: string
+  domains: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface TrackerCustomizationInput {
+  displayName: string
+  domains: string[]
+}
+
 export interface TorrentCounts {
   status: Record<string, number>
   categories: Record<string, number>

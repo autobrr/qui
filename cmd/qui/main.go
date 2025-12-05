@@ -475,6 +475,7 @@ func (app *Application) runServer() {
 	}
 
 	trackerRuleStore := models.NewTrackerRuleStore(db)
+	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
 
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db)
 	externalProgramStore := models.NewExternalProgramStore(db)
@@ -626,28 +627,29 @@ func (app *Application) runServer() {
 
 	// Start server in goroutine
 	httpServer := api.NewServer(&api.Dependencies{
-		Config:               cfg,
-		Version:              buildinfo.Version,
-		AuthService:          authService,
-		SessionManager:       sessionManager,
-		InstanceStore:        instanceStore,
-		InstanceReannounce:   instanceReannounceStore,
-		ReannounceCache:      reannounceSettingsCache,
-		ReannounceService:    reannounceService,
-		ClientAPIKeyStore:    clientAPIKeyStore,
-		ExternalProgramStore: externalProgramStore,
-		ClientPool:           clientPool,
-		SyncManager:          syncManager,
-		LicenseService:       licenseService,
-		UpdateService:        updateService,
-		TrackerIconService:   trackerIconService,
-		BackupService:        backupService,
-		FilesManager:         filesManagerService,
-		CrossSeedService:     crossSeedService,
-		JackettService:       jackettService,
-		TorznabIndexerStore:  torznabIndexerStore,
-		TrackerRuleStore:     trackerRuleStore,
-		TrackerRuleService:   trackerRuleService,
+		Config:                    cfg,
+		Version:                   buildinfo.Version,
+		AuthService:               authService,
+		SessionManager:            sessionManager,
+		InstanceStore:             instanceStore,
+		InstanceReannounce:        instanceReannounceStore,
+		ReannounceCache:           reannounceSettingsCache,
+		ReannounceService:         reannounceService,
+		ClientAPIKeyStore:         clientAPIKeyStore,
+		ExternalProgramStore:      externalProgramStore,
+		ClientPool:                clientPool,
+		SyncManager:               syncManager,
+		LicenseService:            licenseService,
+		UpdateService:             updateService,
+		TrackerIconService:        trackerIconService,
+		BackupService:             backupService,
+		FilesManager:              filesManagerService,
+		CrossSeedService:          crossSeedService,
+		JackettService:            jackettService,
+		TorznabIndexerStore:       torznabIndexerStore,
+		TrackerRuleStore:          trackerRuleStore,
+		TrackerRuleService:        trackerRuleService,
+		TrackerCustomizationStore: trackerCustomizationStore,
 	})
 
 	errorChannel := make(chan error)

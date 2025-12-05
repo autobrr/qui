@@ -20,7 +20,18 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
@@ -32,7 +43,7 @@ import { formatBytes, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Activity, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Minus, Plus, Rabbit, RefreshCcw, Turtle, Upload, Zap } from "lucide-react"
+import { Activity, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, X, Zap } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 
 import {
@@ -44,10 +55,11 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 
+import { useTrackerCustomizations, useCreateTrackerCustomization, useUpdateTrackerCustomization, useDeleteTrackerCustomization } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { getLinuxTrackerDomain, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
-import type { TrackerTransferStats } from "@/types"
+import type { TrackerCustomization, TrackerTransferStats } from "@/types"
 
 interface DashboardInstanceStats {
   instance: InstanceResponse
@@ -835,7 +847,7 @@ function TrackerIconImage({ tracker, trackerIcons }: TrackerIconImageProps) {
   )
 }
 
-type TrackerSortColumn = "tracker" | "uploaded" | "downloaded" | "ratio" | "count" | "performance"
+type TrackerSortColumn = "tracker" | "uploaded" | "downloaded" | "ratio" | "buffer" | "count" | "performance"
 type SortDirection = "asc" | "desc"
 
 // Helper to compute ratio display values for tracker stats
@@ -855,12 +867,32 @@ function SortIcon({ column, sortColumn, sortDirection }: { column: TrackerSortCo
     : <ArrowDown className="h-3 w-3" />
 }
 
+// Extended tracker stats with customization support
+interface ProcessedTrackerStats extends TrackerTransferStats {
+  domain: string
+  displayName: string
+  originalDomains: string[]
+  customizationId?: number
+}
+
 function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats[] }) {
   const [accordionValue, setAccordionValue] = usePersistedAccordionState("qui-tracker-breakdown-accordion")
   const { data: trackerIcons } = useTrackerIcons()
   const [incognitoMode] = useIncognitoMode()
   const [sortColumn, setSortColumn] = useState<TrackerSortColumn>("uploaded")
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
+
+  // Tracker customizations
+  const { data: customizations } = useTrackerCustomizations()
+  const createCustomization = useCreateTrackerCustomization()
+  const updateCustomization = useUpdateTrackerCustomization()
+  const deleteCustomization = useDeleteTrackerCustomization()
+
+  // Selection state for merging/renaming
+  const [selectedDomains, setSelectedDomains] = useState<Set<string>>(new Set())
+  const [showCustomizeDialog, setShowCustomizeDialog] = useState(false)
+  const [customizeDisplayName, setCustomizeDisplayName] = useState("")
+  const [editingCustomization, setEditingCustomization] = useState<{ id: number; domains: string[] } | null>(null)
 
   const trackerStats = useMemo(() => {
     // aggregate tracker transfer stats across all instances
@@ -881,10 +913,48 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
       }
     }
 
-    // convert to array
-    return Array.from(aggregated.entries())
-      .map(([domain, stats]) => ({ domain, ...stats }))
-  }, [statsData])
+    // Build domain -> customization mapping
+    const domainToCustomization = new Map<string, TrackerCustomization>()
+    for (const custom of customizations ?? []) {
+      for (const domain of custom.domains) {
+        domainToCustomization.set(domain.toLowerCase(), custom)
+      }
+    }
+
+    // Apply customizations: hide secondary domains, use display names
+    const processed = new Map<string, ProcessedTrackerStats>()
+
+    for (const [domain, stats] of aggregated) {
+      const customization = domainToCustomization.get(domain.toLowerCase())
+
+      if (customization) {
+        // Check if this is the primary domain (first in the list)
+        const isPrimary = customization.domains[0]?.toLowerCase() === domain.toLowerCase()
+
+        if (isPrimary) {
+          // Use this domain's stats with the custom display name
+          processed.set(customization.displayName, {
+            ...stats,
+            domain,
+            displayName: customization.displayName,
+            originalDomains: customization.domains,
+            customizationId: customization.id,
+          })
+        }
+        // Skip secondary domains - they're merged into primary
+      } else {
+        // No customization - use domain as-is
+        processed.set(domain, {
+          ...stats,
+          domain,
+          displayName: domain,
+          originalDomains: [domain],
+        })
+      }
+    }
+
+    return Array.from(processed.values())
+  }, [statsData, customizations])
 
   // sort the tracker stats based on current sort state
   const sortedTrackerStats = useMemo(() => {
@@ -894,7 +964,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
     sorted.sort((a, b) => {
       switch (sortColumn) {
         case "tracker":
-          return multiplier * a.domain.localeCompare(b.domain)
+          return multiplier * a.displayName.localeCompare(b.displayName)
         case "uploaded":
           return multiplier * (a.uploaded - b.uploaded)
         case "downloaded":
@@ -904,6 +974,8 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
           const ratioB = b.downloaded > 0 ? b.uploaded / b.downloaded : (b.uploaded > 0 ? Infinity : 0)
           return multiplier * (ratioA - ratioB)
         }
+        case "buffer":
+          return multiplier * ((a.uploaded - a.downloaded) - (b.uploaded - b.downloaded))
         case "count":
           return multiplier * (a.count - b.count)
         case "performance": {
@@ -919,6 +991,105 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
 
     return sorted
   }, [trackerStats, sortColumn, sortDirection])
+
+  // Calculate total uploaded for percentage display
+  const totalUploaded = useMemo(() => {
+    return trackerStats.reduce((sum, t) => sum + t.uploaded, 0)
+  }, [trackerStats])
+
+  // Selection handlers
+  const toggleSelection = (domain: string) => {
+    setSelectedDomains(prev => {
+      const next = new Set(prev)
+      if (next.has(domain)) {
+        next.delete(domain)
+      } else {
+        next.add(domain)
+      }
+      return next
+    })
+  }
+
+  const clearSelection = () => {
+    setSelectedDomains(new Set())
+  }
+
+  // Save customization (create or update)
+  const handleSaveCustomization = () => {
+    if (!customizeDisplayName.trim()) return
+
+    const domains = editingCustomization
+      ? editingCustomization.domains
+      : Array.from(selectedDomains)
+
+    if (domains.length === 0) return
+
+    if (editingCustomization) {
+      // Update existing
+      updateCustomization.mutate(
+        {
+          id: editingCustomization.id,
+          data: {
+            displayName: customizeDisplayName.trim(),
+            domains,
+          },
+        },
+        {
+          onSuccess: () => {
+            closeCustomizeDialog()
+          },
+        }
+      )
+    } else {
+      // Create new
+      createCustomization.mutate(
+        {
+          displayName: customizeDisplayName.trim(),
+          domains,
+        },
+        {
+          onSuccess: () => {
+            closeCustomizeDialog()
+            clearSelection()
+          },
+        }
+      )
+    }
+  }
+
+  // Delete customization handler
+  const handleDeleteCustomization = (customizationId: number) => {
+    deleteCustomization.mutate(customizationId)
+  }
+
+  // Open customize dialog for new customization (from selection)
+  const openCustomizeDialog = () => {
+    setEditingCustomization(null)
+    setCustomizeDisplayName("")
+    setShowCustomizeDialog(true)
+  }
+
+  // Open customize dialog for editing existing customization
+  const openEditDialog = (customizationId: number, currentName: string, domains: string[]) => {
+    setEditingCustomization({ id: customizationId, domains })
+    setCustomizeDisplayName(currentName)
+    setShowCustomizeDialog(true)
+  }
+
+  // Open rename dialog for a single domain directly (without selection)
+  const openRenameDialog = (domain: string) => {
+    setEditingCustomization(null)
+    setSelectedDomains(new Set([domain]))
+    setCustomizeDisplayName("")
+    setShowCustomizeDialog(true)
+  }
+
+  // Close dialog and reset state
+  const closeCustomizeDialog = () => {
+    setShowCustomizeDialog(false)
+    setCustomizeDisplayName("")
+    setEditingCustomization(null)
+  }
 
   // pagination
   const ITEMS_PER_PAGE = 15
@@ -962,6 +1133,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
   }
 
   return (
+    <>
     <Accordion type="single" collapsible className="rounded-lg border bg-card" value={accordionValue} onValueChange={setAccordionValue}>
       <AccordionItem value="tracker-breakdown" className="border-0">
         <AccordionTrigger className="px-4 py-4 hover:no-underline hover:bg-muted/50 transition-colors [&>svg]:hidden group">
@@ -998,7 +1170,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                            sortColumn === "uploaded" ? "Uploaded" :
                            sortColumn === "downloaded" ? "Downloaded" :
                            sortColumn === "ratio" ? "Ratio" :
-                           sortColumn === "count" ? "Torrents" : "Efficiency"}
+                           sortColumn === "count" ? "Torrents" : "Seeded"}
                   </span>
                   {sortDirection === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
                 </Button>
@@ -1009,28 +1181,103 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                 <DropdownMenuItem onClick={() => handleSort("downloaded")}>Downloaded</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleSort("ratio")}>Ratio</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleSort("count")}>Torrents</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleSort("performance")}>Efficiency</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleSort("performance")}>Seeded</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
 
+          {/* Selection Action Bar */}
+          {selectedDomains.size >= 2 && (
+            <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/50">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">
+                  {selectedDomains.size} selected
+                </span>
+                <Button variant="ghost" size="sm" onClick={clearSelection} className="h-7 px-2">
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              <Button size="sm" onClick={openCustomizeDialog} className="h-7">
+                <Link2 className="h-3.5 w-3.5 mr-1.5" />
+                Merge Selected
+              </Button>
+            </div>
+          )}
+
           {/* Mobile Card Layout */}
           <div className="sm:hidden px-4 space-y-2 py-3">
-            {paginatedTrackerStats.map(({ domain, uploaded, downloaded, totalSize, count }) => {
+            {paginatedTrackerStats.map((tracker) => {
+              const { domain, displayName, originalDomains, uploaded, downloaded, totalSize, count, customizationId } = tracker
               const { isInfinite, ratio, color: ratioColor } = getTrackerRatioDisplay(uploaded, downloaded)
-              const displayDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
+              const displayValue = incognitoMode ? getLinuxTrackerDomain(displayName) : displayName
+              const iconDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
+              const isSelected = selectedDomains.has(domain)
+              const isMerged = originalDomains.length > 1
+              const hasCustomization = Boolean(customizationId)
 
               return (
-                <Card key={domain} className="overflow-hidden">
+                <Card key={displayName} className={`overflow-hidden ${isSelected ? "ring-2 ring-primary" : ""}`}>
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <TrackerIconImage tracker={displayDomain} trackerIcons={trackerIcons} />
-                        <span className="font-medium truncate text-sm">{displayDomain}</span>
+                        {!hasCustomization && (
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => toggleSelection(domain)}
+                            className="shrink-0"
+                          />
+                        )}
+                        <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="font-medium truncate text-sm cursor-default">
+                              {displayValue}
+                            </span>
+                          </TooltipTrigger>
+                          {(isMerged || (hasCustomization && displayName !== domain)) && (
+                            <TooltipContent>
+                              <p className="text-xs">
+                                {isMerged ? `Merged from: ${originalDomains.join(", ")}` : `Original: ${domain}`}
+                              </p>
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
+                        {isMerged && <Link2 className="h-3 w-3 text-muted-foreground shrink-0" />}
                       </div>
-                      <Badge variant="secondary" className="ml-2 shrink-0 text-xs">
-                        {count}
-                      </Badge>
+                      <div className="flex items-center gap-1">
+                        {hasCustomization && customizationId ? (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={() => openEditDialog(customizationId, displayName, originalDomains)}
+                            >
+                              <Pencil className="h-3 w-3 text-muted-foreground" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={() => handleDeleteCustomization(customizationId)}
+                            >
+                              <Trash2 className="h-3 w-3 text-muted-foreground" />
+                            </Button>
+                          </>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0"
+                            onClick={() => openRenameDialog(domain)}
+                          >
+                            <Pencil className="h-3 w-3 text-muted-foreground" />
+                          </Button>
+                        )}
+                        <Badge variant="secondary" className="shrink-0 text-xs">
+                          {count}
+                        </Badge>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="pt-0">
@@ -1061,9 +1308,9 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                         </div>
                       </div>
 
-                      {/* Efficiency */}
+                      {/* Seeded */}
                       <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground">Efficiency</div>
+                        <div className="text-xs text-muted-foreground">Seeded</div>
                         <div className="font-semibold text-sm">{formatEfficiency(uploaded, totalSize)}</div>
                       </div>
                     </div>
@@ -1077,7 +1324,8 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
           <Table className="hidden sm:table">
             <TableHeader>
               <TableRow className="bg-muted/50">
-                <TableHead className="w-[40%] pl-4">
+                <TableHead className="w-8 pl-4" />
+                <TableHead className="w-[35%]">
                   <button
                     type="button"
                     onClick={() => handleSort("tracker")}
@@ -1117,6 +1365,16 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                     <SortIcon column="ratio" sortColumn={sortColumn} sortDirection={sortDirection} />
                   </button>
                 </TableHead>
+                <TableHead className="text-right hidden lg:table-cell">
+                  <button
+                    type="button"
+                    onClick={() => handleSort("buffer")}
+                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                  >
+                    Buffer
+                    <SortIcon column="buffer" sortColumn={sortColumn} sortDirection={sortDirection} />
+                  </button>
+                </TableHead>
                 <TableHead className="text-right">
                   <button
                     type="button"
@@ -1135,39 +1393,111 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
                         onClick={() => handleSort("performance")}
                         className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors"
                       >
-                        Efficiency
+                        Seeded
                         <Info className="h-3.5 w-3.5 text-muted-foreground" />
                         <SortIcon column="performance" sortColumn={sortColumn} sortDirection={sortDirection} />
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="top">
-                      <p className="text-xs">Seeding Efficiency = Uploaded ÷ Content Size (total size of all torrents)</p>
+                      <p className="text-xs">Uploaded ÷ Content Size — how many times you&apos;ve seeded your content</p>
                     </TooltipContent>
                   </Tooltip>
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedTrackerStats.map(({ domain, uploaded, downloaded, totalSize, count }) => {
+              {paginatedTrackerStats.map((tracker, index) => {
+                const { domain, displayName, originalDomains, uploaded, downloaded, totalSize, count, customizationId } = tracker
                 const { isInfinite, ratio, color: ratioColor } = getTrackerRatioDisplay(uploaded, downloaded)
-                const displayDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
+                const displayValue = incognitoMode ? getLinuxTrackerDomain(displayName) : displayName
+                const iconDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
+                const isSelected = selectedDomains.has(domain)
+                const isMerged = originalDomains.length > 1
+                const hasCustomization = Boolean(customizationId)
+                const buffer = uploaded - downloaded
+                const uploadPercent = totalUploaded > 0 ? (uploaded / totalUploaded) * 100 : 0
 
                 return (
-                  <TableRow key={domain} className="hover:bg-muted/50 transition-colors">
-                    <TableCell className="pl-4">
+                  <TableRow
+                    key={displayName}
+                    className={`group ${isSelected ? "bg-primary/5" : index % 2 === 1 ? "bg-muted/30" : ""} hover:bg-muted/50`}
+                  >
+                    <TableCell className="w-8 pl-4">
+                      {!hasCustomization && (
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => toggleSelection(domain)}
+                          className="opacity-0 group-hover:opacity-100 data-[state=checked]:opacity-100"
+                        />
+                      )}
+                    </TableCell>
+                    <TableCell>
                       <div className="flex items-center gap-2">
-                        <TrackerIconImage tracker={displayDomain} trackerIcons={trackerIcons} />
-                        <span className="font-medium truncate">{displayDomain}</span>
+                        <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="font-medium truncate cursor-default">
+                              {displayValue}
+                            </span>
+                          </TooltipTrigger>
+                          {(isMerged || (hasCustomization && displayName !== domain)) && (
+                            <TooltipContent>
+                              <p className="text-xs">
+                                {isMerged ? `Merged from: ${originalDomains.join(", ")}` : `Original: ${domain}`}
+                              </p>
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
+                        {isMerged && <Link2 className="h-3 w-3 text-muted-foreground shrink-0" />}
+                        <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 shrink-0">
+                          {hasCustomization && customizationId ? (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-5 w-5 p-0"
+                                onClick={() => openEditDialog(customizationId, displayName, originalDomains)}
+                              >
+                                <Pencil className="h-3 w-3 text-muted-foreground" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-5 w-5 p-0"
+                                onClick={() => handleDeleteCustomization(customizationId)}
+                              >
+                                <Trash2 className="h-3 w-3 text-muted-foreground" />
+                              </Button>
+                            </>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-5 w-5 p-0"
+                              onClick={() => openRenameDialog(domain)}
+                            >
+                              <Pencil className="h-3 w-3 text-muted-foreground" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell className="text-right font-semibold">
-                      {formatBytes(uploaded)}
+                      {formatBytes(uploaded)} <span className="text-[10px] text-muted-foreground font-normal">({uploadPercent.toFixed(1)}%)</span>
                     </TableCell>
                     <TableCell className="text-right font-semibold">
                       {formatBytes(downloaded)}
                     </TableCell>
                     <TableCell className="text-right font-semibold" style={{ color: ratioColor }}>
                       {isInfinite ? "∞" : ratio.toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-right hidden lg:table-cell font-semibold">
+                      <span
+                        className={buffer < 0 ? "text-destructive" : ""}
+                        style={buffer >= 0 ? { color: "oklch(0.7040 0.1910 142)" } : undefined}
+                      >
+                        {buffer >= 0 ? "+" : "-"}{formatBytes(Math.abs(buffer))}
+                      </span>
                     </TableCell>
                     <TableCell className="text-right">
                       {count}
@@ -1211,6 +1541,75 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
         </AccordionContent>
       </AccordionItem>
     </Accordion>
+
+      {/* Customize Dialog (Rename/Merge/Edit) */}
+      <Dialog open={showCustomizeDialog} onOpenChange={(open) => !open && closeCustomizeDialog()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {editingCustomization
+                ? "Edit Tracker Name"
+                : selectedDomains.size === 1
+                  ? "Rename Tracker"
+                  : "Merge Trackers"}
+            </DialogTitle>
+            <DialogDescription>
+              {editingCustomization
+                ? "Update the display name for this tracker."
+                : selectedDomains.size === 1
+                  ? "Give this tracker a custom display name."
+                  : "Combine these trackers into a single entry with a custom name. Stats will be shown for the first domain only."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="customize-name">Display Name</Label>
+              <Input
+                id="customize-name"
+                value={customizeDisplayName}
+                onChange={(e) => setCustomizeDisplayName(e.target.value)}
+                placeholder="e.g., TorrentLeech"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>{editingCustomization ? "Domain(s)" : "Selected Tracker(s)"}</Label>
+              <div className="text-sm text-muted-foreground space-y-1">
+                {(editingCustomization ? editingCustomization.domains : Array.from(selectedDomains)).map((domain, index) => (
+                  <div key={domain} className="flex items-center gap-2">
+                    {(editingCustomization ? editingCustomization.domains.length > 1 : selectedDomains.size > 1) && index === 0 && (
+                      <Badge variant="secondary" className="text-[10px]">Primary</Badge>
+                    )}
+                    <span className={index === 0 ? "font-medium" : ""}>{domain}</span>
+                  </div>
+                ))}
+              </div>
+              {!editingCustomization && selectedDomains.size > 1 && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  The first domain&apos;s stats and icon will be displayed. Reselect trackers in preferred order if needed.
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeCustomizeDialog}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveCustomization}
+              disabled={!customizeDisplayName.trim() || createCustomization.isPending || updateCustomization.isPending}
+            >
+              {(createCustomization.isPending || updateCustomization.isPending)
+                ? "Saving..."
+                : editingCustomization
+                  ? "Save"
+                  : selectedDomains.size === 1
+                    ? "Rename"
+                    : "Merge"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 
