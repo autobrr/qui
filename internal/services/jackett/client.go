@@ -471,6 +471,9 @@ type JackettIndexer struct {
 // DiscoverJackettIndexers discovers all configured indexers from a Jackett instance.
 // The context is used to cancel in-flight capability fetches if the request is cancelled.
 func DiscoverJackettIndexers(ctx context.Context, baseURL, apiKey string) ([]JackettIndexer, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if baseURL = strings.TrimSpace(baseURL); baseURL == "" {
 		return nil, fmt.Errorf("base url is required")
 	}
