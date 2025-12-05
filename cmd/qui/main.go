@@ -476,6 +476,7 @@ func (app *Application) runServer() {
 
 	trackerRuleStore := models.NewTrackerRuleStore(db)
 	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
+	dashboardSettingsStore := models.NewDashboardSettingsStore(db)
 
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db)
 	externalProgramStore := models.NewExternalProgramStore(db)
@@ -650,6 +651,7 @@ func (app *Application) runServer() {
 		TrackerRuleStore:          trackerRuleStore,
 		TrackerRuleService:        trackerRuleService,
 		TrackerCustomizationStore: trackerCustomizationStore,
+		DashboardSettingsStore:    dashboardSettingsStore,
 	})
 
 	errorChannel := make(chan error)

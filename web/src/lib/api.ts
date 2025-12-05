@@ -69,7 +69,9 @@ import type {
   TrackerCustomizationInput,
   TrackerRule,
   TrackerRuleInput,
-  User
+  User,
+  DashboardSettings,
+  DashboardSettingsInput
 } from "@/types"
 import { getApiBaseUrl, withBasePath } from "./base-url"
 
@@ -1521,6 +1523,18 @@ class ApiClient {
   async deleteTrackerCustomization(id: number): Promise<void> {
     return this.request(`/tracker-customizations/${id}`, {
       method: "DELETE",
+    })
+  }
+
+  // Dashboard Settings endpoints
+  async getDashboardSettings(): Promise<DashboardSettings> {
+    return this.request<DashboardSettings>("/dashboard-settings")
+  }
+
+  async updateDashboardSettings(data: DashboardSettingsInput): Promise<DashboardSettings> {
+    return this.request<DashboardSettings>("/dashboard-settings", {
+      method: "PUT",
+      body: JSON.stringify(data),
     })
   }
 

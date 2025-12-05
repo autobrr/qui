@@ -320,6 +320,26 @@ export interface TrackerCustomizationInput {
   domains: string[]
 }
 
+export interface DashboardSettings {
+  id: number
+  userId: number
+  sectionVisibility: Record<string, boolean>
+  sectionOrder: string[]
+  trackerBreakdownSortColumn: string
+  trackerBreakdownSortDirection: string
+  trackerBreakdownItemsPerPage: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DashboardSettingsInput {
+  sectionVisibility?: Record<string, boolean>
+  sectionOrder?: string[]
+  trackerBreakdownSortColumn?: string
+  trackerBreakdownSortDirection?: string
+  trackerBreakdownItemsPerPage?: number
+}
+
 export interface TorrentCounts {
   status: Record<string, number>
   categories: Record<string, number>

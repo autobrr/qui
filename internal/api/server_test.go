@@ -56,6 +56,8 @@ var undocumentedRoutes = map[routeKey]struct{}{
 	{Method: http.MethodPost, Path: "/api/tracker-customizations"}:                              {},
 	{Method: http.MethodPut, Path: "/api/tracker-customizations/{id}"}:                          {},
 	{Method: http.MethodDelete, Path: "/api/tracker-customizations/{id}"}:                       {},
+	{Method: http.MethodGet, Path: "/api/dashboard-settings"}:                                   {},
+	{Method: http.MethodPut, Path: "/api/dashboard-settings"}:                                   {},
 }
 
 func TestAllEndpointsDocumented(t *testing.T) {
@@ -121,6 +123,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		BackupService:             &backups.Service{},
 		TrackerRuleStore:          models.NewTrackerRuleStore(db),
 		TrackerCustomizationStore: models.NewTrackerCustomizationStore(db),
+		DashboardSettingsStore:    models.NewDashboardSettingsStore(db),
 	}
 }
 

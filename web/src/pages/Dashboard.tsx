@@ -55,11 +55,13 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 
-import { useTrackerCustomizations, useCreateTrackerCustomization, useUpdateTrackerCustomization, useDeleteTrackerCustomization } from "@/hooks/useTrackerCustomizations"
+import { DashboardSettingsDialog } from "@/components/dashboard-settings-dialog"
+import { DEFAULT_DASHBOARD_SETTINGS, useDashboardSettings, useUpdateDashboardSettings } from "@/hooks/useDashboardSettings"
+import { useCreateTrackerCustomization, useDeleteTrackerCustomization, useTrackerCustomizations, useUpdateTrackerCustomization } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { getLinuxTrackerDomain, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
-import type { TrackerCustomization, TrackerTransferStats } from "@/types"
+import type { DashboardSettings, TrackerCustomization, TrackerTransferStats } from "@/types"
 
 interface DashboardInstanceStats {
   instance: InstanceResponse
@@ -875,12 +877,20 @@ interface ProcessedTrackerStats extends TrackerTransferStats {
   customizationId?: number
 }
 
-function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats[] }) {
+interface TrackerBreakdownCardProps {
+  statsData: DashboardInstanceStats[]
+  settings: DashboardSettings
+  onSettingsChange: (input: { trackerBreakdownSortColumn?: string; trackerBreakdownSortDirection?: string; trackerBreakdownItemsPerPage?: number }) => void
+}
+
+function TrackerBreakdownCard({ statsData, settings, onSettingsChange }: TrackerBreakdownCardProps) {
   const [accordionValue, setAccordionValue] = usePersistedAccordionState("qui-tracker-breakdown-accordion")
   const { data: trackerIcons } = useTrackerIcons()
   const [incognitoMode] = useIncognitoMode()
-  const [sortColumn, setSortColumn] = useState<TrackerSortColumn>("uploaded")
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
+
+  // Use settings directly - React Query handles optimistic updates
+  const sortColumn = (settings.trackerBreakdownSortColumn as TrackerSortColumn) || "uploaded"
+  const sortDirection = (settings.trackerBreakdownSortDirection as SortDirection) || "desc"
 
   // Tracker customizations
   const { data: customizations } = useTrackerCustomizations()
@@ -1092,13 +1102,13 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
   }
 
   // pagination
-  const ITEMS_PER_PAGE = 15
+  const itemsPerPage = settings.trackerBreakdownItemsPerPage || 15
   const [page, setPage] = useState(0)
-  const totalPages = Math.ceil(sortedTrackerStats.length / ITEMS_PER_PAGE)
+  const totalPages = Math.ceil(sortedTrackerStats.length / itemsPerPage)
   const paginatedTrackerStats = useMemo(() => {
-    const start = page * ITEMS_PER_PAGE
-    return sortedTrackerStats.slice(start, start + ITEMS_PER_PAGE)
-  }, [sortedTrackerStats, page])
+    const start = page * itemsPerPage
+    return sortedTrackerStats.slice(start, start + itemsPerPage)
+  }, [sortedTrackerStats, page, itemsPerPage])
 
   // clamp page when data shrinks
   useEffect(() => {
@@ -1109,14 +1119,18 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
     }
   }, [totalPages, page])
 
-  // reset page when sort changes
+  // reset page when sort changes and persist to settings
   const handleSort = (column: TrackerSortColumn) => {
     setPage(0)
     if (sortColumn === column) {
-      setSortDirection(prev => prev === "asc" ? "desc" : "asc")
+      const newDirection = sortDirection === "asc" ? "desc" : "asc"
+      onSettingsChange({ trackerBreakdownSortDirection: newDirection })
     } else {
-      setSortColumn(column)
-      setSortDirection(column === "tracker" ? "asc" : "desc")
+      const newDirection = column === "tracker" ? "asc" : "desc"
+      onSettingsChange({
+        trackerBreakdownSortColumn: column,
+        trackerBreakdownSortDirection: newDirection,
+      })
     }
   }
 
@@ -1514,7 +1528,7 @@ function TrackerBreakdownCard({ statsData }: { statsData: DashboardInstanceStats
           {totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-3 border-t">
               <span className="text-sm text-muted-foreground">
-                {page * ITEMS_PER_PAGE + 1}-{Math.min((page + 1) * ITEMS_PER_PAGE, sortedTrackerStats.length)} of {sortedTrackerStats.length} trackers
+                {page * itemsPerPage + 1}-{Math.min((page + 1) * itemsPerPage, sortedTrackerStats.length)} of {sortedTrackerStats.length} trackers
               </span>
               <div className="flex items-center gap-2">
                 <Button
@@ -1660,8 +1674,26 @@ export function Dashboard() {
   const hasActiveInstances = activeInstances.length > 0
   const [isAdvancedMetricsOpen, setIsAdvancedMetricsOpen] = useState(false)
 
+  // Dashboard settings
+  const { data: dashboardSettings } = useDashboardSettings()
+  const updateSettings = useUpdateDashboardSettings()
+  const settings = dashboardSettings || DEFAULT_DASHBOARD_SETTINGS
+
   // Use safe hook that always calls the same number of hooks
   const statsData = useAllInstanceStats(activeInstances)
+
+  // Handler for TrackerBreakdownCard to update settings
+  const handleTrackerSettingsChange = (input: { trackerBreakdownSortColumn?: string; trackerBreakdownSortDirection?: string; trackerBreakdownItemsPerPage?: number }) => {
+    updateSettings.mutate(input)
+  }
+
+  // Check if a section is visible
+  const isSectionVisible = (sectionId: string) => {
+    return settings.sectionVisibility[sectionId] !== false
+  }
+
+  // Get ordered section IDs that are visible
+  const visibleSections = settings.sectionOrder.filter(id => isSectionVisible(id))
 
   if (isLoading) {
     return (
@@ -1697,6 +1729,7 @@ export function Dashboard() {
                   Add Instance
                 </Button>
               </Link>
+              <DashboardSettingsDialog />
             </div>
           )}
         </div>
@@ -1709,38 +1742,50 @@ export function Dashboard() {
         <div className="space-y-6">
           {hasActiveInstances ? (
             <>
-              {/* Stats Bar */}
-              <GlobalAllTimeStats statsData={statsData} />
-
-              {/* Tracker Breakdown */}
-              <TrackerBreakdownCard statsData={statsData} />
-
-              {/* Global Stats */}
-              <div className="space-y-4">
-                {/* Mobile: Single combined card */}
-                <MobileGlobalStatsCard statsData={statsData} />
-
-                {/* Tablet/Desktop: Separate cards */}
-                <div className="hidden sm:grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <GlobalStatsCards statsData={statsData} />
-                </div>
-              </div>
-
-              {/* Instance Cards */}
-              <div>
-                <h2 className="text-xl font-semibold mb-4">Instances</h2>
-                {/* Responsive layout so each instance mounts once */}
-                <div className="flex flex-col gap-4 sm:grid sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-                  {statsData.map(instanceData => (
-                    <InstanceCard
-                      key={instanceData.instance.id}
-                      instanceData={instanceData}
-                      isAdvancedMetricsOpen={isAdvancedMetricsOpen}
-                      setIsAdvancedMetricsOpen={setIsAdvancedMetricsOpen}
-                    />
-                  ))}
-                </div>
-              </div>
+              {visibleSections.map((sectionId) => {
+                switch (sectionId) {
+                  case "server-stats":
+                    return <GlobalAllTimeStats key={sectionId} statsData={statsData} />
+                  case "tracker-breakdown":
+                    return (
+                      <TrackerBreakdownCard
+                        key={sectionId}
+                        statsData={statsData}
+                        settings={settings}
+                        onSettingsChange={handleTrackerSettingsChange}
+                      />
+                    )
+                  case "global-stats":
+                    return (
+                      <div key={sectionId} className="space-y-4">
+                        {/* Mobile: Single combined card */}
+                        <MobileGlobalStatsCard statsData={statsData} />
+                        {/* Tablet/Desktop: Separate cards */}
+                        <div className="hidden sm:grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                          <GlobalStatsCards statsData={statsData} />
+                        </div>
+                      </div>
+                    )
+                  case "instances":
+                    return (
+                      <div key={sectionId}>
+                        {/* Responsive layout so each instance mounts once */}
+                        <div className="flex flex-col gap-4 sm:grid sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+                          {statsData.map(instanceData => (
+                            <InstanceCard
+                              key={instanceData.instance.id}
+                              instanceData={instanceData}
+                              isAdvancedMetricsOpen={isAdvancedMetricsOpen}
+                              setIsAdvancedMetricsOpen={setIsAdvancedMetricsOpen}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  default:
+                    return null
+                }
+              })}
             </>
           ) : (
             <Card className="p-8 text-center">

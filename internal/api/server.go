@@ -67,6 +67,7 @@ type Server struct {
 	trackerRuleStore          *models.TrackerRuleStore
 	trackerRuleService        *trackerrules.Service
 	trackerCustomizationStore *models.TrackerCustomizationStore
+	dashboardSettingsStore    *models.DashboardSettingsStore
 }
 
 type Dependencies struct {
@@ -94,6 +95,7 @@ type Dependencies struct {
 	TrackerRuleStore          *models.TrackerRuleStore
 	TrackerRuleService        *trackerrules.Service
 	TrackerCustomizationStore *models.TrackerCustomizationStore
+	DashboardSettingsStore    *models.DashboardSettingsStore
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -128,6 +130,7 @@ func NewServer(deps *Dependencies) *Server {
 		trackerRuleStore:          deps.TrackerRuleStore,
 		trackerRuleService:        deps.TrackerRuleService,
 		trackerCustomizationStore: deps.TrackerCustomizationStore,
+		dashboardSettingsStore:    deps.DashboardSettingsStore,
 	}
 
 	return &s
@@ -265,6 +268,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	crossSeedHandler := handlers.NewCrossSeedHandler(s.crossSeedService)
 	trackerRulesHandler := handlers.NewTrackerRuleHandler(s.trackerRuleStore, s.trackerRuleService)
 	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore)
+	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore, s.sessionManager)
 
 	// Torznab/Jackett handler
 	var jackettHandler *handlers.JackettHandler
@@ -348,6 +352,10 @@ func (s *Server) Handler() (*chi.Mux, error) {
 				r.Put("/{id}", trackerCustomizationHandler.Update)
 				r.Delete("/{id}", trackerCustomizationHandler.Delete)
 			})
+
+			// Dashboard settings (per-user layout preferences)
+			r.Get("/dashboard-settings", dashboardSettingsHandler.Get)
+			r.Put("/dashboard-settings", dashboardSettingsHandler.Update)
 
 			// Version endpoint for update checks
 			r.Get("/version/latest", versionHandler.GetLatestVersion)
