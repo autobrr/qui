@@ -2500,8 +2500,8 @@ func (s *Service) processCrossSeedCandidate(
 
 	// Determine save path strategy:
 	// Cross-seeding MUST always point to where the file actually exists (matched torrent's save path).
-	// TMM can only be enabled if the category's save_path matches the matched torrent's save path,
-	// otherwise qBittorrent would try to relocate the file to the category path.
+	// Auto Torrent Management (autoTMM) can only be enabled if the category's save_path matches
+	// the matched torrent's save path, otherwise qBittorrent would try to relocate the file to the category path.
 	//
 	// hasValidSavePath tracks whether we have a valid path (via TMM or explicit savepath).
 	// If false, we should not resume the torrent as it would download to the wrong location.
@@ -2519,10 +2519,10 @@ func (s *Service) processCrossSeedCandidate(
 			savePath = categorySavePath
 		}
 
-		// Enable TMM only if:
-		// - Category exists and source torrent uses TMM
+		// Enable autoTMM only if:
+		// - Category exists and matched torrent uses autoTMM
 		// - Not using indexer categories (which may have different paths)
-		// - Category's save path matches the matched torrent's path (so TMM won't relocate)
+		// - Category's save path matches the matched torrent's path (so autoTMM won't relocate)
 		categoryPathMatches := categorySavePath != "" && props.SavePath != "" &&
 			normalizePath(categorySavePath) == normalizePath(props.SavePath)
 
@@ -2537,6 +2537,22 @@ func (s *Service) processCrossSeedCandidate(
 			}
 		}
 	}
+
+	// Fail early if no valid save path - don't add orphaned torrents
+	if !hasValidSavePath {
+		result.Message = fmt.Sprintf("No valid save path available (props.SavePath=%q, categorySavePath=%q)", props.SavePath, categorySavePath)
+		log.Warn().
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentHash", torrentHash).
+			Str("matchedHash", matchedTorrent.Hash).
+			Str("propsSavePath", props.SavePath).
+			Str("categorySavePath", categorySavePath).
+			Str("crossCategory", crossCategory).
+			Bool("isEpisodeInPack", isEpisodeInPack).
+			Msg("[CROSSSEED] No valid save path available, refusing to add torrent")
+		return result
+	}
+
 	log.Debug().
 		Int("instanceID", candidate.InstanceID).
 		Str("torrentName", torrentName).
@@ -2546,6 +2562,7 @@ func (s *Service) processCrossSeedCandidate(
 		Str("autoTMM", options["autoTMM"]).
 		Str("matchedTorrent", matchedTorrent.Name).
 		Bool("isEpisodeInPack", isEpisodeInPack).
+		Bool("hasValidSavePath", hasValidSavePath).
 		Msg("[CROSSSEED] Adding cross-seed torrent")
 
 	// Add the torrent
@@ -2588,16 +2605,7 @@ func (s *Service) processCrossSeedCandidate(
 	// - hasExtraFiles: we didn't use skip_checking, qBittorrent auto-verifies, but won't reach 100%
 	needsRecheckAndResume := requiresAlignment || hasExtraFiles
 
-	// Only proceed with recheck/resume if we have a valid save path.
-	// Without a valid path, the torrent would download to qBittorrent's default location
-	// where the matched files don't exist.
-	if !hasValidSavePath {
-		log.Warn().
-			Int("instanceID", candidate.InstanceID).
-			Str("torrentHash", torrentHash).
-			Str("matchedHash", matchedTorrent.Hash).
-			Msg("[CROSSSEED] No valid save path available, torrent added but not resumed")
-	} else if needsRecheckAndResume {
+	if needsRecheckAndResume {
 		// Trigger manual recheck for both alignment and hasExtraFiles cases.
 		// qBittorrent does NOT auto-recheck torrents added in stopped/paused state,
 		// even when skip_checking is not set. We must explicitly trigger recheck.
