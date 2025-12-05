@@ -6493,31 +6493,6 @@ func (s *Service) determineCrossSeedCategory(ctx context.Context, req *CrossSeed
 	return matchedCategory, applySuffix(matchedCategory)
 }
 
-// shouldUseTMM determines whether to use qBittorrent's Automatic Torrent Management for a cross-seed.
-// Returns true only when all conditions are met:
-//   - A category is being assigned
-//   - Not an episode matched to a season pack (needs explicit content path)
-//   - The matched torrent has TMM enabled (respects user's path management choice)
-//   - UseCategoryFromIndexer is NOT enabled (indexer categories may have different save paths)
-//
-// When this returns false, the caller should use an explicit save path from the matched torrent
-// to ensure the cross-seed lands where the files actually exist.
-func shouldUseTMM(category string, isEpisodeInPack, matchedAutoManaged, useCategoryFromIndexer bool) bool {
-	if category == "" {
-		return false
-	}
-	if isEpisodeInPack {
-		return false
-	}
-	if !matchedAutoManaged {
-		return false
-	}
-	if useCategoryFromIndexer {
-		return false
-	}
-	return true
-}
-
 // buildCrossSeedTags merges source-specific tags with optional matched torrent tags.
 // Parameters:
 //   - sourceTags: tags configured for this source type (e.g., RSSAutomationTags, SeededSearchTags)
