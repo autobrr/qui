@@ -2426,6 +2426,10 @@ func (s *Service) processCrossSeedCandidate(
 	if crossCategory != "" {
 		// Try to get SavePath from the base category definition in qBittorrent
 		categories, catErr := s.syncManager.GetCategories(ctx, candidate.InstanceID)
+		if catErr != nil {
+			log.Debug().Err(catErr).Int("instanceID", candidate.InstanceID).
+				Msg("[CROSSSEED] Failed to fetch categories, falling back to torrent SavePath")
+		}
 		if catErr == nil && categories != nil {
 			if cat, exists := categories[baseCategory]; exists && cat.SavePath != "" {
 				categorySavePath = cat.SavePath
@@ -2597,6 +2601,7 @@ func (s *Service) processCrossSeedCandidate(
 		Str("matchedTorrent", matchedTorrent.Name).
 		Bool("isEpisodeInPack", isEpisodeInPack).
 		Bool("hasValidSavePath", hasValidSavePath).
+		Bool("categoryCreationFailed", categoryCreationFailed).
 		Msg("[CROSSSEED] Adding cross-seed torrent")
 
 	// Add the torrent
