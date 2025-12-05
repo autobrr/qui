@@ -2416,15 +2416,15 @@ func (s *Service) processCrossSeedCandidate(
 	// Determine final category to apply (with optional .cross suffix for isolation)
 	baseCategory, crossCategory := s.determineCrossSeedCategory(ctx, req, matchedTorrent, nil)
 
-	// Determine the save_path for the cross-seed category
-	// Priority: base category's configured save_path > matched torrent's save_path
+	// Determine the SavePath for the cross-seed category.
+	// Priority: base category's configured SavePath > matched torrent's SavePath
 	// actualCategorySavePath tracks the category's real configured path (empty if none configured)
 	// categorySavePath includes the fallback to matched torrent's path for category creation
 	var categorySavePath string
 	var actualCategorySavePath string
 	var categoryCreationFailed bool
 	if crossCategory != "" {
-		// Try to get save_path from the base category definition in qBittorrent
+		// Try to get SavePath from the base category definition in qBittorrent
 		categories, catErr := s.syncManager.GetCategories(ctx, candidate.InstanceID)
 		if catErr == nil && categories != nil {
 			if cat, exists := categories[baseCategory]; exists && cat.SavePath != "" {
@@ -2433,12 +2433,12 @@ func (s *Service) processCrossSeedCandidate(
 			}
 		}
 
-		// Fallback to matched torrent's save_path if category has no explicit save_path
+		// Fallback to matched torrent's SavePath if category has no explicit SavePath
 		if categorySavePath == "" {
 			categorySavePath = props.SavePath
 		}
 
-		// Ensure the cross-seed category exists with the correct save_path
+		// Ensure the cross-seed category exists with the correct SavePath
 		if err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath); err != nil {
 			log.Warn().Err(err).
 				Str("category", crossCategory).
@@ -2505,18 +2505,19 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Determine save path strategy:
-	// Cross-seeding should use the matched torrent's save path to avoid relocating files.
+	// Cross-seeding should use the matched torrent's SavePath to avoid relocating files.
 	// Auto Torrent Management (autoTMM) can only be enabled when the category has an explicitly
-	// configured save_path that matches the matched torrent's save path, otherwise qBittorrent
+	// configured SavePath that matches the matched torrent's SavePath, otherwise qBittorrent
 	// will relocate files to the category path.
 	//
-	// hasValidSavePath tracks whether we have a valid path (via TMM or explicit savepath).
-	// If false, we should not add the torrent as it would download to the wrong location.
+	// hasValidSavePath tracks whether we have a valid path (via autoTMM or explicit savepath option).
+	// If false, we should not add the torrent as qBittorrent would use its default location
+	// and fail to find the existing files for cross-seeding.
 
 	// Fail early for episode-in-pack if ContentPath is missing
 	if isEpisodeInPack && matchedTorrent.ContentPath == "" {
 		result.Status = "invalid_content_path"
-		result.Message = fmt.Sprintf("Episode-in-pack match but matched torrent has no ContentPath (matchedHash=%s)", matchedTorrent.Hash)
+		result.Message = fmt.Sprintf("Episode-in-pack match but matched torrent has no ContentPath (matchedHash=%s). This may indicate the matched torrent is incomplete or was added without proper metadata.", matchedTorrent.Hash)
 		log.Error().
 			Int("instanceID", candidate.InstanceID).
 			Str("torrentHash", torrentHash).
@@ -2529,29 +2530,34 @@ func (s *Service) processCrossSeedCandidate(
 
 	var hasValidSavePath bool
 	if isEpisodeInPack && matchedTorrent.ContentPath != "" {
-		// Episode into season pack: use the season pack's content path explicitly
-		// ContentPath points to the season pack folder (e.g., /downloads/Season.01/)
-		// whereas SavePath would only point to the base directory (e.g., /downloads/)
+		// Episode into season pack: use the season pack's ContentPath explicitly.
+		// ContentPath points to the season pack folder (e.g., /downloads/tv/Show.Name/Season.01/)
+		// whereas SavePath only points to the parent directory (e.g., /downloads/tv/Show.Name/)
 		options["autoTMM"] = "false"
 		options["savepath"] = matchedTorrent.ContentPath
 		hasValidSavePath = true
 	} else {
-		// Use the matched torrent's save path (base storage directory)
-		// Fall back to category path only if matched torrent has no save path
+		// Use the matched torrent's SavePath (base storage directory)
+		// Fall back to category path only if matched torrent has no SavePath
 		savePath := props.SavePath
 		if savePath == "" {
 			savePath = categorySavePath
 		}
 
-		// Enable autoTMM only if:
-		// - Category exists and matched torrent uses autoTMM
-		// - Not using indexer categories (which may have different paths)
-		// - Category has an explicitly configured save_path (not a fallback)
-		// - Category's configured save_path matches the matched torrent's save_path
-		categoryPathMatches := actualCategorySavePath != "" && props.SavePath != "" &&
-			normalizePath(actualCategorySavePath) == normalizePath(props.SavePath)
+		// Evaluate whether autoTMM should be enabled
+		tmmDecision := shouldEnableAutoTMM(crossCategory, matchedTorrent.AutoManaged, useCategoryFromIndexer, actualCategorySavePath, props.SavePath)
 
-		if crossCategory != "" && matchedTorrent.AutoManaged && !useCategoryFromIndexer && categoryPathMatches {
+		log.Debug().
+			Bool("enabled", tmmDecision.Enabled).
+			Str("crossCategory", tmmDecision.CrossCategory).
+			Bool("matchedAutoManaged", tmmDecision.MatchedAutoManaged).
+			Bool("useIndexerCategory", tmmDecision.UseIndexerCategory).
+			Str("categorySavePath", tmmDecision.CategorySavePath).
+			Str("matchedSavePath", tmmDecision.MatchedSavePath).
+			Bool("pathsMatch", tmmDecision.PathsMatch).
+			Msg("[CROSSSEED] autoTMM decision factors")
+
+		if tmmDecision.Enabled {
 			options["autoTMM"] = "true"
 			hasValidSavePath = true
 		} else {
@@ -2566,7 +2572,7 @@ func (s *Service) processCrossSeedCandidate(
 	// Fail early if no valid save path - don't add orphaned torrents
 	if !hasValidSavePath {
 		result.Status = "no_save_path"
-		result.Message = fmt.Sprintf("No valid save path available (props.SavePath=%q, categorySavePath=%q)", props.SavePath, categorySavePath)
+		result.Message = fmt.Sprintf("No valid save path available. Ensure the matched torrent has a SavePath or the category has an explicit SavePath configured. (matchedSavePath=%q, categorySavePath=%q)", props.SavePath, categorySavePath)
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
 			Str("torrentName", torrentName).
@@ -6335,6 +6341,42 @@ func (s *Service) isSizeWithinTolerance(sourceSize, candidateSize int64, toleran
 
 	candidateSizeFloat := float64(candidateSize)
 	return candidateSizeFloat >= minAcceptableSize && candidateSizeFloat <= maxAcceptableSize
+}
+
+// autoTMMDecision holds the inputs and result of autoTMM evaluation for logging.
+type autoTMMDecision struct {
+	Enabled            bool
+	CrossCategory      string
+	MatchedAutoManaged bool
+	UseIndexerCategory bool
+	CategorySavePath   string
+	MatchedSavePath    string
+	PathsMatch         bool
+}
+
+// shouldEnableAutoTMM determines whether Auto Torrent Management should be enabled.
+// autoTMM can only be enabled when:
+// - A cross-seed category was successfully created (crossCategory != "")
+// - The matched torrent uses autoTMM
+// - Not using indexer categories (which may have different paths)
+// - The category has an explicitly configured SavePath that matches the matched torrent's SavePath
+//
+// Returns the decision struct for logging and whether autoTMM should be enabled.
+func shouldEnableAutoTMM(crossCategory string, matchedAutoManaged bool, useCategoryFromIndexer bool, actualCategorySavePath string, matchedSavePath string) autoTMMDecision {
+	pathsMatch := actualCategorySavePath != "" && matchedSavePath != "" &&
+		normalizePath(actualCategorySavePath) == normalizePath(matchedSavePath)
+
+	enabled := crossCategory != "" && matchedAutoManaged && !useCategoryFromIndexer && pathsMatch
+
+	return autoTMMDecision{
+		Enabled:            enabled,
+		CrossCategory:      crossCategory,
+		MatchedAutoManaged: matchedAutoManaged,
+		UseIndexerCategory: useCategoryFromIndexer,
+		CategorySavePath:   actualCategorySavePath,
+		MatchedSavePath:    matchedSavePath,
+		PathsMatch:         pathsMatch,
+	}
 }
 
 // normalizePath normalizes a file path for comparison by:
