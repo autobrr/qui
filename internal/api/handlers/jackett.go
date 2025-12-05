@@ -814,7 +814,7 @@ func (h *JackettHandler) DiscoverIndexers(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	indexers, err := jackett.DiscoverJackettIndexers(req.BaseURL, req.APIKey)
+	indexers, err := jackett.DiscoverJackettIndexers(r.Context(), req.BaseURL, req.APIKey)
 	if err != nil {
 		log.Error().Err(err).Str("base_url", req.BaseURL).Msg("Failed to discover indexers")
 		RespondError(w, http.StatusInternalServerError, "Failed to discover indexers")

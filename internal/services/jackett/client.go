@@ -468,19 +468,17 @@ type JackettIndexer struct {
 	Categories  []models.TorznabIndexerCategory `json:"categories,omitempty"`
 }
 
-// DiscoverJackettIndexers discovers all configured indexers from a Jackett instance
-func DiscoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
+// DiscoverJackettIndexers discovers all configured indexers from a Jackett instance.
+// The context is used to cancel in-flight capability fetches if the request is cancelled.
+func DiscoverJackettIndexers(ctx context.Context, baseURL, apiKey string) ([]JackettIndexer, error) {
 	if baseURL = strings.TrimSpace(baseURL); baseURL == "" {
 		return nil, fmt.Errorf("base url is required")
 	}
 
-	jackettIndexers, jackettErr := discoverJackettIndexers(baseURL, apiKey)
+	jackettIndexers, jackettErr := discoverJackettIndexers(ctx, baseURL, apiKey)
 	if jackettErr == nil {
 		return jackettIndexers, nil
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
 
 	prowlarrClient := prowlarr.NewClient(prowlarr.Config{
 		Host:      baseURL,
@@ -530,7 +528,7 @@ func DiscoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 		}
 
 		// Fetch capabilities and categories for all indexers in parallel with retries
-		capsMap := fetchCapsParallel(baseURL, apiKey, models.TorznabBackendProwlarr, indexerIDs)
+		capsMap := fetchCapsParallel(ctx, baseURL, apiKey, models.TorznabBackendProwlarr, indexerIDs)
 
 		// Apply capabilities and categories to indexers
 		for i := range indexers {
@@ -546,7 +544,7 @@ func DiscoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 	return nil, fmt.Errorf("jackett discovery failed: %v; prowlarr discovery failed: %w", jackettErr, prowlarrErr)
 }
 
-func discoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
+func discoverJackettIndexers(ctx context.Context, baseURL, apiKey string) ([]JackettIndexer, error) {
 	// Use the go-jackett library
 	client := gojackett.NewClient(gojackett.Config{
 		Host:   baseURL,
@@ -554,7 +552,7 @@ func discoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 	})
 
 	// Get all configured indexers
-	indexersResp, err := client.GetIndexersCtx(context.Background())
+	indexersResp, err := client.GetIndexersCtx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get indexers: %w", err)
 	}
@@ -582,7 +580,7 @@ func discoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 	}
 
 	// Fetch capabilities and categories for all configured indexers in parallel with retries
-	capsMap := fetchCapsParallel(baseURL, apiKey, models.TorznabBackendJackett, configuredIDs)
+	capsMap := fetchCapsParallel(ctx, baseURL, apiKey, models.TorznabBackendJackett, configuredIDs)
 
 	// Apply capabilities and categories to indexers
 	for i := range indexers {
@@ -604,7 +602,8 @@ type capsFetchResult struct {
 
 // fetchCapsParallel fetches capabilities and categories for multiple indexers concurrently with retries.
 // Returns a map of indexerID -> torznabCaps. Failed fetches are logged but don't fail the overall operation.
-func fetchCapsParallel(baseURL, apiKey string, backend models.TorznabBackend, indexerIDs []string) map[string]*torznabCaps {
+// The parent context is used to cancel all in-flight requests if the caller's context is cancelled.
+func fetchCapsParallel(ctx context.Context, baseURL, apiKey string, backend models.TorznabBackend, indexerIDs []string) map[string]*torznabCaps {
 	if len(indexerIDs) == 0 {
 		return nil
 	}
@@ -628,11 +627,19 @@ func fetchCapsParallel(baseURL, apiKey string, backend models.TorznabBackend, in
 		go func(indexerID string) {
 			defer wg.Done()
 
+			// Check if parent context is already cancelled
+			select {
+			case <-ctx.Done():
+				resultsChan <- capsFetchResult{indexerID: indexerID, err: ctx.Err()}
+				return
+			default:
+			}
+
 			// Acquire semaphore
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			caps, err := fetchCapsWithRetry(baseURL, apiKey, backend, indexerID, maxRetries, retryDelay, fetchTimeout)
+			caps, err := fetchCapsWithRetry(ctx, baseURL, apiKey, backend, indexerID, maxRetries, retryDelay, fetchTimeout)
 			resultsChan <- capsFetchResult{
 				indexerID: indexerID,
 				caps:      caps,
@@ -652,7 +659,7 @@ func fetchCapsParallel(baseURL, apiKey string, backend models.TorznabBackend, in
 	for result := range resultsChan {
 		if result.err != nil {
 			failedCount++
-			log.Debug().
+			log.Warn().
 				Err(result.err).
 				Str("indexer_id", result.indexerID).
 				Str("backend", string(backend)).
@@ -675,25 +682,35 @@ func fetchCapsParallel(baseURL, apiKey string, backend models.TorznabBackend, in
 	return results
 }
 
-// fetchCapsWithRetry attempts to fetch capabilities with retries and exponential backoff
-func fetchCapsWithRetry(baseURL, apiKey string, backend models.TorznabBackend, indexerID string, maxRetries int, retryDelay, timeout time.Duration) (*torznabCaps, error) {
+// fetchCapsWithRetry attempts to fetch capabilities with retries and exponential backoff.
+// The parent context is used as the base for per-attempt timeouts, allowing cancellation.
+func fetchCapsWithRetry(ctx context.Context, baseURL, apiKey string, backend models.TorznabBackend, indexerID string, maxRetries int, retryDelay, timeout time.Duration) (*torznabCaps, error) {
 	client := NewClient(baseURL, apiKey, backend, int(timeout.Seconds()))
 
 	var lastErr error
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
 			// Exponential backoff: 500ms, 1s, 2s...
-			time.Sleep(retryDelay * time.Duration(1<<(attempt-1)))
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(retryDelay * time.Duration(1<<(attempt-1))):
+			}
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		caps, err := client.FetchCaps(ctx, indexerID)
+		attemptCtx, cancel := context.WithTimeout(ctx, timeout)
+		caps, err := client.FetchCaps(attemptCtx, indexerID)
 		cancel()
 
 		if err == nil && caps != nil {
 			return caps, nil
 		}
 		lastErr = err
+
+		// Check if parent context was cancelled
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 	}
 
 	if lastErr == nil {
