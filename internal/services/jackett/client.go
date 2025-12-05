@@ -702,8 +702,8 @@ func fetchCapsWithRetry(ctx context.Context, baseURL, apiKey string, backend mod
 		}
 
 		attemptCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
 		caps, err := client.FetchCaps(attemptCtx, indexerID)
-		cancel()
 
 		if err == nil && caps != nil {
 			return caps, nil
