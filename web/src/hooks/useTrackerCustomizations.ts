@@ -1,0 +1,65 @@
+/*
+ * Copyright (c) 2025, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { api } from "@/lib/api"
+import type { TrackerCustomization, TrackerCustomizationInput } from "@/types"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+
+const QUERY_KEY = ["tracker-customizations"]
+
+/**
+ * Hook for fetching all tracker customizations (nicknames and merged domains)
+ */
+export function useTrackerCustomizations() {
+  return useQuery<TrackerCustomization[]>({
+    queryKey: QUERY_KEY,
+    queryFn: () => api.listTrackerCustomizations(),
+    staleTime: 30000, // 30 seconds
+    gcTime: 300000, // Keep in cache for 5 minutes
+  })
+}
+
+/**
+ * Hook for creating a new tracker customization
+ */
+export function useCreateTrackerCustomization() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (data: TrackerCustomizationInput) => api.createTrackerCustomization(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEY })
+    },
+  })
+}
+
+/**
+ * Hook for updating an existing tracker customization
+ */
+export function useUpdateTrackerCustomization() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: TrackerCustomizationInput }) =>
+      api.updateTrackerCustomization(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEY })
+    },
+  })
+}
+
+/**
+ * Hook for deleting a tracker customization
+ */
+export function useDeleteTrackerCustomization() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (id: number) => api.deleteTrackerCustomization(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEY })
+    },
+  })
+}
