@@ -2912,7 +2912,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                 </span>
               </Button>
             </div>
-            {effectiveServerState?.free_space_on_disk !== undefined && effectiveServerState.free_space_on_disk > 0 && (
+            {effectiveServerState?.free_space_on_disk !== undefined && (
               <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
                 <Tooltip>
                   <TooltipTrigger asChild>
