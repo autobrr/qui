@@ -450,7 +450,7 @@ function InstanceCard({
                 </div>
               </div>
 
-              {serverState?.free_space_on_disk !== undefined && serverState.free_space_on_disk > 0 && (
+              {serverState?.free_space_on_disk !== undefined && (
                 <div className="flex items-center gap-2 text-xs mt-1 sm:mt-2">
                   <HardDrive className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                   <span className="text-muted-foreground">Free Space</span>
