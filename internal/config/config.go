@@ -179,7 +179,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("host", envPrefix+"HOST")
 	c.viper.BindEnv("port", envPrefix+"PORT")
 	c.viper.BindEnv("baseUrl", envPrefix+"BASE_URL")
-	c.viper.BindEnv("sessionSecret", envPrefix+"SESSION_SECRET")
+	c.viper.BindEnv("sessionSecret", envPrefix+"SESSION_SECRET_FILE", envPrefix+"SESSION_SECRET")
 	c.viper.BindEnv("logLevel", envPrefix+"LOG_LEVEL")
 	c.viper.BindEnv("logPath", envPrefix+"LOG_PATH")
 	c.viper.BindEnv("logMaxSize", envPrefix+"LOG_MAX_SIZE")
@@ -367,7 +367,7 @@ logLevel = "{{ .logLevel }}"
 	data := map[string]any{
 		"host":          c.viper.GetString("host"),
 		"port":          c.viper.GetInt("port"),
-		"sessionSecret": c.viper.GetString("sessionSecret"),
+		"sessionSecret": ReadFileIfPath(c.viper.GetString("sessionSecret")),
 		"logLevel":      c.viper.GetString("logLevel"),
 		"logMaxSize":    c.viper.GetInt("logMaxSize"),
 		"logMaxBackups": c.viper.GetInt("logMaxBackups"),
@@ -623,4 +623,18 @@ func (c *AppConfig) GetEncryptionKey() []byte {
 	padded := make([]byte, encryptionKeySize)
 	copy(padded, []byte(secret))
 	return padded
+}
+
+// Read content from a file if the value is a path
+func ReadFileIfPath(value string) string {
+	_, err := os.Stat(value)
+	if err == nil {
+		content, err := os.ReadFile(value)
+		if err != nil {
+			log.Error().Err(err).Msg("Could not read file")
+			return ""
+		}
+		return strings.TrimSpace(string(content))
+	}
+	return value
 }

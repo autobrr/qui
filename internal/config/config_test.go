@@ -229,3 +229,50 @@ func TestNewLoadsConfigFromFileOrDirectory(t *testing.T) {
 		})
 	}
 }
+
+func TestReadFileIfPath(t *testing.T) {
+	tests := []struct {
+		name string
+		inValue func(t *testing.T, tmpDir string) (string)
+		expectedValue string
+	}{
+		{
+			name: "Value containing file path",
+			// tmp file containing key
+			inValue: func(t *testing.T, tmpDir string) (string) {
+				configPath := filepath.Join(tmpDir, "key-file.txt")
+				content := "key-from-file"
+				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+				return configPath
+			},
+			expectedValue: "key-from-file",
+		},
+		{
+			name: "Value containing unreadable file path",
+			// non readable tmp file containing key
+			inValue: func(t *testing.T, tmpDir string) (string) {
+				configPath := filepath.Join(tmpDir, "key-file.txt")
+				content := "key-from-file"
+				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o000))
+				return configPath
+			},
+			expectedValue: "",
+		},
+		{
+			name: "Value not containing file path",
+			inValue: func(t *testing.T, tmpDir string) (string) {
+				return "key-not-from-file" 
+			},
+			expectedValue: "key-not-from-file",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			extractedValue := ReadFileIfPath(tt.inValue(t, tmpDir))
+			assert.Equal(t, tt.expectedValue, extractedValue)
+		})
+	}
+}
