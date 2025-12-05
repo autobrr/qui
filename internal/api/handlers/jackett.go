@@ -325,15 +325,16 @@ func (h *JackettHandler) ListIndexers(w http.ResponseWriter, r *http.Request) {
 // @Router /api/torznab/indexers [post]
 func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name           string   `json:"name"`
-		BaseURL        string   `json:"base_url"`
-		IndexerID      string   `json:"indexer_id"`
-		APIKey         string   `json:"api_key"`
-		Backend        string   `json:"backend"`
-		Enabled        *bool    `json:"enabled"`
-		Priority       *int     `json:"priority"`
-		TimeoutSeconds *int     `json:"timeout_seconds"`
-		Capabilities   []string `json:"capabilities,omitempty"`
+		Name           string                          `json:"name"`
+		BaseURL        string                          `json:"base_url"`
+		IndexerID      string                          `json:"indexer_id"`
+		APIKey         string                          `json:"api_key"`
+		Backend        string                          `json:"backend"`
+		Enabled        *bool                           `json:"enabled"`
+		Priority       *int                            `json:"priority"`
+		TimeoutSeconds *int                            `json:"timeout_seconds"`
+		Capabilities   []string                        `json:"capabilities,omitempty"`
+		Categories     []models.TorznabIndexerCategory `json:"categories,omitempty"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -401,21 +402,32 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If capabilities were provided in the request, store them directly
-	if len(req.Capabilities) > 0 {
-		if err := h.indexerStore.SetCapabilities(r.Context(), indexer.ID, req.Capabilities); err != nil {
-			log.Warn().
-				Err(err).
-				Int("indexer_id", indexer.ID).
-				Str("indexer", indexer.Name).
-				Msg("Failed to store provided capabilities")
+	// If capabilities or categories were provided in the request, store them directly
+	if len(req.Capabilities) > 0 || len(req.Categories) > 0 {
+		if len(req.Capabilities) > 0 {
+			if err := h.indexerStore.SetCapabilities(r.Context(), indexer.ID, req.Capabilities); err != nil {
+				log.Warn().
+					Err(err).
+					Int("indexer_id", indexer.ID).
+					Str("indexer", indexer.Name).
+					Msg("Failed to store provided capabilities")
+			}
 		}
-		// Reload indexer to include the stored capabilities
+		if len(req.Categories) > 0 {
+			if err := h.indexerStore.SetCategories(r.Context(), indexer.ID, req.Categories); err != nil {
+				log.Warn().
+					Err(err).
+					Int("indexer_id", indexer.ID).
+					Str("indexer", indexer.Name).
+					Msg("Failed to store provided categories")
+			}
+		}
+		// Reload indexer to include the stored capabilities and categories
 		if updated, err := h.indexerStore.Get(r.Context(), indexer.ID); err == nil {
 			indexer = updated
 		}
 	} else if h.service != nil {
-		// No capabilities provided, try to fetch them from the service
+		// No capabilities/categories provided, try to fetch them from the service
 		if updated, err := h.service.SyncIndexerCaps(r.Context(), indexer.ID); err != nil {
 			log.Warn().
 				Err(err).

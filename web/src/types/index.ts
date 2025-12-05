@@ -1103,6 +1103,7 @@ export interface TorznabIndexerFormData {
   priority?: number
   timeout_seconds?: number
   capabilities?: string[]
+  categories?: TorznabIndexerCategory[]
 }
 
 export interface TorznabIndexerUpdate {
@@ -1115,6 +1116,7 @@ export interface TorznabIndexerUpdate {
   priority?: number
   timeout_seconds?: number
   capabilities?: string[]
+  categories?: TorznabIndexerCategory[]
 }
 
 export interface TorznabSearchRequest {
@@ -1202,6 +1204,7 @@ export interface JackettIndexer {
   configured: boolean
   backend?: "jackett" | "prowlarr" | "native"
   caps?: string[]
+  categories?: TorznabIndexerCategory[]
 }
 
 export interface DiscoverJackettRequest {

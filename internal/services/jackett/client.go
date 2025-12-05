@@ -11,7 +11,10 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/rs/zerolog/log"
 
 	gojackett "github.com/autobrr/qui/pkg/gojackett"
 
@@ -455,13 +458,14 @@ func (c *Client) convertRssToResults(rss gojackett.Rss) []Result {
 
 // JackettIndexer represents an indexer from Jackett's indexer list
 type JackettIndexer struct {
-	ID          string                `json:"id"`
-	Name        string                `json:"name"`
-	Description string                `json:"description"`
-	Type        string                `json:"type"`
-	Configured  bool                  `json:"configured"`
-	Backend     models.TorznabBackend `json:"backend"`
-	Caps        []string              `json:"caps,omitempty"`
+	ID          string                          `json:"id"`
+	Name        string                          `json:"name"`
+	Description string                          `json:"description"`
+	Type        string                          `json:"type"`
+	Configured  bool                            `json:"configured"`
+	Backend     models.TorznabBackend           `json:"backend"`
+	Caps        []string                        `json:"caps,omitempty"`
+	Categories  []models.TorznabIndexerCategory `json:"categories,omitempty"`
 }
 
 // DiscoverJackettIndexers discovers all configured indexers from a Jackett instance
@@ -488,7 +492,10 @@ func DiscoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 
 	pIndexers, prowlarrErr := prowlarrClient.GetIndexers(ctx)
 	if prowlarrErr == nil {
+		// First pass: build indexer list and collect IDs for parallel caps fetch
 		indexers := make([]JackettIndexer, 0, len(pIndexers))
+		indexerIDs := make([]string, 0, len(pIndexers))
+
 		for _, idx := range pIndexers {
 			// Skip disabled indexers
 			if !idx.Enable {
@@ -518,13 +525,21 @@ func DiscoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 				Backend:     models.TorznabBackendProwlarr,
 			}
 
-			// Try to fetch capabilities
-			if caps := fetchCapabilitiesForDiscovery(baseURL, apiKey, models.TorznabBackendProwlarr, strconv.Itoa(idx.ID)); caps != nil {
-				indexer.Caps = caps
-			}
-
 			indexers = append(indexers, indexer)
+			indexerIDs = append(indexerIDs, indexer.ID)
 		}
+
+		// Fetch capabilities and categories for all indexers in parallel with retries
+		capsMap := fetchCapsParallel(baseURL, apiKey, models.TorznabBackendProwlarr, indexerIDs)
+
+		// Apply capabilities and categories to indexers
+		for i := range indexers {
+			if caps, ok := capsMap[indexers[i].ID]; ok {
+				indexers[i].Caps = caps.Capabilities
+				indexers[i].Categories = caps.Categories
+			}
+		}
+
 		return indexers, nil
 	}
 
@@ -544,8 +559,10 @@ func discoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 		return nil, fmt.Errorf("failed to get indexers: %w", err)
 	}
 
-	// Convert to our JackettIndexer format and optionally fetch capabilities
+	// First pass: build indexer list and collect IDs for parallel caps fetch
 	indexers := make([]JackettIndexer, 0, len(indexersResp.Indexer))
+	configuredIDs := make([]string, 0, len(indexersResp.Indexer))
+
 	for _, idx := range indexersResp.Indexer {
 		indexer := JackettIndexer{
 			ID:          idx.ID,
@@ -556,40 +573,133 @@ func discoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 			Backend:     models.TorznabBackendJackett,
 		}
 
-		// Try to fetch capabilities for configured indexers
-		if indexer.Configured {
-			if caps := fetchCapabilitiesForDiscovery(baseURL, apiKey, models.TorznabBackendJackett, idx.ID); caps != nil {
-				indexer.Caps = caps
-			}
-		}
-
 		indexers = append(indexers, indexer)
+
+		// Only fetch caps for configured indexers
+		if indexer.Configured {
+			configuredIDs = append(configuredIDs, idx.ID)
+		}
+	}
+
+	// Fetch capabilities and categories for all configured indexers in parallel with retries
+	capsMap := fetchCapsParallel(baseURL, apiKey, models.TorznabBackendJackett, configuredIDs)
+
+	// Apply capabilities and categories to indexers
+	for i := range indexers {
+		if caps, ok := capsMap[indexers[i].ID]; ok {
+			indexers[i].Caps = caps.Capabilities
+			indexers[i].Categories = caps.Categories
+		}
 	}
 
 	return indexers, nil
 }
 
-// fetchCapabilitiesForDiscovery tries to fetch capabilities for an indexer during discovery
-// Returns nil if capabilities cannot be fetched (to avoid failing the entire discovery process)
-func fetchCapabilitiesForDiscovery(baseURL, apiKey string, backend models.TorznabBackend, indexerID string) []string {
-	// Create a client with a short timeout for discovery
-	client := NewClient(baseURL, apiKey, backend, 10) // 10 second timeout
+// capsFetchResult holds the result of a parallel caps fetch
+type capsFetchResult struct {
+	indexerID string
+	caps      *torznabCaps
+	err       error
+}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	caps, err := client.FetchCaps(ctx, indexerID)
-	if err != nil {
-		// Don't fail discovery if we can't fetch caps - just log a debug message
-		// This could happen if the indexer is down, misconfigured, etc.
+// fetchCapsParallel fetches capabilities and categories for multiple indexers concurrently with retries.
+// Returns a map of indexerID -> torznabCaps. Failed fetches are logged but don't fail the overall operation.
+func fetchCapsParallel(baseURL, apiKey string, backend models.TorznabBackend, indexerIDs []string) map[string]*torznabCaps {
+	if len(indexerIDs) == 0 {
 		return nil
 	}
 
-	if caps != nil {
-		return caps.Capabilities
+	const (
+		maxConcurrent = 10 // Max parallel requests to avoid overwhelming the server
+		maxRetries    = 2  // Number of retries per indexer
+		retryDelay    = 500 * time.Millisecond
+		fetchTimeout  = 15 * time.Second
+	)
+
+	results := make(map[string]*torznabCaps)
+	resultsChan := make(chan capsFetchResult, len(indexerIDs))
+
+	// Semaphore to limit concurrency
+	sem := make(chan struct{}, maxConcurrent)
+
+	var wg sync.WaitGroup
+	for _, id := range indexerIDs {
+		wg.Add(1)
+		go func(indexerID string) {
+			defer wg.Done()
+
+			// Acquire semaphore
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			caps, err := fetchCapsWithRetry(baseURL, apiKey, backend, indexerID, maxRetries, retryDelay, fetchTimeout)
+			resultsChan <- capsFetchResult{
+				indexerID: indexerID,
+				caps:      caps,
+				err:       err,
+			}
+		}(id)
 	}
 
-	return nil
+	// Close results channel when all goroutines complete
+	go func() {
+		wg.Wait()
+		close(resultsChan)
+	}()
+
+	// Collect results
+	var failedCount int
+	for result := range resultsChan {
+		if result.err != nil {
+			failedCount++
+			log.Debug().
+				Err(result.err).
+				Str("indexer_id", result.indexerID).
+				Str("backend", string(backend)).
+				Msg("Failed to fetch capabilities for indexer during discovery")
+			continue
+		}
+		if result.caps != nil {
+			results[result.indexerID] = result.caps
+		}
+	}
+
+	if failedCount > 0 {
+		log.Warn().
+			Int("failed", failedCount).
+			Int("total", len(indexerIDs)).
+			Int("succeeded", len(results)).
+			Msg("Some indexers failed capability fetch during discovery - they can be synced manually later")
+	}
+
+	return results
+}
+
+// fetchCapsWithRetry attempts to fetch capabilities with retries and exponential backoff
+func fetchCapsWithRetry(baseURL, apiKey string, backend models.TorznabBackend, indexerID string, maxRetries int, retryDelay, timeout time.Duration) (*torznabCaps, error) {
+	client := NewClient(baseURL, apiKey, backend, int(timeout.Seconds()))
+
+	var lastErr error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			// Exponential backoff: 500ms, 1s, 2s...
+			time.Sleep(retryDelay * time.Duration(1<<(attempt-1)))
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		caps, err := client.FetchCaps(ctx, indexerID)
+		cancel()
+
+		if err == nil && caps != nil {
+			return caps, nil
+		}
+		lastErr = err
+	}
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("caps response was empty after %d attempts", maxRetries+1)
+	}
+	return nil, lastErr
 }
 
 // GetCapabilitiesDirect gets capabilities from a direct Torznab endpoint
