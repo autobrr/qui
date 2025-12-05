@@ -33,6 +33,7 @@ import { useInstances } from "@/hooks/useInstances"
 import { useItemPartition } from "@/hooks/useItemPartition"
 import { usePersistedAccordion } from "@/hooks/usePersistedAccordion"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
+import { usePersistedCollapsedCategories } from "@/hooks/usePersistedCollapsedCategories"
 import { usePersistedShowEmptyState } from "@/hooks/usePersistedShowEmptyState"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { getLinuxCount, LINUX_CATEGORIES, LINUX_TAGS, LINUX_TRACKERS, useIncognitoMode } from "@/lib/incognito"
@@ -278,7 +279,7 @@ const FilterSidebarComponent = ({
   const [categoryToEdit, setCategoryToEdit] = useState<Category | null>(null)
   const [categoryToDelete, setCategoryToDelete] = useState("")
   const [parentCategoryForNew, setParentCategoryForNew] = useState<string | undefined>(undefined)
-  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(() => new Set())
+  const [collapsedCategories, setCollapsedCategories] = usePersistedCollapsedCategories(instanceId)
 
   // Search states for filtering large lists
   const [categorySearch, setCategorySearch] = useState("")
@@ -1416,11 +1417,39 @@ const FilterSidebarComponent = ({
     setShowDeleteEmptyCategoriesDialog(true)
   }, [setShowDeleteEmptyCategoriesDialog])
 
+  // Track previous subcategories state to detect transitions
+  const prevAllowSubcategories = useRef<boolean | null>(null)
+
   useEffect(() => {
-    if (!allowSubcategories) {
+    // Only clear collapsed categories when transitioning from enabled to disabled
+    if (prevAllowSubcategories.current === true && !allowSubcategories) {
       setCollapsedCategories(new Set())
     }
+    prevAllowSubcategories.current = allowSubcategories
   }, [allowSubcategories, setCollapsedCategories])
+
+  // Clean up stale collapsed categories
+  useEffect(() => {
+    if (!subcategoriesEnabled || collapsedCategories.size === 0) return
+    if (Object.keys(categories).length === 0) return
+
+    const validCategoryNames = new Set(Object.keys(categories))
+    const hasStaleCategories = Array.from(collapsedCategories).some(
+      cat => !validCategoryNames.has(cat)
+    )
+
+    if (hasStaleCategories) {
+      setCollapsedCategories(prev => {
+        const filtered = new Set<string>()
+        prev.forEach(cat => {
+          if (validCategoryNames.has(cat)) {
+            filtered.add(cat)
+          }
+        })
+        return filtered
+      })
+    }
+  }, [categories, collapsedCategories, subcategoriesEnabled, setCollapsedCategories])
 
   const hasActiveFilters =
     selectedFilters.status.length > 0 ||
