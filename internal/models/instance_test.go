@@ -319,6 +319,87 @@ func TestInstanceStoreWithEmptyUsername(t *testing.T) {
 	assert.Equal(t, "http://localhost:9091", updated.Host, "updated host should match")
 }
 
+// TestInstanceStoreEmptyUsernameSelfHealing verifies that creating an instance with
+// empty username works even when the empty string doesn't exist in string_pool.
+// This tests the fix for the bug where cleanup could delete the empty string,
+// causing bypass auth instance creation to fail.
+func TestInstanceStoreEmptyUsernameSelfHealing(t *testing.T) {
+	ctx := t.Context()
+
+	sqlDB, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err, "Failed to open test database")
+	defer sqlDB.Close()
+
+	encryptionKey := make([]byte, 32)
+	for i := range encryptionKey {
+		encryptionKey[i] = byte(i)
+	}
+
+	db := newMockQuerier(sqlDB)
+	store, err := NewInstanceStore(db, encryptionKey)
+	require.NoError(t, err, "Failed to create instance store")
+
+	// Create string_pool table WITHOUT the empty string (simulates cleanup deletion)
+	_, err = db.ExecContext(ctx, `
+		CREATE TABLE string_pool (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			value TEXT NOT NULL UNIQUE
+		)
+	`)
+	require.NoError(t, err, "Failed to create string_pool table")
+
+	// NOTE: Intentionally NOT inserting empty string - this is the bug scenario
+
+	_, err = db.ExecContext(ctx, `
+		CREATE TABLE instances (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name_id INTEGER NOT NULL,
+			host_id INTEGER NOT NULL,
+			username_id INTEGER NOT NULL,
+			password_encrypted TEXT NOT NULL,
+			basic_username_id INTEGER,
+			basic_password_encrypted TEXT,
+			tls_skip_verify BOOLEAN NOT NULL DEFAULT 0,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			is_active BOOLEAN DEFAULT 1,
+			FOREIGN KEY (name_id) REFERENCES string_pool(id),
+			FOREIGN KEY (host_id) REFERENCES string_pool(id),
+			FOREIGN KEY (username_id) REFERENCES string_pool(id),
+			FOREIGN KEY (basic_username_id) REFERENCES string_pool(id)
+		);
+
+		CREATE VIEW instances_view AS
+		SELECT
+			i.id,
+			sp_name.value AS name,
+			sp_host.value AS host,
+			sp_username.value AS username,
+			i.password_encrypted,
+			sp_basic_username.value AS basic_username,
+			i.basic_password_encrypted,
+			i.tls_skip_verify,
+			i.sort_order,
+			i.is_active
+		FROM instances i
+		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
+		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
+		INNER JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;
+	`)
+	require.NoError(t, err, "Failed to create test table")
+
+	// This should work even without pre-inserted empty string (self-healing)
+	instance, err := store.Create(ctx, "Bypass Auth Instance", "http://localhost:8080", "", "pass", nil, nil, false)
+	require.NoError(t, err, "Create with empty username should work even when empty string not pre-inserted")
+	assert.Equal(t, "", instance.Username, "username should be empty")
+
+	// Verify the empty string was created in string_pool
+	var count int
+	err = sqlDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM string_pool WHERE value = ''").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count, "empty string should have been created in string_pool")
+}
+
 func TestInstanceStoreUpdateOrder(t *testing.T) {
 	ctx := t.Context()
 
