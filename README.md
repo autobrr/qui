@@ -525,7 +525,6 @@ To search all instances, omit `instanceIds`:
 **Field descriptions:**
 - `torrentName` (required): The release name as announced
 - `instanceIds` (optional): qBittorrent instance IDs to scan. Omit to search all instances.
-- `size` (optional): Torrent size in bytes for size validation
 - `findIndividualEpisodes` (optional): Override the global episode matching setting
 
 **3. Configure Retry Handling**
