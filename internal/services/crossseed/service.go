@@ -2499,26 +2499,35 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Determine save path strategy:
-	// - For partial-in-pack (episode into season pack): use explicit ContentPath, TMM off
-	// - For UseCategoryFromIndexer: always explicit path (indexer category may have different save_path)
-	// - For categories with TMM-enabled source: let TMM handle it
-	// - Otherwise: use explicit save path
+	// Cross-seeding MUST always point to where the file actually exists (matched torrent's save path).
+	// TMM can only be enabled if the category's save_path matches the matched torrent's save path,
+	// otherwise qBittorrent would try to relocate the file to the category path.
 	if isEpisodeInPack && matchedTorrent.ContentPath != "" {
 		// Episode into season pack: use the season pack's content path explicitly
 		options["autoTMM"] = "false"
 		options["savepath"] = matchedTorrent.ContentPath
-	} else if crossCategory != "" && matchedTorrent.AutoManaged && !useCategoryFromIndexer {
-		// Category assigned, source uses TMM, not using indexer category: let TMM handle it
-		options["autoTMM"] = "true"
 	} else {
-		// No category, source doesn't use TMM, or using indexer category - use explicit save path
-		options["autoTMM"] = "false"
-		savePath := categorySavePath
+		// Always use the matched torrent's save path (where the file actually exists)
+		// Fall back to category path only if matched torrent has no save path
+		savePath := props.SavePath
 		if savePath == "" {
-			savePath = props.SavePath
+			savePath = categorySavePath
 		}
-		if savePath != "" {
-			options["savepath"] = savePath
+
+		// Enable TMM only if:
+		// - Category exists and source torrent uses TMM
+		// - Not using indexer categories (which may have different paths)
+		// - Category's save path matches the matched torrent's path (so TMM won't relocate)
+		categoryPathMatches := categorySavePath != "" && props.SavePath != "" &&
+			normalizePath(categorySavePath) == normalizePath(props.SavePath)
+
+		if crossCategory != "" && matchedTorrent.AutoManaged && !useCategoryFromIndexer && categoryPathMatches {
+			options["autoTMM"] = "true"
+		} else {
+			options["autoTMM"] = "false"
+			if savePath != "" {
+				options["savepath"] = savePath
+			}
 		}
 	}
 	log.Debug().
