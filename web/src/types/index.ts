@@ -325,6 +325,7 @@ export interface DashboardSettings {
   userId: number
   sectionVisibility: Record<string, boolean>
   sectionOrder: string[]
+  sectionCollapsed: Record<string, boolean>
   trackerBreakdownSortColumn: string
   trackerBreakdownSortDirection: string
   trackerBreakdownItemsPerPage: number
@@ -335,6 +336,7 @@ export interface DashboardSettings {
 export interface DashboardSettingsInput {
   sectionVisibility?: Record<string, boolean>
   sectionOrder?: string[]
+  sectionCollapsed?: Record<string, boolean>
   trackerBreakdownSortColumn?: string
   trackerBreakdownSortDirection?: string
   trackerBreakdownItemsPerPage?: number

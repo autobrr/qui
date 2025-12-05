@@ -36,7 +36,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useInstances } from "@/hooks/useInstances"
-import { usePersistedAccordionState } from "@/hooks/usePersistedAccordionState"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { api } from "@/lib/api"
 import { formatBytes, getRatioColor } from "@/lib/utils"
@@ -655,8 +654,16 @@ function GlobalStatsCards({ statsData }: { statsData: DashboardInstanceStats[] }
   )
 }
 
-function GlobalAllTimeStats({ statsData }: { statsData: DashboardInstanceStats[] }) {
-  const [accordionValue, setAccordionValue] = usePersistedAccordionState("qui-global-stats-accordion")
+interface GlobalAllTimeStatsProps {
+  statsData: DashboardInstanceStats[]
+  isCollapsed: boolean
+  onCollapsedChange: (collapsed: boolean) => void
+}
+
+function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: GlobalAllTimeStatsProps) {
+  // Accordion value is "server-stats" when expanded, "" when collapsed
+  const accordionValue = isCollapsed ? "" : "server-stats"
+  const setAccordionValue = (value: string) => onCollapsedChange(value === "")
 
   const globalStats = useMemo(() => {
     // Calculate server stats
@@ -881,10 +888,14 @@ interface TrackerBreakdownCardProps {
   statsData: DashboardInstanceStats[]
   settings: DashboardSettings
   onSettingsChange: (input: { trackerBreakdownSortColumn?: string; trackerBreakdownSortDirection?: string; trackerBreakdownItemsPerPage?: number }) => void
+  isCollapsed: boolean
+  onCollapsedChange: (collapsed: boolean) => void
 }
 
-function TrackerBreakdownCard({ statsData, settings, onSettingsChange }: TrackerBreakdownCardProps) {
-  const [accordionValue, setAccordionValue] = usePersistedAccordionState("qui-tracker-breakdown-accordion")
+function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollapsed, onCollapsedChange }: TrackerBreakdownCardProps) {
+  // Accordion value is "tracker-breakdown" when expanded, "" when collapsed
+  const accordionValue = isCollapsed ? "" : "tracker-breakdown"
+  const setAccordionValue = (value: string) => onCollapsedChange(value === "")
   const { data: trackerIcons } = useTrackerIcons()
   const [incognitoMode] = useIncognitoMode()
 
@@ -1687,6 +1698,13 @@ export function Dashboard() {
     updateSettings.mutate(input)
   }
 
+  // Handler for section collapsed state changes
+  const handleSectionCollapsedChange = (sectionId: string, collapsed: boolean) => {
+    updateSettings.mutate({
+      sectionCollapsed: { ...settings.sectionCollapsed, [sectionId]: collapsed }
+    })
+  }
+
   // Check if a section is visible
   const isSectionVisible = (sectionId: string) => {
     return settings.sectionVisibility[sectionId] !== false
@@ -1745,7 +1763,14 @@ export function Dashboard() {
               {visibleSections.map((sectionId) => {
                 switch (sectionId) {
                   case "server-stats":
-                    return <GlobalAllTimeStats key={sectionId} statsData={statsData} />
+                    return (
+                      <GlobalAllTimeStats
+                        key={sectionId}
+                        statsData={statsData}
+                        isCollapsed={settings.sectionCollapsed["server-stats"] ?? false}
+                        onCollapsedChange={(collapsed) => handleSectionCollapsedChange("server-stats", collapsed)}
+                      />
+                    )
                   case "tracker-breakdown":
                     return (
                       <TrackerBreakdownCard
@@ -1753,6 +1778,8 @@ export function Dashboard() {
                         statsData={statsData}
                         settings={settings}
                         onSettingsChange={handleTrackerSettingsChange}
+                        isCollapsed={settings.sectionCollapsed["tracker-breakdown"] ?? false}
+                        onCollapsedChange={(collapsed) => handleSectionCollapsedChange("tracker-breakdown", collapsed)}
                       />
                     )
                   case "global-stats":

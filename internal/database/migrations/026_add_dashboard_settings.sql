@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS dashboard_settings (
     user_id INTEGER NOT NULL UNIQUE,
     section_visibility TEXT NOT NULL DEFAULT '{}',
     section_order TEXT NOT NULL DEFAULT '[]',
+    section_collapsed TEXT NOT NULL DEFAULT '{}',
     tracker_breakdown_sort_column TEXT DEFAULT 'uploaded',
     tracker_breakdown_sort_direction TEXT DEFAULT 'desc',
     tracker_breakdown_items_per_page INTEGER DEFAULT 15,
