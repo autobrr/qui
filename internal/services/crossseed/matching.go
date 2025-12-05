@@ -130,7 +130,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		if sourceTitleLower != candidateTitleLower &&
 			!strings.Contains(sourceTitleLower, candidateTitleLower) &&
 			!strings.Contains(candidateTitleLower, sourceTitleLower) {
-			logRejection("tv_title_mismatch", "sourceNormalized", sourceTitleLower, "candidateNormalized", candidateTitleLower)
+			// Title mismatches are expected for most candidates - don't log to avoid noise
 			return false
 		}
 	} else {
@@ -138,7 +138,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		// match after normalization. This avoids very loose substring matches across
 		// unrelated content types.
 		if sourceTitleLower != candidateTitleLower {
-			logRejection("movie_title_mismatch", "sourceNormalized", sourceTitleLower, "candidateNormalized", candidateTitleLower)
+			// Title mismatches are expected for most candidates - don't log to avoid noise
 			return false
 		}
 	}
