@@ -2418,13 +2418,18 @@ func (s *Service) processCrossSeedCandidate(
 
 	// Determine the save_path for the cross-seed category
 	// Priority: base category's configured save_path > matched torrent's save_path
+	// actualCategorySavePath tracks the category's real configured path (empty if none configured)
+	// categorySavePath includes the fallback to matched torrent's path for category creation
 	var categorySavePath string
+	var actualCategorySavePath string
+	var categoryCreationFailed bool
 	if crossCategory != "" {
 		// Try to get save_path from the base category definition in qBittorrent
 		categories, catErr := s.syncManager.GetCategories(ctx, candidate.InstanceID)
 		if catErr == nil && categories != nil {
 			if cat, exists := categories[baseCategory]; exists && cat.SavePath != "" {
 				categorySavePath = cat.SavePath
+				actualCategorySavePath = cat.SavePath
 			}
 		}
 
@@ -2439,7 +2444,8 @@ func (s *Service) processCrossSeedCandidate(
 				Str("category", crossCategory).
 				Str("savePath", categorySavePath).
 				Msg("[CROSSSEED] Failed to ensure category exists, continuing without category")
-			crossCategory = "" // Clear category to proceed without it
+			crossCategory = ""            // Clear category to proceed without it
+			categoryCreationFailed = true // Track for result message
 		}
 	}
 
@@ -2499,20 +2505,38 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Determine save path strategy:
-	// Cross-seeding MUST always point to where the file actually exists (matched torrent's save path).
-	// Auto Torrent Management (autoTMM) can only be enabled if the category's save_path matches
-	// the matched torrent's save path, otherwise qBittorrent would try to relocate the file to the category path.
+	// Cross-seeding should use the matched torrent's save path to avoid relocating files.
+	// Auto Torrent Management (autoTMM) can only be enabled when the category has an explicitly
+	// configured save_path that matches the matched torrent's save path, otherwise qBittorrent
+	// will relocate files to the category path.
 	//
 	// hasValidSavePath tracks whether we have a valid path (via TMM or explicit savepath).
-	// If false, we should not resume the torrent as it would download to the wrong location.
+	// If false, we should not add the torrent as it would download to the wrong location.
+
+	// Fail early for episode-in-pack if ContentPath is missing
+	if isEpisodeInPack && matchedTorrent.ContentPath == "" {
+		result.Status = "invalid_content_path"
+		result.Message = fmt.Sprintf("Episode-in-pack match but matched torrent has no ContentPath (matchedHash=%s)", matchedTorrent.Hash)
+		log.Error().
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentHash", torrentHash).
+			Str("matchedHash", matchedTorrent.Hash).
+			Str("matchedName", matchedTorrent.Name).
+			Bool("isEpisodeInPack", isEpisodeInPack).
+			Msg("[CROSSSEED] Episode-in-pack match but matched torrent has no ContentPath - refusing to add")
+		return result
+	}
+
 	var hasValidSavePath bool
 	if isEpisodeInPack && matchedTorrent.ContentPath != "" {
 		// Episode into season pack: use the season pack's content path explicitly
+		// ContentPath points to the season pack folder (e.g., /downloads/Season.01/)
+		// whereas SavePath would only point to the base directory (e.g., /downloads/)
 		options["autoTMM"] = "false"
 		options["savepath"] = matchedTorrent.ContentPath
 		hasValidSavePath = true
 	} else {
-		// Always use the matched torrent's save path (where the file actually exists)
+		// Use the matched torrent's save path (base storage directory)
 		// Fall back to category path only if matched torrent has no save path
 		savePath := props.SavePath
 		if savePath == "" {
@@ -2522,9 +2546,10 @@ func (s *Service) processCrossSeedCandidate(
 		// Enable autoTMM only if:
 		// - Category exists and matched torrent uses autoTMM
 		// - Not using indexer categories (which may have different paths)
-		// - Category's save path matches the matched torrent's path (so autoTMM won't relocate)
-		categoryPathMatches := categorySavePath != "" && props.SavePath != "" &&
-			normalizePath(categorySavePath) == normalizePath(props.SavePath)
+		// - Category has an explicitly configured save_path (not a fallback)
+		// - Category's configured save_path matches the matched torrent's save_path
+		categoryPathMatches := actualCategorySavePath != "" && props.SavePath != "" &&
+			normalizePath(actualCategorySavePath) == normalizePath(props.SavePath)
 
 		if crossCategory != "" && matchedTorrent.AutoManaged && !useCategoryFromIndexer && categoryPathMatches {
 			options["autoTMM"] = "true"
@@ -2591,13 +2616,21 @@ func (s *Service) processCrossSeedCandidate(
 			return result
 		}
 
-		result.Message = fmt.Sprintf("Added torrent with recheck (match: %s, category: %s)", matchType, crossCategory)
+		if categoryCreationFailed {
+			result.Message = fmt.Sprintf("Added torrent with recheck WITHOUT category isolation (match: %s)", matchType)
+		} else {
+			result.Message = fmt.Sprintf("Added torrent with recheck (match: %s, category: %s)", matchType, crossCategory)
+		}
 		log.Debug().
 			Int("instanceID", candidate.InstanceID).
 			Str("instanceName", candidate.InstanceName).
 			Msg("Successfully added cross-seed torrent with recheck")
 	} else {
-		result.Message = fmt.Sprintf("Added torrent paused (match: %s, category: %s)", matchType, crossCategory)
+		if categoryCreationFailed {
+			result.Message = fmt.Sprintf("Added torrent paused WITHOUT category isolation (match: %s)", matchType)
+		} else {
+			result.Message = fmt.Sprintf("Added torrent paused (match: %s, category: %s)", matchType, crossCategory)
+		}
 	}
 
 	// Attempt to align the new torrent's naming and file layout with the matched torrent
@@ -2630,6 +2663,8 @@ func (s *Service) processCrossSeedCandidate(
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
 				Msg("Failed to resume cross-seed torrent after add")
+			// Update message to indicate manual resume needed
+			result.Message = result.Message + " - auto-resume failed, manual resume required"
 		}
 	}
 	result.Success = true
