@@ -5,13 +5,20 @@
 
 import { useEffect, useState } from "react"
 
+function isBrowser() {
+  return typeof window !== "undefined" && typeof window.localStorage !== "undefined"
+}
+
 export function usePersistedCollapsedCategories(instanceId: number) {
   const storageKey = `qui-collapsed-categories-${instanceId}`
 
   // Initialize state from localStorage
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(() => {
+    if (!isBrowser()) {
+      return new Set()
+    }
     try {
-      const stored = localStorage.getItem(storageKey)
+      const stored = window.localStorage.getItem(storageKey)
       if (stored) {
         const parsed = JSON.parse(stored)
         if (Array.isArray(parsed) && parsed.every(item => typeof item === "string")) {
@@ -26,8 +33,12 @@ export function usePersistedCollapsedCategories(instanceId: number) {
 
   // Reload when instanceId changes
   useEffect(() => {
+    if (!isBrowser()) {
+      setCollapsedCategories(new Set())
+      return
+    }
     try {
-      const stored = localStorage.getItem(storageKey)
+      const stored = window.localStorage.getItem(storageKey)
       if (stored) {
         const parsed = JSON.parse(stored)
         if (Array.isArray(parsed) && parsed.every(item => typeof item === "string")) {
@@ -42,8 +53,11 @@ export function usePersistedCollapsedCategories(instanceId: number) {
   }, [storageKey])
 
   useEffect(() => {
+    if (!isBrowser()) {
+      return
+    }
     try {
-      localStorage.setItem(storageKey, JSON.stringify(Array.from(collapsedCategories)))
+      window.localStorage.setItem(storageKey, JSON.stringify(Array.from(collapsedCategories)))
     } catch (error) {
       console.error("Failed to save collapsed categories to localStorage:", error)
     }
