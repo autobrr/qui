@@ -27,6 +27,12 @@ const (
 	testStatusUpdateTimeout = 5 * time.Second
 )
 
+// IndexerResponse wraps an indexer with optional warnings for partial failures
+type IndexerResponse struct {
+	*models.TorznabIndexer
+	Warnings []string `json:"warnings,omitempty"`
+}
+
 // JackettHandler handles Jackett/Torznab API endpoints
 type JackettHandler struct {
 	service      *jackett.Service
@@ -402,6 +408,9 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Track warnings for partial failures
+	var warnings []string
+
 	// If capabilities or categories were provided in the request, store them directly
 	if len(req.Capabilities) > 0 || len(req.Categories) > 0 {
 		if len(req.Capabilities) > 0 {
@@ -411,6 +420,7 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 					Int("indexer_id", indexer.ID).
 					Str("indexer", indexer.Name).
 					Msg("Failed to store provided capabilities")
+				warnings = append(warnings, "Failed to store capabilities - sync manually later")
 			}
 		}
 		if len(req.Categories) > 0 {
@@ -420,6 +430,7 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 					Int("indexer_id", indexer.ID).
 					Str("indexer", indexer.Name).
 					Msg("Failed to store provided categories")
+				warnings = append(warnings, "Failed to store categories - sync manually later")
 			}
 		}
 		// Reload indexer to include the stored capabilities and categories
@@ -439,7 +450,7 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	RespondJSON(w, http.StatusCreated, indexer)
+	RespondJSON(w, http.StatusCreated, IndexerResponse{TorznabIndexer: indexer, Warnings: warnings})
 }
 
 // GetIndexer godoc
@@ -563,6 +574,9 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Track warnings for partial failures
+	var warnings []string
+
 	// If capabilities or categories were provided in the request, store them directly
 	if len(req.Capabilities) > 0 || len(req.Categories) > 0 {
 		if len(req.Capabilities) > 0 {
@@ -572,6 +586,7 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 					Int("indexer_id", indexer.ID).
 					Str("indexer", indexer.Name).
 					Msg("Failed to store provided capabilities")
+				warnings = append(warnings, "Failed to store capabilities - sync manually later")
 			}
 		}
 		if len(req.Categories) > 0 {
@@ -581,6 +596,7 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 					Int("indexer_id", indexer.ID).
 					Str("indexer", indexer.Name).
 					Msg("Failed to store provided categories")
+				warnings = append(warnings, "Failed to store categories - sync manually later")
 			}
 		}
 		// Reload indexer to include the stored capabilities and categories
@@ -609,7 +625,7 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	RespondJSON(w, http.StatusOK, indexer)
+	RespondJSON(w, http.StatusOK, IndexerResponse{TorznabIndexer: indexer, Warnings: warnings})
 }
 
 // DeleteIndexer godoc

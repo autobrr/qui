@@ -983,6 +983,11 @@ export interface TorznabIndexer {
   updated_at: string
 }
 
+/** Response from create/update indexer endpoints, may include warnings for partial failures */
+export interface IndexerResponse extends TorznabIndexer {
+  warnings?: string[]
+}
+
 export interface TorznabIndexerCategory {
   indexer_id: number
   category_id: number

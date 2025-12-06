@@ -107,6 +107,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
 		let createdCount = 0
 		let updatedCount = 0
 		let errorCount = 0
+		let warningCount = 0
 		const errors: string[] = []
 
     for (const indexer of discoveredIndexers) {
@@ -129,8 +130,11 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
             capabilities: indexer.caps, // Include capabilities if discovered
             categories: indexer.categories, // Include categories if discovered
           }
-          await api.updateTorznabIndexer(existing.id, updateData)
+          const response = await api.updateTorznabIndexer(existing.id, updateData)
           updatedCount++
+          if (response.warnings?.length) {
+            warningCount++
+          }
         } else {
           // Create new indexer - enable by default for newly discovered indexers
           const createData: TorznabIndexerFormData = {
@@ -143,8 +147,11 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
             capabilities: indexer.caps, // Include capabilities if discovered
             categories: indexer.categories, // Include categories if discovered
           }
-          await api.createTorznabIndexer(createData)
+          const response = await api.createTorznabIndexer(createData)
           createdCount++
+          if (response.warnings?.length) {
+            warningCount++
+          }
         }
       } catch (error) {
         errorCount++
@@ -160,7 +167,11 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
       const messages = []
       if (createdCount > 0) messages.push(`${createdCount} created`)
       if (updatedCount > 0) messages.push(`${updatedCount} updated`)
-      toast.success(`Success: ${messages.join(', ')}`)
+      if (warningCount > 0) {
+        toast.warning(`${messages.join(', ')} (${warningCount} with warnings - sync caps manually)`)
+      } else {
+        toast.success(`Success: ${messages.join(', ')}`)
+      }
     } else {
       const messages = []
       if (createdCount > 0) messages.push(`${createdCount} created`)
