@@ -236,6 +236,8 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
                   placeholder="http://localhost:9696"
                   className={baseUrlError ? 'border-destructive focus-visible:ring-destructive' : undefined}
                   aria-invalid={baseUrlError ? 'true' : 'false'}
+                  autoComplete="off"
+                  data-1p-ignore
                   required
                 />
                 {baseUrlError && (
@@ -255,6 +257,8 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   placeholder="Your indexer API key"
+                  autoComplete="off"
+                  data-1p-ignore
                   required
                 />
               </div>
