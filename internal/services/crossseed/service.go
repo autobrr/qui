@@ -2335,15 +2335,16 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	candidateFilesByHash := s.batchLoadCandidateFiles(ctx, candidate.InstanceID, candidate.Torrents)
-	matchedTorrent, candidateFiles, matchType := s.findBestCandidateMatch(ctx, candidate, sourceRelease, sourceFiles, req.IgnorePatterns, candidateFilesByHash)
+	matchedTorrent, candidateFiles, matchType, rejectReason := s.findBestCandidateMatch(ctx, candidate, sourceRelease, sourceFiles, req.IgnorePatterns, candidateFilesByHash)
 	if matchedTorrent == nil {
 		result.Status = "no_match"
-		result.Message = "No matching torrents found with required files"
+		result.Message = rejectReason
 
 		log.Debug().
 			Int("instanceID", candidate.InstanceID).
 			Str("instanceName", candidate.InstanceName).
 			Str("torrentHash", torrentHash).
+			Str("reason", rejectReason).
 			Msg("Cross-seed apply skipped: no best candidate match after file-level validation")
 
 		return result
@@ -3076,22 +3077,25 @@ func (s *Service) findBestCandidateMatch(
 	sourceFiles qbt.TorrentFiles,
 	ignorePatterns []string,
 	filesByHash map[string]qbt.TorrentFiles,
-) (*qbt.Torrent, qbt.TorrentFiles, string) {
+) (*qbt.Torrent, qbt.TorrentFiles, string, string) {
 	var (
-		matchedTorrent *qbt.Torrent
-		candidateFiles qbt.TorrentFiles
-		matchType      string
-		bestScore      int
-		bestHasRoot    bool
-		bestFileCount  int
+		matchedTorrent   *qbt.Torrent
+		candidateFiles   qbt.TorrentFiles
+		matchType        string
+		bestScore        int
+		bestHasRoot      bool
+		bestFileCount    int
+		bestRejectReason string // Track the most informative rejection reason
 	)
 
 	if len(filesByHash) == 0 {
-		return nil, nil, ""
+		return nil, nil, "", "No candidate torrents with files to match against"
 	}
 
+	incompleteTorrents := 0
 	for _, torrent := range candidate.Torrents {
 		if torrent.Progress < 1.0 {
+			incompleteTorrents++
 			continue
 		}
 
@@ -3104,12 +3108,16 @@ func (s *Service) findBestCandidateMatch(
 		candidateRelease := s.releaseCache.Parse(torrent.Name)
 		// Swap parameter order: check if EXISTING files (files) are contained in NEW files (sourceFiles)
 		// This matches the search behavior where we found "partial-in-pack" (existing mkv in new mkv+nfo)
-		candidateMatchType := s.getMatchType(candidateRelease, sourceRelease, files, sourceFiles, ignorePatterns)
-		if candidateMatchType == "" {
+		matchResult := s.getMatchTypeWithReason(candidateRelease, sourceRelease, files, sourceFiles, ignorePatterns)
+		if matchResult.MatchType == "" {
+			// Track the rejection reason - prefer more specific reasons
+			if matchResult.Reason != "" && (bestRejectReason == "" || len(matchResult.Reason) > len(bestRejectReason)) {
+				bestRejectReason = matchResult.Reason
+			}
 			continue
 		}
 
-		score := matchTypePriority(candidateMatchType)
+		score := matchTypePriority(matchResult.MatchType)
 		if score == 0 {
 			// Layout checks can still return named match types (e.g. "partial-contains")
 			// that we never want to use for apply, so priority 0 acts as a hard reject.
@@ -3134,14 +3142,23 @@ func (s *Service) findBestCandidateMatch(
 			copyTorrent := torrent
 			matchedTorrent = &copyTorrent
 			candidateFiles = files
-			matchType = candidateMatchType
+			matchType = matchResult.MatchType
 			bestScore = score
 			bestHasRoot = hasRootFolder
 			bestFileCount = fileCount
 		}
 	}
 
-	return matchedTorrent, candidateFiles, matchType
+	// If no match found, provide helpful context
+	if matchedTorrent == nil && bestRejectReason == "" {
+		if incompleteTorrents > 0 && incompleteTorrents == len(candidate.Torrents) {
+			bestRejectReason = "All candidate torrents are incomplete (still downloading)"
+		} else {
+			bestRejectReason = "No matching torrents found with required files"
+		}
+	}
+
+	return matchedTorrent, candidateFiles, matchType, bestRejectReason
 }
 
 // decodeTorrentData decodes base64-encoded torrent data

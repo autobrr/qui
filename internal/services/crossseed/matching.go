@@ -445,6 +445,191 @@ func (s *Service) getMatchTypeFromTitle(targetName, candidateName string, target
 	return ""
 }
 
+// MatchResult holds both the match type and a human-readable reason when there's no match.
+type MatchResult struct {
+	MatchType string // "exact", "partial-in-pack", "partial-contains", "size", or ""
+	Reason    string // Human-readable reason when MatchType is "" (no match)
+}
+
+// getMatchTypeWithReason determines if files match for cross-seeding and provides
+// a detailed reason when they don't match.
+func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Release, sourceFiles, candidateFiles qbt.TorrentFiles, ignorePatterns []string) MatchResult {
+	var timer *prometheus.Timer
+	if s.metrics != nil {
+		timer = prometheus.NewTimer(s.metrics.GetMatchTypeDuration)
+		defer timer.ObserveDuration()
+		s.metrics.GetMatchTypeCalls.Inc()
+	}
+
+	// Check layout compatibility first (RAR vs extracted files)
+	sourceLayout := classifyTorrentLayout(sourceFiles, ignorePatterns, s.stringNormalizer)
+	candidateLayout := classifyTorrentLayout(candidateFiles, ignorePatterns, s.stringNormalizer)
+	if sourceLayout != LayoutUnknown && candidateLayout != LayoutUnknown && sourceLayout != candidateLayout {
+		if s.metrics != nil {
+			s.metrics.GetMatchTypeNoMatch.Inc()
+		}
+		reason := fmt.Sprintf("Layout mismatch: source is %s, candidate is %s", layoutDescription(sourceLayout), layoutDescription(candidateLayout))
+		return MatchResult{MatchType: "", Reason: reason}
+	}
+
+	// Stream through files to build filtered lists and accumulate sizes
+	var (
+		filteredSourceFiles    []TorrentFile
+		filteredCandidateFiles []TorrentFile
+		totalSourceSize        int64
+		totalCandidateSize     int64
+		sourceReleaseKeys      = make(map[releaseKey]int64)
+		candidateReleaseKeys   = make(map[releaseKey]int64)
+	)
+
+	// Process source files
+	for _, sf := range sourceFiles {
+		if !shouldIgnoreFile(sf.Name, ignorePatterns, s.stringNormalizer) {
+			filteredSourceFiles = append(filteredSourceFiles, TorrentFile{
+				Name: sf.Name,
+				Size: sf.Size,
+			})
+			totalSourceSize += sf.Size
+
+			fileRelease := s.parseReleaseName(sf.Name)
+			enrichedRelease := enrichReleaseFromTorrent(fileRelease, sourceRelease)
+			key := makeReleaseKey(enrichedRelease)
+			if key != (releaseKey{}) {
+				if existingSize, exists := sourceReleaseKeys[key]; !exists || sf.Size > existingSize {
+					sourceReleaseKeys[key] = sf.Size
+				}
+			}
+		}
+	}
+
+	// Process candidate files
+	for _, cf := range candidateFiles {
+		if !shouldIgnoreFile(cf.Name, ignorePatterns, s.stringNormalizer) {
+			filteredCandidateFiles = append(filteredCandidateFiles, TorrentFile{
+				Name: cf.Name,
+				Size: cf.Size,
+			})
+			totalCandidateSize += cf.Size
+
+			fileRelease := s.parseReleaseName(cf.Name)
+			enrichedRelease := enrichReleaseFromTorrent(fileRelease, candidateRelease)
+			key := makeReleaseKey(enrichedRelease)
+			if key != (releaseKey{}) {
+				if existingSize, exists := candidateReleaseKeys[key]; !exists || cf.Size > existingSize {
+					candidateReleaseKeys[key] = cf.Size
+				}
+			}
+		}
+	}
+
+	// Check for exact file match
+	if s.streamingExactMatch(filteredSourceFiles, filteredCandidateFiles) {
+		if s.metrics != nil {
+			s.metrics.GetMatchTypeExactMatch.Inc()
+		}
+		return MatchResult{MatchType: "exact", Reason: ""}
+	}
+
+	// Check for partial match
+	if len(sourceReleaseKeys) > 0 && len(candidateReleaseKeys) > 0 {
+		if s.checkPartialMatch(sourceReleaseKeys, candidateReleaseKeys) {
+			if s.metrics != nil {
+				s.metrics.GetMatchTypePartialMatch.Inc()
+			}
+			return MatchResult{MatchType: "partial-in-pack", Reason: ""}
+		}
+
+		if s.checkPartialMatch(candidateReleaseKeys, sourceReleaseKeys) {
+			if s.metrics != nil {
+				s.metrics.GetMatchTypePartialMatch.Inc()
+			}
+			return MatchResult{MatchType: "partial-contains", Reason: ""}
+		}
+	}
+
+	// Size match
+	if totalSourceSize > 0 && totalSourceSize == totalCandidateSize && len(filteredSourceFiles) > 0 {
+		if s.metrics != nil {
+			s.metrics.GetMatchTypeSizeMatch.Inc()
+		}
+		return MatchResult{MatchType: "size", Reason: ""}
+	}
+
+	// Fallback to largest file match
+	if len(sourceReleaseKeys) == 0 && len(candidateReleaseKeys) == 0 &&
+		len(filteredSourceFiles) > 0 && len(filteredCandidateFiles) > 0 {
+		if s.streamingLargestFileMatch(filteredSourceFiles, filteredCandidateFiles) {
+			if s.metrics != nil {
+				s.metrics.GetMatchTypeSizeMatch.Inc()
+			}
+			return MatchResult{MatchType: "size", Reason: ""}
+		}
+	}
+
+	// Build detailed reason for no match
+	if s.metrics != nil {
+		s.metrics.GetMatchTypeNoMatch.Inc()
+	}
+
+	reason := buildNoMatchReason(
+		filteredSourceFiles, filteredCandidateFiles,
+		totalSourceSize, totalCandidateSize,
+		sourceReleaseKeys, candidateReleaseKeys,
+	)
+	return MatchResult{MatchType: "", Reason: reason}
+}
+
+// layoutDescription returns a human-readable description of a torrent layout.
+func layoutDescription(layout TorrentLayout) string {
+	switch layout {
+	case LayoutFiles:
+		return "extracted files"
+	case LayoutArchives:
+		return "RAR/archive"
+	default:
+		return "unknown"
+	}
+}
+
+// buildNoMatchReason constructs a human-readable reason why files didn't match.
+func buildNoMatchReason(
+	sourceFiles, candidateFiles []TorrentFile,
+	sourceSize, candidateSize int64,
+	sourceKeys, candidateKeys map[releaseKey]int64,
+) string {
+	if len(sourceFiles) == 0 {
+		return "No usable files in source torrent after filtering"
+	}
+	if len(candidateFiles) == 0 {
+		return "No usable files in existing torrent after filtering"
+	}
+
+	// Size mismatch
+	if sourceSize != candidateSize {
+		return fmt.Sprintf("Size mismatch: source %.2f GB vs existing %.2f GB",
+			float64(sourceSize)/(1024*1024*1024),
+			float64(candidateSize)/(1024*1024*1024))
+	}
+
+	// File count mismatch with same size (rare but possible)
+	if len(sourceFiles) != len(candidateFiles) {
+		return fmt.Sprintf("File count mismatch: source has %d files, existing has %d files",
+			len(sourceFiles), len(candidateFiles))
+	}
+
+	// Release keys couldn't be parsed
+	if len(sourceKeys) == 0 && len(candidateKeys) == 0 {
+		return "Unable to parse release metadata from filenames"
+	}
+
+	// Keys don't overlap
+	if len(sourceKeys) > 0 && len(candidateKeys) > 0 {
+		return "Release metadata doesn't match between source and existing files"
+	}
+
+	return "Files don't match (structure or naming differs)"
+}
+
 // getMatchType determines if files match for cross-seeding.
 // Returns "exact" for perfect match, "partial" for season pack partial matches,
 // "size" for total size match, or "" for no match.
