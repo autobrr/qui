@@ -2682,7 +2682,17 @@ func (s *Service) processCrossSeedCandidate(
 			result.Message = result.Message + " - auto-resume failed, manual resume required"
 		}
 	} else if !alignmentSucceeded {
-		// Alignment failed - leave torrent paused to prevent unwanted downloads
+		// Alignment failed - pause torrent to prevent unwanted downloads
+		if !startPaused {
+			// Torrent was added running - need to actually pause it
+			if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "pause"); err != nil {
+				log.Warn().
+					Err(err).
+					Int("instanceID", candidate.InstanceID).
+					Str("torrentHash", torrentHash).
+					Msg("Failed to pause misaligned cross-seed torrent")
+			}
+		}
 		result.Message = result.Message + " - alignment failed, left paused"
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
