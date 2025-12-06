@@ -638,8 +638,13 @@ func fetchCapsParallel(ctx context.Context, baseURL, apiKey string, backend mode
 			default:
 			}
 
-			// Acquire semaphore
-			sem <- struct{}{}
+			// Acquire semaphore with cancellation support
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				resultsChan <- capsFetchResult{indexerID: indexerID, err: ctx.Err()}
+				return
+			}
 			defer func() { <-sem }()
 
 			caps, err := fetchCapsWithRetry(ctx, baseURL, apiKey, backend, indexerID, maxRetries, retryDelay, fetchTimeout)
@@ -702,8 +707,8 @@ func fetchCapsWithRetry(ctx context.Context, baseURL, apiKey string, backend mod
 		}
 
 		attemptCtx, cancel := context.WithTimeout(ctx, timeout)
-		defer cancel()
 		caps, err := client.FetchCaps(attemptCtx, indexerID)
+		cancel() // Cancel immediately after use to avoid context leak in loop
 
 		if err == nil && caps != nil {
 			return caps, nil
