@@ -2646,12 +2646,13 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Attempt to align the new torrent's naming and file layout with the matched torrent
-	s.alignCrossSeedContentPaths(ctx, candidate.InstanceID, torrentHash, torrentName, matchedTorrent, sourceFiles, candidateFiles)
+	alignmentSucceeded := s.alignCrossSeedContentPaths(ctx, candidate.InstanceID, torrentHash, torrentName, matchedTorrent, sourceFiles, candidateFiles)
 
 	// Determine if we need to wait for verification and resume at threshold:
 	// - requiresAlignment: we used skip_checking but need to recheck after renaming paths
 	// - hasExtraFiles: we didn't use skip_checking, qBittorrent auto-verifies, but won't reach 100%
-	needsRecheckAndResume := requiresAlignment || hasExtraFiles
+	// - alignmentSucceeded: only proceed if alignment worked (or wasn't needed)
+	needsRecheckAndResume := (requiresAlignment || hasExtraFiles) && alignmentSucceeded
 
 	if needsRecheckAndResume {
 		// Trigger manual recheck for both alignment and hasExtraFiles cases.
@@ -2662,11 +2663,13 @@ func (s *Service) processCrossSeedCandidate(
 				Err(err).
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
-				Msg("Failed to trigger recheck after add")
+				Msg("Failed to trigger recheck after add, skipping auto-resume")
+			result.Message = result.Message + " - recheck failed, manual intervention required"
+		} else {
+			// Only queue for background resume if recheck was successfully triggered
+			s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash)
 		}
-		// Queue for background resume when recheck completes
-		s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash)
-	} else if startPaused {
+	} else if startPaused && alignmentSucceeded {
 		// Perfect match: skip_checking=true, no alignment needed, torrent is at 100%
 		// Resume immediately since there's nothing to wait for
 		if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "resume"); err != nil {
@@ -2678,6 +2681,13 @@ func (s *Service) processCrossSeedCandidate(
 			// Update message to indicate manual resume needed
 			result.Message = result.Message + " - auto-resume failed, manual resume required"
 		}
+	} else if !alignmentSucceeded {
+		// Alignment failed - leave torrent paused to prevent unwanted downloads
+		result.Message = result.Message + " - alignment failed, left paused"
+		log.Warn().
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentHash", torrentHash).
+			Msg("Cross-seed alignment failed, leaving torrent paused to prevent download")
 	}
 	result.Success = true
 	result.Status = "added"
