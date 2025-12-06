@@ -54,6 +54,7 @@ import type {
   TorrentProperties,
   TorrentResponse,
   TorrentTracker,
+  IndexerResponse,
   TorznabIndexer,
   TorznabIndexerError,
   TorznabIndexerFormData,
@@ -1506,15 +1507,15 @@ class ApiClient {
     return this.request<TorznabIndexer>(`/torznab/indexers/${id}`)
   }
 
-  async createTorznabIndexer(data: TorznabIndexerFormData): Promise<TorznabIndexer> {
-    return this.request<TorznabIndexer>("/torznab/indexers", {
+  async createTorznabIndexer(data: TorznabIndexerFormData): Promise<IndexerResponse> {
+    return this.request<IndexerResponse>("/torznab/indexers", {
       method: "POST",
       body: JSON.stringify(data),
     })
   }
 
-  async updateTorznabIndexer(id: number, data: Partial<TorznabIndexerFormData>): Promise<TorznabIndexer> {
-    return this.request<TorznabIndexer>(`/torznab/indexers/${id}`, {
+  async updateTorznabIndexer(id: number, data: Partial<TorznabIndexerFormData>): Promise<IndexerResponse> {
+    return this.request<IndexerResponse>(`/torznab/indexers/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     })

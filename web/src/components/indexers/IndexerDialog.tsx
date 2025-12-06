@@ -84,8 +84,12 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
           createPayload.indexer_id = trimmedIndexerId
         }
 
-        await api.createTorznabIndexer(createPayload)
-        toast.success('Indexer created successfully')
+        const response = await api.createTorznabIndexer(createPayload)
+        if (response.warnings?.length) {
+          toast.warning(`Indexer created with warnings: ${response.warnings.join(', ')}`)
+        } else {
+          toast.success('Indexer created successfully')
+        }
       } else if (mode === 'edit' && indexer) {
         const updatePayload: Partial<TorznabIndexerFormData> = {
           name: formData.name,
@@ -105,8 +109,12 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
           updatePayload.api_key = trimmedApiKey
         }
 
-        await api.updateTorznabIndexer(indexer.id, updatePayload)
-        toast.success('Indexer updated successfully')
+        const response = await api.updateTorznabIndexer(indexer.id, updatePayload)
+        if (response.warnings?.length) {
+          toast.warning(`Indexer updated with warnings: ${response.warnings.join(', ')}`)
+        } else {
+          toast.success('Indexer updated successfully')
+        }
       }
       onClose()
     } catch (error) {

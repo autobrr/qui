@@ -36,7 +36,7 @@ import type {
   CrossSeedTorrentSearchResponse,
   Torrent
 } from "@/types"
-import { ChevronDown, ChevronRight, Loader2, RefreshCw, SlidersHorizontal } from "lucide-react"
+import { ChevronDown, ChevronRight, ExternalLink, Loader2, RefreshCw, SlidersHorizontal } from "lucide-react"
 import { memo, useCallback, useMemo, useState } from "react"
 
 type CrossSeedSearchResult = CrossSeedTorrentSearchResponse["results"][number]
@@ -372,10 +372,11 @@ const CrossSeedDialogComponent = ({
                                   href={result.infoUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="min-w-0 flex-1 truncate font-medium text-sm leading-tight text-primary hover:underline"
+                                  className="min-w-0 flex-1 font-medium text-sm leading-tight text-primary hover:underline inline-flex items-center gap-1"
                                   title={result.title}
                                 >
-                                  {result.title}
+                                  <span className="truncate">{result.title}</span>
+                                  <ExternalLink className="h-3 w-3 shrink-0 opacity-50" />
                                 </a>
                               ) : (
                                 <span className="min-w-0 flex-1 truncate font-medium text-sm leading-tight" title={result.title}>{result.title}</span>
