@@ -42,7 +42,7 @@ import { formatBytes, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Activity, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, X, Zap } from "lucide-react"
+import { Activity, AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, X, Zap } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 
 import {
@@ -402,26 +402,48 @@ function InstanceCard({
           ) : (
             /* Show normal stats */
             <div className="space-y-2 sm:space-y-3">
-              <div className="mb-3 sm:mb-6">
-                <div className="flex items-center justify-center mb-1">
-                  <span className="flex-1 text-center text-xs text-muted-foreground">Downloading</span>
-                  <span className="flex-1 text-center text-xs text-muted-foreground">Active</span>
-                  <span className="flex-1 text-center text-xs text-muted-foreground">Error</span>
-                  <span className="flex-1 text-center text-xs text-muted-foreground">Total</span>
-                </div>
-                <div className="flex items-center justify-center">
-                  <span className="flex-1 text-center text-base sm:text-lg font-semibold">
-                    {torrentCounts?.status?.downloading || 0}
-                  </span>
-                  <span className="flex-1 text-center text-base sm:text-lg font-semibold">{torrentCounts?.status?.active || 0}</span>
-                  <span className={`flex-1 text-center text-base sm:text-lg font-semibold ${(torrentCounts?.status?.errored || 0) > 0 ? "text-destructive" : ""}`}>
-                    {torrentCounts?.status?.errored || 0}
-                  </span>
-                  <span className="flex-1 text-center text-base sm:text-lg font-semibold">{torrentCounts?.total || 0}</span>
+              <div className="mb-3 sm:mb-4">
+                {/* Main stats row */}
+                <div className="flex items-center justify-around text-center">
+                  <div>
+                    <div className="text-base sm:text-lg font-semibold">{torrentCounts?.status?.downloading || 0}</div>
+                    <div className="text-xs text-muted-foreground">Down</div>
+                  </div>
+                  <div>
+                    <div className="text-base sm:text-lg font-semibold">{torrentCounts?.status?.active || 0}</div>
+                    <div className="text-xs text-muted-foreground">Active</div>
+                  </div>
+                  <div>
+                    <div className="text-base sm:text-lg font-semibold">{torrentCounts?.total || 0}</div>
+                    <div className="text-xs text-muted-foreground">Total</div>
+                  </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-1 gap-1 sm:gap-2">
+                {/* Issue rows - only shown when there are problems */}
+                {(torrentCounts?.status?.unregistered || 0) > 0 && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <AlertTriangle className="h-3 w-3 text-destructive flex-shrink-0" />
+                    <span className="text-destructive">Unregistered torrents</span>
+                    <span className="ml-auto font-medium text-destructive">{torrentCounts?.status?.unregistered}</span>
+                  </div>
+                )}
+                {(torrentCounts?.status?.tracker_down || 0) > 0 && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <AlertCircle className="h-3 w-3 text-yellow-500 flex-shrink-0" />
+                    <span className="text-yellow-500">Tracker Down</span>
+                    <span className="ml-auto font-medium text-yellow-500">{torrentCounts?.status?.tracker_down}</span>
+                  </div>
+                )}
+                {(torrentCounts?.status?.errored || 0) > 0 && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <AlertTriangle className="h-3 w-3 text-destructive flex-shrink-0" />
+                    <span className="text-destructive">Errors</span>
+                    <span className="ml-auto font-medium text-destructive">{torrentCounts?.status?.errored}</span>
+                  </div>
+                )}
+
                 <div className="flex items-center gap-2 text-xs">
                   <Download className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                   <span className="text-muted-foreground">Download</span>
