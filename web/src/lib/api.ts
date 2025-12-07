@@ -27,6 +27,7 @@ import type {
   CrossSeedTorrentInfo,
   CrossSeedTorrentSearchResponse,
   CrossSeedTorrentSearchSelection,
+  DiscoverJackettResponse,
   DuplicateTorrentMatch,
   ExternalProgram,
   ExternalProgramCreate,
@@ -1548,8 +1549,8 @@ class ApiClient {
     return this.request<SearchHistoryResponse>(`/torznab/search/history${params}`)
   }
 
-  async discoverJackettIndexers(baseUrl: string, apiKey: string): Promise<JackettIndexer[]> {
-    return this.request<JackettIndexer[]>("/torznab/indexers/discover", {
+  async discoverJackettIndexers(baseUrl: string, apiKey: string): Promise<DiscoverJackettResponse> {
+    return this.request<DiscoverJackettResponse>("/torznab/indexers/discover", {
       method: "POST",
       body: JSON.stringify({ base_url: baseUrl, api_key: apiKey }),
     })

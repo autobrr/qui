@@ -468,19 +468,31 @@ type JackettIndexer struct {
 	Categories  []models.TorznabIndexerCategory `json:"categories,omitempty"`
 }
 
+// DiscoveryResult contains discovered indexers and any warnings from partial failures
+type DiscoveryResult struct {
+	Indexers []JackettIndexer `json:"indexers"`
+	Warnings []string         `json:"warnings,omitempty"`
+}
+
 // DiscoverJackettIndexers discovers all configured indexers from a Jackett instance.
 // The context is used to cancel in-flight capability fetches if the request is cancelled.
-func DiscoverJackettIndexers(ctx context.Context, baseURL, apiKey string) ([]JackettIndexer, error) {
+// Returns a DiscoveryResult containing indexers and any warnings about partial failures.
+func DiscoverJackettIndexers(ctx context.Context, baseURL, apiKey string) (DiscoveryResult, error) {
 	if ctx == nil {
+		log.Warn().Msg("DiscoverJackettIndexers called with nil context - this is a programming error")
 		ctx = context.Background()
 	}
 	if baseURL = strings.TrimSpace(baseURL); baseURL == "" {
-		return nil, fmt.Errorf("base url is required")
+		return DiscoveryResult{Indexers: []JackettIndexer{}}, fmt.Errorf("base url is required")
 	}
 
-	jackettIndexers, jackettErr := discoverJackettIndexers(ctx, baseURL, apiKey)
+	jackettIndexers, failedIDs, jackettErr := discoverJackettIndexers(ctx, baseURL, apiKey)
 	if jackettErr == nil {
-		return jackettIndexers, nil
+		var warnings []string
+		if len(failedIDs) > 0 {
+			warnings = append(warnings, fmt.Sprintf("%d indexer(s) failed capability fetch - sync manually later", len(failedIDs)))
+		}
+		return DiscoveryResult{Indexers: jackettIndexers, Warnings: warnings}, nil
 	}
 
 	prowlarrClient := prowlarr.NewClient(prowlarr.Config{
@@ -531,7 +543,7 @@ func DiscoverJackettIndexers(ctx context.Context, baseURL, apiKey string) ([]Jac
 		}
 
 		// Fetch capabilities and categories for all indexers in parallel with retries
-		capsMap := fetchCapsParallel(ctx, baseURL, apiKey, models.TorznabBackendProwlarr, indexerIDs)
+		capsMap, failedIDs := fetchCapsParallel(ctx, baseURL, apiKey, models.TorznabBackendProwlarr, indexerIDs)
 
 		// Apply capabilities and categories to indexers
 		for i := range indexers {
@@ -541,13 +553,17 @@ func DiscoverJackettIndexers(ctx context.Context, baseURL, apiKey string) ([]Jac
 			}
 		}
 
-		return indexers, nil
+		var warnings []string
+		if len(failedIDs) > 0 {
+			warnings = append(warnings, fmt.Sprintf("%d indexer(s) failed capability fetch - sync manually later", len(failedIDs)))
+		}
+		return DiscoveryResult{Indexers: indexers, Warnings: warnings}, nil
 	}
 
-	return nil, fmt.Errorf("jackett discovery failed: %v; prowlarr discovery failed: %w", jackettErr, prowlarrErr)
+	return DiscoveryResult{Indexers: []JackettIndexer{}}, fmt.Errorf("jackett discovery failed: %v; prowlarr discovery failed: %w", jackettErr, prowlarrErr)
 }
 
-func discoverJackettIndexers(ctx context.Context, baseURL, apiKey string) ([]JackettIndexer, error) {
+func discoverJackettIndexers(ctx context.Context, baseURL, apiKey string) ([]JackettIndexer, []string, error) {
 	// Use the go-jackett library
 	client := gojackett.NewClient(gojackett.Config{
 		Host:   baseURL,
@@ -557,7 +573,7 @@ func discoverJackettIndexers(ctx context.Context, baseURL, apiKey string) ([]Jac
 	// Get all configured indexers
 	indexersResp, err := client.GetIndexersCtx(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get indexers: %w", err)
+		return nil, nil, fmt.Errorf("failed to get indexers: %w", err)
 	}
 
 	// First pass: build indexer list and collect IDs for parallel caps fetch
@@ -583,7 +599,7 @@ func discoverJackettIndexers(ctx context.Context, baseURL, apiKey string) ([]Jac
 	}
 
 	// Fetch capabilities and categories for all configured indexers in parallel with retries
-	capsMap := fetchCapsParallel(ctx, baseURL, apiKey, models.TorznabBackendJackett, configuredIDs)
+	capsMap, failedIDs := fetchCapsParallel(ctx, baseURL, apiKey, models.TorznabBackendJackett, configuredIDs)
 
 	// Apply capabilities and categories to indexers
 	for i := range indexers {
@@ -593,7 +609,7 @@ func discoverJackettIndexers(ctx context.Context, baseURL, apiKey string) ([]Jac
 		}
 	}
 
-	return indexers, nil
+	return indexers, failedIDs, nil
 }
 
 // capsFetchResult holds the result of a parallel caps fetch
@@ -604,11 +620,12 @@ type capsFetchResult struct {
 }
 
 // fetchCapsParallel fetches capabilities and categories for multiple indexers concurrently with retries.
-// Returns a map of indexerID -> torznabCaps. Failed fetches are logged but don't fail the overall operation.
+// Returns a map of indexerID -> torznabCaps and a slice of failed indexer IDs.
+// Failed fetches are logged but don't fail the overall operation.
 // The parent context is used to cancel all in-flight requests if the caller's context is cancelled.
-func fetchCapsParallel(ctx context.Context, baseURL, apiKey string, backend models.TorznabBackend, indexerIDs []string) map[string]*torznabCaps {
+func fetchCapsParallel(ctx context.Context, baseURL, apiKey string, backend models.TorznabBackend, indexerIDs []string) (map[string]*torznabCaps, []string) {
 	if len(indexerIDs) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	const (
@@ -663,10 +680,10 @@ func fetchCapsParallel(ctx context.Context, baseURL, apiKey string, backend mode
 	}()
 
 	// Collect results
-	var failedCount int
+	var failedIDs []string
 	for result := range resultsChan {
 		if result.err != nil {
-			failedCount++
+			failedIDs = append(failedIDs, result.indexerID)
 			log.Warn().
 				Err(result.err).
 				Str("indexer_id", result.indexerID).
@@ -679,15 +696,15 @@ func fetchCapsParallel(ctx context.Context, baseURL, apiKey string, backend mode
 		}
 	}
 
-	if failedCount > 0 {
+	if len(failedIDs) > 0 {
 		log.Warn().
-			Int("failed", failedCount).
+			Int("failed", len(failedIDs)).
 			Int("total", len(indexerIDs)).
 			Int("succeeded", len(results)).
 			Msg("Some indexers failed capability fetch during discovery - they can be synced manually later")
 	}
 
-	return results
+	return results, failedIDs
 }
 
 // fetchCapsWithRetry attempts to fetch capabilities with retries and exponential backoff.
@@ -723,6 +740,8 @@ func fetchCapsWithRetry(ctx context.Context, baseURL, apiKey string, backend mod
 
 	if lastErr == nil {
 		lastErr = fmt.Errorf("caps response was empty after %d attempts", maxRetries+1)
+	} else {
+		lastErr = fmt.Errorf("caps fetch failed after %d attempts: %w", maxRetries+1, lastErr)
 	}
 	return nil, lastErr
 }

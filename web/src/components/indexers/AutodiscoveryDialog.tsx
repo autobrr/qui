@@ -59,25 +59,34 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
         api.discoverJackettIndexers(normalizedBaseUrl, apiKey),
         api.listTorznabIndexers()
       ])
-      
-      setDiscoveredIndexers(response)
-      
+
+      setDiscoveredIndexers(response.indexers)
+
       // Build map of existing indexers by name with full indexer data
       const existingMap = new Map<string, TorznabIndexer>()
       for (const idx of existing) {
         existingMap.set(idx.name, idx)
       }
       setExistingIndexersMap(existingMap)
-      
+
       setStep('select')
-      const existingCount = response.filter(idx => existingMap.has(idx.name)).length
+      const existingCount = response.indexers.filter(idx => existingMap.has(idx.name)).length
       if (existingCount > 0) {
-        toast.success(`Found ${response.length} indexers (${existingCount} already exist)`)
+        toast.success(`Found ${response.indexers.length} indexers (${existingCount} already exist)`)
       } else {
-        toast.success(`Found ${response.length} indexers`)
+        toast.success(`Found ${response.indexers.length} indexers`)
+      }
+
+      // Show discovery warnings if any
+      if (response.warnings?.length) {
+        for (const warning of response.warnings) {
+          toast.warning(warning)
+        }
       }
     } catch (error) {
-      toast.error('Failed to discover indexers. Check your URL and API key.')
+      console.error('Failed to discover indexers:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      toast.error(`Failed to discover indexers: ${errorMessage}`)
     } finally {
       setLoading(false)
     }
@@ -107,8 +116,8 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
 		let createdCount = 0
 		let updatedCount = 0
 		let errorCount = 0
-		let warningCount = 0
 		const errors: string[] = []
+		const warningDetails: string[] = []
 
     for (const indexer of discoveredIndexers) {
       if (!selectedIndexers.has(indexer.id)) continue
@@ -133,7 +142,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
           const response = await api.updateTorznabIndexer(existing.id, updateData)
           updatedCount++
           if (response.warnings?.length) {
-            warningCount++
+            warningDetails.push(`${indexer.name}: ${response.warnings.join(', ')}`)
           }
         } else {
           // Create new indexer - enable by default for newly discovered indexers
@@ -150,7 +159,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
           const response = await api.createTorznabIndexer(createData)
           createdCount++
           if (response.warnings?.length) {
-            warningCount++
+            warningDetails.push(`${indexer.name}: ${response.warnings.join(', ')}`)
           }
         }
       } catch (error) {
@@ -167,8 +176,15 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
       const messages = []
       if (createdCount > 0) messages.push(`${createdCount} created`)
       if (updatedCount > 0) messages.push(`${updatedCount} updated`)
-      if (warningCount > 0) {
-        toast.warning(`${messages.join(', ')} (${warningCount} with warnings - sync caps manually)`)
+      if (warningDetails.length > 0) {
+        toast.warning(`${messages.join(', ')} (${warningDetails.length} with warnings)`)
+        // Show first few warning details
+        for (const detail of warningDetails.slice(0, 3)) {
+          toast.warning(detail)
+        }
+        if (warningDetails.length > 3) {
+          toast.warning(`...and ${warningDetails.length - 3} more warnings`)
+        }
       } else {
         toast.success(`Success: ${messages.join(', ')}`)
       }
@@ -178,9 +194,12 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
       if (updatedCount > 0) messages.push(`${updatedCount} updated`)
       if (errorCount > 0) messages.push(`${errorCount} failed`)
       toast.error(messages.join(', '))
-      // Show first error detail
-      if (errors.length > 0) {
-        toast.error(errors[0])
+      // Show first few error details
+      for (const detail of errors.slice(0, 3)) {
+        toast.error(detail)
+      }
+      if (errors.length > 3) {
+        toast.error(`...and ${errors.length - 3} more errors`)
       }
     }
 

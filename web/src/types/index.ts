@@ -1219,6 +1219,7 @@ export interface DiscoverJackettRequest {
 
 export interface DiscoverJackettResponse {
   indexers: JackettIndexer[]
+  warnings?: string[]
 }
 
 export interface CrossSeedTorrentInfo {

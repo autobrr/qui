@@ -434,7 +434,13 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		// Reload indexer to include the stored capabilities and categories
-		if updated, err := h.indexerStore.Get(r.Context(), indexer.ID); err == nil {
+		if updated, err := h.indexerStore.Get(r.Context(), indexer.ID); err != nil {
+			log.Warn().
+				Err(err).
+				Int("indexer_id", indexer.ID).
+				Str("indexer", indexer.Name).
+				Msg("Failed to reload indexer after storing capabilities")
+		} else {
 			indexer = updated
 		}
 	} else if h.service != nil {
@@ -445,6 +451,7 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 				Int("indexer_id", indexer.ID).
 				Str("indexer", indexer.Name).
 				Msg("Failed to sync torznab caps after creation")
+			warnings = append(warnings, "Failed to fetch capabilities - sync manually later")
 		} else if updated != nil {
 			indexer = updated
 		}
@@ -600,7 +607,13 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		// Reload indexer to include the stored capabilities and categories
-		if updated, err := h.indexerStore.Get(r.Context(), indexer.ID); err == nil {
+		if updated, err := h.indexerStore.Get(r.Context(), indexer.ID); err != nil {
+			log.Warn().
+				Err(err).
+				Int("indexer_id", indexer.ID).
+				Str("indexer", indexer.Name).
+				Msg("Failed to reload indexer after storing capabilities")
+		} else {
 			indexer = updated
 		}
 	} else if h.service != nil {
@@ -611,6 +624,7 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 				Int("indexer_id", indexer.ID).
 				Str("indexer", indexer.Name).
 				Msg("Failed to sync torznab caps after update")
+			warnings = append(warnings, "Failed to fetch capabilities - sync manually later")
 		} else if updated != nil {
 			indexer = updated
 		}
@@ -618,7 +632,7 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 
 	if h.service != nil {
 		if _, err := h.service.InvalidateSearchCache(r.Context(), []int{indexer.ID}); err != nil {
-			log.Debug().
+			log.Warn().
 				Err(err).
 				Int("indexer_id", indexer.ID).
 				Msg("Failed to invalidate search cache after indexer update")
@@ -811,12 +825,12 @@ func (h *JackettHandler) SyncIndexerCaps(w http.ResponseWriter, r *http.Request)
 }
 
 // DiscoverIndexers godoc
-// @Summary Discover indexers from a Jackett instance
-// @Description Discovers all configured indexers from a Jackett instance using its API
+// @Summary Discover indexers from a Jackett/Prowlarr instance
+// @Description Discovers all configured indexers from a Jackett or Prowlarr instance using its API
 // @Tags torznab
 // @Accept json
 // @Produce json
-// @Success 200 {array} jackett.JackettIndexer
+// @Success 200 {object} jackett.DiscoveryResult
 // @Failure 400 {object} httphelpers.ErrorResponse
 // @Failure 500 {object} httphelpers.ErrorResponse
 // @Security ApiKeyAuth
@@ -842,14 +856,14 @@ func (h *JackettHandler) DiscoverIndexers(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	indexers, err := jackett.DiscoverJackettIndexers(r.Context(), req.BaseURL, req.APIKey)
+	result, err := jackett.DiscoverJackettIndexers(r.Context(), req.BaseURL, req.APIKey)
 	if err != nil {
 		log.Error().Err(err).Str("base_url", req.BaseURL).Msg("Failed to discover indexers")
 		RespondError(w, http.StatusInternalServerError, "Failed to discover indexers")
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, indexers)
+	RespondJSON(w, http.StatusOK, result)
 }
 
 // GetAllHealth godoc
