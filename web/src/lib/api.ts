@@ -27,6 +27,7 @@ import type {
   CrossSeedTorrentInfo,
   CrossSeedTorrentSearchResponse,
   CrossSeedTorrentSearchSelection,
+  DiscoverJackettResponse,
   DuplicateTorrentMatch,
   ExternalProgram,
   ExternalProgramCreate,
@@ -39,7 +40,6 @@ import type {
   InstanceReannounceActivity,
   InstanceReannounceCandidate,
   InstanceResponse,
-  JackettIndexer,
   QBittorrentAppInfo,
   RestoreMode,
   RestorePlan,
@@ -54,6 +54,7 @@ import type {
   TorrentProperties,
   TorrentResponse,
   TorrentTracker,
+  IndexerResponse,
   TorznabIndexer,
   TorznabIndexerError,
   TorznabIndexerFormData,
@@ -1506,15 +1507,15 @@ class ApiClient {
     return this.request<TorznabIndexer>(`/torznab/indexers/${id}`)
   }
 
-  async createTorznabIndexer(data: TorznabIndexerFormData): Promise<TorznabIndexer> {
-    return this.request<TorznabIndexer>("/torznab/indexers", {
+  async createTorznabIndexer(data: TorznabIndexerFormData): Promise<IndexerResponse> {
+    return this.request<IndexerResponse>("/torznab/indexers", {
       method: "POST",
       body: JSON.stringify(data),
     })
   }
 
-  async updateTorznabIndexer(id: number, data: Partial<TorznabIndexerFormData>): Promise<TorznabIndexer> {
-    return this.request<TorznabIndexer>(`/torznab/indexers/${id}`, {
+  async updateTorznabIndexer(id: number, data: Partial<TorznabIndexerFormData>): Promise<IndexerResponse> {
+    return this.request<IndexerResponse>(`/torznab/indexers/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     })
@@ -1547,8 +1548,8 @@ class ApiClient {
     return this.request<SearchHistoryResponse>(`/torznab/search/history${params}`)
   }
 
-  async discoverJackettIndexers(baseUrl: string, apiKey: string): Promise<JackettIndexer[]> {
-    return this.request<JackettIndexer[]>("/torznab/indexers/discover", {
+  async discoverJackettIndexers(baseUrl: string, apiKey: string): Promise<DiscoverJackettResponse> {
+    return this.request<DiscoverJackettResponse>("/torznab/indexers/discover", {
       method: "POST",
       body: JSON.stringify({ base_url: baseUrl, api_key: apiKey }),
     })

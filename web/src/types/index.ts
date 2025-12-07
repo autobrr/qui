@@ -983,6 +983,11 @@ export interface TorznabIndexer {
   updated_at: string
 }
 
+/** Response from create/update indexer endpoints, may include warnings for partial failures */
+export interface IndexerResponse extends TorznabIndexer {
+  warnings?: string[]
+}
+
 export interface TorznabIndexerCategory {
   indexer_id: number
   category_id: number
@@ -1103,6 +1108,7 @@ export interface TorznabIndexerFormData {
   priority?: number
   timeout_seconds?: number
   capabilities?: string[]
+  categories?: TorznabIndexerCategory[]
 }
 
 export interface TorznabIndexerUpdate {
@@ -1115,6 +1121,7 @@ export interface TorznabIndexerUpdate {
   priority?: number
   timeout_seconds?: number
   capabilities?: string[]
+  categories?: TorznabIndexerCategory[]
 }
 
 export interface TorznabSearchRequest {
@@ -1202,6 +1209,7 @@ export interface JackettIndexer {
   configured: boolean
   backend?: "jackett" | "prowlarr" | "native"
   caps?: string[]
+  categories?: TorznabIndexerCategory[]
 }
 
 export interface DiscoverJackettRequest {
@@ -1211,6 +1219,7 @@ export interface DiscoverJackettRequest {
 
 export interface DiscoverJackettResponse {
   indexers: JackettIndexer[]
+  warnings?: string[]
 }
 
 export interface CrossSeedTorrentInfo {
