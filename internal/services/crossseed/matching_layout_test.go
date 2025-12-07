@@ -64,7 +64,7 @@ func TestFindBestCandidateMatch_PrefersLayoutCompatibleTorrent(t *testing.T) {
 	}
 
 	filesByHash := svc.batchLoadCandidateFiles(context.Background(), candidate.InstanceID, candidate.Torrents)
-	bestTorrent, files, matchType := svc.findBestCandidateMatch(context.Background(), candidate, &sourceRelease, sourceFiles, nil, filesByHash)
+	bestTorrent, files, matchType, _ := svc.findBestCandidateMatch(context.Background(), candidate, &sourceRelease, sourceFiles, nil, filesByHash)
 	require.NotNil(t, bestTorrent)
 	require.Equal(t, "mkv", bestTorrent.Hash)
 	require.Equal(t, "exact", matchType)
@@ -106,7 +106,7 @@ func TestFindBestCandidateMatch_PrefersTopLevelFolderOnTie(t *testing.T) {
 	require.Equal(t, "size", singleMatch)
 
 	filesByHash := svc.batchLoadCandidateFiles(context.Background(), candidate.InstanceID, candidate.Torrents)
-	bestTorrent, files, matchType := svc.findBestCandidateMatch(context.Background(), candidate, &sourceRelease, sourceFiles, nil, filesByHash)
+	bestTorrent, files, matchType, _ := svc.findBestCandidateMatch(context.Background(), candidate, &sourceRelease, sourceFiles, nil, filesByHash)
 	require.NotNil(t, bestTorrent)
 	require.Equal(t, "folder", bestTorrent.Hash, "top-level folder layout should win tie-breakers")
 	require.Equal(t, "size", matchType)

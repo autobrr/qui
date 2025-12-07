@@ -37,7 +37,7 @@ import type {
   Torrent
 } from "@/types"
 import { ChevronDown, ChevronRight, Loader2, RefreshCw, SlidersHorizontal } from "lucide-react"
-import { memo, useCallback, useMemo, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useState } from "react"
 
 type CrossSeedSearchResult = CrossSeedTorrentSearchResponse["results"][number]
 type CrossSeedIndexerOption = {
@@ -155,6 +155,14 @@ const CrossSeedDialogComponent = ({
 
   const [excludedOpen, setExcludedOpen] = useState(false)
   const [applyResultOpen, setApplyResultOpen] = useState(true)
+
+  // Auto-expand results when there are failures
+  const hasFailures = applyResult?.results.some(r => !r.success || r.instanceResults?.some(ir => !ir.success))
+  useEffect(() => {
+    if (hasFailures) {
+      setApplyResultOpen(true)
+    }
+  }, [hasFailures])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -442,13 +450,28 @@ const CrossSeedDialogComponent = ({
                             <p className="truncate text-xs text-muted-foreground" title={result.torrentName ?? result.title}>{result.torrentName ?? result.title}</p>
                             {result.error && <p className="break-words text-xs text-destructive">{result.error}</p>}
                             {result.instanceResults && result.instanceResults.length > 0 && (
-                              <ul className="mt-1.5 space-y-0.5 text-xs text-muted-foreground">
-                                {result.instanceResults.map(instance => (
-                                  <li key={`${result.indexer}-${instance.instanceId}-${instance.status}`} className="break-words">
-                                    <span className="font-medium">{instance.instanceName}</span>:{" "}
-                                    {instance.message ?? instance.status}
-                                  </li>
-                                ))}
+                              <ul className="mt-1.5 space-y-1 text-xs">
+                                {result.instanceResults.map(instance => {
+                                  const statusDisplay = getInstanceStatusDisplay(instance.status, instance.success)
+                                  return (
+                                    <li key={`${result.indexer}-${instance.instanceId}-${instance.status}`} className="flex flex-col gap-0.5">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="font-medium">{instance.instanceName}</span>
+                                        <Badge
+                                          variant={statusDisplay.variant === "success" ? "outline" : statusDisplay.variant === "warning" ? "secondary" : "destructive"}
+                                          className="text-[10px] h-4 px-1"
+                                        >
+                                          {statusDisplay.text}
+                                        </Badge>
+                                      </div>
+                                      {instance.message && instance.message !== instance.status && (
+                                        <span className={`break-words pl-0.5 ${instance.success ? "text-muted-foreground" : "text-destructive/80"}`}>
+                                          {instance.message}
+                                        </span>
+                                      )}
+                                    </li>
+                                  )
+                                })}
                               </ul>
                             )}
                           </div>
@@ -498,6 +521,27 @@ function formatCrossSeedPublishDate(value: string): string {
     return value
   }
   return parsed.toLocaleString()
+}
+
+// Maps instance status codes to user-friendly display information
+function getInstanceStatusDisplay(status: string, success: boolean): { text: string; variant: "default" | "success" | "warning" | "destructive" } {
+  switch (status) {
+    case "added":
+      return { text: "Added", variant: "success" }
+    case "exists":
+      return { text: "Already exists", variant: "warning" }
+    case "no_match":
+      return { text: "No match", variant: "destructive" }
+    case "no_save_path":
+      return { text: "No save path", variant: "destructive" }
+    case "invalid_content_path":
+      return { text: "Invalid path", variant: "destructive" }
+    case "error":
+      return { text: "Error", variant: "destructive" }
+    default:
+      // For unknown status, use success flag to determine variant
+      return { text: status, variant: success ? "success" : "destructive" }
+  }
 }
 
 interface CrossSeedScopeSelectorProps {
