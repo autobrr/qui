@@ -407,7 +407,7 @@ function InstanceCard({
                 <div className="flex items-center justify-around text-center">
                   <div>
                     <div className="text-base sm:text-lg font-semibold">{torrentCounts?.status?.downloading || 0}</div>
-                    <div className="text-xs text-muted-foreground">Down</div>
+                    <div className="text-xs text-muted-foreground">Downloading</div>
                   </div>
                   <div>
                     <div className="text-base sm:text-lg font-semibold">{torrentCounts?.status?.active || 0}</div>
