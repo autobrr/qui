@@ -532,6 +532,10 @@ function getInstanceStatusDisplay(status: string, success: boolean): { text: str
       return { text: "Already exists", variant: "warning" }
     case "no_match":
       return { text: "No match", variant: "destructive" }
+    case "no_save_path":
+      return { text: "No save path", variant: "destructive" }
+    case "invalid_content_path":
+      return { text: "Invalid path", variant: "destructive" }
     case "error":
       return { text: "Error", variant: "destructive" }
     default:
