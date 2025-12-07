@@ -628,7 +628,8 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'application/x-bittorrent': ['.torrent']
+      'application/x-bittorrent': ['.torrent'],
+      'application/octet-stream': ['.torrent'],
     },
     multiple: true,
     noClick: false,
