@@ -40,7 +40,6 @@ import type {
   InstanceReannounceActivity,
   InstanceReannounceCandidate,
   InstanceResponse,
-  JackettIndexer,
   QBittorrentAppInfo,
   RestoreMode,
   RestorePlan,
