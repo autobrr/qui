@@ -72,7 +72,8 @@ export function useUpdateDashboardSettings() {
 
       return { previousSettings }
     },
-    onError: (_err, _newData, context) => {
+    onError: (err, _newData, context) => {
+      console.error("[DashboardSettings] Update failed:", err)
       // Rollback on error
       if (context?.previousSettings) {
         queryClient.setQueryData(QUERY_KEY, context.previousSettings)

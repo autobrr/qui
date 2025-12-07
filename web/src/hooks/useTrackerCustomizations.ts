@@ -32,6 +32,9 @@ export function useCreateTrackerCustomization() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEY })
     },
+    onError: (error) => {
+      console.error("[TrackerCustomization] Create failed:", error)
+    },
   })
 }
 
@@ -47,6 +50,9 @@ export function useUpdateTrackerCustomization() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEY })
     },
+    onError: (error) => {
+      console.error("[TrackerCustomization] Update failed:", error)
+    },
   })
 }
 
@@ -60,6 +66,9 @@ export function useDeleteTrackerCustomization() {
     mutationFn: (id: number) => api.deleteTrackerCustomization(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEY })
+    },
+    onError: (error) => {
+      console.error("[TrackerCustomization] Delete failed:", error)
     },
   })
 }

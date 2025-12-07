@@ -132,7 +132,7 @@ func (h *TrackerCustomizationHandler) Delete(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	RespondJSON(w, http.StatusNoContent, nil)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func normalizeDomains(domains []string) []string {
