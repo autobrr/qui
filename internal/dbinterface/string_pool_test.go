@@ -335,3 +335,83 @@ func TestGetStringID(t *testing.T) {
 		t.Errorf("Expected invalid NullInt64 for empty string at index 2, got valid: %v", emptyIDs[2])
 	}
 }
+
+func TestInternEmptyString(t *testing.T) {
+	// Create in-memory database
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open database: %v", err)
+	}
+	defer db.Close()
+
+	// Create string_pool table WITHOUT the empty string
+	_, err = db.Exec(`
+		CREATE TABLE string_pool (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			value TEXT NOT NULL UNIQUE
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create table: %v", err)
+	}
+
+	ctx := context.Background()
+
+	// Begin transaction for testing
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("Failed to begin transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	// Test 1: Creates empty string when it doesn't exist
+	id1, err := InternEmptyString(ctx, tx)
+	if err != nil {
+		t.Fatalf("InternEmptyString failed: %v", err)
+	}
+	if id1 <= 0 {
+		t.Errorf("Expected positive ID, got %d", id1)
+	}
+
+	// Verify empty string was inserted
+	var value string
+	err = tx.QueryRow("SELECT value FROM string_pool WHERE id = ?", id1).Scan(&value)
+	if err != nil {
+		t.Fatalf("Failed to query inserted empty string: %v", err)
+	}
+	if value != "" {
+		t.Errorf("Expected empty string value, got %q", value)
+	}
+
+	// Test 2: Returns existing ID when empty string already exists (idempotency)
+	id2, err := InternEmptyString(ctx, tx)
+	if err != nil {
+		t.Fatalf("Second InternEmptyString failed: %v", err)
+	}
+	if id2 != id1 {
+		t.Errorf("Expected same ID on second call: first=%d, second=%d", id1, id2)
+	}
+
+	// Test 3: Multiple calls return the same ID
+	id3, err := InternEmptyString(ctx, tx)
+	if err != nil {
+		t.Fatalf("Third InternEmptyString failed: %v", err)
+	}
+	if id3 != id1 {
+		t.Errorf("Expected same ID on third call: first=%d, third=%d", id1, id3)
+	}
+
+	// Verify only one empty string exists in the table
+	var count int
+	err = tx.QueryRow("SELECT COUNT(*) FROM string_pool WHERE value = ''").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to count empty strings: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("Expected exactly 1 empty string, got %d", count)
+	}
+
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Failed to commit transaction: %v", err)
+	}
+}

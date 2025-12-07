@@ -262,7 +262,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	}
 
 	// Ensure required fields (name, host, username) have valid IDs
-	// If username is empty (localhost bypass), get ID of empty string from string_pool
+	// If username is empty (localhost bypass), intern the empty string
 	nameID := allIDs[0].Int64
 	hostID := allIDs[1].Int64
 
@@ -270,11 +270,10 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	if allIDs[2].Valid {
 		usernameID = allIDs[2].Int64
 	} else {
-		// Username was empty - query for empty string ID from string_pool (for localhost bypass)
-		// The empty string is inserted during migration
-		err := tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ''").Scan(&usernameID)
+		// Username was empty - intern empty string for localhost bypass auth
+		usernameID, err = dbinterface.InternEmptyString(ctx, tx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get empty username ID: %w (database migration may be incomplete)", err)
+			return nil, fmt.Errorf("failed to intern empty username: %w", err)
 		}
 	}
 
@@ -497,7 +496,7 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	}
 
 	// Ensure required fields (name, host, username) have valid IDs
-	// If username is empty (localhost bypass), get ID of empty string from string_pool
+	// If username is empty (localhost bypass), intern the empty string
 	nameID := allIDs[0].Int64
 	hostID := allIDs[1].Int64
 
@@ -505,11 +504,10 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	if allIDs[2].Valid {
 		usernameID = allIDs[2].Int64
 	} else {
-		// Username was empty - query for empty string ID from string_pool (for localhost bypass)
-		// The empty string is inserted during migration
-		err := tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ''").Scan(&usernameID)
+		// Username was empty - intern empty string for localhost bypass auth
+		usernameID, err = dbinterface.InternEmptyString(ctx, tx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get empty username ID: %w (database migration may be incomplete)", err)
+			return nil, fmt.Errorf("failed to intern empty username: %w", err)
 		}
 	}
 
