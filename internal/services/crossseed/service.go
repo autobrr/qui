@@ -2378,10 +2378,11 @@ func (s *Service) processCrossSeedCandidate(
 	// Check if source has extra files that won't exist on disk (e.g., NFO files not filtered by ignorePatterns)
 	hasExtraFiles := hasExtraSourceFiles(sourceFiles, candidateFiles)
 
-	// Skip checking for cross-seed adds when all files exist - the data is already verified by the
-	// matched torrent that's actively seeding. However, if source has extra files (like NFO) that
-	// don't exist in candidate, we need to let qBittorrent verify since those files are missing.
-	if !hasExtraFiles {
+	// Skip checking for cross-seed adds - the data is already verified by the matched torrent.
+	// We MUST use skip_checking when alignment (renames) is required, because qBittorrent blocks
+	// file rename operations while a torrent is being verified. The manual recheck triggered
+	// after alignment handles verification for both alignment and hasExtraFiles cases.
+	if !hasExtraFiles || requiresAlignment {
 		options["skip_checking"] = "true"
 	}
 
