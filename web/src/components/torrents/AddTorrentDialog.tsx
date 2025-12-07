@@ -615,8 +615,24 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   })
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
+    // Filter to .torrent files only (iOS Safari may bypass accept attribute filtering)
+    const torrentFiles = acceptedFiles.filter(f => f.name.toLowerCase().endsWith('.torrent'))
+    const rejectedCount = acceptedFiles.length - torrentFiles.length
+
+    if (rejectedCount > 0) {
+      toast.error(
+        rejectedCount === 1
+          ? "1 file rejected (not a .torrent file)"
+          : `${rejectedCount} files rejected (not .torrent files)`
+      )
+    }
+
+    if (torrentFiles.length === 0) {
+      return
+    }
+
     const existingFiles = form.getFieldValue("torrentFiles") || []
-    const allFiles = [...existingFiles, ...acceptedFiles]
+    const allFiles = [...existingFiles, ...torrentFiles]
     form.setFieldValue("torrentFiles", allFiles.length > 0 ? allFiles : null)
 
     // Check for duplicates when files are dropped
@@ -628,7 +644,10 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'application/x-bittorrent': ['.torrent']
+      // Multiple MIME types for better iOS compatibility
+      // iOS Safari has bugs with accept attribute filtering
+      'application/x-bittorrent': ['.torrent'],
+      'application/octet-stream': ['.torrent'],  // Fallback for browsers that report torrent as generic binary
     },
     multiple: true,
     noClick: false,
