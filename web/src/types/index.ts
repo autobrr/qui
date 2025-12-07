@@ -300,11 +300,54 @@ export interface CacheMetadata {
   nextRefresh?: string
 }
 
+export interface TrackerTransferStats {
+  uploaded: number
+  downloaded: number
+  totalSize: number
+  count: number
+}
+
+export interface TrackerCustomization {
+  id: number
+  displayName: string
+  domains: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface TrackerCustomizationInput {
+  displayName: string
+  domains: string[]
+}
+
+export interface DashboardSettings {
+  id: number
+  userId: number
+  sectionVisibility: Record<string, boolean>
+  sectionOrder: string[]
+  sectionCollapsed: Record<string, boolean>
+  trackerBreakdownSortColumn: string
+  trackerBreakdownSortDirection: string
+  trackerBreakdownItemsPerPage: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DashboardSettingsInput {
+  sectionVisibility?: Record<string, boolean>
+  sectionOrder?: string[]
+  sectionCollapsed?: Record<string, boolean>
+  trackerBreakdownSortColumn?: string
+  trackerBreakdownSortDirection?: string
+  trackerBreakdownItemsPerPage?: number
+}
+
 export interface TorrentCounts {
   status: Record<string, number>
   categories: Record<string, number>
   tags: Record<string, number>
   trackers: Record<string, number>
+  trackerTransfers?: Record<string, TrackerTransferStats>
   total: number
 }
 
