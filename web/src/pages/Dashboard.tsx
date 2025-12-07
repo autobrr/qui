@@ -33,17 +33,19 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useInstances } from "@/hooks/useInstances"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { api } from "@/lib/api"
-import { formatBytes, getRatioColor } from "@/lib/utils"
+import { copyTextToClipboard, formatBytes, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Activity, AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, X, Zap } from "lucide-react"
+import { Activity, AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, Zap } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
+import { toast } from "sonner"
 
 import {
   DropdownMenu,
@@ -937,6 +939,11 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
   const [customizeDisplayName, setCustomizeDisplayName] = useState("")
   const [editingCustomization, setEditingCustomization] = useState<{ id: number; domains: string[] } | null>(null)
 
+  // Import/Export state
+  const [showImportDialog, setShowImportDialog] = useState(false)
+  const [importJson, setImportJson] = useState("")
+  const [importConflicts, setImportConflicts] = useState<Map<number, "skip" | "overwrite">>(new Map())
+
   const trackerStats = useMemo(() => {
     // aggregate tracker transfer stats across all instances
     const aggregated = new Map<string, TrackerTransferStats>()
@@ -1105,11 +1112,19 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
     deleteCustomization.mutate(customizationId)
   }
 
-  // Open customize dialog for new customization (from selection)
-  const openCustomizeDialog = () => {
-    setEditingCustomization(null)
-    setCustomizeDisplayName("")
-    setShowCustomizeDialog(true)
+  // Reorder domains so ones with icons come first
+  const reorderDomainsForIcons = (domains: string[]): string[] => {
+    if (!trackerIcons || domains.length <= 1) return domains
+    const withIcon: string[] = []
+    const withoutIcon: string[] = []
+    for (const d of domains) {
+      if (trackerIcons[d.toLowerCase()] || trackerIcons[d]) {
+        withIcon.push(d)
+      } else {
+        withoutIcon.push(d)
+      }
+    }
+    return [...withIcon, ...withoutIcon]
   }
 
   // Open customize dialog for editing existing customization
@@ -1119,10 +1134,27 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
     setShowCustomizeDialog(true)
   }
 
-  // Open rename dialog for a single domain directly (without selection)
+  // Open rename/merge dialog for a domain
+  // If other domains are already selected, this acts as "add to merge"
   const openRenameDialog = (domain: string) => {
     setEditingCustomization(null)
-    setSelectedDomains(new Set([domain]))
+    // Use functional update to ensure we have the latest selection state
+    setSelectedDomains(prev => {
+      // If we have 2+ selected, keep selection (add domain if not already in)
+      if (prev.size >= 2) {
+        const newSelection = new Set(prev)
+        newSelection.add(domain) // no-op if already present
+        return new Set(reorderDomainsForIcons(Array.from(newSelection)))
+      }
+      // If 1 selected and clicking a different domain, merge them
+      if (prev.size === 1 && !prev.has(domain)) {
+        const newSelection = new Set(prev)
+        newSelection.add(domain)
+        return new Set(reorderDomainsForIcons(Array.from(newSelection)))
+      }
+      // Single domain rename (0 selected, or clicking the only selected one)
+      return new Set([domain])
+    })
     setCustomizeDisplayName("")
     setShowCustomizeDialog(true)
   }
@@ -1133,6 +1165,172 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
     setCustomizeDisplayName("")
     setEditingCustomization(null)
   }
+
+  // Export customizations to clipboard
+  const handleExport = async () => {
+    if (!customizations || customizations.length === 0) {
+      toast.error("No customizations to export")
+      return
+    }
+
+    const exportData = {
+      comment: "qui tracker customizations for Dashboard",
+      trackerCustomizations: customizations.map(c => ({
+        displayName: c.displayName,
+        domains: c.domains,
+      })),
+    }
+
+    const jsonString = JSON.stringify(exportData, null, 2)
+    const exportText = "```json\n" + jsonString + "\n```"
+
+    try {
+      await copyTextToClipboard(exportText)
+      toast.success("Copied to clipboard")
+    } catch (error) {
+      console.error("[Export] Failed to copy to clipboard:", error)
+      toast.error("Failed to copy to clipboard")
+    }
+  }
+
+  // Open import dialog
+  const openImportDialog = () => {
+    setImportJson("")
+    setImportConflicts(new Map())
+    setShowImportDialog(true)
+  }
+
+  // Parse and validate import JSON
+  const parseImportJson = useMemo(() => {
+    if (!importJson.trim()) {
+      return { valid: false, entries: [], error: null }
+    }
+
+    try {
+      // Strip markdown codeblocks if present (```json ... ```)
+      let jsonText = importJson.trim()
+      if (jsonText.startsWith("```")) {
+        jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "")
+      }
+
+      const parsed = JSON.parse(jsonText)
+      const entries = parsed.trackerCustomizations
+
+      if (!Array.isArray(entries)) {
+        return { valid: false, entries: [], error: "Invalid format: expected trackerCustomizations array" }
+      }
+
+      // Validate each entry
+      for (const entry of entries) {
+        if (!entry.displayName || typeof entry.displayName !== "string") {
+          return { valid: false, entries: [], error: "Invalid entry: missing displayName" }
+        }
+        if (!Array.isArray(entry.domains) || entry.domains.length === 0) {
+          return { valid: false, entries: [], error: "Invalid entry: domains must be a non-empty array" }
+        }
+      }
+
+      // Check for conflicts with existing customizations
+      const existingDomains = new Map<string, { id: number; displayName: string; domains: string[] }>()
+      for (const c of customizations ?? []) {
+        for (const d of c.domains) {
+          existingDomains.set(d.toLowerCase(), { id: c.id, displayName: c.displayName, domains: c.domains })
+        }
+      }
+
+      const entriesWithConflicts = entries.map((entry: { displayName: string; domains: string[] }, index: number) => {
+        const conflictingDomain = entry.domains.find((d: string) => existingDomains.has(d.toLowerCase()))
+        const existingCustomization = conflictingDomain ? existingDomains.get(conflictingDomain.toLowerCase()) : null
+
+        // Check if identical (same name and same domains) - skip these entirely
+        let isIdentical = false
+        if (existingCustomization) {
+          const sameDisplayName = existingCustomization.displayName === entry.displayName
+          const existingDomainsSet = new Set(existingCustomization.domains.map(d => d.toLowerCase()))
+          const entryDomainsSet = new Set(entry.domains.map(d => d.toLowerCase()))
+          const sameDomains = existingDomainsSet.size === entryDomainsSet.size &&
+            [...entryDomainsSet].every(d => existingDomainsSet.has(d))
+
+          isIdentical = sameDisplayName && sameDomains
+        }
+
+        return { ...entry, index, conflict: existingCustomization, isIdentical }
+      })
+
+      return { valid: true, entries: entriesWithConflicts, error: null }
+    } catch {
+      return { valid: false, entries: [], error: "Invalid JSON" }
+    }
+  }, [importJson, customizations])
+
+  // Handle import
+  const handleImport = async () => {
+    if (!parseImportJson.valid) return
+
+    let imported = 0
+    let skipped = 0
+    const failed: string[] = []
+
+    for (const entry of parseImportJson.entries) {
+      // Skip identical entries (already exist with same name and domains)
+      if (entry.isIdentical) {
+        skipped++
+        continue
+      }
+
+      const action = entry.conflict ? importConflicts.get(entry.index) : undefined
+
+      if (entry.conflict && action === "skip") {
+        skipped++
+        continue
+      }
+
+      try {
+        if (entry.conflict && action === "overwrite") {
+          // Update existing customization
+          await updateCustomization.mutateAsync({
+            id: entry.conflict.id,
+            data: { displayName: entry.displayName, domains: entry.domains },
+          })
+          imported++
+        } else if (!entry.conflict) {
+          // Create new customization
+          await createCustomization.mutateAsync({
+            displayName: entry.displayName,
+            domains: entry.domains,
+          })
+          imported++
+        } else {
+          // Conflict not resolved - skip
+          skipped++
+        }
+      } catch (error) {
+        console.error(`[Import] Failed to import "${entry.displayName}":`, error)
+        failed.push(entry.displayName)
+      }
+    }
+
+    setShowImportDialog(false)
+    setImportJson("")
+    setImportConflicts(new Map())
+
+    if (failed.length > 0) {
+      toast.error(`Failed to import: ${failed.join(", ")}`)
+    } else if (imported > 0 && skipped > 0) {
+      toast.success(`Imported ${imported}, skipped ${skipped}`)
+    } else if (imported > 0) {
+      toast.success(`Imported ${imported} customization${imported !== 1 ? "s" : ""}`)
+    } else {
+      toast.info("No customizations imported")
+    }
+  }
+
+  // Check if all conflicts are resolved (identical entries don't need resolution)
+  const allConflictsResolved = useMemo(() => {
+    if (!parseImportJson.valid) return false
+    const conflictEntries = parseImportJson.entries.filter((e: { conflict: unknown; isIdentical?: boolean }) => e.conflict && !e.isIdentical)
+    return conflictEntries.every((e: { index: number }) => importConflicts.has(e.index))
+  }, [parseImportJson, importConflicts])
 
   // pagination
   const itemsPerPage = settings.trackerBreakdownItemsPerPage || 15
@@ -1203,15 +1401,46 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
               <Minus className="h-4 w-4 text-muted-foreground group-data-[state=closed]:hidden" />
               <h3 className="text-base font-medium">Tracker Breakdown</h3>
             </div>
-            <span className="text-muted-foreground">{sortedTrackerStats.length} trackers</span>
+            <div className="flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => { e.stopPropagation(); openImportDialog() }}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); openImportDialog() } }}
+                    className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Import customizations</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => { e.stopPropagation(); handleExport() }}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); handleExport() } }}
+                    className={`inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer ${!customizations || customizations.length === 0 ? "opacity-50 pointer-events-none" : ""}`}
+                    aria-disabled={!customizations || customizations.length === 0}
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Export customizations</TooltipContent>
+              </Tooltip>
+              <span className="text-muted-foreground ml-1">{sortedTrackerStats.length} trackers</span>
+            </div>
           </div>
         </AccordionTrigger>
         <AccordionContent className="px-0 pb-0">
-          {/* Mobile Sort Dropdown */}
-          <div className="sm:hidden px-4 py-3 border-b">
+          {/* Mobile Sort Dropdown and Import/Export */}
+          <div className="sm:hidden px-4 py-3 border-b flex items-center gap-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="w-full justify-between">
+                <Button variant="outline" size="sm" className="flex-1 justify-between">
                   <span className="flex items-center gap-2 text-xs">
                     Sort: {sortColumn === "tracker" ? "Tracker" :
                            sortColumn === "uploaded" ? "Uploaded" :
@@ -1231,25 +1460,20 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 <DropdownMenuItem onClick={() => handleSort("performance")}>Seeded</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            <Button variant="ghost" size="sm" onClick={openImportDialog} className="h-8 px-2">
+              <Download className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleExport}
+              disabled={!customizations || customizations.length === 0}
+              className="h-8 px-2"
+            >
+              <Upload className="h-4 w-4" />
+            </Button>
           </div>
 
-          {/* Selection Action Bar */}
-          {selectedDomains.size >= 2 && (
-            <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/50">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">
-                  {selectedDomains.size} selected
-                </span>
-                <Button variant="ghost" size="sm" onClick={clearSelection} className="h-7 px-2">
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-              <Button size="sm" onClick={openCustomizeDialog} className="h-7">
-                <Link2 className="h-3.5 w-3.5 mr-1.5" />
-                Merge Selected
-              </Button>
-            </div>
-          )}
 
           {/* Mobile Card Layout */}
           <div className="sm:hidden px-4 space-y-2 py-3">
@@ -1298,7 +1522,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                               variant="ghost"
                               size="sm"
                               className="h-6 w-6 p-0"
-                              onClick={() => openEditDialog(customizationId, displayName, originalDomains)}
+                              onClick={(e) => { e.stopPropagation(); openEditDialog(customizationId, displayName, originalDomains) }}
                             >
                               <Pencil className="h-3 w-3 text-muted-foreground" />
                             </Button>
@@ -1306,7 +1530,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                               variant="ghost"
                               size="sm"
                               className="h-6 w-6 p-0"
-                              onClick={() => handleDeleteCustomization(customizationId)}
+                              onClick={(e) => { e.stopPropagation(); handleDeleteCustomization(customizationId) }}
                             >
                               <Trash2 className="h-3 w-3 text-muted-foreground" />
                             </Button>
@@ -1316,9 +1540,13 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                             variant="ghost"
                             size="sm"
                             className="h-6 w-6 p-0"
-                            onClick={() => openRenameDialog(domain)}
+                            onClick={(e) => { e.stopPropagation(); openRenameDialog(domain) }}
                           >
-                            <Pencil className="h-3 w-3 text-muted-foreground" />
+                            {selectedDomains.size > 0 ? (
+                              <Link2 className="h-3 w-3 text-primary" />
+                            ) : (
+                              <Pencil className="h-3 w-3 text-muted-foreground" />
+                            )}
                           </Button>
                         )}
                         <Badge variant="secondary" className="shrink-0 text-xs">
@@ -1502,29 +1730,40 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-5 w-5 p-0"
-                                onClick={() => openEditDialog(customizationId, displayName, originalDomains)}
+                                className="h-6 w-6 p-0"
+                                onClick={(e) => { e.stopPropagation(); openEditDialog(customizationId, displayName, originalDomains) }}
                               >
                                 <Pencil className="h-3 w-3 text-muted-foreground" />
                               </Button>
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-5 w-5 p-0"
-                                onClick={() => handleDeleteCustomization(customizationId)}
+                                className="h-6 w-6 p-0"
+                                onClick={(e) => { e.stopPropagation(); handleDeleteCustomization(customizationId) }}
                               >
                                 <Trash2 className="h-3 w-3 text-muted-foreground" />
                               </Button>
                             </>
                           ) : (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-5 w-5 p-0"
-                              onClick={() => openRenameDialog(domain)}
-                            >
-                              <Pencil className="h-3 w-3 text-muted-foreground" />
-                            </Button>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0"
+                                  onClick={(e) => { e.stopPropagation(); openRenameDialog(domain) }}
+                                >
+                                  {selectedDomains.size > 0 ? (
+                                    <Link2 className="h-3 w-3 text-primary" />
+                                  ) : (
+                                    <Pencil className="h-3 w-3 text-muted-foreground" />
+                                  )}
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {selectedDomains.size > 0 ? "Add to merge" : "Rename"}
+                              </TooltipContent>
+                            </Tooltip>
                           )}
                         </div>
                       </div>
@@ -1652,6 +1891,115 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                   : selectedDomains.size === 1
                     ? "Rename"
                     : "Merge"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Dialog */}
+      <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Import Tracker Customizations</DialogTitle>
+            <DialogDescription>
+              Paste JSON to import tracker customizations (renames and merges).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="import-json">JSON Data</Label>
+              <Textarea
+                id="import-json"
+                value={importJson}
+                onChange={(e) => setImportJson(e.target.value)}
+                placeholder={`{\n  "trackerCustomizations": [\n    { "displayName": "Name", "domains": ["domain.com"] }\n  ]\n}`}
+                className="font-mono text-xs h-32"
+              />
+            </div>
+
+            {/* Validation feedback */}
+            {importJson.trim() && (
+              <div className="space-y-2">
+                {parseImportJson.error ? (
+                  <div className="flex items-center gap-2 text-destructive text-sm">
+                    <AlertTriangle className="h-4 w-4" />
+                    {parseImportJson.error}
+                  </div>
+                ) : parseImportJson.valid && (
+                  <>
+                    {(() => {
+                      const conflicts = parseImportJson.entries.filter((e: { conflict?: unknown; isIdentical?: boolean }) => e.conflict && !e.isIdentical)
+                      const newEntries = parseImportJson.entries.filter((e: { conflict?: unknown; isIdentical?: boolean }) => !e.conflict && !e.isIdentical)
+                      const identicalEntries = parseImportJson.entries.filter((e: { isIdentical?: boolean }) => e.isIdentical)
+                      return (
+                        <>
+                          <div className="text-sm text-muted-foreground">
+                            {newEntries.length > 0 && <span>{newEntries.length} new</span>}
+                            {newEntries.length > 0 && (conflicts.length > 0 || identicalEntries.length > 0) && <span>, </span>}
+                            {conflicts.length > 0 && <span className="text-yellow-600">{conflicts.length} conflict{conflicts.length !== 1 ? "s" : ""}</span>}
+                            {conflicts.length > 0 && identicalEntries.length > 0 && <span>, </span>}
+                            {identicalEntries.length > 0 && <span className="text-muted-foreground">{identicalEntries.length} unchanged</span>}
+                          </div>
+                          {conflicts.length > 0 && (
+                            <>
+                              <Label>Resolve conflicts</Label>
+                              <div className="border rounded-md max-h-48 overflow-y-auto">
+                                {conflicts.map((entry: { displayName: string; domains: string[]; index: number; conflict?: { id: number; displayName: string; domains: string[] } | null }) => (
+                                  <div
+                                    key={entry.index}
+                                    className="px-3 py-2 text-sm border-b last:border-b-0 bg-yellow-500/10"
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="min-w-0 flex-1">
+                                        <div className="font-medium truncate">{entry.displayName}</div>
+                                        <div className="text-xs text-muted-foreground truncate">
+                                          {entry.domains.join(", ")}
+                                        </div>
+                                        <div className="text-xs text-yellow-600 mt-1">
+                                          Conflicts with: {entry.conflict?.displayName}
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        <Button
+                                          variant={importConflicts.get(entry.index) === "skip" ? "secondary" : "ghost"}
+                                          size="sm"
+                                          className="h-6 px-2 text-xs"
+                                          onClick={() => setImportConflicts(new Map(importConflicts).set(entry.index, "skip"))}
+                                        >
+                                          Skip
+                                        </Button>
+                                        <Button
+                                          variant={importConflicts.get(entry.index) === "overwrite" ? "secondary" : "ghost"}
+                                          size="sm"
+                                          className="h-6 px-2 text-xs"
+                                          onClick={() => setImportConflicts(new Map(importConflicts).set(entry.index, "overwrite"))}
+                                        >
+                                          Overwrite
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </>
+                          )}
+                        </>
+                      )
+                    })()}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowImportDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleImport}
+              disabled={!parseImportJson.valid || !allConflictsResolved || createCustomization.isPending || updateCustomization.isPending}
+            >
+              {(createCustomization.isPending || updateCustomization.isPending) ? "Importing..." : "Import"}
             </Button>
           </DialogFooter>
         </DialogContent>
