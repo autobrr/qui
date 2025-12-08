@@ -166,7 +166,7 @@ func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager *qbittorre
 	replayer, err := sse.NewFiniteReplayer(4, true)
 	if err != nil {
 		// Constructor only errors on invalid parameters; fall back to nil replayer just in case.
-		log.Error().Err(err).Msg("Failed to create SSE replayer; continuing without replay buffer")
+		log.Warn().Err(err).Msg("Failed to create SSE replayer; reconnecting clients may miss events")
 		replayer = nil
 	}
 
@@ -599,6 +599,13 @@ func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, opts StreamO
 		opts.Filters,
 	)
 	if err != nil {
+		errMsg := "failed to refresh torrent list"
+		if errors.Is(err, context.DeadlineExceeded) {
+			errMsg = "torrent list refresh timed out"
+		} else if errors.Is(err, context.Canceled) {
+			errMsg = "refresh was cancelled"
+		}
+
 		log.Error().Err(err).
 			Int("instanceID", opts.InstanceID).
 			Str("groupKey", group.key).
@@ -607,7 +614,7 @@ func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, opts StreamO
 		return &StreamPayload{
 			Type: streamEventError,
 			Meta: metaCopy,
-			Err:  "failed to refresh torrent list",
+			Err:  errMsg,
 		}
 	}
 
@@ -630,7 +637,7 @@ func (m *StreamManager) buildInstanceMeta(ctx context.Context, instanceID int) *
 	// Check client health
 	client, clientErr := m.clientPool.GetClientOffline(ctx, instanceID)
 	if clientErr != nil {
-		log.Debug().Err(clientErr).Int("instanceID", instanceID).Msg("Failed to get client for instance meta")
+		log.Warn().Err(clientErr).Int("instanceID", instanceID).Msg("Failed to get client for instance meta")
 	}
 
 	// Get instance to check if it's active
@@ -733,7 +740,7 @@ func (m *StreamManager) publish(id string, payload *StreamPayload) {
 
 	encoded, err := json.Marshal(payload)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to marshal SSE payload")
+		log.Error().Err(err).Str("subscriptionID", id).Msg("Failed to marshal SSE payload")
 		return
 	}
 
@@ -953,11 +960,13 @@ func (m *StreamManager) forceSync(instanceID int) {
 	syncMgr, err := m.syncManager.GetQBittorrentSyncManager(ctx, instanceID)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get qBittorrent sync manager for SSE loop")
+		m.HandleSyncError(instanceID, fmt.Errorf("sync manager unavailable: %w", err))
 		return
 	}
 
 	if err := syncMgr.Sync(ctx); err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to force sync during SSE loop")
+		m.HandleSyncError(instanceID, err)
 	}
 }
 

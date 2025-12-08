@@ -361,7 +361,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           entry.listeners.forEach(listener => listener(payload))
           notifyStateSubscribers(streamKey)
         } catch (err) {
-          console.error("Failed to parse SSE payload", err)
+          console.error("Failed to parse SSE payload:", err, "raw data:", typeof event.data === "string" ? event.data.substring(0, 200) : event.data)
         }
       }
 
@@ -464,6 +464,15 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
     }
 
     connection.retryAttempt = Math.min(connection.retryAttempt + 1, MAX_RETRY_ATTEMPTS)
+
+    // Notify user when max retries reached
+    if (connection.retryAttempt >= MAX_RETRY_ATTEMPTS) {
+      Object.values(streamsRef.current).forEach(entry => {
+        entry.error = "Connection failed repeatedly. Check your network or server status."
+        notifyStateSubscribers(entry.key)
+      })
+    }
+
     const exponent = Math.max(0, connection.retryAttempt - 1)
     const delay = Math.min(RETRY_BASE_DELAY_MS * Math.pow(2, exponent), RETRY_MAX_DELAY_MS)
 
@@ -487,7 +496,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
 
     connection.retryTimer = timer
     notifyAllStateSubscribers()
-  }, [clearConnectionRetryState, ensureConnection, notifyAllStateSubscribers])
+  }, [clearConnectionRetryState, ensureConnection, notifyAllStateSubscribers, notifyStateSubscribers])
 
   scheduleReconnectRef.current = scheduleReconnect
 
@@ -767,15 +776,20 @@ export function useSyncStreamManager(): SyncStreamContextValue {
 }
 
 export function createStreamKey(params: StreamParams): string {
-  return JSON.stringify({
-    instanceId: params.instanceId,
-    page: params.page,
-    limit: params.limit,
-    sort: params.sort,
-    order: params.order,
-    search: params.search ?? "",
-    filters: params.filters ?? null,
-  })
+  try {
+    return JSON.stringify({
+      instanceId: params.instanceId,
+      page: params.page,
+      limit: params.limit,
+      sort: params.sort,
+      order: params.order,
+      search: params.search ?? "",
+      filters: params.filters ?? null,
+    })
+  } catch {
+    // Fallback for non-serializable filters
+    return `${params.instanceId}-${params.page}-${params.limit}-${params.sort}-${params.order}`
+  }
 }
 
 function isSameParams(a: StreamParams, b: StreamParams): boolean {

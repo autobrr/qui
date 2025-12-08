@@ -210,7 +210,7 @@ export function useTorrentsList(
         setHasLoadedAll(!payload.data.hasMore)
       }
     },
-    [currentPage, queryClient, streamQueryKey, updateAppInfoCache, updateMetadataCache]
+    [currentPage, pageSize, queryClient, streamQueryKey, updateAppInfoCache, updateMetadataCache]
   )
 
   const streamState = useSyncStream(streamParams, {

@@ -19,8 +19,8 @@ func cloneAppPreferences(prefs *qbt.AppPreferences) *qbt.AppPreferences {
 		return nil
 	}
 
-	copy := *prefs
-	return &copy
+	clone := *prefs
+	return &clone
 }
 
 // GetAppPreferences returns cached qBittorrent app preferences, refreshing them when stale.
@@ -49,14 +49,14 @@ func (c *Client) refreshAppPreferences(ctx context.Context) (*qbt.AppPreferences
 		return nil, fmt.Errorf("get app preferences: %w", err)
 	}
 
-	copy := cloneAppPreferences(&prefs)
+	cloned := cloneAppPreferences(&prefs)
 
 	c.preferencesMu.Lock()
-	c.preferencesCache = copy
+	c.preferencesCache = cloned
 	c.preferencesFetchedAt = time.Now()
 	c.preferencesMu.Unlock()
 
-	return cloneAppPreferences(copy), nil
+	return cloneAppPreferences(cloned), nil
 }
 
 // InvalidateAppPreferencesCache clears the cached preferences to force a refresh on next access.

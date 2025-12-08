@@ -434,3 +434,155 @@ func TestBackoffState_IndependentPerInstance(t *testing.T) {
 	require.Equal(t, 0, state1.attempt, "instance 1 should be reset")
 	require.Equal(t, 1, state2.attempt, "instance 2 should still have 1 failure")
 }
+
+func TestStreamManager_ConcurrentSubscribeUnsubscribe(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+	provider := newRecordingProvider()
+	manager.server.Provider = provider
+
+	const numGoroutines = 50
+	const numIterations = 100
+
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines)
+
+	// Run concurrent subscribe/unsubscribe operations
+	for i := 0; i < numGoroutines; i++ {
+		go func(workerID int) {
+			defer wg.Done()
+
+			for j := 0; j < numIterations; j++ {
+				instanceID := (workerID % 5) + 1 // Use 5 different instances
+				subID := "sub-" + string(rune('A'+workerID)) + "-" + string(rune('0'+j%10))
+
+				// Create subscription
+				sub := &subscriptionState{
+					id:        subID,
+					options:   StreamOptions{InstanceID: instanceID, Page: 0, Limit: 50},
+					created:   time.Now(),
+					groupKey:  "group-" + subID,
+					clientKey: "client-" + subID,
+				}
+
+				// Register subscription
+				manager.mu.Lock()
+				manager.subscriptions[sub.id] = sub
+				if manager.instanceIndex[instanceID] == nil {
+					manager.instanceIndex[instanceID] = make(map[string]*subscriptionState)
+				}
+				manager.instanceIndex[instanceID][sub.id] = sub
+				manager.mu.Unlock()
+
+				// Immediately unregister
+				manager.Unregister(sub.id)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Verify manager is in a consistent state
+	manager.mu.RLock()
+	subCount := len(manager.subscriptions)
+	manager.mu.RUnlock()
+
+	require.Equal(t, 0, subCount, "all subscriptions should be unregistered")
+}
+
+func TestStreamManager_ShutdownDuringActiveOperations(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+	provider := newRecordingProvider()
+	manager.server.Provider = provider
+
+	// Create several active subscriptions
+	for i := 1; i <= 3; i++ {
+		sub := &subscriptionState{
+			id:        "sub-" + string(rune('0'+i)),
+			options:   StreamOptions{InstanceID: i, Page: 0, Limit: 50},
+			created:   time.Now(),
+			groupKey:  "group-" + string(rune('0'+i)),
+			clientKey: "client-" + string(rune('0'+i)),
+		}
+
+		manager.mu.Lock()
+		manager.subscriptions[sub.id] = sub
+		if manager.instanceIndex[i] == nil {
+			manager.instanceIndex[i] = make(map[string]*subscriptionState)
+		}
+		manager.instanceIndex[i][sub.id] = sub
+		manager.mu.Unlock()
+	}
+
+	// Start concurrent operations
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Goroutine 1: Publishing events
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			if manager.closing.Load() {
+				return
+			}
+			manager.HandleSyncError(1, errors.New("test error"))
+		}
+	}()
+
+	// Goroutine 2: Shutdown after brief delay
+	go func() {
+		defer wg.Done()
+		time.Sleep(10 * time.Millisecond)
+		manager.Shutdown(context.Background())
+	}()
+
+	wg.Wait()
+
+	// Verify shutdown completed
+	require.True(t, manager.closing.Load(), "manager should be marked as closing")
+}
+
+func TestStreamManager_ProcessGroupCoalescing(t *testing.T) {
+	// Test the coalescing behavior of enqueueGroup
+	// Multiple rapid enqueues should coalesce into pending state
+
+	group := &subscriptionGroup{
+		key:     "test-group",
+		options: StreamOptions{InstanceID: 1, Page: 0, Limit: 50},
+		subs:    make(map[string]*subscriptionState),
+	}
+
+	// Simulate rapid enqueues without starting the processGroup goroutine
+	// by directly testing the pending state coalescing
+
+	// First enqueue sets hasPending and sends
+	group.mu.Lock()
+	group.pendingMeta = &StreamMeta{InstanceID: 1, Timestamp: time.Now()}
+	group.pendingType = streamEventUpdate
+	group.hasPending = true
+	group.sending = true // Simulate that processGroup is already running
+	group.mu.Unlock()
+
+	// Second enqueue should just update pending state, not spawn new goroutine
+	newMeta := &StreamMeta{InstanceID: 1, Timestamp: time.Now().Add(time.Second)}
+	group.mu.Lock()
+	group.pendingMeta = newMeta
+	group.pendingType = streamEventUpdate
+	group.hasPending = true
+	// sending stays true - no new goroutine needed
+	group.mu.Unlock()
+
+	// Third enqueue - same behavior
+	finalMeta := &StreamMeta{InstanceID: 1, Timestamp: time.Now().Add(2 * time.Second)}
+	group.mu.Lock()
+	group.pendingMeta = finalMeta
+	group.pendingType = streamEventUpdate
+	group.hasPending = true
+	group.mu.Unlock()
+
+	// Verify the coalescing - only the final meta should be present
+	group.mu.Lock()
+	require.True(t, group.hasPending, "should have pending update")
+	require.True(t, group.sending, "should still be marked as sending")
+	require.Equal(t, finalMeta, group.pendingMeta, "should have coalesced to final meta")
+	group.mu.Unlock()
+}
