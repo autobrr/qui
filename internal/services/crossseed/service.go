@@ -1634,6 +1634,56 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		return models.CrossSeedFeedItemStatusSkipped, nil, nil
 	}
 
+	// Optimization: If RSS feed provides infohash, check if torrent already exists
+	// on ALL candidate instances before downloading. This avoids unnecessary downloads
+	// when the exact torrent (by hash) is already present - commonly happens when
+	// autobrr grabs via IRC before RSS automation processes the same release.
+	if result.InfoHashV1 != "" {
+		allExist := true
+		var existingResults []models.CrossSeedRunResult
+
+		for _, candidate := range candidatesResp.Candidates {
+			existing, exists, hashErr := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, []string{result.InfoHashV1})
+			if hashErr != nil {
+				log.Debug().
+					Err(hashErr).
+					Int("instanceID", candidate.InstanceID).
+					Str("hash", result.InfoHashV1).
+					Msg("[RSS] Failed to check existing hash, will proceed with download")
+				allExist = false
+				break
+			}
+
+			if exists && existing != nil {
+				existingResults = append(existingResults, models.CrossSeedRunResult{
+					InstanceID:   candidate.InstanceID,
+					InstanceName: candidate.InstanceName,
+					Success:      false,
+					Status:       "exists",
+					Message:      "Torrent already exists (infohash pre-check)",
+					MatchedTorrentHash: func() *string { h := existing.Hash; return &h }(),
+					MatchedTorrentName: func() *string { n := existing.Name; return &n }(),
+				})
+			} else {
+				allExist = false
+				break
+			}
+		}
+
+		if allExist && len(existingResults) > 0 {
+			run.TorrentsSkipped += len(existingResults)
+			run.Results = append(run.Results, existingResults...)
+
+			log.Debug().
+				Str("title", result.Title).
+				Str("hash", result.InfoHashV1).
+				Int("instances", len(existingResults)).
+				Msg("[RSS] Skipped download - torrent already exists on all candidate instances (infohash pre-check)")
+
+			return models.CrossSeedFeedItemStatusProcessed, &result.InfoHashV1, nil
+		}
+	}
+
 	torrentBytes, err := s.downloadTorrent(ctx, jackett.TorrentDownloadRequest{
 		IndexerID:   result.IndexerID,
 		DownloadURL: result.DownloadURL,

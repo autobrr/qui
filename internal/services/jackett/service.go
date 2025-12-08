@@ -3042,15 +3042,62 @@ func extractInfoHashFromAttributes(attrs map[string]string) string {
 		return ""
 	}
 
+	// First try direct infohash attributes
 	for _, key := range infohashAttributeKeys {
 		if value, ok := attrs[key]; ok {
-			// Validate that it's a valid hex string (40 chars for SHA1, 64 for SHA256)
-			value = strings.TrimSpace(strings.ToLower(value))
-			if len(value) == 40 || len(value) == 64 {
-				if _, err := hex.DecodeString(value); err == nil {
-					return value
-				}
+			if hash := validateInfoHash(value); hash != "" {
+				return hash
 			}
+		}
+	}
+
+	// Fallback: extract from magneturl attribute if present
+	// Prowlarr provides magneturl when direct infohash isn't available
+	if magnetURL, ok := attrs["magneturl"]; ok {
+		if hash := extractInfoHashFromMagnet(magnetURL); hash != "" {
+			return hash
+		}
+	}
+
+	return ""
+}
+
+// validateInfoHash checks if the value is a valid hex infohash (40 chars for SHA1, 64 for SHA256)
+func validateInfoHash(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	if len(value) == 40 || len(value) == 64 {
+		if _, err := hex.DecodeString(value); err == nil {
+			return value
+		}
+	}
+	return ""
+}
+
+// extractInfoHashFromMagnet extracts the infohash from a magnet URL
+// Format: magnet:?xt=urn:btih:<infohash>&...
+func extractInfoHashFromMagnet(magnetURL string) string {
+	magnetURL = strings.TrimSpace(magnetURL)
+	if magnetURL == "" || !strings.HasPrefix(strings.ToLower(magnetURL), "magnet:") {
+		return ""
+	}
+
+	// Parse the magnet URL to extract the xt parameter
+	// The xt parameter format is: urn:btih:<infohash>
+	parts := strings.Split(magnetURL, "?")
+	if len(parts) < 2 {
+		return ""
+	}
+
+	params := strings.Split(parts[1], "&")
+	for _, param := range params {
+		if strings.HasPrefix(strings.ToLower(param), "xt=urn:btih:") {
+			// Extract the hash part after "xt=urn:btih:"
+			hashPart := param[12:] // len("xt=urn:btih:") == 12
+			// Hash might be followed by other parameters or URL encoding
+			if idx := strings.Index(hashPart, "&"); idx > 0 {
+				hashPart = hashPart[:idx]
+			}
+			return validateInfoHash(hashPart)
 		}
 	}
 
