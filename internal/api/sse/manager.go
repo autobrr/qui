@@ -741,6 +741,27 @@ func (m *StreamManager) publish(id string, payload *StreamPayload) {
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		log.Error().Err(err).Str("subscriptionID", id).Msg("Failed to marshal SSE payload")
+
+		// Send error event to client so they know something went wrong
+		errorPayload := &StreamPayload{
+			Type: streamEventError,
+			Meta: &StreamMeta{
+				Timestamp: time.Now(),
+			},
+			Err: "Internal error: failed to serialize update",
+		}
+		if payload.Meta != nil {
+			errorPayload.Meta.InstanceID = payload.Meta.InstanceID
+			errorPayload.Meta.StreamKey = payload.Meta.StreamKey
+		}
+
+		if errorBytes, marshalErr := json.Marshal(errorPayload); marshalErr == nil {
+			errMsg := &sse.Message{Type: sse.Type(streamEventError)}
+			errMsg.AppendData(string(errorBytes))
+			if pubErr := m.server.Publish(errMsg, id); pubErr != nil && !errors.Is(pubErr, sse.ErrProviderClosed) {
+				log.Error().Err(pubErr).Str("subscriptionID", id).Msg("Failed to publish error event after marshal failure")
+			}
+		}
 		return
 	}
 
