@@ -13,10 +13,34 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/pkg/stringutils"
+
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/pkg/timeouts"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 )
+
+func TestComputeAutomationSearchTimeout(t *testing.T) {
+	tests := []struct {
+		name         string
+		indexers     int
+		expectedTime time.Duration
+	}{
+		{name: "no indexers uses base", indexers: 0, expectedTime: timeouts.DefaultSearchTimeout},
+		{name: "single indexer", indexers: 1, expectedTime: timeouts.DefaultSearchTimeout},
+		{name: "grows with indexers", indexers: 4, expectedTime: timeouts.DefaultSearchTimeout + 3*timeouts.PerIndexerSearchTimeout},
+		{name: "caps at max", indexers: 100, expectedTime: timeouts.MaxSearchTimeout},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := computeAutomationSearchTimeout(tt.indexers); got != tt.expectedTime {
+				t.Fatalf("computeAutomationSearchTimeout(%d) = %s, want %s", tt.indexers, got, tt.expectedTime)
+			}
+		})
+	}
+}
 
 func TestResolveAllowedIndexerIDsRespectsSelection(t *testing.T) {
 	svc := &Service{}
@@ -117,7 +141,8 @@ func TestRefreshSearchQueueCountsCooldownEligibleTorrents(t *testing.T) {
 				{Hash: "new-hash", Name: "BrandNew.Movie.1080p", Progress: 1.0},
 			},
 		},
-		releaseCache: NewReleaseCache(),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
 	now := time.Now().UTC()
@@ -148,9 +173,9 @@ func TestRefreshSearchQueueCountsCooldownEligibleTorrents(t *testing.T) {
 
 	require.Len(t, state.queue, 3)
 	require.Equal(t, 2, state.run.TotalTorrents, "only stale/new torrents should be counted")
-	require.True(t, state.skipCache[strings.ToLower("recent-hash")])
-	require.False(t, state.skipCache[strings.ToLower("stale-hash")])
-	require.False(t, state.skipCache[strings.ToLower("new-hash")])
+	require.True(t, state.skipCache[stringutils.DefaultNormalizer.Normalize("recent-hash")])
+	require.False(t, state.skipCache[stringutils.DefaultNormalizer.Normalize("stale-hash")])
+	require.False(t, state.skipCache[stringutils.DefaultNormalizer.Normalize("new-hash")])
 }
 
 func TestPropagateDuplicateSearchHistory(t *testing.T) {
@@ -198,18 +223,26 @@ type queueTestSyncManager struct {
 	torrents []qbt.Torrent
 }
 
-func (f *queueTestSyncManager) GetAllTorrents(_ context.Context, _ int) ([]qbt.Torrent, error) {
+func (f *queueTestSyncManager) GetTorrents(_ context.Context, _ int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
 	copied := make([]qbt.Torrent, len(f.torrents))
 	copy(copied, f.torrents)
 	return copied, nil
 }
 
-func (*queueTestSyncManager) GetTorrentFiles(context.Context, int, string) (*qbt.TorrentFiles, error) {
-	return nil, nil
+func (f *queueTestSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	return map[string]qbt.TorrentFiles{}, nil
+}
+
+func (*queueTestSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+	return nil, false, nil
 }
 
 func (*queueTestSyncManager) GetTorrentProperties(context.Context, int, string) (*qbt.TorrentProperties, error) {
 	return nil, nil
+}
+
+func (*queueTestSyncManager) GetAppPreferences(_ context.Context, _ int) (qbt.AppPreferences, error) {
+	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
 }
 
 func (*queueTestSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
@@ -217,6 +250,10 @@ func (*queueTestSyncManager) AddTorrent(context.Context, int, []byte, map[string
 }
 
 func (*queueTestSyncManager) BulkAction(context.Context, int, []string, string) error {
+	return nil
+}
+
+func (*queueTestSyncManager) SetTags(context.Context, int, []string, string) error {
 	return nil
 }
 
@@ -241,5 +278,13 @@ func (*queueTestSyncManager) RenameTorrentFile(context.Context, int, string, str
 }
 
 func (*queueTestSyncManager) RenameTorrentFolder(context.Context, int, string, string, string) error {
+	return nil
+}
+
+func (*queueTestSyncManager) GetCategories(_ context.Context, _ int) (map[string]qbt.Category, error) {
+	return map[string]qbt.Category{}, nil
+}
+
+func (*queueTestSyncManager) CreateCategory(_ context.Context, _ int, _, _ string) error {
 	return nil
 }

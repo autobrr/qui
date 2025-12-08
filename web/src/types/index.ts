@@ -25,6 +25,7 @@ export interface Instance {
   tlsSkipVerify: boolean
   sortOrder: number
   isActive: boolean
+  reannounceSettings: InstanceReannounceSettings
 }
 
 export interface InstanceFormData {
@@ -35,6 +36,56 @@ export interface InstanceFormData {
   basicUsername?: string
   basicPassword?: string
   tlsSkipVerify: boolean
+  reannounceSettings: InstanceReannounceSettings
+}
+
+export interface InstanceReannounceSettings {
+  enabled: boolean
+  initialWaitSeconds: number
+  reannounceIntervalSeconds: number
+  maxAgeSeconds: number
+  maxRetries: number
+  aggressive: boolean
+  monitorAll: boolean
+  excludeCategories: boolean
+  categories: string[]
+  excludeTags: boolean
+  tags: string[]
+  excludeTrackers: boolean
+  trackers: string[]
+}
+
+// Reannounce settings constraints - shared across components
+export const REANNOUNCE_CONSTRAINTS = {
+  MIN_INITIAL_WAIT: 5,
+  MIN_INTERVAL: 5,
+  MIN_MAX_AGE: 60,
+  MIN_MAX_RETRIES: 1,
+  MAX_MAX_RETRIES: 50,
+  DEFAULT_MAX_RETRIES: 50,
+} as const
+
+export interface InstanceReannounceActivity {
+  instanceId: number
+  hash: string
+  torrentName?: string
+  trackers?: string
+  outcome: "skipped" | "failed" | "succeeded"
+  reason?: string
+  timestamp: string
+}
+
+export interface InstanceReannounceCandidate {
+  instanceId: number
+  hash: string
+  torrentName?: string
+  trackers?: string
+  timeActiveSeconds?: number
+  category?: string
+  tags?: string
+  state: "watching" | "reannouncing" | "cooldown"
+  hasTrackerProblem: boolean
+  waitingForInitial: boolean
 }
 
 export interface InstanceError {
@@ -43,6 +94,38 @@ export interface InstanceError {
   errorType: string
   errorMessage: string
   occurredAt: string
+}
+
+export interface TrackerRule {
+  id: number
+  instanceId: number
+  name: string
+  trackerPattern: string
+  trackerDomains?: string[]
+  category?: string
+  tag?: string
+  uploadLimitKiB?: number
+  downloadLimitKiB?: number
+  ratioLimit?: number
+  seedingTimeLimitMinutes?: number
+  enabled: boolean
+  sortOrder: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface TrackerRuleInput {
+  name: string
+  trackerPattern?: string
+  trackerDomains?: string[]
+  category?: string
+  tag?: string
+  uploadLimitKiB?: number
+  downloadLimitKiB?: number
+  ratioLimit?: number
+  seedingTimeLimitMinutes?: number
+  enabled?: boolean
+  sortOrder?: number
 }
 
 export interface InstanceResponse extends Instance {
@@ -63,6 +146,7 @@ export interface InstanceCapabilities {
   supportsRenameFolder: boolean
   supportsFilePriority: boolean
   supportsSubcategories: boolean
+  supportsTorrentTmpPath: boolean
   webAPIVersion?: string
 }
 
@@ -216,11 +300,54 @@ export interface CacheMetadata {
   nextRefresh?: string
 }
 
+export interface TrackerTransferStats {
+  uploaded: number
+  downloaded: number
+  totalSize: number
+  count: number
+}
+
+export interface TrackerCustomization {
+  id: number
+  displayName: string
+  domains: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface TrackerCustomizationInput {
+  displayName: string
+  domains: string[]
+}
+
+export interface DashboardSettings {
+  id: number
+  userId: number
+  sectionVisibility: Record<string, boolean>
+  sectionOrder: string[]
+  sectionCollapsed: Record<string, boolean>
+  trackerBreakdownSortColumn: string
+  trackerBreakdownSortDirection: string
+  trackerBreakdownItemsPerPage: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DashboardSettingsInput {
+  sectionVisibility?: Record<string, boolean>
+  sectionOrder?: string[]
+  sectionCollapsed?: Record<string, boolean>
+  trackerBreakdownSortColumn?: string
+  trackerBreakdownSortDirection?: string
+  trackerBreakdownItemsPerPage?: number
+}
+
 export interface TorrentCounts {
   status: Record<string, number>
   categories: Record<string, number>
   tags: Record<string, number>
   trackers: Record<string, number>
+  trackerTransfers?: Record<string, TrackerTransferStats>
   total: number
 }
 
@@ -255,6 +382,24 @@ export interface TorrentResponse {
   hasMore?: boolean
   trackerHealthSupported?: boolean
   isCrossInstance?: boolean
+}
+
+export interface AddTorrentFailedURL {
+  url: string
+  error: string
+}
+
+export interface AddTorrentFailedFile {
+  filename: string
+  error: string
+}
+
+export interface AddTorrentResponse {
+  message: string
+  added: number
+  failed: number
+  failedURLs?: AddTorrentFailedURL[]
+  failedFiles?: AddTorrentFailedFile[]
 }
 
 export interface CrossInstanceTorrent extends Torrent {
@@ -356,7 +501,7 @@ export interface SortedPeersResponse extends TorrentPeersResponse {
   sorted_peers?: SortedPeer[]
 }
 
-export type BackupRunKind = "manual" | "hourly" | "daily" | "weekly" | "monthly"
+export type BackupRunKind = "manual" | "hourly" | "daily" | "weekly" | "monthly" | "import"
 
 export type BackupRunStatus = "pending" | "running" | "success" | "failed" | "canceled"
 
@@ -386,7 +531,6 @@ export interface BackupRun {
   requestedAt: string
   startedAt?: string
   completedAt?: string
-  archivePath?: string | null
   manifestPath?: string | null
   totalBytes: number
   torrentCount: number
@@ -409,7 +553,6 @@ export interface BackupManifestItem {
   name: string
   category?: string | null
   sizeBytes: number
-  archivePath: string
   infohashV1?: string | null
   infohashV2?: string | null
   tags?: string[]
@@ -705,6 +848,8 @@ export interface AppPreferences {
   category_changed_tmm_enabled: boolean
   save_path_changed_tmm_enabled: boolean
   use_category_paths_in_manual_mode: boolean
+  // Subcategory behavior
+  use_subcategories?: boolean
 
   // Torrent behavior
   torrent_changed_tmm_enabled: boolean
@@ -891,8 +1036,6 @@ export interface TorznabIndexer {
   enabled: boolean
   priority: number
   timeout_seconds: number
-  hourly_request_limit?: number | null
-  daily_request_limit?: number | null
   capabilities: string[]
   categories: TorznabIndexerCategory[]
   last_test_at?: string
@@ -900,6 +1043,11 @@ export interface TorznabIndexer {
   last_test_error?: string
   created_at: string
   updated_at: string
+}
+
+/** Response from create/update indexer endpoints, may include warnings for partial failures */
+export interface IndexerResponse extends TorznabIndexer {
+  warnings?: string[]
 }
 
 export interface TorznabIndexerCategory {
@@ -944,6 +1092,74 @@ export interface TorznabIndexerHealth {
   last_measured_at?: string
 }
 
+// Activity/Scheduler types
+export interface SchedulerTaskStatus {
+  jobId: number
+  taskId: number
+  indexerId: number
+  indexerName: string
+  priority: string
+  createdAt: string
+  isRss: boolean
+}
+
+export interface SchedulerJobStatus {
+  jobId: number
+  totalTasks: number
+  completedTasks: number
+}
+
+export interface SchedulerStatus {
+  queuedTasks: SchedulerTaskStatus[]
+  inFlightTasks: SchedulerTaskStatus[]
+  activeJobs: SchedulerJobStatus[]
+  queueLength: number
+  workerCount: number
+  workersInUse: number
+}
+
+export interface IndexerCooldownStatus {
+  indexerId: number
+  indexerName: string
+  cooldownEnd: string
+  reason?: string
+}
+
+export interface IndexerActivityStatus {
+  scheduler?: SchedulerStatus
+  cooldownIndexers: IndexerCooldownStatus[]
+}
+
+export interface SearchHistoryEntry {
+  id: number
+  jobId: number
+  taskId: number
+  indexerId: number
+  indexerName: string
+  query?: string
+  releaseName?: string
+  params?: Record<string, string>
+  categories?: number[]
+  contentType?: string
+  priority: string
+  searchMode?: string
+  status: "success" | "error" | "skipped" | "rate_limited"
+  resultCount: number
+  startedAt: string
+  completedAt: string
+  durationMs: number
+  errorMessage?: string
+  // Cross-seed outcome tracking
+  outcome?: "added" | "failed" | "no_match" | ""
+  addedCount?: number
+}
+
+export interface SearchHistoryResponse {
+  entries: SearchHistoryEntry[]
+  total: number
+  source: string
+}
+
 export interface TorznabIndexerFormData {
   name: string
   base_url: string
@@ -954,6 +1170,7 @@ export interface TorznabIndexerFormData {
   priority?: number
   timeout_seconds?: number
   capabilities?: string[]
+  categories?: TorznabIndexerCategory[]
 }
 
 export interface TorznabIndexerUpdate {
@@ -966,6 +1183,7 @@ export interface TorznabIndexerUpdate {
   priority?: number
   timeout_seconds?: number
   capabilities?: string[]
+  categories?: TorznabIndexerCategory[]
 }
 
 export interface TorznabSearchRequest {
@@ -1053,6 +1271,7 @@ export interface JackettIndexer {
   configured: boolean
   backend?: "jackett" | "prowlarr" | "native"
   caps?: string[]
+  categories?: TorznabIndexerCategory[]
 }
 
 export interface DiscoverJackettRequest {
@@ -1062,6 +1281,7 @@ export interface DiscoverJackettRequest {
 
 export interface DiscoverJackettResponse {
   indexers: JackettIndexer[]
+  warnings?: string[]
 }
 
 export interface CrossSeedTorrentInfo {
@@ -1187,22 +1407,66 @@ export interface CrossSeedRun {
   createdAt: string
 }
 
+export interface CrossSeedCompletionSettings {
+  enabled: boolean
+  categories: string[]
+  tags: string[]
+  excludeCategories: string[]
+  excludeTags: string[]
+}
+
+export interface CrossSeedCompletionSettingsPatch {
+  enabled?: boolean
+  categories?: string[]
+  tags?: string[]
+  excludeCategories?: string[]
+  excludeTags?: string[]
+}
+
 export interface CrossSeedAutomationSettings {
   enabled: boolean
   runIntervalMinutes: number
   startPaused: boolean
   category?: string | null
-  tags: string[]
   ignorePatterns: string[]
   targetInstanceIds: number[]
   targetIndexerIds: number[]
-  maxResultsPerRun: number
   findIndividualEpisodes: boolean
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
+  useCrossCategorySuffix: boolean
   runExternalProgramId?: number | null
+  completion?: CrossSeedCompletionSettings
+  // Source-specific tagging
+  rssAutomationTags: string[]
+  seededSearchTags: string[]
+  completionSearchTags: string[]
+  webhookTags: string[]
+  inheritSourceTags: boolean
   createdAt?: string
   updatedAt?: string
+}
+
+export interface CrossSeedAutomationSettingsPatch {
+  enabled?: boolean
+  runIntervalMinutes?: number
+  startPaused?: boolean
+  category?: string | null
+  ignorePatterns?: string[]
+  targetInstanceIds?: number[]
+  targetIndexerIds?: number[]
+  findIndividualEpisodes?: boolean
+  sizeMismatchTolerancePercent?: number
+  useCategoryFromIndexer?: boolean
+  useCrossCategorySuffix?: boolean
+  runExternalProgramId?: number | null
+  completion?: CrossSeedCompletionSettingsPatch
+  // Source-specific tagging
+  rssAutomationTags?: string[]
+  seededSearchTags?: string[]
+  completionSearchTags?: string[]
+  webhookTags?: string[]
+  inheritSourceTags?: boolean
 }
 
 export interface CrossSeedAutomationStatus {
@@ -1215,6 +1479,26 @@ export interface CrossSeedAutomationStatus {
 export interface CrossSeedSearchFilters {
   categories: string[]
   tags: string[]
+}
+
+export interface CrossSeedSearchSettings {
+  instanceId?: number | null
+  categories: string[]
+  tags: string[]
+  indexerIds: number[]
+  intervalSeconds: number
+  cooldownMinutes: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface CrossSeedSearchSettingsPatch {
+  instanceId?: number | null
+  categories?: string[]
+  tags?: string[]
+  indexerIds?: number[]
+  intervalSeconds?: number
+  cooldownMinutes?: number
 }
 
 export interface CrossSeedSearchResult {
@@ -1262,3 +1546,4 @@ export interface CrossSeedSearchStatus {
   recentResults: CrossSeedSearchResult[]
   nextRunAt?: string
 }
+

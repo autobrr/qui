@@ -24,6 +24,34 @@ export const normalizeFileName = (name: string): string => {
     .replace(/[._\-\s]+/g, '') // Remove separators
 }
 
+/** Release modifiers that indicate different versions of the same content */
+const RELEASE_MODIFIERS = ['repack', 'proper', 'rerip', 'real', 'readnfo', 'dirfix', 'nfofix', 'samplefix', 'prooffix'] as const
+
+/**
+ * Extract release modifiers from a torrent name.
+ * Returns a sorted array of modifiers found (e.g., ['proper', 'repack'])
+ */
+export const extractReleaseModifiers = (name: string): string[] => {
+  const lowerName = name.toLowerCase()
+  return RELEASE_MODIFIERS.filter(mod => {
+    // Match modifier with word boundaries (surrounded by dots, dashes, spaces, or start/end)
+    const pattern = new RegExp(`(?:^|[.\\-_\\s])${mod}(?:[.\\-_\\s]|$)`)
+    return pattern.test(lowerName)
+  }).sort()
+}
+
+/**
+ * Check if two torrents have matching release modifiers.
+ * Returns true if they have the same modifiers (or both have none).
+ */
+export const hasMatchingReleaseModifiers = (name1: string, name2: string): boolean => {
+  const mods1 = extractReleaseModifiers(name1)
+  const mods2 = extractReleaseModifiers(name2)
+
+  if (mods1.length !== mods2.length) return false
+  return mods1.every((mod, i) => mod === mods2[i])
+}
+
 export const calculateSimilarity = (str1: string, str2: string): number => {
   if (str1 === str2) return 1.0
   if (!str1 || !str2) return 0
@@ -188,14 +216,19 @@ export const searchCrossSeedMatches = async (
       }
       
       // Strategy 5: Fuzzy file name matching with similarity threshold
+      // First check if release modifiers match - REPACK vs non-REPACK are different releases
+      if (!hasMatchingReleaseModifiers(torrent.name, t.name)) {
+        return false
+      }
+
       const currentBaseFile = getBaseFileName(torrent.name)
       const otherBaseFile = getBaseFileName(t.name)
-      
+
       // Try base file comparison (handles folder/file.mkv scenarios)
       if (currentBaseFile && otherBaseFile) {
         const currentNormalized = normalizeFileName(currentBaseFile)
         const otherNormalized = normalizeFileName(otherBaseFile)
-        
+
         const similarity = calculateSimilarity(currentNormalized, otherNormalized)
 
         // If similarity is high (>= 90%), consider it a potential match
@@ -203,7 +236,7 @@ export const searchCrossSeedMatches = async (
           return true
         }
       }
-      
+
       // Also try full name comparison with normalization
       const currentFullNormalized = normalizeFileName(torrent.name)
       const otherFullNormalized = normalizeFileName(t.name)

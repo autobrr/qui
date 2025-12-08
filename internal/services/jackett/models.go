@@ -11,6 +11,8 @@ import (
 type TorznabSearchRequest struct {
 	// Query is the search term
 	Query string `json:"query"`
+	// ReleaseName is the original full release name (for debugging/logging)
+	ReleaseName string `json:"release_name,omitempty"`
 	// Categories to search
 	Categories []int `json:"categories,omitempty"`
 	// IMDbID for movies/shows (optional)
@@ -35,14 +37,20 @@ type TorznabSearchRequest struct {
 	IndexerIDs []int `json:"indexer_ids,omitempty"`
 	// CacheMode controls cache behaviour (""=default, "bypass" = skip cache)
 	CacheMode string `json:"cache_mode,omitempty"`
+	// SkipHistory prevents recording this search in the history buffer
+	SkipHistory bool `json:"-"`
+	// OnComplete is called when a search job for an indexer completes
+	OnComplete func(jobID uint64, indexerID int, err error) `json:"-"`
+	// OnAllComplete is called when all search jobs complete with the final results
+	OnAllComplete func(*SearchResponse, error) `json:"-"`
 }
-
-// SearchResponse represents the response from a Torznab search
 type SearchResponse struct {
 	Results []SearchResult       `json:"results"`
 	Total   int                  `json:"total"`
 	Cache   *SearchCacheMetadata `json:"cache,omitempty"`
 	Partial bool                 `json:"partial,omitempty"`
+	// JobID identifies this search for outcome tracking (cross-seed)
+	JobID uint64 `json:"jobId,omitempty"`
 }
 
 // SearchCacheMetadata describes how the response was sourced.
@@ -85,6 +93,10 @@ type SearchResult struct {
 	UploadVolumeFactor float64 `json:"upload_volume_factor"`
 	// GUID (unique identifier)
 	GUID string `json:"guid"`
+	// InfoHashV1 if available
+	InfoHashV1 string `json:"infohash_v1,omitempty"`
+	// InfoHashV2 if available
+	InfoHashV2 string `json:"infohash_v2,omitempty"`
 	// IMDb ID if available
 	IMDbID string `json:"imdb_id,omitempty"`
 	// TVDb ID if available

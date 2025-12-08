@@ -26,7 +26,7 @@ import { getLicenseErrorMessage } from "@/lib/license-errors"
 import { POLAR_CHECKOUT_URL, POLAR_PORTAL_URL } from "@/lib/polar-constants"
 import { copyTextToClipboard } from "@/lib/utils"
 import { useForm } from "@tanstack/react-form"
-import { AlertTriangle, Copy, ExternalLink, Key, RefreshCw, ShoppingCart, Sparkles, Trash2 } from "lucide-react"
+import { AlertTriangle, Bitcoin, Copy, ExternalLink, Key, RefreshCw, ShoppingCart, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 
@@ -40,6 +40,7 @@ function maskLicenseKey(key: string): string {
 
 export function LicenseManager() {
   const [showAddLicense, setShowAddLicense] = useState(false)
+  const [showCryptoDialog, setShowCryptoDialog] = useState(false)
   const { formatDate } = useDateTimeFormatters()
   const [selectedLicenseKey, setSelectedLicenseKey] = useState<string | null>(null)
 
@@ -186,7 +187,7 @@ export function LicenseManager() {
                 </div>
               </div>
 
-              <div className="flex gap-2 flex-shrink-0">
+              <div className="flex gap-2 flex-shrink-0 flex-wrap sm:flex-nowrap">
                 {licenses && licenses.length > 0 && (
                   <Button
                     variant="ghost"
@@ -199,12 +200,22 @@ export function LicenseManager() {
                   </Button>
                 )}
                 {!hasPremiumAccess && !hasInvalidLicense && (
-                  <Button size="sm" asChild>
-                    <a href={POLAR_CHECKOUT_URL} target="_blank" rel="noopener noreferrer">
-                      <ShoppingCart className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                      Buy license
-                    </a>
-                  </Button>
+                  <>
+                    <Button size="sm" asChild>
+                      <a href={POLAR_CHECKOUT_URL} target="_blank" rel="noopener noreferrer">
+                        <ShoppingCart className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                        Buy license
+                      </a>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowCryptoDialog(true)}
+                    >
+                      <Bitcoin className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                      Pay with Crypto
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
@@ -358,6 +369,56 @@ export function LicenseManager() {
               </div>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Crypto Payment Dialog */}
+      <Dialog open={showCryptoDialog} onOpenChange={setShowCryptoDialog}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Bitcoin className="h-5 w-5" />
+              Pay with Cryptocurrency
+            </DialogTitle>
+            <DialogDescription>
+              Support development directly with crypto. All payment methods unlock the same premium themes ($9.99 equivalent).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5">
+            <div className="rounded-lg border bg-background p-4 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="space-y-1">
+                <p className="text-sm font-semibold">Get the current addresses</p>
+                <p className="text-xs text-muted-foreground">We accept all major cryptocurrencies.</p>
+              </div>
+              <Button size="sm" asChild>
+                <a
+                  href="https://github.com/autobrr/qui#cryptocurrency"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center"
+                >
+                  View on GitHub
+                  <ExternalLink className="h-4 w-4 ml-2" />
+                </a>
+              </Button>
+            </div>
+
+            <div className="rounded-lg bg-muted/30 border p-4 space-y-3">
+              <p className="text-sm font-medium">Redeem your premium license</p>
+              <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
+                <li>Open the README link above and send a payment using your preferred cryptocurrency and address.</li>
+                <li>Join our <a href="https://discord.autobrr.com/qui" target="_blank" rel="noopener noreferrer" className="text-primary underline hover:no-underline">Discord server</a>.</li>
+                <li>Share the transaction hash with a maintainer to receive a 100% discount code.</li>
+              </ol>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCryptoDialog(false)}>
+              Close
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

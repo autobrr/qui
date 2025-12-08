@@ -13,12 +13,14 @@ interface InstanceSettingsButtonProps {
   instanceId: number
   instanceName: string
   onClick?: (e: React.MouseEvent) => void
+  showButton?: boolean
 }
 
 export function InstanceSettingsButton({
   instanceId,
   instanceName,
   onClick,
+  showButton = true,
 }: InstanceSettingsButtonProps) {
   const [preferencesOpen, setPreferencesOpen] = useState(false)
 
@@ -31,21 +33,23 @@ export function InstanceSettingsButton({
 
   return (
     <>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 p-0"
-            onClick={handleClick}
-          >
-            <Cog className="h-4 w-4" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          Instance Settings
-        </TooltipContent>
-      </Tooltip>
+      {showButton && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 p-0"
+              onClick={handleClick}
+            >
+              <Cog className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Instance Settings
+          </TooltipContent>
+        </Tooltip>
+      )}
 
       <InstancePreferencesDialog
         open={preferencesOpen}

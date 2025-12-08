@@ -36,7 +36,9 @@ import (
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/services/trackerrules"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/pkg/sqlite3store"
 )
@@ -466,6 +468,15 @@ func (app *Application) runServer() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize instance store")
 	}
+	instanceReannounceStore := models.NewInstanceReannounceStore(db)
+	reannounceSettingsCache := reannounce.NewSettingsCache(instanceReannounceStore)
+	if err := reannounceSettingsCache.LoadAll(context.Background()); err != nil {
+		log.Warn().Err(err).Msg("Failed to preload reannounce settings cache")
+	}
+
+	trackerRuleStore := models.NewTrackerRuleStore(db)
+	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
+	dashboardSettingsStore := models.NewDashboardSettingsStore(db)
 
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db)
 	externalProgramStore := models.NewExternalProgramStore(db)
@@ -511,6 +522,15 @@ func (app *Application) runServer() {
 		if cacheTTL < jackett.MinSearchCacheTTL {
 			cacheTTL = jackett.MinSearchCacheTTL
 		}
+
+		if rebased, err := torznabSearchCache.RebaseTTL(context.Background(), int(cacheTTL/time.Minute)); err != nil {
+			log.Warn().Err(err).Msg("Failed to rebase torznab search cache TTL to persisted settings")
+		} else if rebased > 0 {
+			log.Info().
+				Int64("updatedRows", rebased).
+				Float64("ttlHours", cacheTTL.Hours()).
+				Msg("Rebased torznab search cache entries to persisted TTL")
+		}
 	}
 	jackettService := jackett.NewService(
 		torznabIndexerStore,
@@ -518,12 +538,18 @@ func (app *Application) runServer() {
 		jackett.WithSearchCache(torznabSearchCache, jackett.SearchCacheConfig{
 			TTL: cacheTTL,
 		}),
+		jackett.WithSearchHistory(0),   // Use default capacity (500 entries)
+		jackett.WithIndexerOutcomes(0), // Use default capacity (1000 entries)
 	)
 	log.Info().Msg("Torznab/Jackett service initialized")
 
 	// Initialize cross-seed automation store and service
 	crossSeedStore := models.NewCrossSeedStore(db)
-	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore, clientPool)
+	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore)
+	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
+	trackerRuleService := trackerrules.NewService(trackerrules.DefaultConfig(), instanceStore, trackerRuleStore, syncManager)
+
+	syncManager.SetTorrentCompletionHandler(crossSeedService.HandleTorrentCompletion)
 
 	automationCtx, automationCancel := context.WithCancel(context.Background())
 	defer func() {
@@ -531,8 +557,16 @@ func (app *Application) runServer() {
 		crossSeedService.StopAutomation()
 	}()
 
+	reannounceCtx, reannounceCancel := context.WithCancel(context.Background())
+	defer reannounceCancel()
+	reannounceService.Start(reannounceCtx)
+
+	trackerRulesCtx, trackerRulesCancel := context.WithCancel(context.Background())
+	defer trackerRulesCancel()
+	trackerRuleService.Start(trackerRulesCtx)
+
 	backupStore := models.NewBackupStore(db)
-	backupService := backups.NewService(backupStore, syncManager, backups.Config{DataDir: cfg.GetDataDir()})
+	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir()})
 	backupService.Start(context.Background())
 	defer backupService.Stop()
 
@@ -594,23 +628,30 @@ func (app *Application) runServer() {
 
 	// Start server in goroutine
 	httpServer := api.NewServer(&api.Dependencies{
-		Config:               cfg,
-		Version:              buildinfo.Version,
-		AuthService:          authService,
-		SessionManager:       sessionManager,
-		InstanceStore:        instanceStore,
-		ClientAPIKeyStore:    clientAPIKeyStore,
-		ExternalProgramStore: externalProgramStore,
-		ClientPool:           clientPool,
-		SyncManager:          syncManager,
-		LicenseService:       licenseService,
-		UpdateService:        updateService,
-		TrackerIconService:   trackerIconService,
-		BackupService:        backupService,
-		FilesManager:         filesManagerService,
-		CrossSeedService:     crossSeedService,
-		JackettService:       jackettService,
-		TorznabIndexerStore:  torznabIndexerStore,
+		Config:                    cfg,
+		Version:                   buildinfo.Version,
+		AuthService:               authService,
+		SessionManager:            sessionManager,
+		InstanceStore:             instanceStore,
+		InstanceReannounce:        instanceReannounceStore,
+		ReannounceCache:           reannounceSettingsCache,
+		ReannounceService:         reannounceService,
+		ClientAPIKeyStore:         clientAPIKeyStore,
+		ExternalProgramStore:      externalProgramStore,
+		ClientPool:                clientPool,
+		SyncManager:               syncManager,
+		LicenseService:            licenseService,
+		UpdateService:             updateService,
+		TrackerIconService:        trackerIconService,
+		BackupService:             backupService,
+		FilesManager:              filesManagerService,
+		CrossSeedService:          crossSeedService,
+		JackettService:            jackettService,
+		TorznabIndexerStore:       torznabIndexerStore,
+		TrackerRuleStore:          trackerRuleStore,
+		TrackerRuleService:        trackerRuleService,
+		TrackerCustomizationStore: trackerCustomizationStore,
+		DashboardSettingsStore:    dashboardSettingsStore,
 	})
 
 	errorChannel := make(chan error)

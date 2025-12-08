@@ -20,7 +20,7 @@ type CrossSeedRequest struct {
 	TargetInstanceIDs []int `json:"target_instance_ids,omitempty"`
 	// Category to apply to the cross-seeded torrent
 	Category string `json:"category,omitempty"`
-	// Tags to apply to the cross-seeded torrent
+	// Tags to apply to the cross-seeded torrent (source-specific tags from settings)
 	Tags []string `json:"tags,omitempty"`
 	// IgnorePatterns specify files to ignore when matching
 	IgnorePatterns []string `json:"ignore_patterns,omitempty"`
@@ -28,9 +28,8 @@ type CrossSeedRequest struct {
 	SkipIfExists *bool `json:"skip_if_exists,omitempty"`
 	// StartPaused controls whether newly added torrents start paused
 	StartPaused *bool `json:"start_paused,omitempty"`
-	// AddCrossSeedTag controls whether the service should automatically tag added torrents as cross-seeds.
-	// Defaults to true when omitted.
-	AddCrossSeedTag *bool `json:"add_cross_seed_tag,omitempty"`
+	// InheritSourceTags controls whether to also copy tags from the matched source torrent.
+	InheritSourceTags bool `json:"inherit_source_tags,omitempty"`
 	// IndexerName specifies the name of the indexer for this torrent (used with useCategoryFromIndexer setting)
 	IndexerName string `json:"indexer_name,omitempty"`
 	// FindIndividualEpisodes controls whether to find individual episodes when searching with season packs
@@ -81,7 +80,7 @@ type TorrentInfo struct {
 	MatchingFiles    int           `json:"matching_files,omitempty"` // Files that match source
 	FileCount        int           `json:"file_count"`               // Deprecated: use TotalFiles
 	Files            []TorrentFile `json:"files,omitempty"`
-	ContentType      string        `json:"content_type,omitempty"`      // Detected content type: movie, tv, music, audiobook, book, comic, game, app, unknown
+	ContentType      string        `json:"content_type,omitempty"`      // Detected content type: movie, tv, music, audiobook, book, comic, game, app, adult, unknown
 	SearchType       string        `json:"search_type,omitempty"`       // Search type to use: tvsearch, movie, music, book, search
 	SearchCategories []int         `json:"search_categories,omitempty"` // Torznab categories required for this search
 	RequiredCaps     []string      `json:"required_caps,omitempty"`     // Required indexer capabilities (e.g., "tv-search", "movie-search", "music-search")
@@ -198,6 +197,8 @@ type TorrentSearchResponse struct {
 	Results       []TorrentSearchResult        `json:"results"`
 	Cache         *jackett.SearchCacheMetadata `json:"cache,omitempty"`
 	Partial       bool                         `json:"partial,omitempty"`
+	// JobID identifies this search for outcome tracking (cross-seed)
+	JobID uint64 `json:"jobId,omitempty"`
 }
 
 // TorrentSearchSelection represents a user-selected search result that should be added for cross-seeding.
@@ -295,8 +296,8 @@ type AsyncTorrentAnalysis struct {
 type WebhookCheckRequest struct {
 	// TorrentName is the release name as announced (required)
 	TorrentName string `json:"torrentName"`
-	// InstanceID is the target instance to check against (required - must match the instance where autobrr will download)
-	InstanceID int `json:"instanceId"`
+	// InstanceIDs optionally limits the scan to the requested instances; omit or pass an empty array to search all instances.
+	InstanceIDs []int `json:"instanceIds,omitempty"`
 	// Size is the total torrent size in bytes (optional - enables size validation if provided)
 	Size uint64 `json:"size,omitempty"`
 	// FindIndividualEpisodes overrides the default behavior when matching season packs vs episodes.
@@ -312,6 +313,7 @@ type WebhookCheckMatch struct {
 	TorrentName  string  `json:"torrentName"`
 	MatchType    string  `json:"matchType"` // "metadata", "exact", "size"
 	SizeDiff     float64 `json:"sizeDiff,omitempty"`
+	Progress     float64 `json:"progress"`
 }
 
 // WebhookCheckResponse represents the response to a webhook check request
@@ -323,14 +325,14 @@ type WebhookCheckResponse struct {
 
 // AutobrrApplyRequest represents autobrr pushing a torrent directly to qui for application.
 type AutobrrApplyRequest struct {
-	TorrentData     string   `json:"torrentData"`
-	InstanceID      int      `json:"instanceId"`
-	Category        string   `json:"category,omitempty"`
-	Tags            []string `json:"tags,omitempty"`
-	IgnorePatterns  []string `json:"ignorePatterns,omitempty"`
-	StartPaused     *bool    `json:"startPaused,omitempty"`
-	AddCrossSeedTag *bool    `json:"addCrossSeedTag,omitempty"`
-	SkipIfExists    *bool    `json:"skipIfExists,omitempty"`
+	TorrentData string `json:"torrentData"`
+	// InstanceIDs optionally scopes the apply request to specific instances; omit or pass an empty array to target all matches.
+	InstanceIDs    []int    `json:"instanceIds,omitempty"`
+	Category       string   `json:"category,omitempty"`
+	Tags           []string `json:"tags,omitempty"`
+	IgnorePatterns []string `json:"ignorePatterns,omitempty"`
+	StartPaused    *bool    `json:"startPaused,omitempty"`
+	SkipIfExists   *bool    `json:"skipIfExists,omitempty"`
 	// FindIndividualEpisodes overrides the automation-level episode matching behavior when set.
 	FindIndividualEpisodes *bool `json:"findIndividualEpisodes,omitempty"`
 }

@@ -3,16 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -57,6 +47,7 @@ import {
   Folder,
   FolderOpen,
   Gauge,
+  GitBranch,
   Info,
   ListTodo,
   Loader2,
@@ -66,7 +57,6 @@ import {
   Plus,
   Radio,
   Search,
-  GitBranch,
   Settings2,
   Sprout,
   Tag,
@@ -74,16 +64,18 @@ import {
   X
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
+import { useInstances } from "@/hooks/useInstances"
 import { AddTorrentDialog } from "./AddTorrentDialog"
-import { DeleteFilesPreference } from "./DeleteFilesPreference"
-import { RemoveTagsDialog, SetCategoryDialog, SetLocationDialog, SetTagsDialog } from "./TorrentDialogs"
+import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
+import { LocationWarningDialog, RemoveTagsDialog, SetCategoryDialog, SetLocationDialog, SetTagsDialog, TmmConfirmDialog } from "./TorrentDialogs"
 // import { createPortal } from 'react-dom'
 // Columns dropdown removed on mobile
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
+import { useCrossSeedFilter } from "@/hooks/useCrossSeedFilter"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata.ts"
 import { usePersistedCompactViewState, type ViewMode } from "@/hooks/usePersistedCompactViewState"
-import { useCrossSeedFilter } from "@/hooks/useCrossSeedFilter"
 import { api } from "@/lib/api"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
@@ -315,7 +307,7 @@ interface TorrentCardsMobileProps {
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
-  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[]) => void
+  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[], useSubcategories?: boolean) => void
   onFilterChange?: (filters: TorrentFilters) => void
   canCrossSeedSearch?: boolean
   onCrossSeedSearch?: (torrent: Torrent) => void
@@ -979,7 +971,10 @@ export function TorrentCardsMobile({
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
-  const { viewMode } = usePersistedCompactViewState("compact")
+  // Mobile cards don't support "dense" mode (which is table-row based on desktop).
+  // Mobile uses card layouts: normal (full cards), compact, and ultra-compact.
+  // This restriction syncs with FilterSidebar's mobile mode to keep view states consistent.
+  const { viewMode } = usePersistedCompactViewState("compact", ["normal", "compact", "ultra-compact"])
   const trackerIconsQuery = useTrackerIcons()
   const trackerIconsRef = useRef<Record<string, string> | undefined>(undefined)
   const trackerIcons = useMemo(() => {
@@ -1023,11 +1018,13 @@ export function TorrentCardsMobile({
   // Use the shared torrent actions hook
   const {
     showDeleteDialog,
-    setShowDeleteDialog,
+    closeDeleteDialog,
     deleteFiles,
     setDeleteFiles,
     isDeleteFilesLocked,
     toggleDeleteFilesLock,
+    deleteCrossSeeds,
+    setDeleteCrossSeeds,
     showSetTagsDialog,
     setShowSetTagsDialog,
     showRemoveTagsDialog,
@@ -1036,6 +1033,11 @@ export function TorrentCardsMobile({
     setShowCategoryDialog,
     showLocationDialog,
     setShowLocationDialog,
+    showTmmDialog,
+    setShowTmmDialog,
+    pendingTmmEnable,
+    showLocationWarningDialog,
+    setShowLocationWarningDialog,
     isPending,
     handleAction,
     handleDelete,
@@ -1045,7 +1047,11 @@ export function TorrentCardsMobile({
     handleSetLocation,
     handleSetShareLimit,
     handleSetSpeedLimits,
+    prepareDeleteAction,
     prepareLocationAction,
+    prepareTmmAction,
+    handleTmmConfirm,
+    proceedToLocationDialog,
   } = useTorrentActions({
     instanceId,
     onActionComplete: (action) => {
@@ -1064,9 +1070,14 @@ export function TorrentCardsMobile({
   // are ever added to this view, ensure the combined filters (including expr)
   // are passed into these bulk action payloads similar to the desktop table.
 
+  // Get instance info for cross-seed warning
+  const { instances } = useInstances()
+  const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
+
   const { data: metadata } = useInstanceMetadata(instanceId, { fallbackDelayMs: 1500 })
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
+  const preferences = metadata?.preferences
 
   const debouncedSearch = useDebounce(globalFilter, 1000)
   const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string }
@@ -1170,6 +1181,7 @@ export function TorrentCardsMobile({
     categories,
     tags,
     stats,
+    useSubcategories: subcategoriesFromData,
 
     isLoading,
     isLoadingMore,
@@ -1185,14 +1197,19 @@ export function TorrentCardsMobile({
   const { data: capabilities } = useInstanceCapabilities(instanceId)
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
   const supportsTorrentCreation = capabilities?.supportsTorrentCreation ?? true
+  const supportsSubcategories = capabilities?.supportsSubcategories ?? false
+  // subcategoriesFromData reflects backend/server state; allowSubcategories
+  // additionally respects user preferences for UI surfaces like dialogs.
+  const allowSubcategories =
+    supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false)
 
   // Call the callback when filtered data updates
   useEffect(() => {
     if (onFilteredDataUpdate && torrents && totalCount !== undefined && !isLoading) {
-      onFilteredDataUpdate(torrents, totalCount, counts, categories, tags)
+      onFilteredDataUpdate(torrents, totalCount, counts, categories, tags, subcategoriesFromData)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalCount, isLoading, torrents.length, counts, categories, tags, onFilteredDataUpdate]) // Update when data changes
+  }, [totalCount, isLoading, torrents.length, counts, categories, tags, subcategoriesFromData, onFilteredDataUpdate]) // Update when data changes
 
   // Calculate the effective selection count for display
   const effectiveSelectionCount = useMemo(() => {
@@ -1238,6 +1255,21 @@ export function TorrentCardsMobile({
   }, [isAllSelected, stats?.totalSize, excludedFromSelectAll, torrents, selectedHashes])
 
   const selectedFormattedSize = useMemo(() => formatBytes(selectedTotalSize), [selectedTotalSize])
+
+  // Torrents to check for cross-seeds (either single torrent or selected torrents)
+  const deleteTorrents = useMemo(() => {
+    if (torrentToDelete) {
+      return [torrentToDelete]
+    }
+    return torrents.filter(t => selectedHashes.has(t.hash))
+  }, [torrentToDelete, torrents, selectedHashes])
+
+  // Cross-seed warning for delete dialog
+  const crossSeedWarning = useCrossSeedWarning({
+    instanceId,
+    instanceName: instance?.name ?? "",
+    torrents: deleteTorrents,
+  })
 
   // Load more rows as user scrolls (progressive loading + backend pagination)
   const loadMore = useCallback((): void => {
@@ -1510,6 +1542,12 @@ export function TorrentCardsMobile({
       hashes = Array.from(selectedHashes)
     }
 
+    // Include cross-seed hashes if user opted to delete them
+    const crossSeedHashes = deleteCrossSeeds
+      ? crossSeedWarning.affectedTorrents.map(t => t.hash)
+      : []
+    const hashesToDelete = [...hashes, ...crossSeedHashes]
+
     let visibleHashes: string[]
     if (torrentToDelete) {
       visibleHashes = [torrentToDelete.hash]
@@ -1521,6 +1559,9 @@ export function TorrentCardsMobile({
       visibleHashes = Array.from(selectedHashes)
     }
 
+    // Include cross-seeds in visible hashes for optimistic updates
+    const visibleHashesToDelete = [...visibleHashes, ...crossSeedHashes]
+
     let totalSelected: number
     if (torrentToDelete) {
       totalSelected = 1
@@ -1530,19 +1571,22 @@ export function TorrentCardsMobile({
       totalSelected = visibleHashes.length
     }
 
+    // Add cross-seed count
+    const totalToDelete = totalSelected + crossSeedHashes.length
+
     await handleDelete(
-      hashes,
+      hashesToDelete,
       !torrentToDelete && isAllSelected,
       !torrentToDelete && isAllSelected ? filters : undefined,
       !torrentToDelete && isAllSelected ? effectiveSearch : undefined,
       !torrentToDelete && isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
       {
-        clientHashes: visibleHashes,
-        totalSelected,
+        clientHashes: visibleHashesToDelete,
+        totalSelected: totalToDelete,
       }
     )
     setTorrentToDelete(null)
-  }, [torrentToDelete, isAllSelected, selectedHashes, handleDelete, filters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount])
+  }, [torrentToDelete, isAllSelected, selectedHashes, handleDelete, filters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount, deleteCrossSeeds, crossSeedWarning.affectedTorrents])
 
   const handleSetTagsWrapper = useCallback(async (tags: string[]) => {
     const hashes = isAllSelected ? [] : actionTorrents.map(t => t.hash)
@@ -1600,6 +1644,22 @@ export function TorrentCardsMobile({
     )
     setActionTorrents([])
   }, [isAllSelected, actionTorrents, handleSetLocation, filters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount])
+
+  const handleTmmConfirmWrapper = useCallback(() => {
+    const visibleHashes = isAllSelected ? torrents.filter(t => !excludedFromSelectAll.has(t.hash)).map(t => t.hash) : Array.from(selectedHashes)
+    const totalSelected = isAllSelected ? effectiveSelectionCount : visibleHashes.length || 1
+    handleTmmConfirm(
+      isAllSelected ? [] : Array.from(selectedHashes),
+      isAllSelected,
+      isAllSelected ? filters : undefined,
+      isAllSelected ? effectiveSearch : undefined,
+      isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
+      {
+        clientHashes: visibleHashes,
+        totalSelected,
+      }
+    )
+  }, [isAllSelected, selectedHashes, handleTmmConfirm, filters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount])
 
   const getSelectedTorrents = useMemo(() => {
     if (isAllSelected) {
@@ -1994,7 +2054,8 @@ export function TorrentCardsMobile({
                     <Button
                       variant="outline"
                       onClick={() => {
-                        triggerSelectionAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, { enable: true })
+                        const hashes = isAllSelected ? [] : Array.from(selectedHashes)
+                        prepareTmmAction(hashes, effectiveSelectionCount, true)
                         setShowActionsSheet(false)
                       }}
                       className="justify-start"
@@ -2005,7 +2066,8 @@ export function TorrentCardsMobile({
                     <Button
                       variant="outline"
                       onClick={() => {
-                        triggerSelectionAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, { enable: false })
+                        const hashes = isAllSelected ? [] : Array.from(selectedHashes)
+                        prepareTmmAction(hashes, effectiveSelectionCount, false)
                         setShowActionsSheet(false)
                       }}
                       className="justify-start"
@@ -2021,7 +2083,8 @@ export function TorrentCardsMobile({
                 <Button
                   variant="outline"
                   onClick={() => {
-                    triggerSelectionAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, { enable: !allEnabled })
+                    const hashes = isAllSelected ? [] : Array.from(selectedHashes)
+                    prepareTmmAction(hashes, effectiveSelectionCount, !allEnabled)
                     setShowActionsSheet(false)
                   }}
                   className="justify-start"
@@ -2080,7 +2143,10 @@ export function TorrentCardsMobile({
             <Button
               variant="destructive"
               onClick={() => {
-                setShowDeleteDialog(true)
+                prepareDeleteAction(
+                  isAllSelected ? [] : Array.from(selectedHashes),
+                  getSelectedTorrents
+                )
                 setShowActionsSheet(false)
               }}
               className="justify-start !bg-destructive !text-destructive-foreground"
@@ -2093,39 +2159,27 @@ export function TorrentCardsMobile({
       </Sheet>
 
       {/* Delete confirmation dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Delete {torrentToDelete ? "1" : (isAllSelected ? `all ${effectiveSelectionCount}` : effectiveSelectionCount)} torrent(s)?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone.
-              {selectedTotalSize > 0 && (
-                <span className="block mt-2 text-xs text-muted-foreground">
-                  Total size: {selectedFormattedSize}
-                </span>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <DeleteFilesPreference
-            id="deleteFiles"
-            checked={deleteFiles}
-            onCheckedChange={setDeleteFiles}
-            isLocked={isDeleteFilesLocked}
-            onToggleLock={toggleDeleteFilesLock}
-          />
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteWrapper}
-              className="bg-destructive text-destructive-foreground"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteTorrentDialog
+        open={showDeleteDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeDeleteDialog()
+            crossSeedWarning.reset()
+            setTorrentToDelete(null)
+          }
+        }}
+        count={torrentToDelete ? 1 : effectiveSelectionCount}
+        totalSize={selectedTotalSize}
+        formattedSize={selectedFormattedSize}
+        deleteFiles={deleteFiles}
+        onDeleteFilesChange={setDeleteFiles}
+        isDeleteFilesLocked={isDeleteFilesLocked}
+        onToggleDeleteFilesLock={toggleDeleteFilesLock}
+        deleteCrossSeeds={deleteCrossSeeds}
+        onDeleteCrossSeedsChange={setDeleteCrossSeeds}
+        crossSeedWarning={crossSeedWarning}
+        onConfirm={handleDeleteWrapper}
+      />
 
       {/* Tags dialog */}
       <SetTagsDialog
@@ -2147,6 +2201,7 @@ export function TorrentCardsMobile({
         onConfirm={handleSetCategoryWrapper}
         isPending={isPending}
         initialCategory={getCommonCategory(actionTorrents)}
+        useSubcategories={allowSubcategories}
       />
 
       {/* Remove Tags dialog */}
@@ -2238,6 +2293,25 @@ export function TorrentCardsMobile({
         hashCount={effectiveSelectionCount}
         initialLocation={getCommonSavePath(getSelectedTorrents)}
         onConfirm={handleSetLocationWrapper}
+        isPending={isPending}
+      />
+
+      {/* TMM Confirmation Dialog */}
+      <TmmConfirmDialog
+        open={showTmmDialog}
+        onOpenChange={setShowTmmDialog}
+        count={effectiveSelectionCount}
+        enable={pendingTmmEnable}
+        onConfirm={handleTmmConfirmWrapper}
+        isPending={isPending}
+      />
+
+      {/* Location Warning Dialog */}
+      <LocationWarningDialog
+        open={showLocationWarningDialog}
+        onOpenChange={setShowLocationWarningDialog}
+        count={effectiveSelectionCount}
+        onConfirm={proceedToLocationDialog}
         isPending={isPending}
       />
 

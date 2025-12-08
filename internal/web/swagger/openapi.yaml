@@ -757,6 +757,125 @@ paths:
         '503':
           description: Instance unavailable
 
+  /api/instances/{instanceID}/reannounce/activity:
+    get:
+      tags:
+        - Instances
+      summary: Get recent tracker reannounce activity
+      description: Return the most recent tracker reannounce events for an instance.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+          required: false
+          description: Optional maximum number of events to return.
+      responses:
+        '200':
+          description: Recent reannounce events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    instanceId:
+                      type: integer
+                      format: int64
+                    hash:
+                      type: string
+                      description: Torrent hash in lowercase.
+                    torrentName:
+                      type: string
+                      description: Optional torrent name associated with the reannounce event.
+                    trackers:
+                      type: string
+                      description: Optional comma-separated list of problematic tracker domains for this event.
+                    outcome:
+                      type: string
+                      enum:
+                        - skipped
+                        - failed
+                        - succeeded
+                    reason:
+                      type: string
+                      description: Short explanation for the outcome.
+                    timestamp:
+                      type: string
+                      format: date-time
+                  required:
+                    - instanceId
+                    - hash
+                    - outcome
+                    - timestamp
+        '400':
+          description: Invalid instance ID
+
+  /api/instances/{instanceID}/reannounce/candidates:
+    get:
+      tags:
+        - Instances
+      summary: Get current tracker reannounce candidates
+      description: Return torrents that currently fall within the reannounce monitoring scope and have problematic or pending trackers.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: Current reannounce monitoring candidates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    instanceId:
+                      type: integer
+                      format: int64
+                    hash:
+                      type: string
+                      description: Torrent hash in lowercase.
+                    torrentName:
+                      type: string
+                      description: Torrent name associated with the candidate.
+                    trackers:
+                      type: string
+                      description: Optional comma-separated list of problematic tracker domains for this torrent.
+                    timeActiveSeconds:
+                      type: integer
+                      format: int64
+                      description: Active time for the torrent in seconds.
+                    category:
+                      type: string
+                      description: Torrent category.
+                    tags:
+                      type: string
+                      description: Comma-separated tags as reported by qBittorrent.
+                    state:
+                      type: string
+                      description: Monitoring state for this torrent.
+                      enum:
+                        - watching
+                        - reannouncing
+                        - cooldown
+                    hasTrackerProblem:
+                      type: boolean
+                      description: Whether a tracker problem has been detected for this torrent.
+                    waitingForInitial:
+                      type: boolean
+                      description: Whether trackers are still in an initial updating/not contacted state.
+                  required:
+                    - instanceId
+                    - hash
+                    - state
+                    - hasTrackerProblem
+                    - waitingForInitial
+        '400':
+          description: Invalid instance ID
+
   /api/instances/{instanceID}/cross-seed/status:
     get:
       tags:
@@ -1204,6 +1323,11 @@ paths:
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
+        - in: query
+          name: refresh
+          schema:
+            type: boolean
+          description: Force refresh from qBittorrent instead of serving cached file metadata.
       responses:
         '200':
           description: List of files
@@ -2208,6 +2332,28 @@ paths:
           description: Invalid request body
         '500':
           description: Failed to update automation settings
+    patch:
+      tags:
+        - Cross-Seed
+      summary: Patch cross-seed automation settings
+      description: Partially update automation, completion, or global cross-seed settings without overwriting unspecified fields
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrossSeedAutomationSettingsPatch'
+      responses:
+        '200':
+          description: Updated automation settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedAutomationSettings'
+        '400':
+          description: Invalid request body
+        '500':
+          description: Failed to update automation settings
 
   /api/cross-seed/status:
     get:
@@ -2282,6 +2428,44 @@ paths:
           description: Automation is already running
         '500':
           description: Failed to trigger automation run
+
+  /api/cross-seed/search/settings:
+    get:
+      tags:
+        - Cross-Seed
+      summary: Get seeded torrent search settings
+      description: Returns the persisted defaults used by Seeded Torrent Search runs.
+      responses:
+        '200':
+          description: Current seeded search settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedSearchSettings'
+        '500':
+          description: Failed to load search settings
+    patch:
+      tags:
+        - Cross-Seed
+      summary: Update seeded torrent search settings
+      description: Persists default filters and timing for Seeded Torrent Search runs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrossSeedSearchSettingsPatch'
+      responses:
+        '200':
+          description: Updated seeded search settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedSearchSettings'
+        '400':
+          description: Invalid request body
+        '500':
+          description: Failed to update search settings
 
   /api/cross-seed/search/run:
     post:
@@ -2423,7 +2607,12 @@ paths:
       tags:
         - Cross-Seed
       summary: Check if a release can be cross-seeded (autobrr webhook)
-      description: Accepts release metadata from autobrr and checks if matching torrents exist on the specified instance. Returns 200 OK when matches are found and 404 Not Found when no matches exist. This endpoint is designed for autobrr filter external webhooks where the instanceId must match the target instance in the autobrr filter action.
+      description: |
+        Accepts release metadata from autobrr and checks if matching torrents exist on the requested instances (or all instances when no list is provided). The HTTP status describes whether the match is ready:
+        * `200 OK` – at least one matching torrent is fully downloaded and ready for cross-seeding
+        * `202 Accepted` – matching torrents exist but the data is still downloading; retry `/check` until it returns `200` (ready) or `404`
+        * `404 Not Found` – no matches exist (recommendation `skip`)
+        This endpoint is designed for autobrr filter external webhooks. When `instanceIds` is omitted or empty, qui will search every configured instance. Provide a subset of IDs to restrict the scan.
       parameters:
         - name: apikey
           in: query
@@ -2439,16 +2628,17 @@ paths:
               type: object
               required:
                 - torrentName
-                - instanceId
               properties:
                 torrentName:
                   type: string
                   description: Release name as announced (parsed using rls library to extract metadata)
                   example: "That.Movie.2025.1080p.BluRay.x264-GROUP"
-                instanceId:
-                  type: integer
-                  description: Target instance ID to check against (must match the instance where autobrr will download the torrent)
-                  example: 1
+                instanceIds:
+                  type: array
+                  items:
+                    type: integer
+                  description: Optional list of qBittorrent instance IDs to consider. When omitted or empty, qui searches all configured instances.
+                  example: [1, 2, 3]
                 size:
                   type: integer
                   format: uint64
@@ -2462,51 +2652,19 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  canCrossSeed:
-                    type: boolean
-                    description: Whether this release can be cross-seeded with existing torrents
-                  matches:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        instanceId:
-                          type: integer
-                        instanceName:
-                          type: string
-                        torrentHash:
-                          type: string
-                        torrentName:
-                          type: string
-                        matchType:
-                          type: string
-                          enum: ["metadata", "exact", "size"]
-                          description: Type of match - metadata (no size check), exact (size < 0.1% diff), or size (within tolerance)
-                        sizeDiff:
-                          type: number
-                          format: double
-                          description: Size difference percentage (only present if size was provided)
-                  recommendation:
-                    type: string
-                    enum: ["download", "skip"]
-                    description: Recommendation - "download" if matches found, "skip" if no matches
-        '404':
-          description: No cross-seed matches found
+                $ref: '#/components/schemas/CrossSeedWebhookCheckResponse'
+        '202':
+          description: Matches exist but torrents are still downloading (retry until 200 OK). The body mirrors the 200 response to show pending matches.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  canCrossSeed:
-                    type: boolean
-                  matches:
-                    type: array
-                    items:
-                      type: object
-                  recommendation:
-                    type: string
+                $ref: '#/components/schemas/CrossSeedWebhookCheckResponse'
+        '404':
+          description: No cross-seed matches found across the targeted instances, or no instances were available (empty matches array and canCrossSeed=false with recommendation="skip")
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedWebhookCheckResponse'
         '400':
           description: Invalid request body
         '500':
@@ -2517,7 +2675,7 @@ paths:
       tags:
         - Cross-Seed
       summary: Add a cross-seed torrent provided by autobrr
-      description: Accepts a torrent file from autobrr, matches it against the specified instance, and adds it with alignment if a match is found.
+      description: Accepts a torrent file from autobrr, matches it against the requested instances, and adds it with alignment wherever a complete match exists. When `instanceIds` is omitted or empty, qui attempts to inject the torrent into every configured instance that has a match.
       parameters:
         - name: apikey
           in: query
@@ -2533,15 +2691,16 @@ paths:
               type: object
               required:
                 - torrentData
-                - instanceId
               properties:
                 torrentData:
                   type: string
                   description: Base64-encoded torrent file provided by autobrr (for example, using the TorrentDataRawBytes macro piped through toString|b64enc or toJson)
-                instanceId:
-                  type: integer
-                  description: Target instance ID where the torrent should be added
-                  example: 1
+                instanceIds:
+                  type: array
+                  items:
+                    type: integer
+                  description: Optional list of target instance IDs. When omitted or empty, qui attempts to cross-seed into any instance that has a complete match.
+                  example: [1, 2]
                 category:
                   type: string
                   description: Category to apply when adding the torrent
@@ -2554,8 +2713,6 @@ paths:
                   items:
                     type: string
                 startPaused:
-                  type: boolean
-                addCrossSeedTag:
                   type: boolean
                 skipIfExists:
                   type: boolean
@@ -2694,6 +2851,42 @@ paths:
         '204':
           description: No update available - current version is latest
 
+  /api/instances/{instanceID}/backups/import:
+    post:
+      tags:
+        - Backups
+      summary: Import backup manifest
+      description: Import a backup manifest file to create a new backup run record. This allows restoring backup metadata from a previously exported manifest.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        description: Backup archive or manifest file to import. Provide either an archive (zip, tar.gz, tar.zst, tar.br, tar.xz, tar) or a JSON manifest file.
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                archive:
+                  type: string
+                  format: binary
+                  description: Compressed backup archive (zip, tar.gz, tar.zst, tar.br, tar.xz, tar) containing manifest.json and torrent files
+                manifest:
+                  type: string
+                  format: binary
+                  description: JSON manifest file exported from a backup run
+      responses:
+        '201':
+          description: Manifest imported successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackupRun'
+        '400':
+          description: Invalid request - must provide either archive or manifest file, invalid instance ID, or unsupported archive format
+        '500':
+          description: Failed to import manifest
+
   /api/instances/{instanceID}/backups/runs/{runId}/restore/preview:
     post:
       tags:
@@ -2815,6 +3008,111 @@ paths:
         '500':
           description: Failed to execute restore
 
+  /api/instances/{instanceID}/backups/runs/{runId}/download:
+    get:
+      tags:
+        - Backups
+      summary: Download backup archive
+      description: Download the backup archive for the specified backup run in the requested format.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Backup run ID
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - zip
+              - tar.gz
+              - tar.zst
+              - tar.br
+              - tar.xz
+              - tar
+            default: zip
+          description: Archive format to download. Defaults to zip.
+      responses:
+        '200':
+          description: Backup archive downloaded successfully
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+                description: ZIP archive containing the backup
+            application/gzip:
+              schema:
+                type: string
+                format: binary
+                description: GZIP compressed TAR archive
+            application/zstd:
+              schema:
+                type: string
+                format: binary
+                description: Zstandard compressed TAR archive
+            application/x-brotli:
+              schema:
+                type: string
+                format: binary
+                description: Brotli compressed TAR archive
+            application/x-xz:
+              schema:
+                type: string
+                format: binary
+                description: XZ compressed TAR archive
+            application/x-tar:
+              schema:
+                type: string
+                format: binary
+                description: Uncompressed TAR archive
+        '400':
+          description: Invalid instance ID, run ID, or format parameter
+        '404':
+          description: Backup run not found or not available for download
+        '500':
+          description: Failed to generate backup archive
+
+  /api/instances/{instanceID}/backups/runs/{runId}/items/{torrentHash}/download:
+    get:
+      tags:
+        - Backups
+      summary: Download torrent file from backup
+      description: Download a specific torrent file from the backup archive.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Backup run ID
+        - name: torrentHash
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Torrent hash
+      responses:
+        '200':
+          description: Torrent file downloaded successfully
+          content:
+            application/x-bittorrent:
+              schema:
+                type: string
+                format: binary
+                description: Torrent file
+        '400':
+          description: Invalid instance ID, run ID, or torrent hash
+        '404':
+          description: Backup run or torrent not found
+        '500':
+          description: Failed to retrieve torrent file
+
   /health:
     get:
       tags:
@@ -2933,6 +3231,48 @@ components:
           type: string
           format: date-time
           nullable: true
+
+    CrossSeedWebhookMatch:
+      type: object
+      properties:
+        instanceId:
+          type: integer
+        instanceName:
+          type: string
+        torrentHash:
+          type: string
+        torrentName:
+          type: string
+        matchType:
+          type: string
+          enum: ["metadata", "exact", "size"]
+          description: Type of match - metadata (no size check), exact (size < 0.1% diff), or size (within tolerance)
+        sizeDiff:
+          type: number
+          format: double
+          description: Size difference percentage (only present if size was provided)
+        progress:
+          type: number
+          format: double
+          description: Torrent completion ratio (0.0-1.0). Values below 1.0 indicate the match is still downloading.
+
+    CrossSeedWebhookCheckResponse:
+      type: object
+      properties:
+        canCrossSeed:
+          type: boolean
+          description: >-
+            True only when at least one matching torrent is fully downloaded (progress 1.0).
+            Pending-only matches return HTTP 202 with recommendation "download" while
+            canCrossSeed remains false so clients rely on status and progress.
+        matches:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrossSeedWebhookMatch'
+        recommendation:
+          type: string
+          enum: ["download", "skip"]
+          description: Recommendation - "download" if matches were found (ready or pending) or "skip" if no matches
 
     PathMapping:
       type: object
@@ -3367,6 +3707,73 @@ components:
           items:
             $ref: '#/components/schemas/CrossSeedRunResult'
 
+    CrossSeedCompletionSettingsPatch:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        categories:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        excludeCategories:
+          type: array
+          items:
+            type: string
+        excludeTags:
+          type: array
+          items:
+            type: string
+
+    CrossSeedAutomationSettingsPatch:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        runIntervalMinutes:
+          type: integer
+        startPaused:
+          type: boolean
+        category:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        ignorePatterns:
+          type: array
+          items:
+            type: string
+        targetInstanceIds:
+          type: array
+          items:
+            type: integer
+        targetIndexerIds:
+          type: array
+          items:
+            type: integer
+        maxResultsPerRun:
+          type: integer
+          description: Deprecated; RSS automation always processes full feeds and ignores this value.
+          deprecated: true
+        findIndividualEpisodes:
+          type: boolean
+        sizeMismatchTolerancePercent:
+          type: number
+          format: float
+        useCategoryFromIndexer:
+          type: boolean
+        runExternalProgramId:
+          type: integer
+          nullable: true
+        completion:
+          $ref: '#/components/schemas/CrossSeedCompletionSettingsPatch'
+
     CrossSeedAutomationSettings:
       type: object
       properties:
@@ -3397,6 +3804,8 @@ components:
             type: integer
         maxResultsPerRun:
           type: integer
+          description: Deprecated; RSS automation always processes full feeds and ignores this value.
+          deprecated: true
         findIndividualEpisodes:
           type: boolean
         sizeMismatchTolerancePercent:
@@ -3404,6 +3813,30 @@ components:
           format: float
         useCategoryFromIndexer:
           type: boolean
+        runExternalProgramId:
+          type: integer
+          nullable: true
+        completion:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            categories:
+              type: array
+              items:
+                type: string
+            tags:
+              type: array
+              items:
+                type: string
+            excludeCategories:
+              type: array
+              items:
+                type: string
+            excludeTags:
+              type: array
+              items:
+                type: string
         createdAt:
           type: string
           format: date-time
@@ -3426,12 +3859,61 @@ components:
         running:
           type: boolean
 
+    CrossSeedSearchSettingsPatch:
+      type: object
+      properties:
+        instanceId:
+          type: integer
+          nullable: true
+        categories:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        indexerIds:
+          type: array
+          items:
+            type: integer
+        intervalSeconds:
+          type: integer
+        cooldownMinutes:
+          type: integer
+
+    CrossSeedSearchSettings:
+      type: object
+      properties:
+        instanceId:
+          type: integer
+          nullable: true
+        categories:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        indexerIds:
+          type: array
+          items:
+            type: integer
+        intervalSeconds:
+          type: integer
+        cooldownMinutes:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
     CrossSeedRunRequest:
       type: object
       properties:
-        limit:
-          type: integer
-          minimum: 1
         dryRun:
           type: boolean
 
@@ -3731,6 +4213,69 @@ components:
           items:
             type: string
           description: Array of torrent hashes to explicitly include
+
+    BackupRun:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        instanceId:
+          type: integer
+        kind:
+          type: string
+          enum: ["manual", "hourly", "daily", "weekly", "monthly"]
+        status:
+          type: string
+          enum: ["pending", "running", "success", "failed", "canceled"]
+        requestedBy:
+          type: string
+        requestedAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        archivePath:
+          type: string
+          nullable: true
+        manifestPath:
+          type: string
+          nullable: true
+        totalBytes:
+          type: integer
+          format: int64
+        torrentCount:
+          type: integer
+        categoryCounts:
+          type: object
+          additionalProperties:
+            type: integer
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        categories:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/CategorySnapshot'
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+          nullable: true
+
+    CategorySnapshot:
+      type: object
+      properties:
+        savePath:
+          type: string
 
 tags:
   - name: Authentication

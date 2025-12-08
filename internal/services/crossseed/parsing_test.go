@@ -10,7 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestDetermineContentType tests the unified content type detection
+// TestDetermineContentType tests the unified content type detection including
+// expanded JAV/RIAJ/date/xxx corner cases.
 func TestDetermineContentType(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -121,6 +122,150 @@ func TestDetermineContentType(t *testing.T) {
 			wantIsMusic: false,
 		},
 		{
+			name:        "Adult content (date pattern)",
+			release:     rls.Release{Type: rls.Episode, Title: "FakeStudioZ 010124_001-1PON", Series: 1, Episode: 1},
+			wantType:    "adult",
+			wantCats:    []int{6000},
+			wantSearch:  "search",
+			wantCaps:    []string{},
+			wantIsMusic: false,
+		},
+		{
+			name:        "JAV (4-letter) -> strip -> parse as TV",
+			release:     rls.Release{Type: rls.Unknown, Title: "AAEJ-123 Some Show S01E02 1080p"},
+			wantType:    "tv",
+			wantCats:    []int{5000},
+			wantSearch:  "tvsearch",
+			wantCaps:    []string{"tv-search"},
+			wantIsMusic: false,
+		},
+		{
+			name:        "JAV (3-letter) -> strip -> parse as Movie",
+			release:     rls.Release{Type: rls.Unknown, Title: "IPX-123 Big Movie 1080p"},
+			wantType:    "movie",
+			wantCats:    []int{2000},
+			wantSearch:  "movie",
+			wantCaps:    []string{"movie-search"},
+			wantIsMusic: false,
+		},
+		{
+			name:        "lowercase jav code -> TV",
+			release:     rls.Release{Type: rls.Unknown, Title: "ipx-123 Some Show S02E03 720p"},
+			wantType:    "tv",
+			wantCats:    []int{5000},
+			wantSearch:  "tvsearch",
+			wantCaps:    []string{"tv-search"},
+			wantIsMusic: false,
+		},
+		{
+			name:        "JAV-strip -> music detection",
+			release:     rls.Release{Type: rls.Unknown, Title: "IPX-123 Test Artist - Test Album (2020) [GROUP]"},
+			wantType:    "music",
+			wantCats:    []int{3000},
+			wantSearch:  "music",
+			wantCaps:    []string{"music-search", "audio-search"},
+			wantIsMusic: true,
+		},
+		{
+			name:        "RIAJ code -> music detection",
+			release:     rls.Release{Type: rls.Unknown, Title: "ABCD-1234 Some Album"},
+			wantType:    "music",
+			wantCats:    []int{3000},
+			wantSearch:  "music",
+			wantCaps:    []string{"music-search", "audio-search"},
+			wantIsMusic: true,
+		},
+		{
+			name:        "Mainstream movie xXx franchise",
+			release:     rls.Release{Type: rls.Movie, Title: "xXx", Year: 2002},
+			wantType:    "movie",
+			wantCats:    []int{2000},
+			wantSearch:  "movie",
+			wantCaps:    []string{"movie-search"},
+			wantIsMusic: false,
+		},
+		{
+			name:        "Mainstream movie xXx Return of Xander Cage",
+			release:     rls.Release{Type: rls.Movie, Title: "xXx return of xander cage", Year: 2017},
+			wantType:    "movie",
+			wantCats:    []int{2000},
+			wantSearch:  "movie",
+			wantCaps:    []string{"movie-search"},
+			wantIsMusic: false,
+		},
+		{
+			name:        "Music artist XXXTentacion not adult",
+			release:     rls.Release{Type: rls.Music, Artist: "XXXTentacion", Title: "17"},
+			wantType:    "music",
+			wantCats:    []int{3000},
+			wantSearch:  "music",
+			wantCaps:    []string{"music-search", "audio-search"},
+			wantIsMusic: true,
+		},
+		{
+			name:        "xxx inside word not adult",
+			release:     rls.Release{Type: rls.Unknown, Title: "fooxxxbar sample"},
+			wantType:    "unknown",
+			wantCats:    []int{},
+			wantSearch:  "search",
+			wantCaps:    []string{},
+			wantIsMusic: false,
+		},
+		{
+			name:        "Date pattern (adult) without extra markers",
+			release:     rls.Release{Type: rls.Unknown, Title: "010124_001 Some title"},
+			wantType:    "adult",
+			wantCats:    []int{6000},
+			wantSearch:  "search",
+			wantCaps:    []string{},
+			wantIsMusic: false,
+		},
+		{
+			name:        "Bracketed date pattern triggers adult",
+			release:     rls.Release{Type: rls.Unknown, Title: "[2023.08.01] Some Title"},
+			wantType:    "adult",
+			wantCats:    []int{6000},
+			wantSearch:  "search",
+			wantCaps:    []string{},
+			wantIsMusic: false,
+		},
+		{
+			name:        "xxx in subtitle triggers adult",
+			release:     rls.Release{Type: rls.Unknown, Title: "StudioX", Subtitle: "25 11 21 FakeActress XXX 2160p MP4-WRB"},
+			wantType:    "adult",
+			wantCats:    []int{6000},
+			wantSearch:  "search",
+			wantCaps:    []string{},
+			wantIsMusic: false,
+		},
+		{
+			name:        "xxx in collection triggers adult",
+			release:     rls.Release{Type: rls.Unknown, Title: "StudioX", Collection: "XXX", Year: 2025},
+			wantType:    "adult",
+			wantCats:    []int{6000},
+			wantSearch:  "search",
+			wantCaps:    []string{},
+			wantIsMusic: false,
+		},
+		{
+			name:        "Porn scene naming with XXX in title",
+			release:     rls.Release{Type: rls.Unknown, Title: "StudioX XXX FakeActress 2160p MP4-WRB", Year: 2025},
+			wantType:    "adult",
+			wantCats:    []int{6000},
+			wantSearch:  "search",
+			wantCaps:    []string{},
+			wantIsMusic: false,
+		},
+		{
+			name:        "Porn scene naming 2 with XXX in title",
+			release:     rls.Release{Type: rls.Unknown, Title: "StudioY XXX FakeActress2 1080p MP4-WRB", Year: 2025},
+			wantType:    "adult",
+			wantCats:    []int{6000},
+			wantSearch:  "search",
+			wantCaps:    []string{},
+			wantIsMusic: false,
+		},
+		{
 			name:        "Unknown without hints",
 			release:     rls.Release{Type: rls.Unknown, Title: "Test"},
 			wantType:    "unknown",
@@ -133,7 +278,7 @@ func TestDetermineContentType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := DetermineContentType(tt.release)
+			result := DetermineContentType(&tt.release)
 
 			assert.Equal(t, tt.wantType, result.ContentType)
 			assert.Equal(t, tt.wantCats, result.Categories)
