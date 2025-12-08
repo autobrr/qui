@@ -20,7 +20,8 @@ export function useCrossSeedInstanceState(): CrossSeedInstanceState {
   const { data: crossSeedSearchStatus } = useQuery({
     queryKey: ["cross-seed", "search-status"],
     queryFn: () => api.getCrossSeedSearchStatus(),
-    refetchInterval: 5_000,
+    // Only poll frequently when search is running, otherwise poll slowly
+    refetchInterval: (query) => query.state.data?.running ? 5_000 : 60_000,
     staleTime: 3_000,
   })
 

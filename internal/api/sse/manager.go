@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -605,11 +606,63 @@ func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, opts StreamO
 		}
 	}
 
+	// Populate instance metadata for real-time health updates
+	response.InstanceMeta = m.buildInstanceMeta(ctx, opts.InstanceID)
+
 	return &StreamPayload{
 		Type: eventType,
 		Data: response,
 		Meta: metaCopy,
 	}
+}
+
+// buildInstanceMeta creates real-time instance health metadata for SSE subscribers.
+func (m *StreamManager) buildInstanceMeta(ctx context.Context, instanceID int) *qbittorrent.InstanceMeta {
+	if m.clientPool == nil {
+		return nil
+	}
+
+	// Check client health
+	client, _ := m.clientPool.GetClientOffline(ctx, instanceID)
+
+	// Get instance to check if it's active
+	instance, err := m.instanceDB.Get(ctx, instanceID)
+	if err != nil {
+		return nil
+	}
+
+	healthy := client != nil && client.IsHealthy() && instance.IsActive
+
+	// Check for decryption errors
+	decryptionErrorInstances := m.clientPool.GetInstancesWithDecryptionErrors()
+	hasDecryptionError := slices.Contains(decryptionErrorInstances, instanceID)
+
+	meta := &qbittorrent.InstanceMeta{
+		Connected:          healthy,
+		HasDecryptionError: hasDecryptionError,
+	}
+
+	// Fetch recent errors for disconnected instances
+	if instance.IsActive && !healthy {
+		errorStore := m.clientPool.GetErrorStore()
+		if errorStore != nil {
+			recentErrors, err := errorStore.GetRecentErrors(ctx, instanceID, 5)
+			if err == nil && len(recentErrors) > 0 {
+				meta.RecentErrors = make([]qbittorrent.InstanceError, 0, len(recentErrors))
+				for _, e := range recentErrors {
+					meta.RecentErrors = append(meta.RecentErrors, qbittorrent.InstanceError{
+						ID:           e.ID,
+						InstanceID:   e.InstanceID,
+						ErrorType:    e.ErrorType,
+						ErrorMessage: e.ErrorMessage,
+						OccurredAt:   e.OccurredAt.Format(time.RFC3339),
+					})
+				}
+			}
+		}
+	}
+
+	return meta
 }
 
 func (m *StreamManager) getGroup(key string) *subscriptionGroup {

@@ -365,6 +365,13 @@ export interface TorrentFilters {
   expr?: string
 }
 
+// InstanceMeta provides real-time instance health via SSE, reducing need for polling
+export interface InstanceMeta {
+  connected: boolean
+  hasDecryptionError: boolean
+  recentErrors?: InstanceError[]
+}
+
 export interface TorrentResponse {
   torrents: Torrent[]
   crossInstanceTorrents?: CrossInstanceTorrent[]
@@ -382,6 +389,7 @@ export interface TorrentResponse {
   hasMore?: boolean
   trackerHealthSupported?: boolean
   isCrossInstance?: boolean
+  instanceMeta?: InstanceMeta  // Real-time instance health from SSE
 }
 
 export interface AddTorrentFailedURL {

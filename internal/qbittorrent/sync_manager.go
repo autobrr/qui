@@ -102,6 +102,23 @@ type CrossInstanceTorrentView struct {
 	InstanceName string `json:"instance_name"`
 }
 
+// InstanceMeta provides real-time instance connection status for SSE subscribers.
+// This allows the frontend to get instance health without separate polling.
+type InstanceMeta struct {
+	Connected          bool            `json:"connected"`
+	HasDecryptionError bool            `json:"hasDecryptionError"`
+	RecentErrors       []InstanceError `json:"recentErrors,omitempty"`
+}
+
+// InstanceError represents a recent error for an instance (mirrors models.InstanceError for SSE).
+type InstanceError struct {
+	ID           int    `json:"id"`
+	InstanceID   int    `json:"instanceId"`
+	ErrorType    string `json:"errorType"`
+	ErrorMessage string `json:"errorMessage"`
+	OccurredAt   string `json:"occurredAt"` // ISO8601 string for JSON
+}
+
 type TorrentResponse struct {
 	Torrents               []TorrentView              `json:"torrents"`
 	CrossInstanceTorrents  []CrossInstanceTorrentView `json:"cross_instance_torrents,omitempty"`
@@ -118,8 +135,9 @@ type TorrentResponse struct {
 	SessionID              string                     `json:"sessionId,omitempty"`   // Optional session tracking
 	CacheMetadata          *CacheMetadata             `json:"cacheMetadata,omitempty"`
 	TrackerHealthSupported bool                       `json:"trackerHealthSupported"`
-	IsCrossInstance        bool                       `json:"isCrossInstance"` // Whether this is a cross-instance response
-	PartialResults         bool                       `json:"partialResults"`  // Whether some instances failed to respond
+	IsCrossInstance        bool                       `json:"isCrossInstance"`        // Whether this is a cross-instance response
+	PartialResults         bool                       `json:"partialResults"`         // Whether some instances failed to respond
+	InstanceMeta           *InstanceMeta              `json:"instanceMeta,omitempty"` // Real-time instance health for SSE
 }
 
 // TorrentStats represents aggregated torrent statistics

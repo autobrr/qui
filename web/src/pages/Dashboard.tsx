@@ -43,6 +43,7 @@ import { copyTextToClipboard, formatBytes, getRatioColor } from "@/lib/utils"
 import type {
   CacheMetadata,
   DashboardSettings,
+  InstanceMeta,
   InstanceResponse,
   QBittorrentAppInfo,
   ServerState,
@@ -87,6 +88,7 @@ interface DashboardInstanceStats {
   streamConnected: boolean
   streamError: string | null
   cacheMetadata: CacheMetadata | null | undefined
+  instanceMeta: InstanceMeta | null  // Real-time instance health from SSE
 }
 
 type InstanceStreamData = {
@@ -100,6 +102,7 @@ type InstanceStreamData = {
   streamConnected: boolean
   streamError: string | null
   cacheMetadata: CacheMetadata | null | undefined
+  instanceMeta: InstanceMeta | null  // Real-time instance health from SSE
 }
 
 const createDefaultInstanceStreamData = (): InstanceStreamData => ({
@@ -113,6 +116,7 @@ const createDefaultInstanceStreamData = (): InstanceStreamData => ({
   streamConnected: false,
   streamError: null,
   cacheMetadata: null,
+  instanceMeta: null,
 })
 
 const STREAM_REFRESH_INTERVAL_MS = 2000
@@ -408,6 +412,7 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
             streamConnected: true,
             streamError: null,
             cacheMetadata: data.cacheMetadata ?? null,
+            instanceMeta: data.instanceMeta ?? current.instanceMeta,
           }
 
           return {
@@ -489,8 +494,19 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
   return instances.map<DashboardInstanceStats>((instance) => {
     const state = instanceData[instance.id] ?? createDefaultInstanceStreamData()
 
+    // Merge SSE instanceMeta into the instance object for real-time status updates
+    // This allows components to use SSE-based connection status instead of polled data
+    const mergedInstance: InstanceResponse = state.instanceMeta
+      ? {
+          ...instance,
+          connected: state.instanceMeta.connected,
+          hasDecryptionError: state.instanceMeta.hasDecryptionError,
+          recentErrors: state.instanceMeta.recentErrors,
+        }
+      : instance
+
     return {
-      instance,
+      instance: mergedInstance,
       stats: state.stats,
       serverState: state.serverState,
       torrentCounts: state.torrentCounts,
@@ -501,6 +517,7 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
       streamConnected: state.streamConnected,
       streamError: state.streamError,
       cacheMetadata: state.cacheMetadata,
+      instanceMeta: state.instanceMeta,
     }
   })
 }
