@@ -361,7 +361,8 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           entry.listeners.forEach(listener => listener(payload))
           notifyStateSubscribers(streamKey)
         } catch (err) {
-          console.error("Failed to parse SSE payload:", err, "raw data:", typeof event.data === "string" ? event.data.substring(0, 200) : event.data)
+          const rawData = "data" in event ? event.data : undefined
+          console.error("Failed to parse SSE payload:", err, "raw data:", typeof rawData === "string" ? rawData.substring(0, 200) : rawData)
         }
       }
 
