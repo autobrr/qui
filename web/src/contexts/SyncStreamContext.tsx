@@ -327,43 +327,54 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       closeConnection({ preserveRetry: true })
 
       const payloadHandler = (event: MessageEvent | Event) => {
-        try {
-          if (!("data" in event)) {
-            return
-          }
-          const rawData = typeof event.data === "string" ? event.data.trim() : ""
-          if (rawData.length === 0) {
-            return
-          }
-
-          const payload = JSON.parse(rawData) as TorrentStreamPayload
-          const streamKey = payload.meta?.streamKey
-          if (!streamKey) {
-            return
-          }
-
-          const entry = streamsRef.current[streamKey]
-          if (!entry) {
-            return
-          }
-
-          entry.lastMeta = payload.meta
-
-          if (payload.type === "stream-error" && payload.error) {
-            entry.error = payload.error
-            entry.connected = false
-          } else {
-            entry.error = null
-            entry.connected = true
-          }
-
-          clearHandoffState(entry)
-          entry.listeners.forEach(listener => listener(payload))
-          notifyStateSubscribers(streamKey)
-        } catch (err) {
-          const rawData = "data" in event ? event.data : undefined
-          console.error("Failed to parse SSE payload:", err, "raw data:", typeof rawData === "string" ? rawData.substring(0, 200) : rawData)
+        if (!("data" in event)) {
+          return
         }
+        const rawData = typeof event.data === "string" ? event.data.trim() : ""
+        if (rawData.length === 0) {
+          return
+        }
+
+        let payload: TorrentStreamPayload
+        try {
+          payload = JSON.parse(rawData) as TorrentStreamPayload
+        } catch (parseErr) {
+          console.error("Failed to parse SSE payload JSON:", parseErr, "raw data:", rawData.substring(0, 200))
+          return
+        }
+
+        const streamKey = payload.meta?.streamKey
+        if (!streamKey) {
+          return
+        }
+
+        const entry = streamsRef.current[streamKey]
+        if (!entry) {
+          return
+        }
+
+        entry.lastMeta = payload.meta
+
+        if (payload.type === "stream-error" && payload.error) {
+          entry.error = payload.error
+          entry.connected = false
+        } else {
+          entry.error = null
+          entry.connected = true
+        }
+
+        clearHandoffState(entry)
+
+        // Notify listeners with individual error handling to prevent one failure from affecting others
+        entry.listeners.forEach((listener, index) => {
+          try {
+            listener(payload)
+          } catch (listenerErr) {
+            console.error(`SSE listener #${index} for stream "${streamKey}" failed:`, listenerErr)
+          }
+        })
+
+        notifyStateSubscribers(streamKey)
       }
 
       const handleNetworkError = (_event?: Event) => {
@@ -787,9 +798,10 @@ export function createStreamKey(params: StreamParams): string {
       search: params.search ?? "",
       filters: params.filters ?? null,
     })
-  } catch {
-    // Fallback for non-serializable filters
-    return `${params.instanceId}-${params.page}-${params.limit}-${params.sort}-${params.order}`
+  } catch (err) {
+    // Fallback for non-serializable filters - log for debugging
+    console.error("Failed to serialize stream params, using degraded key:", err, params)
+    return `${params.instanceId}-${params.page}-${params.limit}-${params.sort}-${params.order}-${Date.now()}`
   }
 }
 

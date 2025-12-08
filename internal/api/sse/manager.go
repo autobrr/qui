@@ -5,6 +5,7 @@ package sse
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -63,7 +64,10 @@ type streamRequest struct {
 
 func streamOptionsKey(opts StreamOptions) string {
 	filtersKey := "__none__"
-	if raw, err := json.Marshal(opts.Filters); err == nil && len(raw) > 0 && string(raw) != "null" {
+	raw, err := json.Marshal(opts.Filters)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to marshal filter options for stream key; using fallback")
+	} else if len(raw) > 0 && string(raw) != "null" {
 		filtersKey = string(raw)
 	}
 
@@ -418,7 +422,13 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for instanceID := range instanceIDs {
-		if !m.instanceExists(r.Context(), instanceID) {
+		exists, err := m.instanceExists(r.Context(), instanceID)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to check instance existence")
+			http.Error(w, "failed to validate instance", http.StatusInternalServerError)
+			return
+		}
+		if !exists {
 			http.Error(w, "instance not found", http.StatusNotFound)
 			return
 		}
@@ -574,7 +584,7 @@ func (m *StreamManager) processGroup(groupKey string) {
 }
 
 func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, opts StreamOptions, eventType string, meta *StreamMeta) *StreamPayload {
-	if group == nil {
+	if group == nil || m.syncManager == nil {
 		return nil
 	}
 
@@ -782,8 +792,8 @@ func cloneMeta(meta *StreamMeta) *StreamMeta {
 	if meta == nil {
 		return nil
 	}
-	copy := *meta
-	return &copy
+	clone := *meta
+	return &clone
 }
 
 func clonePayloadForSubscriber(payload *StreamPayload, sub *subscriptionState) *StreamPayload {
@@ -1028,9 +1038,16 @@ func (m *StreamManager) publishHeartbeat(instanceID int) {
 	m.publishToInstance(instanceID, payload)
 }
 
-func (m *StreamManager) instanceExists(ctx context.Context, instanceID int) bool {
+func (m *StreamManager) instanceExists(ctx context.Context, instanceID int) (bool, error) {
 	_, err := m.instanceDB.Get(ctx, instanceID)
-	return err == nil
+	if err == nil {
+		return true, nil
+	}
+	// Distinguish between "not found" and actual database errors
+	if errors.Is(err, models.ErrInstanceNotFound) || errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return false, fmt.Errorf("failed to check instance existence: %w", err)
 }
 
 type streamRequestPayload struct {

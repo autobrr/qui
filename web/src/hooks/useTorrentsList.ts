@@ -363,7 +363,7 @@ export function useTorrentsList(
     }
 
     setIsLoadingMore(false)
-  }, [data, currentPage, lastProcessedPage, isFetching, isPlaceholderData, updateMetadataCache])
+  }, [data, currentPage, lastProcessedPage, isFetching, isPlaceholderData, updateAppInfoCache, updateMetadataCache])
 
   // Load more function for pagination - following TanStack Query best practices
   const loadMore = () => {
