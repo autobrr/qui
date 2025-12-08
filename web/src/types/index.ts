@@ -300,11 +300,54 @@ export interface CacheMetadata {
   nextRefresh?: string
 }
 
+export interface TrackerTransferStats {
+  uploaded: number
+  downloaded: number
+  totalSize: number
+  count: number
+}
+
+export interface TrackerCustomization {
+  id: number
+  displayName: string
+  domains: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface TrackerCustomizationInput {
+  displayName: string
+  domains: string[]
+}
+
+export interface DashboardSettings {
+  id: number
+  userId: number
+  sectionVisibility: Record<string, boolean>
+  sectionOrder: string[]
+  sectionCollapsed: Record<string, boolean>
+  trackerBreakdownSortColumn: string
+  trackerBreakdownSortDirection: string
+  trackerBreakdownItemsPerPage: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DashboardSettingsInput {
+  sectionVisibility?: Record<string, boolean>
+  sectionOrder?: string[]
+  sectionCollapsed?: Record<string, boolean>
+  trackerBreakdownSortColumn?: string
+  trackerBreakdownSortDirection?: string
+  trackerBreakdownItemsPerPage?: number
+}
+
 export interface TorrentCounts {
   status: Record<string, number>
   categories: Record<string, number>
   tags: Record<string, number>
   trackers: Record<string, number>
+  trackerTransfers?: Record<string, TrackerTransferStats>
   total: number
 }
 
@@ -983,6 +1026,11 @@ export interface TorznabIndexer {
   updated_at: string
 }
 
+/** Response from create/update indexer endpoints, may include warnings for partial failures */
+export interface IndexerResponse extends TorznabIndexer {
+  warnings?: string[]
+}
+
 export interface TorznabIndexerCategory {
   indexer_id: number
   category_id: number
@@ -1103,6 +1151,7 @@ export interface TorznabIndexerFormData {
   priority?: number
   timeout_seconds?: number
   capabilities?: string[]
+  categories?: TorznabIndexerCategory[]
 }
 
 export interface TorznabIndexerUpdate {
@@ -1115,6 +1164,7 @@ export interface TorznabIndexerUpdate {
   priority?: number
   timeout_seconds?: number
   capabilities?: string[]
+  categories?: TorznabIndexerCategory[]
 }
 
 export interface TorznabSearchRequest {
@@ -1202,6 +1252,7 @@ export interface JackettIndexer {
   configured: boolean
   backend?: "jackett" | "prowlarr" | "native"
   caps?: string[]
+  categories?: TorznabIndexerCategory[]
 }
 
 export interface DiscoverJackettRequest {
@@ -1211,6 +1262,7 @@ export interface DiscoverJackettRequest {
 
 export interface DiscoverJackettResponse {
   indexers: JackettIndexer[]
+  warnings?: string[]
 }
 
 export interface CrossSeedTorrentInfo {

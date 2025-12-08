@@ -2335,15 +2335,16 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	candidateFilesByHash := s.batchLoadCandidateFiles(ctx, candidate.InstanceID, candidate.Torrents)
-	matchedTorrent, candidateFiles, matchType := s.findBestCandidateMatch(ctx, candidate, sourceRelease, sourceFiles, req.IgnorePatterns, candidateFilesByHash)
+	matchedTorrent, candidateFiles, matchType, rejectReason := s.findBestCandidateMatch(ctx, candidate, sourceRelease, sourceFiles, req.IgnorePatterns, candidateFilesByHash)
 	if matchedTorrent == nil {
 		result.Status = "no_match"
-		result.Message = "No matching torrents found with required files"
+		result.Message = rejectReason
 
 		log.Debug().
 			Int("instanceID", candidate.InstanceID).
 			Str("instanceName", candidate.InstanceName).
 			Str("torrentHash", torrentHash).
+			Str("reason", rejectReason).
 			Msg("Cross-seed apply skipped: no best candidate match after file-level validation")
 
 		return result
@@ -2377,10 +2378,11 @@ func (s *Service) processCrossSeedCandidate(
 	// Check if source has extra files that won't exist on disk (e.g., NFO files not filtered by ignorePatterns)
 	hasExtraFiles := hasExtraSourceFiles(sourceFiles, candidateFiles)
 
-	// Skip checking for cross-seed adds when all files exist - the data is already verified by the
-	// matched torrent that's actively seeding. However, if source has extra files (like NFO) that
-	// don't exist in candidate, we need to let qBittorrent verify since those files are missing.
-	if !hasExtraFiles {
+	// Skip checking for cross-seed adds - the data is already verified by the matched torrent.
+	// We MUST use skip_checking when alignment (renames) is required, because qBittorrent blocks
+	// file rename operations while a torrent is being verified. The manual recheck triggered
+	// after alignment handles verification for both alignment and hasExtraFiles cases.
+	if !hasExtraFiles || requiresAlignment {
 		options["skip_checking"] = "true"
 	}
 
@@ -2416,30 +2418,40 @@ func (s *Service) processCrossSeedCandidate(
 	// Determine final category to apply (with optional .cross suffix for isolation)
 	baseCategory, crossCategory := s.determineCrossSeedCategory(ctx, req, matchedTorrent, nil)
 
-	// Determine the save_path for the cross-seed category
-	// Priority: base category's configured save_path > matched torrent's save_path
+	// Determine the SavePath for the cross-seed category.
+	// Priority: base category's configured SavePath > matched torrent's SavePath
+	// actualCategorySavePath tracks the category's real configured path (empty if none configured)
+	// categorySavePath includes the fallback to matched torrent's path for category creation
 	var categorySavePath string
+	var actualCategorySavePath string
+	var categoryCreationFailed bool
 	if crossCategory != "" {
-		// Try to get save_path from the base category definition in qBittorrent
+		// Try to get SavePath from the base category definition in qBittorrent
 		categories, catErr := s.syncManager.GetCategories(ctx, candidate.InstanceID)
+		if catErr != nil {
+			log.Debug().Err(catErr).Int("instanceID", candidate.InstanceID).
+				Msg("[CROSSSEED] Failed to fetch categories, falling back to torrent SavePath")
+		}
 		if catErr == nil && categories != nil {
 			if cat, exists := categories[baseCategory]; exists && cat.SavePath != "" {
 				categorySavePath = cat.SavePath
+				actualCategorySavePath = cat.SavePath
 			}
 		}
 
-		// Fallback to matched torrent's save_path if category has no explicit save_path
+		// Fallback to matched torrent's SavePath if category has no explicit SavePath
 		if categorySavePath == "" {
 			categorySavePath = props.SavePath
 		}
 
-		// Ensure the cross-seed category exists with the correct save_path
+		// Ensure the cross-seed category exists with the correct SavePath
 		if err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath); err != nil {
 			log.Warn().Err(err).
 				Str("category", crossCategory).
 				Str("savePath", categorySavePath).
 				Msg("[CROSSSEED] Failed to ensure category exists, continuing without category")
-			crossCategory = "" // Clear category to proceed without it
+			crossCategory = ""            // Clear category to proceed without it
+			categoryCreationFailed = true // Track for result message
 		}
 	}
 
@@ -2499,28 +2511,88 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Determine save path strategy:
-	// - For partial-in-pack (episode into season pack): use explicit ContentPath, TMM off
-	// - For UseCategoryFromIndexer: always explicit path (indexer category may have different save_path)
-	// - For categories with TMM-enabled source: let TMM handle it
-	// - Otherwise: use explicit save path
+	// Cross-seeding should use the matched torrent's SavePath to avoid relocating files.
+	// Auto Torrent Management (autoTMM) can only be enabled when the category has an explicitly
+	// configured SavePath that matches the matched torrent's SavePath, otherwise qBittorrent
+	// will relocate files to the category path.
+	//
+	// hasValidSavePath tracks whether we have a valid path (via autoTMM or explicit savepath option).
+	// If false, we should not add the torrent as qBittorrent would use its default location
+	// and fail to find the existing files for cross-seeding.
+
+	// Fail early for episode-in-pack if ContentPath is missing
+	if isEpisodeInPack && matchedTorrent.ContentPath == "" {
+		result.Status = "invalid_content_path"
+		result.Message = fmt.Sprintf("Episode-in-pack match but matched torrent has no ContentPath (matchedHash=%s). This may indicate the matched torrent is incomplete or was added without proper metadata.", matchedTorrent.Hash)
+		log.Error().
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentHash", torrentHash).
+			Str("matchedHash", matchedTorrent.Hash).
+			Str("matchedName", matchedTorrent.Name).
+			Bool("isEpisodeInPack", isEpisodeInPack).
+			Msg("[CROSSSEED] Episode-in-pack match but matched torrent has no ContentPath - refusing to add")
+		return result
+	}
+
+	var hasValidSavePath bool
 	if isEpisodeInPack && matchedTorrent.ContentPath != "" {
-		// Episode into season pack: use the season pack's content path explicitly
+		// Episode into season pack: use the season pack's ContentPath explicitly.
+		// ContentPath points to the season pack folder (e.g., /downloads/tv/Show.Name/Season.01/)
+		// whereas SavePath only points to the parent directory (e.g., /downloads/tv/Show.Name/)
 		options["autoTMM"] = "false"
 		options["savepath"] = matchedTorrent.ContentPath
-	} else if crossCategory != "" && matchedTorrent.AutoManaged && !useCategoryFromIndexer {
-		// Category assigned, source uses TMM, not using indexer category: let TMM handle it
-		options["autoTMM"] = "true"
+		hasValidSavePath = true
 	} else {
-		// No category, source doesn't use TMM, or using indexer category - use explicit save path
-		options["autoTMM"] = "false"
-		savePath := categorySavePath
+		// Use the matched torrent's SavePath (base storage directory)
+		// Fall back to category path only if matched torrent has no SavePath
+		savePath := props.SavePath
 		if savePath == "" {
-			savePath = props.SavePath
+			savePath = categorySavePath
 		}
-		if savePath != "" {
-			options["savepath"] = savePath
+
+		// Evaluate whether autoTMM should be enabled
+		tmmDecision := shouldEnableAutoTMM(crossCategory, matchedTorrent.AutoManaged, useCategoryFromIndexer, actualCategorySavePath, props.SavePath)
+
+		log.Debug().
+			Bool("enabled", tmmDecision.Enabled).
+			Str("crossCategory", tmmDecision.CrossCategory).
+			Bool("matchedAutoManaged", tmmDecision.MatchedAutoManaged).
+			Bool("useIndexerCategory", tmmDecision.UseIndexerCategory).
+			Str("categorySavePath", tmmDecision.CategorySavePath).
+			Str("matchedSavePath", tmmDecision.MatchedSavePath).
+			Bool("pathsMatch", tmmDecision.PathsMatch).
+			Msg("[CROSSSEED] autoTMM decision factors")
+
+		if tmmDecision.Enabled {
+			options["autoTMM"] = "true"
+			hasValidSavePath = true
+		} else {
+			options["autoTMM"] = "false"
+			if savePath != "" {
+				options["savepath"] = savePath
+				hasValidSavePath = true
+			}
 		}
 	}
+
+	// Fail early if no valid save path - don't add orphaned torrents
+	if !hasValidSavePath {
+		result.Status = "no_save_path"
+		result.Message = fmt.Sprintf("No valid save path available. Ensure the matched torrent has a SavePath or the category has an explicit SavePath configured. (matchedSavePath=%q, categorySavePath=%q)", props.SavePath, categorySavePath)
+		log.Warn().
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentName", torrentName).
+			Str("torrentHash", torrentHash).
+			Str("matchedName", matchedTorrent.Name).
+			Str("matchedHash", matchedTorrent.Hash).
+			Str("propsSavePath", props.SavePath).
+			Str("categorySavePath", categorySavePath).
+			Str("crossCategory", crossCategory).
+			Bool("isEpisodeInPack", isEpisodeInPack).
+			Msg("[CROSSSEED] No valid save path available, refusing to add torrent")
+		return result
+	}
+
 	log.Debug().
 		Int("instanceID", candidate.InstanceID).
 		Str("torrentName", torrentName).
@@ -2530,6 +2602,8 @@ func (s *Service) processCrossSeedCandidate(
 		Str("autoTMM", options["autoTMM"]).
 		Str("matchedTorrent", matchedTorrent.Name).
 		Bool("isEpisodeInPack", isEpisodeInPack).
+		Bool("hasValidSavePath", hasValidSavePath).
+		Bool("categoryCreationFailed", categoryCreationFailed).
 		Msg("[CROSSSEED] Adding cross-seed torrent")
 
 	// Add the torrent
@@ -2555,22 +2629,31 @@ func (s *Service) processCrossSeedCandidate(
 			return result
 		}
 
-		result.Message = fmt.Sprintf("Added torrent with recheck (match: %s, category: %s)", matchType, crossCategory)
+		if categoryCreationFailed {
+			result.Message = fmt.Sprintf("Added torrent with recheck WITHOUT category isolation (match: %s)", matchType)
+		} else {
+			result.Message = fmt.Sprintf("Added torrent with recheck (match: %s, category: %s)", matchType, crossCategory)
+		}
 		log.Debug().
 			Int("instanceID", candidate.InstanceID).
 			Str("instanceName", candidate.InstanceName).
 			Msg("Successfully added cross-seed torrent with recheck")
 	} else {
-		result.Message = fmt.Sprintf("Added torrent paused (match: %s, category: %s)", matchType, crossCategory)
+		if categoryCreationFailed {
+			result.Message = fmt.Sprintf("Added torrent paused WITHOUT category isolation (match: %s)", matchType)
+		} else {
+			result.Message = fmt.Sprintf("Added torrent paused (match: %s, category: %s)", matchType, crossCategory)
+		}
 	}
 
 	// Attempt to align the new torrent's naming and file layout with the matched torrent
-	s.alignCrossSeedContentPaths(ctx, candidate.InstanceID, torrentHash, torrentName, matchedTorrent, sourceFiles, candidateFiles)
+	alignmentSucceeded := s.alignCrossSeedContentPaths(ctx, candidate.InstanceID, torrentHash, torrentName, matchedTorrent, sourceFiles, candidateFiles)
 
 	// Determine if we need to wait for verification and resume at threshold:
 	// - requiresAlignment: we used skip_checking but need to recheck after renaming paths
 	// - hasExtraFiles: we didn't use skip_checking, qBittorrent auto-verifies, but won't reach 100%
-	needsRecheckAndResume := requiresAlignment || hasExtraFiles
+	// - alignmentSucceeded: only proceed if alignment worked (or wasn't needed)
+	needsRecheckAndResume := (requiresAlignment || hasExtraFiles) && alignmentSucceeded
 
 	if needsRecheckAndResume {
 		// Trigger manual recheck for both alignment and hasExtraFiles cases.
@@ -2581,11 +2664,13 @@ func (s *Service) processCrossSeedCandidate(
 				Err(err).
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
-				Msg("Failed to trigger recheck after add")
+				Msg("Failed to trigger recheck after add, skipping auto-resume")
+			result.Message = result.Message + " - recheck failed, manual intervention required"
+		} else {
+			// Only queue for background resume if recheck was successfully triggered
+			s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash)
 		}
-		// Queue for background resume when recheck completes
-		s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash)
-	} else if startPaused {
+	} else if startPaused && alignmentSucceeded {
 		// Perfect match: skip_checking=true, no alignment needed, torrent is at 100%
 		// Resume immediately since there's nothing to wait for
 		if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "resume"); err != nil {
@@ -2594,7 +2679,26 @@ func (s *Service) processCrossSeedCandidate(
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
 				Msg("Failed to resume cross-seed torrent after add")
+			// Update message to indicate manual resume needed
+			result.Message = result.Message + " - auto-resume failed, manual resume required"
 		}
+	} else if !alignmentSucceeded {
+		// Alignment failed - pause torrent to prevent unwanted downloads
+		if !startPaused {
+			// Torrent was added running - need to actually pause it
+			if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "pause"); err != nil {
+				log.Warn().
+					Err(err).
+					Int("instanceID", candidate.InstanceID).
+					Str("torrentHash", torrentHash).
+					Msg("Failed to pause misaligned cross-seed torrent")
+			}
+		}
+		result.Message = result.Message + " - alignment failed, left paused"
+		log.Warn().
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentHash", torrentHash).
+			Msg("Cross-seed alignment failed, leaving torrent paused to prevent download")
 	}
 	result.Success = true
 	result.Status = "added"
@@ -2994,22 +3098,25 @@ func (s *Service) findBestCandidateMatch(
 	sourceFiles qbt.TorrentFiles,
 	ignorePatterns []string,
 	filesByHash map[string]qbt.TorrentFiles,
-) (*qbt.Torrent, qbt.TorrentFiles, string) {
+) (*qbt.Torrent, qbt.TorrentFiles, string, string) {
 	var (
-		matchedTorrent *qbt.Torrent
-		candidateFiles qbt.TorrentFiles
-		matchType      string
-		bestScore      int
-		bestHasRoot    bool
-		bestFileCount  int
+		matchedTorrent   *qbt.Torrent
+		candidateFiles   qbt.TorrentFiles
+		matchType        string
+		bestScore        int
+		bestHasRoot      bool
+		bestFileCount    int
+		bestRejectReason string // Track the most informative rejection reason
 	)
 
 	if len(filesByHash) == 0 {
-		return nil, nil, ""
+		return nil, nil, "", "No candidate torrents with files to match against"
 	}
 
+	incompleteTorrents := 0
 	for _, torrent := range candidate.Torrents {
 		if torrent.Progress < 1.0 {
+			incompleteTorrents++
 			continue
 		}
 
@@ -3022,12 +3129,16 @@ func (s *Service) findBestCandidateMatch(
 		candidateRelease := s.releaseCache.Parse(torrent.Name)
 		// Swap parameter order: check if EXISTING files (files) are contained in NEW files (sourceFiles)
 		// This matches the search behavior where we found "partial-in-pack" (existing mkv in new mkv+nfo)
-		candidateMatchType := s.getMatchType(candidateRelease, sourceRelease, files, sourceFiles, ignorePatterns)
-		if candidateMatchType == "" {
+		matchResult := s.getMatchTypeWithReason(candidateRelease, sourceRelease, files, sourceFiles, ignorePatterns)
+		if matchResult.MatchType == "" {
+			// Track the rejection reason - prefer more specific reasons
+			if matchResult.Reason != "" && (bestRejectReason == "" || len(matchResult.Reason) > len(bestRejectReason)) {
+				bestRejectReason = matchResult.Reason
+			}
 			continue
 		}
 
-		score := matchTypePriority(candidateMatchType)
+		score := matchTypePriority(matchResult.MatchType)
 		if score == 0 {
 			// Layout checks can still return named match types (e.g. "partial-contains")
 			// that we never want to use for apply, so priority 0 acts as a hard reject.
@@ -3052,14 +3163,23 @@ func (s *Service) findBestCandidateMatch(
 			copyTorrent := torrent
 			matchedTorrent = &copyTorrent
 			candidateFiles = files
-			matchType = candidateMatchType
+			matchType = matchResult.MatchType
 			bestScore = score
 			bestHasRoot = hasRootFolder
 			bestFileCount = fileCount
 		}
 	}
 
-	return matchedTorrent, candidateFiles, matchType
+	// If no match found, provide helpful context
+	if matchedTorrent == nil && bestRejectReason == "" {
+		if incompleteTorrents > 0 && incompleteTorrents == len(candidate.Torrents) {
+			bestRejectReason = "All candidate torrents are incomplete (still downloading)"
+		} else {
+			bestRejectReason = "No matching torrents found with required files"
+		}
+	}
+
+	return matchedTorrent, candidateFiles, matchType, bestRejectReason
 }
 
 // decodeTorrentData decodes base64-encoded torrent data
@@ -6266,6 +6386,42 @@ func (s *Service) isSizeWithinTolerance(sourceSize, candidateSize int64, toleran
 	return candidateSizeFloat >= minAcceptableSize && candidateSizeFloat <= maxAcceptableSize
 }
 
+// autoTMMDecision holds the inputs and result of autoTMM evaluation for logging.
+type autoTMMDecision struct {
+	Enabled            bool
+	CrossCategory      string
+	MatchedAutoManaged bool
+	UseIndexerCategory bool
+	CategorySavePath   string
+	MatchedSavePath    string
+	PathsMatch         bool
+}
+
+// shouldEnableAutoTMM determines whether Auto Torrent Management should be enabled.
+// autoTMM can only be enabled when:
+// - A cross-seed category was successfully created (crossCategory != "")
+// - The matched torrent uses autoTMM
+// - Not using indexer categories (which may have different paths)
+// - The category has an explicitly configured SavePath that matches the matched torrent's SavePath
+//
+// Returns the decision struct for logging and whether autoTMM should be enabled.
+func shouldEnableAutoTMM(crossCategory string, matchedAutoManaged bool, useCategoryFromIndexer bool, actualCategorySavePath string, matchedSavePath string) autoTMMDecision {
+	pathsMatch := actualCategorySavePath != "" && matchedSavePath != "" &&
+		normalizePath(actualCategorySavePath) == normalizePath(matchedSavePath)
+
+	enabled := crossCategory != "" && matchedAutoManaged && !useCategoryFromIndexer && pathsMatch
+
+	return autoTMMDecision{
+		Enabled:            enabled,
+		CrossCategory:      crossCategory,
+		MatchedAutoManaged: matchedAutoManaged,
+		UseIndexerCategory: useCategoryFromIndexer,
+		CategorySavePath:   actualCategorySavePath,
+		MatchedSavePath:    matchedSavePath,
+		PathsMatch:         pathsMatch,
+	}
+}
+
 // normalizePath normalizes a file path for comparison by:
 // - Converting backslashes to forward slashes
 // - Removing trailing slashes
@@ -6373,31 +6529,6 @@ func (s *Service) determineCrossSeedCategory(ctx context.Context, req *CrossSeed
 	}
 
 	return matchedCategory, applySuffix(matchedCategory)
-}
-
-// shouldUseTMM determines whether to use qBittorrent's Automatic Torrent Management for a cross-seed.
-// Returns true only when all conditions are met:
-//   - A category is being assigned
-//   - Not an episode matched to a season pack (needs explicit content path)
-//   - The matched torrent has TMM enabled (respects user's path management choice)
-//   - UseCategoryFromIndexer is NOT enabled (indexer categories may have different save paths)
-//
-// When this returns false, the caller should use an explicit save path from the matched torrent
-// to ensure the cross-seed lands where the files actually exist.
-func shouldUseTMM(category string, isEpisodeInPack, matchedAutoManaged, useCategoryFromIndexer bool) bool {
-	if category == "" {
-		return false
-	}
-	if isEpisodeInPack {
-		return false
-	}
-	if !matchedAutoManaged {
-		return false
-	}
-	if useCategoryFromIndexer {
-		return false
-	}
-	return true
 }
 
 // buildCrossSeedTags merges source-specific tags with optional matched torrent tags.

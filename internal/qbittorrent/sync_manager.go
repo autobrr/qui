@@ -1823,13 +1823,22 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 	return enriched, trackerMap, remaining
 }
 
+// TrackerTransferStats holds aggregated upload/download stats for a tracker domain
+type TrackerTransferStats struct {
+	Uploaded   int64 `json:"uploaded"`
+	Downloaded int64 `json:"downloaded"`
+	TotalSize  int64 `json:"totalSize"`
+	Count      int   `json:"count"`
+}
+
 // TorrentCounts represents counts for filtering sidebar
 type TorrentCounts struct {
-	Status     map[string]int `json:"status"`
-	Categories map[string]int `json:"categories"`
-	Tags       map[string]int `json:"tags"`
-	Trackers   map[string]int `json:"trackers"`
-	Total      int            `json:"total"`
+	Status           map[string]int                  `json:"status"`
+	Categories       map[string]int                  `json:"categories"`
+	Tags             map[string]int                  `json:"tags"`
+	Trackers         map[string]int                  `json:"trackers"`
+	TrackerTransfers map[string]TrackerTransferStats `json:"trackerTransfers,omitempty"`
+	Total            int                             `json:"total"`
 }
 
 // InstanceSpeeds represents download/upload speeds for an instance
@@ -2092,12 +2101,39 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 		}
 
 		var domainsToClear []string
-		// Convert sets to counts, pruning empty domains that remain only due to exclusions
+		// Convert sets to counts and aggregate transfer stats, pruning empty domains
+		counts.TrackerTransfers = make(map[string]TrackerTransferStats, len(trackerDomainCounts))
 		for domain, hashSet := range trackerDomainCounts {
 			if len(hashSet) == 0 {
 				continue
 			}
 			counts.Trackers[domain] = len(hashSet)
+
+			// aggregate upload/download/size for this domain
+			var uploaded, downloaded, totalSize int64
+			var missingCount int
+			for hash := range hashSet {
+				if torrent, ok := torrentMap[hash]; ok {
+					uploaded += torrent.Uploaded
+					downloaded += torrent.Downloaded
+					totalSize += torrent.Size
+				} else {
+					missingCount++
+				}
+			}
+			if missingCount > 0 {
+				log.Debug().
+					Str("domain", domain).
+					Int("missing", missingCount).
+					Int("total", len(hashSet)).
+					Msg("tracker stats aggregation skipped missing torrents")
+			}
+			counts.TrackerTransfers[domain] = TrackerTransferStats{
+				Uploaded:   uploaded,
+				Downloaded: downloaded,
+				TotalSize:  totalSize,
+				Count:      len(hashSet),
+			}
 		}
 
 		// If the domain disappeared entirely after exclusions, clear the override so future syncs don't skip it unnecessarily
