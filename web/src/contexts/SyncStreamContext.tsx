@@ -612,6 +612,41 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
     }
   }, [closeConnection])
 
+  // Reconnect when tab becomes visible again
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") {
+        return
+      }
+
+      const connection = connectionRef.current
+      const hasStreams = Object.keys(streamsRef.current).length > 0
+
+      if (!hasStreams) {
+        return
+      }
+
+      // Check if connection is dead or disconnected
+      const source = connection.source
+      const isDisconnected = !source || source.readyState === EventSource.CLOSED
+
+      if (isDisconnected) {
+        // Reset retry state and force immediate reconnection
+        clearConnectionRetryState()
+        ensureConnection({ preserveState: false, resetRetry: true })
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [clearConnectionRetryState, ensureConnection])
+
   useEffect(() => {
     return () => {
       const pending = pendingConnectionUpdateRef.current
