@@ -1684,6 +1684,56 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		}
 	}
 
+	// Fallback for UNIT3D and similar trackers: check if torrent URL exists in comments.
+	// UNIT3D torrents include the source URL in the comment field (e.g., "https://seedpool.org/torrents/607803").
+	// The GUID from RSS is typically this same URL, so we can match without needing infohash.
+	if commentURL := extractTorrentURLForCommentMatch(result.GUID, result.InfoURL); commentURL != "" {
+		allExist := true
+		var existingResults []models.CrossSeedRunResult
+
+		for _, candidate := range candidatesResp.Candidates {
+			found := false
+			var matchedTorrent *qbt.Torrent
+
+			for i := range candidate.Torrents {
+				t := &candidate.Torrents[i]
+				if t.Comment != "" && strings.Contains(t.Comment, commentURL) {
+					found = true
+					matchedTorrent = t
+					break
+				}
+			}
+
+			if found && matchedTorrent != nil {
+				existingResults = append(existingResults, models.CrossSeedRunResult{
+					InstanceID:         candidate.InstanceID,
+					InstanceName:       candidate.InstanceName,
+					Success:            false,
+					Status:             "exists",
+					Message:            "Torrent already exists (comment URL pre-check)",
+					MatchedTorrentHash: func() *string { h := matchedTorrent.Hash; return &h }(),
+					MatchedTorrentName: func() *string { n := matchedTorrent.Name; return &n }(),
+				})
+			} else {
+				allExist = false
+				break
+			}
+		}
+
+		if allExist && len(existingResults) > 0 {
+			run.TorrentsSkipped += len(existingResults)
+			run.Results = append(run.Results, existingResults...)
+
+			log.Debug().
+				Str("title", result.Title).
+				Str("commentURL", commentURL).
+				Int("instances", len(existingResults)).
+				Msg("[RSS] Skipped download - torrent already exists on all candidate instances (comment URL pre-check)")
+
+			return models.CrossSeedFeedItemStatusProcessed, nil, nil
+		}
+	}
+
 	torrentBytes, err := s.downloadTorrent(ctx, jackett.TorrentDownloadRequest{
 		IndexerID:   result.IndexerID,
 		DownloadURL: result.DownloadURL,
@@ -7371,4 +7421,49 @@ func wrapCrossSeedSearchError(err error) error {
 	}
 
 	return fmt.Errorf("torznab search failed: %w", err)
+}
+
+// extractTorrentURLForCommentMatch extracts a torrent URL suitable for matching against
+// torrent comments. UNIT3D and similar trackers embed the source URL in the torrent's
+// comment field. Returns empty string if no suitable URL pattern is found.
+//
+// Supported patterns:
+//   - https://seedpool.org/torrents/607803
+//   - https://beyond-hd.me/details/500790
+//   - https://aither.cc/torrents/318093
+//   - https://blutopia.cc/torrents/294836
+func extractTorrentURLForCommentMatch(guid, infoURL string) string {
+	// Try GUID first (typically the details URL for UNIT3D)
+	if url := parseTorrentDetailsURL(guid); url != "" {
+		return url
+	}
+
+	// Fall back to InfoURL
+	if url := parseTorrentDetailsURL(infoURL); url != "" {
+		return url
+	}
+
+	return ""
+}
+
+// parseTorrentDetailsURL checks if the URL looks like a tracker torrent details page
+// and returns it normalized for comment matching.
+func parseTorrentDetailsURL(rawURL string) string {
+	if rawURL == "" {
+		return ""
+	}
+
+	// Must be HTTPS URL
+	if !strings.HasPrefix(rawURL, "https://") {
+		return ""
+	}
+
+	// Check for common torrent details URL patterns:
+	// - /torrents/ID (UNIT3D style)
+	// - /details/ID (BHD style)
+	if strings.Contains(rawURL, "/torrents/") || strings.Contains(rawURL, "/details/") {
+		return rawURL
+	}
+
+	return ""
 }

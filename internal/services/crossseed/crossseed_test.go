@@ -3279,3 +3279,74 @@ func TestRecoverErroredTorrents_EmptyList(t *testing.T) {
 	// Should not have made any calls
 	assert.Empty(t, mockSync.calls)
 }
+
+func TestExtractTorrentURLForCommentMatch(t *testing.T) {
+	tests := []struct {
+		name     string
+		guid     string
+		infoURL  string
+		expected string
+	}{
+		{
+			name:     "UNIT3D style URL in GUID",
+			guid:     "https://seedpool.org/torrents/607803",
+			infoURL:  "",
+			expected: "https://seedpool.org/torrents/607803",
+		},
+		{
+			name:     "BHD style URL in GUID",
+			guid:     "https://beyond-hd.me/details/500790",
+			infoURL:  "",
+			expected: "https://beyond-hd.me/details/500790",
+		},
+		{
+			name:     "Aither URL",
+			guid:     "https://aither.cc/torrents/318093",
+			infoURL:  "",
+			expected: "https://aither.cc/torrents/318093",
+		},
+		{
+			name:     "Blutopia URL",
+			guid:     "https://blutopia.cc/torrents/294836",
+			infoURL:  "",
+			expected: "https://blutopia.cc/torrents/294836",
+		},
+		{
+			name:     "Falls back to InfoURL when GUID empty",
+			guid:     "",
+			infoURL:  "https://seedpool.org/torrents/123456",
+			expected: "https://seedpool.org/torrents/123456",
+		},
+		{
+			name:     "Falls back to InfoURL when GUID not a torrent URL",
+			guid:     "some-random-guid-12345",
+			infoURL:  "https://seedpool.org/torrents/123456",
+			expected: "https://seedpool.org/torrents/123456",
+		},
+		{
+			name:     "HTTP URL rejected",
+			guid:     "http://seedpool.org/torrents/607803",
+			infoURL:  "",
+			expected: "",
+		},
+		{
+			name:     "Non-torrent URL rejected",
+			guid:     "https://example.com/page/123",
+			infoURL:  "",
+			expected: "",
+		},
+		{
+			name:     "Empty inputs",
+			guid:     "",
+			infoURL:  "",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractTorrentURLForCommentMatch(tt.guid, tt.infoURL)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
