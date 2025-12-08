@@ -159,3 +159,154 @@ func TestReleasesMatch_DateBasedReleasesRequireExactDate(t *testing.T) {
 	require.True(t, s.releasesMatch(&yearOnly, &anotherYearOnly, false),
 		"year-only releases should match when year is same")
 }
+
+func TestNormalizeTitleForComparison(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"lowercase", "MIKE'S TACOS", "mikes tacos"},
+		{"apostrophe", "Mike's Tacos", "mikes tacos"},
+		{"curly apostrophe right", "Don't Stop", "dont stop"},
+		{"curly apostrophe left", "It's Fine", "its fine"},
+		{"backtick", "Rock`n Roll", "rockn roll"},
+		{"colon", "City: Downtown", "city downtown"},
+		{"hyphen to space", "Laser-Cat", "laser cat"},
+		{"multiple hyphens", "Up-And-Away", "up and away"},
+		{"mixed punctuation", "Jake's Place: Season 1", "jakes place season 1"},
+		{"extra spaces collapsed", "The   Show", "the show"},
+		{"trim whitespace", "  Trimmed  ", "trimmed"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := normalizeTitleForComparison(tt.input)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestReleasesMatch_PunctuationVariations(t *testing.T) {
+	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	tests := []struct {
+		name        string
+		source      rls.Release
+		candidate   rls.Release
+		wantMatch   bool
+		description string
+	}{
+		{
+			name: "apostrophe vs no apostrophe TV",
+			source: rls.Release{
+				Title:  "Mike's Tacos",
+				Series: 1,
+				Source: "WEB-DL",
+				Group:  "GROUP",
+			},
+			candidate: rls.Release{
+				Title:  "Mikes Tacos",
+				Series: 1,
+				Source: "WEB-DL",
+				Group:  "GROUP",
+			},
+			wantMatch:   true,
+			description: "apostrophe should be stripped - 'Mike's' matches 'Mikes'",
+		},
+		{
+			name: "colon vs no colon TV",
+			source: rls.Release{
+				Title:  "City: Downtown",
+				Series: 1,
+				Source: "WEB-DL",
+				Group:  "GROUP",
+			},
+			candidate: rls.Release{
+				Title:  "City Downtown",
+				Series: 1,
+				Source: "WEB-DL",
+				Group:  "GROUP",
+			},
+			wantMatch:   true,
+			description: "colon should be stripped - 'City: Downtown' matches 'City Downtown'",
+		},
+		{
+			name: "hyphen vs space TV",
+			source: rls.Release{
+				Title:  "Laser-Cat",
+				Series: 1,
+				Source: "WEB-DL",
+				Group:  "GROUP",
+			},
+			candidate: rls.Release{
+				Title:  "Laser Cat",
+				Series: 1,
+				Source: "WEB-DL",
+				Group:  "GROUP",
+			},
+			wantMatch:   true,
+			description: "hyphen should become space - 'Laser-Cat' matches 'Laser Cat'",
+		},
+		{
+			name: "unicode curly apostrophe TV",
+			source: rls.Release{
+				Title:  "Can't Stop Now",
+				Series: 1,
+				Source: "WEB-DL",
+				Group:  "GROUP",
+			},
+			candidate: rls.Release{
+				Title:  "Cant Stop Now",
+				Series: 1,
+				Source: "WEB-DL",
+				Group:  "GROUP",
+			},
+			wantMatch:   true,
+			description: "curly apostrophe should be stripped",
+		},
+		{
+			name: "apostrophe vs no apostrophe non-TV movie",
+			source: rls.Release{
+				Title: "Jake's Adventure",
+				Year:  2024,
+				Type:  rls.Movie,
+				Group: "GROUP",
+			},
+			candidate: rls.Release{
+				Title: "Jakes Adventure",
+				Year:  2024,
+				Type:  rls.Movie,
+				Group: "GROUP",
+			},
+			wantMatch:   true,
+			description: "non-TV should also match with punctuation normalization",
+		},
+		{
+			name: "completely different titles should not match",
+			source: rls.Release{
+				Title:  "Space Adventures",
+				Series: 1,
+				Group:  "GROUP",
+			},
+			candidate: rls.Release{
+				Title:  "Ocean Mysteries",
+				Series: 1,
+				Group:  "GROUP",
+			},
+			wantMatch:   false,
+			description: "different titles should still not match",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := s.releasesMatch(&tt.source, &tt.candidate, false)
+			if tt.wantMatch {
+				require.True(t, result, tt.description)
+			} else {
+				require.False(t, result, tt.description)
+			}
+		})
+	}
+}
