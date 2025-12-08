@@ -80,6 +80,11 @@ func streamOptionsKey(opts StreamOptions) string {
 }
 
 // StreamManager owns the SSE server and keeps subscriptions in sync with qBittorrent updates.
+//
+// Lock hierarchy (acquire in this order to prevent deadlock):
+//  1. m.mu (StreamManager.mu) - protects subscriptions, groups, loops
+//  2. group.mu (subscriptionGroup.mu) - protects pending queue state
+//  3. group.subsMu (subscriptionGroup.subsMu) - protects subscriber list
 type StreamManager struct {
 	server      *sse.Server
 	clientPool  *qbittorrent.ClientPool
@@ -623,7 +628,10 @@ func (m *StreamManager) buildInstanceMeta(ctx context.Context, instanceID int) *
 	}
 
 	// Check client health
-	client, _ := m.clientPool.GetClientOffline(ctx, instanceID)
+	client, clientErr := m.clientPool.GetClientOffline(ctx, instanceID)
+	if clientErr != nil {
+		log.Debug().Err(clientErr).Int("instanceID", instanceID).Msg("Failed to get client for instance meta")
+	}
 
 	// Get instance to check if it's active
 	instance, err := m.instanceDB.Get(ctx, instanceID)
@@ -647,7 +655,9 @@ func (m *StreamManager) buildInstanceMeta(ctx context.Context, instanceID int) *
 		errorStore := m.clientPool.GetErrorStore()
 		if errorStore != nil {
 			recentErrors, err := errorStore.GetRecentErrors(ctx, instanceID, 5)
-			if err == nil && len(recentErrors) > 0 {
+			if err != nil {
+				log.Debug().Err(err).Int("instanceID", instanceID).Msg("Failed to fetch recent errors for instance meta")
+			} else if len(recentErrors) > 0 {
 				meta.RecentErrors = make([]qbittorrent.InstanceError, 0, len(recentErrors))
 				for _, e := range recentErrors {
 					meta.RecentErrors = append(meta.RecentErrors, qbittorrent.InstanceError{
@@ -942,12 +952,12 @@ func (m *StreamManager) forceSync(instanceID int) {
 
 	syncMgr, err := m.syncManager.GetQBittorrentSyncManager(ctx, instanceID)
 	if err != nil {
-		log.Debug().Err(err).Int("instanceID", instanceID).Msg("Failed to get qBittorrent sync manager for SSE loop")
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get qBittorrent sync manager for SSE loop")
 		return
 	}
 
 	if err := syncMgr.Sync(ctx); err != nil {
-		log.Debug().Err(err).Int("instanceID", instanceID).Msg("Failed to force sync during SSE loop")
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to force sync during SSE loop")
 	}
 }
 

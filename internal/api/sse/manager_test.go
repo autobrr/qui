@@ -309,7 +309,7 @@ func newTestInstanceStore(t *testing.T) (*models.InstanceStore, func()) {
 			FOREIGN KEY (basic_username_id) REFERENCES string_pool(id)
 		);`,
 		`CREATE VIEW instances_view AS
-			SELECT 
+			SELECT
 				i.id,
 				sp_name.value AS name,
 				sp_host.value AS host,
@@ -342,4 +342,95 @@ func newTestInstanceStore(t *testing.T) (*models.InstanceStore, func()) {
 	require.NoError(t, err, "failed to create instance store")
 
 	return store, cleanup
+}
+
+func TestMarkSyncFailure_ExponentialBackoff(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+
+	// First failure: 2s * 2^1 = 4s
+	interval1 := manager.markSyncFailure(1)
+	require.Equal(t, 4*time.Second, interval1, "first failure should yield 4s interval")
+
+	// Second failure: 2s * 2^2 = 8s
+	interval2 := manager.markSyncFailure(1)
+	require.Equal(t, 8*time.Second, interval2, "second failure should yield 8s interval")
+
+	// Third failure: 2s * 2^3 = 16s
+	interval3 := manager.markSyncFailure(1)
+	require.Equal(t, 16*time.Second, interval3, "third failure should yield 16s interval")
+
+	// Fourth failure: 2s * 2^4 = 32s -> capped to 30s
+	interval4 := manager.markSyncFailure(1)
+	require.Equal(t, 30*time.Second, interval4, "fourth failure should yield 30s (capped)")
+
+	// Fifth failure: still capped at 30s
+	interval5 := manager.markSyncFailure(1)
+	require.Equal(t, 30*time.Second, interval5, "fifth failure should still be 30s (capped)")
+
+	// Verify internal state
+	state := manager.syncBackoff[1]
+	require.Equal(t, 5, state.attempt, "attempt counter should be 5")
+	require.Equal(t, 30*time.Second, state.interval, "interval should be maxSyncInterval")
+}
+
+func TestMarkSyncSuccess_ResetsBackoff(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+
+	// Simulate some failures first
+	manager.markSyncFailure(1)
+	manager.markSyncFailure(1)
+
+	// Verify backoff state exists with failures
+	state := manager.syncBackoff[1]
+	require.Equal(t, 2, state.attempt, "should have 2 failures recorded")
+	require.Equal(t, 8*time.Second, state.interval, "interval should be 8s after 2 failures")
+
+	// Success should reset
+	manager.markSyncSuccess(1)
+
+	// Verify state was reset
+	state = manager.syncBackoff[1]
+	require.Equal(t, 0, state.attempt, "attempt should be reset to 0")
+	require.Equal(t, defaultSyncInterval, state.interval, "interval should be reset to default")
+}
+
+func TestMarkSyncSuccess_NoOpWithoutPriorState(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+
+	// Calling success without prior failure should be a no-op
+	manager.markSyncSuccess(99)
+
+	// Backoff state should not exist for this instance
+	_, exists := manager.syncBackoff[99]
+	require.False(t, exists, "backoff state should not be created by markSyncSuccess")
+}
+
+func TestBackoffState_IndependentPerInstance(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+
+	// Instance 1: 2 failures
+	manager.markSyncFailure(1)
+	manager.markSyncFailure(1)
+
+	// Instance 2: 1 failure
+	manager.markSyncFailure(2)
+
+	// Verify independent state
+	state1 := manager.syncBackoff[1]
+	state2 := manager.syncBackoff[2]
+
+	require.Equal(t, 2, state1.attempt, "instance 1 should have 2 failures")
+	require.Equal(t, 8*time.Second, state1.interval, "instance 1 should have 8s interval")
+
+	require.Equal(t, 1, state2.attempt, "instance 2 should have 1 failure")
+	require.Equal(t, 4*time.Second, state2.interval, "instance 2 should have 4s interval")
+
+	// Reset instance 1, verify instance 2 is unaffected
+	manager.markSyncSuccess(1)
+
+	state1 = manager.syncBackoff[1]
+	state2 = manager.syncBackoff[2]
+
+	require.Equal(t, 0, state1.attempt, "instance 1 should be reset")
+	require.Equal(t, 1, state2.attempt, "instance 2 should still have 1 failure")
 }
