@@ -19,7 +19,9 @@ CREATE TABLE dashboard_settings_new (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-INSERT INTO dashboard_settings_new SELECT * FROM dashboard_settings;
+INSERT INTO dashboard_settings_new (id, user_id, section_visibility, section_order, section_collapsed, tracker_breakdown_sort_column, tracker_breakdown_sort_direction, tracker_breakdown_items_per_page, created_at, updated_at)
+SELECT id, user_id, section_visibility, section_order, section_collapsed, tracker_breakdown_sort_column, tracker_breakdown_sort_direction, tracker_breakdown_items_per_page, created_at, updated_at
+FROM dashboard_settings;
 DROP TABLE dashboard_settings;
 ALTER TABLE dashboard_settings_new RENAME TO dashboard_settings;
 
