@@ -1698,6 +1698,11 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		var existingResults []models.CrossSeedRunResult
 
 		for _, candidate := range candidatesResp.Candidates {
+			// Check for context cancellation before processing each candidate
+			if ctx.Err() != nil {
+				return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("comment URL pre-check canceled: %w", ctx.Err())
+			}
+
 			found := false
 			var matchedTorrent *qbt.Torrent
 
