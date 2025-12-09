@@ -3062,7 +3062,9 @@ func extractInfoHashFromAttributes(attrs map[string]string) string {
 	return ""
 }
 
-// validateInfoHash checks if the value is a valid hex infohash (40 chars for SHA1, 64 for SHA256)
+// validateInfoHash checks if the value is a valid hex-encoded infohash.
+// Accepts SHA1 (20 bytes = 40 hex chars) or SHA256 (32 bytes = 64 hex chars).
+// Note: Base32-encoded hashes (32 chars) are NOT supported; only hex encoding.
 func validateInfoHash(value string) string {
 	value = strings.TrimSpace(strings.ToLower(value))
 	if len(value) == 40 || len(value) == 64 {
@@ -3073,8 +3075,10 @@ func validateInfoHash(value string) string {
 	return ""
 }
 
-// extractInfoHashFromMagnet extracts the infohash from a magnet URL
+// extractInfoHashFromMagnet extracts the infohash from a magnet URL.
 // Format: magnet:?xt=urn:btih:<infohash>&...
+// Note: Only hex-encoded hashes are supported. Base32-encoded hashes
+// (which are also valid per magnet URI spec) will return empty string.
 func extractInfoHashFromMagnet(magnetURL string) string {
 	magnetURL = strings.TrimSpace(magnetURL)
 	if magnetURL == "" || !strings.HasPrefix(strings.ToLower(magnetURL), "magnet:") {

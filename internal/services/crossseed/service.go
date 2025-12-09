@@ -1645,11 +1645,13 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		for _, candidate := range candidatesResp.Candidates {
 			existing, exists, hashErr := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, []string{result.InfoHashV1})
 			if hashErr != nil {
-				log.Debug().
+				log.Warn().
 					Err(hashErr).
 					Int("instanceID", candidate.InstanceID).
+					Str("instanceName", candidate.InstanceName).
 					Str("hash", result.InfoHashV1).
-					Msg("[RSS] Failed to check existing hash, will proceed with download")
+					Str("title", result.Title).
+					Msg("[RSS] Failed to check existing hash on instance, will proceed with download")
 				allExist = false
 				break
 			}
@@ -7427,11 +7429,9 @@ func wrapCrossSeedSearchError(err error) error {
 // torrent comments. UNIT3D and similar trackers embed the source URL in the torrent's
 // comment field. Returns empty string if no suitable URL pattern is found.
 //
-// Supported patterns:
-//   - https://seedpool.org/torrents/607803
-//   - https://beyond-hd.me/details/500790
-//   - https://aither.cc/torrents/318093
-//   - https://blutopia.cc/torrents/294836
+// Matches any HTTPS URL containing these path patterns:
+//   - /torrents/ (UNIT3D style: seedpool.org, aither.cc, blutopia.cc, etc.)
+//   - /details/ (BHD style: beyond-hd.me)
 func extractTorrentURLForCommentMatch(guid, infoURL string) string {
 	// Try GUID first (typically the details URL for UNIT3D)
 	if url := parseTorrentDetailsURL(guid); url != "" {
