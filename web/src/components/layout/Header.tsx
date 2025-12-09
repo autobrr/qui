@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Logo } from "@/components/ui/Logo"
+import { NapsterLogo } from "@/components/ui/NapsterLogo"
 import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
 import { ThemeToggle } from "@/components/ui/ThemeToggle"
 import {
@@ -194,6 +195,8 @@ export function Header({
               >
                 {theme === "swizzin" ? (
                   <SwizzinLogo className="h-5 w-5" />
+                ) : theme === "napster" ? (
+                  <NapsterLogo className="h-8 w-8" />
                 ) : (
                   <Logo className="h-5 w-5" />
                 )}
@@ -247,6 +250,8 @@ export function Header({
           )}>
             {theme === "swizzin" ? (
               <SwizzinLogo className="h-5 w-5" />
+            ) : theme === "napster" ? (
+              <NapsterLogo className="h-8 w-8" />
             ) : (
               <Logo className="h-5 w-5" />
             )}

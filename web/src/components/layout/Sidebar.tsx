@@ -5,6 +5,7 @@
 
 import { Button } from "@/components/ui/button"
 import { Logo } from "@/components/ui/Logo"
+import { NapsterLogo } from "@/components/ui/NapsterLogo"
 import { Separator } from "@/components/ui/separator"
 import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -96,6 +97,8 @@ export function Sidebar() {
         <h2 className="flex items-center gap-2 text-lg font-semibold text-sidebar-foreground">
           {theme === "swizzin" ? (
             <SwizzinLogo className="h-5 w-5" />
+          ) : theme === "napster" ? (
+            <NapsterLogo className="h-8 w-8" />
           ) : (
             <Logo className="h-5 w-5" />
           )}
