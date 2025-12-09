@@ -69,6 +69,7 @@
   --shadow-2xl: inset 1px 1px 0 oklch(1 0 0), inset -1px -1px 0 oklch(0.45 0 0), inset 2px 2px 0 oklch(0.90 0 0), inset -2px -2px 0 oklch(0.35 0 0);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
+  color-scheme: light;
 }
 
 /* Napster never had dark mode - it's the year 2000! Both modes are identical. */
@@ -119,7 +120,6 @@
   --shadow-2xl: inset 1px 1px 0 oklch(1 0 0), inset -1px -1px 0 oklch(0.45 0 0), inset 2px 2px 0 oklch(0.90 0 0), inset -2px -2px 0 oklch(0.35 0 0);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
-  color-scheme: light;
 }
 
 @theme inline {
