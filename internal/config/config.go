@@ -625,16 +625,25 @@ func (c *AppConfig) GetEncryptionKey() []byte {
 	return padded
 }
 
-// Sets viper variable if environment variable with _FILE suffix is present
+// bindOrReadFromFile sets the viper variable from a file if the _FILE suffixed
+// environment variable is present, otherwise it binds to the regular env var.
 func (c *AppConfig) bindOrReadFromFile(viperVar string, envVar string) {
 	envVarFile := envVar + "_FILE"
-	if filePath := os.Getenv(envVarFile); filePath != "" {
-		content, err := os.ReadFile(filePath)
-		if err != nil {
-			log.Fatal().Err(err).Str("path", filePath).Msg("Could not read " + envVarFile)
-		}
-		c.viper.Set(viperVar, strings.TrimSpace(string(content)))
-	} else {
+	filePath := os.Getenv(envVarFile)
+	if filePath == "" {
 		c.viper.BindEnv(viperVar, envVar)
+		return
 	}
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		log.Fatal().Err(err).Str("path", filePath).Msg("Could not read " + envVarFile)
+	}
+
+	secret := strings.TrimSpace(string(content))
+	if secret == "" {
+		log.Fatal().Str("path", filePath).Msg(envVarFile + " file is empty")
+	}
+
+	c.viper.Set(viperVar, secret)
 }
