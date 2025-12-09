@@ -234,8 +234,7 @@ function shallowEqualTrackerIcons(
 
 // Returns the background class for a row based on selection state and zebra striping
 function getRowBackgroundClass(isRowSelected: boolean, isSelected: boolean, rowIndex: number): string {
-  if (isRowSelected) return "bg-accent"
-  if (isSelected) return "bg-accent"
+  if (isRowSelected || isSelected) return "bg-accent"
   if (rowIndex % 2 === 1) return "bg-muted/40"
   return ""
 }
