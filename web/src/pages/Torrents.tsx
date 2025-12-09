@@ -82,6 +82,8 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
 
   // Store counts from torrent response
   const [torrentCounts, setTorrentCounts] = useState<Record<string, number> | undefined>(undefined)
+  const [categorySizes, setCategorySizes] = useState<Record<string, number> | undefined>(undefined)
+  const [tagSizes, setTagSizes] = useState<Record<string, number> | undefined>(undefined)
   const [categories, setCategories] = useState<Record<string, Category> | undefined>(undefined)
   const [tags, setTags] = useState<string[] | undefined>(undefined)
   const [useSubcategories, setUseSubcategories] = useState<boolean>(false)
@@ -139,6 +141,14 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
       transformedCounts.filtered = _total
 
       setTorrentCounts(transformedCounts)
+
+      // Store size data for sidebar display
+      if (counts.categorySizes) {
+        setCategorySizes(counts.categorySizes)
+      }
+      if (counts.tagSizes) {
+        setTagSizes(counts.tagSizes)
+      }
     }
 
     // Store categories and tags only when new data arrives; preserve previous values during pagination fetches
@@ -221,6 +231,8 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
             selectedFilters={filters}
             onFilterChange={setFilters}
             torrentCounts={torrentCounts}
+            categorySizes={categorySizes}
+            tagSizes={tagSizes}
             categories={categories}
             tags={tags}
             useSubcategories={useSubcategories}
@@ -254,6 +266,8 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
               selectedFilters={filters}
               onFilterChange={setFilters}
               torrentCounts={torrentCounts}
+              categorySizes={categorySizes}
+              tagSizes={tagSizes}
               categories={categories}
               tags={tags}
               useSubcategories={useSubcategories}
