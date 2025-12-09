@@ -29,14 +29,17 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
+import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
+import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
+import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { api } from "@/lib/api"
+import { cn } from "@/lib/utils"
 import type { TorrentCreationParams, TorrentFormat } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, ChevronDown, Info, Loader2 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
 import { pieceSizeOptions, TorrentPieceSize } from "./piece-size"
 
@@ -59,6 +62,9 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
 
   // Fetch active trackers for the select dropdown
   const { data: activeTrackers } = useInstanceTrackers(instanceId, { enabled: open })
+
+  const { data: capabilities } = useInstanceCapabilities(instanceId)
+  const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
 
   const mutation = useMutation({
     mutationFn: async (data: TorrentCreationParams) => {
@@ -128,6 +134,34 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
     },
   })
 
+  const setSourcePath = useCallback((path: string) => {
+    form.setFieldValue("sourcePath", path)
+  }, [form])
+
+  const setTorrentFilePath = useCallback((path: string) => {
+    form.setFieldValue("torrentFilePath", path)
+  }, [form])
+
+  const {
+    suggestions: sourcePathSuggestions,
+    handleInputChange: handleSourcePathInputChange,
+    handleSelect: handleSourcePathSelect,
+    handleKeyDown: handleSourcePathKeyDown,
+    highlightedIndex: sourcePathHighlightedIndex,
+    showSuggestions: showSourcePathSuggestions,
+    inputRef: sourcePathInputRef
+  } = usePathAutocomplete(setSourcePath, instanceId)
+
+  const {
+    suggestions: torrentFilePathSuggestions,
+    handleInputChange: handleTorrentFilePathInputChange,
+    handleSelect: handleTorrentFilePathSelect,
+    handleKeyDown: handleTorrentFilePathKeyDown,
+    highlightedIndex: torrentFilePathHighlightedIndex,
+    showSuggestions: showTorrentFilePathSuggestions,
+    inputRef: torrentFilePathInputRef
+  } = usePathAutocomplete(setTorrentFilePath, instanceId)
+
   useEffect(() => {
     if (formatSelectionUnavailable) {
       form.setFieldValue("format", "v1")
@@ -177,11 +211,45 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                 </Label>
                 <Input
                   id="sourcePath"
+                  ref={supportsPathAutocomplete ? sourcePathInputRef : undefined}
                   placeholder="/path/to/file/or/folder"
+                  autoComplete="off"
+                  spellCheck={false}
                   value={field.state.value}
-                  onChange={(e) => field.handleChange(e.target.value)}
+                  onBlur={field.handleBlur}
+                  onKeyDown={supportsPathAutocomplete ? handleSourcePathKeyDown : undefined}
+                  onChange={(e) => {
+                    field.handleChange(e.target.value)
+                    if (supportsPathAutocomplete) {
+                      handleSourcePathInputChange(e.target.value)
+                    }
+                  }}
                   required
                 />
+
+                {supportsPathAutocomplete && showSourcePathSuggestions && sourcePathSuggestions.length > 0 && (
+                  <div className="z-50 mt-1 w-full rounded-md border bg-popover text-popover-foreground shadow-md">
+                    <div className="max-h-55 overflow-auto pt-1 pb-1 w-full">
+                      {sourcePathSuggestions.map((entry, idx) => (
+                        <button
+                          key={entry}
+                          type="button"
+                          className={cn(
+                            "w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex items-center",
+                            sourcePathHighlightedIndex === idx
+                              ? "bg-accent text-accent-foreground"
+                              : "hover:bg-accent/70"
+                          )}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => handleSourcePathSelect(entry)}
+                        >
+                          <span className="truncate">{entry}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <span>Full path on the server where qBittorrent is running</span>
                   <Tooltip>
@@ -407,10 +475,44 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                     <Label htmlFor="torrentFilePath">Save .torrent to (optional)</Label>
                     <Input
                       id="torrentFilePath"
+                      ref={supportsPathAutocomplete ? torrentFilePathInputRef : undefined}
                       placeholder="/path/to/save/file.torrent"
+                      autoComplete="off"
+                      spellCheck={false}
                       value={field.state.value}
-                      onChange={(e) => field.handleChange(e.target.value)}
+                      onBlur={field.handleBlur}
+                      onKeyDown={supportsPathAutocomplete ? handleTorrentFilePathKeyDown : undefined}
+                      onChange={(e) => {
+                        field.handleChange(e.target.value)
+                        if (supportsPathAutocomplete) {
+                          handleTorrentFilePathInputChange(e.target.value)
+                        }
+                      }}
                     />
+
+                    {supportsPathAutocomplete && showTorrentFilePathSuggestions && torrentFilePathSuggestions.length > 0 && (
+                      <div className="z-50 mt-1 w-full rounded-md border bg-popover text-popover-foreground shadow-md">
+                        <div className="max-h-55 overflow-auto pt-1 pb-1 w-full">
+                          {torrentFilePathSuggestions.map((entry, idx) => (
+                            <button
+                              key={entry}
+                              type="button"
+                              className={cn(
+                                "w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex items-center",
+                                torrentFilePathHighlightedIndex === idx
+                                  ? "bg-accent text-accent-foreground"
+                                  : "hover:bg-accent/70"
+                              )}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => handleTorrentFilePathSelect(entry)}
+                            >
+                              <span className="truncate">{entry}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <span>Where to save the .torrent file on the server</span>
                       <Tooltip>

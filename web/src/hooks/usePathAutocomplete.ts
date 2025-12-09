@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useDeferredValue } from "react";
+import { useCallback, useDeferredValue, useEffect, useRef, useState } from "react";
 
 export function usePathAutocomplete(
   onSuggestionSelect: (path: string) => void,
@@ -80,10 +80,10 @@ export function usePathAutocomplete(
 
       if (cancelled) return;
 
-      const filtered = filterTerm? entries.filter((e) => e.toLowerCase().includes(filterTerm)): entries;
+      const filtered = filterTerm ? entries.filter((e) => e.toLowerCase().includes(filterTerm)) : entries;
 
       setSuggestions(filtered);
-      setHighlightedIndex(filtered.length > 0 ? 0 : -1); // auto-highlight first
+      setHighlightedIndex(filtered.length > 0 ? 0 : -1);
     };
 
     load();

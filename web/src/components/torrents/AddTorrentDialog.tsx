@@ -35,20 +35,20 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
+import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities.ts"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
 import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
 import { api } from "@/lib/api"
 import { cn } from '@/lib/utils'
 import type { AddTorrentResponse, Torrent } from "@/types"
-import { toast } from "sonner"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, Link, Loader2, Plus, Upload, X } from "lucide-react"
 import parseTorrent from "parse-torrent"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useDropzone } from "react-dropzone"
-import {useInstanceCapabilities} from "@/hooks/useInstanceCapabilities.ts";
+import { toast } from "sonner"
 
 // Extract info hash from magnet link
 function extractHashFromMagnet(magnetUrl: string): string | null {
@@ -191,6 +191,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
   const { data: capabilities } = useInstanceCapabilities(instanceId)
   const supportsTorrentTmpPath = capabilities?.supportsTorrentTmpPath ?? false
+  const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
 
   // Reset tag state when dialog closes
   useEffect(() => {
@@ -1310,19 +1311,22 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                                 <Label htmlFor="savePath">Save Path</Label>
                                 <Input
                                   id="savePath"
-                                  ref={savePathInputRef}
+                                  ref={supportsPathAutocomplete ? savePathInputRef : undefined}
                                   placeholder={preferences?.save_path || "Leave empty for default"}
+                                  autoComplete="off"
                                   spellCheck={false}
                                   value={field.state.value}
                                   onBlur={field.handleBlur}
-                                  onKeyDown={handleSaveKeyDown}
+                                  onKeyDown={supportsPathAutocomplete ? handleSaveKeyDown : undefined}
                                   onChange={(e) => {
                                     field.handleChange(e.target.value)
-                                    handleSaveInputChange(e.target.value)
+                                    if (supportsPathAutocomplete) {
+                                      handleSaveInputChange(e.target.value)
+                                    }
                                   }}
                                 />
 
-                                {showSaveSuggestions && saveSuggestions.length > 0 && (
+                                {supportsPathAutocomplete && showSaveSuggestions && saveSuggestions.length > 0 && (
                                   <div className="z-50 mt-1 w-full rounded-md border bg-popover text-popover-foreground shadow-md">
                                     <div className="max-h-55 overflow-auto pt-1 pb-1 w-full">
                                       {saveSuggestions.map((entry, idx) => (
@@ -1382,19 +1386,22 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                                                 <Label htmlFor="tempPath">Temporary Download Path</Label>
                                                 <Input
                                                   id="tempPath"
-                                                  ref={tempPathInputRef}
+                                                  ref={supportsPathAutocomplete ? tempPathInputRef : undefined}
                                                   placeholder={preferences?.temp_path || "Leave empty for default"}
+                                                  autoComplete="off"
                                                   spellCheck={false}
                                                   value={field.state.value}
                                                   onBlur={field.handleBlur}
-                                                  onKeyDown={handleTempKeyDown}
+                                                  onKeyDown={supportsPathAutocomplete ? handleTempKeyDown : undefined}
                                                   onChange={(e) => {
                                                     field.handleChange(e.target.value)
-                                                    handleTempInputChange(e.target.value)
-                                                  }} 
+                                                    if (supportsPathAutocomplete) {
+                                                      handleTempInputChange(e.target.value)
+                                                    }
+                                                  }}
                                                 />
-                                        
-                                                {showTempSuggestions && tempSuggestions.length > 0 && (
+
+                                                {supportsPathAutocomplete && showTempSuggestions && tempSuggestions.length > 0 && (
                                                   <div className="z-50 mt-1 w-full rounded-md border bg-popover text-popover-foreground shadow-md">
                                                     <div className="max-h-55 overflow-auto pt-1 pb-1 w-full">
                                                       {tempSuggestions.map((entry, idx) => (
@@ -1427,19 +1434,21 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                                       )}
                                     </form.Field>
                                   </>
-                                ) : (
-                                  <div className="space-y-2">
-                                    <Label>Save Path</Label>
-                                    <div className="px-3 py-2 bg-muted rounded-md">
-                                      <p className="text-sm text-muted-foreground">
-                                        Automatic Torrent Management is enabled. Save path will be determined by category settings.
-                                      </p>
-                                    </div>
-                                  </div>
-                                )}
+                                ) : null}
                               </>
+                            ) : (
+                              <div className="space-y-2">
+                                <Label>Save Path</Label>
+                                <div className="px-3 py-2 bg-muted rounded-md">
+                                  <p className="text-sm text-muted-foreground">
+                                    Automatic Torrent Management is enabled. Save path will be determined by category settings.
+                                  </p>
+                                </div>
+                              </div>
                             )}
-                        </form.Field>
+                        </>
+                      )}
+                    </form.Field>
 
 
                 {/* Advanced Options */}
