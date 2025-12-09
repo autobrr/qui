@@ -345,7 +345,9 @@ export interface DashboardSettingsInput {
 export interface TorrentCounts {
   status: Record<string, number>
   categories: Record<string, number>
+  categorySizes?: Record<string, number>
   tags: Record<string, number>
+  tagSizes?: Record<string, number>
   trackers: Record<string, number>
   trackerTransfers?: Record<string, TrackerTransferStats>
   total: number
