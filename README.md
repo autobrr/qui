@@ -187,7 +187,8 @@ QUI__PORT=7476           # Port number
 QUI__BASE_URL=/qui/      # Optional: serve from subdirectory
 
 # Security
-QUI__SESSION_SECRET=...  # Auto-generated if not set
+QUI__SESSION_SECRET_FILE=...  # Path to file containing secret. Takes precedence over QUI__SESSION_SECRET
+QUI__SESSION_SECRET=...       # Auto-generated if not set
 
 # Logging
 QUI__LOG_LEVEL=INFO      # Options: ERROR, DEBUG, INFO, WARN, TRACE
