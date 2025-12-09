@@ -231,6 +231,15 @@ function shallowEqualTrackerIcons(
 }
 
 // Compact view helper functions and components
+
+// Returns the background class for a row based on selection state and zebra striping
+function getRowBackgroundClass(isRowSelected: boolean, isSelected: boolean, rowIndex: number): string {
+  if (isRowSelected) return "bg-accent"
+  if (isSelected) return "bg-accent"
+  if (rowIndex % 2 === 1) return "bg-muted/40"
+  return ""
+}
+
 function getStatusBadgeVariant(state: string): "default" | "secondary" | "destructive" | "outline" {
   switch (state) {
     case "downloading":
@@ -413,10 +422,8 @@ const CompactRow = memo(({
   return (
     <div
       className={cn(
-        "relative flex flex-col gap-1 px-3 py-2 border-b cursor-pointer hover:bg-muted/50 overflow-hidden",
-        isRowSelected && "bg-muted/50",
-        isSelected && "bg-accent",
-        !isRowSelected && !isSelected && rowIndex % 2 === 1 && "bg-muted/30"
+        "relative flex flex-col gap-1 px-3 py-2 cursor-pointer hover:bg-accent/40 overflow-hidden",
+        getRowBackgroundClass(isRowSelected, isSelected, rowIndex)
       )}
       style={style}
       onClick={(e) => onClick(e)}
@@ -2665,7 +2672,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                     onFilterChange={onFilterChange}
                   >
                     <div
-                      className={`flex border-b cursor-pointer hover:bg-muted/50 ${isRowSelected ? "bg-muted/50" : isSelected ? "bg-accent" : virtualRow.index % 2 === 1 ? "bg-muted/30" : ""}`}
+                      className={`flex cursor-pointer hover:bg-accent/40 ${getRowBackgroundClass(isRowSelected, isSelected, virtualRow.index)}`}
                       style={{
                         position: "absolute",
                         top: 0,
