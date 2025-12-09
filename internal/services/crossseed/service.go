@@ -1645,6 +1645,10 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		for _, candidate := range candidatesResp.Candidates {
 			existing, exists, hashErr := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, []string{result.InfoHashV1})
 			if hashErr != nil {
+				// Context cancellation should propagate, not trigger fallback
+				if errors.Is(hashErr, context.Canceled) || errors.Is(hashErr, context.DeadlineExceeded) {
+					return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("hash check canceled: %w", hashErr)
+				}
 				log.Warn().
 					Err(hashErr).
 					Int("instanceID", candidate.InstanceID).
@@ -1658,11 +1662,11 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 
 			if exists && existing != nil {
 				existingResults = append(existingResults, models.CrossSeedRunResult{
-					InstanceID:   candidate.InstanceID,
-					InstanceName: candidate.InstanceName,
-					Success:      false,
-					Status:       "exists",
-					Message:      "Torrent already exists (infohash pre-check)",
+					InstanceID:         candidate.InstanceID,
+					InstanceName:       candidate.InstanceName,
+					Success:            false,
+					Status:             "exists",
+					Message:            "Torrent already exists (infohash pre-check)",
 					MatchedTorrentHash: func() *string { h := existing.Hash; return &h }(),
 					MatchedTorrentName: func() *string { n := existing.Name; return &n }(),
 				})

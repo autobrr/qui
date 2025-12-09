@@ -3773,6 +3773,83 @@ func TestProcessAutomationCandidate_ProceedsOnHashCheckError(t *testing.T) {
 	assert.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
 }
 
+func TestProcessAutomationCandidate_PropagatesContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	instance1ID := 1
+	testHash := "63e07ff523710ca268567dad344ce1e0e6b7e8a3"
+	torrentName := "Show.S01.1080p.BluRay-GROUP"
+
+	existingTorrent := qbt.Torrent{
+		Hash:     testHash,
+		Name:     torrentName,
+		Progress: 1.0,
+		Category: "tv",
+	}
+
+	sync := newInfohashTestSyncManager()
+	sync.torrents[instance1ID] = []qbt.Torrent{existingTorrent}
+	sync.files[instance1ID] = map[string]qbt.TorrentFiles{
+		strings.ToLower(testHash): {{Name: "Show.S01E01.1080p.BluRay-GROUP.mkv", Size: 1024}},
+	}
+	sync.props[instance1ID] = map[string]*qbt.TorrentProperties{
+		strings.ToLower(testHash): {SavePath: "/downloads"},
+	}
+
+	// Configure HasTorrentByAnyHash to return context.Canceled error
+	sync.hashResults[instance1ID] = &hashCheckResult{
+		torrent: nil,
+		exists:  false,
+		err:     context.Canceled,
+	}
+
+	downloadCalled := false
+	service := &Service{
+		instanceStore: &infohashTestInstanceStore{
+			instances: map[int]*models.Instance{
+				instance1ID: {ID: instance1ID, Name: "Instance1"},
+			},
+		},
+		syncManager:      sync,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
+			downloadCalled = true
+			return []byte("torrent"), nil
+		},
+	}
+
+	settings := &models.CrossSeedAutomationSettings{
+		StartPaused:       true,
+		RSSAutomationTags: []string{"cross-seed"},
+		IgnorePatterns:    []string{},
+		TargetInstanceIDs: []int{instance1ID},
+	}
+
+	run := &models.CrossSeedRun{}
+	result := jackett.SearchResult{
+		Indexer:              "Example",
+		IndexerID:            10,
+		Title:                torrentName,
+		DownloadURL:          "https://example.invalid/download.torrent",
+		GUID:                 "guid-1",
+		Size:                 1024,
+		InfoHashV1:           testHash,
+		DownloadVolumeFactor: 1.0,
+		UploadVolumeFactor:   1.0,
+	}
+
+	status, _, err := service.processAutomationCandidate(ctx, run, settings, nil, result, AutomationRunOptions{}, map[int]jackett.EnabledIndexerInfo{})
+
+	// Context cancellation should propagate as an error, not trigger fallback
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Contains(t, err.Error(), "hash check canceled")
+	assert.Equal(t, models.CrossSeedFeedItemStatusFailed, status)
+	assert.False(t, downloadCalled, "should NOT download torrent when context is canceled")
+}
+
 func TestProcessAutomationCandidate_SkipsWhenCommentURLMatches(t *testing.T) {
 	t.Parallel()
 
