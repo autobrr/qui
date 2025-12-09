@@ -147,6 +147,7 @@ export interface InstanceCapabilities {
   supportsFilePriority: boolean
   supportsSubcategories: boolean
   supportsTorrentTmpPath: boolean
+  supportsPathAutocomplete: boolean
   webAPIVersion?: string
 }
 
