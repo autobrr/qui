@@ -1,0 +1,176 @@
+/* @name: Napster
+ * @description: Retro theme inspired by Napster v2.0 BETA 7 circa 2000
+ * @premium: false
+ * @lightOnly: true
+ */
+
+:root {
+  /* Classic Windows 98/2000 silver-gray chrome - #C0C0C0 */
+  --background: oklch(0.78 0 0);
+  /* Black text like Windows */
+  --foreground: oklch(0.15 0 0);
+  /* Cards/content areas are WHITE like Napster's table rows */
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.15 0 0);
+  /* Popovers/menus - slightly off-white Windows menu color */
+  --popover: oklch(0.97 0 0);
+  --popover-foreground: oklch(0.15 0 0);
+  /* Napster navy blue - the download progress bar color #000080 */
+  --primary: oklch(0.30 0.14 265);
+  --primary-foreground: oklch(1 0 0);
+  /* Gray toolbar/button background */
+  --secondary: oklch(0.78 0 0);
+  --secondary-foreground: oklch(0.15 0 0);
+  /* Muted grays for disabled/inactive */
+  --muted: oklch(0.85 0 0);
+  --muted-foreground: oklch(0.45 0 0);
+  /* Napster yellow - upload progress bar color #CCCC00 */
+  --accent: oklch(0.82 0.18 100);
+  --accent-foreground: oklch(0.15 0 0);
+  /* Red for errors */
+  --destructive: oklch(0.55 0.22 27);
+  --destructive-foreground: oklch(1 0 0);
+  /* Windows border gray #808080 */
+  --border: oklch(0.65 0 0);
+  /* Input fields match the gray chrome for consistency */
+  --input: oklch(0.78 0 0);
+  /* Focus ring uses navy blue */
+  --ring: oklch(0.30 0.14 265);
+  /* Charts - Napster color palette */
+  --chart-1: oklch(0.30 0.14 265);
+  --chart-2: oklch(0.82 0.18 100);
+  --chart-3: oklch(0.55 0.15 145);
+  --chart-4: oklch(0.50 0.12 265);
+  --chart-5: oklch(0.55 0.18 27);
+  /* Sidebar like Windows Explorer tree view - slightly darker gray */
+  --sidebar: oklch(0.75 0 0);
+  --sidebar-foreground: oklch(0.15 0 0);
+  --sidebar-primary: oklch(0.30 0.14 265);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  /* Selected item in sidebar - Windows selection blue */
+  --sidebar-accent: oklch(0.30 0.14 265);
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(0.65 0 0);
+  --sidebar-ring: oklch(0.30 0.14 265);
+  /* MS Sans Serif / Tahoma - the Windows UI fonts */
+  --font-sans: Tahoma, "MS Sans Serif", Arial, sans-serif;
+  --font-serif: "Times New Roman", Times, serif;
+  --font-mono: "Courier New", Courier, monospace;
+  /* Sharp corners - no border radius in Windows 98! */
+  --radius: 0rem;
+  /* Classic Windows 3D beveled effect: white top-left, gray bottom-right */
+  --shadow-2xs: inset 1px 1px 0 oklch(1 0 0), inset -1px -1px 0 oklch(0.45 0 0);
+  --shadow-xs: inset 1px 1px 0 oklch(1 0 0), inset -1px -1px 0 oklch(0.45 0 0);
+  --shadow-sm: inset 1px 1px 0 oklch(1 0 0), inset -1px -1px 0 oklch(0.45 0 0);
+  --shadow: inset 1px 1px 0 oklch(1 0 0), inset -1px -1px 0 oklch(0.45 0 0);
+  --shadow-md: inset 1px 1px 0 oklch(1 0 0), inset -1px -1px 0 oklch(0.45 0 0), inset 2px 2px 0 oklch(0.90 0 0), inset -2px -2px 0 oklch(0.35 0 0);
+  --shadow-lg: inset 1px 1px 0 oklch(1 0 0), inset -1px -1px 0 oklch(0.45 0 0), inset 2px 2px 0 oklch(0.90 0 0), inset -2px -2px 0 oklch(0.35 0 0);
+  --shadow-xl: inset 1px 1px 0 oklch(1 0 0), inset -1px -1px 0 oklch(0.45 0 0), inset 2px 2px 0 oklch(0.90 0 0), inset -2px -2px 0 oklch(0.35 0 0);
+  --shadow-2xl: inset 1px 1px 0 oklch(1 0 0), inset -1px -1px 0 oklch(0.45 0 0), inset 2px 2px 0 oklch(0.90 0 0), inset -2px -2px 0 oklch(0.35 0 0);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+}
+
+/* Napster never had dark mode - it's the year 2000! Both modes are identical. */
+.dark {
+  --background: oklch(0.78 0 0);
+  --foreground: oklch(0.15 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.15 0 0);
+  --popover: oklch(0.97 0 0);
+  --popover-foreground: oklch(0.15 0 0);
+  --primary: oklch(0.30 0.14 265);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.78 0 0);
+  --secondary-foreground: oklch(0.15 0 0);
+  --muted: oklch(0.85 0 0);
+  --muted-foreground: oklch(0.45 0 0);
+  --accent: oklch(0.82 0.18 100);
+  --accent-foreground: oklch(0.15 0 0);
+  --destructive: oklch(0.55 0.22 27);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.65 0 0);
+  --input: oklch(0.78 0 0);
+  --ring: oklch(0.30 0.14 265);
+  --chart-1: oklch(0.30 0.14 265);
+  --chart-2: oklch(0.82 0.18 100);
+  --chart-3: oklch(0.55 0.15 145);
+  --chart-4: oklch(0.50 0.12 265);
+  --chart-5: oklch(0.55 0.18 27);
+  --sidebar: oklch(0.75 0 0);
+  --sidebar-foreground: oklch(0.15 0 0);
+  --sidebar-primary: oklch(0.30 0.14 265);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.30 0.14 265);
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(0.65 0 0);
+  --sidebar-ring: oklch(0.30 0.14 265);
+  --font-sans: Tahoma, "MS Sans Serif", Arial, sans-serif;
+  --font-serif: "Times New Roman", Times, serif;
+  --font-mono: "Courier New", Courier, monospace;
+  --radius: 0rem;
+  --shadow-2xs: inset 1px 1px 0 oklch(1 0 0), inset -1px -1px 0 oklch(0.45 0 0);
+  --shadow-xs: inset 1px 1px 0 oklch(1 0 0), inset -1px -1px 0 oklch(0.45 0 0);
+  --shadow-sm: inset 1px 1px 0 oklch(1 0 0), inset -1px -1px 0 oklch(0.45 0 0);
+  --shadow: inset 1px 1px 0 oklch(1 0 0), inset -1px -1px 0 oklch(0.45 0 0);
+  --shadow-md: inset 1px 1px 0 oklch(1 0 0), inset -1px -1px 0 oklch(0.45 0 0), inset 2px 2px 0 oklch(0.90 0 0), inset -2px -2px 0 oklch(0.35 0 0);
+  --shadow-lg: inset 1px 1px 0 oklch(1 0 0), inset -1px -1px 0 oklch(0.45 0 0), inset 2px 2px 0 oklch(0.90 0 0), inset -2px -2px 0 oklch(0.35 0 0);
+  --shadow-xl: inset 1px 1px 0 oklch(1 0 0), inset -1px -1px 0 oklch(0.45 0 0), inset 2px 2px 0 oklch(0.90 0 0), inset -2px -2px 0 oklch(0.35 0 0);
+  --shadow-2xl: inset 1px 1px 0 oklch(1 0 0), inset -1px -1px 0 oklch(0.45 0 0), inset 2px 2px 0 oklch(0.90 0 0), inset -2px -2px 0 oklch(0.35 0 0);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-serif: var(--font-serif);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --shadow-2xs: var(--shadow-2xs);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow: var(--shadow);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-2xl: var(--shadow-2xl);
+}
