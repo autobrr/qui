@@ -757,6 +757,42 @@ paths:
         '503':
           description: Instance unavailable
 
+  /api/instances/{instanceID}/getDirectoryContent:
+    get:
+      tags:
+        - Instances
+      summary: Get directory contents
+      description: Retrieve directory contents from the qBittorrent host filesystem for path autocomplete.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - in: query
+          name: dirPath
+          required: true
+          schema:
+            type: string
+          description: The directory path to list contents from
+        - in: query
+          name: withMetadata
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: Include file/folder metadata in response
+      responses:
+        '200':
+          description: Directory contents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                description: List of file and folder paths in the directory
+        '400':
+          description: Invalid instance ID or directory path
+        '500':
+          description: Failed to get directory contents
+
   /api/instances/{instanceID}/reannounce/activity:
     get:
       tags:

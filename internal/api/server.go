@@ -448,6 +448,9 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					// qBittorrent application info
 					r.Get("/app-info", qbittorrentInfoHandler.GetQBittorrentAppInfo)
 
+					// Path autocomplete
+					r.Get("/getDirectoryContent", torrentsHandler.GetDirectoryContent)
+
 					r.Route("/backups", func(r chi.Router) {
 						r.Get("/settings", backupsHandler.GetSettings)
 						r.Put("/settings", backupsHandler.UpdateSettings)
