@@ -186,8 +186,18 @@ const applyTheme = async (theme: Theme, variation: string | null, isDark: boolea
     root.classList.add(THEME_TRANSITION_CLASS);
   }
 
+  // For lightOnly themes, force light mode regardless of user preference
+  const effectiveIsDark = theme.lightOnly ? false : isDark;
+
+  // Store lightOnly flag for anti-FOUC script
+  if (theme.lightOnly) {
+    localStorage.setItem("theme-light-only", "true");
+  } else {
+    localStorage.removeItem("theme-light-only");
+  }
+
   // Apply dark mode class
-  if (isDark) {
+  if (effectiveIsDark) {
     root.classList.add(THEME_DARK);
   } else {
     root.classList.remove(THEME_DARK);
@@ -198,8 +208,8 @@ const applyTheme = async (theme: Theme, variation: string | null, isDark: boolea
     .filter(prop => prop.startsWith('--variation'))
     .forEach(prop => root.style.removeProperty(prop));
 
-  // Apply theme CSS variables
-  const cssVars = isDark ? theme.cssVars.dark : theme.cssVars.light;
+  // Apply theme CSS variables (lightOnly themes always use light vars)
+  const cssVars = effectiveIsDark ? theme.cssVars.dark : theme.cssVars.light;
   Object.entries(cssVars).forEach(([key, value]) => {
     root.style.setProperty(key, value);
   });
