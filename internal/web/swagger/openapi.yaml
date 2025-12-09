@@ -2714,8 +2714,6 @@ paths:
                     type: string
                 startPaused:
                   type: boolean
-                addCrossSeedTag:
-                  type: boolean
                 skipIfExists:
                   type: boolean
                 findIndividualEpisodes:
@@ -2853,6 +2851,42 @@ paths:
         '204':
           description: No update available - current version is latest
 
+  /api/instances/{instanceID}/backups/import:
+    post:
+      tags:
+        - Backups
+      summary: Import backup manifest
+      description: Import a backup manifest file to create a new backup run record. This allows restoring backup metadata from a previously exported manifest.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        description: Backup archive or manifest file to import. Provide either an archive (zip, tar.gz, tar.zst, tar.br, tar.xz, tar) or a JSON manifest file.
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                archive:
+                  type: string
+                  format: binary
+                  description: Compressed backup archive (zip, tar.gz, tar.zst, tar.br, tar.xz, tar) containing manifest.json and torrent files
+                manifest:
+                  type: string
+                  format: binary
+                  description: JSON manifest file exported from a backup run
+      responses:
+        '201':
+          description: Manifest imported successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackupRun'
+        '400':
+          description: Invalid request - must provide either archive or manifest file, invalid instance ID, or unsupported archive format
+        '500':
+          description: Failed to import manifest
+
   /api/instances/{instanceID}/backups/runs/{runId}/restore/preview:
     post:
       tags:
@@ -2973,6 +3007,111 @@ paths:
           description: Backup run not found
         '500':
           description: Failed to execute restore
+
+  /api/instances/{instanceID}/backups/runs/{runId}/download:
+    get:
+      tags:
+        - Backups
+      summary: Download backup archive
+      description: Download the backup archive for the specified backup run in the requested format.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Backup run ID
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - zip
+              - tar.gz
+              - tar.zst
+              - tar.br
+              - tar.xz
+              - tar
+            default: zip
+          description: Archive format to download. Defaults to zip.
+      responses:
+        '200':
+          description: Backup archive downloaded successfully
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+                description: ZIP archive containing the backup
+            application/gzip:
+              schema:
+                type: string
+                format: binary
+                description: GZIP compressed TAR archive
+            application/zstd:
+              schema:
+                type: string
+                format: binary
+                description: Zstandard compressed TAR archive
+            application/x-brotli:
+              schema:
+                type: string
+                format: binary
+                description: Brotli compressed TAR archive
+            application/x-xz:
+              schema:
+                type: string
+                format: binary
+                description: XZ compressed TAR archive
+            application/x-tar:
+              schema:
+                type: string
+                format: binary
+                description: Uncompressed TAR archive
+        '400':
+          description: Invalid instance ID, run ID, or format parameter
+        '404':
+          description: Backup run not found or not available for download
+        '500':
+          description: Failed to generate backup archive
+
+  /api/instances/{instanceID}/backups/runs/{runId}/items/{torrentHash}/download:
+    get:
+      tags:
+        - Backups
+      summary: Download torrent file from backup
+      description: Download a specific torrent file from the backup archive.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Backup run ID
+        - name: torrentHash
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Torrent hash
+      responses:
+        '200':
+          description: Torrent file downloaded successfully
+          content:
+            application/x-bittorrent:
+              schema:
+                type: string
+                format: binary
+                description: Torrent file
+        '400':
+          description: Invalid instance ID, run ID, or torrent hash
+        '404':
+          description: Backup run or torrent not found
+        '500':
+          description: Failed to retrieve torrent file
 
   /health:
     get:
@@ -4074,6 +4213,69 @@ components:
           items:
             type: string
           description: Array of torrent hashes to explicitly include
+
+    BackupRun:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        instanceId:
+          type: integer
+        kind:
+          type: string
+          enum: ["manual", "hourly", "daily", "weekly", "monthly"]
+        status:
+          type: string
+          enum: ["pending", "running", "success", "failed", "canceled"]
+        requestedBy:
+          type: string
+        requestedAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        archivePath:
+          type: string
+          nullable: true
+        manifestPath:
+          type: string
+          nullable: true
+        totalBytes:
+          type: integer
+          format: int64
+        torrentCount:
+          type: integer
+        categoryCounts:
+          type: object
+          additionalProperties:
+            type: integer
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        categories:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/CategorySnapshot'
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+          nullable: true
+
+    CategorySnapshot:
+      type: object
+      properties:
+        savePath:
+          type: string
 
 tags:
   - name: Authentication

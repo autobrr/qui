@@ -229,3 +229,83 @@ func TestNewLoadsConfigFromFileOrDirectory(t *testing.T) {
 		})
 	}
 }
+
+func TestBindOrReadFromFile(t *testing.T) {
+	tmpKeyFile := func(t *testing.T, tmpDir string) string {
+		configPath := filepath.Join(tmpDir, "key-file.txt")
+		content := "key-from-file"
+		require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+		return configPath
+	}
+
+	tmpKeyFileWithNewline := func(t *testing.T, tmpDir string) string {
+		configPath := filepath.Join(tmpDir, "key-file.txt")
+		content := "key-from-file\n"
+		require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+		return configPath
+	}
+
+	noTmpKeyFile := func(t *testing.T, tmpDir string) string {
+		return ""
+	}
+
+	genConfigFile := func(t *testing.T, tmpDir string) string {
+		configPath := filepath.Join(tmpDir, "myconfig.toml")
+		content := "host = \"localhost\"\nport = 8080\nsessionSecret = \"test-secret\"\n"
+		require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+		return configPath
+	}
+
+	tests := []struct {
+		name            string
+		envVarValue     string
+		envVarFileValue func(t *testing.T, tmpDir string) string
+		expectedValue   string
+	}{
+		{
+			name:            "Only _FILE env var",
+			envVarValue:     "",
+			envVarFileValue: tmpKeyFile,
+			expectedValue:   "key-from-file",
+		},
+		{
+			name:            "Only normal env var",
+			envVarValue:     "key-not-from-file",
+			envVarFileValue: noTmpKeyFile,
+			expectedValue:   "key-not-from-file",
+		},
+		{
+			name:            "_FILE takes precedence over env var",
+			envVarValue:     "key-not-from-file",
+			envVarFileValue: tmpKeyFile,
+			expectedValue:   "key-from-file",
+		},
+		{
+			name:            "File with trailing newline is trimmed",
+			envVarValue:     "",
+			envVarFileValue: tmpKeyFileWithNewline,
+			expectedValue:   "key-from-file",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			envVar := envPrefix + "SESSION_SECRET"
+
+			if tt.envVarValue != "" {
+				t.Setenv(envVar, tt.envVarValue)
+			}
+
+			envVarFilePath := tt.envVarFileValue(t, t.TempDir())
+			if envVarFilePath != "" {
+				t.Setenv(envVar+"_FILE", envVarFilePath)
+			}
+
+			configPath := genConfigFile(t, t.TempDir())
+			cfg, err := New(configPath)
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedValue, cfg.Config.SessionSecret)
+		})
+	}
+}

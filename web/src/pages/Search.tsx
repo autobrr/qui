@@ -746,7 +746,7 @@ export function Search() {
     }
 
     persistSelectedInstanceId(targetId)
-    setAddDialogPayload({ type: 'url', urls: [result.downloadUrl] })
+    setAddDialogPayload({ type: 'url', urls: [result.downloadUrl], indexerId: result.indexerId })
     setAddDialogOpen(true)
   }, [hasInstances, persistSelectedInstanceId, selectedInstanceId, setInstanceMenuOpen])
 

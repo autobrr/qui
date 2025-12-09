@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
@@ -440,4 +441,221 @@ func TestCleanupUnusedStrings(t *testing.T) {
 	// Verify our referenced string still exists
 	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", id1).Scan(&exists))
 	require.True(t, exists)
+}
+
+// TestTransactionCommitSuccessMutexRelease tests that the writer mutex is properly released
+// after a successful commit.
+func TestTransactionCommitSuccessMutexRelease(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+
+	// Start a write transaction
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NotNil(t, tx)
+
+	// Perform a simple write operation
+	_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "test_string")
+	require.NoError(t, err)
+
+	// Commit should succeed and release the mutex
+	err = tx.Commit()
+	require.NoError(t, err)
+
+	// Should be able to start another write transaction immediately (mutex was released)
+	tx2, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NotNil(t, tx2)
+
+	// Clean up
+	require.NoError(t, tx2.Rollback())
+}
+
+// TestTransactionRollbackReleasesMutex tests that Rollback() always releases the mutex,
+// even after a failed commit attempt.
+func TestTransactionRollbackReleasesMutex(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+
+	// Start a write transaction
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NotNil(t, tx)
+
+	// Do some work
+	_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "test_string")
+	require.NoError(t, err)
+
+	// Rollback instead of commit
+	err = tx.Rollback()
+	require.NoError(t, err)
+
+	// Should be able to start another write transaction immediately (mutex was released)
+	tx2, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err, "Should be able to start new transaction after rollback")
+	require.NotNil(t, tx2)
+	require.NoError(t, tx2.Rollback())
+}
+
+// TestTransactionDoubleRollbackSafe tests that calling Rollback() twice doesn't panic
+// or cause mutex issues (sync.Once protects the unlock).
+func TestTransactionDoubleRollbackSafe(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+
+	// Start a write transaction
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+
+	// Rollback twice - second call should be safe (returns ErrTxDone, but no panic)
+	err = tx.Rollback()
+	require.NoError(t, err)
+
+	err = tx.Rollback()
+	require.Error(t, err) // Expected: sql.ErrTxDone
+
+	// Mutex should still be released, can start new transaction
+	tx2, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NoError(t, tx2.Rollback())
+}
+
+// TestTransactionCommitThenRollbackSafe tests that calling Rollback() after successful
+// Commit() doesn't cause mutex issues (sync.Once protects the unlock).
+func TestTransactionCommitThenRollbackSafe(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+
+	// Start a write transaction
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+
+	// Insert something
+	_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "test_string")
+	require.NoError(t, err)
+
+	// Commit successfully
+	err = tx.Commit()
+	require.NoError(t, err)
+
+	// Call Rollback after commit (like a deferred rollback pattern) - should be safe
+	err = tx.Rollback()
+	require.Error(t, err) // Expected: sql.ErrTxDone
+
+	// Mutex should still be released, can start new transaction
+	tx2, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NoError(t, tx2.Rollback())
+}
+
+// TestTransactionSerialization tests that write transactions are properly serialized
+// and that the mutex prevents concurrent write transactions.
+func TestTransactionSerialization(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+
+	// Channel to coordinate the test
+	started := make(chan bool, 1)
+	committed := make(chan bool, 1)
+
+	// Start first transaction in a goroutine
+	go func() {
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			t.Errorf("Failed to begin first transaction: %v", err)
+			return
+		}
+		defer tx.Rollback()
+
+		// Signal that we started
+		started <- true
+
+		// Hold the transaction for a bit
+		time.Sleep(200 * time.Millisecond)
+
+		// Insert something
+		_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "serialization_test")
+		if err != nil {
+			t.Errorf("Failed to insert in first transaction: %v", err)
+			return
+		}
+
+		// Commit
+		err = tx.Commit()
+		if err != nil {
+			t.Errorf("Failed to commit first transaction: %v", err)
+			return
+		}
+
+		committed <- true
+	}()
+
+	// Wait for first transaction to start
+	select {
+	case <-started:
+		// Good, first transaction started
+	case <-time.After(1 * time.Second):
+		t.Fatal("First transaction didn't start")
+	}
+
+	// Now try to start a second transaction - it should block until the first commits
+	start := time.Now()
+	tx2, err := db.BeginTx(ctx, nil)
+	elapsed := time.Since(start)
+
+	require.NoError(t, err)
+	require.NotNil(t, tx2)
+
+	// Should have taken at least 100ms (the sleep time in the first transaction)
+	require.GreaterOrEqual(t, elapsed, 100*time.Millisecond, "Second transaction should have been blocked by first")
+
+	// Clean up
+	require.NoError(t, tx2.Rollback())
+
+	// Wait for first transaction to complete
+	select {
+	case <-committed:
+		// Good
+	case <-time.After(1 * time.Second):
+		t.Fatal("First transaction didn't commit")
+	}
+}
+
+// TestReadOnlyTransactionConcurrency tests that read-only transactions can run concurrently
+// with write transactions (due to WAL mode).
+func TestReadOnlyTransactionConcurrency(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+
+	// Start a write transaction
+	txWrite, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NotNil(t, txWrite)
+
+	// Insert something in the write transaction
+	_, err = txWrite.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "concurrency_test")
+	require.NoError(t, err)
+
+	// Start a read-only transaction while write transaction is active
+	txRead, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	require.NoError(t, err)
+	require.NotNil(t, txRead)
+
+	// Read transaction should be able to query (may or may not see the uncommitted write)
+	var count int
+	err = txRead.QueryRowContext(ctx, "SELECT COUNT(*) FROM string_pool").Scan(&count)
+	require.NoError(t, err)
+	// Count could be anything depending on isolation level
+
+	// Commit the read transaction
+	require.NoError(t, txRead.Rollback())
+
+	// Commit the write transaction
+	require.NoError(t, txWrite.Commit())
 }

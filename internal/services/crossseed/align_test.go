@@ -201,3 +201,181 @@ func TestShouldAlignFilesWithCandidate(t *testing.T) {
 	require.True(t, shouldAlignFilesWithCandidate(&seasonPack, &seasonPack))
 	require.True(t, shouldAlignFilesWithCandidate(&episode, &otherEpisode))
 }
+
+func TestNeedsRenameAlignment(t *testing.T) {
+	tests := []struct {
+		name           string
+		torrentName    string
+		matchedName    string
+		sourceFiles    qbt.TorrentFiles
+		candidateFiles qbt.TorrentFiles
+		expectedResult bool
+	}{
+		{
+			name:           "identical names and roots - no alignment needed",
+			torrentName:    "Movie.2024.1080p.BluRay.x264-GROUP",
+			matchedName:    "Movie.2024.1080p.BluRay.x264-GROUP",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie.2024.1080p.BluRay.x264-GROUP/movie.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2024.1080p.BluRay.x264-GROUP/movie.mkv", Size: 1000}},
+			expectedResult: false,
+		},
+		{
+			name:           "different torrent names with folders - alignment needed",
+			torrentName:    "Movie 2024 1080p BluRay x264-GROUP",
+			matchedName:    "Movie.2024.1080p.BluRay.x264-GROUP",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie 2024 1080p BluRay x264-GROUP/movie.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2024.1080p.BluRay.x264-GROUP/movie.mkv", Size: 1000}},
+			expectedResult: true,
+		},
+		{
+			name:           "different root folders - alignment needed",
+			torrentName:    "Movie.2024.1080p.BluRay.x264-GROUP",
+			matchedName:    "Movie.2024.1080p.BluRay.x264-GROUP",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie 2024/movie.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2024/movie.mkv", Size: 1000}},
+			expectedResult: true,
+		},
+		{
+			name:           "single file torrents same name - no alignment needed",
+			torrentName:    "movie.mkv",
+			matchedName:    "movie.mkv",
+			sourceFiles:    qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+			expectedResult: false,
+		},
+		{
+			name:           "whitespace differences in names - no alignment needed",
+			torrentName:    "  Movie.2024  ",
+			matchedName:    "Movie.2024",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie.2024/movie.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2024/movie.mkv", Size: 1000}},
+			expectedResult: false, // trimmed names match
+		},
+		{
+			name:           "single file to folder - no alignment needed (uses Subfolder layout)",
+			torrentName:    "Movie.2024.mkv",
+			matchedName:    "Movie.2024",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie.2024.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2024/Movie.2024.mkv", Size: 1000}},
+			expectedResult: false, // handled by contentLayout=Subfolder (wraps source in folder, qBit strips .mkv)
+		},
+		{
+			name:           "folder to single file - no alignment needed (uses NoSubfolder layout)",
+			torrentName:    "Movie.2024",
+			matchedName:    "Movie.2024.mkv",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie.2024/Movie.2024.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2024.mkv", Size: 1000}},
+			expectedResult: false, // handled by contentLayout=NoSubfolder (strips source's folder)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := needsRenameAlignment(tt.torrentName, tt.matchedName, tt.sourceFiles, tt.candidateFiles)
+			require.Equal(t, tt.expectedResult, result)
+		})
+	}
+}
+
+func TestHasExtraSourceFiles(t *testing.T) {
+	tests := []struct {
+		name           string
+		sourceFiles    qbt.TorrentFiles
+		candidateFiles qbt.TorrentFiles
+		expectedResult bool
+	}{
+		{
+			name: "identical files - no extras",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+			},
+			expectedResult: false,
+		},
+		{
+			name: "source has extra NFO file",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+				{Name: "Movie/movie.nfo", Size: 1024},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+			},
+			expectedResult: true,
+		},
+		{
+			name: "source has extra SRT file",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+				{Name: "Movie/movie.srt", Size: 50000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+			},
+			expectedResult: true,
+		},
+		{
+			name: "both have same count, different sizes matches by size",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie/a.mkv", Size: 1000},
+				{Name: "Movie/b.mkv", Size: 2000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie/x.mkv", Size: 1000},
+				{Name: "Movie/y.mkv", Size: 2000},
+			},
+			expectedResult: false,
+		},
+		{
+			name: "candidate has more files than source - no extras",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show.S01E01.mkv", Size: 1000000000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Show.S01/Show.S01E01.mkv", Size: 1000000000},
+				{Name: "Show.S01/Show.S01E02.mkv", Size: 1000000000},
+			},
+			expectedResult: false,
+		},
+		{
+			name: "multiple extra files",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+				{Name: "Movie/movie.nfo", Size: 1024},
+				{Name: "Movie/sample.mkv", Size: 5000000},
+				{Name: "Movie/movie.srt", Size: 50000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+			},
+			expectedResult: true,
+		},
+		{
+			name: "same file count but different sizes - no extras",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+				{Name: "Movie/extra.mkv", Size: 999999999},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+				{Name: "Movie/other.mkv", Size: 888888888},
+			},
+			expectedResult: false, // same count means no "extra" files, size mismatch is handled elsewhere
+		},
+		{
+			name:           "empty source files - no extras",
+			sourceFiles:    qbt.TorrentFiles{},
+			candidateFiles: qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+			expectedResult: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := hasExtraSourceFiles(tt.sourceFiles, tt.candidateFiles)
+			require.Equal(t, tt.expectedResult, result)
+		})
+	}
+}

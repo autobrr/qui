@@ -241,6 +241,10 @@ func (*queueTestSyncManager) GetTorrentProperties(context.Context, int, string) 
 	return nil, nil
 }
 
+func (*queueTestSyncManager) GetAppPreferences(_ context.Context, _ int) (qbt.AppPreferences, error) {
+	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
+}
+
 func (*queueTestSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
 	return nil
 }
@@ -274,5 +278,13 @@ func (*queueTestSyncManager) RenameTorrentFile(context.Context, int, string, str
 }
 
 func (*queueTestSyncManager) RenameTorrentFolder(context.Context, int, string, string, string) error {
+	return nil
+}
+
+func (*queueTestSyncManager) GetCategories(_ context.Context, _ int) (map[string]qbt.Category, error) {
+	return map[string]qbt.Category{}, nil
+}
+
+func (*queueTestSyncManager) CreateCategory(_ context.Context, _ int, _, _ string) error {
 	return nil
 }

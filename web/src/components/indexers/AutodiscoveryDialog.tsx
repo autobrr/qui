@@ -29,7 +29,7 @@ interface AutodiscoveryDialogProps {
 export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps) {
   const [step, setStep] = useState<'input' | 'select'>('input')
   const [loading, setLoading] = useState(false)
-  const [baseUrl, setBaseUrl] = useState('http://localhost:9117')
+  const [baseUrl, setBaseUrl] = useState('http://localhost:9696')
   const [baseUrlError, setBaseUrlError] = useState<string | null>(null)
   const [apiKey, setApiKey] = useState('')
   const [discoveredIndexers, setDiscoveredIndexers] = useState<JackettIndexer[]>([])
@@ -59,25 +59,34 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
         api.discoverJackettIndexers(normalizedBaseUrl, apiKey),
         api.listTorznabIndexers()
       ])
-      
-      setDiscoveredIndexers(response)
-      
+
+      setDiscoveredIndexers(response.indexers)
+
       // Build map of existing indexers by name with full indexer data
       const existingMap = new Map<string, TorznabIndexer>()
       for (const idx of existing) {
         existingMap.set(idx.name, idx)
       }
       setExistingIndexersMap(existingMap)
-      
+
       setStep('select')
-      const existingCount = response.filter(idx => existingMap.has(idx.name)).length
+      const existingCount = response.indexers.filter(idx => existingMap.has(idx.name)).length
       if (existingCount > 0) {
-        toast.success(`Found ${response.length} indexers (${existingCount} already exist)`)
+        toast.success(`Found ${response.indexers.length} indexers (${existingCount} already exist)`)
       } else {
-        toast.success(`Found ${response.length} indexers`)
+        toast.success(`Found ${response.indexers.length} indexers`)
+      }
+
+      // Show discovery warnings if any
+      if (response.warnings?.length) {
+        for (const warning of response.warnings) {
+          toast.warning(warning)
+        }
       }
     } catch (error) {
-      toast.error('Failed to discover indexers. Check your URL and API key.')
+      console.error('Failed to discover indexers:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      toast.error(`Failed to discover indexers: ${errorMessage}`)
     } finally {
       setLoading(false)
     }
@@ -108,6 +117,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
 		let updatedCount = 0
 		let errorCount = 0
 		const errors: string[] = []
+		const warningDetails: string[] = []
 
     for (const indexer of discoveredIndexers) {
       if (!selectedIndexers.has(indexer.id)) continue
@@ -127,9 +137,13 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
             backend,
             indexer_id: normalizedIndexerId,
             capabilities: indexer.caps, // Include capabilities if discovered
+            categories: indexer.categories, // Include categories if discovered
           }
-          await api.updateTorznabIndexer(existing.id, updateData)
+          const response = await api.updateTorznabIndexer(existing.id, updateData)
           updatedCount++
+          if (response.warnings?.length) {
+            warningDetails.push(`${indexer.name}: ${response.warnings.join(', ')}`)
+          }
         } else {
           // Create new indexer - enable by default for newly discovered indexers
           const createData: TorznabIndexerFormData = {
@@ -140,9 +154,13 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
             enabled: true,
             indexer_id: normalizedIndexerId,
             capabilities: indexer.caps, // Include capabilities if discovered
+            categories: indexer.categories, // Include categories if discovered
           }
-          await api.createTorznabIndexer(createData)
+          const response = await api.createTorznabIndexer(createData)
           createdCount++
+          if (response.warnings?.length) {
+            warningDetails.push(`${indexer.name}: ${response.warnings.join(', ')}`)
+          }
         }
       } catch (error) {
         errorCount++
@@ -158,16 +176,30 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
       const messages = []
       if (createdCount > 0) messages.push(`${createdCount} created`)
       if (updatedCount > 0) messages.push(`${updatedCount} updated`)
-      toast.success(`Success: ${messages.join(', ')}`)
+      if (warningDetails.length > 0) {
+        toast.warning(`${messages.join(', ')} (${warningDetails.length} with warnings)`)
+        // Show first few warning details
+        for (const detail of warningDetails.slice(0, 3)) {
+          toast.warning(detail)
+        }
+        if (warningDetails.length > 3) {
+          toast.warning(`...and ${warningDetails.length - 3} more warnings`)
+        }
+      } else {
+        toast.success(`Success: ${messages.join(', ')}`)
+      }
     } else {
       const messages = []
       if (createdCount > 0) messages.push(`${createdCount} created`)
       if (updatedCount > 0) messages.push(`${updatedCount} updated`)
       if (errorCount > 0) messages.push(`${errorCount} failed`)
       toast.error(messages.join(', '))
-      // Show first error detail
-      if (errors.length > 0) {
-        toast.error(errors[0])
+      // Show first few error details
+      for (const detail of errors.slice(0, 3)) {
+        toast.error(detail)
+      }
+      if (errors.length > 3) {
+        toast.error(`...and ${errors.length - 3} more errors`)
       }
     }
 
@@ -185,7 +217,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
 
   const handleClose = () => {
     setStep('input')
-    setBaseUrl('http://localhost:9117')
+    setBaseUrl('http://localhost:9696')
     setBaseUrlError(null)
     setApiKey('')
     setDiscoveredIndexers([])
@@ -220,9 +252,11 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
                       setBaseUrlError(null)
                     }
                   }}
-                  placeholder="http://localhost:9117"
+                  placeholder="http://localhost:9696"
                   className={baseUrlError ? 'border-destructive focus-visible:ring-destructive' : undefined}
                   aria-invalid={baseUrlError ? 'true' : 'false'}
+                  autoComplete="off"
+                  data-1p-ignore
                   required
                 />
                 {baseUrlError && (
@@ -231,7 +265,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
                   </p>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  Jackett defaults to http://localhost:9117, Prowlarr to http://localhost:9696.
+                  Prowlarr defaults to http://localhost:9696, Jackett to http://localhost:9117.
                 </p>
               </div>
               <div className="grid gap-2">
@@ -242,6 +276,8 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   placeholder="Your indexer API key"
+                  autoComplete="off"
+                  data-1p-ignore
                   required
                 />
               </div>

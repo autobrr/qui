@@ -22,7 +22,7 @@ export function DeleteFilesPreference({
   className,
 }: DeleteFilesPreferenceProps) {
   return (
-    <div className={cn("flex items-center gap-2 py-4", className)}>
+    <div className={cn("flex items-center gap-2", className)}>
       <Checkbox
         id={id}
         checked={checked}

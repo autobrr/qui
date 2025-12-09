@@ -38,6 +38,7 @@ import (
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/services/trackerrules"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/pkg/sqlite3store"
 )
@@ -473,6 +474,10 @@ func (app *Application) runServer() {
 		log.Warn().Err(err).Msg("Failed to preload reannounce settings cache")
 	}
 
+	trackerRuleStore := models.NewTrackerRuleStore(db)
+	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
+	dashboardSettingsStore := models.NewDashboardSettingsStore(db)
+
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db)
 	externalProgramStore := models.NewExternalProgramStore(db)
 	errorStore := models.NewInstanceErrorStore(db)
@@ -533,6 +538,8 @@ func (app *Application) runServer() {
 		jackett.WithSearchCache(torznabSearchCache, jackett.SearchCacheConfig{
 			TTL: cacheTTL,
 		}),
+		jackett.WithSearchHistory(0),   // Use default capacity (500 entries)
+		jackett.WithIndexerOutcomes(0), // Use default capacity (1000 entries)
 	)
 	log.Info().Msg("Torznab/Jackett service initialized")
 
@@ -540,6 +547,7 @@ func (app *Application) runServer() {
 	crossSeedStore := models.NewCrossSeedStore(db)
 	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
+	trackerRuleService := trackerrules.NewService(trackerrules.DefaultConfig(), instanceStore, trackerRuleStore, syncManager)
 
 	syncManager.SetTorrentCompletionHandler(crossSeedService.HandleTorrentCompletion)
 
@@ -553,8 +561,12 @@ func (app *Application) runServer() {
 	defer reannounceCancel()
 	reannounceService.Start(reannounceCtx)
 
+	trackerRulesCtx, trackerRulesCancel := context.WithCancel(context.Background())
+	defer trackerRulesCancel()
+	trackerRuleService.Start(trackerRulesCtx)
+
 	backupStore := models.NewBackupStore(db)
-	backupService := backups.NewService(backupStore, syncManager, backups.Config{DataDir: cfg.GetDataDir()})
+	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir()})
 	backupService.Start(context.Background())
 	defer backupService.Stop()
 
@@ -616,26 +628,30 @@ func (app *Application) runServer() {
 
 	// Start server in goroutine
 	httpServer := api.NewServer(&api.Dependencies{
-		Config:               cfg,
-		Version:              buildinfo.Version,
-		AuthService:          authService,
-		SessionManager:       sessionManager,
-		InstanceStore:        instanceStore,
-		InstanceReannounce:   instanceReannounceStore,
-		ReannounceCache:      reannounceSettingsCache,
-		ReannounceService:    reannounceService,
-		ClientAPIKeyStore:    clientAPIKeyStore,
-		ExternalProgramStore: externalProgramStore,
-		ClientPool:           clientPool,
-		SyncManager:          syncManager,
-		LicenseService:       licenseService,
-		UpdateService:        updateService,
-		TrackerIconService:   trackerIconService,
-		BackupService:        backupService,
-		FilesManager:         filesManagerService,
-		CrossSeedService:     crossSeedService,
-		JackettService:       jackettService,
-		TorznabIndexerStore:  torznabIndexerStore,
+		Config:                    cfg,
+		Version:                   buildinfo.Version,
+		AuthService:               authService,
+		SessionManager:            sessionManager,
+		InstanceStore:             instanceStore,
+		InstanceReannounce:        instanceReannounceStore,
+		ReannounceCache:           reannounceSettingsCache,
+		ReannounceService:         reannounceService,
+		ClientAPIKeyStore:         clientAPIKeyStore,
+		ExternalProgramStore:      externalProgramStore,
+		ClientPool:                clientPool,
+		SyncManager:               syncManager,
+		LicenseService:            licenseService,
+		UpdateService:             updateService,
+		TrackerIconService:        trackerIconService,
+		BackupService:             backupService,
+		FilesManager:              filesManagerService,
+		CrossSeedService:          crossSeedService,
+		JackettService:            jackettService,
+		TorznabIndexerStore:       torznabIndexerStore,
+		TrackerRuleStore:          trackerRuleStore,
+		TrackerRuleService:        trackerRuleService,
+		TrackerCustomizationStore: trackerCustomizationStore,
+		DashboardSettingsStore:    dashboardSettingsStore,
 	})
 
 	errorChannel := make(chan error)

@@ -31,7 +31,6 @@ type automationSettingsRequest struct {
 	RunIntervalMinutes           int                        `json:"runIntervalMinutes"`
 	StartPaused                  bool                       `json:"startPaused"`
 	Category                     *string                    `json:"category"`
-	Tags                         []string                   `json:"tags"`
 	IgnorePatterns               []string                   `json:"ignorePatterns"`
 	TargetInstanceIDs            []int                      `json:"targetInstanceIds"`
 	TargetIndexerIDs             []int                      `json:"targetIndexerIds"`
@@ -39,6 +38,7 @@ type automationSettingsRequest struct {
 	FindIndividualEpisodes       bool                       `json:"findIndividualEpisodes"`
 	SizeMismatchTolerancePercent float64                    `json:"sizeMismatchTolerancePercent"`
 	UseCategoryFromIndexer       bool                       `json:"useCategoryFromIndexer"`
+	UseCrossCategorySuffix       bool                       `json:"useCrossCategorySuffix"`
 	RunExternalProgramID         *int                       `json:"runExternalProgramId"`
 	Completion                   *completionSettingsRequest `json:"completion"`
 }
@@ -56,7 +56,6 @@ type automationSettingsPatchRequest struct {
 	RunIntervalMinutes           *int                            `json:"runIntervalMinutes,omitempty"`
 	StartPaused                  *bool                           `json:"startPaused,omitempty"`
 	Category                     optionalString                  `json:"category"`
-	Tags                         *[]string                       `json:"tags,omitempty"`
 	IgnorePatterns               *[]string                       `json:"ignorePatterns,omitempty"`
 	TargetInstanceIDs            *[]int                          `json:"targetInstanceIds,omitempty"`
 	TargetIndexerIDs             *[]int                          `json:"targetIndexerIds,omitempty"`
@@ -64,8 +63,15 @@ type automationSettingsPatchRequest struct {
 	FindIndividualEpisodes       *bool                           `json:"findIndividualEpisodes,omitempty"`
 	SizeMismatchTolerancePercent *float64                        `json:"sizeMismatchTolerancePercent,omitempty"`
 	UseCategoryFromIndexer       *bool                           `json:"useCategoryFromIndexer,omitempty"`
+	UseCrossCategorySuffix       *bool                           `json:"useCrossCategorySuffix,omitempty"`
 	RunExternalProgramID         optionalInt                     `json:"runExternalProgramId"`
 	Completion                   *completionSettingsPatchRequest `json:"completion,omitempty"`
+	// Source-specific tagging
+	RSSAutomationTags    *[]string `json:"rssAutomationTags,omitempty"`
+	SeededSearchTags     *[]string `json:"seededSearchTags,omitempty"`
+	CompletionSearchTags *[]string `json:"completionSearchTags,omitempty"`
+	WebhookTags          *[]string `json:"webhookTags,omitempty"`
+	InheritSourceTags    *bool     `json:"inheritSourceTags,omitempty"`
 }
 
 type completionSettingsPatchRequest struct {
@@ -137,7 +143,6 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.RunIntervalMinutes == nil &&
 		r.StartPaused == nil &&
 		!r.Category.Set &&
-		r.Tags == nil &&
 		r.IgnorePatterns == nil &&
 		r.TargetInstanceIDs == nil &&
 		r.TargetIndexerIDs == nil &&
@@ -145,8 +150,14 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.FindIndividualEpisodes == nil &&
 		r.SizeMismatchTolerancePercent == nil &&
 		r.UseCategoryFromIndexer == nil &&
+		r.UseCrossCategorySuffix == nil &&
 		!r.RunExternalProgramID.Set &&
-		(r.Completion == nil || r.Completion.isEmpty())
+		(r.Completion == nil || r.Completion.isEmpty()) &&
+		r.RSSAutomationTags == nil &&
+		r.SeededSearchTags == nil &&
+		r.CompletionSearchTags == nil &&
+		r.WebhookTags == nil &&
+		r.InheritSourceTags == nil
 }
 
 func (r completionSettingsPatchRequest) isEmpty() bool {
@@ -179,9 +190,6 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 			}
 		}
 	}
-	if patch.Tags != nil {
-		settings.Tags = *patch.Tags
-	}
 	if patch.IgnorePatterns != nil {
 		settings.IgnorePatterns = *patch.IgnorePatterns
 	}
@@ -203,11 +211,30 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	if patch.UseCategoryFromIndexer != nil {
 		settings.UseCategoryFromIndexer = *patch.UseCategoryFromIndexer
 	}
+	if patch.UseCrossCategorySuffix != nil {
+		settings.UseCrossCategorySuffix = *patch.UseCrossCategorySuffix
+	}
 	if patch.RunExternalProgramID.Set {
 		settings.RunExternalProgramID = patch.RunExternalProgramID.Value
 	}
 	if patch.Completion != nil {
 		applyCompletionSettingsPatch(&settings.Completion, patch.Completion)
+	}
+	// Source-specific tagging
+	if patch.RSSAutomationTags != nil {
+		settings.RSSAutomationTags = *patch.RSSAutomationTags
+	}
+	if patch.SeededSearchTags != nil {
+		settings.SeededSearchTags = *patch.SeededSearchTags
+	}
+	if patch.CompletionSearchTags != nil {
+		settings.CompletionSearchTags = *patch.CompletionSearchTags
+	}
+	if patch.WebhookTags != nil {
+		settings.WebhookTags = *patch.WebhookTags
+	}
+	if patch.InheritSourceTags != nil {
+		settings.InheritSourceTags = *patch.InheritSourceTags
 	}
 }
 
@@ -408,7 +435,7 @@ func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	ctx := jackett.WithSearchPriority(context.WithoutCancel(r.Context()), jackett.RateLimitPriorityInteractive)
+	ctx := jackett.WithSearchPriority(r.Context(), jackett.RateLimitPriorityInteractive)
 	response, err := h.service.SearchTorrentMatches(ctx, instanceID, hash, opts)
 	if err != nil {
 		status := mapCrossSeedErrorStatus(err)
@@ -590,12 +617,17 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		}
 	}
 
+	// Validate mutual exclusivity: cannot use both indexer category and .cross suffix
+	if req.UseCategoryFromIndexer && req.UseCrossCategorySuffix {
+		RespondError(w, http.StatusBadRequest, "Cannot enable both 'Use indexer name as category' and 'Add .cross category suffix'. These settings are mutually exclusive.")
+		return
+	}
+
 	settings := &models.CrossSeedAutomationSettings{
 		Enabled:                      req.Enabled,
 		RunIntervalMinutes:           req.RunIntervalMinutes,
 		StartPaused:                  req.StartPaused,
 		Category:                     category,
-		Tags:                         req.Tags,
 		IgnorePatterns:               req.IgnorePatterns,
 		TargetInstanceIDs:            req.TargetInstanceIDs,
 		TargetIndexerIDs:             req.TargetIndexerIDs,
@@ -603,6 +635,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		FindIndividualEpisodes:       req.FindIndividualEpisodes,
 		SizeMismatchTolerancePercent: req.SizeMismatchTolerancePercent,
 		UseCategoryFromIndexer:       req.UseCategoryFromIndexer,
+		UseCrossCategorySuffix:       req.UseCrossCategorySuffix,
 		RunExternalProgramID:         req.RunExternalProgramID,
 		Completion:                   completion,
 	}
@@ -655,6 +688,12 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 
 	merged := *current
 	applyAutomationSettingsPatch(&merged, req)
+
+	// Validate mutual exclusivity: cannot use both indexer category and .cross suffix
+	if merged.UseCategoryFromIndexer && merged.UseCrossCategorySuffix {
+		RespondError(w, http.StatusBadRequest, "Cannot enable both 'Use indexer name as category' and 'Add .cross category suffix'. These settings are mutually exclusive.")
+		return
+	}
 
 	updated, err := h.service.UpdateAutomationSettings(r.Context(), &merged)
 	if err != nil {

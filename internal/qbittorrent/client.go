@@ -27,6 +27,7 @@ var (
 	renameFileMinVersion      = semver.MustParse("2.4.0")
 	renameFolderMinVersion    = semver.MustParse("2.7.0")
 	subcategoriesMinVersion   = semver.MustParse("2.9.0")
+	torrentTmpPathMinVersion  = semver.MustParse("2.8.4")
 )
 
 type Client struct {
@@ -42,6 +43,7 @@ type Client struct {
 	supportsRenameFolder    bool
 	supportsFilePriority    bool
 	supportsSubcategories   bool
+	supportsTorrentTmpPath  bool
 	lastHealthCheck         time.Time
 	isHealthy               bool
 	syncManager             *qbt.SyncManager
@@ -120,7 +122,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		client.updateHealthStatus(true)
 		client.updateServerState(data)
 		client.handleCompletionUpdates(data)
-		log.Debug().Int("instanceID", instanceID).Int("torrentCount", len(data.Torrents)).Msg("Sync manager update received, marking client as healthy")
+		log.Trace().Int("instanceID", instanceID).Int("torrentCount", len(data.Torrents)).Msg("Sync manager update received, marking client as healthy")
 	}
 
 	syncOpts.OnError = func(err error) {
@@ -247,6 +249,7 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 	c.supportsRenameFile = !v.LessThan(renameFileMinVersion)
 	c.supportsRenameFolder = !v.LessThan(renameFolderMinVersion)
 	c.supportsSubcategories = !v.LessThan(subcategoriesMinVersion)
+	c.supportsTorrentTmpPath = !v.LessThan(torrentTmpPathMinVersion)
 }
 
 func (c *Client) updateServerState(data *qbt.MainData) {
@@ -359,6 +362,12 @@ func (c *Client) SupportsSubcategories() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsSubcategories
+}
+
+func (c *Client) SupportsTorrentTmpPath() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsTorrentTmpPath
 }
 
 // getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)

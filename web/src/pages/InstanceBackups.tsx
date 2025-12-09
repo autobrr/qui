@@ -35,6 +35,12 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
@@ -64,6 +70,7 @@ import {
   useDeleteAllBackupRuns,
   useDeleteBackupRun,
   useExecuteRestore,
+  useImportBackupManifest,
   usePreviewRestore,
   useTriggerBackup,
   useUpdateBackupSettings
@@ -109,7 +116,6 @@ type SettingsToggleKey =
   | "includeTags"
 
 type SettingsNumericKey = "keepHourly" | "keepDaily" | "keepWeekly" | "keepMonthly"
-
 type ExcludedTorrentMeta = {
   hash: string
   name?: string | null
@@ -123,6 +129,7 @@ const runKindLabels: Record<BackupRunKind, string> = {
   daily: "Daily",
   weekly: "Weekly",
   monthly: "Monthly",
+  import: "Import",
 }
 
 const statusVariants: Record<BackupRunStatus, "default" | "secondary" | "destructive" | "outline"> = {
@@ -231,6 +238,7 @@ export function InstanceBackups() {
   const deleteAllRuns = useDeleteAllBackupRuns(instanceId ?? 0)
   const previewRestore = usePreviewRestore(instanceId ?? 0)
   const executeRestore = useExecuteRestore(instanceId ?? 0)
+  const importManifest = useImportBackupManifest(instanceId ?? 0)
   const { formatDate } = useDateTimeFormatters()
 
   const [formState, setFormState] = useState<SettingsFormState | null>(null)
@@ -250,6 +258,9 @@ export function InstanceBackups() {
   const [restorePlanError, setRestorePlanError] = useState<string | null>(null)
   const [restoreResult, setRestoreResult] = useState<RestoreResult | null>(null)
   const [restoreExcludedHashes, setRestoreExcludedHashes] = useState<string[]>([])
+
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
 
   const backupHistoryRef = useRef<HTMLDivElement>(null)
 
@@ -354,6 +365,131 @@ export function InstanceBackups() {
     if (!formState) return false
     return formState.hourlyEnabled || formState.dailyEnabled || formState.weeklyEnabled || formState.monthlyEnabled
   }, [formState])
+
+  const nextScheduleInfo = useMemo<{
+    state: "loading" | "ready"
+    kind?: BackupRunKind
+    timestamp?: string
+    status: string
+  }>(() => {
+    if (settingsLoading || !formState) {
+      return {
+        state: "loading",
+        status: "Loading schedule…",
+      }
+    }
+
+    if (!formState.enabled) {
+      return {
+        state: "ready",
+        timestamp: "—",
+        status: "Automatic backups are turned off for this instance.",
+      }
+    }
+
+    const cadenceDefinitions: Array<{
+      kind: BackupRunKind
+      enabled: boolean
+      computeNext: (last: Date) => Date
+    }> = [
+      { kind: "hourly", enabled: formState.hourlyEnabled, computeNext: last => addIntervalMs(last, 60 * 60 * 1000) },
+      { kind: "daily", enabled: formState.dailyEnabled, computeNext: last => addIntervalMs(last, 24 * 60 * 60 * 1000) },
+      { kind: "weekly", enabled: formState.weeklyEnabled, computeNext: last => addIntervalMs(last, 7 * 24 * 60 * 60 * 1000) },
+      { kind: "monthly", enabled: formState.monthlyEnabled, computeNext: addOneMonth },
+    ]
+    const enabledCadences = cadenceDefinitions.filter(c => c.enabled)
+
+    if (enabledCadences.length === 0) {
+      return {
+        state: "ready",
+        timestamp: "—",
+        status: "Enable at least one automatic cadence to schedule backups.",
+      }
+    }
+
+    const enabledKinds = new Set(enabledCadences.map(c => c.kind))
+    const activeRun = summaryRuns.find(
+      run =>
+        enabledKinds.has(run.kind) &&
+        (run.status === "running" || run.status === "pending")
+    )
+    if (activeRun) {
+      return {
+        state: "ready",
+        kind: activeRun.kind,
+        timestamp: formatDateSafe(activeRun.startedAt ?? activeRun.requestedAt, formatDate),
+        status: activeRun.status === "running"
+          ? "Backup is currently running."
+          : "Backup is queued and will start shortly.",
+      }
+    }
+
+    const lastSuccessByKind = buildLastSuccessMap(summaryRuns)
+    const now = new Date()
+
+    let best:
+      | {
+          kind: BackupRunKind
+          nextDate?: Date
+          hasHistory: boolean
+        }
+      | null = null
+
+    for (const cadence of enabledCadences) {
+      const lastSuccess = lastSuccessByKind[cadence.kind]
+      const candidate = {
+        kind: cadence.kind,
+        nextDate: lastSuccess ? cadence.computeNext(lastSuccess) : undefined,
+        hasHistory: !!lastSuccess,
+      }
+
+      if (!best) {
+        best = candidate
+        continue
+      }
+
+      const candidateTime = candidate.nextDate?.getTime() ?? now.getTime()
+      const bestTime = best.nextDate?.getTime() ?? now.getTime()
+      if (candidateTime < bestTime) {
+        best = candidate
+      }
+    }
+
+    if (!best) {
+      return {
+        state: "ready",
+        timestamp: "—",
+        status: "Waiting for the scheduler to pick up the next backup.",
+      }
+    }
+
+    if (!best.hasHistory) {
+      return {
+        state: "ready",
+        kind: best.kind,
+        timestamp: "—",
+        status: "Waiting for the first backup; scheduler will run ASAP.",
+      }
+    }
+
+    if (!best.nextDate) {
+      return {
+        state: "ready",
+        kind: best.kind,
+        timestamp: "—",
+        status: "Waiting for scheduler information.",
+      }
+    }
+
+    const overdue = best.nextDate.getTime() <= now.getTime()
+
+    return {
+      state: "ready",
+      kind: best.kind,
+      timestamp: formatDate(best.nextDate),
+      status: overdue ? "Should have already run; scheduler will retry automatically." : "",
+    }
+  }, [formatDate, formState, settingsLoading, summaryRuns])
 
   // Pagination helpers
   const hasMoreBackups = runsResponse?.hasMore ?? false
@@ -785,16 +921,27 @@ export function InstanceBackups() {
 
           <Card className="flex flex-col">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Queued backups</CardTitle>
+              <CardTitle className="text-sm font-medium">Next scheduled backup</CardTitle>
               <RefreshCw className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
-            <CardContent>
-              {runsLoading ? (
-                <p className="text-sm text-muted-foreground">Loading...</p>
+            <CardContent className="flex-1 flex flex-col">
+              {nextScheduleInfo.state === "loading" ? (
+                <p className="text-sm text-muted-foreground">Loading schedule...</p>
+              ) : nextScheduleInfo.kind ? (
+                <div className="flex flex-col flex-1">
+                  <div className="space-y-2">
+                    <Badge variant="default">{runKindLabels[nextScheduleInfo.kind]}</Badge>
+                    <p className="text-sm">{nextScheduleInfo.timestamp ?? "—"}</p>
+                  </div>
+                  {nextScheduleInfo.status && (
+                    <div className="min-h-[44px] flex items-start pt-1 mt-auto">
+                      <p className="text-xs text-muted-foreground">{nextScheduleInfo.status}</p>
+                    </div>
+                  )}
+                </div>
               ) : (
-                <p className="text-2xl font-bold">{summaryRuns.filter(run => run.status === "running" || run.status === "pending").length}</p>
+                <p className="text-sm text-muted-foreground">{nextScheduleInfo.status}</p>
               )}
-              <p className="text-xs text-muted-foreground">Pending or running backups</p>
             </CardContent>
           </Card>
 
@@ -894,6 +1041,9 @@ export function InstanceBackups() {
                     <Button onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
                       <ArrowDownToLine className="mr-2 h-4 w-4" /> Run manual backup
                     </Button>
+                    <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+                      <FileText className="mr-2 h-4 w-4" /> Import backup
+                    </Button>
                     <Button
                       variant="outline"
                       onClick={handleSave}
@@ -914,7 +1064,7 @@ export function InstanceBackups() {
           </CardContent>
         </Card>
 
-        <Dialog open={restoreDialogOpen} onOpenChange={(open) => {
+        <Dialog open={restoreDialogOpen} onOpenChange={(open: boolean) => {
           if (!open) {
             closeRestoreDialog()
           }
@@ -1459,6 +1609,65 @@ export function InstanceBackups() {
           </DialogContent>
         </Dialog>
 
+        <Dialog open={importDialogOpen} onOpenChange={(open: boolean) => {
+          setImportDialogOpen(open)
+          if (!open) {
+            setImportFile(null)
+          }
+        }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Import backup</DialogTitle>
+              <DialogDescription>
+                Upload a backup archive (with torrent files) or manifest.json (metadata only).
+                Archive formats: zip, tar.gz, tar.zst, tar.br, tar.xz, tar.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="manifest-file">Backup file</Label>
+                <Input
+                  id="manifest-file"
+                  type="file"
+                  accept=".json,.zip,.tar,.tgz,.zst,.br,.xz,application/json,application/zip,application/x-tar,application/gzip,application/zstd,application/x-brotli,application/x-xz"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    setImportFile(file || null)
+                  }}
+                />
+                {importFile && (
+                  <p className="text-sm text-muted-foreground">
+                    Selected: {importFile.name} ({(importFile.size / 1024).toFixed(1)} KB)
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (!importFile) return
+
+                  try {
+                    await importManifest.mutateAsync(importFile)
+                    toast.success("Backup imported successfully")
+                    setImportDialogOpen(false)
+                    setImportFile(null)
+                  } catch (error) {
+                    toast.error("Failed to import backup")
+                    console.error("Import error:", error)
+                  }
+                }}
+                disabled={!importFile || importManifest.isPending}
+              >
+                {importManifest.isPending ? "Importing..." : "Import"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         <div ref={backupHistoryRef}>
           <Card>
             <CardHeader>
@@ -1549,20 +1758,70 @@ export function InstanceBackups() {
                             >
                               <Undo2 className="h-4 w-4" />
                             </Button>
-                            {run.archivePath ? (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                asChild
-                                aria-label="Download backup"
-                              >
-                                <a
-                                  href={api.getBackupDownloadUrl(instanceId!, run.id)}
-                                  rel="noreferrer"
-                                >
-                                  <Download className="h-4 w-4" />
-                                </a>
-                              </Button>
+                            {run.status === "success" && run.torrentCount > 0 ? (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" aria-label="Download backup">
+                                    <Download className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "zip")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      Download as ZIP
+                                    </a>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.gz")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      Download as TAR.GZ
+                                    </a>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.zst")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      Download as TAR.ZST
+                                    </a>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.br")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      Download as TAR.BR
+                                    </a>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.xz")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      Download as TAR.XZ
+                                    </a>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      Download as TAR
+                                    </a>
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             ) : (
                               <Button variant="ghost" size="icon" disabled aria-label="Download unavailable">
                                 <Download className="h-4 w-4" />
@@ -1630,7 +1889,7 @@ export function InstanceBackups() {
           </Card>
         </div>
 
-        <Dialog open={manifestOpen} onOpenChange={(open) => {
+        <Dialog open={manifestOpen} onOpenChange={(open: boolean) => {
           setManifestOpen(open)
           if (!open) {
             setManifestRunId(undefined)
@@ -1708,7 +1967,7 @@ export function InstanceBackups() {
                     <TableBody>
                       {filteredManifestItems.length > 0 ? (
                         filteredManifestItems.map(item => (
-                          <TableRow key={item.hash + item.archivePath}>
+                          <TableRow key={item.hash}>
                             <TableCell className="font-medium !max-w-md truncate">{item.name}</TableCell>
                             <TableCell>{item.category ?? "—"}</TableCell>
                             <TableCell className="max-w-sm truncate">{item.tags && item.tags.length > 0 ? item.tags.join(", ") : "—"}</TableCell>
@@ -1844,6 +2103,40 @@ function formatChangeValue(value: unknown): string {
 
 function countItems<T>(items?: T[] | null): number {
   return items?.length ?? 0
+}
+
+function buildLastSuccessMap(runs: BackupRun[]): Partial<Record<BackupRunKind, Date>> {
+  const map: Partial<Record<BackupRunKind, Date>> = {}
+
+  for (const run of runs) {
+    if (run.status !== "success") continue
+    if (map[run.kind]) continue
+    const timestamp = parseDate(run.completedAt ?? run.requestedAt)
+    if (timestamp) {
+      map[run.kind] = timestamp
+    }
+  }
+
+  return map
+}
+
+function addIntervalMs(date: Date, interval: number): Date {
+  return new Date(date.getTime() + interval)
+}
+
+function addOneMonth(date: Date): Date {
+  const next = new Date(date.getTime())
+  next.setUTCMonth(next.getUTCMonth() + 1)
+  return next
+}
+
+function parseDate(value?: string | null): Date | undefined {
+  if (!value) return undefined
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return undefined
+  }
+  return parsed
 }
 
 function formatBytes(bytes: number): string {
