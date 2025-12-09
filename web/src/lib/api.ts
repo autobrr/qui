@@ -4,6 +4,7 @@
  */
 
 import type {
+  AddTorrentResponse,
   AppPreferences,
   AsyncIndexerFilteringState,
   AuthResponse,
@@ -12,32 +13,33 @@ import type {
   BackupRunsResponse,
   BackupSettings,
   Category,
+  CrossInstanceTorrent,
   CrossSeedApplyResponse,
   CrossSeedAutomationSettings,
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
-  CrossInstanceTorrent,
   CrossSeedInstanceResult,
   CrossSeedRun,
+  CrossSeedSearchRun,
+  CrossSeedSearchSettings,
+  CrossSeedSearchSettingsPatch,
+  CrossSeedSearchStatus,
   CrossSeedTorrentInfo,
   CrossSeedTorrentSearchResponse,
   CrossSeedTorrentSearchSelection,
-  CrossSeedSearchSettings,
-  CrossSeedSearchSettingsPatch,
-  CrossSeedSearchRun,
-  CrossSeedSearchStatus,
+  DiscoverJackettResponse,
   DuplicateTorrentMatch,
   ExternalProgram,
   ExternalProgramCreate,
   ExternalProgramExecute,
   ExternalProgramExecuteResponse,
   ExternalProgramUpdate,
+  IndexerActivityStatus,
   InstanceCapabilities,
   InstanceFormData,
   InstanceReannounceActivity,
   InstanceReannounceCandidate,
   InstanceResponse,
-  JackettIndexer,
   QBittorrentAppInfo,
   RestoreMode,
   RestorePlan,
@@ -52,21 +54,25 @@ import type {
   TorrentProperties,
   TorrentResponse,
   TorrentTracker,
-  TrackerRule,
-  TrackerRuleInput,
+  IndexerResponse,
   TorznabIndexer,
   TorznabIndexerError,
   TorznabIndexerFormData,
   TorznabIndexerHealth,
   TorznabIndexerLatencyStats,
-  IndexerActivityStatus,
-  TorznabSearchRequest,
-  TorznabSearchResult,
-  TorznabSearchResponse,
+  TorznabRecentSearch,
   TorznabSearchCacheMetadata,
   TorznabSearchCacheStats,
-  TorznabRecentSearch,
-  User
+  TorznabSearchRequest,
+  TorznabSearchResponse,
+  TorznabSearchResult,
+  TrackerCustomization,
+  TrackerCustomizationInput,
+  TrackerRule,
+  TrackerRuleInput,
+  User,
+  DashboardSettings,
+  DashboardSettingsInput
 } from "@/types"
 import { getApiBaseUrl, withBasePath } from "./base-url"
 
@@ -553,6 +559,8 @@ class ApiClient {
       tags?: string[]
       startPaused?: boolean
       savePath?: string
+      useDownloadPath?: boolean
+      downloadPath?: string
       autoTMM?: boolean
       skipHashCheck?: boolean
       sequentialDownload?: boolean
@@ -563,8 +571,9 @@ class ApiClient {
       limitSeedTime?: number
       contentLayout?: string
       rename?: string
+      indexerId?: number
     }
-  ): Promise<{ success: boolean; message?: string }> {
+  ): Promise<AddTorrentResponse> {
     const formData = new FormData()
     // Append each file with the same field name "torrent"
     if (data.torrentFiles) {
@@ -586,6 +595,9 @@ class ApiClient {
     if (data.rename) formData.append("rename", data.rename)
     // Only send savePath if autoTMM is false or undefined
     if (data.savePath && !data.autoTMM) formData.append("savepath", data.savePath)
+    if (data.useDownloadPath !== undefined) formData.append("useDownloadPath", data.useDownloadPath.toString())
+    if (data.downloadPath) formData.append("downloadPath", data.downloadPath)
+    if (data.indexerId) formData.append("indexer_id", data.indexerId.toString())
 
     const response = await fetch(`${API_BASE}/instances/${instanceId}/torrents`, {
       method: "POST",
@@ -1490,6 +1502,43 @@ class ApiClient {
     })
   }
 
+  // Tracker Customization endpoints
+  async listTrackerCustomizations(): Promise<TrackerCustomization[]> {
+    return this.request<TrackerCustomization[]>("/tracker-customizations")
+  }
+
+  async createTrackerCustomization(data: TrackerCustomizationInput): Promise<TrackerCustomization> {
+    return this.request<TrackerCustomization>("/tracker-customizations", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateTrackerCustomization(id: number, data: TrackerCustomizationInput): Promise<TrackerCustomization> {
+    return this.request<TrackerCustomization>(`/tracker-customizations/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteTrackerCustomization(id: number): Promise<void> {
+    return this.request(`/tracker-customizations/${id}`, {
+      method: "DELETE",
+    })
+  }
+
+  // Dashboard Settings endpoints
+  async getDashboardSettings(): Promise<DashboardSettings> {
+    return this.request<DashboardSettings>("/dashboard-settings")
+  }
+
+  async updateDashboardSettings(data: DashboardSettingsInput): Promise<DashboardSettings> {
+    return this.request<DashboardSettings>("/dashboard-settings", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
   // Torznab Indexer endpoints
   async listTorznabIndexers(): Promise<TorznabIndexer[]> {
     return this.request<TorznabIndexer[]>("/torznab/indexers")
@@ -1499,15 +1548,15 @@ class ApiClient {
     return this.request<TorznabIndexer>(`/torznab/indexers/${id}`)
   }
 
-  async createTorznabIndexer(data: TorznabIndexerFormData): Promise<TorznabIndexer> {
-    return this.request<TorznabIndexer>("/torznab/indexers", {
+  async createTorznabIndexer(data: TorznabIndexerFormData): Promise<IndexerResponse> {
+    return this.request<IndexerResponse>("/torznab/indexers", {
       method: "POST",
       body: JSON.stringify(data),
     })
   }
 
-  async updateTorznabIndexer(id: number, data: Partial<TorznabIndexerFormData>): Promise<TorznabIndexer> {
-    return this.request<TorznabIndexer>(`/torznab/indexers/${id}`, {
+  async updateTorznabIndexer(id: number, data: Partial<TorznabIndexerFormData>): Promise<IndexerResponse> {
+    return this.request<IndexerResponse>(`/torznab/indexers/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     })
@@ -1540,8 +1589,8 @@ class ApiClient {
     return this.request<SearchHistoryResponse>(`/torznab/search/history${params}`)
   }
 
-  async discoverJackettIndexers(baseUrl: string, apiKey: string): Promise<JackettIndexer[]> {
-    return this.request<JackettIndexer[]>("/torznab/indexers/discover", {
+  async discoverJackettIndexers(baseUrl: string, apiKey: string): Promise<DiscoverJackettResponse> {
+    return this.request<DiscoverJackettResponse>("/torznab/indexers/discover", {
       method: "POST",
       body: JSON.stringify({ base_url: baseUrl, api_key: apiKey }),
     })

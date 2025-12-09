@@ -1341,13 +1341,14 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 	defaultSettings := models.DefaultCrossSeedAutomationSettings()
 
 	tests := []struct {
-		name              string
-		request           *CrossSeedRequest
-		matched           qbt.Torrent
-		settings          *models.CrossSeedAutomationSettings
-		inheritSourceTags bool
-		expectedCategory  string
-		expectedTags      []string
+		name                  string
+		request               *CrossSeedRequest
+		matched               qbt.Torrent
+		settings              *models.CrossSeedAutomationSettings
+		inheritSourceTags     bool
+		expectedBaseCategory  string
+		expectedCrossCategory string
+		expectedTags          []string
 	}{
 		{
 			name: "inherit matched tags when inheritSourceTags enabled",
@@ -1360,10 +1361,11 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 				Category: "movies",
 				Tags:     "tracker1,quality-1080p",
 			},
-			settings:          defaultSettings,
-			inheritSourceTags: true,
-			expectedCategory:  "movies",
-			expectedTags:      []string{"cross-seed", "tracker1", "quality-1080p"},
+			settings:              defaultSettings,
+			inheritSourceTags:     true,
+			expectedBaseCategory:  "movies",
+			expectedCrossCategory: "movies.cross",
+			expectedTags:          []string{"cross-seed", "tracker1", "quality-1080p"},
 		},
 		{
 			name: "source tags without inheritance",
@@ -1375,10 +1377,11 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 				Category: "movies",
 				Tags:     "tracker1",
 			},
-			settings:          defaultSettings,
-			inheritSourceTags: false,
-			expectedCategory:  "movies-4k",
-			expectedTags:      []string{"custom", "cross-seed"},
+			settings:              defaultSettings,
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "movies-4k",
+			expectedCrossCategory: "movies-4k.cross",
+			expectedTags:          []string{"custom", "cross-seed"},
 		},
 		{
 			name: "source tags with inheritance",
@@ -1391,10 +1394,11 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 				Category: "tv",
 				Tags:     "sonarr",
 			},
-			settings:          defaultSettings,
-			inheritSourceTags: true,
-			expectedCategory:  "tv",
-			expectedTags:      []string{"cross-seed", "sonarr"},
+			settings:              defaultSettings,
+			inheritSourceTags:     true,
+			expectedBaseCategory:  "tv",
+			expectedCrossCategory: "tv.cross",
+			expectedTags:          []string{"cross-seed", "sonarr"},
 		},
 		{
 			name: "use indexer category when enabled",
@@ -1408,10 +1412,12 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 			},
 			settings: &models.CrossSeedAutomationSettings{
 				UseCategoryFromIndexer: true,
+				UseCrossCategorySuffix: true,
 			},
-			inheritSourceTags: false,
-			expectedCategory:  "IndexerCat",
-			expectedTags:      []string{"cross-seed"},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "IndexerCat",
+			expectedCrossCategory: "IndexerCat.cross",
+			expectedTags:          []string{"cross-seed"},
 		},
 		{
 			name: "no tags when source tags empty",
@@ -1423,26 +1429,59 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 				Category: "tv",
 				Tags:     "",
 			},
-			settings:          defaultSettings,
-			inheritSourceTags: false,
-			expectedCategory:  "tv",
-			expectedTags:      []string{},
+			settings:              defaultSettings,
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "tv",
+			expectedCrossCategory: "tv.cross",
+			expectedTags:          []string{},
+		},
+		{
+			name: "empty category stays empty",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "",
+				Tags:     "",
+			},
+			settings:              defaultSettings,
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "",
+			expectedCrossCategory: "",
+			expectedTags:          []string{},
+		},
+		{
+			name: "no double suffix for already suffixed category",
+			request: &CrossSeedRequest{
+				Category: "movies.cross",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "movies",
+				Tags:     "",
+			},
+			settings:              defaultSettings,
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "movies.cross",
+			expectedCrossCategory: "movies.cross",
+			expectedTags:          []string{},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc := &Service{
-				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
-					if tt.settings != nil {
-						return tt.settings, nil
-					}
-					return defaultSettings, nil
-				},
+			svc := &Service{}
+
+			// Use tt.settings if provided, otherwise use defaultSettings
+			settings := tt.settings
+			if settings == nil {
+				settings = defaultSettings
 			}
 
-			category := svc.determineCrossSeedCategory(context.Background(), tt.request, &tt.matched)
-			assert.Equal(t, tt.expectedCategory, category)
+			baseCategory, crossCategory := svc.determineCrossSeedCategory(context.Background(), tt.request, &tt.matched, settings)
+			assert.Equal(t, tt.expectedBaseCategory, baseCategory)
+			assert.Equal(t, tt.expectedCrossCategory, crossCategory)
 
 			tags := buildCrossSeedTags(tt.request.Tags, tt.matched.Tags, tt.inheritSourceTags)
 			if len(tt.expectedTags) == 0 {
@@ -2483,6 +2522,14 @@ func (f *fakeSyncManager) GetQBittorrentSyncManager(_ context.Context, _ int) (*
 	return nil, fmt.Errorf("GetQBittorrentSyncManager not implemented in fakeSyncManager")
 }
 
+func (f *fakeSyncManager) GetCategories(_ context.Context, _ int) (map[string]qbt.Category, error) {
+	return map[string]qbt.Category{}, nil
+}
+
+func (f *fakeSyncManager) CreateCategory(_ context.Context, _ int, _, _ string) error {
+	return nil
+}
+
 // TestWebhookCheckRequest_Validation tests request validation
 func TestWebhookCheckRequest_Validation(t *testing.T) {
 	tests := []struct {
@@ -3023,6 +3070,14 @@ func (m *mockRecoverSyncManager) ExtractDomainFromURL(string) string {
 
 func (m *mockRecoverSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
 	return nil, fmt.Errorf("not implemented")
+}
+
+func (m *mockRecoverSyncManager) GetCategories(_ context.Context, _ int) (map[string]qbt.Category, error) {
+	return map[string]qbt.Category{}, nil
+}
+
+func (m *mockRecoverSyncManager) CreateCategory(_ context.Context, _ int, _, _ string) error {
+	return nil
 }
 
 func TestRecoverErroredTorrents_NoErroredTorrents(t *testing.T) {

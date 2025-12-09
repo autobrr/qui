@@ -84,6 +84,31 @@ func (k releaseKey) String() string {
 	return fmt.Sprintf("%d|%d|%d|%d|%d", k.series, k.episode, k.year, k.month, k.day)
 }
 
+// normalizeTitleForComparison normalizes a title for fuzzy comparison.
+// Strips punctuation that commonly differs between space-separated and
+// dot-separated release name formats (e.g., "Bob's Burgers" vs "Bobs.Burgers").
+func normalizeTitleForComparison(title string) string {
+	title = strings.ToLower(strings.TrimSpace(title))
+
+	// Remove apostrophes - "Bob's" → "Bobs"
+	title = strings.ReplaceAll(title, "'", "")
+	title = strings.ReplaceAll(title, "'", "") // Unicode right single quote U+2019
+	title = strings.ReplaceAll(title, "'", "") // Unicode left single quote U+2018
+	title = strings.ReplaceAll(title, "`", "") // Backtick
+
+	// Remove colons - "CSI: Miami" → "CSI Miami"
+	title = strings.ReplaceAll(title, ":", "")
+
+	// Normalize hyphens to spaces - "Spider-Man" → "spider man"
+	// This handles cases where hyphens are dropped in dot notation
+	title = strings.ReplaceAll(title, "-", " ")
+
+	// Collapse multiple spaces to single space
+	title = strings.Join(strings.Fields(title), " ")
+
+	return title
+}
+
 // releasesMatch checks if two releases are related using fuzzy matching.
 // This allows matching similar content that isn't exactly the same.
 func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEpisodes bool) bool {
@@ -92,10 +117,12 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	}
 
 	// Title should match closely but not necessarily exactly.
-	sourceTitleLower := s.stringNormalizer.Normalize(source.Title)
-	candidateTitleLower := s.stringNormalizer.Normalize(candidate.Title)
+	// Use punctuation-stripping normalization to handle differences like
+	// "Bob's Burgers" vs "Bobs.Burgers" (apostrophes lost in dot notation).
+	sourceTitleNorm := normalizeTitleForComparison(source.Title)
+	candidateTitleNorm := normalizeTitleForComparison(candidate.Title)
 
-	if sourceTitleLower == "" || candidateTitleLower == "" {
+	if sourceTitleNorm == "" || candidateTitleNorm == "" {
 		return false
 	}
 
@@ -104,16 +131,28 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	if isTV {
 		// For TV, allow a bit of fuzziness in the title (e.g. different punctuation)
 		// while still requiring the titles to be closely related.
-		if sourceTitleLower != candidateTitleLower &&
-			!strings.Contains(sourceTitleLower, candidateTitleLower) &&
-			!strings.Contains(candidateTitleLower, sourceTitleLower) {
+		if sourceTitleNorm != candidateTitleNorm &&
+			!strings.Contains(sourceTitleNorm, candidateTitleNorm) &&
+			!strings.Contains(candidateTitleNorm, sourceTitleNorm) {
+			// Title mismatches are expected for most candidates - don't log to avoid noise
 			return false
 		}
 	} else {
 		// For non-TV content (movies, music, audiobooks, etc.), require exact title
 		// match after normalization. This avoids very loose substring matches across
 		// unrelated content types.
-		if sourceTitleLower != candidateTitleLower {
+		if sourceTitleNorm != candidateTitleNorm {
+			// Title mismatches are expected for most candidates - don't log to avoid noise
+			return false
+		}
+	}
+
+	// Artist must match for content with artist metadata (music, 0day scene radio shows, etc.)
+	// This prevents matching different artists with the same show/album title.
+	if source.Artist != "" && candidate.Artist != "" {
+		sourceArtist := s.stringNormalizer.Normalize(source.Artist)
+		candidateArtist := s.stringNormalizer.Normalize(candidate.Artist)
+		if sourceArtist != candidateArtist {
 			return false
 		}
 	}
@@ -121,6 +160,15 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	// Year should match if both are present.
 	if source.Year > 0 && candidate.Year > 0 && source.Year != candidate.Year {
 		return false
+	}
+
+	// For date-based releases (0day scene), require exact date match including month and day.
+	// This prevents matching releases from different dates within the same year.
+	if source.Year > 0 && source.Month > 0 && source.Day > 0 &&
+		candidate.Year > 0 && candidate.Month > 0 && candidate.Day > 0 {
+		if source.Month != candidate.Month || source.Day != candidate.Day {
+			return false
+		}
 	}
 
 	// For non-TV content where rls has inferred a concrete content type (movie, music,
@@ -152,7 +200,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		if !findIndividualEpisodes {
 			// Strict matching: season packs only match season packs, episodes only match episodes
 			if sourceIsPack != candidateIsPack {
-				return false // Don't match season packs with individual episodes
+				return false
 			}
 
 			// If both are individual episodes, episodes must match
@@ -255,11 +303,48 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		}
 	}
 
+	// Language must match if both are present (FRENCH vs ENGLISH are different audio/subs)
+	if len(source.Language) > 0 && len(candidate.Language) > 0 {
+		sourceLanguage := joinNormalizedSlice(source.Language)
+		candidateLanguage := joinNormalizedSlice(candidate.Language)
+		if sourceLanguage != candidateLanguage {
+			return false
+		}
+	}
+
+	// Version must match if both are present (v2 often has different files than v1)
+	sourceVersion := s.stringNormalizer.Normalize(source.Version)
+	candidateVersion := s.stringNormalizer.Normalize(candidate.Version)
+	if sourceVersion != "" && candidateVersion != "" && sourceVersion != candidateVersion {
+		return false
+	}
+
+	// Disc must match if both are present (Disc1 vs Disc2 are different content)
+	sourceDisc := s.stringNormalizer.Normalize(source.Disc)
+	candidateDisc := s.stringNormalizer.Normalize(candidate.Disc)
+	if sourceDisc != "" && candidateDisc != "" && sourceDisc != candidateDisc {
+		return false
+	}
+
+	// Platform must match if both are present (Windows vs macOS are different binaries)
+	sourcePlatform := s.stringNormalizer.Normalize(source.Platform)
+	candidatePlatform := s.stringNormalizer.Normalize(candidate.Platform)
+	if sourcePlatform != "" && candidatePlatform != "" && sourcePlatform != candidatePlatform {
+		return false
+	}
+
+	// Architecture must match if both are present (x64 vs x86 are different binaries)
+	sourceArch := s.stringNormalizer.Normalize(source.Arch)
+	candidateArch := s.stringNormalizer.Normalize(candidate.Arch)
+	if sourceArch != "" && candidateArch != "" && sourceArch != candidateArch {
+		return false
+	}
+
 	// Certain variant tags must match for safe cross-seeding.
 	// IMAX/HYBRID always require exact match (different video masters).
 	// REPACK/PROPER require exact match for non-pack content, but season packs
 	// are exempt since a pack might contain a REPACK of just one episode.
-	if !checkVariantsCompatible(source, candidate) {
+	if compatible, _ := checkVariantsCompatible(source, candidate); !compatible {
 		return false
 	}
 
@@ -346,8 +431,8 @@ func (s *Service) getMatchTypeFromTitle(targetName, candidateName string, target
 	// the episode number encoded in the raw torrent names also matches (e.g. anime releases where
 	// rls fails to parse " - 1150 " as an episode).
 	if len(candidateReleases) == 0 {
-		targetTitle := s.stringNormalizer.Normalize(targetRelease.Title)
-		candidateTitle := s.stringNormalizer.Normalize(candidateRelease.Title)
+		targetTitle := normalizeTitleForComparison(targetRelease.Title)
+		candidateTitle := normalizeTitleForComparison(candidateRelease.Title)
 		if targetTitle != "" && targetTitle == candidateTitle {
 			// Extract simple episode number from torrent names of the form "... - 1150 (...)".
 			extractEpisode := func(name string) string {
@@ -385,6 +470,191 @@ func (s *Service) getMatchTypeFromTitle(targetName, candidateName string, target
 	}
 
 	return ""
+}
+
+// MatchResult holds both the match type and a human-readable reason when there's no match.
+type MatchResult struct {
+	MatchType string // "exact", "partial-in-pack", "partial-contains", "size", or ""
+	Reason    string // Human-readable reason when MatchType is "" (no match)
+}
+
+// getMatchTypeWithReason determines if files match for cross-seeding and provides
+// a detailed reason when they don't match.
+func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Release, sourceFiles, candidateFiles qbt.TorrentFiles, ignorePatterns []string) MatchResult {
+	var timer *prometheus.Timer
+	if s.metrics != nil {
+		timer = prometheus.NewTimer(s.metrics.GetMatchTypeDuration)
+		defer timer.ObserveDuration()
+		s.metrics.GetMatchTypeCalls.Inc()
+	}
+
+	// Check layout compatibility first (RAR vs extracted files)
+	sourceLayout := classifyTorrentLayout(sourceFiles, ignorePatterns, s.stringNormalizer)
+	candidateLayout := classifyTorrentLayout(candidateFiles, ignorePatterns, s.stringNormalizer)
+	if sourceLayout != LayoutUnknown && candidateLayout != LayoutUnknown && sourceLayout != candidateLayout {
+		if s.metrics != nil {
+			s.metrics.GetMatchTypeNoMatch.Inc()
+		}
+		reason := fmt.Sprintf("Layout mismatch: source is %s, candidate is %s", layoutDescription(sourceLayout), layoutDescription(candidateLayout))
+		return MatchResult{MatchType: "", Reason: reason}
+	}
+
+	// Stream through files to build filtered lists and accumulate sizes
+	var (
+		filteredSourceFiles    []TorrentFile
+		filteredCandidateFiles []TorrentFile
+		totalSourceSize        int64
+		totalCandidateSize     int64
+		sourceReleaseKeys      = make(map[releaseKey]int64)
+		candidateReleaseKeys   = make(map[releaseKey]int64)
+	)
+
+	// Process source files
+	for _, sf := range sourceFiles {
+		if !shouldIgnoreFile(sf.Name, ignorePatterns, s.stringNormalizer) {
+			filteredSourceFiles = append(filteredSourceFiles, TorrentFile{
+				Name: sf.Name,
+				Size: sf.Size,
+			})
+			totalSourceSize += sf.Size
+
+			fileRelease := s.parseReleaseName(sf.Name)
+			enrichedRelease := enrichReleaseFromTorrent(fileRelease, sourceRelease)
+			key := makeReleaseKey(enrichedRelease)
+			if key != (releaseKey{}) {
+				if existingSize, exists := sourceReleaseKeys[key]; !exists || sf.Size > existingSize {
+					sourceReleaseKeys[key] = sf.Size
+				}
+			}
+		}
+	}
+
+	// Process candidate files
+	for _, cf := range candidateFiles {
+		if !shouldIgnoreFile(cf.Name, ignorePatterns, s.stringNormalizer) {
+			filteredCandidateFiles = append(filteredCandidateFiles, TorrentFile{
+				Name: cf.Name,
+				Size: cf.Size,
+			})
+			totalCandidateSize += cf.Size
+
+			fileRelease := s.parseReleaseName(cf.Name)
+			enrichedRelease := enrichReleaseFromTorrent(fileRelease, candidateRelease)
+			key := makeReleaseKey(enrichedRelease)
+			if key != (releaseKey{}) {
+				if existingSize, exists := candidateReleaseKeys[key]; !exists || cf.Size > existingSize {
+					candidateReleaseKeys[key] = cf.Size
+				}
+			}
+		}
+	}
+
+	// Check for exact file match
+	if s.streamingExactMatch(filteredSourceFiles, filteredCandidateFiles) {
+		if s.metrics != nil {
+			s.metrics.GetMatchTypeExactMatch.Inc()
+		}
+		return MatchResult{MatchType: "exact", Reason: ""}
+	}
+
+	// Check for partial match
+	if len(sourceReleaseKeys) > 0 && len(candidateReleaseKeys) > 0 {
+		if s.checkPartialMatch(sourceReleaseKeys, candidateReleaseKeys) {
+			if s.metrics != nil {
+				s.metrics.GetMatchTypePartialMatch.Inc()
+			}
+			return MatchResult{MatchType: "partial-in-pack", Reason: ""}
+		}
+
+		if s.checkPartialMatch(candidateReleaseKeys, sourceReleaseKeys) {
+			if s.metrics != nil {
+				s.metrics.GetMatchTypePartialMatch.Inc()
+			}
+			return MatchResult{MatchType: "partial-contains", Reason: ""}
+		}
+	}
+
+	// Size match
+	if totalSourceSize > 0 && totalSourceSize == totalCandidateSize && len(filteredSourceFiles) > 0 {
+		if s.metrics != nil {
+			s.metrics.GetMatchTypeSizeMatch.Inc()
+		}
+		return MatchResult{MatchType: "size", Reason: ""}
+	}
+
+	// Fallback to largest file match
+	if len(sourceReleaseKeys) == 0 && len(candidateReleaseKeys) == 0 &&
+		len(filteredSourceFiles) > 0 && len(filteredCandidateFiles) > 0 {
+		if s.streamingLargestFileMatch(filteredSourceFiles, filteredCandidateFiles) {
+			if s.metrics != nil {
+				s.metrics.GetMatchTypeSizeMatch.Inc()
+			}
+			return MatchResult{MatchType: "size", Reason: ""}
+		}
+	}
+
+	// Build detailed reason for no match
+	if s.metrics != nil {
+		s.metrics.GetMatchTypeNoMatch.Inc()
+	}
+
+	reason := buildNoMatchReason(
+		filteredSourceFiles, filteredCandidateFiles,
+		totalSourceSize, totalCandidateSize,
+		sourceReleaseKeys, candidateReleaseKeys,
+	)
+	return MatchResult{MatchType: "", Reason: reason}
+}
+
+// layoutDescription returns a human-readable description of a torrent layout.
+func layoutDescription(layout TorrentLayout) string {
+	switch layout {
+	case LayoutFiles:
+		return "extracted files"
+	case LayoutArchives:
+		return "RAR/archive"
+	default:
+		return "unknown"
+	}
+}
+
+// buildNoMatchReason constructs a human-readable reason why files didn't match.
+func buildNoMatchReason(
+	sourceFiles, candidateFiles []TorrentFile,
+	sourceSize, candidateSize int64,
+	sourceKeys, candidateKeys map[releaseKey]int64,
+) string {
+	if len(sourceFiles) == 0 {
+		return "No usable files in source torrent after filtering"
+	}
+	if len(candidateFiles) == 0 {
+		return "No usable files in existing torrent after filtering"
+	}
+
+	// Size mismatch
+	if sourceSize != candidateSize {
+		return fmt.Sprintf("Size mismatch: source %.2f GB vs existing %.2f GB",
+			float64(sourceSize)/(1024*1024*1024),
+			float64(candidateSize)/(1024*1024*1024))
+	}
+
+	// File count mismatch with same size (rare but possible)
+	if len(sourceFiles) != len(candidateFiles) {
+		return fmt.Sprintf("File count mismatch: source has %d files, existing has %d files",
+			len(sourceFiles), len(candidateFiles))
+	}
+
+	// Release keys couldn't be parsed
+	if len(sourceKeys) == 0 && len(candidateKeys) == 0 {
+		return "Unable to parse release metadata from filenames"
+	}
+
+	// Keys don't overlap
+	if len(sourceKeys) > 0 && len(candidateKeys) > 0 {
+		return "Release metadata doesn't match between source and existing files"
+	}
+
+	return "Files don't match (structure or naming differs)"
 }
 
 // getMatchType determines if files match for cross-seeding.

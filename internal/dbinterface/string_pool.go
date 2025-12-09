@@ -263,6 +263,29 @@ func GetString(ctx context.Context, tx TxQuerier, ids ...int64) ([]string, error
 	return results, nil
 }
 
+// InternEmptyString ensures the empty string exists in string_pool and returns its ID.
+// This is needed for special cases like localhost bypass auth where an empty username
+// is a valid, intentional value (not NULL). The empty string is created if it doesn't exist.
+//
+// Unlike InternStrings which rejects empty strings (treating them as invalid input),
+// this function specifically handles the case where empty string is a meaningful value.
+func InternEmptyString(ctx context.Context, tx TxQuerier) (int64, error) {
+	// Ensure empty string exists
+	_, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO string_pool (value) VALUES ('')")
+	if err != nil {
+		return 0, fmt.Errorf("failed to ensure empty string in string_pool: %w", err)
+	}
+
+	// Get the ID
+	var id int64
+	err = tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ''").Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get empty string ID: %w", err)
+	}
+
+	return id, nil
+}
+
 // GetStringID retrieves the IDs of string values from the string_pool without creating them.
 // Returns sql.NullInt64{Valid: false} for strings that do not exist.
 // This is designed for use within transactions.

@@ -174,6 +174,22 @@ func (o variantOverrides) variantsCompatible(source, candidate *rls.Release) boo
 	return true
 }
 
+// findMismatch returns the first variant in source that is missing from candidate.
+// Returns empty string if all variants match.
+func (o variantOverrides) findMismatch(source, candidate *rls.Release) string {
+	sourceVariants := o.releaseVariants(source)
+	if len(sourceVariants) == 0 {
+		return ""
+	}
+	candidateVariants := o.releaseVariants(candidate)
+	for key := range sourceVariants {
+		if _, ok := candidateVariants[key]; !ok {
+			return key
+		}
+	}
+	return ""
+}
+
 // isSeasonPack returns true if the release is a season pack (has series but no episode).
 func isSeasonPack(r *rls.Release) bool {
 	return r.Series > 0 && r.Episode == 0
@@ -182,24 +198,29 @@ func isSeasonPack(r *rls.Release) bool {
 // checkVariantsCompatible validates variant compatibility between source and candidate.
 // For always-strict variants (IMAX, HYBRID), mismatches are never allowed.
 // For non-pack variants (REPACK, PROPER), mismatches are allowed if either release is a season pack.
-func checkVariantsCompatible(source, candidate *rls.Release) bool {
+// Returns (compatible, mismatchReason) where mismatchReason is empty if compatible.
+func checkVariantsCompatible(source, candidate *rls.Release) (bool, string) {
 	// Always-strict variants must match regardless of content type
-	if !strictVariantOverrides.variantsCompatible(source, candidate) ||
-		!strictVariantOverrides.variantsCompatible(candidate, source) {
-		return false
+	if mismatch := strictVariantOverrides.findMismatch(source, candidate); mismatch != "" {
+		return false, mismatch
+	}
+	if mismatch := strictVariantOverrides.findMismatch(candidate, source); mismatch != "" {
+		return false, mismatch
 	}
 
 	// Non-pack variants are skipped for season packs
 	// A season pack might contain a REPACK of just one episode
 	if isSeasonPack(source) || isSeasonPack(candidate) {
-		return true
+		return true, ""
 	}
 
 	// For non-pack content, REPACK/PROPER must match
-	if !nonPackVariantOverrides.variantsCompatible(source, candidate) ||
-		!nonPackVariantOverrides.variantsCompatible(candidate, source) {
-		return false
+	if mismatch := nonPackVariantOverrides.findMismatch(source, candidate); mismatch != "" {
+		return false, mismatch
+	}
+	if mismatch := nonPackVariantOverrides.findMismatch(candidate, source); mismatch != "" {
+		return false, mismatch
 	}
 
-	return true
+	return true, ""
 }

@@ -43,6 +43,9 @@ type CrossSeedAutomationSettings struct {
 	WebhookTags          []string `json:"webhookTags"`          // Tags for /apply webhook results
 	InheritSourceTags    bool     `json:"inheritSourceTags"`    // Also copy tags from the matched source torrent
 
+	// Category isolation: add .cross suffix to prevent *arr import loops
+	UseCrossCategorySuffix bool `json:"useCrossCategorySuffix"` // Add .cross suffix to categories (e.g., movies → movies.cross)
+
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
@@ -54,28 +57,16 @@ type CrossSeedCompletionSettings struct {
 	Tags              []string `json:"tags"`
 	ExcludeCategories []string `json:"excludeCategories"`
 	ExcludeTags       []string `json:"excludeTags"`
-	// DelayMinutes is the time to wait after completion before triggering the cross-seed search.
-	// This allows *arr applications (Sonarr, Radarr) to import and move files first.
-	// If PreImportCategories is configured and a category change is detected, the search
-	// triggers immediately without waiting for the full delay.
-	DelayMinutes int `json:"delayMinutes"`
-	// PreImportCategories are categories that indicate a torrent is waiting for *arr import.
-	// When a torrent completes in one of these categories and later changes to a different
-	// category, the cross-seed search triggers immediately (skipping remaining delay).
-	// This allows faster processing when *arr import completes quickly.
-	PreImportCategories []string `json:"preImportCategories"`
 }
 
 // DefaultCrossSeedCompletionSettings returns defaults for completion-triggered automation.
 func DefaultCrossSeedCompletionSettings() CrossSeedCompletionSettings {
 	return CrossSeedCompletionSettings{
-		Enabled:             false,
-		Categories:          []string{},
-		Tags:                []string{},
-		ExcludeCategories:   []string{},
-		ExcludeTags:         []string{},
-		DelayMinutes:        0,
-		PreImportCategories: []string{},
+		Enabled:           false,
+		Categories:        []string{},
+		Tags:              []string{},
+		ExcludeCategories: []string{},
+		ExcludeTags:       []string{},
 	}
 }
 
@@ -102,8 +93,10 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		CompletionSearchTags: []string{"cross-seed"},
 		WebhookTags:          []string{"cross-seed"},
 		InheritSourceTags:    false, // Don't copy source torrent tags by default
-		CreatedAt:            time.Now().UTC(),
-		UpdatedAt:            time.Now().UTC(),
+		// Category isolation - default to true for backwards compatibility
+		UseCrossCategorySuffix: true,
+		CreatedAt:              time.Now().UTC(),
+		UpdatedAt:              time.Now().UTC(),
 	}
 }
 
@@ -273,9 +266,8 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		       use_category_from_indexer, run_external_program_id,
 		       completion_enabled, completion_categories, completion_tags,
 		       completion_exclude_categories, completion_exclude_tags,
-		       completion_delay_minutes, completion_pre_import_categories,
 		       rss_automation_tags, seeded_search_tags, completion_search_tags,
-		       webhook_tags, inherit_source_tags,
+		       webhook_tags, inherit_source_tags, use_cross_category_suffix,
 		       created_at, updated_at
 		FROM cross_seed_settings
 		WHERE id = 1
@@ -288,10 +280,8 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	var ignoreJSON, instancesJSON, indexersJSON sql.NullString
 	var completionCategories, completionTags sql.NullString
 	var completionExcludeCategories, completionExcludeTags sql.NullString
-	var completionPreImportCategories sql.NullString
 	var rssAutomationTags, seededSearchTags, completionSearchTags, webhookTags sql.NullString
 	var completionEnabled bool
-	var completionDelayMinutes int
 	var runExternalProgramID sql.NullInt64
 	var createdAt, updatedAt sql.NullTime
 
@@ -313,13 +303,12 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&completionTags,
 		&completionExcludeCategories,
 		&completionExcludeTags,
-		&completionDelayMinutes,
-		&completionPreImportCategories,
 		&rssAutomationTags,
 		&seededSearchTags,
 		&completionSearchTags,
 		&webhookTags,
 		&settings.InheritSourceTags,
+		&settings.UseCrossCategorySuffix,
 		&createdAt,
 		&updatedAt,
 	)
@@ -349,7 +338,6 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		return nil, fmt.Errorf("decode target indexers: %w", err)
 	}
 	settings.Completion.Enabled = completionEnabled
-	settings.Completion.DelayMinutes = completionDelayMinutes
 	if err := decodeStringSlice(completionCategories, &settings.Completion.Categories); err != nil {
 		return nil, fmt.Errorf("decode completion categories: %w", err)
 	}
@@ -361,9 +349,6 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	}
 	if err := decodeStringSlice(completionExcludeTags, &settings.Completion.ExcludeTags); err != nil {
 		return nil, fmt.Errorf("decode completion exclude tags: %w", err)
-	}
-	if err := decodeStringSlice(completionPreImportCategories, &settings.Completion.PreImportCategories); err != nil {
-		return nil, fmt.Errorf("decode completion pre-import categories: %w", err)
 	}
 
 	// Decode source-specific tags with defaults
@@ -429,10 +414,6 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 	if err != nil {
 		return nil, fmt.Errorf("encode completion exclude tags: %w", err)
 	}
-	completionPreImportCategories, err := encodeStringSlice(settings.Completion.PreImportCategories)
-	if err != nil {
-		return nil, fmt.Errorf("encode completion pre-import categories: %w", err)
-	}
 
 	// Encode source-specific tags
 	rssAutomationTags, err := encodeStringSlice(settings.RSSAutomationTags)
@@ -460,11 +441,10 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			use_category_from_indexer, run_external_program_id,
 			completion_enabled, completion_categories, completion_tags,
 			completion_exclude_categories, completion_exclude_tags,
-			completion_delay_minutes, completion_pre_import_categories,
 			rss_automation_tags, seeded_search_tags, completion_search_tags,
-			webhook_tags, inherit_source_tags
+			webhook_tags, inherit_source_tags, use_cross_category_suffix
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -484,13 +464,12 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			completion_tags = excluded.completion_tags,
 			completion_exclude_categories = excluded.completion_exclude_categories,
 			completion_exclude_tags = excluded.completion_exclude_tags,
-			completion_delay_minutes = excluded.completion_delay_minutes,
-			completion_pre_import_categories = excluded.completion_pre_import_categories,
 			rss_automation_tags = excluded.rss_automation_tags,
 			seeded_search_tags = excluded.seeded_search_tags,
 			completion_search_tags = excluded.completion_search_tags,
 			webhook_tags = excluded.webhook_tags,
-			inherit_source_tags = excluded.inherit_source_tags
+			inherit_source_tags = excluded.inherit_source_tags,
+			use_cross_category_suffix = excluded.use_cross_category_suffix
 	`
 
 	// Convert *int to any for proper SQL handling
@@ -523,13 +502,12 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		completionTags,
 		completionExcludeCategories,
 		completionExcludeTags,
-		settings.Completion.DelayMinutes,
-		completionPreImportCategories,
 		rssAutomationTags,
 		seededSearchTags,
 		completionSearchTags,
 		webhookTags,
 		settings.InheritSourceTags,
+		settings.UseCrossCategorySuffix,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("upsert settings: %w", err)
@@ -1296,10 +1274,6 @@ func NormalizeCrossSeedCompletionSettings(settings *CrossSeedCompletionSettings)
 	settings.Tags = normalizeStringSlice(settings.Tags)
 	settings.ExcludeCategories = normalizeStringSlice(settings.ExcludeCategories)
 	settings.ExcludeTags = normalizeStringSlice(settings.ExcludeTags)
-	settings.PreImportCategories = normalizeStringSlice(settings.PreImportCategories)
-	if settings.DelayMinutes < 0 {
-		settings.DelayMinutes = 0
-	}
 }
 
 func normalizeStringSlice(values []string) []string {

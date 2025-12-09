@@ -21,6 +21,7 @@ type fileRenameInstruction struct {
 
 // alignCrossSeedContentPaths renames the incoming cross-seed torrent (display name, folders, files)
 // so that it matches the layout of the already-seeded torrent we're borrowing data from.
+// Returns true if alignment succeeded (or wasn't needed), false if alignment failed.
 func (s *Service) alignCrossSeedContentPaths(
 	ctx context.Context,
 	instanceID int,
@@ -29,16 +30,26 @@ func (s *Service) alignCrossSeedContentPaths(
 	matchedTorrent *qbt.Torrent,
 	expectedSourceFiles qbt.TorrentFiles,
 	candidateFiles qbt.TorrentFiles,
-) {
+) bool {
 	if matchedTorrent == nil {
-		return
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("torrentHash", torrentHash).
+			Msg("alignCrossSeedContentPaths called with nil matchedTorrent")
+		return false
 	}
 
 	sourceRelease := s.releaseCache.Parse(sourceTorrentName)
 	matchedRelease := s.releaseCache.Parse(matchedTorrent.Name)
 
 	if len(expectedSourceFiles) == 0 || len(candidateFiles) == 0 {
-		return
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("torrentHash", torrentHash).
+			Int("expectedSourceFiles", len(expectedSourceFiles)).
+			Int("candidateFiles", len(candidateFiles)).
+			Msg("Empty file list provided to alignment, skipping")
+		return false
 	}
 
 	if !s.waitForTorrentAvailability(ctx, instanceID, torrentHash, crossSeedRenameWaitTimeout) {
@@ -46,7 +57,7 @@ func (s *Service) alignCrossSeedContentPaths(
 			Int("instanceID", instanceID).
 			Str("torrentHash", torrentHash).
 			Msg("Cross-seed torrent not visible yet, skipping rename alignment")
-		return
+		return false
 	}
 
 	canonicalHash := normalizeHash(torrentHash)
@@ -59,22 +70,24 @@ func (s *Service) alignCrossSeedContentPaths(
 	expectedCandidateRoot := detectCommonRoot(candidateFiles)
 	isSingleFileToFolder := expectedSourceRoot == "" && expectedCandidateRoot != ""
 
-	// For single-file → folder cases, qBittorrent strips the file extension when creating
-	// the subfolder with contentLayout=Subfolder. Don't rename the display name as that
-	// would cause TMM to try relocating files and break the cross-seed.
-	// Only rename if names differ by more than just the extension.
+	// Determine if we should rename the torrent display name.
+	// For single-file → folder cases with contentLayout=Subfolder, qBittorrent automatically
+	// strips the file extension when creating the subfolder (e.g., "Movie.mkv" → "Movie/").
+	// Don't rename in this case as qBittorrent handles it, and renaming would trigger recheck.
 	shouldRename := shouldRenameTorrentDisplay(sourceRelease, matchedRelease) &&
 		trimmedMatchedName != "" &&
 		trimmedSourceName != trimmedMatchedName &&
 		!(isSingleFileToFolder && namesMatchIgnoringExtension(trimmedSourceName, trimmedMatchedName))
 
+	// Display name rename is best-effort - failure only affects UI label, not seeding functionality.
+	// Unlike folder/file renames which are critical for data location, we continue on failure here.
 	if shouldRename {
 		if err := s.syncManager.RenameTorrent(ctx, instanceID, torrentHash, trimmedMatchedName); err != nil {
 			log.Warn().
 				Err(err).
 				Int("instanceID", instanceID).
 				Str("torrentHash", torrentHash).
-				Msg("Failed to rename cross-seed torrent to match existing torrent name")
+				Msg("Failed to rename cross-seed torrent display name (cosmetic, continuing)")
 		} else {
 			log.Debug().
 				Int("instanceID", instanceID).
@@ -91,16 +104,26 @@ func (s *Service) alignCrossSeedContentPaths(
 			Str("sourceName", sourceTorrentName).
 			Str("matchedName", matchedTorrent.Name).
 			Msg("Skipping file alignment for episode matched to season pack")
-		return
+		return true // Episode-in-pack uses season pack path directly, no alignment needed
 	}
 
 	sourceFiles := expectedSourceFiles
 	refreshCtx := qbittorrent.WithForceFilesRefresh(ctx)
 	filesMap, err := s.syncManager.GetTorrentFilesBatch(refreshCtx, instanceID, []string{torrentHash})
-	if err == nil {
-		if currentFiles, ok := filesMap[canonicalHash]; ok && len(currentFiles) > 0 {
-			sourceFiles = currentFiles
-		}
+	if err != nil {
+		log.Debug().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("torrentHash", torrentHash).
+			Msg("Failed to refresh torrent files, using expected source files")
+	} else if currentFiles, ok := filesMap[canonicalHash]; ok && len(currentFiles) > 0 {
+		sourceFiles = currentFiles
+	} else {
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("torrentHash", torrentHash).
+			Str("canonicalHash", canonicalHash).
+			Msg("Torrent hash not found in file map or files empty, using expected source files")
 	}
 
 	sourceRoot := detectCommonRoot(sourceFiles)
@@ -117,20 +140,20 @@ func (s *Service) alignCrossSeedContentPaths(
 				Str("torrentHash", torrentHash).
 				Str("from", sourceRoot).
 				Str("to", targetRoot).
-				Msg("Failed to rename cross-seed root folder to match existing torrent")
-		} else {
-			rootRenamed = true
-			log.Debug().
-				Int("instanceID", instanceID).
-				Str("torrentHash", torrentHash).
-				Str("from", sourceRoot).
-				Str("to", targetRoot).
-				Msg("Renamed cross-seed root folder to match existing torrent")
+				Msg("Failed to rename cross-seed root folder, skipping file alignment")
+			return false // Don't attempt file renames with wrong folder paths
+		}
+		rootRenamed = true
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("torrentHash", torrentHash).
+			Str("from", sourceRoot).
+			Str("to", targetRoot).
+			Msg("Renamed cross-seed root folder to match existing torrent")
 
-			// Update sourceFiles paths to reflect the folder rename for file matching
-			for i := range sourceFiles {
-				sourceFiles[i].Name = adjustPathForRootRename(sourceFiles[i].Name, sourceRoot, targetRoot)
-			}
+		// Update sourceFiles paths to reflect the folder rename for file matching
+		for i := range sourceFiles {
+			sourceFiles[i].Name = adjustPathForRootRename(sourceFiles[i].Name, sourceRoot, targetRoot)
 		}
 	}
 
@@ -144,7 +167,7 @@ func (s *Service) alignCrossSeedContentPaths(
 				Int("unmatchedFiles", len(unmatched)).
 				Msg("Skipping cross-seed file renames because no confident mappings were found")
 		}
-		return
+		return true // No renames needed - paths already match or couldn't determine mappings
 	}
 
 	renamed := 0
@@ -160,14 +183,14 @@ func (s *Service) alignCrossSeedContentPaths(
 				Str("torrentHash", torrentHash).
 				Str("from", instr.oldPath).
 				Str("to", instr.newPath).
-				Msg("Failed to rename cross-seed file to match existing torrent")
-			continue
+				Msg("Failed to rename cross-seed file, aborting alignment")
+			return false
 		}
 		renamed++
 	}
 
 	if renamed == 0 && !rootRenamed {
-		return
+		return true // No renames performed (paths already match or renames not required)
 	}
 
 	log.Debug().
@@ -184,6 +207,8 @@ func (s *Service) alignCrossSeedContentPaths(
 			Int("unmatchedFiles", len(unmatched)).
 			Msg("Some cross-seed files could not be mapped to existing files and will keep their original names")
 	}
+
+	return true
 }
 
 func (s *Service) waitForTorrentAvailability(ctx context.Context, instanceID int, hash string, timeout time.Duration) bool {
@@ -411,9 +436,8 @@ func adjustPathForRootRename(path, oldRoot, newRoot string) string {
 	if path == oldRoot {
 		return newRoot
 	}
-	prefix := oldRoot + "/"
-	if strings.HasPrefix(path, prefix) {
-		return newRoot + "/" + strings.TrimPrefix(path, prefix)
+	if suffix, found := strings.CutPrefix(path, oldRoot+"/"); found {
+		return newRoot + "/" + suffix
 	}
 	return path
 }
@@ -436,9 +460,9 @@ func shouldAlignFilesWithCandidate(newRelease, matchedRelease *rls.Release) bool
 }
 
 // namesMatchIgnoringExtension returns true if two names match after stripping common video file extensions.
-// This is used for single-file → folder cases where qBittorrent strips the extension when creating subfolders.
+// Used for single-file → folder cases where qBittorrent strips the extension when creating subfolders
+// with contentLayout=Subfolder (e.g., "Movie.mkv" becomes folder "Movie/").
 func namesMatchIgnoringExtension(name1, name2 string) bool {
-	// Common video file extensions that qBittorrent strips
 	extensions := []string{".mkv", ".mp4", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".ts", ".m2ts"}
 
 	stripped1 := name1

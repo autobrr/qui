@@ -230,49 +230,71 @@ func TestNewLoadsConfigFromFileOrDirectory(t *testing.T) {
 	}
 }
 
-func TestReadFileIfPath(t *testing.T) {
-	tests := []struct {
-		name string
-		inValue func(t *testing.T, tmpDir string) (string)
-		expectedValue string
-	}{
-		{
-			name: "Value containing file path",
-			// tmp file containing key
-			inValue: func(t *testing.T, tmpDir string) (string) {
+func TestBindOrReadFromFile(t *testing.T) {
+	tmpKeyFile := func(t *testing.T, tmpDir string) (string) {
 				configPath := filepath.Join(tmpDir, "key-file.txt")
 				content := "key-from-file"
 				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
 				return configPath
-			},
+	}
+
+	noTmpKeyFile := func(t *testing.T, tmpDir string) (string) {
+				return ""
+	}
+
+	genConfigFile := func(t *testing.T, tmpDir string) (string) {
+				configPath := filepath.Join(tmpDir, "myconfig.toml")
+				content := "host = \"localhost\"\nport = 8080\nsessionSecret = \"test-secret\"\n"
+				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+				return configPath
+	}
+
+	tests := []struct {
+		name string
+		envVarValue string
+		envVarFileValue func(t *testing.T, tmpDir string) (string)
+		expectedValue string
+	}{
+		{
+			name: "Only _FILE env var",
+			envVarValue: "",
+			envVarFileValue: tmpKeyFile,
 			expectedValue: "key-from-file",
 		},
 		{
-			name: "Value containing unreadable file path",
-			// non readable tmp file containing key
-			inValue: func(t *testing.T, tmpDir string) (string) {
-				configPath := filepath.Join(tmpDir, "key-file.txt")
-				content := "key-from-file"
-				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o000))
-				return configPath
-			},
-			expectedValue: "",
+			name: "Only normal env var",
+			envVarValue: "key-not-from-file",
+			envVarFileValue: noTmpKeyFile,
+			expectedValue: "key-not-from-file",
 		},
 		{
-			name: "Value not containing file path",
-			inValue: func(t *testing.T, tmpDir string) (string) {
-				return "key-not-from-file" 
-			},
-			expectedValue: "key-not-from-file",
+			name: "_FILE and non _FILE env var",
+			envVarValue: "key-not-from-file",
+			envVarFileValue: tmpKeyFile,
+			expectedValue: "key-from-file",
 		},
 	}
 
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			tmpDir := t.TempDir()
-			extractedValue := ReadFileIfPath(tt.inValue(t, tmpDir))
-			assert.Equal(t, tt.expectedValue, extractedValue)
+			envVar := envPrefix+"SESSION_SECRET"
+
+			if tt.envVarValue != "" {
+				t.Setenv(envVar, tt.envVarValue)
+			}
+
+			envVarFilePath := tt.envVarFileValue(t, t.TempDir())
+			if envVarFilePath != "" {
+				t.Setenv(envVar+"_FILE", envVarFilePath)
+			}
+
+			configPath := genConfigFile(t, t.TempDir())
+			cfg, err := New(configPath)
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedValue, cfg.Config.SessionSecret)
 		})
 	}
 }
+

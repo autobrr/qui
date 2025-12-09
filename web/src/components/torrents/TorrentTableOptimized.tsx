@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useKeyboardNavigation } from "@/hooks/useKeyboardNavigation"
@@ -43,18 +44,9 @@ import { useVirtualizer } from "@tanstack/react-virtual"
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
 import { TorrentContextMenu } from "./TorrentContextMenu"
-import { TORRENT_SORT_OPTIONS, type TorrentSortOptionValue, getDefaultSortOrder } from "./torrentSortOptions"
+import { TORRENT_SORT_OPTIONS, getDefaultSortOrder, type TorrentSortOptionValue } from "./torrentSortOptions"
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog"
+import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -113,6 +105,7 @@ import {
   EyeOff,
   Folder,
   Globe,
+  HardDrive,
   LayoutGrid,
   Loader2,
   Rabbit,
@@ -125,12 +118,12 @@ import {
 } from "lucide-react"
 import { createPortal } from "react-dom"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
-import { DeleteFilesPreference } from "./DeleteFilesPreference"
 import { DraggableTableHeader } from "./DraggableTableHeader"
 import { SelectAllHotkey } from "./SelectAllHotkey"
 import {
   AddTagsDialog,
   CreateAndAssignCategoryDialog,
+  LocationWarningDialog,
   RemoveTagsDialog,
   RenameTorrentDialog,
   RenameTorrentFileDialog,
@@ -139,7 +132,8 @@ import {
   SetLocationDialog,
   SetTagsDialog,
   ShareLimitDialog,
-  SpeedLimitsDialog
+  SpeedLimitsDialog,
+  TmmConfirmDialog
 } from "./TorrentDialogs"
 import { TorrentDropZone } from "./TorrentDropZone"
 import { createColumns, type TableViewMode } from "./TorrentTableColumns"
@@ -761,11 +755,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Use the shared torrent actions hook
   const {
     showDeleteDialog,
-    setShowDeleteDialog,
+    closeDeleteDialog,
     deleteFiles,
     setDeleteFiles,
     isDeleteFilesLocked,
     toggleDeleteFilesLock,
+    deleteCrossSeeds,
+    setDeleteCrossSeeds,
     showAddTagsDialog,
     setShowAddTagsDialog,
     showSetTagsDialog,
@@ -792,6 +788,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     setShowRecheckDialog,
     showReannounceDialog,
     setShowReannounceDialog,
+    showTmmDialog,
+    setShowTmmDialog,
+    pendingTmmEnable,
+    showLocationWarningDialog,
+    setShowLocationWarningDialog,
     contextHashes,
     contextTorrents,
     isPending,
@@ -809,6 +810,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     handleSetSpeedLimits,
     handleRecheck,
     handleReannounce,
+    handleTmmConfirm,
+    proceedToLocationDialog,
     prepareDeleteAction,
     prepareTagsAction,
     prepareCategoryAction,
@@ -821,6 +824,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     prepareRenameFolderAction,
     prepareRecheckAction,
     prepareReannounceAction,
+    prepareTmmAction,
   } = useTorrentActions({
     instanceId,
     onActionComplete: (action) => {
@@ -828,6 +832,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         resetSelectionState()
       }
     },
+  })
+
+  // Cross-seed warning for delete dialog
+  const crossSeedWarning = useCrossSeedWarning({
+    instanceId,
+    instanceName: instance?.name ?? "",
+    torrents: contextTorrents,
   })
 
   // Fetch metadata using shared hook
@@ -1966,15 +1977,25 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   ])
 
   const handleDeleteWrapper = useCallback(() => {
+    // Include cross-seed hashes if user opted to delete them
+    const hashesToDelete = deleteCrossSeeds
+      ? [...contextHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)]
+      : contextHashes
+
+    // Update count to include cross-seeds for accurate toast message
+    const deleteClientMeta = deleteCrossSeeds
+      ? { clientHashes: hashesToDelete, totalSelected: hashesToDelete.length }
+      : contextClientMeta
+
     handleDelete(
-      contextHashes,
+      hashesToDelete,
       isAllSelected,
       selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
-      contextClientMeta
+      deleteClientMeta
     )
-  }, [handleDelete, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleDelete, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta, deleteCrossSeeds, crossSeedWarning.affectedTorrents])
 
   const handleAddTagsWrapper = useCallback((tags: string[]) => {
     handleAddTags(
@@ -2109,6 +2130,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       contextClientMeta
     )
   }, [handleReannounce, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+
+  const handleTmmConfirmWrapper = useCallback(() => {
+    handleTmmConfirm(
+      contextHashes,
+      isAllSelected,
+      selectAllFilters ?? filters,
+      effectiveSearch,
+      Array.from(excludedFromSelectAll),
+      contextClientMeta
+    )
+  }, [handleTmmConfirm, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleSetShareLimitWrapper = useCallback((
     ratioLimit: number,
@@ -2514,6 +2546,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       onPrepareRenameFolder={prepareRenameFolderAction}
                       onPrepareRecheck={prepareRecheckAction}
                       onPrepareReannounce={prepareReannounceAction}
+                      onPrepareTmm={prepareTmmAction}
                       availableCategories={availableCategories}
                       onSetCategory={handleSetCategoryDirect}
                       isPending={isPending}
@@ -2613,6 +2646,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                     onPrepareRenameFolder={prepareRenameFolderAction}
                     onPrepareRecheck={prepareRecheckAction}
                     onPrepareReannounce={prepareReannounceAction}
+                    onPrepareTmm={prepareTmmAction}
                     availableCategories={availableCategories}
                     onSetCategory={handleSetCategoryDirect}
                     isPending={isPending}
@@ -2878,14 +2912,27 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                 </span>
               </Button>
             </div>
+            {effectiveServerState?.free_space_on_disk !== undefined && (
+              <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="flex items-center h-6 px-2 text-xs text-muted-foreground">
+                      <HardDrive  aria-hidden="true" className="h-3 w-3 mr-1"/>
+                      <span className="ml-auto font-medium truncate">{formatBytes(effectiveServerState.free_space_on_disk)}</span>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>Free Space</TooltipContent>
+                </Tooltip>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <ExternalIPAddress
-                address={serverState?.last_external_address_v4}
+                address={effectiveServerState?.last_external_address_v4}
                 incognitoMode={incognitoMode}
                 label="IPv4"
               />
               <ExternalIPAddress
-                address={serverState?.last_external_address_v6}
+                address={effectiveServerState?.last_external_address_v6}
                 incognitoMode={incognitoMode}
                 label="IPv6"
               />
@@ -2912,37 +2959,26 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         </div>
       </div>
 
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. The torrents will be removed from qBittorrent.
-              {deleteDialogTotalSize > 0 && (
-                <span className="block mt-2 text-xs text-muted-foreground">
-                  Total size: {deleteDialogFormattedSize}
-                </span>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <DeleteFilesPreference
-            id="deleteFiles"
-            checked={deleteFiles}
-            onCheckedChange={setDeleteFiles}
-            isLocked={isDeleteFilesLocked}
-            onToggleLock={toggleDeleteFilesLock}
-          />
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteWrapper}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteTorrentDialog
+        open={showDeleteDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeDeleteDialog()
+            crossSeedWarning.reset()
+          }
+        }}
+        count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+        totalSize={deleteDialogTotalSize}
+        formattedSize={deleteDialogFormattedSize}
+        deleteFiles={deleteFiles}
+        onDeleteFilesChange={setDeleteFiles}
+        isDeleteFilesLocked={isDeleteFilesLocked}
+        onToggleDeleteFilesLock={toggleDeleteFilesLock}
+        deleteCrossSeeds={deleteCrossSeeds}
+        onDeleteCrossSeedsChange={setDeleteCrossSeeds}
+        crossSeedWarning={crossSeedWarning}
+        onConfirm={handleDeleteWrapper}
+      />
 
       {/* Add Tags Dialog */}
       <AddTagsDialog
@@ -3092,6 +3128,25 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* TMM Confirmation Dialog */}
+      <TmmConfirmDialog
+        open={showTmmDialog}
+        onOpenChange={setShowTmmDialog}
+        count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+        enable={pendingTmmEnable}
+        onConfirm={handleTmmConfirmWrapper}
+        isPending={isPending}
+      />
+
+      {/* Location Warning Dialog */}
+      <LocationWarningDialog
+        open={showLocationWarningDialog}
+        onOpenChange={setShowLocationWarningDialog}
+        count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+        onConfirm={proceedToLocationDialog}
+        isPending={isPending}
+      />
 
       {/* Instance Preferences Dialog */}
       {instance && (
