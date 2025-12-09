@@ -1835,7 +1835,9 @@ type TrackerTransferStats struct {
 type TorrentCounts struct {
 	Status           map[string]int                  `json:"status"`
 	Categories       map[string]int                  `json:"categories"`
+	CategorySizes    map[string]int64                `json:"categorySizes,omitempty"`
 	Tags             map[string]int                  `json:"tags"`
+	TagSizes         map[string]int64                `json:"tagSizes,omitempty"`
 	Trackers         map[string]int                  `json:"trackers"`
 	TrackerTransfers map[string]TrackerTransferStats `json:"trackerTransfers,omitempty"`
 	Total            int                             `json:"total"`
@@ -2025,10 +2027,12 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 			"stalled_uploading": 0, "stalled_downloading": 0, "errored": 0,
 			"checking": 0, "moving": 0, "unregistered": 0, "tracker_down": 0,
 		},
-		Categories: make(map[string]int),
-		Tags:       make(map[string]int),
-		Trackers:   make(map[string]int),
-		Total:      len(allTorrents),
+		Categories:    make(map[string]int),
+		CategorySizes: make(map[string]int64),
+		Tags:          make(map[string]int),
+		TagSizes:      make(map[string]int64),
+		Trackers:      make(map[string]int),
+		Total:         len(allTorrents),
 	}
 
 	// If we have pre-enriched tracker data from a previous operation (e.g., filtering),
@@ -2110,13 +2114,19 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 			counts.Trackers[domain] = len(hashSet)
 
 			// aggregate upload/download/size for this domain
+			// Size is deduplicated by ContentPath to avoid inflating with cross-seeds
 			var uploaded, downloaded, totalSize int64
 			var missingCount int
+			sizeSeen := make(map[string]struct{})
 			for hash := range hashSet {
 				if torrent, ok := torrentMap[hash]; ok {
 					uploaded += torrent.Uploaded
 					downloaded += torrent.Downloaded
-					totalSize += torrent.Size
+					// Only count size once per unique content path
+					if _, seen := sizeSeen[torrent.ContentPath]; !seen {
+						sizeSeen[torrent.ContentPath] = struct{}{}
+						totalSize += torrent.Size
+					}
 				} else {
 					missingCount++
 				}
@@ -2150,57 +2160,89 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 		}
 	}
 
+	// Track seen content paths per category/tag to deduplicate cross-seed sizes.
+	// Cross-seeds share the same ContentPath but have different hashes, so we only
+	// count the size once per unique content path within each category/tag.
+	categorySizeSeen := make(map[string]map[string]struct{})
+	tagSizeSeen := make(map[string]map[string]struct{})
+
 	// Process each torrent for other counts (status, categories, tags)
 	for _, torrent := range allTorrents {
 		// Count statuses
 		sm.countTorrentStatuses(torrent, counts.Status)
 
-		// Category count
+		// Category count and size (deduplicated by ContentPath)
 		category := torrent.Category
-		if category == "" {
-			counts.Categories[""]++
-		} else {
-			counts.Categories[category]++
+		counts.Categories[category]++
+
+		// Only add size if we haven't seen this content path in this category
+		if categorySizeSeen[category] == nil {
+			categorySizeSeen[category] = make(map[string]struct{})
+		}
+		if _, seen := categorySizeSeen[category][torrent.ContentPath]; !seen {
+			categorySizeSeen[category][torrent.ContentPath] = struct{}{}
+			counts.CategorySizes[category] += torrent.Size
 		}
 
-		// Tag counts
+		// Tag counts and sizes (deduplicated by ContentPath)
 		if torrent.Tags == "" {
 			counts.Tags[""]++
+			// Only add size if we haven't seen this content path for untagged
+			if tagSizeSeen[""] == nil {
+				tagSizeSeen[""] = make(map[string]struct{})
+			}
+			if _, seen := tagSizeSeen[""][torrent.ContentPath]; !seen {
+				tagSizeSeen[""][torrent.ContentPath] = struct{}{}
+				counts.TagSizes[""] += torrent.Size
+			}
 		} else {
 			torrentTags := strings.SplitSeq(torrent.Tags, ",")
 			for tag := range torrentTags {
 				tag = strings.TrimSpace(tag)
 				if tag != "" {
 					counts.Tags[tag]++
+					// Only add size if we haven't seen this content path for this tag
+					if tagSizeSeen[tag] == nil {
+						tagSizeSeen[tag] = make(map[string]struct{})
+					}
+					if _, seen := tagSizeSeen[tag][torrent.ContentPath]; !seen {
+						tagSizeSeen[tag][torrent.ContentPath] = struct{}{}
+						counts.TagSizes[tag] += torrent.Size
+					}
 				}
 			}
 		}
 	}
 
-	// If subcategories are enabled, aggregate subcategory counts into parent categories
+	// If subcategories are enabled, aggregate subcategory counts and sizes into parent categories
 	if useSubcategories {
-		// Build a temporary map to hold aggregated counts
+		// Build temporary maps to hold aggregated counts and sizes
 		aggregatedCounts := make(map[string]int)
+		aggregatedSizes := make(map[string]int64)
 
-		// First, copy all existing counts
+		// First, copy all existing counts and sizes
 		maps.Copy(aggregatedCounts, counts.Categories)
+		maps.Copy(aggregatedSizes, counts.CategorySizes)
 
 		// Find all parent categories and ensure they exist in the map
-		// Also aggregate subcategory counts into parent categories
+		// Also aggregate subcategory counts and sizes into parent categories
 		for cat, count := range counts.Categories {
 			if cat != "" && strings.Contains(cat, "/") {
 				// This is a subcategory - ensure all parent paths exist and aggregate counts
 				segments := strings.Split(cat, "/")
+				size := counts.CategorySizes[cat]
 				for i := 1; i <= len(segments)-1; i++ {
 					parentPath := strings.Join(segments[:i], "/")
-					// Add subcategory count to parent
+					// Add subcategory count and size to parent
 					aggregatedCounts[parentPath] += count
+					aggregatedSizes[parentPath] += size
 				}
 			}
 		}
 
-		// Replace the original counts with aggregated ones
+		// Replace the original counts and sizes with aggregated ones
 		counts.Categories = aggregatedCounts
+		counts.CategorySizes = aggregatedSizes
 	}
 
 	// Use cached tracker health counts for unregistered/tracker_down
@@ -3696,19 +3738,27 @@ func (sm *SyncManager) sortTorrentsByETA(torrents []qbt.Torrent, desc bool) {
 	})
 }
 
-// calculateStats calculates torrent statistics from a list of torrents
+// calculateStats calculates torrent statistics from a list of torrents.
+// Sizes are deduplicated by ContentPath to avoid inflating totals with cross-seeds.
 func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 	stats := &TorrentStats{
 		Total: len(torrents),
 	}
 
+	// Track seen content paths to deduplicate cross-seed sizes
+	totalSizeSeen := make(map[string]struct{})
+	seedingSizeSeen := make(map[string]struct{})
+
 	for _, torrent := range torrents {
-		// Add speeds
+		// Add speeds (not deduplicated - each torrent has its own speed)
 		stats.TotalDownloadSpeed += int(torrent.DlSpeed)
 		stats.TotalUploadSpeed += int(torrent.UpSpeed)
 
-		// Add size
-		stats.TotalSize += torrent.Size
+		// Add size (deduplicated by ContentPath)
+		if _, seen := totalSizeSeen[torrent.ContentPath]; !seen {
+			totalSizeSeen[torrent.ContentPath] = struct{}{}
+			stats.TotalSize += torrent.Size
+		}
 
 		// Count states and calculate specific sizes
 		switch torrent.State {
@@ -3722,10 +3772,18 @@ func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 			// These are downloading states but not actively downloading
 		case qbt.TorrentStateUploading:
 			stats.Seeding++
-			stats.TotalSeedingSize += torrent.Size
+			// Seeding size deduplicated by ContentPath
+			if _, seen := seedingSizeSeen[torrent.ContentPath]; !seen {
+				seedingSizeSeen[torrent.ContentPath] = struct{}{}
+				stats.TotalSeedingSize += torrent.Size
+			}
 		case qbt.TorrentStateForcedUp:
 			stats.Seeding++
-			stats.TotalSeedingSize += torrent.Size
+			// Seeding size deduplicated by ContentPath
+			if _, seen := seedingSizeSeen[torrent.ContentPath]; !seen {
+				seedingSizeSeen[torrent.ContentPath] = struct{}{}
+				stats.TotalSeedingSize += torrent.Size
+			}
 		case qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp:
 			// These are seeding states but not actively seeding
 		case qbt.TorrentStatePausedDl, qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp:

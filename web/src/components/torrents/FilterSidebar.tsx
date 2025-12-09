@@ -28,6 +28,7 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
+import { TruncatedText } from "@/components/ui/truncated-text"
 
 import { useDebounce } from "@/hooks/useDebounce"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
@@ -41,7 +42,7 @@ import { usePersistedShowEmptyState } from "@/hooks/usePersistedShowEmptyState"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { getLinuxCount, LINUX_CATEGORIES, LINUX_TAGS, LINUX_TRACKERS, useIncognitoMode } from "@/lib/incognito"
-import { cn } from "@/lib/utils"
+import { cn, formatBytes } from "@/lib/utils"
 import type { Category, TorrentFilters } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
@@ -110,6 +111,8 @@ interface FilterSidebarProps {
   selectedFilters: TorrentFilters
   onFilterChange: (filters: TorrentFilters) => void
   torrentCounts?: Record<string, number>
+  categorySizes?: Record<string, number>
+  tagSizes?: Record<string, number>
   categories?: Record<string, Category>
   tags?: string[]
   useSubcategories?: boolean
@@ -210,6 +213,8 @@ const FilterSidebarComponent = ({
   selectedFilters,
   onFilterChange,
   torrentCounts,
+  categorySizes,
+  tagSizes,
   categories: propsCategories,
   tags: propsTags,
   useSubcategories = false,
@@ -267,6 +272,25 @@ const FilterSidebarComponent = ({
 
     return (torrentCounts[key] || 0).toString()
   }, [incognitoMode, isLoading, torrentCounts])
+
+  // Helper to get formatted size for categories/tags
+  const getCategorySize = useCallback((categoryName: string): string | null => {
+    if (incognitoMode || isLoading || !categorySizes) {
+      return null
+    }
+    const size = categorySizes[categoryName]
+    if (!size) return null
+    return formatBytes(size)
+  }, [incognitoMode, isLoading, categorySizes])
+
+  const getTagSize = useCallback((tagName: string): string | null => {
+    if (incognitoMode || isLoading || !tagSizes) {
+      return null
+    }
+    const size = tagSizes[tagName]
+    if (!size) return null
+    return formatBytes(size)
+  }, [incognitoMode, isLoading, tagSizes])
 
   // Persist accordion state
   const [expandedItems, setExpandedItems] = usePersistedAccordion()
@@ -2004,14 +2028,23 @@ const FilterSidebarComponent = ({
                       >
                         Uncategorized
                       </span>
-                      <span
-                        className={cn(
-                          "text-xs",
-                          uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span
+                            className={cn(
+                              "text-xs tabular-nums",
+                              uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                            )}
+                          >
+                            {getDisplayCount("category:")}
+                          </span>
+                        </TooltipTrigger>
+                        {getCategorySize("") && (
+                          <TooltipContent side="right">
+                            {getCategorySize("")}
+                          </TooltipContent>
                         )}
-                      >
-                        {getDisplayCount("category:")}
-                      </span>
+                      </Tooltip>
                     </label>
                   )}
 
@@ -2066,6 +2099,7 @@ const FilterSidebarComponent = ({
                       hasEmptyCategories={hasEmptyCategories}
                       syntheticCategories={syntheticCategorySet}
                       getCategoryCount={getCategoryCountForTree}
+                      getCategorySize={getCategorySize}
                       viewMode={viewMode}
                     />
                   ) : filteredCategories.length > VIRTUAL_THRESHOLD ? (
@@ -2118,23 +2152,31 @@ const FilterSidebarComponent = ({
                                         style={{ width: `${indentLevel * 12}px` }}
                                       />
                                     )}
-                                    <span
+                                    <TruncatedText
                                       className={cn(
-                                        "text-sm flex-1 truncate w-8",
+                                        "text-sm flex-1 w-8",
                                         categoryState === "exclude" ? "text-destructive" : undefined
                                       )}
-                                      title={name}
                                     >
                                       {displayName}
-                                    </span>
-                                    <span
-                                      className={cn(
-                                        "text-xs",
-                                        categoryState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                                    </TruncatedText>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span
+                                          className={cn(
+                                            "text-xs tabular-nums",
+                                            categoryState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                                          )}
+                                        >
+                                          {getDisplayCount(`category:${name}`, incognitoMode ? getLinuxCount(name, 50) : undefined)}
+                                        </span>
+                                      </TooltipTrigger>
+                                      {getCategorySize(name) && (
+                                        <TooltipContent side="right">
+                                          {getCategorySize(name)}
+                                        </TooltipContent>
                                       )}
-                                    >
-                                      {getDisplayCount(`category:${name}`, incognitoMode ? getLinuxCount(name, 50) : undefined)}
-                                    </span>
+                                    </Tooltip>
                                   </label>
                                 </ContextMenuTrigger>
                                 <ContextMenuContent>
@@ -2220,23 +2262,31 @@ const FilterSidebarComponent = ({
                                   style={{ width: `${indentLevel * 12}px` }}
                                 />
                               )}
-                              <span
+                              <TruncatedText
                                 className={cn(
-                                  "text-sm flex-1 truncate w-8",
+                                  "text-sm flex-1 w-8",
                                   categoryState === "exclude" ? "text-destructive" : undefined
                                 )}
-                                title={name}
                               >
                                 {displayName}
-                              </span>
-                              <span
-                                className={cn(
-                                  "text-xs",
-                                  categoryState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                              </TruncatedText>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span
+                                    className={cn(
+                                      "text-xs tabular-nums",
+                                      categoryState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                                    )}
+                                  >
+                                    {getDisplayCount(`category:${name}`, incognitoMode ? getLinuxCount(name, 50) : undefined)}
+                                  </span>
+                                </TooltipTrigger>
+                                {getCategorySize(name) && (
+                                  <TooltipContent side="right">
+                                    {getCategorySize(name)}
+                                  </TooltipContent>
                                 )}
-                              >
-                                {getDisplayCount(`category:${name}`, incognitoMode ? getLinuxCount(name, 50) : undefined)}
-                              </span>
+                              </Tooltip>
                             </label>
                           </ContextMenuTrigger>
                           <ContextMenuContent>
@@ -2377,14 +2427,23 @@ const FilterSidebarComponent = ({
                       >
                         Untagged
                       </span>
-                      <span
-                        className={cn(
-                          "text-xs",
-                          untaggedState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span
+                            className={cn(
+                              "text-xs tabular-nums",
+                              untaggedState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                            )}
+                          >
+                            {getDisplayCount("tag:")}
+                          </span>
+                        </TooltipTrigger>
+                        {getTagSize("") && (
+                          <TooltipContent side="right">
+                            {getTagSize("")}
+                          </TooltipContent>
                         )}
-                      >
-                        {getDisplayCount("tag:")}
-                      </span>
+                      </Tooltip>
                     </label>
                   )}
 
@@ -2460,23 +2519,31 @@ const FilterSidebarComponent = ({
                                       checked={getCheckboxVisualState(tagState)}
                                       onCheckedChange={() => handleTagCheckboxChange(tag)}
                                     />
-                                    <span
+                                    <TruncatedText
                                       className={cn(
-                                        "text-sm flex-1 truncate w-8",
+                                        "text-sm flex-1 w-8",
                                         tagState === "exclude" ? "text-destructive" : undefined
                                       )}
-                                      title={tag}
                                     >
                                       {tag}
-                                    </span>
-                                    <span
-                                      className={cn(
-                                        "text-xs",
-                                        tagState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                                    </TruncatedText>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span
+                                          className={cn(
+                                            "text-xs tabular-nums",
+                                            tagState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                                          )}
+                                        >
+                                          {getDisplayCount(`tag:${tag}`, incognitoMode ? getLinuxCount(tag, 30) : undefined)}
+                                        </span>
+                                      </TooltipTrigger>
+                                      {getTagSize(tag) && (
+                                        <TooltipContent side="right">
+                                          {getTagSize(tag)}
+                                        </TooltipContent>
                                       )}
-                                    >
-                                      {getDisplayCount(`tag:${tag}`, incognitoMode ? getLinuxCount(tag, 30) : undefined)}
-                                    </span>
+                                    </Tooltip>
                                   </label>
                                 </ContextMenuTrigger>
                                 <ContextMenuContent>
@@ -2526,23 +2593,31 @@ const FilterSidebarComponent = ({
                                 checked={getCheckboxVisualState(tagState)}
                                 onCheckedChange={() => handleTagCheckboxChange(tag)}
                               />
-                              <span
+                              <TruncatedText
                                 className={cn(
-                                  "text-sm flex-1 truncate w-8",
+                                  "text-sm flex-1 w-8",
                                   tagState === "exclude" ? "text-destructive" : undefined
                                 )}
-                                title={tag}
                               >
                                 {tag}
-                              </span>
-                              <span
-                                className={cn(
-                                  "text-xs",
-                                  tagState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                              </TruncatedText>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span
+                                    className={cn(
+                                      "text-xs tabular-nums",
+                                      tagState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                                    )}
+                                  >
+                                    {getDisplayCount(`tag:${tag}`, incognitoMode ? getLinuxCount(tag, 30) : undefined)}
+                                  </span>
+                                </TooltipTrigger>
+                                {getTagSize(tag) && (
+                                  <TooltipContent side="right">
+                                    {getTagSize(tag)}
+                                  </TooltipContent>
                                 )}
-                              >
-                                {getDisplayCount(`tag:${tag}`, incognitoMode ? getLinuxCount(tag, 30) : undefined)}
-                              </span>
+                              </Tooltip>
                             </label>
                           </ContextMenuTrigger>
                           <ContextMenuContent>
@@ -2691,15 +2766,15 @@ const FilterSidebarComponent = ({
                                       onCheckedChange={() => handleTrackerGroupCheckboxChange(trackerGroup.domains, trackerGroup.key)}
                                     />
                                     <TrackerIconImage tracker={trackerGroup.iconDomain} trackerIcons={trackerIcons} />
-                                    <span
+                                    <TruncatedText
                                       className={cn(
-                                        "text-sm flex-1 truncate w-8",
+                                        "text-sm flex-1 w-8",
                                         trackerState === "exclude" ? "text-destructive" : undefined
                                       )}
-                                      title={trackerGroup.isCustomized ? `${trackerGroup.displayName} (${trackerGroup.domains.join(", ")})` : trackerGroup.displayName}
+                                      tooltipContent={trackerGroup.isCustomized ? `${trackerGroup.displayName} (${trackerGroup.domains.join(", ")})` : undefined}
                                     >
                                       {trackerGroup.displayName}
-                                    </span>
+                                    </TruncatedText>
                                     <span
                                       className={cn(
                                         "text-xs",
@@ -2780,15 +2855,15 @@ const FilterSidebarComponent = ({
                                 onCheckedChange={() => handleTrackerGroupCheckboxChange(trackerGroup.domains, trackerGroup.key)}
                               />
                               <TrackerIconImage tracker={trackerGroup.iconDomain} trackerIcons={trackerIcons} />
-                              <span
+                              <TruncatedText
                                 className={cn(
-                                  "text-sm flex-1 truncate w-8",
+                                  "text-sm flex-1 w-8",
                                   trackerState === "exclude" ? "text-destructive" : undefined
                                 )}
-                                title={trackerGroup.isCustomized ? `${trackerGroup.displayName} (${trackerGroup.domains.join(", ")})` : trackerGroup.displayName}
+                                tooltipContent={trackerGroup.isCustomized ? `${trackerGroup.displayName} (${trackerGroup.domains.join(", ")})` : undefined}
                               >
                                 {trackerGroup.displayName}
-                              </span>
+                              </TruncatedText>
                               <span
                                 className={cn(
                                   "text-xs",
