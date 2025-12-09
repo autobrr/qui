@@ -268,7 +268,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	crossSeedHandler := handlers.NewCrossSeedHandler(s.crossSeedService)
 	trackerRulesHandler := handlers.NewTrackerRuleHandler(s.trackerRuleStore, s.trackerRuleService)
 	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore)
-	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore, s.sessionManager)
+	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
 
 	// Torznab/Jackett handler
 	var jackettHandler *handlers.JackettHandler
