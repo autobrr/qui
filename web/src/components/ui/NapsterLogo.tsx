@@ -13,7 +13,7 @@ interface NapsterLogoProps {
 export function NapsterLogo({ className }: NapsterLogoProps) {
   return (
     <img
-      src={withBasePath("/napster.svg")}
+      src={withBasePath("/napster.png")}
       alt="Napster"
       className={cn("h-6 w-6 flex-shrink-0 object-contain align-baseline", className)}
     />
