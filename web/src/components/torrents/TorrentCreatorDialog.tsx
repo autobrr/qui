@@ -228,24 +228,27 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                 />
 
                 {supportsPathAutocomplete && showSourcePathSuggestions && sourcePathSuggestions.length > 0 && (
-                  <div className="z-50 mt-1 w-full rounded-md border bg-popover text-popover-foreground shadow-md">
-                    <div className="max-h-55 overflow-auto pt-1 pb-1 w-full">
-                      {sourcePathSuggestions.map((entry, idx) => (
-                        <button
-                          key={entry}
-                          type="button"
-                          className={cn(
-                            "w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex items-center",
-                            sourcePathHighlightedIndex === idx
-                              ? "bg-accent text-accent-foreground"
-                              : "hover:bg-accent/70"
-                          )}
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => handleSourcePathSelect(entry)}
-                        >
-                          <span className="truncate">{entry}</span>
-                        </button>
-                      ))}
+                  <div className="relative">
+                    <div className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
+                      <div className="max-h-55 overflow-y-auto py-1">
+                        {sourcePathSuggestions.map((entry, idx) => (
+                          <button
+                            key={entry}
+                            type="button"
+                            title={entry}
+                            className={cn(
+                              "w-full px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
+                              sourcePathHighlightedIndex === idx
+                                ? "bg-accent text-accent-foreground"
+                                : "hover:bg-accent/70"
+                            )}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => handleSourcePathSelect(entry)}
+                          >
+                            <span className="block truncate text-left">{entry}</span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -491,24 +494,27 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                     />
 
                     {supportsPathAutocomplete && showTorrentFilePathSuggestions && torrentFilePathSuggestions.length > 0 && (
-                      <div className="z-50 mt-1 w-full rounded-md border bg-popover text-popover-foreground shadow-md">
-                        <div className="max-h-55 overflow-auto pt-1 pb-1 w-full">
-                          {torrentFilePathSuggestions.map((entry, idx) => (
-                            <button
-                              key={entry}
-                              type="button"
-                              className={cn(
-                                "w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex items-center",
-                                torrentFilePathHighlightedIndex === idx
-                                  ? "bg-accent text-accent-foreground"
-                                  : "hover:bg-accent/70"
-                              )}
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => handleTorrentFilePathSelect(entry)}
-                            >
-                              <span className="truncate">{entry}</span>
-                            </button>
-                          ))}
+                      <div className="relative">
+                        <div className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
+                          <div className="max-h-55 overflow-y-auto py-1">
+                            {torrentFilePathSuggestions.map((entry, idx) => (
+                              <button
+                                key={entry}
+                                type="button"
+                                title={entry}
+                                className={cn(
+                                  "w-full px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
+                                  torrentFilePathHighlightedIndex === idx
+                                    ? "bg-accent text-accent-foreground"
+                                    : "hover:bg-accent/70"
+                                )}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => handleTorrentFilePathSelect(entry)}
+                              >
+                                <span className="block truncate text-left">{entry}</span>
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     )}

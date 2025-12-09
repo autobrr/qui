@@ -10,7 +10,14 @@ export function usePathAutocomplete(
   const [highlightedIndex, setHighlightedIndex] = useState<number>(-1); // -1 = none
 
   const cache = useRef<Map<string, string[]>>(new Map());
+  const prevInstanceId = useRef<number>(instanceId);
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Clear cache when instanceId changes
+  if (prevInstanceId.current !== instanceId) {
+    cache.current.clear();
+    prevInstanceId.current = instanceId;
+  }
 
   const getParentPath = useCallback((path: string) => {
     if (!path || path.trim() === "/") return "/";
@@ -40,7 +47,7 @@ export function usePathAutocomplete(
       }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 600000); // 10min
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
 
       try {
         const response = await fetch(
@@ -56,7 +63,11 @@ export function usePathAutocomplete(
 
         cache.current.set(key, data);
         return data;
-      } catch {
+      } catch (err) {
+        clearTimeout(timeoutId);
+        if (err instanceof Error && err.name !== "AbortError") {
+          console.warn("Failed to fetch directory content:", err.message);
+        }
         return [];
       }
     },
@@ -119,13 +130,20 @@ export function usePathAutocomplete(
           );
           break;
         case "Enter":
-        case "Tab":
           e.preventDefault();
           if (highlightedIndex >= 0 && highlightedIndex < suggestions.length) {
             selectSuggestion(suggestions[highlightedIndex]);
           } else if (suggestions.length === 1) {
             selectSuggestion(suggestions[0]);
           }
+          break;
+        case "Tab":
+          // Only intercept Tab if there's a highlighted suggestion to select
+          if (highlightedIndex >= 0 && highlightedIndex < suggestions.length) {
+            e.preventDefault();
+            selectSuggestion(suggestions[highlightedIndex]);
+          }
+          // Otherwise let Tab proceed for normal form navigation
           break;
         case "Escape":
           setSuggestions([]);
@@ -150,7 +168,13 @@ export function usePathAutocomplete(
     [selectSuggestion]
   );
 
-  const showSuggestions = suggestions.length > 0;
+  // Don't show suggestions if:
+  // 1. No suggestions available
+  // 2. Input ends with "/" and is an exact match to a suggestion (folder fully selected)
+  // 3. Input exactly matches the only suggestion
+  const showSuggestions = suggestions.length > 0 &&
+    !(suggestions.length === 1 && suggestions[0] === inputValue) &&
+    !(inputValue.endsWith("/") && suggestions.some(s => s === inputValue));
 
   return {
     suggestions,
