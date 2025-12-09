@@ -1077,7 +1077,7 @@ const FilterSidebarComponent = ({
     const anyExcluded = domains.some(d => excludeTrackerSet.has(d))
 
     switch (state) {
-      case "include":
+      case "include": {
         // Add all domains to include, remove from exclude
         if (anyExcluded) {
           nextExcluded = nextExcluded.filter(t => !domains.includes(t))
@@ -1088,7 +1088,8 @@ const FilterSidebarComponent = ({
           nextIncluded = [...nextIncluded, ...toAdd]
         }
         break
-      case "exclude":
+      }
+      case "exclude": {
         // Remove all domains from include, add to exclude
         if (anyIncluded) {
           nextIncluded = nextIncluded.filter(t => !domains.includes(t))
@@ -1099,7 +1100,8 @@ const FilterSidebarComponent = ({
           nextExcluded = [...nextExcluded, ...toExclude]
         }
         break
-      case "neutral":
+      }
+      case "neutral": {
         // Remove all domains from both include and exclude
         if (anyIncluded) {
           nextIncluded = nextIncluded.filter(t => !domains.includes(t))
@@ -1108,6 +1110,7 @@ const FilterSidebarComponent = ({
           nextExcluded = nextExcluded.filter(t => !domains.includes(t))
         }
         break
+      }
     }
 
     if (nextIncluded === selectedFilters.trackers && nextExcluded === selectedFilters.excludeTrackers) {
