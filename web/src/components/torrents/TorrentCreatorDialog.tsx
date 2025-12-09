@@ -88,7 +88,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
       source: "",
       startSeeding: true,
       // Advanced options
-      format: "" as TorrentFormat | "",
+      format: "v1" as TorrentFormat,
       pieceSize: "",
       torrentFilePath: "",
       urlSeeds: "",
@@ -108,7 +108,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
         .map((u) => u.trim())
         .filter(Boolean)
 
-      const selectedFormat = supportsFormatSelection ? value.format : ""
+      const selectedFormat: TorrentFormat = supportsFormatSelection ? value.format : "v1"
 
       const params: TorrentCreationParams = {
         sourcePath: value.sourcePath,
@@ -118,7 +118,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
         source: value.source || undefined,
         startSeeding: value.startSeeding, // Always send boolean value
         // Advanced options
-        format: selectedFormat || undefined,
+        format: selectedFormat,
         pieceSize: value.pieceSize ? parseInt(value.pieceSize) : undefined,
         torrentFilePath: value.torrentFilePath || undefined,
         urlSeeds: urlSeeds && urlSeeds.length > 0 ? urlSeeds : undefined,
@@ -130,7 +130,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
 
   useEffect(() => {
     if (formatSelectionUnavailable) {
-      form.setFieldValue("format", "")
+      form.setFieldValue("format", "v1")
     }
   }, [formatSelectionUnavailable, form])
 
@@ -335,10 +335,10 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                       <Label htmlFor="format">Torrent Format</Label>
                       <Select
                         value={field.state.value}
-                        onValueChange={(value) => field.handleChange(value as TorrentFormat | "")}
+                        onValueChange={(value) => field.handleChange(value as TorrentFormat)}
                       >
                         <SelectTrigger id="format">
-                          <SelectValue placeholder="Auto (v1)" />
+                          <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="v1">v1 (Compatible)</SelectItem>
