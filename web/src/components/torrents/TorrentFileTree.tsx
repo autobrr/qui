@@ -453,10 +453,8 @@ export const TorrentFileTree = memo(function TorrentFileTree({
   useEffect(() => {
     setFolderState((prev) => {
       const allFolderSet = new Set(allFolderIds)
-
-      let changed = false
-
       const next = new Map(prev)
+      let changed = false
 
       // Remove folders that no longer exist
       for (const id of prev.keys()) {
@@ -532,11 +530,9 @@ export const TorrentFileTree = memo(function TorrentFileTree({
         onValueChange={(value) => {
           setFolderState((prev) => {
             const next = new Map(prev)
-
             for (const id of prev.keys()) {
               next.set(id, value.includes(id))
             }
-
             return next
           })
         }}
