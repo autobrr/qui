@@ -2780,18 +2780,33 @@ func (s *Service) processCrossSeedCandidate(
 				Msg("Failed to trigger recheck after add, skipping auto-resume")
 			result.Message = result.Message + " - recheck failed, manual intervention required"
 		} else {
-			// Calculate expected progress based on matched file sizes.
-			// This ensures we only auto-resume if the main content files match exactly.
+			// Calculate expected progress based on matched file sizes (exact size matching).
 			// If source has extra sidecar files (NFO, SRT) not in candidate, expected
-			// progress will be <100% but that's fine. If main media file sizes differ,
-			// expected progress will be very low, correctly preventing auto-resume.
+			// progress will be slightly <100% but that's fine since sidecars are tiny.
+			// If main media file sizes differ, expected progress will be very low.
 			expectedProgress := calculateExpectedProgress(sourceFiles, candidateFiles)
-			log.Debug().
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Float64("expectedProgress", expectedProgress).
-				Msg("Queuing torrent for recheck resume with calculated threshold")
-			s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash, expectedProgress)
+
+			// Safety floor: if less than 90% of source bytes have exact-size matches,
+			// something significant is different (not just sidecars). This protects
+			// against the edge case where files pass size tolerance filter but don't
+			// have exact matches - we don't want to auto-resume and overwrite files.
+			const minExpectedProgress = 0.9
+			if expectedProgress < minExpectedProgress {
+				log.Info().
+					Int("instanceID", candidate.InstanceID).
+					Str("torrentHash", torrentHash).
+					Float64("expectedProgress", expectedProgress).
+					Float64("minRequired", minExpectedProgress).
+					Msg("Expected progress below safety threshold, leaving paused for manual review")
+				result.Message = result.Message + " - expected progress too low, left paused for review"
+			} else {
+				log.Debug().
+					Int("instanceID", candidate.InstanceID).
+					Str("torrentHash", torrentHash).
+					Float64("expectedProgress", expectedProgress).
+					Msg("Queuing torrent for recheck resume with calculated threshold")
+				s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash, expectedProgress)
+			}
 		}
 	} else if startPaused && alignmentSucceeded {
 		// Perfect match: skip_checking=true, no alignment needed, torrent is at 100%
