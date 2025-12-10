@@ -455,7 +455,8 @@ type MatchResult struct {
 
 // getMatchTypeWithReason determines if files match for cross-seeding and provides
 // a detailed reason when they don't match.
-func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Release, sourceFiles, candidateFiles qbt.TorrentFiles, ignorePatterns []string) MatchResult {
+// tolerancePercent specifies the maximum size difference percentage for size matching (default 5%).
+func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Release, sourceFiles, candidateFiles qbt.TorrentFiles, ignorePatterns []string, tolerancePercent float64) MatchResult {
 	var timer *prometheus.Timer
 	if s.metrics != nil {
 		timer = prometheus.NewTimer(s.metrics.GetMatchTypeDuration)
@@ -549,12 +550,14 @@ func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Re
 		}
 	}
 
-	// Size match
-	if totalSourceSize > 0 && totalSourceSize == totalCandidateSize && len(filteredSourceFiles) > 0 {
-		if s.metrics != nil {
-			s.metrics.GetMatchTypeSizeMatch.Inc()
+	// Size match with tolerance
+	if totalSourceSize > 0 && len(filteredSourceFiles) > 0 {
+		if s.isSizeWithinTolerance(totalSourceSize, totalCandidateSize, tolerancePercent) {
+			if s.metrics != nil {
+				s.metrics.GetMatchTypeSizeMatch.Inc()
+			}
+			return MatchResult{MatchType: "size", Reason: ""}
 		}
-		return MatchResult{MatchType: "size", Reason: ""}
 	}
 
 	// Fallback to largest file match
@@ -577,6 +580,7 @@ func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Re
 		filteredSourceFiles, filteredCandidateFiles,
 		totalSourceSize, totalCandidateSize,
 		sourceReleaseKeys, candidateReleaseKeys,
+		tolerancePercent,
 	)
 	return MatchResult{MatchType: "", Reason: reason}
 }
@@ -598,6 +602,7 @@ func buildNoMatchReason(
 	sourceFiles, candidateFiles []TorrentFile,
 	sourceSize, candidateSize int64,
 	sourceKeys, candidateKeys map[releaseKey]int64,
+	tolerancePercent float64,
 ) string {
 	if len(sourceFiles) == 0 {
 		return "No usable files in source torrent after filtering"
@@ -606,11 +611,21 @@ func buildNoMatchReason(
 		return "No usable files in existing torrent after filtering"
 	}
 
-	// Size mismatch
+	// Size mismatch - calculate actual difference percentage
 	if sourceSize != candidateSize {
-		return fmt.Sprintf("Size mismatch: source %.2f GB vs existing %.2f GB",
+		var diffPercent float64
+		if sourceSize > 0 {
+			diff := sourceSize - candidateSize
+			if diff < 0 {
+				diff = -diff
+			}
+			diffPercent = (float64(diff) / float64(sourceSize)) * 100
+		}
+		return fmt.Sprintf("Size mismatch: source %.2f GB vs existing %.2f GB (%.2f%% difference, tolerance %.1f%%)",
 			float64(sourceSize)/(1024*1024*1024),
-			float64(candidateSize)/(1024*1024*1024))
+			float64(candidateSize)/(1024*1024*1024),
+			diffPercent,
+			tolerancePercent)
 	}
 
 	// File count mismatch with same size (rare but possible)
