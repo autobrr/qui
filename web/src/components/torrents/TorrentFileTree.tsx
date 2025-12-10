@@ -529,9 +529,10 @@ export const TorrentFileTree = memo(function TorrentFileTree({
         value={expandedArray}
         onValueChange={(value) => {
           setFolderState((prev) => {
+            const valueSet = new Set(value)
             const next = new Map(prev)
             for (const id of prev.keys()) {
-              next.set(id, value.includes(id))
+              next.set(id, valueSet.has(id))
             }
             return next
           })
