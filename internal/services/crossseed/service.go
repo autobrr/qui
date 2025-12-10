@@ -1100,12 +1100,12 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	})
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			log.Debug().
+			log.Warn().
 				Int("instanceID", instanceID).
 				Str("hash", torrent.Hash).
 				Str("name", torrent.Name).
 				Dur("timeout", searchTimeout).
-				Msg("[CROSSSEED-COMPLETION] Search timed out")
+				Msg("[CROSSSEED-COMPLETION] Search timed out, no cross-seeds found")
 			return nil
 		}
 		return err
