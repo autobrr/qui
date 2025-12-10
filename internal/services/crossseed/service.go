@@ -420,20 +420,21 @@ type AutomationRunOptions struct {
 
 // SearchRunOptions configures how the library search automation operates.
 type SearchRunOptions struct {
-	InstanceID             int
-	Categories             []string
-	Tags                   []string
-	IntervalSeconds        int
-	IndexerIDs             []int
-	CooldownMinutes        int
-	FindIndividualEpisodes bool
-	RequestedBy            string
-	StartPaused            bool
-	CategoryOverride       *string
-	TagsOverride           []string
-	InheritSourceTags      bool
-	IgnorePatterns         []string
-	SpecificHashes         []string
+	InstanceID                   int
+	Categories                   []string
+	Tags                         []string
+	IntervalSeconds              int
+	IndexerIDs                   []int
+	CooldownMinutes              int
+	FindIndividualEpisodes       bool
+	RequestedBy                  string
+	StartPaused                  bool
+	CategoryOverride             *string
+	TagsOverride                 []string
+	InheritSourceTags            bool
+	IgnorePatterns               []string
+	SpecificHashes               []string
+	SizeMismatchTolerancePercent float64
 }
 
 // SearchSettingsPatch captures optional updates to seeded search defaults.
@@ -1205,6 +1206,9 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		} else if !opts.FindIndividualEpisodes {
 			opts.FindIndividualEpisodes = settings.FindIndividualEpisodes
 		}
+		if opts.SizeMismatchTolerancePercent <= 0 {
+			opts.SizeMismatchTolerancePercent = settings.SizeMismatchTolerancePercent
+		}
 	}
 	opts.TagsOverride = normalizeStringSlice(opts.TagsOverride)
 
@@ -1792,14 +1796,15 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 
 	skipIfExists := true
 	req := &CrossSeedRequest{
-		TorrentData:            encodedTorrent,
-		TargetInstanceIDs:      append([]int(nil), settings.TargetInstanceIDs...),
-		Tags:                   append([]string(nil), settings.RSSAutomationTags...),
-		InheritSourceTags:      settings.InheritSourceTags,
-		IgnorePatterns:         append([]string(nil), settings.IgnorePatterns...),
-		SkipIfExists:           &skipIfExists,
-		IndexerName:            sourceIndexer,
-		FindIndividualEpisodes: settings.FindIndividualEpisodes,
+		TorrentData:                  encodedTorrent,
+		TargetInstanceIDs:            append([]int(nil), settings.TargetInstanceIDs...),
+		Tags:                         append([]string(nil), settings.RSSAutomationTags...),
+		InheritSourceTags:            settings.InheritSourceTags,
+		IgnorePatterns:               append([]string(nil), settings.IgnorePatterns...),
+		SkipIfExists:                 &skipIfExists,
+		IndexerName:                  sourceIndexer,
+		FindIndividualEpisodes:       settings.FindIndividualEpisodes,
+		SizeMismatchTolerancePercent: settings.SizeMismatchTolerancePercent,
 	}
 	if settings.Category != nil {
 		req.Category = *settings.Category
@@ -2374,16 +2379,22 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		inheritSourceTags = settings.InheritSourceTags
 	}
 
+	sizeTolerance := 5.0 // Default
+	if settings != nil && settings.SizeMismatchTolerancePercent > 0 {
+		sizeTolerance = settings.SizeMismatchTolerancePercent
+	}
+
 	crossReq := &CrossSeedRequest{
-		TorrentData:            req.TorrentData,
-		TargetInstanceIDs:      targetInstanceIDs,
-		Category:               req.Category,
-		Tags:                   tags,
-		InheritSourceTags:      inheritSourceTags,
-		IgnorePatterns:         ignorePatterns,
-		StartPaused:            req.StartPaused,
-		SkipIfExists:           req.SkipIfExists,
-		FindIndividualEpisodes: findIndividualEpisodes,
+		TorrentData:                  req.TorrentData,
+		TargetInstanceIDs:            targetInstanceIDs,
+		Category:                     req.Category,
+		Tags:                         tags,
+		InheritSourceTags:            inheritSourceTags,
+		IgnorePatterns:               ignorePatterns,
+		StartPaused:                  req.StartPaused,
+		SkipIfExists:                 req.SkipIfExists,
+		FindIndividualEpisodes:       findIndividualEpisodes,
+		SizeMismatchTolerancePercent: sizeTolerance,
 	}
 
 	resp, err := s.invokeCrossSeed(ctx, crossReq)
@@ -2476,7 +2487,11 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	candidateFilesByHash := s.batchLoadCandidateFiles(ctx, candidate.InstanceID, candidate.Torrents)
-	matchedTorrent, candidateFiles, matchType, rejectReason := s.findBestCandidateMatch(ctx, candidate, sourceRelease, sourceFiles, req.IgnorePatterns, candidateFilesByHash)
+	tolerancePercent := req.SizeMismatchTolerancePercent
+	if tolerancePercent <= 0 {
+		tolerancePercent = 5.0 // Default to 5% tolerance
+	}
+	matchedTorrent, candidateFiles, matchType, rejectReason := s.findBestCandidateMatch(ctx, candidate, sourceRelease, sourceFiles, req.IgnorePatterns, candidateFilesByHash, tolerancePercent)
 	if matchedTorrent == nil {
 		result.Status = "no_match"
 		result.Message = rejectReason
@@ -2808,8 +2823,14 @@ func (s *Service) processCrossSeedCandidate(
 				Msg("Failed to trigger recheck after add, skipping auto-resume")
 			result.Message = result.Message + " - recheck failed, manual intervention required"
 		} else {
-			// Only queue for background resume if recheck was successfully triggered
-			s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash)
+			// Queue for background resume - threshold is calculated from tolerance setting
+			log.Debug().
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentHash", torrentHash).
+				Msg("Queuing torrent for recheck resume")
+			if err := s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash); err != nil {
+				result.Message = result.Message + " - auto-resume queue full, manual resume required"
+			}
 		}
 	} else if startPaused && alignmentSucceeded {
 		// Perfect match: skip_checking=true, no alignment needed, torrent is at 100%
@@ -2878,7 +2899,7 @@ func normalizeHash(hash string) string {
 
 // queueRecheckResume adds a torrent to the recheck resume queue.
 // It calculates the resume threshold from settings and sends to the worker channel.
-func (s *Service) queueRecheckResume(ctx context.Context, instanceID int, hash string) {
+func (s *Service) queueRecheckResume(ctx context.Context, instanceID int, hash string) error {
 	// Get tolerance setting (GetAutomationSettings uses its own 5s timeout internally)
 	settings, err := s.GetAutomationSettings(ctx)
 
@@ -2901,11 +2922,19 @@ func (s *Service) queueRecheckResume(ctx context.Context, instanceID int, hash s
 		threshold:  resumeThreshold,
 		addedAt:    time.Now(),
 	}:
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("hash", hash).
+			Float64("threshold", resumeThreshold).
+			Int("pendingCount", len(s.recheckResumeChan)+1).
+			Msg("Added torrent to recheck resume queue")
+		return nil
 	default:
 		log.Warn().
 			Int("instanceID", instanceID).
 			Str("hash", hash).
 			Msg("Recheck resume channel full, skipping queue")
+		return fmt.Errorf("recheck resume queue full")
 	}
 }
 
@@ -3023,12 +3052,12 @@ func (s *Service) recheckResumeWorker() {
 					// Note: We can't do this for 0% progress since we can't distinguish
 					// "queued for recheck" from "recheck completed with 0 matches".
 					if !isChecking && progress > 0 && progress < req.threshold {
-						log.Debug().
+						log.Warn().
 							Int("instanceID", instanceID).
 							Str("hash", hash).
 							Float64("progress", progress).
 							Float64("threshold", req.threshold).
-							Msg("Recheck completed below threshold, removing from queue")
+							Msg("Recheck completed below threshold, torrent left paused for manual review")
 						delete(pending, hash)
 						continue
 					}
@@ -3239,6 +3268,7 @@ func (s *Service) findBestCandidateMatch(
 	sourceFiles qbt.TorrentFiles,
 	ignorePatterns []string,
 	filesByHash map[string]qbt.TorrentFiles,
+	tolerancePercent float64,
 ) (*qbt.Torrent, qbt.TorrentFiles, string, string) {
 	var (
 		matchedTorrent   *qbt.Torrent
@@ -3270,7 +3300,7 @@ func (s *Service) findBestCandidateMatch(
 		candidateRelease := s.releaseCache.Parse(torrent.Name)
 		// Swap parameter order: check if EXISTING files (files) are contained in NEW files (sourceFiles)
 		// This matches the search behavior where we found "partial-in-pack" (existing mkv in new mkv+nfo)
-		matchResult := s.getMatchTypeWithReason(candidateRelease, sourceRelease, files, sourceFiles, ignorePatterns)
+		matchResult := s.getMatchTypeWithReason(candidateRelease, sourceRelease, files, sourceFiles, ignorePatterns, tolerancePercent)
 		if matchResult.MatchType == "" {
 			// Track the rejection reason - prefer more specific reasons
 			if matchResult.Reason != "" && (bestRejectReason == "" || len(matchResult.Reason) > len(bestRejectReason)) {
@@ -4571,14 +4601,20 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				inheritSourceTags = settings.InheritSourceTags
 			}
 
+			sizeTolerance := 5.0 // Default
+			if settings != nil && settings.SizeMismatchTolerancePercent > 0 {
+				sizeTolerance = settings.SizeMismatchTolerancePercent
+			}
+
 			payload := &CrossSeedRequest{
-				TorrentData:            base64.StdEncoding.EncodeToString(torrentBytes),
-				TargetInstanceIDs:      []int{instanceID},
-				StartPaused:            &startPausedCopy,
-				Tags:                   applyTags,
-				InheritSourceTags:      inheritSourceTags,
-				IndexerName:            indexerName,
-				FindIndividualEpisodes: req.FindIndividualEpisodes,
+				TorrentData:                  base64.StdEncoding.EncodeToString(torrentBytes),
+				TargetInstanceIDs:            []int{instanceID},
+				StartPaused:                  &startPausedCopy,
+				Tags:                         applyTags,
+				InheritSourceTags:            inheritSourceTags,
+				IndexerName:                  indexerName,
+				FindIndividualEpisodes:       req.FindIndividualEpisodes,
+				SizeMismatchTolerancePercent: sizeTolerance,
 			}
 			if settings != nil && len(settings.IgnorePatterns) > 0 {
 				payload.IgnorePatterns = append([]string(nil), settings.IgnorePatterns...)
@@ -5650,16 +5686,21 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 	encoded := base64.StdEncoding.EncodeToString(data)
 	startPaused := state.opts.StartPaused
 	skipIfExists := true
+	sizeTolerance := state.opts.SizeMismatchTolerancePercent
+	if sizeTolerance <= 0 {
+		sizeTolerance = 5.0 // Default
+	}
 	request := &CrossSeedRequest{
-		TorrentData:            encoded,
-		TargetInstanceIDs:      []int{state.opts.InstanceID},
-		StartPaused:            &startPaused,
-		Tags:                   append([]string(nil), state.opts.TagsOverride...),
-		InheritSourceTags:      state.opts.InheritSourceTags,
-		Category:               "",
-		IndexerName:            match.Indexer,
-		FindIndividualEpisodes: state.opts.FindIndividualEpisodes,
-		SkipIfExists:           &skipIfExists,
+		TorrentData:                  encoded,
+		TargetInstanceIDs:            []int{state.opts.InstanceID},
+		StartPaused:                  &startPaused,
+		Tags:                         append([]string(nil), state.opts.TagsOverride...),
+		InheritSourceTags:            state.opts.InheritSourceTags,
+		Category:                     "",
+		IndexerName:                  match.Indexer,
+		FindIndividualEpisodes:       state.opts.FindIndividualEpisodes,
+		SkipIfExists:                 &skipIfExists,
+		SizeMismatchTolerancePercent: sizeTolerance,
 	}
 	if len(state.opts.IgnorePatterns) > 0 {
 		request.IgnorePatterns = append([]string(nil), state.opts.IgnorePatterns...)
