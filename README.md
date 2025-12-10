@@ -425,7 +425,7 @@ Configure matching behavior in the **Global rules** tab on the Cross-Seed page.
 #### Matching
 
 - **Find individual episodes** - When enabled, season packs also match individual episodes. When disabled, season packs only match other season packs. Episodes are added with AutoTMM disabled to prevent save path conflicts.
-- **Size mismatch tolerance** - Maximum size difference percentage (default: 5%). Filters out results with sizes differing by more than this percentage during search.
+- **Size mismatch tolerance** - Maximum size difference percentage (default: 5%). Also determines auto-resume threshold after recheck.
 
 #### Categories
 
@@ -467,9 +467,9 @@ When the source torrent contains files not on disk (NFO, SRT, samples not filter
 
 #### Auto-resume behavior
 
-- Auto-resume threshold is calculated dynamically from exact file size matching between source and candidate torrents
-- Safety floor: if less than 90% of source bytes have exact-size matches, the torrent remains paused for manual review
-- The **Size mismatch tolerance** setting filters search results during discovery, not the resume threshold
+- Default tolerance 5% → auto-resumes at ≥95% completion
+- Torrents below threshold stay paused for manual investigation
+- Configure via **Size mismatch tolerance** in Global rules
 
 ### autobrr Integration
 
@@ -561,7 +561,7 @@ When `/check` returns `200 OK`, send the torrent to `/api/cross-seed/apply`:
 - `tags` (optional) - Override webhook tags from settings
 - `category` (optional) - Override category (defaults to matched torrent's category)
 
-Cross-seeded torrents are added paused with `skip_checking=true`. When file alignment is needed (different folder structure or file names), qui triggers a recheck and monitors progress. Auto-resume occurs when progress reaches the expected threshold calculated from matched file sizes - if main content files match exactly, the torrent resumes automatically. If main file sizes differ (indicating potential corruption or different content), the torrent remains paused for manual review.
+Cross-seeded torrents are added paused with `skip_checking=true`. qui polls the torrent state and auto-resumes if progress meets the size tolerance threshold. If progress is too low, it remains paused for manual review.
 
 ### Troubleshooting
 

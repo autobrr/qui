@@ -381,105 +381,6 @@ func TestFilesNeedRenaming(t *testing.T) {
 	}
 }
 
-func TestCalculateExpectedProgress(t *testing.T) {
-	tests := []struct {
-		name           string
-		sourceFiles    qbt.TorrentFiles
-		candidateFiles qbt.TorrentFiles
-		expectedResult float64
-	}{
-		{
-			name:           "identical files - 100%",
-			sourceFiles:    qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
-			candidateFiles: qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
-			expectedResult: 1.0,
-		},
-		{
-			name: "source has extra NFO - main file matches",
-			sourceFiles: qbt.TorrentFiles{
-				{Name: "movie.mkv", Size: 4000000000},
-				{Name: "movie.nfo", Size: 1024},
-			},
-			candidateFiles: qbt.TorrentFiles{
-				{Name: "movie.mkv", Size: 4000000000},
-			},
-			expectedResult: 4000000000.0 / 4000001024.0, // ~99.99997%
-		},
-		{
-			name: "main file size differs - very low progress",
-			sourceFiles: qbt.TorrentFiles{
-				{Name: "movie.mkv", Size: 4000000000},
-			},
-			candidateFiles: qbt.TorrentFiles{
-				{Name: "movie.mkv", Size: 3999999999}, // 1 byte different
-			},
-			expectedResult: 0.0, // No size match
-		},
-		{
-			name: "multiple files - only sidecar differs",
-			sourceFiles: qbt.TorrentFiles{
-				{Name: "movie.mkv", Size: 4000000000},
-				{Name: "sample.mkv", Size: 50000000},
-				{Name: "movie.nfo", Size: 2048},
-			},
-			candidateFiles: qbt.TorrentFiles{
-				{Name: "movie.mkv", Size: 4000000000},
-				{Name: "sample.mkv", Size: 50000000},
-				{Name: "movie.nfo", Size: 1024}, // Different size NFO
-			},
-			expectedResult: 4050000000.0 / 4050002048.0, // Main files match, NFO doesn't
-		},
-		{
-			name:           "empty source files - 100%",
-			sourceFiles:    qbt.TorrentFiles{},
-			candidateFiles: qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
-			expectedResult: 1.0,
-		},
-		{
-			name:           "empty candidate files - 0%",
-			sourceFiles:    qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
-			candidateFiles: qbt.TorrentFiles{},
-			expectedResult: 0.0,
-		},
-		{
-			name: "multiple files with same size - bucket counting",
-			sourceFiles: qbt.TorrentFiles{
-				{Name: "movie.mkv", Size: 4000000000},
-				{Name: "subs/en.srt", Size: 50000},
-				{Name: "subs/es.srt", Size: 50000}, // Same size as en.srt
-			},
-			candidateFiles: qbt.TorrentFiles{
-				{Name: "movie.mkv", Size: 4000000000},
-				{Name: "subs/en.srt", Size: 50000},
-				{Name: "subs/es.srt", Size: 50000},
-			},
-			expectedResult: 1.0,
-		},
-		{
-			name: "multiple files with same size - partial match",
-			sourceFiles: qbt.TorrentFiles{
-				{Name: "movie.mkv", Size: 4000000000},
-				{Name: "subs/en.srt", Size: 50000},
-				{Name: "subs/es.srt", Size: 50000},
-				{Name: "subs/fr.srt", Size: 50000}, // Extra subtitle
-			},
-			candidateFiles: qbt.TorrentFiles{
-				{Name: "movie.mkv", Size: 4000000000},
-				{Name: "subs/en.srt", Size: 50000},
-				{Name: "subs/es.srt", Size: 50000},
-			},
-			expectedResult: 4000100000.0 / 4000150000.0, // 2 of 3 same-size subs match
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := calculateExpectedProgress(tt.sourceFiles, tt.candidateFiles)
-			require.InDelta(t, tt.expectedResult, result, 0.0001)
-		})
-	}
-}
-
 func TestHasExtraSourceFiles(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -556,7 +457,7 @@ func TestHasExtraSourceFiles(t *testing.T) {
 			expectedResult: true,
 		},
 		{
-			name: "same file count but different sizes - no extras",
+			name: "same file count but different sizes - has extras",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "Movie/movie.mkv", Size: 4000000000},
 				{Name: "Movie/extra.mkv", Size: 999999999},
@@ -565,7 +466,7 @@ func TestHasExtraSourceFiles(t *testing.T) {
 				{Name: "Movie/movie.mkv", Size: 4000000000},
 				{Name: "Movie/other.mkv", Size: 888888888},
 			},
-			expectedResult: false, // same count means no "extra" files, size mismatch is handled elsewhere
+			expectedResult: true, // source file (999MB) has no size match in candidate, so it's "extra"
 		},
 		{
 			name:           "empty source files - no extras",

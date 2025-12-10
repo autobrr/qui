@@ -161,13 +161,16 @@ func (s *Service) alignCrossSeedContentPaths(
 
 	if len(plan) == 0 {
 		if len(unmatched) > 0 {
+			// Some files couldn't be mapped - this is OK, the hasExtraSourceFiles check
+			// will detect this and trigger a recheck with threshold-based resume.
 			log.Debug().
 				Int("instanceID", instanceID).
 				Str("torrentHash", torrentHash).
 				Int("unmatchedFiles", len(unmatched)).
-				Msg("Skipping cross-seed file renames because no confident mappings were found")
+				Strs("unmatchedPaths", unmatched).
+				Msg("Some cross-seed files could not be mapped, recheck will handle verification")
 		}
-		return true // No renames needed - paths already match or couldn't determine mappings
+		return true // No renames needed - paths already match or recheck will verify
 	}
 
 	renamed := 0
@@ -487,11 +490,9 @@ func namesMatchIgnoringExtension(name1, name2 string) bool {
 // hasExtraSourceFiles checks if source torrent has files that don't exist in the candidate.
 // This happens when source has extra sidecar files (NFO, SRT, etc.) that weren't filtered
 // by ignorePatterns. Returns true if source has files with sizes not present in candidate.
+// This includes cases where source and candidate have the same file count but different files
+// (e.g., source has mkv+srt, candidate has mkv+nfo - the srt won't exist on disk).
 func hasExtraSourceFiles(sourceFiles, candidateFiles qbt.TorrentFiles) bool {
-	if len(sourceFiles) <= len(candidateFiles) {
-		return false
-	}
-
 	// Build size buckets for candidate files
 	candidateSizes := make(map[int64]int)
 	for _, cf := range candidateFiles {
@@ -507,48 +508,8 @@ func hasExtraSourceFiles(sourceFiles, candidateFiles qbt.TorrentFiles) bool {
 		}
 	}
 
-	// If we couldn't match all source files, there are extras
+	// If we couldn't match all source files by size, there are extras/mismatches
 	return matched < len(sourceFiles)
-}
-
-// calculateExpectedProgress calculates the expected recheck progress based on matched file sizes.
-// Returns the ratio of source file sizes that have exact-size matches in candidate files.
-// This is used to determine the auto-resume threshold - if source has extra files that don't
-// exist in candidate, the expected progress will be less than 100%.
-//
-// Important: Files are matched by exact size. If the main media file differs in size between
-// source and candidate (even by 1 byte), it won't match and expected progress will be very low,
-// correctly preventing auto-resume for potentially corrupted/different content.
-func calculateExpectedProgress(sourceFiles, candidateFiles qbt.TorrentFiles) float64 {
-	if len(sourceFiles) == 0 {
-		return 1.0 // No source files means nothing to match
-	}
-
-	// Calculate total source size
-	var totalSourceSize int64
-	for _, sf := range sourceFiles {
-		totalSourceSize += sf.Size
-	}
-	if totalSourceSize == 0 {
-		return 1.0
-	}
-
-	// Build size buckets for candidate files
-	candidateSizes := make(map[int64]int)
-	for _, cf := range candidateFiles {
-		candidateSizes[cf.Size]++
-	}
-
-	// Sum sizes of source files that have matching candidates (by exact size)
-	var matchedSize int64
-	for _, sf := range sourceFiles {
-		if count := candidateSizes[sf.Size]; count > 0 {
-			candidateSizes[sf.Size]--
-			matchedSize += sf.Size
-		}
-	}
-
-	return float64(matchedSize) / float64(totalSourceSize)
 }
 
 // needsRenameAlignment checks if rename alignment will be required for a cross-seed add.
