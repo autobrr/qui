@@ -640,8 +640,8 @@ func TestSearchScheduler_MaxWaitSkipsIndexer(t *testing.T) {
 }
 
 func TestSearchScheduler_DefaultMaxWaitByPriority(t *testing.T) {
-	// Use a very long interval so we're always blocked
-	rl := NewRateLimiter(60 * time.Second)
+	// Use a very long interval so we're always blocked (must exceed backgroundMaxWait of 60s)
+	rl := NewRateLimiter(90 * time.Second)
 	s := newSearchScheduler(rl, 10)
 	defer s.Stop()
 
@@ -661,33 +661,25 @@ func TestSearchScheduler_DefaultMaxWaitByPriority(t *testing.T) {
 	require.NoError(t, err)
 	<-done1
 
-	tests := []struct {
+	// Test RSS and Background - they should skip immediately
+	skipTests := []struct {
 		name            string
 		priority        RateLimitPriority
-		expectSkipped   bool
 		expectedMaxWait time.Duration
 	}{
 		{
-			name:            "RSS uses 15s default, should skip (60s wait > 15s max)",
+			name:            "RSS uses 15s default, should skip (90s wait > 15s max)",
 			priority:        RateLimitPriorityRSS,
-			expectSkipped:   true,
 			expectedMaxWait: 15 * time.Second,
 		},
 		{
-			name:            "Completion uses 30s default, should skip (60s wait > 30s max)",
-			priority:        RateLimitPriorityCompletion,
-			expectSkipped:   true,
-			expectedMaxWait: 30 * time.Second,
-		},
-		{
-			name:            "Background uses 45s default, should skip (60s wait > 45s max)",
+			name:            "Background uses 60s default, should skip (90s wait > 60s max)",
 			priority:        RateLimitPriorityBackground,
-			expectSkipped:   true,
-			expectedMaxWait: 45 * time.Second,
+			expectedMaxWait: 60 * time.Second,
 		},
 	}
 
-	for _, tc := range tests {
+	for _, tc := range skipTests {
 		t.Run(tc.name, func(t *testing.T) {
 			completeCh := make(chan error, 1)
 			_, err := s.Submit(context.Background(), SubmitRequest{
@@ -695,7 +687,6 @@ func TestSearchScheduler_DefaultMaxWaitByPriority(t *testing.T) {
 				Meta: &searchContext{
 					rateLimit: &RateLimitOptions{
 						Priority: tc.priority,
-						// No explicit MaxWait - should use default
 					},
 				},
 				ExecFn: exec,
@@ -708,17 +699,38 @@ func TestSearchScheduler_DefaultMaxWaitByPriority(t *testing.T) {
 			require.NoError(t, err)
 
 			gotError := <-completeCh
-
-			if tc.expectSkipped {
-				require.NotNil(t, gotError, "expected RateLimitWaitError for priority %s", tc.priority)
-				var waitErr *RateLimitWaitError
-				require.True(t, errors.As(gotError, &waitErr))
-				assert.Equal(t, tc.expectedMaxWait, waitErr.MaxWait, "wrong MaxWait for priority %s", tc.priority)
-			} else {
-				assert.Nil(t, gotError)
-			}
+			require.NotNil(t, gotError, "expected RateLimitWaitError for priority %s", tc.priority)
+			var waitErr *RateLimitWaitError
+			require.True(t, errors.As(gotError, &waitErr))
+			assert.Equal(t, tc.expectedMaxWait, waitErr.MaxWait, "wrong MaxWait for priority %s", tc.priority)
 		})
 	}
+
+	// Test Completion - should queue (not skip), verify by checking queue status
+	t.Run("Completion has no limit, should queue (not skip)", func(t *testing.T) {
+		_, err := s.Submit(context.Background(), SubmitRequest{
+			Indexers: []*models.TorznabIndexer{indexer},
+			Meta: &searchContext{
+				rateLimit: &RateLimitOptions{
+					Priority: RateLimitPriorityCompletion,
+				},
+			},
+			ExecFn: exec,
+			Callbacks: JobCallbacks{
+				OnComplete: func(jobID uint64, idx *models.TorznabIndexer, results []Result, coverage []int, err error) {
+					// Don't block - we just want to verify it queues
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		// Give scheduler time to process
+		time.Sleep(50 * time.Millisecond)
+
+		// Check that the task is queued (not completed with error)
+		status := s.GetStatus()
+		assert.Equal(t, 1, status.QueueLength, "completion task should be queued, not skipped")
+	})
 }
 
 // Rate limiter tests
