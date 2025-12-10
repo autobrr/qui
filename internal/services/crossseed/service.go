@@ -531,7 +531,6 @@ func (s *Service) GetAutomationSettings(ctx context.Context) (*models.CrossSeedA
 	if settings == nil {
 		settings = models.DefaultCrossSeedAutomationSettings()
 	}
-	models.NormalizeCrossSeedCompletionSettings(&settings.Completion)
 
 	return settings, nil
 }
@@ -579,8 +578,6 @@ func (s *Service) validateAndNormalizeSettings(settings *models.CrossSeedAutomat
 	if settings.SizeMismatchTolerancePercent > 100.0 {
 		settings.SizeMismatchTolerancePercent = 100.0
 	}
-
-	models.NormalizeCrossSeedCompletionSettings(&settings.Completion)
 }
 
 func normalizeSearchTiming(intervalSeconds, cooldownMinutes int) (int, int) {
