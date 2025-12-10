@@ -2780,8 +2780,18 @@ func (s *Service) processCrossSeedCandidate(
 				Msg("Failed to trigger recheck after add, skipping auto-resume")
 			result.Message = result.Message + " - recheck failed, manual intervention required"
 		} else {
-			// Only queue for background resume if recheck was successfully triggered
-			s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash)
+			// Calculate expected progress based on matched file sizes.
+			// This ensures we only auto-resume if the main content files match exactly.
+			// If source has extra sidecar files (NFO, SRT) not in candidate, expected
+			// progress will be <100% but that's fine. If main media file sizes differ,
+			// expected progress will be very low, correctly preventing auto-resume.
+			expectedProgress := calculateExpectedProgress(sourceFiles, candidateFiles)
+			log.Debug().
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentHash", torrentHash).
+				Float64("expectedProgress", expectedProgress).
+				Msg("Queuing torrent for recheck resume with calculated threshold")
+			s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash, expectedProgress)
 		}
 	} else if startPaused && alignmentSucceeded {
 		// Perfect match: skip_checking=true, no alignment needed, torrent is at 100%
@@ -2848,29 +2858,15 @@ func normalizeHash(hash string) string {
 	return strings.ToLower(strings.TrimSpace(hash))
 }
 
-// queueRecheckResume adds a torrent to the recheck resume queue.
-// It calculates the resume threshold from settings and sends to the worker channel.
-func (s *Service) queueRecheckResume(ctx context.Context, instanceID int, hash string) {
-	// Get tolerance setting (GetAutomationSettings uses its own 5s timeout internally)
-	settings, err := s.GetAutomationSettings(ctx)
-
-	tolerancePercent := 5.0 // Default
-	if err == nil && settings != nil {
-		tolerancePercent = settings.SizeMismatchTolerancePercent
-	}
-
-	// Calculate resume threshold (e.g., 95% for 5% tolerance)
-	resumeThreshold := 1.0 - (tolerancePercent / 100.0)
-	if resumeThreshold < 0.9 {
-		resumeThreshold = 0.9 // Safety floor
-	}
-
+// queueRecheckResume adds a torrent to the recheck resume queue with the given threshold.
+// The threshold should be calculated based on expected progress from matched file sizes.
+func (s *Service) queueRecheckResume(_ context.Context, instanceID int, hash string, threshold float64) {
 	// Send to worker (non-blocking with buffer)
 	select {
 	case s.recheckResumeChan <- &pendingResume{
 		instanceID: instanceID,
 		hash:       hash,
-		threshold:  resumeThreshold,
+		threshold:  threshold,
 		addedAt:    time.Now(),
 	}:
 	default:

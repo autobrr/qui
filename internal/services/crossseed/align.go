@@ -511,21 +511,63 @@ func hasExtraSourceFiles(sourceFiles, candidateFiles qbt.TorrentFiles) bool {
 	return matched < len(sourceFiles)
 }
 
+// calculateExpectedProgress calculates the expected recheck progress based on matched file sizes.
+// Returns the ratio of candidate file sizes that can be matched to source files (by exact size).
+// This is used to determine the auto-resume threshold - if source has extra files that don't
+// exist in candidate, the expected progress will be less than 100%.
+//
+// Important: Files are matched by exact size. If the main media file differs in size between
+// source and candidate (even by 1 byte), it won't match and expected progress will be very low,
+// correctly preventing auto-resume for potentially corrupted/different content.
+func calculateExpectedProgress(sourceFiles, candidateFiles qbt.TorrentFiles) float64 {
+	if len(sourceFiles) == 0 {
+		return 1.0 // No source files means nothing to match
+	}
+
+	// Calculate total source size
+	var totalSourceSize int64
+	for _, sf := range sourceFiles {
+		totalSourceSize += sf.Size
+	}
+	if totalSourceSize == 0 {
+		return 1.0
+	}
+
+	// Build size buckets for candidate files
+	candidateSizes := make(map[int64]int)
+	for _, cf := range candidateFiles {
+		candidateSizes[cf.Size]++
+	}
+
+	// Sum sizes of source files that have matching candidates (by exact size)
+	var matchedSize int64
+	for _, sf := range sourceFiles {
+		if count := candidateSizes[sf.Size]; count > 0 {
+			candidateSizes[sf.Size]--
+			matchedSize += sf.Size
+		}
+	}
+
+	return float64(matchedSize) / float64(totalSourceSize)
+}
+
 // needsRenameAlignment checks if rename alignment will be required for a cross-seed add.
-// Returns true if torrent name or root folder differs between source and candidate,
-// but NOT for single-file → folder cases (handled by contentLayout=Subfolder).
+// Returns true if torrent name, root folder, or file names differ between source and candidate.
+// For layout-change cases (folder→bare or bare→folder), also checks if file names inside differ.
 func needsRenameAlignment(torrentName string, matchedTorrentName string, sourceFiles, candidateFiles qbt.TorrentFiles) bool {
 	sourceRoot := detectCommonRoot(sourceFiles)
 	candidateRoot := detectCommonRoot(candidateFiles)
 
-	// Single file → folder: handled by contentLayout=Subfolder, no rename needed
+	// Single file → folder: layout handled by contentLayout=Subfolder,
+	// but file renames may still be needed if names differ
 	if sourceRoot == "" && candidateRoot != "" {
-		return false
+		return filesNeedRenaming(sourceFiles, candidateFiles)
 	}
 
-	// Folder → single file: handled by contentLayout=NoSubfolder, no rename needed
+	// Folder → single file: layout handled by contentLayout=NoSubfolder,
+	// but file renames may still be needed if names differ
 	if sourceRoot != "" && candidateRoot == "" {
-		return false
+		return filesNeedRenaming(sourceFiles, candidateFiles)
 	}
 
 	// Check display name (both have folders or both are single files)
@@ -538,6 +580,62 @@ func needsRenameAlignment(torrentName string, matchedTorrentName string, sourceF
 	// Check root folder (both have folders)
 	if sourceRoot != "" && candidateRoot != "" && sourceRoot != candidateRoot {
 		return true
+	}
+
+	return false
+}
+
+// filesNeedRenaming checks if any files would need renaming after a layout change.
+// Compares file names (ignoring folder structure) using normalized keys to detect
+// punctuation differences like spaces vs periods.
+func filesNeedRenaming(sourceFiles, candidateFiles qbt.TorrentFiles) bool {
+	if len(sourceFiles) == 0 || len(candidateFiles) == 0 {
+		return false
+	}
+
+	// Build a set of normalized candidate file keys by size
+	type fileKey struct {
+		normalized string
+		size       int64
+	}
+	candidateKeys := make(map[fileKey]bool)
+	for _, cf := range candidateFiles {
+		candidateKeys[fileKey{normalized: normalizeFileKey(cf.Name), size: cf.Size}] = true
+	}
+
+	// Check if any source file doesn't have a matching candidate
+	for _, sf := range sourceFiles {
+		key := fileKey{normalized: normalizeFileKey(sf.Name), size: sf.Size}
+		if !candidateKeys[key] {
+			// No match by normalized key+size, need rename alignment
+			return true
+		}
+	}
+
+	// All source files have normalized matches - but do actual paths differ?
+	// Build size buckets for detailed comparison
+	candidateBuckets := make(map[int64][]string)
+	for _, cf := range candidateFiles {
+		base := fileBaseName(cf.Name)
+		candidateBuckets[cf.Size] = append(candidateBuckets[cf.Size], base)
+	}
+
+	for _, sf := range sourceFiles {
+		sourceBase := fileBaseName(sf.Name)
+		bucket := candidateBuckets[sf.Size]
+
+		// Check if exact base name exists in bucket
+		found := false
+		for _, candBase := range bucket {
+			if sourceBase == candBase {
+				found = true
+				break
+			}
+		}
+		if !found {
+			// Base names differ (even if normalized matches), need rename
+			return true
+		}
 	}
 
 	return false

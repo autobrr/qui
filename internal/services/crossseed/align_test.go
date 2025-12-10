@@ -267,12 +267,189 @@ func TestNeedsRenameAlignment(t *testing.T) {
 			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2024.mkv", Size: 1000}},
 			expectedResult: false, // handled by contentLayout=NoSubfolder (strips source's folder)
 		},
+		{
+			name:           "folder to single file with different file names - alignment needed",
+			torrentName:    "Vanderpump Rules S12E02 Manifest and Chill 1080p AMZN WEB-DL DDP2 0 H 264-NTb",
+			matchedName:    "Vanderpump.Rules.S12E02.Manifest.and.Chill.1080p.AMZN.WEB-DL.DDP2.0.H.264-NTb.mkv",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Vanderpump Rules S12E02 Manifest and Chill 1080p AMZN WEB-DL DDP2 0 H 264-NTb/Vanderpump Rules S12E02 Manifest and Chill 1080p AMZN WEB-DL DDP2 0 H 264-NTb.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Vanderpump.Rules.S12E02.Manifest.and.Chill.1080p.AMZN.WEB-DL.DDP2.0.H.264-NTb.mkv", Size: 1000}},
+			expectedResult: true, // file names differ (spaces vs periods) - needs recheck after rename
+		},
+		{
+			name:           "single file to folder with different file names - alignment needed",
+			torrentName:    "Movie 2024 1080p BluRay x264-GROUP.mkv",
+			matchedName:    "Movie.2024.1080p.BluRay.x264-GROUP",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie 2024 1080p BluRay x264-GROUP.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2024.1080p.BluRay.x264-GROUP/Movie.2024.1080p.BluRay.x264-GROUP.mkv", Size: 1000}},
+			expectedResult: true, // file names differ (spaces vs periods) - needs recheck after rename
+		},
+		{
+			name:           "folder to single file with multiple files - alignment needed when names differ",
+			torrentName:    "Show S01E01",
+			matchedName:    "Show.S01E01.mkv",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show S01E01/Show S01E01.mkv", Size: 1000000000},
+				{Name: "Show S01E01/Show S01E01.nfo", Size: 1024},
+			},
+			candidateFiles: qbt.TorrentFiles{{Name: "Show.S01E01.mkv", Size: 1000000000}},
+			expectedResult: true, // main file name differs (spaces vs periods)
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := needsRenameAlignment(tt.torrentName, tt.matchedName, tt.sourceFiles, tt.candidateFiles)
 			require.Equal(t, tt.expectedResult, result)
+		})
+	}
+}
+
+func TestFilesNeedRenaming(t *testing.T) {
+	tests := []struct {
+		name           string
+		sourceFiles    qbt.TorrentFiles
+		candidateFiles qbt.TorrentFiles
+		expectedResult bool
+	}{
+		{
+			name:           "identical file names - no rename needed",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+			expectedResult: false,
+		},
+		{
+			name:           "different punctuation (spaces vs periods) - rename needed",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Show S01E01/Show S01E01.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Show.S01E01.mkv", Size: 1000}},
+			expectedResult: true,
+		},
+		{
+			name:           "vanderpump rules case - spaces vs periods",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Vanderpump Rules S12E02 Manifest and Chill 1080p AMZN WEB-DL DDP2 0 H 264-NTb/Vanderpump Rules S12E02 Manifest and Chill 1080p AMZN WEB-DL DDP2 0 H 264-NTb.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Vanderpump.Rules.S12E02.Manifest.and.Chill.1080p.AMZN.WEB-DL.DDP2.0.H.264-NTb.mkv", Size: 1000}},
+			expectedResult: true,
+		},
+		{
+			name:           "empty source files - no rename needed",
+			sourceFiles:    qbt.TorrentFiles{},
+			candidateFiles: qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+			expectedResult: false,
+		},
+		{
+			name:           "empty candidate files - no rename needed",
+			sourceFiles:    qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{},
+			expectedResult: false,
+		},
+		{
+			name: "multiple files with matching names - no rename needed",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show/episode1.mkv", Size: 1000},
+				{Name: "Show/episode2.mkv", Size: 2000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "episode1.mkv", Size: 1000},
+				{Name: "episode2.mkv", Size: 2000},
+			},
+			expectedResult: false,
+		},
+		{
+			name: "multiple files with one differing name - rename needed",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show/Show S01E01.mkv", Size: 1000},
+				{Name: "Show/Show S01E02.mkv", Size: 2000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Show.S01E01.mkv", Size: 1000},
+				{Name: "Show.S01E02.mkv", Size: 2000},
+			},
+			expectedResult: true,
+		},
+		{
+			name:           "different sizes - no match possible, rename needed",
+			sourceFiles:    qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "movie.mkv", Size: 2000}},
+			expectedResult: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := filesNeedRenaming(tt.sourceFiles, tt.candidateFiles)
+			require.Equal(t, tt.expectedResult, result)
+		})
+	}
+}
+
+func TestCalculateExpectedProgress(t *testing.T) {
+	tests := []struct {
+		name           string
+		sourceFiles    qbt.TorrentFiles
+		candidateFiles qbt.TorrentFiles
+		expectedResult float64
+	}{
+		{
+			name:           "identical files - 100%",
+			sourceFiles:    qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+			expectedResult: 1.0,
+		},
+		{
+			name: "source has extra NFO - main file matches",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "movie.mkv", Size: 4000000000},
+				{Name: "movie.nfo", Size: 1024},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "movie.mkv", Size: 4000000000},
+			},
+			expectedResult: 4000000000.0 / 4000001024.0, // ~99.99997%
+		},
+		{
+			name: "main file size differs - very low progress",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "movie.mkv", Size: 4000000000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "movie.mkv", Size: 3999999999}, // 1 byte different
+			},
+			expectedResult: 0.0, // No size match
+		},
+		{
+			name: "multiple files - only sidecar differs",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "movie.mkv", Size: 4000000000},
+				{Name: "sample.mkv", Size: 50000000},
+				{Name: "movie.nfo", Size: 2048},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "movie.mkv", Size: 4000000000},
+				{Name: "sample.mkv", Size: 50000000},
+				{Name: "movie.nfo", Size: 1024}, // Different size NFO
+			},
+			expectedResult: 4050000000.0 / 4050002048.0, // Main files match, NFO doesn't
+		},
+		{
+			name:           "empty source files - 100%",
+			sourceFiles:    qbt.TorrentFiles{},
+			candidateFiles: qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+			expectedResult: 1.0,
+		},
+		{
+			name:           "empty candidate files - 0%",
+			sourceFiles:    qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{},
+			expectedResult: 0.0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := calculateExpectedProgress(tt.sourceFiles, tt.candidateFiles)
+			// Use approximate comparison for floating point
+			if diff := result - tt.expectedResult; diff > 0.0001 || diff < -0.0001 {
+				t.Errorf("calculateExpectedProgress() = %v, want %v", result, tt.expectedResult)
+			}
 		})
 	}
 }
