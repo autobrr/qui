@@ -9,39 +9,47 @@ export type CrossSeedInstanceState = Record<number, {
   searchRunning?: boolean
 }>
 
-export function useCrossSeedInstanceState(): CrossSeedInstanceState {
-  // Fetch settings to determine if RSS automation is enabled
-  // Long stale time since settings rarely change
-  const { data: settings } = useQuery({
+export type CrossSeedInstanceStateResult = {
+  state: CrossSeedInstanceState
+  isLoading: boolean
+  isError: boolean
+  error: Error | null
+}
+
+export function useCrossSeedInstanceState(): CrossSeedInstanceStateResult {
+  const settingsQuery = useQuery({
     queryKey: ["cross-seed", "settings"],
     queryFn: () => api.getCrossSeedSettings(),
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   })
 
-  const rssEnabled = settings?.enabled ?? false
+  const rssEnabled = settingsQuery.data?.enabled ?? false
 
-  // Only poll status when RSS automation is enabled
-  const { data: crossSeedStatus } = useQuery({
+  const statusQuery = useQuery({
     queryKey: ["cross-seed", "status"],
     queryFn: () => api.getCrossSeedStatus(),
-    refetchInterval: rssEnabled ? 30_000 : false,
+    refetchInterval: 30_000,
     staleTime: 10_000,
     enabled: rssEnabled,
   })
 
-  // Fetch search status once to check if running, then poll only while running
-  const { data: crossSeedSearchStatus } = useQuery({
+  // Poll frequently while search is running, slow poll otherwise to detect new searches
+  const searchStatusQuery = useQuery({
     queryKey: ["cross-seed", "search-status"],
     queryFn: () => api.getCrossSeedSearchStatus(),
     refetchInterval: (query) => {
-      // Only poll while a search is actively running
-      return query.state.data?.running ? 5_000 : false
+      return query.state.data?.running ? 5_000 : 60_000
     },
     staleTime: 3_000,
   })
 
-  return useMemo(() => {
+  const state = useMemo(() => {
+    const settings = settingsQuery.data
+    const crossSeedStatus = statusQuery.data
+    const crossSeedSearchStatus = searchStatusQuery.data
+
+    const rssEnabled = settings?.enabled ?? false
     const rssRunning = crossSeedStatus?.running ?? false
     const rssTargetIds = crossSeedStatus?.settings?.targetInstanceIds ?? []
     const searchRunning = crossSeedSearchStatus?.running ?? false
@@ -49,7 +57,6 @@ export function useCrossSeedInstanceState(): CrossSeedInstanceState {
 
     const state: CrossSeedInstanceState = {}
 
-    // Only populate RSS state if RSS is enabled
     if (rssEnabled) {
       for (const id of rssTargetIds) {
         state[id] = { rssEnabled, rssRunning }
@@ -64,5 +71,12 @@ export function useCrossSeedInstanceState(): CrossSeedInstanceState {
     }
 
     return state
-  }, [crossSeedStatus, crossSeedSearchStatus, rssEnabled])
+  }, [settingsQuery.data, statusQuery.data, searchStatusQuery.data])
+
+  return {
+    state,
+    isLoading: settingsQuery.isLoading || statusQuery.isLoading || searchStatusQuery.isLoading,
+    isError: settingsQuery.isError || statusQuery.isError || searchStatusQuery.isError,
+    error: settingsQuery.error || statusQuery.error || searchStatusQuery.error,
+  }
 }
