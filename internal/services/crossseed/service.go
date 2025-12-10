@@ -2790,6 +2790,9 @@ func (s *Service) processCrossSeedCandidate(
 			// something significant is different (not just sidecars). This protects
 			// against the edge case where files pass size tolerance filter but don't
 			// have exact matches - we don't want to auto-resume and overwrite files.
+			// Note: This is intentionally separate from minCompletionProgress in
+			// recoverErroredTorrents - that checks actual torrent progress, while
+			// this checks predicted progress from file size matching.
 			const minExpectedProgress = 0.9
 			if expectedProgress < minExpectedProgress {
 				log.Info().
