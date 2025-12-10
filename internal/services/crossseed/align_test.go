@@ -379,3 +379,72 @@ func TestHasExtraSourceFiles(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizeFileKey(t *testing.T) {
+	// normalizeFileKey strips all non-alphanumeric characters from the base name,
+	// keeps only the extension (lowercase), and normalizes Unicode characters
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		// Basic normalization - dots in filename are stripped, only extension kept
+		{"simple filename", "movie.mkv", "movie.mkv"},
+		{"with path", "Movie/movie.mkv", "movie.mkv"},
+		{"uppercase", "MOVIE.MKV", "movie.mkv"},
+		{"dots stripped from name", "The.Movie.2024.mkv", "themovie2024.mkv"},
+
+		// Unicode normalization - diacritics removed
+		{"macron", "Shōgun.S01E01.mkv", "shoguns01e01.mkv"},
+		{"accent", "Amélie.2001.mkv", "amelie2001.mkv"},
+		{"umlaut", "Björk.Live.mkv", "bjorklive.mkv"},
+		{"tilde", "El.Niño.mkv", "elnino.mkv"},
+		{"multiple diacritics", "Mötley.Crüe.The.Dirt.mkv", "motleycruethedirt.mkv"},
+
+		// Ligatures
+		{"ligature ae", "Encyclopædia.mkv", "encyclopaedia.mkv"},
+		{"ligature oe", "Cœur.mkv", "coeur.mkv"},
+
+		// Sidecar handling - intermediate video extension stripped
+		{"nfo file", "movie.nfo", "movie.nfo"},
+		{"nfo with video ext", "movie.mkv.nfo", "movie.nfo"},
+		{"srt file", "movie.srt", "movie.srt"},
+		{"srt with video ext", "movie.mkv.srt", "movie.srt"},
+
+		// Edge cases
+		{"empty string", "", ""},
+		{"no extension", "README", "readme"},
+		{"dots only name", "...mkv", ".mkv"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := normalizeFileKey(tt.input)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestNormalizeFileKey_UnicodeMatching(t *testing.T) {
+	// Verify that files with Unicode characters normalize to match their ASCII equivalents
+	pairs := []struct {
+		name  string
+		file1 string
+		file2 string
+	}{
+		{"shogun macron", "Shōgun.S01E01.1080p.mkv", "Shogun.S01E01.1080p.mkv"},
+		{"pokemon accent", "Pokémon.S01E01.mkv", "Pokemon.S01E01.mkv"},
+		{"amelie", "Amélie.2001.1080p.mkv", "Amelie.2001.1080p.mkv"},
+		{"naruto", "Naruto.Shippūden.S01E01.mkv", "Naruto.Shippuden.S01E01.mkv"},
+		{"el nino", "El.Niño.Documentary.mkv", "El.Nino.Documentary.mkv"},
+		{"bjork", "Björk.Live.Concert.mkv", "Bjork.Live.Concert.mkv"},
+	}
+
+	for _, tt := range pairs {
+		t.Run(tt.name, func(t *testing.T) {
+			norm1 := normalizeFileKey(tt.file1)
+			norm2 := normalizeFileKey(tt.file2)
+			require.Equal(t, norm1, norm2, "Expected %q and %q to normalize to the same key", tt.file1, tt.file2)
+		})
+	}
+}
