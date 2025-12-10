@@ -169,7 +169,7 @@ export function Header({
 
   const supportsTorrentCreation = instanceCapabilities?.supportsTorrentCreation ?? true
 
-  const crossSeedInstanceState = useCrossSeedInstanceState()
+  const { state: crossSeedInstanceState } = useCrossSeedInstanceState()
 
   // Dense mode uses reduced header height
   const headerHeight = viewMode === "dense" ? "lg:h-12" : "lg:h-16"

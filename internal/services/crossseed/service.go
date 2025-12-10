@@ -1662,6 +1662,119 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		return models.CrossSeedFeedItemStatusSkipped, nil, nil
 	}
 
+	// Optimization: If RSS feed provides infohash, check if torrent already exists
+	// on ALL candidate instances before downloading. This avoids unnecessary downloads
+	// when the exact torrent (by hash) is already present - commonly happens when
+	// autobrr grabs via IRC before RSS automation processes the same release.
+	if result.InfoHashV1 != "" {
+		allExist := true
+		var existingResults []models.CrossSeedRunResult
+
+		for _, candidate := range candidatesResp.Candidates {
+			existing, exists, hashErr := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, []string{result.InfoHashV1})
+			if hashErr != nil {
+				// Context cancellation should propagate, not trigger fallback
+				if errors.Is(hashErr, context.Canceled) || errors.Is(hashErr, context.DeadlineExceeded) {
+					run.TorrentsFailed++
+					return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("hash check canceled: %w", hashErr)
+				}
+				log.Warn().
+					Err(hashErr).
+					Int("instanceID", candidate.InstanceID).
+					Str("instanceName", candidate.InstanceName).
+					Str("hash", result.InfoHashV1).
+					Str("title", result.Title).
+					Msg("[RSS] Failed to check existing hash on instance, will proceed with download")
+				allExist = false
+				break
+			}
+
+			if exists && existing != nil {
+				existingResults = append(existingResults, models.CrossSeedRunResult{
+					InstanceID:         candidate.InstanceID,
+					InstanceName:       candidate.InstanceName,
+					Success:            false,
+					Status:             "exists",
+					Message:            "Torrent already exists (infohash pre-check)",
+					MatchedTorrentHash: func() *string { h := existing.Hash; return &h }(),
+					MatchedTorrentName: func() *string { n := existing.Name; return &n }(),
+				})
+			} else {
+				allExist = false
+				break
+			}
+		}
+
+		if allExist && len(existingResults) > 0 {
+			run.TorrentsSkipped += len(existingResults)
+			run.Results = append(run.Results, existingResults...)
+
+			log.Debug().
+				Str("title", result.Title).
+				Str("hash", result.InfoHashV1).
+				Int("instances", len(existingResults)).
+				Msg("[RSS] Skipped download - torrent already exists on all candidate instances (infohash pre-check)")
+
+			return models.CrossSeedFeedItemStatusProcessed, &result.InfoHashV1, nil
+		}
+	}
+
+	// Fallback for UNIT3D and similar trackers: check if torrent URL exists in comments.
+	// UNIT3D torrents include the source URL in the comment field (e.g., "https://seedpool.org/torrents/607803").
+	// The GUID from RSS is typically this same URL, so we can match without needing infohash.
+	if commentURL := extractTorrentURLForCommentMatch(result.GUID, result.InfoURL); commentURL != "" {
+		allExist := true
+		var existingResults []models.CrossSeedRunResult
+
+		for _, candidate := range candidatesResp.Candidates {
+			// Check for context cancellation before processing each candidate
+			if ctx.Err() != nil {
+				run.TorrentsFailed++
+				return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("comment URL pre-check canceled: %w", ctx.Err())
+			}
+
+			found := false
+			var matchedTorrent *qbt.Torrent
+
+			for i := range candidate.Torrents {
+				t := &candidate.Torrents[i]
+				if t.Comment != "" && strings.Contains(t.Comment, commentURL) {
+					found = true
+					matchedTorrent = t
+					break
+				}
+			}
+
+			if found && matchedTorrent != nil {
+				existingResults = append(existingResults, models.CrossSeedRunResult{
+					InstanceID:         candidate.InstanceID,
+					InstanceName:       candidate.InstanceName,
+					Success:            false,
+					Status:             "exists",
+					Message:            "Torrent already exists (comment URL pre-check)",
+					MatchedTorrentHash: func() *string { h := matchedTorrent.Hash; return &h }(),
+					MatchedTorrentName: func() *string { n := matchedTorrent.Name; return &n }(),
+				})
+			} else {
+				allExist = false
+				break
+			}
+		}
+
+		if allExist && len(existingResults) > 0 {
+			run.TorrentsSkipped += len(existingResults)
+			run.Results = append(run.Results, existingResults...)
+
+			log.Debug().
+				Str("title", result.Title).
+				Str("commentURL", commentURL).
+				Int("instances", len(existingResults)).
+				Msg("[RSS] Skipped download - torrent already exists on all candidate instances (comment URL pre-check)")
+
+			return models.CrossSeedFeedItemStatusProcessed, nil, nil
+		}
+	}
+
 	torrentBytes, err := s.downloadTorrent(ctx, jackett.TorrentDownloadRequest{
 		IndexerID:   result.IndexerID,
 		DownloadURL: result.DownloadURL,
@@ -7351,4 +7464,47 @@ func wrapCrossSeedSearchError(err error) error {
 	}
 
 	return fmt.Errorf("torznab search failed: %w", err)
+}
+
+// extractTorrentURLForCommentMatch extracts a torrent URL suitable for matching against
+// torrent comments. UNIT3D and similar trackers embed the source URL in the torrent's
+// comment field. Returns empty string if no suitable URL pattern is found.
+//
+// Matches any HTTPS URL containing these path patterns:
+//   - /torrents/ (UNIT3D style: seedpool.org, aither.cc, blutopia.cc, etc.)
+//   - /details/ (BHD style: beyond-hd.me)
+func extractTorrentURLForCommentMatch(guid, infoURL string) string {
+	// Try GUID first (typically the details URL for UNIT3D)
+	if url := parseTorrentDetailsURL(guid); url != "" {
+		return url
+	}
+
+	// Fall back to InfoURL
+	if url := parseTorrentDetailsURL(infoURL); url != "" {
+		return url
+	}
+
+	return ""
+}
+
+// parseTorrentDetailsURL checks if the URL looks like a tracker torrent details page
+// and returns it normalized for comment matching.
+func parseTorrentDetailsURL(rawURL string) string {
+	if rawURL == "" {
+		return ""
+	}
+
+	// Must be HTTPS URL
+	if !strings.HasPrefix(rawURL, "https://") {
+		return ""
+	}
+
+	// Check for common torrent details URL patterns:
+	// - /torrents/ID (UNIT3D style)
+	// - /details/ID (BHD style)
+	if strings.Contains(rawURL, "/torrents/") || strings.Contains(rawURL, "/details/") {
+		return rawURL
+	}
+
+	return ""
 }
