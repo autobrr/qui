@@ -1122,13 +1122,13 @@ type instanceCompletionSettingsRequest struct {
 func (h *CrossSeedHandler) GetInstanceCompletionSettings(w http.ResponseWriter, r *http.Request) {
 	instanceIDStr := chi.URLParam(r, "instanceID")
 	instanceID, err := strconv.Atoi(instanceIDStr)
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	if err != nil || instanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
 		return
 	}
 
 	if h.completionStore == nil {
-		// Return defaults if store is not configured
+		log.Warn().Int("instanceID", instanceID).Msg("Completion store not configured; returning default settings")
 		defaults := models.DefaultInstanceCrossSeedCompletionSettings(instanceID)
 		RespondJSON(w, http.StatusOK, instanceCompletionSettingsResponse{
 			InstanceID:        defaults.InstanceID,
@@ -1162,8 +1162,8 @@ func (h *CrossSeedHandler) GetInstanceCompletionSettings(w http.ResponseWriter, 
 func (h *CrossSeedHandler) UpdateInstanceCompletionSettings(w http.ResponseWriter, r *http.Request) {
 	instanceIDStr := chi.URLParam(r, "instanceID")
 	instanceID, err := strconv.Atoi(instanceIDStr)
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+	if err != nil || instanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
 		return
 	}
 

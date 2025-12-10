@@ -858,12 +858,22 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 				Msg("[CROSSSEED-COMPLETION] Failed to load instance completion settings")
 			return
 		}
+	} else {
+		log.Warn().
+			Int("instanceID", instanceID).
+			Str("hash", torrent.Hash).
+			Msg("[CROSSSEED-COMPLETION] Completion store not configured; using defaults")
 	}
 	if completionSettings == nil {
 		completionSettings = models.DefaultInstanceCrossSeedCompletionSettings(instanceID)
 	}
 
 	if !completionSettings.Enabled {
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("hash", torrent.Hash).
+			Str("name", torrent.Name).
+			Msg("[CROSSSEED-COMPLETION] Completion search disabled for this instance")
 		return
 	}
 
@@ -881,7 +891,7 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		return
 	}
 
-	if !matchesInstanceCompletionFilters(&torrent, completionSettings) {
+	if !matchesCompletionFilters(&torrent, completionSettings) {
 		log.Debug().
 			Int("instanceID", instanceID).
 			Str("hash", torrent.Hash).
@@ -6243,64 +6253,26 @@ func matchesSearchFilters(torrent *qbt.Torrent, opts SearchRunOptions) bool {
 	return true
 }
 
-func matchesCompletionFilters(torrent *qbt.Torrent, settings models.CrossSeedCompletionSettings) bool {
-	if torrent == nil {
-		return false
-	}
-
-	if len(settings.ExcludeCategories) > 0 && slices.Contains(settings.ExcludeCategories, torrent.Category) {
-		return false
-	}
-
-	if len(settings.Categories) > 0 && !slices.Contains(settings.Categories, torrent.Category) {
-		return false
-	}
-
-	torrentTags := splitTags(torrent.Tags)
-
-	if len(settings.ExcludeTags) > 0 {
-		for _, tag := range torrentTags {
-			for _, excluded := range settings.ExcludeTags {
-				if strings.EqualFold(tag, excluded) {
-					return false
-				}
-			}
-		}
-	}
-
-	if len(settings.Tags) > 0 {
-		for _, tag := range torrentTags {
-			for _, allowed := range settings.Tags {
-				if strings.EqualFold(tag, allowed) {
-					return true
-				}
-			}
-		}
-		return false
-	}
-
-	return true
-}
-
-// matchesInstanceCompletionFilters checks if a torrent matches per-instance completion filters.
-func matchesInstanceCompletionFilters(torrent *qbt.Torrent, settings *models.InstanceCrossSeedCompletionSettings) bool {
+// matchesCompletionFilters checks if a torrent matches completion filters.
+// Works with both global CrossSeedCompletionSettings and per-instance InstanceCrossSeedCompletionSettings.
+func matchesCompletionFilters(torrent *qbt.Torrent, settings models.CompletionFilterProvider) bool {
 	if torrent == nil || settings == nil {
 		return false
 	}
 
-	if len(settings.ExcludeCategories) > 0 && slices.Contains(settings.ExcludeCategories, torrent.Category) {
+	if len(settings.GetExcludeCategories()) > 0 && slices.Contains(settings.GetExcludeCategories(), torrent.Category) {
 		return false
 	}
 
-	if len(settings.Categories) > 0 && !slices.Contains(settings.Categories, torrent.Category) {
+	if len(settings.GetCategories()) > 0 && !slices.Contains(settings.GetCategories(), torrent.Category) {
 		return false
 	}
 
 	torrentTags := splitTags(torrent.Tags)
 
-	if len(settings.ExcludeTags) > 0 {
+	if len(settings.GetExcludeTags()) > 0 {
 		for _, tag := range torrentTags {
-			for _, excluded := range settings.ExcludeTags {
+			for _, excluded := range settings.GetExcludeTags() {
 				if strings.EqualFold(tag, excluded) {
 					return false
 				}
@@ -6308,9 +6280,9 @@ func matchesInstanceCompletionFilters(torrent *qbt.Torrent, settings *models.Ins
 		}
 	}
 
-	if len(settings.Tags) > 0 {
+	if len(settings.GetTags()) > 0 {
 		for _, tag := range torrentTags {
-			for _, allowed := range settings.Tags {
+			for _, allowed := range settings.GetTags() {
 				if strings.EqualFold(tag, allowed) {
 					return true
 				}

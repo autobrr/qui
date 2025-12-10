@@ -6,10 +6,8 @@ package models
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
@@ -35,6 +33,20 @@ type InstanceCrossSeedCompletionStore struct {
 func NewInstanceCrossSeedCompletionStore(db dbinterface.Querier) *InstanceCrossSeedCompletionStore {
 	return &InstanceCrossSeedCompletionStore{db: db}
 }
+
+// GetCategories returns the categories filter.
+func (s *InstanceCrossSeedCompletionSettings) GetCategories() []string { return s.Categories }
+
+// GetTags returns the tags filter.
+func (s *InstanceCrossSeedCompletionSettings) GetTags() []string { return s.Tags }
+
+// GetExcludeCategories returns the excluded categories filter.
+func (s *InstanceCrossSeedCompletionSettings) GetExcludeCategories() []string {
+	return s.ExcludeCategories
+}
+
+// GetExcludeTags returns the excluded tags filter.
+func (s *InstanceCrossSeedCompletionSettings) GetExcludeTags() []string { return s.ExcludeTags }
 
 // DefaultInstanceCrossSeedCompletionSettings returns default values for a new instance.
 // Completion is disabled by default for safety.
@@ -101,19 +113,19 @@ func (s *InstanceCrossSeedCompletionStore) Upsert(ctx context.Context, settings 
 	}
 
 	coerced := sanitizeInstanceCrossSeedCompletionSettings(settings)
-	catJSON, err := encodeCompletionStringSliceJSON(coerced.Categories)
+	catJSON, err := EncodeStringSliceJSON(coerced.Categories)
 	if err != nil {
 		return nil, err
 	}
-	tagJSON, err := encodeCompletionStringSliceJSON(coerced.Tags)
+	tagJSON, err := EncodeStringSliceJSON(coerced.Tags)
 	if err != nil {
 		return nil, err
 	}
-	excludeCatJSON, err := encodeCompletionStringSliceJSON(coerced.ExcludeCategories)
+	excludeCatJSON, err := EncodeStringSliceJSON(coerced.ExcludeCategories)
 	if err != nil {
 		return nil, err
 	}
-	excludeTagJSON, err := encodeCompletionStringSliceJSON(coerced.ExcludeTags)
+	excludeTagJSON, err := EncodeStringSliceJSON(coerced.ExcludeTags)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +142,7 @@ func (s *InstanceCrossSeedCompletionStore) Upsert(ctx context.Context, settings 
 
 	_, err = s.db.ExecContext(ctx, stmt,
 		coerced.InstanceID,
-		completionBoolToSQLite(coerced.Enabled),
+		BoolToSQLite(coerced.Enabled),
 		catJSON,
 		tagJSON,
 		excludeCatJSON,
@@ -143,63 +155,13 @@ func (s *InstanceCrossSeedCompletionStore) Upsert(ctx context.Context, settings 
 	return s.Get(ctx, coerced.InstanceID)
 }
 
-func completionBoolToSQLite(v bool) int {
-	if v {
-		return 1
-	}
-	return 0
-}
-
 func sanitizeInstanceCrossSeedCompletionSettings(s *InstanceCrossSeedCompletionSettings) *InstanceCrossSeedCompletionSettings {
 	clone := *s
-	clone.Categories = sanitizeCompletionStringSlice(clone.Categories)
-	clone.Tags = sanitizeCompletionStringSlice(clone.Tags)
-	clone.ExcludeCategories = sanitizeCompletionStringSlice(clone.ExcludeCategories)
-	clone.ExcludeTags = sanitizeCompletionStringSlice(clone.ExcludeTags)
+	clone.Categories = SanitizeStringSlice(clone.Categories)
+	clone.Tags = SanitizeStringSlice(clone.Tags)
+	clone.ExcludeCategories = SanitizeStringSlice(clone.ExcludeCategories)
+	clone.ExcludeTags = SanitizeStringSlice(clone.ExcludeTags)
 	return &clone
-}
-
-func sanitizeCompletionStringSlice(values []string) []string {
-	if len(values) == 0 {
-		return []string{}
-	}
-	seen := make(map[string]struct{}, len(values))
-	var result []string
-	for _, value := range values {
-		trimmed := strings.TrimSpace(value)
-		if trimmed == "" {
-			continue
-		}
-		lower := strings.ToLower(trimmed)
-		if _, exists := seen[lower]; exists {
-			continue
-		}
-		seen[lower] = struct{}{}
-		result = append(result, trimmed)
-	}
-	return result
-}
-
-func encodeCompletionStringSliceJSON(values []string) (string, error) {
-	if len(values) == 0 {
-		return "[]", nil
-	}
-	payload, err := json.Marshal(values)
-	if err != nil {
-		return "", err
-	}
-	return string(payload), nil
-}
-
-func decodeCompletionStringSliceJSON(raw sql.NullString) ([]string, error) {
-	if !raw.Valid || strings.TrimSpace(raw.String) == "" {
-		return []string{}, nil
-	}
-	var values []string
-	if err := json.Unmarshal([]byte(raw.String), &values); err != nil {
-		return nil, err
-	}
-	return sanitizeCompletionStringSlice(values), nil
 }
 
 func scanInstanceCrossSeedCompletionSettings(scanner interface {
@@ -227,19 +189,19 @@ func scanInstanceCrossSeedCompletionSettings(scanner interface {
 		return nil, err
 	}
 
-	categories, err := decodeCompletionStringSliceJSON(catJSON)
+	categories, err := DecodeStringSliceJSON(catJSON)
 	if err != nil {
 		return nil, fmt.Errorf("decode categories: %w", err)
 	}
-	tags, err := decodeCompletionStringSliceJSON(tagJSON)
+	tags, err := DecodeStringSliceJSON(tagJSON)
 	if err != nil {
 		return nil, fmt.Errorf("decode tags: %w", err)
 	}
-	excludeCategories, err := decodeCompletionStringSliceJSON(excludeCatJSON)
+	excludeCategories, err := DecodeStringSliceJSON(excludeCatJSON)
 	if err != nil {
 		return nil, fmt.Errorf("decode exclude categories: %w", err)
 	}
-	excludeTags, err := decodeCompletionStringSliceJSON(excludeTagJSON)
+	excludeTags, err := DecodeStringSliceJSON(excludeTagJSON)
 	if err != nil {
 		return nil, fmt.Errorf("decode exclude tags: %w", err)
 	}

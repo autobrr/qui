@@ -46,58 +46,58 @@ type Server struct {
 	config  *config.AppConfig
 	version string
 
-	authService               *auth.Service
-	sessionManager            *scs.SessionManager
-	instanceStore             *models.InstanceStore
-	instanceReannounce        *models.InstanceReannounceStore
-	reannounceCache           *reannounce.SettingsCache
-	reannounceService         *reannounce.Service
-	clientAPIKeyStore         *models.ClientAPIKeyStore
-	externalProgramStore      *models.ExternalProgramStore
-	clientPool                *qbittorrent.ClientPool
-	syncManager               *qbittorrent.SyncManager
-	licenseService            *license.Service
-	updateService             *update.Service
-	trackerIconService        *trackericons.Service
-	backupService             *backups.Service
-	filesManager              *filesmanager.Service
-	crossSeedService          *crossseed.Service
-	jackettService            *jackett.Service
-	torznabIndexerStore       *models.TorznabIndexerStore
-	trackerRuleStore                    *models.TrackerRuleStore
-	trackerRuleService                  *trackerrules.Service
-	trackerCustomizationStore           *models.TrackerCustomizationStore
-	dashboardSettingsStore              *models.DashboardSettingsStore
-	instanceCrossSeedCompletionStore    *models.InstanceCrossSeedCompletionStore
+	authService                      *auth.Service
+	sessionManager                   *scs.SessionManager
+	instanceStore                    *models.InstanceStore
+	instanceReannounce               *models.InstanceReannounceStore
+	reannounceCache                  *reannounce.SettingsCache
+	reannounceService                *reannounce.Service
+	clientAPIKeyStore                *models.ClientAPIKeyStore
+	externalProgramStore             *models.ExternalProgramStore
+	clientPool                       *qbittorrent.ClientPool
+	syncManager                      *qbittorrent.SyncManager
+	licenseService                   *license.Service
+	updateService                    *update.Service
+	trackerIconService               *trackericons.Service
+	backupService                    *backups.Service
+	filesManager                     *filesmanager.Service
+	crossSeedService                 *crossseed.Service
+	jackettService                   *jackett.Service
+	torznabIndexerStore              *models.TorznabIndexerStore
+	trackerRuleStore                 *models.TrackerRuleStore
+	trackerRuleService               *trackerrules.Service
+	trackerCustomizationStore        *models.TrackerCustomizationStore
+	dashboardSettingsStore           *models.DashboardSettingsStore
+	instanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
 }
 
 type Dependencies struct {
-	Config                    *config.AppConfig
-	Version                   string
-	AuthService               *auth.Service
-	SessionManager            *scs.SessionManager
-	InstanceStore             *models.InstanceStore
-	InstanceReannounce        *models.InstanceReannounceStore
-	ReannounceCache           *reannounce.SettingsCache
-	ReannounceService         *reannounce.Service
-	ClientAPIKeyStore         *models.ClientAPIKeyStore
-	ExternalProgramStore      *models.ExternalProgramStore
-	ClientPool                *qbittorrent.ClientPool
-	SyncManager               *qbittorrent.SyncManager
-	WebHandler                *web.Handler
-	LicenseService            *license.Service
-	UpdateService             *update.Service
-	TrackerIconService        *trackericons.Service
-	BackupService             *backups.Service
-	FilesManager              *filesmanager.Service
-	CrossSeedService          *crossseed.Service
-	JackettService            *jackett.Service
-	TorznabIndexerStore       *models.TorznabIndexerStore
-	TrackerRuleStore                    *models.TrackerRuleStore
-	TrackerRuleService                  *trackerrules.Service
-	TrackerCustomizationStore           *models.TrackerCustomizationStore
-	DashboardSettingsStore              *models.DashboardSettingsStore
-	InstanceCrossSeedCompletionStore    *models.InstanceCrossSeedCompletionStore
+	Config                           *config.AppConfig
+	Version                          string
+	AuthService                      *auth.Service
+	SessionManager                   *scs.SessionManager
+	InstanceStore                    *models.InstanceStore
+	InstanceReannounce               *models.InstanceReannounceStore
+	ReannounceCache                  *reannounce.SettingsCache
+	ReannounceService                *reannounce.Service
+	ClientAPIKeyStore                *models.ClientAPIKeyStore
+	ExternalProgramStore             *models.ExternalProgramStore
+	ClientPool                       *qbittorrent.ClientPool
+	SyncManager                      *qbittorrent.SyncManager
+	WebHandler                       *web.Handler
+	LicenseService                   *license.Service
+	UpdateService                    *update.Service
+	TrackerIconService               *trackericons.Service
+	BackupService                    *backups.Service
+	FilesManager                     *filesmanager.Service
+	CrossSeedService                 *crossseed.Service
+	JackettService                   *jackett.Service
+	TorznabIndexerStore              *models.TorznabIndexerStore
+	TrackerRuleStore                 *models.TrackerRuleStore
+	TrackerRuleService               *trackerrules.Service
+	TrackerCustomizationStore        *models.TrackerCustomizationStore
+	DashboardSettingsStore           *models.DashboardSettingsStore
+	InstanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -108,32 +108,32 @@ func NewServer(deps *Dependencies) *Server {
 			WriteTimeout:      120 * time.Second,
 			IdleTimeout:       180 * time.Second,
 		},
-		logger:                    log.Logger.With().Str("module", "api").Logger(),
-		config:                    deps.Config,
-		version:                   deps.Version,
-		authService:               deps.AuthService,
-		sessionManager:            deps.SessionManager,
-		instanceStore:             deps.InstanceStore,
-		instanceReannounce:        deps.InstanceReannounce,
-		clientAPIKeyStore:         deps.ClientAPIKeyStore,
-		externalProgramStore:      deps.ExternalProgramStore,
-		reannounceCache:           deps.ReannounceCache,
-		clientPool:                deps.ClientPool,
-		syncManager:               deps.SyncManager,
-		licenseService:            deps.LicenseService,
-		updateService:             deps.UpdateService,
-		trackerIconService:        deps.TrackerIconService,
-		backupService:             deps.BackupService,
-		filesManager:              deps.FilesManager,
-		crossSeedService:          deps.CrossSeedService,
-		reannounceService:         deps.ReannounceService,
-		jackettService:            deps.JackettService,
-		torznabIndexerStore:       deps.TorznabIndexerStore,
-		trackerRuleStore:                    deps.TrackerRuleStore,
-		trackerRuleService:                  deps.TrackerRuleService,
-		trackerCustomizationStore:           deps.TrackerCustomizationStore,
-		dashboardSettingsStore:              deps.DashboardSettingsStore,
-		instanceCrossSeedCompletionStore:    deps.InstanceCrossSeedCompletionStore,
+		logger:                           log.Logger.With().Str("module", "api").Logger(),
+		config:                           deps.Config,
+		version:                          deps.Version,
+		authService:                      deps.AuthService,
+		sessionManager:                   deps.SessionManager,
+		instanceStore:                    deps.InstanceStore,
+		instanceReannounce:               deps.InstanceReannounce,
+		clientAPIKeyStore:                deps.ClientAPIKeyStore,
+		externalProgramStore:             deps.ExternalProgramStore,
+		reannounceCache:                  deps.ReannounceCache,
+		clientPool:                       deps.ClientPool,
+		syncManager:                      deps.SyncManager,
+		licenseService:                   deps.LicenseService,
+		updateService:                    deps.UpdateService,
+		trackerIconService:               deps.TrackerIconService,
+		backupService:                    deps.BackupService,
+		filesManager:                     deps.FilesManager,
+		crossSeedService:                 deps.CrossSeedService,
+		reannounceService:                deps.ReannounceService,
+		jackettService:                   deps.JackettService,
+		torznabIndexerStore:              deps.TorznabIndexerStore,
+		trackerRuleStore:                 deps.TrackerRuleStore,
+		trackerRuleService:               deps.TrackerRuleService,
+		trackerCustomizationStore:        deps.TrackerCustomizationStore,
+		dashboardSettingsStore:           deps.DashboardSettingsStore,
+		instanceCrossSeedCompletionStore: deps.InstanceCrossSeedCompletionStore,
 	}
 
 	return &s

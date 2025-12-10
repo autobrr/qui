@@ -59,6 +59,27 @@ type CrossSeedCompletionSettings struct {
 	ExcludeTags       []string `json:"excludeTags"`
 }
 
+// CompletionFilterProvider defines the interface for types that provide completion filter fields.
+// This allows a single filter matching function to work with both global and per-instance settings.
+type CompletionFilterProvider interface {
+	GetCategories() []string
+	GetTags() []string
+	GetExcludeCategories() []string
+	GetExcludeTags() []string
+}
+
+// GetCategories returns the categories filter.
+func (s CrossSeedCompletionSettings) GetCategories() []string { return s.Categories }
+
+// GetTags returns the tags filter.
+func (s CrossSeedCompletionSettings) GetTags() []string { return s.Tags }
+
+// GetExcludeCategories returns the excluded categories filter.
+func (s CrossSeedCompletionSettings) GetExcludeCategories() []string { return s.ExcludeCategories }
+
+// GetExcludeTags returns the excluded tags filter.
+func (s CrossSeedCompletionSettings) GetExcludeTags() []string { return s.ExcludeTags }
+
 // DefaultCrossSeedCompletionSettings returns defaults for completion-triggered automation.
 func DefaultCrossSeedCompletionSettings() CrossSeedCompletionSettings {
 	return CrossSeedCompletionSettings{
