@@ -31,6 +31,9 @@ type InstanceCrossSeedCompletionStore struct {
 
 // NewInstanceCrossSeedCompletionStore creates a new store.
 func NewInstanceCrossSeedCompletionStore(db dbinterface.Querier) *InstanceCrossSeedCompletionStore {
+	if db == nil {
+		panic("db cannot be nil")
+	}
 	return &InstanceCrossSeedCompletionStore{db: db}
 }
 
@@ -168,13 +171,13 @@ func scanInstanceCrossSeedCompletionSettings(scanner interface {
 	Scan(dest ...any) error
 }) (*InstanceCrossSeedCompletionSettings, error) {
 	var (
-		instanceID        int
-		enabledInt        int
-		catJSON           sql.NullString
-		tagJSON           sql.NullString
-		excludeCatJSON    sql.NullString
-		excludeTagJSON    sql.NullString
-		updatedAt         sql.NullTime
+		instanceID     int
+		enabledInt     int
+		catJSON        sql.NullString
+		tagJSON        sql.NullString
+		excludeCatJSON sql.NullString
+		excludeTagJSON sql.NullString
+		updatedAt      sql.NullTime
 	)
 
 	if err := scanner.Scan(

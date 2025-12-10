@@ -69,16 +69,16 @@ type CompletionFilterProvider interface {
 }
 
 // GetCategories returns the categories filter.
-func (s CrossSeedCompletionSettings) GetCategories() []string { return s.Categories }
+func (s *CrossSeedCompletionSettings) GetCategories() []string { return s.Categories }
 
 // GetTags returns the tags filter.
-func (s CrossSeedCompletionSettings) GetTags() []string { return s.Tags }
+func (s *CrossSeedCompletionSettings) GetTags() []string { return s.Tags }
 
 // GetExcludeCategories returns the excluded categories filter.
-func (s CrossSeedCompletionSettings) GetExcludeCategories() []string { return s.ExcludeCategories }
+func (s *CrossSeedCompletionSettings) GetExcludeCategories() []string { return s.ExcludeCategories }
 
 // GetExcludeTags returns the excluded tags filter.
-func (s CrossSeedCompletionSettings) GetExcludeTags() []string { return s.ExcludeTags }
+func (s *CrossSeedCompletionSettings) GetExcludeTags() []string { return s.ExcludeTags }
 
 // DefaultCrossSeedCompletionSettings returns defaults for completion-triggered automation.
 func DefaultCrossSeedCompletionSettings() CrossSeedCompletionSettings {

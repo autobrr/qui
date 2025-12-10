@@ -846,26 +846,22 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 	}
 
 	// Load per-instance completion settings
-	var completionSettings *models.InstanceCrossSeedCompletionSettings
-	if s.completionStore != nil {
-		var err error
-		completionSettings, err = s.completionStore.Get(ctx, instanceID)
-		if err != nil {
-			log.Warn().
-				Err(err).
-				Int("instanceID", instanceID).
-				Str("hash", torrent.Hash).
-				Msg("[CROSSSEED-COMPLETION] Failed to load instance completion settings")
-			return
-		}
-	} else {
-		log.Warn().
+	if s.completionStore == nil {
+		log.Error().
 			Int("instanceID", instanceID).
 			Str("hash", torrent.Hash).
-			Msg("[CROSSSEED-COMPLETION] Completion store not configured; using defaults")
+			Msg("[CROSSSEED-COMPLETION] Completion store not configured")
+		return
 	}
-	if completionSettings == nil {
-		completionSettings = models.DefaultInstanceCrossSeedCompletionSettings(instanceID)
+
+	completionSettings, err := s.completionStore.Get(ctx, instanceID)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", torrent.Hash).
+			Msg("[CROSSSEED-COMPLETION] Failed to load instance completion settings")
+		return
 	}
 
 	if !completionSettings.Enabled {

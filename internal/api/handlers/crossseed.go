@@ -25,6 +25,7 @@ import (
 type CrossSeedHandler struct {
 	service         *crossseed.Service
 	completionStore *models.InstanceCrossSeedCompletionStore
+	instanceStore   *models.InstanceStore
 }
 
 type automationSettingsRequest struct {
@@ -274,10 +275,11 @@ type searchRunRequest struct {
 }
 
 // NewCrossSeedHandler creates a new cross-seed handler
-func NewCrossSeedHandler(service *crossseed.Service, completionStore *models.InstanceCrossSeedCompletionStore) *CrossSeedHandler {
+func NewCrossSeedHandler(service *crossseed.Service, completionStore *models.InstanceCrossSeedCompletionStore, instanceStore *models.InstanceStore) *CrossSeedHandler {
 	return &CrossSeedHandler{
 		service:         service,
 		completionStore: completionStore,
+		instanceStore:   instanceStore,
 	}
 }
 
@@ -1109,6 +1111,18 @@ type instanceCompletionSettingsResponse struct {
 	ExcludeTags       []string `json:"excludeTags"`
 }
 
+// toInstanceCompletionSettingsResponse converts model to API response.
+func toInstanceCompletionSettingsResponse(s *models.InstanceCrossSeedCompletionSettings) instanceCompletionSettingsResponse {
+	return instanceCompletionSettingsResponse{
+		InstanceID:        s.InstanceID,
+		Enabled:           s.Enabled,
+		Categories:        s.Categories,
+		Tags:              s.Tags,
+		ExcludeCategories: s.ExcludeCategories,
+		ExcludeTags:       s.ExcludeTags,
+	}
+}
+
 // instanceCompletionSettingsRequest is the API request for updating per-instance completion settings.
 type instanceCompletionSettingsRequest struct {
 	Enabled           bool     `json:"enabled"`
@@ -1128,17 +1142,19 @@ func (h *CrossSeedHandler) GetInstanceCompletionSettings(w http.ResponseWriter, 
 	}
 
 	if h.completionStore == nil {
-		log.Warn().Int("instanceID", instanceID).Msg("Completion store not configured; returning default settings")
-		defaults := models.DefaultInstanceCrossSeedCompletionSettings(instanceID)
-		RespondJSON(w, http.StatusOK, instanceCompletionSettingsResponse{
-			InstanceID:        defaults.InstanceID,
-			Enabled:           defaults.Enabled,
-			Categories:        defaults.Categories,
-			Tags:              defaults.Tags,
-			ExcludeCategories: defaults.ExcludeCategories,
-			ExcludeTags:       defaults.ExcludeTags,
-		})
+		log.Error().Int("instanceID", instanceID).Msg("Completion store not configured")
+		RespondError(w, http.StatusServiceUnavailable, "Completion settings not available")
 		return
+	}
+
+	// Validate instance exists
+	if h.instanceStore != nil {
+		_, err := h.instanceStore.Get(r.Context(), instanceID)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Instance not found for completion settings")
+			RespondError(w, http.StatusNotFound, "Instance not found")
+			return
+		}
 	}
 
 	settings, err := h.completionStore.Get(r.Context(), instanceID)
@@ -1148,14 +1164,7 @@ func (h *CrossSeedHandler) GetInstanceCompletionSettings(w http.ResponseWriter, 
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, instanceCompletionSettingsResponse{
-		InstanceID:        settings.InstanceID,
-		Enabled:           settings.Enabled,
-		Categories:        settings.Categories,
-		Tags:              settings.Tags,
-		ExcludeCategories: settings.ExcludeCategories,
-		ExcludeTags:       settings.ExcludeTags,
-	})
+	RespondJSON(w, http.StatusOK, toInstanceCompletionSettingsResponse(settings))
 }
 
 // UpdateInstanceCompletionSettings updates the completion settings for a specific instance.
@@ -1168,8 +1177,19 @@ func (h *CrossSeedHandler) UpdateInstanceCompletionSettings(w http.ResponseWrite
 	}
 
 	if h.completionStore == nil {
-		RespondError(w, http.StatusServiceUnavailable, "Completion settings store not configured")
+		log.Error().Int("instanceID", instanceID).Msg("Completion store not configured")
+		RespondError(w, http.StatusServiceUnavailable, "Completion settings not available")
 		return
+	}
+
+	// Validate instance exists
+	if h.instanceStore != nil {
+		_, err := h.instanceStore.Get(r.Context(), instanceID)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Instance not found for completion settings")
+			RespondError(w, http.StatusNotFound, "Instance not found")
+			return
+		}
 	}
 
 	var req instanceCompletionSettingsRequest
@@ -1195,12 +1215,5 @@ func (h *CrossSeedHandler) UpdateInstanceCompletionSettings(w http.ResponseWrite
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, instanceCompletionSettingsResponse{
-		InstanceID:        saved.InstanceID,
-		Enabled:           saved.Enabled,
-		Categories:        saved.Categories,
-		Tags:              saved.Tags,
-		ExcludeCategories: saved.ExcludeCategories,
-		ExcludeTags:       saved.ExcludeTags,
-	})
+	RespondJSON(w, http.StatusOK, toInstanceCompletionSettingsResponse(saved))
 }
