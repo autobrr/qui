@@ -119,7 +119,7 @@ export function MobileFooterNav() {
     return instances.filter(instance => instance.isActive)
   }, [instances])
 
-  const crossSeedInstanceState = useCrossSeedInstanceState()
+  const { state: crossSeedInstanceState } = useCrossSeedInstanceState()
   const isOnInstancePage = location.pathname.startsWith("/instances/")
   const hasMultipleActiveInstances = activeInstances.length > 1
   const singleActiveInstance = activeInstances.length === 1 ? activeInstances[0] : null
