@@ -2638,6 +2638,62 @@ paths:
         '500':
           description: Failed to list search runs
 
+  /api/cross-seed/completion/{instanceId}:
+    get:
+      tags:
+        - Cross-Seed
+      summary: Get per-instance completion settings
+      description: Returns the cross-seed completion settings for a specific qBittorrent instance. These settings control automatic cross-seed searches when torrents complete on this instance.
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: qBittorrent instance ID
+      responses:
+        '200':
+          description: Instance completion settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceCrossSeedCompletionSettings'
+        '400':
+          description: Invalid instance ID
+        '500':
+          description: Failed to load completion settings
+    put:
+      tags:
+        - Cross-Seed
+      summary: Update per-instance completion settings
+      description: Updates the cross-seed completion settings for a specific qBittorrent instance. These settings control automatic cross-seed searches when torrents complete on this instance.
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: qBittorrent instance ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InstanceCrossSeedCompletionSettingsRequest'
+      responses:
+        '200':
+          description: Updated instance completion settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceCrossSeedCompletionSettings'
+        '400':
+          description: Invalid instance ID or request body
+        '500':
+          description: Failed to save completion settings
+        '503':
+          description: Completion settings store not configured
+
   /api/cross-seed/webhook/check:
     post:
       tags:
@@ -3764,6 +3820,65 @@ components:
           type: array
           items:
             type: string
+
+    InstanceCrossSeedCompletionSettings:
+      type: object
+      description: Per-instance cross-seed completion settings
+      properties:
+        instanceId:
+          type: integer
+          description: qBittorrent instance ID
+        enabled:
+          type: boolean
+          description: Whether automatic cross-seed search is enabled for this instance
+        categories:
+          type: array
+          items:
+            type: string
+          description: Only trigger for torrents in these categories (empty means all)
+        tags:
+          type: array
+          items:
+            type: string
+          description: Require at least one matching tag (empty means all)
+        excludeCategories:
+          type: array
+          items:
+            type: string
+          description: Skip torrents in these categories
+        excludeTags:
+          type: array
+          items:
+            type: string
+          description: Skip torrents with any of these tags
+
+    InstanceCrossSeedCompletionSettingsRequest:
+      type: object
+      description: Request body for updating per-instance completion settings
+      properties:
+        enabled:
+          type: boolean
+          description: Whether automatic cross-seed search is enabled for this instance
+        categories:
+          type: array
+          items:
+            type: string
+          description: Only trigger for torrents in these categories (empty means all)
+        tags:
+          type: array
+          items:
+            type: string
+          description: Require at least one matching tag (empty means all)
+        excludeCategories:
+          type: array
+          items:
+            type: string
+          description: Skip torrents in these categories
+        excludeTags:
+          type: array
+          items:
+            type: string
+          description: Skip torrents with any of these tags
 
     CrossSeedAutomationSettingsPatch:
       type: object

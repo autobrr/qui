@@ -65,6 +65,15 @@ export const REANNOUNCE_CONSTRAINTS = {
   DEFAULT_MAX_RETRIES: 50,
 } as const
 
+export interface InstanceCrossSeedCompletionSettings {
+  instanceId: number
+  enabled: boolean
+  categories: string[]
+  tags: string[]
+  excludeCategories: string[]
+  excludeTags: string[]
+}
+
 export interface InstanceReannounceActivity {
   instanceId: number
   hash: string

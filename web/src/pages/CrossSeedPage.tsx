@@ -30,8 +30,8 @@ import { api } from "@/lib/api"
 import type {
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
-  CrossSeedCompletionSettings,
-  CrossSeedRun
+  CrossSeedRun,
+  InstanceCrossSeedCompletionSettings
 } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
@@ -109,14 +109,6 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   inheritSourceTags: false,
 }
 
-const DEFAULT_COMPLETION_SETTINGS: CrossSeedCompletionSettings = {
-  enabled: false,
-  categories: [],
-  tags: [],
-  excludeCategories: [],
-  excludeTags: [],
-}
-
 const DEFAULT_COMPLETION_FORM: CompletionFormState = {
   enabled: false,
   categories: "",
@@ -191,6 +183,7 @@ export function CrossSeedPage() {
   const [automationForm, setAutomationForm] = useState<AutomationFormState>(DEFAULT_AUTOMATION_FORM)
   const [globalSettings, setGlobalSettings] = useState<GlobalCrossSeedSettings>(DEFAULT_GLOBAL_SETTINGS)
   const [completionForm, setCompletionForm] = useState<CompletionFormState>(DEFAULT_COMPLETION_FORM)
+  const [completionInstanceId, setCompletionInstanceId] = useState<number | null>(null)
   const [formInitialized, setFormInitialized] = useState(false)
   const [globalSettingsInitialized, setGlobalSettingsInitialized] = useState(false)
   const [completionFormInitialized, setCompletionFormInitialized] = useState(false)
@@ -314,6 +307,15 @@ export function CrossSeedPage() {
     staleTime: 60 * 1000,
   })
 
+  // Per-instance completion settings
+  const { data: instanceCompletionSettings, isLoading: isLoadingInstanceCompletion } = useQuery({
+    queryKey: ["cross-seed", "completion", completionInstanceId],
+    queryFn: () => api.getInstanceCompletionSettings(completionInstanceId!),
+    enabled: !!completionInstanceId,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  })
+
   const formatCacheTimestamp = useCallback((value?: string | null) => {
     if (!value) {
       return "—"
@@ -359,19 +361,26 @@ export function CrossSeedPage() {
     }
   }, [settings, globalSettingsInitialized])
 
+  // Initialize completionInstanceId when instances load
   useEffect(() => {
-    if (settings && !completionFormInitialized) {
-      const completion = settings.completion ?? DEFAULT_COMPLETION_SETTINGS
+    if (!completionInstanceId && activeInstances.length > 0) {
+      setCompletionInstanceId(activeInstances[0].id)
+    }
+  }, [activeInstances, completionInstanceId])
+
+  // Reset completion form when instance changes or settings load
+  useEffect(() => {
+    if (instanceCompletionSettings) {
       setCompletionForm({
-        enabled: completion.enabled,
-        categories: completion.categories.join(", "),
-        tags: completion.tags.join(", "),
-        excludeCategories: completion.excludeCategories.join(", "),
-        excludeTags: completion.excludeTags.join(", "),
+        enabled: instanceCompletionSettings.enabled,
+        categories: instanceCompletionSettings.categories.join(", "),
+        tags: instanceCompletionSettings.tags.join(", "),
+        excludeCategories: instanceCompletionSettings.excludeCategories.join(", "),
+        excludeTags: instanceCompletionSettings.excludeTags.join(", "),
       })
       setCompletionFormInitialized(true)
     }
-  }, [settings, completionFormInitialized])
+  }, [instanceCompletionSettings])
 
   useEffect(() => {
     if (!searchSettings || searchSettingsInitialized) {
@@ -427,31 +436,6 @@ export function CrossSeedPage() {
     }
   }, [settings, automationForm, formInitialized])
 
-  const buildCompletionPatch = useCallback((): CrossSeedAutomationSettingsPatch | null => {
-    if (!settings) return null
-
-    const completionSource = settings.completion ?? DEFAULT_COMPLETION_SETTINGS
-    const completionState = completionFormInitialized
-      ? completionForm
-      : {
-          enabled: completionSource.enabled,
-          categories: completionSource.categories.join(", "),
-          tags: completionSource.tags.join(", "),
-          excludeCategories: completionSource.excludeCategories.join(", "),
-          excludeTags: completionSource.excludeTags.join(", "),
-        }
-
-    return {
-      completion: {
-        enabled: completionState.enabled,
-        categories: parseList(completionState.categories),
-        tags: parseList(completionState.tags),
-        excludeCategories: parseList(completionState.excludeCategories),
-        excludeTags: parseList(completionState.excludeTags),
-      },
-    }
-  }, [settings, completionForm, completionFormInitialized])
-
   const buildGlobalPatch = useCallback((): CrossSeedAutomationSettingsPatch | null => {
     if (!settings) return null
 
@@ -500,6 +484,18 @@ export function CrossSeedPage() {
       // Don't reinitialize the form since we just saved it
       queryClient.setQueryData(["cross-seed", "settings"], data)
       refetchStatus()
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+
+  const updateInstanceCompletionMutation = useMutation({
+    mutationFn: (payload: { instanceId: number; settings: Omit<InstanceCrossSeedCompletionSettings, "instanceId"> }) =>
+      api.updateInstanceCompletionSettings(payload.instanceId, payload.settings),
+    onSuccess: (data) => {
+      toast.success("Completion settings updated")
+      queryClient.setQueryData(["cross-seed", "completion", data.instanceId], data)
     },
     onError: (error: Error) => {
       toast.error(error.message)
@@ -566,10 +562,21 @@ export function CrossSeedPage() {
   }
 
   const handleSaveCompletion = () => {
-    const payload = buildCompletionPatch()
-    if (!payload) return
+    if (!completionInstanceId) {
+      toast.error("Select an instance to save completion settings")
+      return
+    }
 
-    patchSettingsMutation.mutate(payload)
+    updateInstanceCompletionMutation.mutate({
+      instanceId: completionInstanceId,
+      settings: {
+        enabled: completionForm.enabled,
+        categories: parseList(completionForm.categories),
+        tags: parseList(completionForm.tags),
+        excludeCategories: parseList(completionForm.excludeCategories),
+        excludeTags: parseList(completionForm.excludeTags),
+      },
+    })
   }
 
   const handleSaveGlobal = () => {
@@ -803,7 +810,7 @@ export function CrossSeedPage() {
   const automationEnabled = formInitialized ? automationForm.enabled : settings?.enabled ?? false
   const completionEnabled = completionFormInitialized
     ? completionForm.enabled
-    : settings?.completion?.enabled ?? false
+    : instanceCompletionSettings?.enabled ?? false
 
   const searchInstanceName = useMemo(
     () => instances?.find(instance => instance.id === searchInstanceId)?.name ?? "No instance selected",
@@ -1238,16 +1245,45 @@ export function CrossSeedPage() {
       <Card>
         <CardHeader>
           <CardTitle>Auto-search on completion</CardTitle>
-          <CardDescription>Kick off a cross-seed search the moment a torrent finishes, using simple category and tag filters. Torrents already tagged <span className="font-semibold text-foreground">cross-seed</span> are skipped automatically.</CardDescription>
+          <CardDescription>Kick off a cross-seed search the moment a torrent finishes, using simple category and tag filters. Torrents already tagged <span className="font-semibold text-foreground">cross-seed</span> are skipped automatically. Settings are configured per-instance.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
-          <div className="flex gap-4">
-            <Label htmlFor="completion-enabled">Enable on completion</Label>
-            <Switch
-              id="completion-enabled"
-              checked={completionForm.enabled}
-              onCheckedChange={value => setCompletionForm(prev => ({ ...prev, enabled: !!value }))}
-            />
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Instance</Label>
+              <Select
+                value={completionInstanceId ? String(completionInstanceId) : ""}
+                onValueChange={(value) => {
+                  setCompletionInstanceId(Number(value))
+                  setCompletionFormInitialized(false)
+                }}
+                disabled={!activeInstances.length}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select an instance" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeInstances.map(instance => (
+                    <SelectItem key={instance.id} value={String(instance.id)}>
+                      {instance.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!activeInstances.length && (
+                <p className="text-xs text-muted-foreground">Add an instance to configure completion settings.</p>
+              )}
+            </div>
+            <div className="flex items-center gap-4">
+              <Label htmlFor="completion-enabled">Enable on completion</Label>
+              <Switch
+                id="completion-enabled"
+                checked={completionForm.enabled}
+                onCheckedChange={value => setCompletionForm(prev => ({ ...prev, enabled: !!value }))}
+                disabled={!completionInstanceId || isLoadingInstanceCompletion}
+              />
+              {isLoadingInstanceCompletion && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            </div>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
@@ -1257,6 +1293,7 @@ export function CrossSeedPage() {
                 placeholder="Comma separated"
                 value={completionForm.categories}
                 onChange={event => setCompletionForm(prev => ({ ...prev, categories: event.target.value }))}
+                disabled={!completionInstanceId || isLoadingInstanceCompletion}
               />
               <p className="text-xs text-muted-foreground">Only run for these categories. Leave blank to include all categories.</p>
             </div>
@@ -1267,6 +1304,7 @@ export function CrossSeedPage() {
                 placeholder="Comma separated"
                 value={completionForm.excludeCategories}
                 onChange={event => setCompletionForm(prev => ({ ...prev, excludeCategories: event.target.value }))}
+                disabled={!completionInstanceId || isLoadingInstanceCompletion}
               />
               <p className="text-xs text-muted-foreground">Stop completion searches for matching categories.</p>
             </div>
@@ -1279,6 +1317,7 @@ export function CrossSeedPage() {
                 placeholder="Comma separated"
                 value={completionForm.tags}
                 onChange={event => setCompletionForm(prev => ({ ...prev, tags: event.target.value }))}
+                disabled={!completionInstanceId || isLoadingInstanceCompletion}
               />
               <p className="text-xs text-muted-foreground">Require at least one matching tag. Leave blank to include all tags.</p>
             </div>
@@ -1289,6 +1328,7 @@ export function CrossSeedPage() {
                 placeholder="Comma separated"
                 value={completionForm.excludeTags}
                 onChange={event => setCompletionForm(prev => ({ ...prev, excludeTags: event.target.value }))}
+                disabled={!completionInstanceId || isLoadingInstanceCompletion}
               />
               <p className="text-xs text-muted-foreground">Skip completion searches when any of these tags are present.</p>
             </div>
@@ -1297,9 +1337,9 @@ export function CrossSeedPage() {
         <CardFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
           <Button
             onClick={handleSaveCompletion}
-            disabled={patchSettingsMutation.isPending}
+            disabled={updateInstanceCompletionMutation.isPending || !completionInstanceId || isLoadingInstanceCompletion}
           >
-            {patchSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {updateInstanceCompletionMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Save completion settings
           </Button>
         </CardFooter>
