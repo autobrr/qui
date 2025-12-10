@@ -512,7 +512,7 @@ func hasExtraSourceFiles(sourceFiles, candidateFiles qbt.TorrentFiles) bool {
 }
 
 // calculateExpectedProgress calculates the expected recheck progress based on matched file sizes.
-// Returns the ratio of candidate file sizes that can be matched to source files (by exact size).
+// Returns the ratio of source file sizes that have exact-size matches in candidate files.
 // This is used to determine the auto-resume threshold - if source has extra files that don't
 // exist in candidate, the expected progress will be less than 100%.
 //

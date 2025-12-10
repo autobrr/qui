@@ -441,6 +441,35 @@ func TestCalculateExpectedProgress(t *testing.T) {
 			candidateFiles: qbt.TorrentFiles{},
 			expectedResult: 0.0,
 		},
+		{
+			name: "multiple files with same size - bucket counting",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "movie.mkv", Size: 4000000000},
+				{Name: "subs/en.srt", Size: 50000},
+				{Name: "subs/es.srt", Size: 50000}, // Same size as en.srt
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "movie.mkv", Size: 4000000000},
+				{Name: "subs/en.srt", Size: 50000},
+				{Name: "subs/es.srt", Size: 50000},
+			},
+			expectedResult: 1.0,
+		},
+		{
+			name: "multiple files with same size - partial match",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "movie.mkv", Size: 4000000000},
+				{Name: "subs/en.srt", Size: 50000},
+				{Name: "subs/es.srt", Size: 50000},
+				{Name: "subs/fr.srt", Size: 50000}, // Extra subtitle
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "movie.mkv", Size: 4000000000},
+				{Name: "subs/en.srt", Size: 50000},
+				{Name: "subs/es.srt", Size: 50000},
+			},
+			expectedResult: 4000100000.0 / 4000150000.0, // 2 of 3 same-size subs match
+		},
 	}
 
 	for _, tt := range tests {
