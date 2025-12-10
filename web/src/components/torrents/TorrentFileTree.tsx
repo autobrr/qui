@@ -353,7 +353,7 @@ interface TreeNodeProps {
   supportsFilePriority: boolean
   pendingFileIndices: Set<number>
   incognitoMode: boolean
-  expandedFolders: Set<string>
+  folderState: Map<string, boolean>
   onToggleFile: (file: TorrentFile, selected: boolean) => void
   onToggleFolder: (folderPath: string, selected: boolean) => void
   onRenameFile: (filePath: string) => void
@@ -366,7 +366,7 @@ const TreeNode = memo(function TreeNode({
   supportsFilePriority,
   pendingFileIndices,
   incognitoMode,
-  expandedFolders,
+  folderState,
   onToggleFile,
   onToggleFolder,
   onRenameFile,
@@ -386,7 +386,7 @@ const TreeNode = memo(function TreeNode({
     )
   }
 
-  const isExpanded = expandedFolders.has(node.id)
+  const isExpanded = folderState.get(node.id) === true
 
   return (
     <AccordionPrimitive.Item value={node.id} className="border-none w-full min-w-0">
@@ -414,7 +414,7 @@ const TreeNode = memo(function TreeNode({
             supportsFilePriority={supportsFilePriority}
             pendingFileIndices={pendingFileIndices}
             incognitoMode={incognitoMode}
-            expandedFolders={expandedFolders}
+            folderState={folderState}
             onToggleFile={onToggleFile}
             onToggleFolder={onToggleFolder}
             onRenameFile={onRenameFile}
@@ -443,24 +443,25 @@ export const TorrentFileTree = memo(function TorrentFileTree({
   )
 
   // Start with all folders expanded
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-    () => new Set(allFolderIds)
+  const [folderState, setFolderState] = useState<Map<string, boolean>>(
+    () => new Map(allFolderIds.map((key) => [key, true]))
   )
 
-  // Keep expandedFolders in sync when folder paths change (e.g., after rename)
+  // Keep folderState in sync when folder paths change (e.g., after rename)
   // - Add newly appearing folders as expanded
   // - Remove folders that no longer exist
   useEffect(() => {
-    setExpandedFolders((prev) => {
+    setFolderState((prev) => {
       const allFolderSet = new Set(allFolderIds)
-      let changed = false
-      const next = new Set<string>()
 
-      // Keep existing expanded folders that still exist
-      for (const id of prev) {
-        if (allFolderSet.has(id)) {
-          next.add(id)
-        } else {
+      let changed = false
+
+      const next = new Map(prev)
+
+      // Remove folders that no longer exist
+      for (const id of prev.keys()) {
+        if (!allFolderSet.has(id)) {
+          next.delete(id)
           changed = true
         }
       }
@@ -468,7 +469,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
       // Add new folders as expanded by default
       for (const id of allFolderIds) {
         if (!prev.has(id)) {
-          next.add(id)
+          next.set(id, true)
           changed = true
         }
       }
@@ -478,8 +479,11 @@ export const TorrentFileTree = memo(function TorrentFileTree({
   }, [allFolderIds])
 
   const expandedArray = useMemo(
-    () => Array.from(expandedFolders),
-    [expandedFolders]
+    () =>
+      Array.from(folderState)
+        .filter((folder) => folder[1])
+        .map((folder) => folder[0]),
+    [folderState]
   )
 
   // Handle single file torrents (no folders)
@@ -525,7 +529,17 @@ export const TorrentFileTree = memo(function TorrentFileTree({
       <AccordionPrimitive.Root
         type="multiple"
         value={expandedArray}
-        onValueChange={(value) => setExpandedFolders(new Set(value))}
+        onValueChange={(value) => {
+          setFolderState((prev) => {
+            const next = new Map(prev)
+
+            for (const id of prev.keys()) {
+              next.set(id, value.includes(id))
+            }
+
+            return next
+          })
+        }}
         className="space-y-0.5 w-full min-w-0"
       >
         {nodes.map((node) => (
@@ -536,7 +550,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
             supportsFilePriority={supportsFilePriority}
             pendingFileIndices={pendingFileIndices}
             incognitoMode={incognitoMode}
-            expandedFolders={expandedFolders}
+            folderState={folderState}
             onToggleFile={onToggleFile}
             onToggleFolder={onToggleFolder}
             onRenameFile={onRenameFile}
