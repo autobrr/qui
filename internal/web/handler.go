@@ -67,6 +67,7 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Get("/pwa-192x192.png", h.serveAssets)
 	r.Get("/pwa-512x512.png", h.serveAssets)
 	r.Get("/swizzin.png", h.serveAssets)
+	r.Get("/napster.png", h.serveAssets)
 
 	// SPA routes
 	r.Get("/", h.serveSPA)

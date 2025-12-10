@@ -196,7 +196,7 @@ export function Header({
                 {theme === "swizzin" ? (
                   <SwizzinLogo className="h-5 w-5" />
                 ) : theme === "napster" ? (
-                  <NapsterLogo className="h-8 w-8" />
+                  <NapsterLogo className="h-5 w-5" />
                 ) : (
                   <Logo className="h-5 w-5" />
                 )}
@@ -251,7 +251,7 @@ export function Header({
             {theme === "swizzin" ? (
               <SwizzinLogo className="h-5 w-5" />
             ) : theme === "napster" ? (
-              <NapsterLogo className="h-8 w-8" />
+              <NapsterLogo className="h-5 w-5" />
             ) : (
               <Logo className="h-5 w-5" />
             )}
