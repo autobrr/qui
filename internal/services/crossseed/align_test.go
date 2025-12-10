@@ -475,10 +475,7 @@ func TestCalculateExpectedProgress(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := calculateExpectedProgress(tt.sourceFiles, tt.candidateFiles)
-			// Use approximate comparison for floating point
-			if diff := result - tt.expectedResult; diff > 0.0001 || diff < -0.0001 {
-				t.Errorf("calculateExpectedProgress() = %v, want %v", result, tt.expectedResult)
-			}
+			require.InDelta(t, tt.expectedResult, result, 0.0001)
 		})
 	}
 }

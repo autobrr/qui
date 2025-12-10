@@ -2805,7 +2805,9 @@ func (s *Service) processCrossSeedCandidate(
 					Str("torrentHash", torrentHash).
 					Float64("expectedProgress", expectedProgress).
 					Msg("Queuing torrent for recheck resume with calculated threshold")
-				s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash, expectedProgress)
+				if err := s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash, expectedProgress); err != nil {
+					result.Message = result.Message + " - auto-resume queue full, manual resume required"
+				}
 			}
 		}
 	} else if startPaused && alignmentSucceeded {
@@ -2875,7 +2877,8 @@ func normalizeHash(hash string) string {
 
 // queueRecheckResume adds a torrent to the recheck resume queue with the given threshold.
 // The threshold should be calculated based on expected progress from matched file sizes.
-func (s *Service) queueRecheckResume(_ context.Context, instanceID int, hash string, threshold float64) {
+// Returns an error if the queue is full.
+func (s *Service) queueRecheckResume(_ context.Context, instanceID int, hash string, threshold float64) error {
 	// Send to worker (non-blocking with buffer)
 	select {
 	case s.recheckResumeChan <- &pendingResume{
@@ -2884,11 +2887,13 @@ func (s *Service) queueRecheckResume(_ context.Context, instanceID int, hash str
 		threshold:  threshold,
 		addedAt:    time.Now(),
 	}:
+		return nil
 	default:
 		log.Warn().
 			Int("instanceID", instanceID).
 			Str("hash", hash).
 			Msg("Recheck resume channel full, skipping queue")
+		return fmt.Errorf("recheck resume queue full")
 	}
 }
 
@@ -3006,12 +3011,12 @@ func (s *Service) recheckResumeWorker() {
 					// Note: We can't do this for 0% progress since we can't distinguish
 					// "queued for recheck" from "recheck completed with 0 matches".
 					if !isChecking && progress > 0 && progress < req.threshold {
-						log.Debug().
+						log.Warn().
 							Int("instanceID", instanceID).
 							Str("hash", hash).
 							Float64("progress", progress).
 							Float64("threshold", req.threshold).
-							Msg("Recheck completed below threshold, removing from queue")
+							Msg("Recheck completed below threshold, torrent left paused for manual review")
 						delete(pending, hash)
 						continue
 					}

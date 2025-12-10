@@ -467,9 +467,9 @@ When the source torrent contains files not on disk (NFO, SRT, samples not filter
 
 #### Auto-resume behavior
 
-- Default tolerance 5% → auto-resumes at ≥95% completion
-- Torrents below threshold stay paused for manual investigation
-- Configure via **Size mismatch tolerance** in Global rules
+- Auto-resume threshold is calculated dynamically from exact file size matching between source and candidate torrents
+- Safety floor: if less than 90% of source bytes have exact-size matches, the torrent remains paused for manual review
+- The **Size mismatch tolerance** setting filters search results during discovery, not the resume threshold
 
 ### autobrr Integration
 
