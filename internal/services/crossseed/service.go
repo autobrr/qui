@@ -1647,6 +1647,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 			if hashErr != nil {
 				// Context cancellation should propagate, not trigger fallback
 				if errors.Is(hashErr, context.Canceled) || errors.Is(hashErr, context.DeadlineExceeded) {
+					run.TorrentsFailed++
 					return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("hash check canceled: %w", hashErr)
 				}
 				log.Warn().
@@ -1700,6 +1701,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		for _, candidate := range candidatesResp.Candidates {
 			// Check for context cancellation before processing each candidate
 			if ctx.Err() != nil {
+				run.TorrentsFailed++
 				return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("comment URL pre-check canceled: %w", ctx.Err())
 			}
 

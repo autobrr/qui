@@ -3847,6 +3847,7 @@ func TestProcessAutomationCandidate_PropagatesContextCancellation(t *testing.T) 
 	assert.ErrorIs(t, err, context.Canceled)
 	assert.Contains(t, err.Error(), "hash check canceled")
 	assert.Equal(t, models.CrossSeedFeedItemStatusFailed, status)
+	assert.Equal(t, 1, run.TorrentsFailed, "should increment TorrentsFailed on context cancellation")
 	assert.False(t, downloadCalled, "should NOT download torrent when context is canceled")
 }
 
@@ -3924,6 +3925,7 @@ func TestProcessAutomationCandidate_PropagatesContextDeadlineExceeded(t *testing
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Contains(t, err.Error(), "hash check canceled")
 	assert.Equal(t, models.CrossSeedFeedItemStatusFailed, status)
+	assert.Equal(t, 1, run.TorrentsFailed, "should increment TorrentsFailed on context deadline exceeded")
 	assert.False(t, downloadCalled, "should NOT download torrent when context deadline exceeded")
 }
 
