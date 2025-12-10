@@ -10,22 +10,38 @@ export type CrossSeedInstanceState = Record<number, {
 }>
 
 export function useCrossSeedInstanceState(): CrossSeedInstanceState {
+  // Fetch settings to determine if RSS automation is enabled
+  // Long stale time since settings rarely change
+  const { data: settings } = useQuery({
+    queryKey: ["cross-seed", "settings"],
+    queryFn: () => api.getCrossSeedSettings(),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+  })
+
+  const rssEnabled = settings?.enabled ?? false
+
+  // Only poll status when RSS automation is enabled
   const { data: crossSeedStatus } = useQuery({
     queryKey: ["cross-seed", "status"],
     queryFn: () => api.getCrossSeedStatus(),
-    refetchInterval: 30_000,
+    refetchInterval: rssEnabled ? 30_000 : false,
     staleTime: 10_000,
+    enabled: rssEnabled,
   })
 
+  // Fetch search status once to check if running, then poll only while running
   const { data: crossSeedSearchStatus } = useQuery({
     queryKey: ["cross-seed", "search-status"],
     queryFn: () => api.getCrossSeedSearchStatus(),
-    refetchInterval: 5_000,
+    refetchInterval: (query) => {
+      // Only poll while a search is actively running
+      return query.state.data?.running ? 5_000 : false
+    },
     staleTime: 3_000,
   })
 
   return useMemo(() => {
-    const rssEnabled = crossSeedStatus?.settings?.enabled ?? false
     const rssRunning = crossSeedStatus?.running ?? false
     const rssTargetIds = crossSeedStatus?.settings?.targetInstanceIds ?? []
     const searchRunning = crossSeedSearchStatus?.running ?? false
@@ -33,8 +49,11 @@ export function useCrossSeedInstanceState(): CrossSeedInstanceState {
 
     const state: CrossSeedInstanceState = {}
 
-    for (const id of rssTargetIds) {
-      state[id] = { rssEnabled, rssRunning }
+    // Only populate RSS state if RSS is enabled
+    if (rssEnabled) {
+      for (const id of rssTargetIds) {
+        state[id] = { rssEnabled, rssRunning }
+      }
     }
 
     if (searchRunning && searchInstanceId) {
@@ -45,5 +64,5 @@ export function useCrossSeedInstanceState(): CrossSeedInstanceState {
     }
 
     return state
-  }, [crossSeedStatus, crossSeedSearchStatus])
+  }, [crossSeedStatus, crossSeedSearchStatus, rssEnabled])
 }
