@@ -1151,8 +1151,13 @@ func (h *CrossSeedHandler) GetInstanceCompletionSettings(w http.ResponseWriter, 
 	if h.instanceStore != nil {
 		_, err := h.instanceStore.Get(r.Context(), instanceID)
 		if err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Instance not found for completion settings")
-			RespondError(w, http.StatusNotFound, "Instance not found")
+			if errors.Is(err, models.ErrInstanceNotFound) {
+				log.Warn().Int("instanceID", instanceID).Msg("Instance not found for completion settings")
+				RespondError(w, http.StatusNotFound, "Instance not found")
+				return
+			}
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to validate instance for completion settings")
+			RespondError(w, http.StatusInternalServerError, "Failed to validate instance")
 			return
 		}
 	}
@@ -1186,8 +1191,13 @@ func (h *CrossSeedHandler) UpdateInstanceCompletionSettings(w http.ResponseWrite
 	if h.instanceStore != nil {
 		_, err := h.instanceStore.Get(r.Context(), instanceID)
 		if err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Instance not found for completion settings")
-			RespondError(w, http.StatusNotFound, "Instance not found")
+			if errors.Is(err, models.ErrInstanceNotFound) {
+				log.Warn().Int("instanceID", instanceID).Msg("Instance not found for completion settings")
+				RespondError(w, http.StatusNotFound, "Instance not found")
+				return
+			}
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to validate instance for completion settings")
+			RespondError(w, http.StatusInternalServerError, "Failed to validate instance")
 			return
 		}
 	}
