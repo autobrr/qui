@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 type fileRenameInstruction struct {
@@ -387,6 +388,9 @@ func normalizeFileKey(path string) string {
 			}
 		}
 	}
+
+	// Normalize Unicode characters (Shōgun → Shogun, etc.)
+	base = stringutils.NormalizeUnicode(base)
 
 	var b strings.Builder
 	for _, r := range base {
