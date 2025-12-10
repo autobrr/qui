@@ -23,7 +23,8 @@ import (
 
 // CrossSeedHandler handles cross-seed API endpoints
 type CrossSeedHandler struct {
-	service *crossseed.Service
+	service         *crossseed.Service
+	completionStore *models.InstanceCrossSeedCompletionStore
 }
 
 type automationSettingsRequest struct {
@@ -273,9 +274,10 @@ type searchRunRequest struct {
 }
 
 // NewCrossSeedHandler creates a new cross-seed handler
-func NewCrossSeedHandler(service *crossseed.Service) *CrossSeedHandler {
+func NewCrossSeedHandler(service *crossseed.Service, completionStore *models.InstanceCrossSeedCompletionStore) *CrossSeedHandler {
 	return &CrossSeedHandler{
-		service: service,
+		service:         service,
+		completionStore: completionStore,
 	}
 }
 
@@ -305,6 +307,10 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 			r.Post("/run", h.StartSearchRun)
 			r.Post("/run/cancel", h.CancelSearchRun)
 			r.Get("/runs", h.ListSearchRunHistory)
+		})
+		r.Route("/completion", func(r chi.Router) {
+			r.Get("/{instanceID}", h.GetInstanceCompletionSettings)
+			r.Put("/{instanceID}", h.UpdateInstanceCompletionSettings)
 		})
 		r.Route("/webhook", func(r chi.Router) {
 			r.Post("/check", h.WebhookCheck)
@@ -1091,4 +1097,110 @@ func webhookResponseStatus(response *crossseed.WebhookCheckResponse) int {
 	default:
 		return http.StatusNotFound
 	}
+}
+
+// instanceCompletionSettingsResponse is the API response for per-instance completion settings.
+type instanceCompletionSettingsResponse struct {
+	InstanceID        int      `json:"instanceId"`
+	Enabled           bool     `json:"enabled"`
+	Categories        []string `json:"categories"`
+	Tags              []string `json:"tags"`
+	ExcludeCategories []string `json:"excludeCategories"`
+	ExcludeTags       []string `json:"excludeTags"`
+}
+
+// instanceCompletionSettingsRequest is the API request for updating per-instance completion settings.
+type instanceCompletionSettingsRequest struct {
+	Enabled           bool     `json:"enabled"`
+	Categories        []string `json:"categories"`
+	Tags              []string `json:"tags"`
+	ExcludeCategories []string `json:"excludeCategories"`
+	ExcludeTags       []string `json:"excludeTags"`
+}
+
+// GetInstanceCompletionSettings returns the completion settings for a specific instance.
+func (h *CrossSeedHandler) GetInstanceCompletionSettings(w http.ResponseWriter, r *http.Request) {
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	instanceID, err := strconv.Atoi(instanceIDStr)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	if h.completionStore == nil {
+		// Return defaults if store is not configured
+		defaults := models.DefaultInstanceCrossSeedCompletionSettings(instanceID)
+		RespondJSON(w, http.StatusOK, instanceCompletionSettingsResponse{
+			InstanceID:        defaults.InstanceID,
+			Enabled:           defaults.Enabled,
+			Categories:        defaults.Categories,
+			Tags:              defaults.Tags,
+			ExcludeCategories: defaults.ExcludeCategories,
+			ExcludeTags:       defaults.ExcludeTags,
+		})
+		return
+	}
+
+	settings, err := h.completionStore.Get(r.Context(), instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get instance completion settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to load completion settings")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, instanceCompletionSettingsResponse{
+		InstanceID:        settings.InstanceID,
+		Enabled:           settings.Enabled,
+		Categories:        settings.Categories,
+		Tags:              settings.Tags,
+		ExcludeCategories: settings.ExcludeCategories,
+		ExcludeTags:       settings.ExcludeTags,
+	})
+}
+
+// UpdateInstanceCompletionSettings updates the completion settings for a specific instance.
+func (h *CrossSeedHandler) UpdateInstanceCompletionSettings(w http.ResponseWriter, r *http.Request) {
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	instanceID, err := strconv.Atoi(instanceIDStr)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	if h.completionStore == nil {
+		RespondError(w, http.StatusServiceUnavailable, "Completion settings store not configured")
+		return
+	}
+
+	var req instanceCompletionSettingsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode instance completion settings request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	settings := &models.InstanceCrossSeedCompletionSettings{
+		InstanceID:        instanceID,
+		Enabled:           req.Enabled,
+		Categories:        req.Categories,
+		Tags:              req.Tags,
+		ExcludeCategories: req.ExcludeCategories,
+		ExcludeTags:       req.ExcludeTags,
+	}
+
+	saved, err := h.completionStore.Upsert(r.Context(), settings)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to save instance completion settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to save completion settings")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, instanceCompletionSettingsResponse{
+		InstanceID:        saved.InstanceID,
+		Enabled:           saved.Enabled,
+		Categories:        saved.Categories,
+		Tags:              saved.Tags,
+		ExcludeCategories: saved.ExcludeCategories,
+		ExcludeTags:       saved.ExcludeTags,
+	})
 }

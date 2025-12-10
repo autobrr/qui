@@ -64,10 +64,11 @@ type Server struct {
 	crossSeedService          *crossseed.Service
 	jackettService            *jackett.Service
 	torznabIndexerStore       *models.TorznabIndexerStore
-	trackerRuleStore          *models.TrackerRuleStore
-	trackerRuleService        *trackerrules.Service
-	trackerCustomizationStore *models.TrackerCustomizationStore
-	dashboardSettingsStore    *models.DashboardSettingsStore
+	trackerRuleStore                    *models.TrackerRuleStore
+	trackerRuleService                  *trackerrules.Service
+	trackerCustomizationStore           *models.TrackerCustomizationStore
+	dashboardSettingsStore              *models.DashboardSettingsStore
+	instanceCrossSeedCompletionStore    *models.InstanceCrossSeedCompletionStore
 }
 
 type Dependencies struct {
@@ -92,10 +93,11 @@ type Dependencies struct {
 	CrossSeedService          *crossseed.Service
 	JackettService            *jackett.Service
 	TorznabIndexerStore       *models.TorznabIndexerStore
-	TrackerRuleStore          *models.TrackerRuleStore
-	TrackerRuleService        *trackerrules.Service
-	TrackerCustomizationStore *models.TrackerCustomizationStore
-	DashboardSettingsStore    *models.DashboardSettingsStore
+	TrackerRuleStore                    *models.TrackerRuleStore
+	TrackerRuleService                  *trackerrules.Service
+	TrackerCustomizationStore           *models.TrackerCustomizationStore
+	DashboardSettingsStore              *models.DashboardSettingsStore
+	InstanceCrossSeedCompletionStore    *models.InstanceCrossSeedCompletionStore
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -127,10 +129,11 @@ func NewServer(deps *Dependencies) *Server {
 		reannounceService:         deps.ReannounceService,
 		jackettService:            deps.JackettService,
 		torznabIndexerStore:       deps.TorznabIndexerStore,
-		trackerRuleStore:          deps.TrackerRuleStore,
-		trackerRuleService:        deps.TrackerRuleService,
-		trackerCustomizationStore: deps.TrackerCustomizationStore,
-		dashboardSettingsStore:    deps.DashboardSettingsStore,
+		trackerRuleStore:                    deps.TrackerRuleStore,
+		trackerRuleService:                  deps.TrackerRuleService,
+		trackerCustomizationStore:           deps.TrackerCustomizationStore,
+		dashboardSettingsStore:              deps.DashboardSettingsStore,
+		instanceCrossSeedCompletionStore:    deps.InstanceCrossSeedCompletionStore,
 	}
 
 	return &s
@@ -265,7 +268,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	trackerIconHandler := handlers.NewTrackerIconHandler(s.trackerIconService)
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.reannounceCache, s.reannounceService, s.config.Config.BaseURL)
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
-	crossSeedHandler := handlers.NewCrossSeedHandler(s.crossSeedService)
+	crossSeedHandler := handlers.NewCrossSeedHandler(s.crossSeedService, s.instanceCrossSeedCompletionStore)
 	trackerRulesHandler := handlers.NewTrackerRuleHandler(s.trackerRuleStore, s.trackerRuleService)
 	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)

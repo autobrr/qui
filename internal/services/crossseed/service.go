@@ -253,6 +253,9 @@ type Service struct {
 	// External program execution
 	externalProgramStore *models.ExternalProgramStore
 
+	// Per-instance completion settings
+	completionStore *models.InstanceCrossSeedCompletionStore
+
 	automationMu     sync.Mutex
 	automationCancel context.CancelFunc
 	automationWake   chan struct{}
@@ -302,6 +305,7 @@ func NewService(
 	automationStore *models.CrossSeedStore,
 	jackettService *jackett.Service,
 	externalProgramStore *models.ExternalProgramStore,
+	completionStore *models.InstanceCrossSeedCompletionStore,
 ) *Service {
 	searchCache := ttlcache.New(ttlcache.Options[string, []TorrentSearchResult]{}.
 		SetDefaultTTL(searchResultCacheTTL))
@@ -329,6 +333,7 @@ func NewService(
 		automationStore:      automationStore,
 		jackettService:       jackettService,
 		externalProgramStore: externalProgramStore,
+		completionStore:      completionStore,
 		automationWake:       make(chan struct{}, 1),
 		domainMappings:       initializeDomainMappings(),
 		torrentFilesCache:    contentFilesCache,
@@ -840,22 +845,25 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		ctx = context.WithoutCancel(ctx)
 	}
 
-	settings, err := s.GetAutomationSettings(ctx)
-	if err != nil {
-		log.Warn().
-			Err(err).
-			Int("instanceID", instanceID).
-			Str("hash", torrent.Hash).
-			Msg("[CROSSSEED-COMPLETION] Failed to load automation settings")
-		return
+	// Load per-instance completion settings
+	var completionSettings *models.InstanceCrossSeedCompletionSettings
+	if s.completionStore != nil {
+		var err error
+		completionSettings, err = s.completionStore.Get(ctx, instanceID)
+		if err != nil {
+			log.Warn().
+				Err(err).
+				Int("instanceID", instanceID).
+				Str("hash", torrent.Hash).
+				Msg("[CROSSSEED-COMPLETION] Failed to load instance completion settings")
+			return
+		}
 	}
-	if settings == nil {
-		settings = models.DefaultCrossSeedAutomationSettings()
+	if completionSettings == nil {
+		completionSettings = models.DefaultInstanceCrossSeedCompletionSettings(instanceID)
 	}
 
-	models.NormalizeCrossSeedCompletionSettings(&settings.Completion)
-	completion := settings.Completion
-	if !completion.Enabled {
+	if !completionSettings.Enabled {
 		return
 	}
 
@@ -873,13 +881,27 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		return
 	}
 
-	if !matchesCompletionFilters(&torrent, completion) {
+	if !matchesInstanceCompletionFilters(&torrent, completionSettings) {
 		log.Debug().
 			Int("instanceID", instanceID).
 			Str("hash", torrent.Hash).
 			Str("name", torrent.Name).
 			Msg("[CROSSSEED-COMPLETION] Torrent does not match completion filters")
 		return
+	}
+
+	// Load global automation settings for cross-seed configuration (indexers, tags, etc.)
+	settings, err := s.GetAutomationSettings(ctx)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", torrent.Hash).
+			Msg("[CROSSSEED-COMPLETION] Failed to load automation settings")
+		return
+	}
+	if settings == nil {
+		settings = models.DefaultCrossSeedAutomationSettings()
 	}
 
 	// Execute cross-seed search immediately
@@ -6223,6 +6245,46 @@ func matchesSearchFilters(torrent *qbt.Torrent, opts SearchRunOptions) bool {
 
 func matchesCompletionFilters(torrent *qbt.Torrent, settings models.CrossSeedCompletionSettings) bool {
 	if torrent == nil {
+		return false
+	}
+
+	if len(settings.ExcludeCategories) > 0 && slices.Contains(settings.ExcludeCategories, torrent.Category) {
+		return false
+	}
+
+	if len(settings.Categories) > 0 && !slices.Contains(settings.Categories, torrent.Category) {
+		return false
+	}
+
+	torrentTags := splitTags(torrent.Tags)
+
+	if len(settings.ExcludeTags) > 0 {
+		for _, tag := range torrentTags {
+			for _, excluded := range settings.ExcludeTags {
+				if strings.EqualFold(tag, excluded) {
+					return false
+				}
+			}
+		}
+	}
+
+	if len(settings.Tags) > 0 {
+		for _, tag := range torrentTags {
+			for _, allowed := range settings.Tags {
+				if strings.EqualFold(tag, allowed) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	return true
+}
+
+// matchesInstanceCompletionFilters checks if a torrent matches per-instance completion filters.
+func matchesInstanceCompletionFilters(torrent *qbt.Torrent, settings *models.InstanceCrossSeedCompletionSettings) bool {
+	if torrent == nil || settings == nil {
 		return false
 	}
 

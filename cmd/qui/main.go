@@ -545,7 +545,8 @@ func (app *Application) runServer() {
 
 	// Initialize cross-seed automation store and service
 	crossSeedStore := models.NewCrossSeedStore(db)
-	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore)
+	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
+	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore, instanceCrossSeedCompletionStore)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 	trackerRuleService := trackerrules.NewService(trackerrules.DefaultConfig(), instanceStore, trackerRuleStore, syncManager)
 
@@ -648,10 +649,11 @@ func (app *Application) runServer() {
 		CrossSeedService:          crossSeedService,
 		JackettService:            jackettService,
 		TorznabIndexerStore:       torznabIndexerStore,
-		TrackerRuleStore:          trackerRuleStore,
-		TrackerRuleService:        trackerRuleService,
-		TrackerCustomizationStore: trackerCustomizationStore,
-		DashboardSettingsStore:    dashboardSettingsStore,
+		TrackerRuleStore:                    trackerRuleStore,
+		TrackerRuleService:                  trackerRuleService,
+		TrackerCustomizationStore:           trackerCustomizationStore,
+		DashboardSettingsStore:              dashboardSettingsStore,
+		InstanceCrossSeedCompletionStore:    instanceCrossSeedCompletionStore,
 	})
 
 	errorChannel := make(chan error)
