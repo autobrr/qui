@@ -19,7 +19,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useInstances } from "@/hooks/useInstances"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { api } from "@/lib/api"
-import { cn, copyTextToClipboard } from "@/lib/utils"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { cn, copyTextToClipboard, formatErrorReason } from "@/lib/utils"
 import { REANNOUNCE_CONSTRAINTS, type InstanceFormData, type InstanceReannounceActivity, type InstanceReannounceSettings } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { Copy, HardDrive, Info, RefreshCcw } from "lucide-react"
@@ -56,6 +57,7 @@ type MonitorScopeField = keyof Pick<InstanceReannounceSettings, "categories" | "
 
 export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess, variant = "card" }: TrackerReannounceFormProps) {
   const { instances, updateInstance, isUpdating } = useInstances()
+  const { formatISOTimestamp } = useDateTimeFormatters()
   const instance = useMemo(() => instances?.find((item) => item.id === instanceId), [instances, instanceId])
   const activeInstances = useMemo(
     () => (instances ?? []).filter((inst) => inst.isActive),
@@ -208,47 +210,6 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     succeeded: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
     failed: "bg-destructive/10 text-destructive border-destructive/30",
     skipped: "bg-muted text-muted-foreground border-border/60",
-  }
-
-  const formatTimestamp = (timestamp: string) => {
-    try {
-      return new Intl.DateTimeFormat(undefined, {
-        dateStyle: "short",
-        timeStyle: "short",
-      }).format(new Date(timestamp))
-    } catch {
-      return timestamp
-    }
-  }
-
-  // Simplify verbose error messages like nested "could not get..." with root cause
-  const formatReason = (reason: string): string => {
-    if (!reason) return reason
-
-    // Extract root cause from nested error chains
-    const rootCauses = [
-      "context deadline exceeded",
-      "connection refused",
-      "no such host",
-      "connection reset",
-      "timeout",
-    ]
-
-    for (const cause of rootCauses) {
-      if (reason.toLowerCase().includes(cause)) {
-        // Extract just the first action (e.g., "reannounce failed")
-        const firstColon = reason.indexOf(":")
-        const action = firstColon > 0 ? reason.substring(0, firstColon).trim() : "operation failed"
-        return `${action} (${cause})`
-      }
-    }
-
-    // If no known root cause, just truncate if too long
-    if (reason.length > 150) {
-      return reason.substring(0, 147) + "..."
-    }
-
-    return reason
   }
 
   const headerContent = (
@@ -639,7 +600,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                                 </button>
                               </div>
                               <span className="text-muted-foreground/40">•</span>
-                              <span>{formatTimestamp(event.timestamp)}</span>
+                              <span>{formatISOTimestamp(event.timestamp)}</span>
                             </div>
 
                             {(event.trackers || event.reason) && (
@@ -653,10 +614,10 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                                 {event.reason && (
                                   <div className="flex items-start gap-2">
                                     <span className="font-medium text-muted-foreground shrink-0">Reason:</span>
-                                    {formatReason(event.reason) !== event.reason ? (
+                                    {formatErrorReason(event.reason) !== event.reason ? (
                                       <Tooltip>
                                         <TooltipTrigger asChild>
-                                          <span className="text-foreground break-all cursor-help">{formatReason(event.reason)}</span>
+                                          <span className="text-foreground break-all cursor-help">{formatErrorReason(event.reason)}</span>
                                         </TooltipTrigger>
                                         <TooltipContent className="max-w-md">
                                           <p className="break-all">{event.reason}</p>

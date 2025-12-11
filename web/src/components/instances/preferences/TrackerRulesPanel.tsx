@@ -21,7 +21,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { api } from "@/lib/api"
-import { cn } from "@/lib/utils"
+import { cn, parseTrackerDomains } from "@/lib/utils"
 import type { TrackerRule, TrackerRuleInput } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Clock, Loader2, Pencil, Plus, RefreshCw, Scale, Trash2 } from "lucide-react"
@@ -547,13 +547,3 @@ function RuleSummary({ rule }: { rule: TrackerRule }) {
   )
 }
 
-function parseTrackerDomains(rule: TrackerRule): string[] {
-  if (rule.trackerDomains && rule.trackerDomains.length > 0) {
-    return rule.trackerDomains
-  }
-  if (!rule.trackerPattern) return []
-  return rule.trackerPattern
-    .split(/[|,;]/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-}

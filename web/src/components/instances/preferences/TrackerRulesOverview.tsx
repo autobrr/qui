@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
-import { cn } from "@/lib/utils"
+import { cn, parseTrackerDomains } from "@/lib/utils"
 import type { TrackerRule } from "@/types"
 import { useQueries } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Clock, Info, Loader2, Scale, Settings2 } from "lucide-react"
@@ -242,13 +242,3 @@ function RulePreview({ rule }: { rule: TrackerRule }) {
   )
 }
 
-function parseTrackerDomains(rule: TrackerRule): string[] {
-  if (rule.trackerDomains && rule.trackerDomains.length > 0) {
-    return rule.trackerDomains
-  }
-  if (!rule.trackerPattern) return []
-  return rule.trackerPattern
-    .split(/[|,;]/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-}

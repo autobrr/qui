@@ -4,7 +4,7 @@
  */
 
 import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
-import { formatAddedOn, formatDate, formatDateOnly, formatTimeOnly, formatTimestamp } from "@/lib/dateTimeUtils"
+import { formatAddedOn, formatDate, formatDateOnly, formatISOTimestamp, formatTimeOnly, formatTimestamp } from "@/lib/dateTimeUtils"
 
 /**
  * Hook that provides date/time formatting functions that automatically use current user preferences
@@ -38,6 +38,11 @@ export function useDateTimeFormatters() {
      * Format the "Added On" date for compatibility with existing components
      */
     formatAddedOn: (addedOn: number) => formatAddedOn(addedOn, preferences),
+
+    /**
+     * Format an ISO 8601 timestamp string (e.g., from activity logs)
+     */
+    formatISOTimestamp: (isoTimestamp: string) => formatISOTimestamp(isoTimestamp, preferences),
 
     /**
      * Get the current preferences (useful for conditional formatting)

@@ -263,6 +263,27 @@ export function formatAddedOn(addedOn: number, preferences?: DateTimePreferences
 }
 
 /**
+ * Format an ISO 8601 timestamp string using user preferences
+ * Useful for activity logs and event timestamps from APIs
+ * @param isoTimestamp ISO 8601 timestamp string (e.g., "2025-01-15T10:30:00Z")
+ * @param preferences Optional preferences (will use stored if not provided)
+ * @returns Formatted date/time string or the original string if parsing fails
+ */
+export function formatISOTimestamp(isoTimestamp: string, preferences?: DateTimePreferences): string {
+  if (!isoTimestamp) return "N/A"
+
+  try {
+    const date = new Date(isoTimestamp)
+    if (isNaN(date.getTime())) return isoTimestamp
+
+    const timestamp = Math.floor(date.getTime() / 1000)
+    return formatTimestamp(timestamp, preferences)
+  } catch {
+    return isoTimestamp
+  }
+}
+
+/**
  * Format relative time from a date (e.g., "5 minutes ago" or "3 minutes")
  * Always returns relative time, independent of user preferences.
  * Use this for status displays where relative time is always appropriate.

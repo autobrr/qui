@@ -822,8 +822,8 @@ func (s *Service) recordActivity(instanceID int, hash string, torrentName string
 		Timestamp:   s.currentTime(),
 	}
 
-	// Store in the appropriate buffer based on outcome
-	// Succeeded/failed keep 100 entries, skipped keeps 50
+	// Store in the appropriate buffer based on outcome.
+	// Succeeded/failed keep 2x limit entries, skipped keeps 1x limit.
 	switch outcome {
 	case ActivityOutcomeSucceeded:
 		s.historySucceeded[instanceID] = append(s.historySucceeded[instanceID], event)

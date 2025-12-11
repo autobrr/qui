@@ -5,6 +5,7 @@
 
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
+import type { TrackerRule } from "@/types"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -243,4 +244,53 @@ function copyTextToClipboardFallback(text: string): void {
       selection.addRange(originalRange)
     }
   }
+}
+
+/**
+ * Simplify verbose error messages by extracting the root cause.
+ * Useful for displaying cleaner error messages in UIs.
+ * @param reason - The full error message/reason string
+ * @returns Simplified error message with root cause
+ */
+export function formatErrorReason(reason: string): string {
+  if (!reason) return reason
+
+  const rootCauses = [
+    "context deadline exceeded",
+    "connection refused",
+    "no such host",
+    "connection reset",
+    "timeout",
+  ]
+
+  for (const cause of rootCauses) {
+    if (reason.toLowerCase().includes(cause)) {
+      const firstColon = reason.indexOf(":")
+      const action = firstColon > 0 ? reason.substring(0, firstColon).trim() : "operation failed"
+      return `${action} (${cause})`
+    }
+  }
+
+  if (reason.length > 150) {
+    return reason.substring(0, 147) + "..."
+  }
+
+  return reason
+}
+
+/**
+ * Parse tracker domains from a TrackerRule.
+ * Returns trackerDomains array if present, otherwise parses trackerPattern.
+ * @param rule - The tracker rule to parse domains from
+ * @returns Array of tracker domain strings
+ */
+export function parseTrackerDomains(rule: TrackerRule): string[] {
+  if (rule.trackerDomains && rule.trackerDomains.length > 0) {
+    return rule.trackerDomains
+  }
+  if (!rule.trackerPattern) return []
+  return rule.trackerPattern
+    .split(/[|,;]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
 }

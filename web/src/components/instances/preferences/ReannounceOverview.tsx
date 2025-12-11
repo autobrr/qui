@@ -11,7 +11,8 @@ import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
-import { cn, copyTextToClipboard } from "@/lib/utils"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { cn, copyTextToClipboard, formatErrorReason } from "@/lib/utils"
 import type { Instance, InstanceFormData, InstanceReannounceActivity, InstanceReannounceSettings } from "@/types"
 import { useQueries, useQueryClient } from "@tanstack/react-query"
 import { Input } from "@/components/ui/input"
@@ -68,47 +69,11 @@ function formatRelativeTime(date: Date): string {
   return `${diffDays}d ago`
 }
 
-function formatTimestamp(timestamp: string) {
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "short",
-      timeStyle: "short",
-    }).format(new Date(timestamp))
-  } catch {
-    return timestamp
-  }
-}
-
-// Simplify verbose error messages
-function formatReason(reason: string): string {
-  if (!reason) return reason
-
-  const rootCauses = [
-    "context deadline exceeded",
-    "connection refused",
-    "no such host",
-    "connection reset",
-    "timeout",
-  ]
-
-  for (const cause of rootCauses) {
-    if (reason.toLowerCase().includes(cause)) {
-      const firstColon = reason.indexOf(":")
-      const action = firstColon > 0 ? reason.substring(0, firstColon).trim() : "operation failed"
-      return `${action} (${cause})`
-    }
-  }
-
-  if (reason.length > 150) {
-    return reason.substring(0, 147) + "..."
-  }
-
-  return reason
-}
 
 export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewProps) {
   const { instances, updateInstance, isUpdating } = useInstances()
   const queryClient = useQueryClient()
+  const { formatISOTimestamp } = useDateTimeFormatters()
   const [expandedInstances, setExpandedInstances] = useState<string[]>([])
   const [hideSkippedMap, setHideSkippedMap] = useState<Record<number, boolean>>({})
   const [searchMap, setSearchMap] = useState<Record<number, string>>({})
@@ -450,15 +415,15 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
                                         </button>
                                       </div>
                                       <span className="text-muted-foreground/40">·</span>
-                                      <span>{formatTimestamp(event.timestamp)}</span>
+                                      <span>{formatISOTimestamp(event.timestamp)}</span>
                                     </div>
 
                                     {event.reason && (
                                       <div className="text-xs bg-muted/30 p-2 rounded">
-                                        {formatReason(event.reason) !== event.reason ? (
+                                        {formatErrorReason(event.reason) !== event.reason ? (
                                           <Tooltip>
                                             <TooltipTrigger asChild>
-                                              <span className="cursor-help">{formatReason(event.reason)}</span>
+                                              <span className="cursor-help">{formatErrorReason(event.reason)}</span>
                                             </TooltipTrigger>
                                             <TooltipContent className="max-w-md">
                                               <p className="break-all">{event.reason}</p>
