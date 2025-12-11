@@ -1091,19 +1091,43 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
         }
       )
     } else {
-      // Create new
-      createCustomization.mutate(
-        {
-          displayName: customizeDisplayName.trim(),
-          domains,
-        },
-        {
-          onSuccess: () => {
-            closeCustomizeDialog()
-            clearSelection()
-          },
-        }
+      // Check if displayName already exists, merge if so
+      const existing = customizations?.find(
+        c => c.displayName.toLowerCase() === customizeDisplayName.trim().toLowerCase()
       )
+
+      if (existing) {
+        // Merge into existing
+        updateCustomization.mutate(
+          {
+            id: existing.id,
+            data: {
+              displayName: existing.displayName,
+              domains: [...existing.domains, ...domains],
+            },
+          },
+          {
+            onSuccess: () => {
+              closeCustomizeDialog()
+              clearSelection()
+            },
+          }
+        )
+      } else {
+        // Create new
+        createCustomization.mutate(
+          {
+            displayName: customizeDisplayName.trim(),
+            domains,
+          },
+          {
+            onSuccess: () => {
+              closeCustomizeDialog()
+              clearSelection()
+            },
+          }
+        )
+      }
     }
   }
 
