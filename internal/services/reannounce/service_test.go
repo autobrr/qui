@@ -499,4 +499,23 @@ func TestServiceRecordActivityLimit(t *testing.T) {
 		}
 	}
 	require.Equal(t, 2, skippedCount)
+
+	// Add 6 failed events - should keep last 4 (limit*2)
+	for i := range 6 {
+		now = now.Add(time.Second)
+		svc.recordActivity(1, fmt.Sprintf("failed%d", i), fmt.Sprintf("Failed %d", i), "tracker.example.com", ActivityOutcomeFailed, "error")
+	}
+
+	allEvents = svc.GetActivity(1, 0)
+	// 4 succeeded + 2 skipped + 4 failed = 10 total
+	require.Len(t, allEvents, 10)
+
+	// Verify failed only kept 4
+	failedCount := 0
+	for _, e := range allEvents {
+		if e.Outcome == ActivityOutcomeFailed {
+			failedCount++
+		}
+	}
+	require.Equal(t, 4, failedCount)
 }

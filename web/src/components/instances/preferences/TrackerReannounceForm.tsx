@@ -548,7 +548,14 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                 </div>
               </div>
 
-              {activityQuery.isLoading ? (
+              {activityQuery.isError ? (
+                <div className="h-[150px] flex flex-col items-center justify-center border border-destructive/30 rounded-lg bg-destructive/10 text-center p-4">
+                  <p className="text-sm text-destructive">Failed to load activity</p>
+                  <p className="text-xs text-destructive/70 mt-1">
+                    Check connection to the instance.
+                  </p>
+                </div>
+              ) : activityQuery.isLoading ? (
                  <div className="h-[300px] flex items-center justify-center border rounded-lg bg-muted/10">
                     <p className="text-sm text-muted-foreground">Loading activity...</p>
                  </div>
