@@ -41,7 +41,7 @@ func NewLicenseService(repo *database.LicenseRepo, polarClient *polar.Client, co
 
 // ActivateAndStoreLicense activates a license key and stores it if valid
 func (s *Service) ActivateAndStoreLicense(ctx context.Context, licenseKey string, username string) (*models.ProductLicense, error) {
-	// Validate with Polar API
+	// Activate with Polar API
 	if s.polarClient == nil || !s.polarClient.IsClientConfigured() {
 		return nil, fmt.Errorf("polar client not configured")
 	}
