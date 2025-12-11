@@ -6401,7 +6401,7 @@ func matchesSearchFilters(torrent *qbt.Torrent, opts SearchRunOptions) bool {
 }
 
 // matchesCompletionFilters checks if a torrent matches completion filters.
-// Works with both global CrossSeedCompletionSettings and per-instance InstanceCrossSeedCompletionSettings.
+// Uses per-instance InstanceCrossSeedCompletionSettings.
 func matchesCompletionFilters(torrent *qbt.Torrent, settings models.CompletionFilterProvider) bool {
 	if torrent == nil || settings == nil {
 		return false
