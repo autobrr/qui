@@ -136,7 +136,12 @@ export function TrackerRulesOverview({ onConfigureInstance }: TrackerRulesOvervi
                     </div>
 
                     {/* Rules list preview */}
-                    {rulesQuery?.isLoading ? (
+                    {rulesQuery?.isError ? (
+                      <div className="h-[100px] flex flex-col items-center justify-center border border-destructive/30 rounded-lg bg-destructive/10 text-center p-4">
+                        <p className="text-sm text-destructive">Failed to load rules</p>
+                        <p className="text-xs text-destructive/70 mt-1">Check connection to the instance.</p>
+                      </div>
+                    ) : rulesQuery?.isLoading ? (
                       <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Loading rules...

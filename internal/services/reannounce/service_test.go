@@ -306,6 +306,10 @@ func TestHasHealthyTracker_BasicCases(t *testing.T) {
 	// Updating trackers = not healthy yet
 	updatingTrackers := []qbt.TorrentTracker{{Status: qbt.TrackerStatusUpdating, Message: ""}}
 	require.False(t, service.hasHealthyTracker(updatingTrackers))
+
+	// Not contacted (common state for newly-added torrents) = not healthy
+	notContactedTrackers := []qbt.TorrentTracker{{Status: qbt.TrackerStatusNotContacted, Message: ""}}
+	require.False(t, service.hasHealthyTracker(notContactedTrackers))
 }
 
 func TestTrackersUpdating(t *testing.T) {
