@@ -614,7 +614,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	if useManualFiltering {
 		// Use manual filtering - get all torrents and filter manually
-		log.Debug().
+		log.Trace().
 			Int("instanceID", instanceID).
 			Bool("multipleStatus", hasMultipleStatusFilters).
 			Bool("multipleCategories", hasMultipleCategoryFilters).
@@ -651,7 +651,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		filteredTorrents = sm.applyManualFilters(client, filteredTorrents, filters, mainData, categories, useSubcategories)
 	} else {
 		// Use library filtering for single selections
-		log.Debug().
+		log.Trace().
 			Int("instanceID", instanceID).
 			Int("hashFilters", len(filters.Hashes)).
 			Msg("Using library filtering for single selections")
@@ -713,7 +713,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		}
 	}
 
-	log.Debug().
+	log.Trace().
 		Int("instanceID", instanceID).
 		Int("totalCount", len(filteredTorrents)).
 		Bool("useManualFiltering", useManualFiltering).
@@ -724,7 +724,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		filteredTorrents = sm.filterTorrentsBySearch(filteredTorrents, search)
 	}
 
-	log.Debug().
+	log.Trace().
 		Int("instanceID", instanceID).
 		Int("filtered", len(filteredTorrents)).
 		Msg("Applied search filtering")
@@ -926,7 +926,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// This ensures real-time updates are always reflected
 	// The sync manager is the single source of truth
 
-	log.Debug().
+	log.Trace().
 		Int("instanceID", instanceID).
 		Int("count", len(paginatedViews)).
 		Int("total", len(filteredTorrents)).
@@ -2140,7 +2140,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 	}
 
 	if mainData != nil && mainData.Trackers != nil {
-		log.Debug().
+		log.Trace().
 			Int("trackerCount", len(mainData.Trackers)).
 			Msg("Using MainData.Trackers for accurate multi-tracker counting")
 
@@ -3275,7 +3275,7 @@ torrentsLoop:
 		filtered = append(filtered, torrent)
 	}
 
-	log.Debug().
+	log.Trace().
 		Int("inputTorrents", len(torrents)).
 		Int("filteredTorrents", len(filtered)).
 		Int("statusFilters", len(filters.Status)).
