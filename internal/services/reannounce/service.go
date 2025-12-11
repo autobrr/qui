@@ -641,8 +641,10 @@ func (s *Service) torrentMeetsCriteria(torrent qbt.Torrent, settings *models.Ins
 }
 
 // hasHealthyTracker returns true if at least one tracker is working
-// (TrackerStatusOK without an unregistered message). This aligns with
-// go-qbittorrent's isTrackerStatusOK logic used in ReannounceTorrentWithRetry.
+// (TrackerStatusOK without an unregistered message). This matches qbrr's
+// lenient approach: unregistered trackers are skipped, and we check if any
+// other tracker is healthy. For multi-tracker torrents, if one tracker is
+// working, reannouncing won't help.
 func (s *Service) hasHealthyTracker(trackers []qbt.TorrentTracker) bool {
 	for _, tracker := range trackers {
 		if tracker.Status == qbt.TrackerStatusDisabled {
