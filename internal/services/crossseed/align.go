@@ -2,6 +2,7 @@ package crossseed
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -108,19 +109,12 @@ func (s *Service) alignCrossSeedContentPaths(
 		return true // Episode-in-pack uses season pack path directly, no alignment needed
 	}
 
-	// Wait for torrent files to be available from qBittorrent.
-	// After adding a torrent, qBittorrent may take a moment to process and populate the file list.
-	// Using expectedSourceFiles as a fallback can cause issues because qBittorrent may have
-	// applied content layout changes (e.g., Subfolder) that alter the actual file paths.
+	// Try to get current files from qBittorrent with a few retries for slow clients.
+	// On slow clients, the torrent may be visible but files not yet populated.
 	var sourceFiles qbt.TorrentFiles
 	refreshCtx := qbittorrent.WithForceFilesRefresh(ctx)
-	filesDeadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(filesDeadline) {
+	for attempt := range 3 {
 		if ctx.Err() != nil {
-			log.Debug().
-				Int("instanceID", instanceID).
-				Str("torrentHash", torrentHash).
-				Msg("Context cancelled while waiting for torrent files")
 			break
 		}
 		filesMap, err := s.syncManager.GetTorrentFilesBatch(refreshCtx, instanceID, []string{torrentHash})
@@ -129,7 +123,8 @@ func (s *Service) alignCrossSeedContentPaths(
 				Err(err).
 				Int("instanceID", instanceID).
 				Str("torrentHash", torrentHash).
-				Msg("Failed to refresh torrent files, retrying")
+				Int("attempt", attempt+1).
+				Msg("Failed to get torrent files, retrying")
 		} else if currentFiles, ok := filesMap[canonicalHash]; ok && len(currentFiles) > 0 {
 			sourceFiles = currentFiles
 			log.Debug().
@@ -138,16 +133,32 @@ func (s *Service) alignCrossSeedContentPaths(
 				Int("fileCount", len(currentFiles)).
 				Msg("Got torrent files from qBittorrent")
 			break
+		} else {
+			log.Trace().
+				Int("instanceID", instanceID).
+				Str("torrentHash", torrentHash).
+				Int("attempt", attempt+1).
+				Msg("Torrent files not yet available, retrying")
 		}
-		time.Sleep(200 * time.Millisecond)
+		if attempt < 2 {
+			time.Sleep(500 * time.Millisecond)
+		}
 	}
 
 	// Fallback to expected files if we couldn't get them from qBittorrent
 	if len(sourceFiles) == 0 {
-		log.Debug().
-			Int("instanceID", instanceID).
-			Str("torrentHash", torrentHash).
-			Msg("Could not get torrent files from qBittorrent after retries, using expected source files")
+		if ctx.Err() != nil {
+			log.Trace().
+				Err(ctx.Err()).
+				Int("instanceID", instanceID).
+				Str("torrentHash", torrentHash).
+				Msg("Context cancelled while getting torrent files, using expected source files")
+		} else {
+			log.Debug().
+				Int("instanceID", instanceID).
+				Str("torrentHash", torrentHash).
+				Msg("Could not get torrent files after retries, using expected source files")
+		}
 		sourceFiles = expectedSourceFiles
 	}
 
@@ -641,13 +652,7 @@ func filesNeedRenaming(sourceFiles, candidateFiles qbt.TorrentFiles) bool {
 		bucket := candidateBuckets[sf.Size]
 
 		// Check if exact base name exists in bucket
-		found := false
-		for _, candBase := range bucket {
-			if sourceBase == candBase {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(bucket, sourceBase)
 		if !found {
 			// Base names differ (even if normalized matches), need rename
 			return true
