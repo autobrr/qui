@@ -125,7 +125,7 @@ func (s *Service) ActivateAndStoreLicense(ctx context.Context, licenseKey string
 	log.Info().
 		Str("productName", license.ProductName).
 		Str("licenseKey", maskLicenseKey(licenseKey)).
-		Msg("License validated and stored successfully")
+		Msg("License activated and stored successfully")
 
 	return license, nil
 }
