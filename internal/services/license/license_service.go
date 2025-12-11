@@ -73,21 +73,7 @@ func (s *Service) ActivateAndStoreLicense(ctx context.Context, licenseKey string
 
 	log.Info().Msgf("license successfully activated!")
 
-	validationReq := polar.ValidateRequest{Key: licenseKey, ActivationID: activateResp.Id}
-	validationReq.SetCondition("fingerprint", fingerprint)
-
-	validationResp, err := s.polarClient.Validate(ctx, validationReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to validate license: %w", err)
-	}
-
-	if validationResp.Status != "granted" {
-		return nil, fmt.Errorf("validation error: %s", validationResp.Status)
-	}
-
-	log.Debug().Msgf("license successfully validated!")
-
-	productName := mapBenefitToProduct(activateResp.LicenseKey.BenefitID, "validation")
+	productName := mapBenefitToProduct(activateResp.LicenseKey.BenefitID, "activation")
 
 	// If license exists, update it; otherwise create new
 	if existingLicense != nil {
