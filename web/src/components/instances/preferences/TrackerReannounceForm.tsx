@@ -210,6 +210,36 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
     }
   }
 
+  // Simplify verbose error messages like nested "could not get..." with root cause
+  const formatReason = (reason: string): string => {
+    if (!reason) return reason
+
+    // Extract root cause from nested error chains
+    const rootCauses = [
+      "context deadline exceeded",
+      "connection refused",
+      "no such host",
+      "connection reset",
+      "timeout",
+    ]
+
+    for (const cause of rootCauses) {
+      if (reason.toLowerCase().includes(cause)) {
+        // Extract just the first action (e.g., "reannounce failed")
+        const firstColon = reason.indexOf(":")
+        const action = firstColon > 0 ? reason.substring(0, firstColon).trim() : "operation failed"
+        return `${action} (${cause})`
+      }
+    }
+
+    // If no known root cause, just truncate if too long
+    if (reason.length > 150) {
+      return reason.substring(0, 147) + "..."
+    }
+
+    return reason
+  }
+
   return (
     <form onSubmit={handleSubmit}>
       <Card className="w-full">
@@ -586,7 +616,18 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                                 {event.reason && (
                                   <div className="flex items-start gap-2">
                                     <span className="font-medium text-muted-foreground shrink-0">Reason:</span>
-                                    <span className="text-foreground break-all">{event.reason}</span>
+                                    {formatReason(event.reason) !== event.reason ? (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="text-foreground break-all cursor-help">{formatReason(event.reason)}</span>
+                                        </TooltipTrigger>
+                                        <TooltipContent className="max-w-md">
+                                          <p className="break-all">{event.reason}</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    ) : (
+                                      <span className="text-foreground break-all">{event.reason}</span>
+                                    )}
                                   </div>
                                 )}
                               </div>
