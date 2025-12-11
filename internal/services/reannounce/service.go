@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -40,9 +41,12 @@ type Service struct {
 	now           func() time.Time
 	runJob        func(context.Context, int, string, string, string)
 	spawn         func(func())
-	history       map[int][]ActivityEvent
-	historyMu     sync.RWMutex
-	historyCap    int
+	// Separate history buffers per outcome type to prevent skipped events from pushing out succeeded/failed
+	historySucceeded map[int][]ActivityEvent
+	historyFailed    map[int][]ActivityEvent
+	historySkipped   map[int][]ActivityEvent
+	historyMu        sync.RWMutex
+	historyCap       int
 }
 
 type reannounceJob struct {
@@ -118,15 +122,17 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, settingsStore *
 		cfg.HistorySize = DefaultConfig().HistorySize
 	}
 	svc := &Service{
-		cfg:           cfg,
-		instanceStore: instanceStore,
-		settingsStore: settingsStore,
-		settingsCache: cache,
-		clientPool:    clientPool,
-		syncManager:   syncManager,
-		j:             make(map[int]map[string]*reannounceJob),
-		history:       make(map[int][]ActivityEvent),
-		historyCap:    cfg.HistorySize,
+		cfg:              cfg,
+		instanceStore:    instanceStore,
+		settingsStore:    settingsStore,
+		settingsCache:    cache,
+		clientPool:       clientPool,
+		syncManager:      syncManager,
+		j:                make(map[int]map[string]*reannounceJob),
+		historySucceeded: make(map[int][]ActivityEvent),
+		historyFailed:    make(map[int][]ActivityEvent),
+		historySkipped:   make(map[int][]ActivityEvent),
+		historyCap:       cfg.HistorySize,
 	}
 	svc.now = time.Now
 	svc.runJob = svc.executeJob
@@ -789,13 +795,23 @@ func (s *Service) recordActivity(instanceID int, hash string, torrentName string
 	}
 	s.historyMu.Lock()
 	defer s.historyMu.Unlock()
-	if s.history == nil {
-		s.history = make(map[int][]ActivityEvent)
+
+	// Initialize maps if needed
+	if s.historySucceeded == nil {
+		s.historySucceeded = make(map[int][]ActivityEvent)
 	}
+	if s.historyFailed == nil {
+		s.historyFailed = make(map[int][]ActivityEvent)
+	}
+	if s.historySkipped == nil {
+		s.historySkipped = make(map[int][]ActivityEvent)
+	}
+
 	limit := s.historyCap
 	if limit <= 0 {
 		limit = defaultHistorySize
 	}
+
 	event := ActivityEvent{
 		InstanceID:  instanceID,
 		Hash:        strings.ToUpper(strings.TrimSpace(hash)),
@@ -805,28 +821,60 @@ func (s *Service) recordActivity(instanceID int, hash string, torrentName string
 		Reason:      strings.TrimSpace(reason),
 		Timestamp:   s.currentTime(),
 	}
-	s.history[instanceID] = append(s.history[instanceID], event)
-	if len(s.history[instanceID]) > limit {
-		s.history[instanceID] = s.history[instanceID][len(s.history[instanceID])-limit:]
+
+	// Store in the appropriate buffer based on outcome
+	// Succeeded/failed keep 100 entries, skipped keeps 50
+	switch outcome {
+	case ActivityOutcomeSucceeded:
+		s.historySucceeded[instanceID] = append(s.historySucceeded[instanceID], event)
+		if len(s.historySucceeded[instanceID]) > limit*2 {
+			s.historySucceeded[instanceID] = s.historySucceeded[instanceID][len(s.historySucceeded[instanceID])-limit*2:]
+		}
+	case ActivityOutcomeFailed:
+		s.historyFailed[instanceID] = append(s.historyFailed[instanceID], event)
+		if len(s.historyFailed[instanceID]) > limit*2 {
+			s.historyFailed[instanceID] = s.historyFailed[instanceID][len(s.historyFailed[instanceID])-limit*2:]
+		}
+	case ActivityOutcomeSkipped:
+		s.historySkipped[instanceID] = append(s.historySkipped[instanceID], event)
+		if len(s.historySkipped[instanceID]) > limit {
+			s.historySkipped[instanceID] = s.historySkipped[instanceID][len(s.historySkipped[instanceID])-limit:]
+		}
 	}
 }
 
 // GetActivity returns the most recent activity events for an instance, newest last.
+// Events from all outcome types are merged and sorted by timestamp.
 func (s *Service) GetActivity(instanceID int, limit int) []ActivityEvent {
 	if s == nil || instanceID == 0 {
 		return nil
 	}
 	s.historyMu.RLock()
 	defer s.historyMu.RUnlock()
-	events := s.history[instanceID]
-	if len(events) == 0 {
+
+	// Merge all three buffers
+	var all []ActivityEvent
+	all = append(all, s.historySucceeded[instanceID]...)
+	all = append(all, s.historyFailed[instanceID]...)
+	all = append(all, s.historySkipped[instanceID]...)
+
+	if len(all) == 0 {
 		return nil
 	}
-	if limit > 0 && len(events) > limit {
-		events = events[len(events)-limit:]
+
+	// Sort by timestamp ascending (oldest first, newest last)
+	sort.Slice(all, func(i, j int) bool {
+		return all[i].Timestamp.Before(all[j].Timestamp)
+	})
+
+	// Apply limit (take the most recent)
+	if limit > 0 && len(all) > limit {
+		all = all[len(all)-limit:]
 	}
-	out := make([]ActivityEvent, len(events))
-	copy(out, events)
+
+	// Return a copy
+	out := make([]ActivityEvent, len(all))
+	copy(out, all)
 	return out
 }
 
