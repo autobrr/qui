@@ -193,10 +193,11 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     }
   }
 
+  // Only fetch activity in card mode (embedded mode shows activity in overview)
   const activityQuery = useQuery({
     queryKey: ["instance-reannounce-activity", instanceId],
     queryFn: () => api.getInstanceReannounceActivity(instanceId, 100),
-    enabled: Boolean(instance && settings.enabled),
+    enabled: variant !== "embedded" && Boolean(instance && settings.enabled),
     refetchInterval: activeTab === "activity" ? 5000 : false,
   })
 

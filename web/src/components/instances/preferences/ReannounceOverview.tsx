@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
-import { cn, copyTextToClipboard, formatErrorReason } from "@/lib/utils"
+import { cn, copyTextToClipboard, formatErrorReason, formatRelativeTime } from "@/lib/utils"
 import type { Instance, InstanceFormData, InstanceReannounceActivity, InstanceReannounceSettings } from "@/types"
 import { useQueries, useQueryClient } from "@tanstack/react-query"
 import { Input } from "@/components/ui/input"
@@ -54,21 +54,6 @@ function computeStats(events: InstanceReannounceActivity[]): InstanceStats {
 
   return { successToday, failedToday, lastActivity }
 }
-
-function formatRelativeTime(date: Date): string {
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffSeconds = Math.floor(diffMs / 1000)
-  const diffMinutes = Math.floor(diffSeconds / 60)
-  const diffHours = Math.floor(diffMinutes / 60)
-  const diffDays = Math.floor(diffHours / 24)
-
-  if (diffSeconds < 60) return "just now"
-  if (diffMinutes < 60) return `${diffMinutes}m ago`
-  if (diffHours < 24) return `${diffHours}h ago`
-  return `${diffDays}d ago`
-}
-
 
 export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewProps) {
   const { instances, updateInstance, isUpdating } = useInstances()
