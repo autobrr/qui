@@ -65,6 +65,15 @@ export const REANNOUNCE_CONSTRAINTS = {
   DEFAULT_MAX_RETRIES: 50,
 } as const
 
+export interface InstanceCrossSeedCompletionSettings {
+  instanceId: number
+  enabled: boolean
+  categories: string[]
+  tags: string[]
+  excludeCategories: string[]
+  excludeTags: string[]
+}
+
 export interface InstanceReannounceActivity {
   instanceId: number
   hash: string
@@ -1391,22 +1400,6 @@ export interface CrossSeedRun {
   createdAt: string
 }
 
-export interface CrossSeedCompletionSettings {
-  enabled: boolean
-  categories: string[]
-  tags: string[]
-  excludeCategories: string[]
-  excludeTags: string[]
-}
-
-export interface CrossSeedCompletionSettingsPatch {
-  enabled?: boolean
-  categories?: string[]
-  tags?: string[]
-  excludeCategories?: string[]
-  excludeTags?: string[]
-}
-
 export interface CrossSeedAutomationSettings {
   enabled: boolean
   runIntervalMinutes: number
@@ -1420,7 +1413,6 @@ export interface CrossSeedAutomationSettings {
   useCategoryFromIndexer: boolean
   useCrossCategorySuffix: boolean
   runExternalProgramId?: number | null
-  completion?: CrossSeedCompletionSettings
   // Source-specific tagging
   rssAutomationTags: string[]
   seededSearchTags: string[]
@@ -1444,7 +1436,6 @@ export interface CrossSeedAutomationSettingsPatch {
   useCategoryFromIndexer?: boolean
   useCrossCategorySuffix?: boolean
   runExternalProgramId?: number | null
-  completion?: CrossSeedCompletionSettingsPatch
   // Source-specific tagging
   rssAutomationTags?: string[]
   seededSearchTags?: string[]

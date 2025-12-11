@@ -23,63 +23,47 @@ import (
 
 // CrossSeedHandler handles cross-seed API endpoints
 type CrossSeedHandler struct {
-	service *crossseed.Service
+	service         *crossseed.Service
+	completionStore *models.InstanceCrossSeedCompletionStore
+	instanceStore   *models.InstanceStore
 }
 
 type automationSettingsRequest struct {
 	Enabled                      bool                       `json:"enabled"`
 	RunIntervalMinutes           int                        `json:"runIntervalMinutes"`
 	StartPaused                  bool                       `json:"startPaused"`
-	Category                     *string                    `json:"category"`
-	IgnorePatterns               []string                   `json:"ignorePatterns"`
-	TargetInstanceIDs            []int                      `json:"targetInstanceIds"`
-	TargetIndexerIDs             []int                      `json:"targetIndexerIds"`
-	MaxResultsPerRun             int                        `json:"maxResultsPerRun"` // Deprecated: automation now processes full feeds and ignores this value
-	FindIndividualEpisodes       bool                       `json:"findIndividualEpisodes"`
-	SizeMismatchTolerancePercent float64                    `json:"sizeMismatchTolerancePercent"`
-	UseCategoryFromIndexer       bool                       `json:"useCategoryFromIndexer"`
-	UseCrossCategorySuffix       bool                       `json:"useCrossCategorySuffix"`
-	RunExternalProgramID         *int                       `json:"runExternalProgramId"`
-	Completion                   *completionSettingsRequest `json:"completion"`
-}
-
-type completionSettingsRequest struct {
-	Enabled           bool     `json:"enabled"`
-	Categories        []string `json:"categories"`
-	Tags              []string `json:"tags"`
-	ExcludeCategories []string `json:"excludeCategories"`
-	ExcludeTags       []string `json:"excludeTags"`
+	Category                     *string  `json:"category"`
+	IgnorePatterns               []string `json:"ignorePatterns"`
+	TargetInstanceIDs            []int    `json:"targetInstanceIds"`
+	TargetIndexerIDs             []int    `json:"targetIndexerIds"`
+	MaxResultsPerRun             int      `json:"maxResultsPerRun"` // Deprecated: automation now processes full feeds and ignores this value
+	FindIndividualEpisodes       bool     `json:"findIndividualEpisodes"`
+	SizeMismatchTolerancePercent float64  `json:"sizeMismatchTolerancePercent"`
+	UseCategoryFromIndexer       bool     `json:"useCategoryFromIndexer"`
+	UseCrossCategorySuffix       bool     `json:"useCrossCategorySuffix"`
+	RunExternalProgramID         *int     `json:"runExternalProgramId"`
 }
 
 type automationSettingsPatchRequest struct {
-	Enabled                      *bool                           `json:"enabled,omitempty"`
-	RunIntervalMinutes           *int                            `json:"runIntervalMinutes,omitempty"`
-	StartPaused                  *bool                           `json:"startPaused,omitempty"`
-	Category                     optionalString                  `json:"category"`
-	IgnorePatterns               *[]string                       `json:"ignorePatterns,omitempty"`
-	TargetInstanceIDs            *[]int                          `json:"targetInstanceIds,omitempty"`
-	TargetIndexerIDs             *[]int                          `json:"targetIndexerIds,omitempty"`
-	MaxResultsPerRun             *int                            `json:"maxResultsPerRun,omitempty"` // Deprecated: automation now processes full feeds and ignores this value
-	FindIndividualEpisodes       *bool                           `json:"findIndividualEpisodes,omitempty"`
-	SizeMismatchTolerancePercent *float64                        `json:"sizeMismatchTolerancePercent,omitempty"`
-	UseCategoryFromIndexer       *bool                           `json:"useCategoryFromIndexer,omitempty"`
-	UseCrossCategorySuffix       *bool                           `json:"useCrossCategorySuffix,omitempty"`
-	RunExternalProgramID         optionalInt                     `json:"runExternalProgramId"`
-	Completion                   *completionSettingsPatchRequest `json:"completion,omitempty"`
+	Enabled                      *bool          `json:"enabled,omitempty"`
+	RunIntervalMinutes           *int           `json:"runIntervalMinutes,omitempty"`
+	StartPaused                  *bool          `json:"startPaused,omitempty"`
+	Category                     optionalString `json:"category"`
+	IgnorePatterns               *[]string      `json:"ignorePatterns,omitempty"`
+	TargetInstanceIDs            *[]int         `json:"targetInstanceIds,omitempty"`
+	TargetIndexerIDs             *[]int         `json:"targetIndexerIds,omitempty"`
+	MaxResultsPerRun             *int           `json:"maxResultsPerRun,omitempty"` // Deprecated: automation now processes full feeds and ignores this value
+	FindIndividualEpisodes       *bool          `json:"findIndividualEpisodes,omitempty"`
+	SizeMismatchTolerancePercent *float64       `json:"sizeMismatchTolerancePercent,omitempty"`
+	UseCategoryFromIndexer       *bool          `json:"useCategoryFromIndexer,omitempty"`
+	UseCrossCategorySuffix       *bool          `json:"useCrossCategorySuffix,omitempty"`
+	RunExternalProgramID         optionalInt    `json:"runExternalProgramId"`
 	// Source-specific tagging
 	RSSAutomationTags    *[]string `json:"rssAutomationTags,omitempty"`
 	SeededSearchTags     *[]string `json:"seededSearchTags,omitempty"`
 	CompletionSearchTags *[]string `json:"completionSearchTags,omitempty"`
 	WebhookTags          *[]string `json:"webhookTags,omitempty"`
 	InheritSourceTags    *bool     `json:"inheritSourceTags,omitempty"`
-}
-
-type completionSettingsPatchRequest struct {
-	Enabled           *bool     `json:"enabled,omitempty"`
-	Categories        *[]string `json:"categories,omitempty"`
-	Tags              *[]string `json:"tags,omitempty"`
-	ExcludeCategories *[]string `json:"excludeCategories,omitempty"`
-	ExcludeTags       *[]string `json:"excludeTags,omitempty"`
 }
 
 type optionalString struct {
@@ -152,20 +136,11 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.UseCategoryFromIndexer == nil &&
 		r.UseCrossCategorySuffix == nil &&
 		!r.RunExternalProgramID.Set &&
-		(r.Completion == nil || r.Completion.isEmpty()) &&
 		r.RSSAutomationTags == nil &&
 		r.SeededSearchTags == nil &&
 		r.CompletionSearchTags == nil &&
 		r.WebhookTags == nil &&
 		r.InheritSourceTags == nil
-}
-
-func (r completionSettingsPatchRequest) isEmpty() bool {
-	return r.Enabled == nil &&
-		r.Categories == nil &&
-		r.Tags == nil &&
-		r.ExcludeCategories == nil &&
-		r.ExcludeTags == nil
 }
 
 func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, patch automationSettingsPatchRequest) {
@@ -217,9 +192,6 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	if patch.RunExternalProgramID.Set {
 		settings.RunExternalProgramID = patch.RunExternalProgramID.Value
 	}
-	if patch.Completion != nil {
-		applyCompletionSettingsPatch(&settings.Completion, patch.Completion)
-	}
 	// Source-specific tagging
 	if patch.RSSAutomationTags != nil {
 		settings.RSSAutomationTags = *patch.RSSAutomationTags
@@ -235,24 +207,6 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	}
 	if patch.InheritSourceTags != nil {
 		settings.InheritSourceTags = *patch.InheritSourceTags
-	}
-}
-
-func applyCompletionSettingsPatch(dest *models.CrossSeedCompletionSettings, patch *completionSettingsPatchRequest) {
-	if patch.Enabled != nil {
-		dest.Enabled = *patch.Enabled
-	}
-	if patch.Categories != nil {
-		dest.Categories = *patch.Categories
-	}
-	if patch.Tags != nil {
-		dest.Tags = *patch.Tags
-	}
-	if patch.ExcludeCategories != nil {
-		dest.ExcludeCategories = *patch.ExcludeCategories
-	}
-	if patch.ExcludeTags != nil {
-		dest.ExcludeTags = *patch.ExcludeTags
 	}
 }
 
@@ -273,9 +227,11 @@ type searchRunRequest struct {
 }
 
 // NewCrossSeedHandler creates a new cross-seed handler
-func NewCrossSeedHandler(service *crossseed.Service) *CrossSeedHandler {
+func NewCrossSeedHandler(service *crossseed.Service, completionStore *models.InstanceCrossSeedCompletionStore, instanceStore *models.InstanceStore) *CrossSeedHandler {
 	return &CrossSeedHandler{
-		service: service,
+		service:         service,
+		completionStore: completionStore,
+		instanceStore:   instanceStore,
 	}
 }
 
@@ -305,6 +261,10 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 			r.Post("/run", h.StartSearchRun)
 			r.Post("/run/cancel", h.CancelSearchRun)
 			r.Get("/runs", h.ListSearchRunHistory)
+		})
+		r.Route("/completion", func(r chi.Router) {
+			r.Get("/{instanceID}", h.GetInstanceCompletionSettings)
+			r.Put("/{instanceID}", h.UpdateInstanceCompletionSettings)
 		})
 		r.Route("/webhook", func(r chi.Router) {
 			r.Post("/check", h.WebhookCheck)
@@ -606,17 +566,6 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		}
 	}
 
-	completion := models.DefaultCrossSeedCompletionSettings()
-	if req.Completion != nil {
-		completion = models.CrossSeedCompletionSettings{
-			Enabled:           req.Completion.Enabled,
-			Categories:        req.Completion.Categories,
-			Tags:              req.Completion.Tags,
-			ExcludeCategories: req.Completion.ExcludeCategories,
-			ExcludeTags:       req.Completion.ExcludeTags,
-		}
-	}
-
 	// Validate mutual exclusivity: cannot use both indexer category and .cross suffix
 	if req.UseCategoryFromIndexer && req.UseCrossCategorySuffix {
 		RespondError(w, http.StatusBadRequest, "Cannot enable both 'Use indexer name as category' and 'Add .cross category suffix'. These settings are mutually exclusive.")
@@ -637,7 +586,6 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		UseCategoryFromIndexer:       req.UseCategoryFromIndexer,
 		UseCrossCategorySuffix:       req.UseCrossCategorySuffix,
 		RunExternalProgramID:         req.RunExternalProgramID,
-		Completion:                   completion,
 	}
 
 	updated, err := h.service.UpdateAutomationSettings(r.Context(), settings)
@@ -1091,4 +1039,131 @@ func webhookResponseStatus(response *crossseed.WebhookCheckResponse) int {
 	default:
 		return http.StatusNotFound
 	}
+}
+
+// instanceCompletionSettingsResponse is the API response for per-instance completion settings.
+type instanceCompletionSettingsResponse struct {
+	InstanceID        int      `json:"instanceId"`
+	Enabled           bool     `json:"enabled"`
+	Categories        []string `json:"categories"`
+	Tags              []string `json:"tags"`
+	ExcludeCategories []string `json:"excludeCategories"`
+	ExcludeTags       []string `json:"excludeTags"`
+}
+
+// toInstanceCompletionSettingsResponse converts model to API response.
+func toInstanceCompletionSettingsResponse(s *models.InstanceCrossSeedCompletionSettings) instanceCompletionSettingsResponse {
+	return instanceCompletionSettingsResponse{
+		InstanceID:        s.InstanceID,
+		Enabled:           s.Enabled,
+		Categories:        s.Categories,
+		Tags:              s.Tags,
+		ExcludeCategories: s.ExcludeCategories,
+		ExcludeTags:       s.ExcludeTags,
+	}
+}
+
+// instanceCompletionSettingsRequest is the API request for updating per-instance completion settings.
+type instanceCompletionSettingsRequest struct {
+	Enabled           bool     `json:"enabled"`
+	Categories        []string `json:"categories"`
+	Tags              []string `json:"tags"`
+	ExcludeCategories []string `json:"excludeCategories"`
+	ExcludeTags       []string `json:"excludeTags"`
+}
+
+// GetInstanceCompletionSettings returns the completion settings for a specific instance.
+func (h *CrossSeedHandler) GetInstanceCompletionSettings(w http.ResponseWriter, r *http.Request) {
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	instanceID, err := strconv.Atoi(instanceIDStr)
+	if err != nil || instanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+		return
+	}
+
+	if h.completionStore == nil {
+		log.Error().Int("instanceID", instanceID).Msg("Completion store not configured")
+		RespondError(w, http.StatusServiceUnavailable, "Completion settings not available")
+		return
+	}
+
+	// Validate instance exists
+	if h.instanceStore != nil {
+		_, err := h.instanceStore.Get(r.Context(), instanceID)
+		if err != nil {
+			if errors.Is(err, models.ErrInstanceNotFound) {
+				log.Warn().Int("instanceID", instanceID).Msg("Instance not found for completion settings")
+				RespondError(w, http.StatusNotFound, "Instance not found")
+				return
+			}
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to validate instance for completion settings")
+			RespondError(w, http.StatusInternalServerError, "Failed to validate instance")
+			return
+		}
+	}
+
+	settings, err := h.completionStore.Get(r.Context(), instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get instance completion settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to load completion settings")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, toInstanceCompletionSettingsResponse(settings))
+}
+
+// UpdateInstanceCompletionSettings updates the completion settings for a specific instance.
+func (h *CrossSeedHandler) UpdateInstanceCompletionSettings(w http.ResponseWriter, r *http.Request) {
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	instanceID, err := strconv.Atoi(instanceIDStr)
+	if err != nil || instanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+		return
+	}
+
+	if h.completionStore == nil {
+		log.Error().Int("instanceID", instanceID).Msg("Completion store not configured")
+		RespondError(w, http.StatusServiceUnavailable, "Completion settings not available")
+		return
+	}
+
+	// Validate instance exists
+	if h.instanceStore != nil {
+		_, err := h.instanceStore.Get(r.Context(), instanceID)
+		if err != nil {
+			if errors.Is(err, models.ErrInstanceNotFound) {
+				log.Warn().Int("instanceID", instanceID).Msg("Instance not found for completion settings")
+				RespondError(w, http.StatusNotFound, "Instance not found")
+				return
+			}
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to validate instance for completion settings")
+			RespondError(w, http.StatusInternalServerError, "Failed to validate instance")
+			return
+		}
+	}
+
+	var req instanceCompletionSettingsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode instance completion settings request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	settings := &models.InstanceCrossSeedCompletionSettings{
+		InstanceID:        instanceID,
+		Enabled:           req.Enabled,
+		Categories:        req.Categories,
+		Tags:              req.Tags,
+		ExcludeCategories: req.ExcludeCategories,
+		ExcludeTags:       req.ExcludeTags,
+	}
+
+	saved, err := h.completionStore.Upsert(r.Context(), settings)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to save instance completion settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to save completion settings")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, toInstanceCompletionSettingsResponse(saved))
 }

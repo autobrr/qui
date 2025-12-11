@@ -6,10 +6,8 @@ package models
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
@@ -128,15 +126,15 @@ func (s *InstanceReannounceStore) Upsert(ctx context.Context, settings *Instance
 	}
 
 	coerced := sanitizeInstanceReannounceSettings(settings)
-	catJSON, err := encodeStringSliceJSON(coerced.Categories)
+	catJSON, err := EncodeStringSliceJSON(coerced.Categories)
 	if err != nil {
 		return nil, err
 	}
-	tagJSON, err := encodeStringSliceJSON(coerced.Tags)
+	tagJSON, err := EncodeStringSliceJSON(coerced.Tags)
 	if err != nil {
 		return nil, err
 	}
-	trackerJSON, err := encodeStringSliceJSON(coerced.Trackers)
+	trackerJSON, err := EncodeStringSliceJSON(coerced.Trackers)
 	if err != nil {
 		return nil, err
 	}
@@ -163,32 +161,25 @@ func (s *InstanceReannounceStore) Upsert(ctx context.Context, settings *Instance
 
 	_, err = s.db.ExecContext(ctx, stmt,
 		coerced.InstanceID,
-		boolToSQLite(coerced.Enabled),
+		BoolToSQLite(coerced.Enabled),
 		coerced.InitialWaitSeconds,
 		coerced.ReannounceIntervalSeconds,
 		coerced.MaxAgeSeconds,
 		coerced.MaxRetries,
-		boolToSQLite(coerced.Aggressive),
-		boolToSQLite(coerced.MonitorAll),
+		BoolToSQLite(coerced.Aggressive),
+		BoolToSQLite(coerced.MonitorAll),
 		catJSON,
 		tagJSON,
 		trackerJSON,
-		boolToSQLite(coerced.ExcludeCategories),
-		boolToSQLite(coerced.ExcludeTags),
-		boolToSQLite(coerced.ExcludeTrackers),
+		BoolToSQLite(coerced.ExcludeCategories),
+		BoolToSQLite(coerced.ExcludeTags),
+		BoolToSQLite(coerced.ExcludeTrackers),
 	)
 	if err != nil {
 		return nil, err
 	}
 
 	return s.Get(ctx, coerced.InstanceID)
-}
-
-func boolToSQLite(v bool) int {
-	if v {
-		return 1
-	}
-	return 0
 }
 
 func sanitizeInstanceReannounceSettings(s *InstanceReannounceSettings) *InstanceReannounceSettings {
@@ -215,53 +206,10 @@ func sanitizeInstanceReannounceSettings(s *InstanceReannounceSettings) *Instance
 			Msg("reannounce: MaxRetries exceeded maximum, clamping")
 		clone.MaxRetries = maxMaxRetries
 	}
-	clone.Categories = sanitizeStringSlice(clone.Categories)
-	clone.Tags = sanitizeStringSlice(clone.Tags)
-	clone.Trackers = sanitizeStringSlice(clone.Trackers)
+	clone.Categories = SanitizeStringSlice(clone.Categories)
+	clone.Tags = SanitizeStringSlice(clone.Tags)
+	clone.Trackers = SanitizeStringSlice(clone.Trackers)
 	return &clone
-}
-
-func sanitizeStringSlice(values []string) []string {
-	if len(values) == 0 {
-		return []string{}
-	}
-	seen := make(map[string]struct{}, len(values))
-	var result []string
-	for _, value := range values {
-		trimmed := strings.TrimSpace(value)
-		if trimmed == "" {
-			continue
-		}
-		lower := strings.ToLower(trimmed)
-		if _, exists := seen[lower]; exists {
-			continue
-		}
-		seen[lower] = struct{}{}
-		result = append(result, trimmed)
-	}
-	return result
-}
-
-func encodeStringSliceJSON(values []string) (string, error) {
-	if len(values) == 0 {
-		return "[]", nil
-	}
-	payload, err := json.Marshal(values)
-	if err != nil {
-		return "", err
-	}
-	return string(payload), nil
-}
-
-func decodeStringSliceJSON(raw sql.NullString) ([]string, error) {
-	if !raw.Valid || strings.TrimSpace(raw.String) == "" {
-		return []string{}, nil
-	}
-	var values []string
-	if err := json.Unmarshal([]byte(raw.String), &values); err != nil {
-		return nil, err
-	}
-	return sanitizeStringSlice(values), nil
 }
 
 func scanInstanceReannounceSettings(scanner interface {
@@ -305,15 +253,15 @@ func scanInstanceReannounceSettings(scanner interface {
 		return nil, err
 	}
 
-	categories, err := decodeStringSliceJSON(catJSON)
+	categories, err := DecodeStringSliceJSON(catJSON)
 	if err != nil {
 		return nil, fmt.Errorf("decode categories: %w", err)
 	}
-	tags, err := decodeStringSliceJSON(tagJSON)
+	tags, err := DecodeStringSliceJSON(tagJSON)
 	if err != nil {
 		return nil, fmt.Errorf("decode tags: %w", err)
 	}
-	trackers, err := decodeStringSliceJSON(trackerJSON)
+	trackers, err := DecodeStringSliceJSON(trackerJSON)
 	if err != nil {
 		return nil, fmt.Errorf("decode trackers: %w", err)
 	}

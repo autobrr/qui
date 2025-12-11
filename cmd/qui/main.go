@@ -545,7 +545,8 @@ func (app *Application) runServer() {
 
 	// Initialize cross-seed automation store and service
 	crossSeedStore := models.NewCrossSeedStore(db)
-	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore)
+	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
+	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore, instanceCrossSeedCompletionStore)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 	trackerRuleService := trackerrules.NewService(trackerrules.DefaultConfig(), instanceStore, trackerRuleStore, syncManager)
 
@@ -628,30 +629,31 @@ func (app *Application) runServer() {
 
 	// Start server in goroutine
 	httpServer := api.NewServer(&api.Dependencies{
-		Config:                    cfg,
-		Version:                   buildinfo.Version,
-		AuthService:               authService,
-		SessionManager:            sessionManager,
-		InstanceStore:             instanceStore,
-		InstanceReannounce:        instanceReannounceStore,
-		ReannounceCache:           reannounceSettingsCache,
-		ReannounceService:         reannounceService,
-		ClientAPIKeyStore:         clientAPIKeyStore,
-		ExternalProgramStore:      externalProgramStore,
-		ClientPool:                clientPool,
-		SyncManager:               syncManager,
-		LicenseService:            licenseService,
-		UpdateService:             updateService,
-		TrackerIconService:        trackerIconService,
-		BackupService:             backupService,
-		FilesManager:              filesManagerService,
-		CrossSeedService:          crossSeedService,
-		JackettService:            jackettService,
-		TorznabIndexerStore:       torznabIndexerStore,
-		TrackerRuleStore:          trackerRuleStore,
-		TrackerRuleService:        trackerRuleService,
-		TrackerCustomizationStore: trackerCustomizationStore,
-		DashboardSettingsStore:    dashboardSettingsStore,
+		Config:                           cfg,
+		Version:                          buildinfo.Version,
+		AuthService:                      authService,
+		SessionManager:                   sessionManager,
+		InstanceStore:                    instanceStore,
+		InstanceReannounce:               instanceReannounceStore,
+		ReannounceCache:                  reannounceSettingsCache,
+		ReannounceService:                reannounceService,
+		ClientAPIKeyStore:                clientAPIKeyStore,
+		ExternalProgramStore:             externalProgramStore,
+		ClientPool:                       clientPool,
+		SyncManager:                      syncManager,
+		LicenseService:                   licenseService,
+		UpdateService:                    updateService,
+		TrackerIconService:               trackerIconService,
+		BackupService:                    backupService,
+		FilesManager:                     filesManagerService,
+		CrossSeedService:                 crossSeedService,
+		JackettService:                   jackettService,
+		TorznabIndexerStore:              torznabIndexerStore,
+		TrackerRuleStore:                 trackerRuleStore,
+		TrackerRuleService:               trackerRuleService,
+		TrackerCustomizationStore:        trackerCustomizationStore,
+		DashboardSettingsStore:           dashboardSettingsStore,
+		InstanceCrossSeedCompletionStore: instanceCrossSeedCompletionStore,
 	})
 
 	errorChannel := make(chan error)

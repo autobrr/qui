@@ -160,7 +160,7 @@ func TestReleasesMatch_DateBasedReleasesRequireExactDate(t *testing.T) {
 		"year-only releases should match when year is same")
 }
 
-func TestNormalizeTitleForComparison(t *testing.T) {
+func TestNormalizeForMatching(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
@@ -181,7 +181,7 @@ func TestNormalizeTitleForComparison(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := normalizeTitleForComparison(tt.input)
+			result := stringutils.NormalizeForMatching(tt.input)
 			require.Equal(t, tt.expected, result)
 		})
 	}

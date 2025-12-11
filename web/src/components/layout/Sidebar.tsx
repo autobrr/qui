@@ -87,7 +87,7 @@ export function Sidebar() {
   const activeInstances = instances?.filter(instance => instance.isActive) ?? []
   const hasConfiguredInstances = (instances?.length ?? 0) > 0
 
-  const crossSeedInstanceState = useCrossSeedInstanceState()
+  const { state: crossSeedInstanceState } = useCrossSeedInstanceState()
 
   const appVersion = getAppVersion()
 

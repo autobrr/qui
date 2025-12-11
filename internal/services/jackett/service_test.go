@@ -2004,3 +2004,149 @@ func TestParseTorznabCaps_ProwlarrCompatibility(t *testing.T) {
 		}
 	}
 }
+
+func TestExtractInfoHashFromAttributes(t *testing.T) {
+	tests := []struct {
+		name     string
+		attrs    map[string]string
+		expected string
+	}{
+		{
+			name:     "empty attributes",
+			attrs:    nil,
+			expected: "",
+		},
+		{
+			name:     "direct infohash attribute",
+			attrs:    map[string]string{"infohash": "63e07ff523710ca268567dad344ce1e0e6b7e8a3"},
+			expected: "63e07ff523710ca268567dad344ce1e0e6b7e8a3",
+		},
+		{
+			name:     "infohash with uppercase",
+			attrs:    map[string]string{"infohash": "63E07FF523710CA268567DAD344CE1E0E6B7E8A3"},
+			expected: "63e07ff523710ca268567dad344ce1e0e6b7e8a3",
+		},
+		{
+			name:     "info_hash variant",
+			attrs:    map[string]string{"info_hash": "63e07ff523710ca268567dad344ce1e0e6b7e8a3"},
+			expected: "63e07ff523710ca268567dad344ce1e0e6b7e8a3",
+		},
+		{
+			name:     "hash variant",
+			attrs:    map[string]string{"hash": "63e07ff523710ca268567dad344ce1e0e6b7e8a3"},
+			expected: "63e07ff523710ca268567dad344ce1e0e6b7e8a3",
+		},
+		{
+			name:     "SHA256 v2 hash",
+			attrs:    map[string]string{"infohash": "63e07ff523710ca268567dad344ce1e0e6b7e8a363e07ff523710ca268567dad"},
+			expected: "63e07ff523710ca268567dad344ce1e0e6b7e8a363e07ff523710ca268567dad",
+		},
+		{
+			name:     "invalid hash length",
+			attrs:    map[string]string{"infohash": "63e07ff523710ca268"},
+			expected: "",
+		},
+		{
+			name:     "invalid hex characters",
+			attrs:    map[string]string{"infohash": "63e07ff523710ca268567dad344ce1e0e6b7ZZZZ"},
+			expected: "",
+		},
+		{
+			name:     "magnet URL fallback",
+			attrs:    map[string]string{"magneturl": "magnet:?xt=urn:btih:63e07ff523710ca268567dad344ce1e0e6b7e8a3&dn=Test"},
+			expected: "63e07ff523710ca268567dad344ce1e0e6b7e8a3",
+		},
+		{
+			name:     "magnet URL with uppercase hash",
+			attrs:    map[string]string{"magneturl": "magnet:?xt=urn:btih:63E07FF523710CA268567DAD344CE1E0E6B7E8A3&dn=Test"},
+			expected: "63e07ff523710ca268567dad344ce1e0e6b7e8a3",
+		},
+		{
+			name:     "magnet URL without other params",
+			attrs:    map[string]string{"magneturl": "magnet:?xt=urn:btih:63e07ff523710ca268567dad344ce1e0e6b7e8a3"},
+			expected: "63e07ff523710ca268567dad344ce1e0e6b7e8a3",
+		},
+		{
+			name:     "infohash takes priority over magneturl",
+			attrs:    map[string]string{"infohash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "magneturl": "magnet:?xt=urn:btih:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+			expected: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		},
+		{
+			name:     "invalid magnet URL",
+			attrs:    map[string]string{"magneturl": "not-a-magnet-url"},
+			expected: "",
+		},
+		{
+			name:     "magnet URL missing hash",
+			attrs:    map[string]string{"magneturl": "magnet:?dn=Test&tr=http://tracker"},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractInfoHashFromAttributes(tt.attrs)
+			if result != tt.expected {
+				t.Errorf("extractInfoHashFromAttributes() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestExtractInfoHashFromMagnet(t *testing.T) {
+	tests := []struct {
+		name     string
+		magnet   string
+		expected string
+	}{
+		{
+			name:     "empty string",
+			magnet:   "",
+			expected: "",
+		},
+		{
+			name:     "valid magnet with hash first",
+			magnet:   "magnet:?xt=urn:btih:63e07ff523710ca268567dad344ce1e0e6b7e8a3&dn=Test&tr=http://tracker",
+			expected: "63e07ff523710ca268567dad344ce1e0e6b7e8a3",
+		},
+		{
+			name:     "valid magnet with hash last",
+			magnet:   "magnet:?dn=Test&tr=http://tracker&xt=urn:btih:63e07ff523710ca268567dad344ce1e0e6b7e8a3",
+			expected: "63e07ff523710ca268567dad344ce1e0e6b7e8a3",
+		},
+		{
+			name:     "magnet with only hash",
+			magnet:   "magnet:?xt=urn:btih:63e07ff523710ca268567dad344ce1e0e6b7e8a3",
+			expected: "63e07ff523710ca268567dad344ce1e0e6b7e8a3",
+		},
+		{
+			name:     "uppercase MAGNET prefix",
+			magnet:   "MAGNET:?xt=urn:btih:63e07ff523710ca268567dad344ce1e0e6b7e8a3",
+			expected: "63e07ff523710ca268567dad344ce1e0e6b7e8a3",
+		},
+		{
+			name:     "not a magnet URL",
+			magnet:   "http://example.com/torrent.torrent",
+			expected: "",
+		},
+		{
+			name:     "magnet without query string",
+			magnet:   "magnet:",
+			expected: "",
+		},
+		{
+			name:     "magnet with invalid hash",
+			magnet:   "magnet:?xt=urn:btih:tooshort",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractInfoHashFromMagnet(tt.magnet)
+			if result != tt.expected {
+				t.Errorf("extractInfoHashFromMagnet() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
