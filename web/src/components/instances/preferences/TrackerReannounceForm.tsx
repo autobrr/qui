@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MultiSelect, type Option } from "@/components/ui/multi-select"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -21,12 +22,13 @@ import { api } from "@/lib/api"
 import { cn, copyTextToClipboard } from "@/lib/utils"
 import { REANNOUNCE_CONSTRAINTS, type InstanceFormData, type InstanceReannounceActivity, type InstanceReannounceSettings } from "@/types"
 import { useQuery } from "@tanstack/react-query"
-import { Copy, Info, RefreshCcw } from "lucide-react"
+import { Copy, HardDrive, Info, RefreshCcw } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
 interface TrackerReannounceFormProps {
   instanceId: number
+  onInstanceChange?: (instanceId: number) => void
   onSuccess?: () => void
 }
 
@@ -50,9 +52,13 @@ const GLOBAL_SCAN_INTERVAL_SECONDS = 7
 
 type MonitorScopeField = keyof Pick<InstanceReannounceSettings, "categories" | "tags" | "trackers">
 
-export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannounceFormProps) {
+export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess }: TrackerReannounceFormProps) {
   const { instances, updateInstance, isUpdating } = useInstances()
   const instance = useMemo(() => instances?.find((item) => item.id === instanceId), [instances, instanceId])
+  const activeInstances = useMemo(
+    () => (instances ?? []).filter((inst) => inst.isActive),
+    [instances]
+  )
   const [settings, setSettings] = useState<InstanceReannounceSettings>(() => cloneSettings(instance?.reannounceSettings))
   const [hideSkipped, setHideSkipped] = useState(true)
   const [activeTab, setActiveTab] = useState("settings")
@@ -274,6 +280,33 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
               />
             </div>
           </div>
+
+          {activeInstances.length > 1 && (
+            <div className="flex items-center gap-3 pt-2 border-t border-border/40">
+              <Label className="text-sm text-muted-foreground shrink-0">Instance</Label>
+              <Select
+                value={String(instanceId)}
+                onValueChange={(value) => onInstanceChange?.(Number(value))}
+                disabled={!onInstanceChange}
+              >
+                <SelectTrigger className="w-[200px]">
+                  <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+                    <HardDrive className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                    <span className="truncate">
+                      <SelectValue placeholder="Select instance" />
+                    </span>
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  {activeInstances.map((inst) => (
+                    <SelectItem key={inst.id} value={String(inst.id)}>
+                      <span className="truncate">{inst.name}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </CardHeader>
 
         <CardContent>

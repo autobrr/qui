@@ -104,7 +104,10 @@ export function Services() {
         <div key={selectedInstance.id} className="space-y-6">
           <TrackerRulesPanel instanceId={selectedInstance.id} />
 
-          <TrackerReannounceForm instanceId={selectedInstance.id} />
+          <TrackerReannounceForm
+            instanceId={selectedInstance.id}
+            onInstanceChange={(id) => handleInstanceChange(String(id))}
+          />
         </div>
       )}
     </div>

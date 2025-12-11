@@ -267,15 +267,22 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 
 	var result []MonitoredTorrent
 	for _, torrent := range torrents {
-		if !s.torrentMeetsCriteria(torrent, settings) {
+		// Use torrentMatchesFilters (not torrentMeetsCriteria) so we can show
+		// torrents still in their initial wait period
+		if !s.torrentMatchesFilters(torrent, settings) {
 			continue
 		}
+
+		// Check if torrent is still in initial wait period
+		inInitialWait := settings.InitialWaitSeconds > 0 && torrent.TimeActive < int64(settings.InitialWaitSeconds)
 
 		healthy := s.hasHealthyTracker(torrent.Trackers)
 		updating := s.trackersUpdating(torrent.Trackers)
 		hasProblem := !healthy && !updating
-		waiting := updating && !healthy
-		if !hasProblem && !waiting {
+		waitingForTrackers := updating && !healthy
+
+		// Show torrent if: has problem, waiting for trackers, OR in initial wait
+		if !hasProblem && !waitingForTrackers && !inInitialWait {
 			continue
 		}
 
@@ -307,7 +314,7 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 			Tags:              torrent.Tags,
 			State:             state,
 			HasTrackerProblem: hasProblem,
-			WaitingForInitial: waiting,
+			WaitingForInitial: inInitialWait || waitingForTrackers,
 		})
 	}
 
@@ -527,7 +534,23 @@ func (s *Service) getSettings(ctx context.Context, instanceID int) *models.Insta
 	return models.DefaultInstanceReannounceSettings(instanceID)
 }
 
+// torrentMeetsCriteria checks if a torrent is ready for reannounce consideration.
+// This includes filter matching AND the initial wait period.
 func (s *Service) torrentMeetsCriteria(torrent qbt.Torrent, settings *models.InstanceReannounceSettings) bool {
+	if !s.torrentMatchesFilters(torrent, settings) {
+		return false
+	}
+	// Check initial wait - torrent must be old enough
+	if settings.InitialWaitSeconds > 0 && torrent.TimeActive < int64(settings.InitialWaitSeconds) {
+		return false
+	}
+	return true
+}
+
+// torrentMatchesFilters checks if a torrent matches the monitoring scope (state, age,
+// category/tag/tracker filters) WITHOUT checking the initial wait period. Used by
+// GetMonitoredTorrents to show new torrents that are still in their initial wait.
+func (s *Service) torrentMatchesFilters(torrent qbt.Torrent, settings *models.InstanceReannounceSettings) bool {
 	if settings == nil || !settings.Enabled {
 		return false
 	}
@@ -538,10 +561,6 @@ func (s *Service) torrentMeetsCriteria(torrent qbt.Torrent, settings *models.Ins
 	}
 
 	if settings.MaxAgeSeconds > 0 && torrent.TimeActive > int64(settings.MaxAgeSeconds) {
-		return false
-	}
-
-	if settings.InitialWaitSeconds > 0 && torrent.TimeActive < int64(settings.InitialWaitSeconds) {
 		return false
 	}
 
