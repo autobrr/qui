@@ -187,7 +187,8 @@ QUI__PORT=7476           # Port number
 QUI__BASE_URL=/qui/      # Optional: serve from subdirectory
 
 # Security
-QUI__SESSION_SECRET=...  # Auto-generated if not set
+QUI__SESSION_SECRET_FILE=...  # Path to file containing secret. Takes precedence over QUI__SESSION_SECRET
+QUI__SESSION_SECRET=...       # Auto-generated if not set
 
 # Logging
 QUI__LOG_LEVEL=INFO      # Options: ERROR, DEBUG, INFO, WARN, TRACE
@@ -816,6 +817,7 @@ qui automatically detects the features available on each qBittorrent instance an
 | **Backups (.torrent archive export)** | 4.5.0+ (Web API 2.8.11+) | qui backups rely on `/torrents/export`; the backup UI is hidden when the endpoint is unavailable |
 | **Subcategories** | 4.6.0+ (Web API 2.9.0+) | Support for nested category structures (e.g., `Movies/Action`) |
 | **Torrent Creation** | 5.0.0+ (Web API 2.11.2+) | Create new .torrent files via the Web API |
+| **Path Autocomplete** | 5.0.0+ (Web API 2.11.2+) | Autocomplete suggestions for path inputs when adding torrents or creating .torrent files |
 | **External IP Reporting (IPv4/IPv6)** | 5.1.0+ (Web API 2.11.3+) | Exposes `last_external_address_v4` / `_v6` fields |
 | **Tracker Health Status** | 5.1.0+ (Web API 2.11.4+) | Automatically detects unregistered torrents and tracker issues |
 

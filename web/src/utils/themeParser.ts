@@ -8,6 +8,7 @@ export interface ThemeMetadata {
   description?: string;
   isPremium?: boolean;
   variations?: string;
+  lightOnly?: boolean;
 }
 
 export interface ParsedTheme {
@@ -62,6 +63,7 @@ export function parseThemeCSS(cssContent: string): ParsedTheme | null {
  * /* @name: Theme Name
  *  * @description: Theme description
  *  * @premium: true/false
+ *  * @lightOnly: true/false (optional)
  *  * @variations: orange, blue, green (optional)
  *  */
 function extractMetadata(cssContent: string): ThemeMetadata {
@@ -69,16 +71,27 @@ function extractMetadata(cssContent: string): ThemeMetadata {
     name: "Untitled Theme",
   };
 
-  // Match metadata comment block
-  const metadataMatch = cssContent.match(/\/\*\s*@name:\s*(.+?)\s*\n\s*\*\s*@description:\s*(.+?)\s*\n\s*\*\s*@premium:\s*(true|false)(?:\s*\n\s*\*\s*@variations:\s*(.+?))?\s*\*\//);
+  // Extract individual metadata fields for more flexible parsing
+  const nameMatch = cssContent.match(/@name:\s*(.+?)(?:\s*\n|\s*\*)/);
+  const descMatch = cssContent.match(/@description:\s*(.+?)(?:\s*\n|\s*\*)/);
+  const premiumMatch = cssContent.match(/@premium:\s*(true|false)/);
+  const lightOnlyMatch = cssContent.match(/@lightOnly:\s*(true|false)/);
+  const variationsMatch = cssContent.match(/@variations:\s*(.+?)(?:\s*\n|\s*\*\/)/);
 
-  if (metadataMatch) {
-    metadata.name = metadataMatch[1].trim();
-    metadata.description = metadataMatch[2].trim();
-    metadata.isPremium = metadataMatch[3] === "true";
-    if (metadataMatch[4]) {
-      metadata.variations = metadataMatch[4].trim();
-    }
+  if (nameMatch) {
+    metadata.name = nameMatch[1].trim();
+  }
+  if (descMatch) {
+    metadata.description = descMatch[1].trim();
+  }
+  if (premiumMatch) {
+    metadata.isPremium = premiumMatch[1] === "true";
+  }
+  if (lightOnlyMatch) {
+    metadata.lightOnly = lightOnlyMatch[1] === "true";
+  }
+  if (variationsMatch) {
+    metadata.variations = variationsMatch[1].trim();
   }
 
   return metadata;

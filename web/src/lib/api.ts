@@ -36,6 +36,7 @@ import type {
   ExternalProgramUpdate,
   IndexerActivityStatus,
   InstanceCapabilities,
+  InstanceCrossSeedCompletionSettings,
   InstanceFormData,
   InstanceReannounceActivity,
   InstanceReannounceCandidate,
@@ -1013,6 +1014,20 @@ class ApiClient {
   async patchCrossSeedSettings(payload: CrossSeedAutomationSettingsPatch): Promise<CrossSeedAutomationSettings> {
     return this.request<CrossSeedAutomationSettings>("/cross-seed/settings", {
       method: "PATCH",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async getInstanceCompletionSettings(instanceId: number): Promise<InstanceCrossSeedCompletionSettings> {
+    return this.request<InstanceCrossSeedCompletionSettings>(`/cross-seed/completion/${instanceId}`)
+  }
+
+  async updateInstanceCompletionSettings(
+    instanceId: number,
+    payload: Omit<InstanceCrossSeedCompletionSettings, "instanceId">
+  ): Promise<InstanceCrossSeedCompletionSettings> {
+    return this.request<InstanceCrossSeedCompletionSettings>(`/cross-seed/completion/${instanceId}`, {
+      method: "PUT",
       body: JSON.stringify(payload),
     })
   }

@@ -11,6 +11,11 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger
 } from "@/components/ui/context-menu"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger
+} from "@/components/ui/tooltip"
 import type { ViewMode } from "@/hooks/usePersistedCompactViewState"
 import { cn } from "@/lib/utils"
 import type { Category } from "@/types"
@@ -47,6 +52,7 @@ interface CategoryTreeProps {
   hasEmptyCategories?: boolean
   syntheticCategories?: Set<string>
   getCategoryCount: (category: string) => string
+  getCategorySize?: (category: string) => string | null
   viewMode?: ViewMode
 }
 
@@ -124,6 +130,7 @@ const CategoryTreeNode = memo(({
   useSubcategories,
   syntheticCategories,
   getCategoryCount,
+  getCategorySize,
   viewMode = "normal",
 }: {
   node: CategoryNode
@@ -142,6 +149,7 @@ const CategoryTreeNode = memo(({
   useSubcategories: boolean
   syntheticCategories?: Set<string>
   getCategoryCount: (category: string) => string
+  getCategorySize?: (category: string) => string | null
   viewMode?: ViewMode
 }) => {
   const hasChildren = node.children.length > 0
@@ -232,9 +240,18 @@ const CategoryTreeNode = memo(({
               {node.displayName}
             </span>
 
-            <span className={`text-xs ${categoryState === "exclude" ? "text-destructive" : "text-muted-foreground"}`}>
-              ({getCategoryCount(node.name)})
-            </span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className={`text-xs tabular-nums ${categoryState === "exclude" ? "text-destructive" : "text-muted-foreground"}`}>
+                  {getCategoryCount(node.name)}
+                </span>
+              </TooltipTrigger>
+              {getCategorySize?.(node.name) && (
+                <TooltipContent side="right">
+                  {getCategorySize(node.name)}
+                </TooltipContent>
+              )}
+            </Tooltip>
           </li>
         </ContextMenuTrigger>
 
@@ -291,6 +308,7 @@ const CategoryTreeNode = memo(({
               useSubcategories={useSubcategories}
               syntheticCategories={syntheticCategories}
               getCategoryCount={getCategoryCount}
+              getCategorySize={getCategorySize}
               viewMode={viewMode}
             />
           ))}
@@ -321,6 +339,7 @@ export const CategoryTree = memo(({
   searchTerm = "",
   syntheticCategories = new Set<string>(),
   getCategoryCount,
+  getCategorySize,
   viewMode = "normal",
 }: CategoryTreeProps) => {
   const itemPadding = viewMode === "dense" ? "px-1 py-0.5" : "px-1.5 py-1.5"
@@ -352,6 +371,7 @@ export const CategoryTree = memo(({
   const uncategorizedState = getCategoryState("")
   const uncategorizedCheckboxState = getCheckboxState(uncategorizedState)
   const uncategorizedCount = getCategoryCount("")
+  const uncategorizedSize = getCategorySize?.("")
 
   return (
     <div className="flex flex-col gap-0">
@@ -370,9 +390,18 @@ export const CategoryTree = memo(({
         <span className={cn("flex-1 text-sm italic", uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground")}>
           Uncategorized
         </span>
-        <span className={cn("text-xs", uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground")}>
-          ({uncategorizedCount})
-        </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className={cn("text-xs tabular-nums", uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground")}>
+              {uncategorizedCount}
+            </span>
+          </TooltipTrigger>
+          {uncategorizedSize && (
+            <TooltipContent side="right">
+              {uncategorizedSize}
+            </TooltipContent>
+          )}
+        </Tooltip>
       </li>
 
       <div className={viewMode === "dense" ? "border-t my-1" : "border-t my-2"} />
@@ -397,6 +426,7 @@ export const CategoryTree = memo(({
           useSubcategories={useSubcategories}
           syntheticCategories={syntheticCategories}
           getCategoryCount={getCategoryCount}
+          getCategorySize={getCategorySize}
           viewMode={viewMode}
         />
       ))}

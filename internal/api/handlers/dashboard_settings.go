@@ -7,34 +7,25 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/alexedwards/scs/v2"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
 )
 
 type DashboardSettingsHandler struct {
-	store          *models.DashboardSettingsStore
-	sessionManager *scs.SessionManager
+	store *models.DashboardSettingsStore
 }
 
-func NewDashboardSettingsHandler(store *models.DashboardSettingsStore, sessionManager *scs.SessionManager) *DashboardSettingsHandler {
+func NewDashboardSettingsHandler(store *models.DashboardSettingsStore) *DashboardSettingsHandler {
 	return &DashboardSettingsHandler{
-		store:          store,
-		sessionManager: sessionManager,
+		store: store,
 	}
 }
 
 func (h *DashboardSettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
-	userID := h.sessionManager.GetInt(r.Context(), "user_id")
-	if userID == 0 {
-		RespondError(w, http.StatusUnauthorized, "User not authenticated")
-		return
-	}
-
-	settings, err := h.store.GetByUserID(r.Context(), userID)
+	settings, err := h.store.GetByUserID(r.Context(), 1)
 	if err != nil {
-		log.Error().Err(err).Int("userID", userID).Msg("failed to get dashboard settings")
+		log.Error().Err(err).Msg("failed to get dashboard settings")
 		RespondError(w, http.StatusInternalServerError, "Failed to load dashboard settings")
 		return
 	}
@@ -43,21 +34,16 @@ func (h *DashboardSettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DashboardSettingsHandler) Update(w http.ResponseWriter, r *http.Request) {
-	userID := h.sessionManager.GetInt(r.Context(), "user_id")
-	if userID == 0 {
-		RespondError(w, http.StatusUnauthorized, "User not authenticated")
-		return
-	}
-
 	var input models.DashboardSettingsInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		log.Warn().Err(err).Msg("failed to decode dashboard settings request")
 		RespondError(w, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
 
-	settings, err := h.store.Update(r.Context(), userID, &input)
+	settings, err := h.store.Update(r.Context(), 1, &input)
 	if err != nil {
-		log.Error().Err(err).Int("userID", userID).Msg("failed to update dashboard settings")
+		log.Error().Err(err).Msg("failed to update dashboard settings")
 		RespondError(w, http.StatusInternalServerError, "Failed to update dashboard settings")
 		return
 	}

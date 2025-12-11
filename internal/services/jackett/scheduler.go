@@ -42,18 +42,16 @@ var priorityMultipliers = map[RateLimitPriority]float64{
 const (
 	// Keep RSS responsive; we'll skip indexers that need more than this wait.
 	rssMaxWait = 15 * time.Second
-	// Completion tasks can tolerate a bit more waiting than RSS but still should not stall.
-	completionMaxWait = 30 * time.Second
 	// Background jobs are least urgent; allow more wait before skipping.
-	backgroundMaxWait = 45 * time.Second
+	backgroundMaxWait = 60 * time.Second
 	// Maximum interval for retry timer to prevent starvation when all tasks have long waits.
 	maxRetryTimerInterval = 15 * time.Minute
 
 	// Execution timeouts for tasks whose original context deadline expired while queued.
 	// These give the task a fresh chance to execute without being penalized for queue wait time.
 	rssExecutionTimeout        = 15 * time.Second
-	completionExecutionTimeout = 30 * time.Second
-	backgroundExecutionTimeout = 45 * time.Second
+	completionExecutionTimeout = 45 * time.Second
+	backgroundExecutionTimeout = 60 * time.Second
 	defaultExecutionTimeout    = 30 * time.Second
 )
 
@@ -827,7 +825,7 @@ func (s *searchScheduler) getMaxWait(item *taskItem) time.Duration {
 		case RateLimitPriorityRSS:
 			return rssMaxWait
 		case RateLimitPriorityCompletion:
-			return completionMaxWait
+			return 0 // No limit - completion searches queue and wait for rate limits
 		case RateLimitPriorityBackground:
 			return backgroundMaxWait
 		case RateLimitPriorityInteractive:
