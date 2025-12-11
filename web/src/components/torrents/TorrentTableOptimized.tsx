@@ -13,7 +13,6 @@ import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
-import { usePersistedGlobalSpeeds } from "@/hooks/usePersistedGlobalSpeeds"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
@@ -99,8 +98,6 @@ import {
   BrickWallFire,
   ChevronDown,
   ChevronUp,
-  ChevronsDown,
-  ChevronsUp,
   Columns3,
   EthernetPort,
   Eye,
@@ -668,7 +665,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
-  const [showGlobalSpeeds, setShowGlobalSpeeds] = usePersistedGlobalSpeeds()
   const { formatTimestamp } = useDateTimeFormatters()
   const { preferences } = useInstancePreferences(instanceId)
   const { instances } = useInstances()
@@ -2821,47 +2817,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
           <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
             <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={() => setShowGlobalSpeeds(!showGlobalSpeeds)}
-                    className="flex items-center gap-2 hover:text-accent-foreground transition-colors cursor-pointer"
-                    aria-label={showGlobalSpeeds ? "Showing global speeds — activate to show filtered speeds" : "Showing filtered speeds — activate to show global speeds"}
-                    aria-pressed={showGlobalSpeeds}
-                  >
-                    {showGlobalSpeeds ? (
-                      <ChevronsDown className="h-4 w-4 text-muted-foreground"/>
-                    ) : (
-                      <ChevronDown className="h-3 w-3 text-muted-foreground"/>
-                    )}
-                    <span className="font-medium">
-                      {formatSpeedWithUnit(
-                        showGlobalSpeeds
-                          ? (effectiveServerState?.dl_info_speed ?? 0)
-                          : (stats?.totalDownloadSpeed ?? 0),
-                        speedUnit
-                      )}
-                    </span>
-                    {showGlobalSpeeds ? (
-                      <ChevronsUp className="h-4 w-4 text-muted-foreground"/>
-                    ) : (
-                      <ChevronUp className="h-3 w-3 text-muted-foreground"/>
-                    )}
-                    <span className="font-medium">
-                      {formatSpeedWithUnit(
-                        showGlobalSpeeds
-                          ? (effectiveServerState?.up_info_speed ?? 0)
-                          : (stats?.totalUploadSpeed ?? 0),
-                        speedUnit
-                      )}
-                    </span>
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {showGlobalSpeeds ? "Global speeds - Click for filtered" : "Filtered speeds - Click for global"}
-                </TooltipContent>
-              </Tooltip>
+              <ChevronDown className="h-3 w-3 text-muted-foreground"/>
+              <span className="font-medium">{formatSpeedWithUnit(effectiveServerState?.dl_info_speed ?? 0, speedUnit)}</span>
+              <ChevronUp className="h-3 w-3 text-muted-foreground"/>
+              <span className="font-medium">{formatSpeedWithUnit(effectiveServerState?.up_info_speed ?? 0, speedUnit)}</span>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
