@@ -108,30 +108,107 @@ func (s *Service) alignCrossSeedContentPaths(
 		return true // Episode-in-pack uses season pack path directly, no alignment needed
 	}
 
-	sourceFiles := expectedSourceFiles
+	// Wait for torrent files to be available from qBittorrent.
+	// After adding a torrent, qBittorrent may take a moment to process and populate the file list.
+	// Using expectedSourceFiles as a fallback can cause issues because qBittorrent may have
+	// applied content layout changes (e.g., Subfolder) that alter the actual file paths.
+	var sourceFiles qbt.TorrentFiles
 	refreshCtx := qbittorrent.WithForceFilesRefresh(ctx)
-	filesMap, err := s.syncManager.GetTorrentFilesBatch(refreshCtx, instanceID, []string{torrentHash})
-	if err != nil {
+	filesDeadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(filesDeadline) {
+		if ctx.Err() != nil {
+			log.Debug().
+				Int("instanceID", instanceID).
+				Str("torrentHash", torrentHash).
+				Msg("Context cancelled while waiting for torrent files")
+			break
+		}
+		filesMap, err := s.syncManager.GetTorrentFilesBatch(refreshCtx, instanceID, []string{torrentHash})
+		if err != nil {
+			log.Debug().
+				Err(err).
+				Int("instanceID", instanceID).
+				Str("torrentHash", torrentHash).
+				Msg("Failed to refresh torrent files, retrying")
+		} else if currentFiles, ok := filesMap[canonicalHash]; ok && len(currentFiles) > 0 {
+			sourceFiles = currentFiles
+			log.Debug().
+				Int("instanceID", instanceID).
+				Str("torrentHash", torrentHash).
+				Int("fileCount", len(currentFiles)).
+				Msg("Got torrent files from qBittorrent")
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	// Fallback to expected files if we couldn't get them from qBittorrent
+	if len(sourceFiles) == 0 {
 		log.Debug().
-			Err(err).
 			Int("instanceID", instanceID).
 			Str("torrentHash", torrentHash).
-			Msg("Failed to refresh torrent files, using expected source files")
-	} else if currentFiles, ok := filesMap[canonicalHash]; ok && len(currentFiles) > 0 {
-		sourceFiles = currentFiles
-	} else {
-		log.Debug().
-			Int("instanceID", instanceID).
-			Str("torrentHash", torrentHash).
-			Str("canonicalHash", canonicalHash).
-			Msg("Torrent hash not found in file map or files empty, using expected source files")
+			Msg("Could not get torrent files from qBittorrent after retries, using expected source files")
+		sourceFiles = expectedSourceFiles
 	}
 
 	sourceRoot := detectCommonRoot(sourceFiles)
 	targetRoot := detectCommonRoot(candidateFiles)
 
-	// Rename folder FIRST if different - this must happen before file renames
-	// because qBittorrent needs to know where to look for files on disk
+	// Build file rename plan using original source paths (before any folder rename).
+	// The plan maps source files to candidate files based on size matching.
+	plan, unmatched := buildFileRenamePlan(sourceFiles, candidateFiles)
+
+	// Rename files FIRST (while still in original folder structure).
+	// This must happen before folder rename to avoid disk conflicts: if we rename the
+	// folder first, then try to rename a file to a name that already exists on disk
+	// (from the matched torrent), qBittorrent will fail with "newPath already in use".
+	// By renaming files first within the original folder, we're just updating metadata
+	// (the original folder doesn't exist on disk anyway for a fresh cross-seed add).
+	renamed := 0
+	for _, instr := range plan {
+		if instr.oldPath == instr.newPath || instr.oldPath == "" || instr.newPath == "" {
+			continue
+		}
+
+		// Compute paths for file rename while keeping the original folder structure.
+		// e.g., plan says: "FolderA/file.mkv" -> "FolderB/file2.mkv"
+		// We rename: "FolderA/file.mkv" -> "FolderA/file2.mkv" (keep source folder)
+		// Then folder rename "FolderA" -> "FolderB" will produce "FolderB/file2.mkv"
+		actualOldPath := instr.oldPath
+		actualNewPath := instr.newPath
+		if sourceRoot != "" && targetRoot != "" && sourceRoot != targetRoot {
+			// Adjust newPath to stay in source folder (file rename only changes the filename)
+			actualNewPath = adjustPathForRootRename(instr.newPath, targetRoot, sourceRoot)
+		}
+
+		if actualOldPath == actualNewPath {
+			continue
+		}
+
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("torrentHash", torrentHash).
+			Str("from", actualOldPath).
+			Str("to", actualNewPath).
+			Msg("Renaming cross-seed file")
+
+		if err := s.syncManager.RenameTorrentFile(ctx, instanceID, torrentHash, actualOldPath, actualNewPath); err != nil {
+			log.Warn().
+				Err(err).
+				Int("instanceID", instanceID).
+				Str("torrentHash", torrentHash).
+				Str("from", actualOldPath).
+				Str("to", actualNewPath).
+				Msg("Failed to rename cross-seed file, aborting alignment")
+			return false
+		}
+		renamed++
+	}
+
+	// Rename folder AFTER file renames are complete.
+	// Now that files have their target names within the source folder, renaming the
+	// folder will update all paths to match the candidate torrent's layout, pointing
+	// to the existing files on disk (from the matched torrent).
 	rootRenamed := false
 	if sourceRoot != "" && targetRoot != "" && sourceRoot != targetRoot {
 		if err := s.syncManager.RenameTorrentFolder(ctx, instanceID, torrentHash, sourceRoot, targetRoot); err != nil {
@@ -141,8 +218,8 @@ func (s *Service) alignCrossSeedContentPaths(
 				Str("torrentHash", torrentHash).
 				Str("from", sourceRoot).
 				Str("to", targetRoot).
-				Msg("Failed to rename cross-seed root folder, skipping file alignment")
-			return false // Don't attempt file renames with wrong folder paths
+				Msg("Failed to rename cross-seed root folder")
+			return false
 		}
 		rootRenamed = true
 		log.Debug().
@@ -151,14 +228,7 @@ func (s *Service) alignCrossSeedContentPaths(
 			Str("from", sourceRoot).
 			Str("to", targetRoot).
 			Msg("Renamed cross-seed root folder to match existing torrent")
-
-		// Update sourceFiles paths to reflect the folder rename for file matching
-		for i := range sourceFiles {
-			sourceFiles[i].Name = adjustPathForRootRename(sourceFiles[i].Name, sourceRoot, targetRoot)
-		}
 	}
-
-	plan, unmatched := buildFileRenamePlan(sourceFiles, candidateFiles)
 
 	if len(plan) == 0 {
 		if len(unmatched) > 0 {
@@ -172,25 +242,6 @@ func (s *Service) alignCrossSeedContentPaths(
 				Msg("Some cross-seed files could not be mapped, recheck will handle verification")
 		}
 		return true // No renames needed - paths already match or recheck will verify
-	}
-
-	renamed := 0
-	for _, instr := range plan {
-		if instr.oldPath == instr.newPath || instr.oldPath == "" || instr.newPath == "" {
-			continue
-		}
-
-		if err := s.syncManager.RenameTorrentFile(ctx, instanceID, torrentHash, instr.oldPath, instr.newPath); err != nil {
-			log.Warn().
-				Err(err).
-				Int("instanceID", instanceID).
-				Str("torrentHash", torrentHash).
-				Str("from", instr.oldPath).
-				Str("to", instr.newPath).
-				Msg("Failed to rename cross-seed file, aborting alignment")
-			return false
-		}
-		renamed++
 	}
 
 	if renamed == 0 && !rootRenamed {
