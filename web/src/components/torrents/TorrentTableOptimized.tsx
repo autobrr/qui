@@ -969,6 +969,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     switch (columnId) {
       case "status_icon":
         return "state"
+      case "num_seeds":
+        return "num_complete" // Sort by total seeds, not connected
       default:
         return columnId
     }
