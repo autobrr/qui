@@ -393,19 +393,21 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeFailed, fmt.Sprintf("failed to load trackers: %v", err))
 		return
 	}
-	freshTrackers := s.getProblematicTrackers(trackerList)
-	if freshTrackers == "" {
-		freshTrackers = initialTrackers
-	}
 	if s.hasHealthyTracker(trackerList) {
-		s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeSkipped, "tracker healthy")
+		healthyTrackers := s.getHealthyTrackers(trackerList)
+		s.recordActivity(instanceID, hash, torrentName, healthyTrackers, ActivityOutcomeSkipped, "tracker healthy")
 		return
 	}
 	if s.trackersUpdating(trackerList) {
 		if ok := s.waitForInitialContact(ctx, client, hash, settings.InitialWaitSeconds); ok {
-			s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeSkipped, "tracker healthy after initial wait")
+			healthyTrackers := s.getHealthyTrackers(trackerList)
+			s.recordActivity(instanceID, hash, torrentName, healthyTrackers, ActivityOutcomeSkipped, "tracker healthy after initial wait")
 			return
 		}
+	}
+	freshTrackers := s.getProblematicTrackers(trackerList)
+	if freshTrackers == "" {
+		freshTrackers = initialTrackers
 	}
 	opts := &qbt.ReannounceOptions{
 		Interval:        settings.ReannounceIntervalSeconds,
@@ -679,6 +681,35 @@ func (s *Service) getProblematicTrackers(trackers []qbt.TorrentTracker) string {
 		}
 	}
 	return strings.Join(problematicDomains, ", ")
+}
+
+// getHealthyTrackers returns a comma-separated list of tracker domains that are
+// healthy (TrackerStatusOK without an unregistered message). Used for logging
+// when skipping a torrent because it has working trackers.
+func (s *Service) getHealthyTrackers(trackers []qbt.TorrentTracker) string {
+	if len(trackers) == 0 {
+		return ""
+	}
+	var healthyDomains []string
+	seenDomains := make(map[string]struct{})
+	for _, tracker := range trackers {
+		if tracker.Status == qbt.TrackerStatusDisabled {
+			continue
+		}
+		isHealthy := tracker.Status == qbt.TrackerStatusOK &&
+			!qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message)
+		if isHealthy {
+			domain := s.extractTrackerDomain(tracker.Url)
+			if domain != "" {
+				domainLower := strings.ToLower(domain)
+				if _, exists := seenDomains[domainLower]; !exists {
+					seenDomains[domainLower] = struct{}{}
+					healthyDomains = append(healthyDomains, domain)
+				}
+			}
+		}
+	}
+	return strings.Join(healthyDomains, ", ")
 }
 
 func (s *Service) trackersUpdating(trackers []qbt.TorrentTracker) bool {
