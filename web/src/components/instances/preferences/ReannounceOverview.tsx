@@ -7,7 +7,6 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useInstances } from "@/hooks/useInstances"
@@ -15,7 +14,8 @@ import { api } from "@/lib/api"
 import { cn, copyTextToClipboard } from "@/lib/utils"
 import type { Instance, InstanceFormData, InstanceReannounceActivity, InstanceReannounceSettings } from "@/types"
 import { useQueries, useQueryClient } from "@tanstack/react-query"
-import { Copy, Info, RefreshCcw, Settings2 } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Copy, Info, RefreshCcw, Search, Settings2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 
@@ -111,6 +111,7 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
   const queryClient = useQueryClient()
   const [expandedInstances, setExpandedInstances] = useState<string[]>([])
   const [hideSkippedMap, setHideSkippedMap] = useState<Record<number, boolean>>({})
+  const [searchMap, setSearchMap] = useState<Record<number, string>>({})
 
   const activeInstances = useMemo(
     () => (instances ?? []).filter((inst) => inst.isActive),
@@ -228,10 +229,20 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
             const settings = instance.reannounceSettings
             const isEnabled = settings?.enabled ?? false
             const hideSkipped = hideSkippedMap[instance.id] ?? true
-            // Filter and limit to 50 events for display
-            const filteredEvents = hideSkipped
-              ? events.filter((e) => e.outcome !== "skipped").slice(-50).reverse()
-              : events.slice(-50).reverse()
+            const searchTerm = (searchMap[instance.id] ?? "").toLowerCase().trim()
+            // Filter by outcome and search term, limit to 50 events for display
+            const filteredEvents = events
+              .filter((e) => {
+                if (hideSkipped && e.outcome === "skipped") return false
+                if (searchTerm) {
+                  const nameMatch = e.torrentName?.toLowerCase().includes(searchTerm)
+                  const hashMatch = e.hash.toLowerCase().includes(searchTerm)
+                  if (!nameMatch && !hashMatch) return false
+                }
+                return true
+              })
+              .slice(-50)
+              .reverse()
 
             return (
               <AccordionItem key={instance.id} value={String(instance.id)}>
@@ -311,9 +322,23 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
 
                     {/* Activity log */}
                     {isEnabled && (
-                      <div className="space-y-2">
+                      <div className="space-y-3">
                         <div className="flex items-center justify-between">
-                          <h4 className="text-sm font-medium">Recent Activity</h4>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-medium">Recent Activity</h4>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="text-xs text-muted-foreground cursor-help">
+                                  {filteredEvents.length === events.length
+                                    ? `${events.length} events`
+                                    : `${filteredEvents.length} of ${events.length}`}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Retains last 100 succeeded, 100 failed, 50 skipped</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
@@ -348,19 +373,38 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
                           </div>
                         </div>
 
+                        {/* Search filter */}
+                        <div className="relative">
+                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            type="text"
+                            placeholder="Filter by name or hash..."
+                            value={searchMap[instance.id] ?? ""}
+                            onChange={(e) => setSearchMap((prev) => ({
+                              ...prev,
+                              [instance.id]: e.target.value,
+                            }))}
+                            className="pl-9 h-8 text-sm"
+                          />
+                        </div>
+
                         {activityQuery?.isLoading ? (
                           <div className="h-[150px] flex items-center justify-center border rounded-lg bg-muted/10">
                             <p className="text-sm text-muted-foreground">Loading activity...</p>
                           </div>
                         ) : filteredEvents.length === 0 ? (
                           <div className="h-[100px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/10 text-center p-4">
-                            <p className="text-sm text-muted-foreground">No activity recorded yet.</p>
+                            <p className="text-sm text-muted-foreground">
+                              {searchTerm ? "No matching events found." : "No activity recorded yet."}
+                            </p>
                             <p className="text-xs text-muted-foreground/60 mt-1">
-                              Events will appear here when stalled torrents are detected.
+                              {searchTerm
+                                ? "Try a different search term or clear the filter."
+                                : "Events will appear here when stalled torrents are detected."}
                             </p>
                           </div>
                         ) : (
-                          <ScrollArea className="h-[200px] rounded-md border">
+                          <div className="max-h-[350px] overflow-auto rounded-md border">
                             <div className="divide-y divide-border/40">
                               {filteredEvents.map((event, eventIndex) => (
                                 <div
@@ -429,7 +473,7 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
                                 </div>
                               ))}
                             </div>
-                          </ScrollArea>
+                          </div>
                         )}
                       </div>
                     )}
