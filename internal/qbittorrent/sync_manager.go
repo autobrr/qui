@@ -532,9 +532,15 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	}
 
 	// Choose torrent getter based on freshness preference
+	// Use a wrapper for GetTorrentsUnchecked to fall back to GetTorrents if cache is empty
 	getTorrents := syncManager.GetTorrents
 	if skipFreshData {
-		getTorrents = syncManager.GetTorrentsUnchecked
+		getTorrents = func(opts qbt.TorrentFilterOptions) []qbt.Torrent {
+			if torrents := syncManager.GetTorrentsUnchecked(opts); torrents != nil {
+				return torrents
+			}
+			return syncManager.GetTorrents(opts)
+		}
 	}
 
 	// Determine if we can use library filtering or need manual filtering

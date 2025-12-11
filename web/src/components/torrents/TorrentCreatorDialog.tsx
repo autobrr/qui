@@ -55,8 +55,11 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
   const queryClient = useQueryClient()
 
   const { versionInfo } = useQBittorrentAppInfo(instanceId, { fetchIfMissing: false })
-  const supportsFormatSelection = versionInfo.isLibtorrent2 !== false
-  const formatSelectionUnavailable = versionInfo.isLibtorrent2 === false
+  // Only show format selection if we know libtorrent 2.x is available
+  // When version info isn't available (hasBuildInfo=false), we don't know capabilities
+  const supportsFormatSelection = versionInfo.hasBuildInfo && versionInfo.isLibtorrent2 === true
+  const formatSelectionUnavailable = versionInfo.hasBuildInfo && versionInfo.isLibtorrent2 === false
+  const versionUnknown = !versionInfo.hasBuildInfo
   const libtorrentVersionLabel =
     formatSelectionUnavailable && versionInfo.libtorrentMajorVersion? `libtorrent ${versionInfo.libtorrentMajorVersion}.x`: "libtorrent 1.x"
 
@@ -423,6 +426,15 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                     </div>
                   )}
                 </form.Field>
+              ) : versionUnknown ? (
+                <Alert className="bg-muted/40 text-muted-foreground">
+                  <Info className="h-4 w-4" />
+                  <AlertTitle>Torrent format unavailable</AlertTitle>
+                  <AlertDescription>
+                    Version info not available. v1 format will be used by default.
+                    Navigate to the torrents page first to detect qBittorrent capabilities.
+                  </AlertDescription>
+                </Alert>
               ) : (
                 <Alert className="bg-muted/40 text-muted-foreground">
                   <Info className="h-4 w-4" />
