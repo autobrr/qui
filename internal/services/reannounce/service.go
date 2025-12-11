@@ -407,19 +407,7 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 		s.recordActivity(instanceID, hash, torrentName, healthyTrackers, ActivityOutcomeSkipped, "tracker healthy")
 		return
 	}
-	if s.trackersUpdating(trackerList) {
-		if ok := s.waitForInitialContact(ctx, client, hash, settings.InitialWaitSeconds); ok {
-			// Re-fetch trackers to get accurate state for logging
-			updatedTrackers, err := client.GetTorrentTrackersCtx(ctx, hash)
-			if err != nil {
-				log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("reannounce: failed to refresh trackers after initial wait, using stale list")
-				updatedTrackers = trackerList // fallback to stale data
-			}
-			healthyTrackers := s.getHealthyTrackers(updatedTrackers)
-			s.recordActivity(instanceID, hash, torrentName, healthyTrackers, ActivityOutcomeSkipped, "tracker healthy after initial wait")
-			return
-		}
-	}
+	// No healthy tracker - proceed with reannounce (trackers may be updating or have errors)
 	freshTrackers := s.getProblematicTrackers(trackerList)
 	if freshTrackers == "" {
 		freshTrackers = initialTrackers
@@ -470,31 +458,6 @@ func (s *Service) baseContext() context.Context {
 	s.ctxMu.RLock()
 	defer s.ctxMu.RUnlock()
 	return s.baseCtx
-}
-
-func (s *Service) waitForInitialContact(ctx context.Context, client *qbittorrent.Client, hash string, waitSeconds int) bool {
-	if waitSeconds <= 0 {
-		waitSeconds = 10
-	}
-	deadlineCtx, cancel := context.WithTimeout(ctx, time.Duration(waitSeconds)*time.Second)
-	defer cancel()
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-deadlineCtx.Done():
-			return false
-		case <-ticker.C:
-			trackers, err := client.GetTorrentTrackersCtx(deadlineCtx, hash)
-			if err != nil {
-				return false
-			}
-			if s.trackersUpdating(trackers) {
-				continue
-			}
-			return s.hasHealthyTracker(trackers)
-		}
-	}
 }
 
 func (s *Service) lookupTorrents(ctx context.Context, instanceID int, hashes []string) map[string]qbt.Torrent {
