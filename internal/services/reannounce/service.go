@@ -271,8 +271,10 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 			continue
 		}
 
-		hasProblem := !s.hasHealthyTracker(torrent.Trackers)
-		waiting := s.trackersUpdating(torrent.Trackers) && !hasProblem
+		healthy := s.hasHealthyTracker(torrent.Trackers)
+		updating := s.trackersUpdating(torrent.Trackers)
+		hasProblem := !healthy && !updating
+		waiting := updating && !healthy
 		if !hasProblem && !waiting {
 			continue
 		}
@@ -400,7 +402,12 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 	}
 	if s.trackersUpdating(trackerList) {
 		if ok := s.waitForInitialContact(ctx, client, hash, settings.InitialWaitSeconds); ok {
-			healthyTrackers := s.getHealthyTrackers(trackerList)
+			// Re-fetch trackers to get accurate state for logging
+			updatedTrackers, err := client.GetTorrentTrackersCtx(ctx, hash)
+			if err != nil {
+				updatedTrackers = trackerList // fallback to stale data
+			}
+			healthyTrackers := s.getHealthyTrackers(updatedTrackers)
 			s.recordActivity(instanceID, hash, torrentName, healthyTrackers, ActivityOutcomeSkipped, "tracker healthy after initial wait")
 			return
 		}
