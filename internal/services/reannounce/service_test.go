@@ -270,29 +270,42 @@ func TestTorrentMeetsCriteria_IncludeExcludeLogic(t *testing.T) {
 	}
 }
 
-func TestTrackerProblemDetected_BasicCases(t *testing.T) {
+func TestHasHealthyTracker_BasicCases(t *testing.T) {
 	service := &Service{}
 
-	require.False(t, service.trackerProblemDetected(nil))
+	// nil trackers = no healthy tracker
+	require.False(t, service.hasHealthyTracker(nil))
 
-	// Working tracker only
+	// Working tracker only = healthy
 	okTrackers := []qbt.TorrentTracker{{Status: qbt.TrackerStatusOK, Message: ""}}
-	require.False(t, service.trackerProblemDetected(okTrackers))
+	require.True(t, service.hasHealthyTracker(okTrackers))
 
-	// Not working with outage message
+	// Not working (any message) = not healthy
 	downTrackers := []qbt.TorrentTracker{{Status: qbt.TrackerStatusNotWorking, Message: "tracker is down for maintenance"}}
-	require.True(t, service.trackerProblemDetected(downTrackers))
+	require.False(t, service.hasHealthyTracker(downTrackers))
+
+	// Not working with unknown message = still not healthy (this is the key fix!)
+	unknownMsgTrackers := []qbt.TorrentTracker{{Status: qbt.TrackerStatusNotWorking, Message: "some unknown error"}}
+	require.False(t, service.hasHealthyTracker(unknownMsgTrackers))
 
 	// OK tracker plus problematic one – overall should be considered healthy due to working tracker
 	mixed := []qbt.TorrentTracker{
 		{Status: qbt.TrackerStatusNotWorking, Message: "tracker is down"},
 		{Status: qbt.TrackerStatusOK, Message: ""},
 	}
-	require.False(t, service.trackerProblemDetected(mixed))
+	require.True(t, service.hasHealthyTracker(mixed))
 
-	// OK tracker with unregistered message should be treated as problematic
+	// OK tracker with unregistered message should NOT be treated as healthy
 	unregistered := []qbt.TorrentTracker{{Status: qbt.TrackerStatusOK, Message: "Torrent not registered"}}
-	require.True(t, service.trackerProblemDetected(unregistered))
+	require.False(t, service.hasHealthyTracker(unregistered))
+
+	// Disabled trackers should be ignored
+	disabledOnly := []qbt.TorrentTracker{{Status: qbt.TrackerStatusDisabled, Message: ""}}
+	require.False(t, service.hasHealthyTracker(disabledOnly))
+
+	// Updating trackers = not healthy yet
+	updatingTrackers := []qbt.TorrentTracker{{Status: qbt.TrackerStatusUpdating, Message: ""}}
+	require.False(t, service.hasHealthyTracker(updatingTrackers))
 }
 
 func TestTrackersUpdating(t *testing.T) {

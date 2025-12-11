@@ -165,7 +165,7 @@ func (s *Service) RequestReannounce(ctx context.Context, instanceID int, hashes 
 		if !s.torrentMeetsCriteria(torrent, settings) {
 			continue
 		}
-		if !s.trackerProblemDetected(torrent.Trackers) {
+		if s.hasHealthyTracker(torrent.Trackers) {
 			continue
 		}
 		trackers := s.getProblematicTrackers(torrent.Trackers)
@@ -226,7 +226,7 @@ func (s *Service) scanInstance(ctx context.Context, instanceID int, settings *mo
 		if !s.torrentMeetsCriteria(torrent, settings) {
 			continue
 		}
-		if !s.trackerProblemDetected(torrent.Trackers) {
+		if s.hasHealthyTracker(torrent.Trackers) {
 			continue
 		}
 		trackers := s.getProblematicTrackers(torrent.Trackers)
@@ -271,7 +271,7 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 			continue
 		}
 
-		hasProblem := s.trackerProblemDetected(torrent.Trackers)
+		hasProblem := !s.hasHealthyTracker(torrent.Trackers)
 		waiting := s.trackersUpdating(torrent.Trackers) && !hasProblem
 		if !hasProblem && !waiting {
 			continue
@@ -397,7 +397,7 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 	if freshTrackers == "" {
 		freshTrackers = initialTrackers
 	}
-	if !s.trackerProblemDetected(trackerList) {
+	if s.hasHealthyTracker(trackerList) {
 		s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeSkipped, "tracker healthy")
 		return
 	}
@@ -475,7 +475,7 @@ func (s *Service) waitForInitialContact(ctx context.Context, client *qbittorrent
 			if s.trackersUpdating(trackers) {
 				continue
 			}
-			return !s.trackerProblemDetected(trackers)
+			return s.hasHealthyTracker(trackers)
 		}
 	}
 }
@@ -631,35 +631,28 @@ func (s *Service) torrentMeetsCriteria(torrent qbt.Torrent, settings *models.Ins
 	return false
 }
 
-func (s *Service) trackerProblemDetected(trackers []qbt.TorrentTracker) bool {
-	if len(trackers) == 0 {
-		return false
-	}
-	var hasWorking bool
-	var hasProblem bool
+// hasHealthyTracker returns true if at least one tracker is working
+// (TrackerStatusOK without an unregistered message). This aligns with
+// go-qbittorrent's isTrackerStatusOK logic used in ReannounceTorrentWithRetry.
+func (s *Service) hasHealthyTracker(trackers []qbt.TorrentTracker) bool {
 	for _, tracker := range trackers {
-		switch tracker.Status {
-		case qbt.TrackerStatusDisabled:
+		if tracker.Status == qbt.TrackerStatusDisabled {
 			continue
-		case qbt.TrackerStatusOK:
-			if qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message) {
-				hasProblem = true
-			} else {
-				hasWorking = true
-			}
-		case qbt.TrackerStatusNotWorking:
-			if qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message) || qbittorrent.TrackerMessageMatchesDown(tracker.Message) {
-				hasProblem = true
-			}
-		case qbt.TrackerStatusUpdating, qbt.TrackerStatusNotContacted:
-			if qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message) {
-				hasProblem = true
-			}
+		}
+		// Check message first to catch OK status with unregistered msg
+		if qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message) {
+			continue
+		}
+		if tracker.Status == qbt.TrackerStatusOK {
+			return true
 		}
 	}
-	return hasProblem && !hasWorking
+	return false
 }
 
+// getProblematicTrackers returns a comma-separated list of tracker domains
+// that are not healthy (anything other than TrackerStatusOK without an
+// unregistered message).
 func (s *Service) getProblematicTrackers(trackers []qbt.TorrentTracker) string {
 	if len(trackers) == 0 {
 		return ""
@@ -670,22 +663,11 @@ func (s *Service) getProblematicTrackers(trackers []qbt.TorrentTracker) string {
 		if tracker.Status == qbt.TrackerStatusDisabled {
 			continue
 		}
-		var isProblematic bool
-		switch tracker.Status {
-		case qbt.TrackerStatusOK:
-			if qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message) {
-				isProblematic = true
-			}
-		case qbt.TrackerStatusNotWorking:
-			if qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message) || qbittorrent.TrackerMessageMatchesDown(tracker.Message) {
-				isProblematic = true
-			}
-		case qbt.TrackerStatusUpdating, qbt.TrackerStatusNotContacted:
-			if qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message) {
-				isProblematic = true
-			}
-		}
-		if isProblematic {
+		// A tracker is problematic if it's not healthy
+		// (i.e., not TrackerStatusOK, or OK but with unregistered message)
+		isHealthy := tracker.Status == qbt.TrackerStatusOK &&
+			!qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message)
+		if !isHealthy {
 			domain := s.extractTrackerDomain(tracker.Url)
 			if domain != "" {
 				domainLower := strings.ToLower(domain)
