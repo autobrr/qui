@@ -2827,6 +2827,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                     type="button"
                     onClick={() => setShowGlobalSpeeds(!showGlobalSpeeds)}
                     className="flex items-center gap-2 hover:text-accent-foreground transition-colors cursor-pointer"
+                    aria-label={showGlobalSpeeds ? "Showing global speeds — activate to show filtered speeds" : "Showing filtered speeds — activate to show global speeds"}
+                    aria-pressed={showGlobalSpeeds}
                   >
                     {showGlobalSpeeds ? (
                       <ChevronsDown className="h-4 w-4 text-muted-foreground"/>
