@@ -590,3 +590,352 @@ func TestStreamManager_ProcessGroupCoalescing(t *testing.T) {
 	require.Equal(t, finalMeta, group.pendingMeta, "should have coalesced to final meta")
 	group.mu.Unlock()
 }
+
+func TestUnregister_MultipleSubscribersInSameGroup(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+	provider := newRecordingProvider()
+	manager.server.Provider = provider
+
+	// Create two subscriptions with identical StreamOptions (same group)
+	opts := StreamOptions{InstanceID: 1, Page: 0, Limit: 50, Sort: "addedOn", Order: "desc"}
+	groupKey := streamOptionsKey(opts)
+
+	sub1 := &subscriptionState{
+		id:        "sub-1",
+		options:   opts,
+		created:   time.Now(),
+		groupKey:  groupKey,
+		clientKey: "client-1",
+	}
+	sub2 := &subscriptionState{
+		id:        "sub-2",
+		options:   opts,
+		created:   time.Now(),
+		groupKey:  groupKey,
+		clientKey: "client-2",
+	}
+
+	// Create group with both subscribers
+	group := &subscriptionGroup{
+		key:     groupKey,
+		options: opts,
+		subs:    make(map[string]*subscriptionState),
+	}
+	group.subs[sub1.id] = sub1
+	group.subs[sub2.id] = sub2
+
+	// Register both subscriptions
+	manager.mu.Lock()
+	manager.subscriptions[sub1.id] = sub1
+	manager.subscriptions[sub2.id] = sub2
+	manager.instanceIndex[opts.InstanceID] = map[string]*subscriptionState{
+		sub1.id: sub1,
+		sub2.id: sub2,
+	}
+	manager.groups[groupKey] = group
+	manager.instanceGroups[opts.InstanceID] = map[string]*subscriptionGroup{
+		groupKey: group,
+	}
+	manager.mu.Unlock()
+
+	// Unregister sub1
+	manager.Unregister(sub1.id)
+
+	// Verify sub1 is removed but sub2 remains
+	manager.mu.RLock()
+	_, sub1Exists := manager.subscriptions[sub1.id]
+	_, sub2Exists := manager.subscriptions[sub2.id]
+	groupStillExists := manager.groups[groupKey] != nil
+	instanceIndexExists := manager.instanceIndex[opts.InstanceID] != nil
+	instanceGroupsExist := manager.instanceGroups[opts.InstanceID] != nil
+	manager.mu.RUnlock()
+
+	require.False(t, sub1Exists, "sub1 should be removed from subscriptions")
+	require.True(t, sub2Exists, "sub2 should still exist in subscriptions")
+	require.True(t, groupStillExists, "group should still exist with remaining subscriber")
+	require.True(t, instanceIndexExists, "instance index should still exist")
+	require.True(t, instanceGroupsExist, "instance groups should still exist")
+
+	// Verify group still has sub2
+	group.subsMu.RLock()
+	_, sub1InGroup := group.subs[sub1.id]
+	_, sub2InGroup := group.subs[sub2.id]
+	groupSubCount := len(group.subs)
+	group.subsMu.RUnlock()
+
+	require.False(t, sub1InGroup, "sub1 should be removed from group")
+	require.True(t, sub2InGroup, "sub2 should still be in group")
+	require.Equal(t, 1, groupSubCount, "group should have exactly 1 subscriber")
+
+	// Unregister sub2 - now everything should be cleaned up
+	manager.Unregister(sub2.id)
+
+	manager.mu.RLock()
+	_, sub2StillExists := manager.subscriptions[sub2.id]
+	groupGone := manager.groups[groupKey] == nil
+	instanceIndexGone := manager.instanceIndex[opts.InstanceID] == nil
+	instanceGroupsGone := manager.instanceGroups[opts.InstanceID] == nil
+	manager.mu.RUnlock()
+
+	require.False(t, sub2StillExists, "sub2 should be removed")
+	require.True(t, groupGone, "group should be cleaned up when empty")
+	require.True(t, instanceIndexGone, "instance index should be cleaned up")
+	require.True(t, instanceGroupsGone, "instance groups should be cleaned up")
+}
+
+func TestHandleMainData_NilData(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+	provider := newRecordingProvider()
+	manager.server.Provider = provider
+
+	sub := &subscriptionState{
+		id:        "sub-nil-test",
+		options:   StreamOptions{InstanceID: 1},
+		created:   time.Now(),
+		groupKey:  "group-nil-test",
+		clientKey: "client-nil-test",
+	}
+
+	manager.mu.Lock()
+	manager.subscriptions[sub.id] = sub
+	manager.instanceIndex[sub.options.InstanceID] = map[string]*subscriptionState{
+		sub.id: sub,
+	}
+	manager.mu.Unlock()
+
+	// Call with nil data - should return early without publishing
+	manager.HandleMainData(sub.options.InstanceID, nil)
+
+	// Give a brief moment for any async operations
+	time.Sleep(10 * time.Millisecond)
+
+	messages := provider.allMessages()
+	require.Empty(t, messages, "nil data should not produce any messages")
+}
+
+func TestHandleSyncError_NilError(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+	provider := newRecordingProvider()
+	manager.server.Provider = provider
+
+	sub := &subscriptionState{
+		id:        "sub-nil-err",
+		options:   StreamOptions{InstanceID: 1},
+		created:   time.Now(),
+		groupKey:  "group-nil-err",
+		clientKey: "client-nil-err",
+	}
+
+	manager.mu.Lock()
+	manager.subscriptions[sub.id] = sub
+	manager.instanceIndex[sub.options.InstanceID] = map[string]*subscriptionState{
+		sub.id: sub,
+	}
+	manager.mu.Unlock()
+
+	// Call with nil error - should return early without publishing
+	manager.HandleSyncError(sub.options.InstanceID, nil)
+
+	messages := provider.allMessages()
+	require.Empty(t, messages, "nil error should not produce any messages")
+}
+
+func TestParseStreamRequests_EmptyStreamsParam(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/stream", nil)
+	_, err := parseStreamRequests(req)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "missing streams parameter")
+}
+
+func TestParseStreamRequests_MalformedJSON(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/stream?streams=not-json", nil)
+	_, err := parseStreamRequests(req)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid streams payload")
+}
+
+func TestParseStreamRequests_EmptyArray(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/stream?streams=[]", nil)
+	_, err := parseStreamRequests(req)
+	require.Error(t, err)
+	require.ErrorIs(t, err, errNoStreamRequests)
+}
+
+func TestParseStreamRequests_InvalidInstanceID(t *testing.T) {
+	tests := []struct {
+		name       string
+		instanceID int
+	}{
+		{"zero", 0},
+		{"negative", -1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			payload := []map[string]any{
+				{
+					"key":        "test-stream",
+					"instanceId": tt.instanceID,
+					"page":       0,
+					"limit":      50,
+					"sort":       "addedOn",
+					"order":      "desc",
+				},
+			}
+			raw, err := json.Marshal(payload)
+			require.NoError(t, err)
+
+			req := httptest.NewRequest(http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
+			_, err = parseStreamRequests(req)
+			require.Error(t, err)
+			require.ErrorIs(t, err, errInvalidInstanceID)
+		})
+	}
+}
+
+func TestParseStreamRequests_LimitExceedsMax(t *testing.T) {
+	payload := []map[string]any{
+		{
+			"key":        "test-stream",
+			"instanceId": 1,
+			"page":       0,
+			"limit":      3000, // exceeds maxLimit of 2000
+			"sort":       "addedOn",
+			"order":      "desc",
+		},
+	}
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
+	_, err = parseStreamRequests(req)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid limit")
+}
+
+func TestParseStreamRequests_NegativePage(t *testing.T) {
+	payload := []map[string]any{
+		{
+			"key":        "test-stream",
+			"instanceId": 1,
+			"page":       -1,
+			"limit":      50,
+			"sort":       "addedOn",
+			"order":      "desc",
+		},
+	}
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
+	_, err = parseStreamRequests(req)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid page")
+}
+
+func TestParseStreamRequests_DefaultsApplied(t *testing.T) {
+	// Request with minimal fields - defaults should be applied
+	payload := []map[string]any{
+		{
+			"instanceId": 1,
+			// page, limit, sort, order all omitted
+		},
+	}
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
+	requests, err := parseStreamRequests(req)
+	require.NoError(t, err)
+	require.Len(t, requests, 1)
+
+	opts := requests[0].options
+	require.Equal(t, 1, opts.InstanceID)
+	require.Equal(t, 0, opts.Page, "page should default to 0")
+	require.Equal(t, defaultLimit, opts.Limit, "limit should default to 300")
+	require.Equal(t, "addedOn", opts.Sort, "sort should default to addedOn")
+	require.Equal(t, "desc", opts.Order, "order should default to desc")
+}
+
+func TestParseStreamRequests_OrderNormalization(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"ASC", "asc"},
+		{"DESC", "desc"},
+		{"Asc", "asc"},
+		{"invalid", "desc"}, // invalid values should default to desc
+		{"", "desc"},        // empty should default to desc
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			payload := []map[string]any{
+				{
+					"instanceId": 1,
+					"order":      tt.input,
+				},
+			}
+			raw, err := json.Marshal(payload)
+			require.NoError(t, err)
+
+			req := httptest.NewRequest(http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
+			requests, err := parseStreamRequests(req)
+			require.NoError(t, err)
+			require.Len(t, requests, 1)
+			require.Equal(t, tt.expected, requests[0].options.Order)
+		})
+	}
+}
+
+func TestRegisterSubscription_DuringShutdown(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+
+	// Start shutdown
+	err := manager.Shutdown(context.Background())
+	require.NoError(t, err)
+
+	// Attempt to register after shutdown
+	_, err = manager.registerSubscription(StreamOptions{InstanceID: 1, Limit: 50}, "test-key")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "shutting down")
+}
+
+func TestPrepareBatch_DuringShutdown(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+
+	// Start shutdown
+	err := manager.Shutdown(context.Background())
+	require.NoError(t, err)
+
+	// Attempt to prepare batch after shutdown
+	requests := []streamRequest{
+		{key: "test", options: StreamOptions{InstanceID: 1, Limit: 50}},
+	}
+	_, _, err = manager.PrepareBatch(context.Background(), requests)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "shutting down")
+}
+
+func TestShutdown_WithNilContext(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+
+	// Shutdown with nil context should not panic
+	err := manager.Shutdown(nil)
+	require.NoError(t, err)
+	require.True(t, manager.closing.Load())
+}
+
+func TestShutdown_Idempotent(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+
+	// First shutdown
+	err := manager.Shutdown(context.Background())
+	require.NoError(t, err)
+
+	// Second shutdown should be a no-op (idempotent)
+	err = manager.Shutdown(context.Background())
+	require.NoError(t, err)
+	require.True(t, manager.closing.Load())
+}
