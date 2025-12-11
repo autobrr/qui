@@ -67,6 +67,11 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
   const [hideSkipped, setHideSkipped] = useState(true)
   const [activeTab, setActiveTab] = useState("settings")
 
+  // Reset settings when instance changes
+  useEffect(() => {
+    setSettings(cloneSettings(instance?.reannounceSettings))
+  }, [instanceId, instance?.reannounceSettings])
+
   const trackersQuery = useInstanceTrackers(instanceId, { enabled: !!instance })
 
   const categoriesQuery = useQuery({
@@ -233,7 +238,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
           </div>
           {variant === "card" && (
             <p className="text-sm text-muted-foreground">
-              qui monitors <strong>stalled</strong> torrents and reannounces them if trackers report "unregistered" or errors.
+              qui monitors <strong>stalled</strong> torrents and reannounces them when no tracker is healthy.
               Background scan runs every {GLOBAL_SCAN_INTERVAL_SECONDS} seconds.
             </p>
           )}

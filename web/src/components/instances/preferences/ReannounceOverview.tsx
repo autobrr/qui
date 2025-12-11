@@ -175,8 +175,7 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
           </Tooltip>
         </div>
         <CardDescription>
-          Monitors <strong>stalled</strong> torrents and reannounces them if trackers report
-          "unregistered" or errors.
+          Monitors <strong>stalled</strong> torrents and reannounces them when no tracker is healthy.
         </CardDescription>
       </CardHeader>
 
