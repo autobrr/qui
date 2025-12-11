@@ -122,7 +122,7 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
   const activityQueries = useQueries({
     queries: activeInstances.map((instance) => ({
       queryKey: ["instance-reannounce-activity", instance.id],
-      queryFn: () => api.getInstanceReannounceActivity(instance.id, 100),
+      queryFn: () => api.getInstanceReannounceActivity(instance.id, 0),
       enabled: instance.reannounceSettings?.enabled ?? false,
       refetchInterval: expandedInstances.includes(String(instance.id)) ? 5000 : 30000,
       staleTime: 5000,
