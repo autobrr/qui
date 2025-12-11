@@ -531,7 +531,6 @@ func (s *Service) GetAutomationSettings(ctx context.Context) (*models.CrossSeedA
 	if settings == nil {
 		settings = models.DefaultCrossSeedAutomationSettings()
 	}
-	models.NormalizeCrossSeedCompletionSettings(&settings.Completion)
 
 	return settings, nil
 }
@@ -579,8 +578,6 @@ func (s *Service) validateAndNormalizeSettings(settings *models.CrossSeedAutomat
 	if settings.SizeMismatchTolerancePercent > 100.0 {
 		settings.SizeMismatchTolerancePercent = 100.0
 	}
-
-	models.NormalizeCrossSeedCompletionSettings(&settings.Completion)
 }
 
 func normalizeSearchTiming(intervalSeconds, cooldownMinutes int) (int, int) {
@@ -1103,12 +1100,12 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	})
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			log.Debug().
+			log.Warn().
 				Int("instanceID", instanceID).
 				Str("hash", torrent.Hash).
 				Str("name", torrent.Name).
 				Dur("timeout", searchTimeout).
-				Msg("[CROSSSEED-COMPLETION] Search timed out")
+				Msg("[CROSSSEED-COMPLETION] Search timed out, no cross-seeds found")
 			return nil
 		}
 		return err
@@ -6404,7 +6401,7 @@ func matchesSearchFilters(torrent *qbt.Torrent, opts SearchRunOptions) bool {
 }
 
 // matchesCompletionFilters checks if a torrent matches completion filters.
-// Works with both global CrossSeedCompletionSettings and per-instance InstanceCrossSeedCompletionSettings.
+// Uses per-instance InstanceCrossSeedCompletionSettings.
 func matchesCompletionFilters(torrent *qbt.Torrent, settings models.CompletionFilterProvider) bool {
 	if torrent == nil || settings == nil {
 		return false

@@ -3799,28 +3799,6 @@ components:
           items:
             $ref: '#/components/schemas/CrossSeedRunResult'
 
-    CrossSeedCompletionSettingsPatch:
-      type: object
-      properties:
-        enabled:
-          type: boolean
-        categories:
-          type: array
-          items:
-            type: string
-        tags:
-          type: array
-          items:
-            type: string
-        excludeCategories:
-          type: array
-          items:
-            type: string
-        excludeTags:
-          type: array
-          items:
-            type: string
-
     InstanceCrossSeedCompletionSettings:
       type: object
       description: Per-instance cross-seed completion settings
@@ -3922,8 +3900,6 @@ components:
         runExternalProgramId:
           type: integer
           nullable: true
-        completion:
-          $ref: '#/components/schemas/CrossSeedCompletionSettingsPatch'
 
     CrossSeedAutomationSettings:
       type: object
@@ -3967,27 +3943,6 @@ components:
         runExternalProgramId:
           type: integer
           nullable: true
-        completion:
-          type: object
-          properties:
-            enabled:
-              type: boolean
-            categories:
-              type: array
-              items:
-                type: string
-            tags:
-              type: array
-              items:
-                type: string
-            excludeCategories:
-              type: array
-              items:
-                type: string
-            excludeTags:
-              type: array
-              items:
-                type: string
         createdAt:
           type: string
           format: date-time
