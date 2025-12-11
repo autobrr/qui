@@ -3,52 +3,37 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { ReannounceOverview } from "@/components/instances/preferences/ReannounceOverview"
 import { TrackerReannounceForm } from "@/components/instances/preferences/TrackerReannounceForm"
+import { TrackerRulesOverview } from "@/components/instances/preferences/TrackerRulesOverview"
 import { TrackerRulesPanel } from "@/components/instances/preferences/TrackerRulesPanel"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { useInstances } from "@/hooks/useInstances"
-import { useNavigate, useSearch } from "@tanstack/react-router"
-import { HardDrive } from "lucide-react"
-import { useMemo } from "react"
+import { useState } from "react"
 
-type ServicesSearch = {
-  instanceId?: string
-}
+type ConfigureType = "reannounce" | "tracker-rules"
 
 export function Services() {
   const { instances } = useInstances()
-  const navigate = useNavigate()
-  const search = useSearch({ from: "/_authenticated/services" }) as ServicesSearch
+  const [configureInstanceId, setConfigureInstanceId] = useState<number | null>(null)
+  const [configureType, setConfigureType] = useState<ConfigureType>("reannounce")
 
-  const activeInstances = useMemo(
-    () => (instances ?? []).filter((instance) => instance.isActive),
-    [instances]
-  )
+  const configureInstance = instances?.find((inst) => inst.id === configureInstanceId)
 
-  const selectedInstanceId = useMemo(() => {
-    const fromSearch = search.instanceId ? Number(search.instanceId) : undefined
-    const allInstances = instances ?? []
-    if (fromSearch && allInstances.some((inst) => inst.id === fromSearch)) {
-      return fromSearch
-    }
-    if (allInstances.length > 0) {
-      return allInstances[0]?.id
-    }
-    return undefined
-  }, [instances, search.instanceId])
-
-  const handleInstanceChange = (value: string) => {
-    navigate({
-      to: "/services",
-      search: (prev: ServicesSearch) => ({
-        ...prev,
-        instanceId: value,
-      }) satisfies ServicesSearch,
-      replace: true,
-    })
+  const handleConfigureReannounce = (instanceId: number) => {
+    setConfigureType("reannounce")
+    setConfigureInstanceId(instanceId)
   }
 
-  const selectedInstance = activeInstances.find((inst) => inst.id === selectedInstanceId)
+  const handleConfigureTrackerRules = (instanceId: number) => {
+    setConfigureType("tracker-rules")
+    setConfigureInstanceId(instanceId)
+  }
+
+  const handleCloseSheet = () => {
+    setConfigureInstanceId(null)
+  }
 
   return (
     <div className="container mx-auto px-6 space-y-6 py-6">
@@ -59,34 +44,13 @@ export function Services() {
             Instance-level automation and helper services managed by qui.
           </p>
         </div>
-
-        <div className="flex items-center gap-2">
-          {instances && instances.length > 0 && (
-            <Select
-              value={selectedInstanceId ? String(selectedInstanceId) : undefined}
-              onValueChange={handleInstanceChange}
-            >
-              <SelectTrigger className="!w-[240px] !max-w-[240px]">
-                <div className="flex items-center gap-2 min-w-0 overflow-hidden">
-                  <HardDrive className="h-4 w-4 flex-shrink-0" />
-                  <span className="truncate">
-                    <SelectValue placeholder="Select instance" />
-                  </span>
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                {(instances ?? []).map((instance) => (
-                  <SelectItem key={instance.id} value={String(instance.id)}>
-                    <div className="flex items-center max-w-40 gap-2">
-                      <span className="truncate">{instance.name}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        </div>
       </div>
+
+      {/* Reannounce Overview - shows all instances in accordion */}
+      <ReannounceOverview onConfigureInstance={handleConfigureReannounce} />
+
+      {/* Tracker Rules Overview - shows all instances in accordion */}
+      <TrackerRulesOverview onConfigureInstance={handleConfigureTrackerRules} />
 
       {instances && instances.length === 0 && (
         <p className="text-sm text-muted-foreground">
@@ -94,19 +58,35 @@ export function Services() {
         </p>
       )}
 
-      {!selectedInstance && instances && instances.length > 0 && (
-        <p className="text-sm text-muted-foreground">
-          Select an active instance to configure services.
-        </p>
-      )}
-
-      {selectedInstance && (
-        <div key={selectedInstance.id} className="space-y-6">
-          <TrackerRulesPanel instanceId={selectedInstance.id} />
-
-          <TrackerReannounceForm instanceId={selectedInstance.id} />
-        </div>
-      )}
+      {/* Configuration Sheet */}
+      <Sheet open={configureInstanceId !== null} onOpenChange={(open) => !open && handleCloseSheet()}>
+        <SheetContent side="right" className="w-full sm:max-w-2xl">
+          <SheetHeader>
+            <SheetTitle>
+              {configureType === "reannounce" ? "Configure Reannounce" : "Configure Tracker Rules"}
+            </SheetTitle>
+            <SheetDescription>
+              {configureInstance?.name ?? "Instance"}
+            </SheetDescription>
+          </SheetHeader>
+          <ScrollArea className="flex-1">
+            {configureInstanceId && configureType === "reannounce" && (
+              <div className="px-6 py-4">
+                <TrackerReannounceForm
+                  instanceId={configureInstanceId}
+                  variant="embedded"
+                  onSuccess={handleCloseSheet}
+                />
+              </div>
+            )}
+            {configureInstanceId && configureType === "tracker-rules" && (
+              <div className="px-6 py-4">
+                <TrackerRulesPanel instanceId={configureInstanceId} variant="embedded" />
+              </div>
+            )}
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }
