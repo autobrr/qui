@@ -449,31 +449,54 @@ func newTestServiceForDebounce(window time.Duration, now func() time.Time) *Serv
 			DebounceWindow: window,
 			ScanInterval:   time.Second,
 		},
-		j:          make(map[int]map[string]*reannounceJob),
-		now:        now,
-		spawn:      func(fn func()) { fn() },
-		history:    make(map[int][]ActivityEvent),
-		historyCap: defaultHistorySize,
-		baseCtx:    context.Background(),
+		j:                make(map[int]map[string]*reannounceJob),
+		now:              now,
+		spawn:            func(fn func()) { fn() },
+		historySucceeded: make(map[int][]ActivityEvent),
+		historyFailed:    make(map[int][]ActivityEvent),
+		historySkipped:   make(map[int][]ActivityEvent),
+		historyCap:       defaultHistorySize,
+		baseCtx:          context.Background(),
 	}
 }
 
 func TestServiceRecordActivityLimit(t *testing.T) {
 	now := time.Unix(0, 0)
 	svc := newTestServiceForDebounce(time.Minute, func() time.Time { return now })
-	svc.historyCap = 3
+	svc.historyCap = 2 // succeeded/failed keep limit*2=4, skipped keeps limit=2
 
-	for i := 0; i < 5; i++ {
+	// Add 6 succeeded events - should keep last 4 (limit*2)
+	for i := range 6 {
 		now = now.Add(time.Second)
 		svc.recordActivity(1, fmt.Sprintf("hash%d", i), fmt.Sprintf("Torrent %d", i), "tracker.example.com", ActivityOutcomeSucceeded, "ok")
 	}
 
 	events := svc.GetActivity(1, 0)
-	require.Len(t, events, 3)
-	require.Equal(t, "HASH2", events[0].Hash)
-	require.Equal(t, "HASH4", events[2].Hash)
+	require.Len(t, events, 4)
+	require.Equal(t, "HASH2", events[0].Hash) // oldest kept
+	require.Equal(t, "HASH5", events[3].Hash) // newest
 
+	// Test GetActivity limit parameter
 	limited := svc.GetActivity(1, 2)
 	require.Len(t, limited, 2)
-	require.Equal(t, events[1:], limited)
+	require.Equal(t, events[2:], limited) // last 2 events
+
+	// Add 4 skipped events - should keep last 2 (limit)
+	for i := range 4 {
+		now = now.Add(time.Second)
+		svc.recordActivity(1, fmt.Sprintf("skipped%d", i), fmt.Sprintf("Skipped %d", i), "tracker.example.com", ActivityOutcomeSkipped, "healthy")
+	}
+
+	allEvents := svc.GetActivity(1, 0)
+	// 4 succeeded + 2 skipped = 6 total
+	require.Len(t, allEvents, 6)
+
+	// Verify skipped only kept 2
+	skippedCount := 0
+	for _, e := range allEvents {
+		if e.Outcome == ActivityOutcomeSkipped {
+			skippedCount++
+		}
+	}
+	require.Equal(t, 2, skippedCount)
 }
