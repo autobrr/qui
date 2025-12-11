@@ -214,19 +214,40 @@ func (s *Service) scanInstances(ctx context.Context) {
 }
 
 func (s *Service) scanInstance(ctx context.Context, instanceID int, settings *models.InstanceReannounceSettings) {
-	torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{
-		Filter: qbt.TorrentFilterStalled,
-	})
+	client, err := s.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("reannounce: client unavailable for scan")
+		return
+	}
 
+	var torrents []qbt.Torrent
+
+	// For qBittorrent 5.1+ (WebAPI >= 2.11.4), fetch torrents with tracker data in one call.
+	// For older versions, use the sync manager cache (trackers fetched separately in executeJob).
+	if client.SupportsTrackerHealth() {
+		torrents, err = client.GetTorrentsCtx(ctx, qbt.TorrentFilterOptions{
+			Filter:          qbt.TorrentFilterStalled,
+			IncludeTrackers: true,
+		})
+	} else {
+		// Older qBittorrent - use cached torrents; executeJob will fetch fresh trackers
+		torrents, err = s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{
+			Filter: qbt.TorrentFilterStalled,
+		})
+	}
 	if err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Msg("reannounce: failed to fetch torrents")
 		return
 	}
+
 	for _, torrent := range torrents {
 		if !s.torrentMeetsCriteria(torrent, settings) {
 			continue
 		}
-		if s.hasHealthyTracker(torrent.Trackers) {
+		// Skip if we have tracker data and it shows healthy.
+		// For older qBittorrent without IncludeTrackers, Trackers will be empty
+		// and we'll enqueue the torrent - executeJob will check fresh tracker status.
+		if len(torrent.Trackers) > 0 && s.hasHealthyTracker(torrent.Trackers) {
 			continue
 		}
 		trackers := s.getProblematicTrackers(torrent.Trackers)
