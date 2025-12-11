@@ -412,6 +412,7 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 			// Re-fetch trackers to get accurate state for logging
 			updatedTrackers, err := client.GetTorrentTrackersCtx(ctx, hash)
 			if err != nil {
+				log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("reannounce: failed to refresh trackers after initial wait, using stale list")
 				updatedTrackers = trackerList // fallback to stale data
 			}
 			healthyTrackers := s.getHealthyTrackers(updatedTrackers)
