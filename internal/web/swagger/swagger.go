@@ -45,8 +45,8 @@ func NewHandler(baseURL string) (*Handler, error) {
 }
 
 func (h *Handler) RegisterRoutes(r chi.Router) {
-	r.Get("/api/docs", h.ServeSwaggerUI)
-	r.Get("/api/openapi.json", h.ServeOpenAPISpec)
+	r.Get(h.baseURL+"/api/docs", h.ServeSwaggerUI)
+	r.Get(h.baseURL+"/api/openapi.json", h.ServeOpenAPISpec)
 }
 
 func (h *Handler) ServeSwaggerUI(w http.ResponseWriter, r *http.Request) {
