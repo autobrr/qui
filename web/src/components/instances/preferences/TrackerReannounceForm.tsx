@@ -33,6 +33,8 @@ interface TrackerReannounceFormProps {
   onSuccess?: () => void
   /** Render variant: "card" wraps in Card component, "embedded" renders without card wrapper */
   variant?: "card" | "embedded"
+  /** Form ID for external submit button. When provided, the internal submit button is hidden. */
+  formId?: string
 }
 
 const DEFAULT_SETTINGS: InstanceReannounceSettings = {
@@ -55,7 +57,7 @@ const GLOBAL_SCAN_INTERVAL_SECONDS = 7
 
 type MonitorScopeField = keyof Pick<InstanceReannounceSettings, "categories" | "tags" | "trackers">
 
-export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess, variant = "card" }: TrackerReannounceFormProps) {
+export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess, variant = "card", formId }: TrackerReannounceFormProps) {
   const { instances, updateInstance, isUpdating } = useInstances()
   const { formatISOTimestamp } = useDateTimeFormatters()
   const instance = useMemo(() => instances?.find((item) => item.id === instanceId), [instances, instanceId])
@@ -492,11 +494,13 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                     </div>
                   </div>
 
-                  <div className="flex justify-end pt-4">
-                    <Button type="submit" disabled={isUpdating}>
-                      {isUpdating ? "Saving..." : "Save Changes"}
-                    </Button>
-                  </div>
+                  {!formId && (
+                    <div className="flex justify-end pt-4">
+                      <Button type="submit" disabled={isUpdating}>
+                        {isUpdating ? "Saving..." : "Save Changes"}
+                      </Button>
+                    </div>
+                  )}
                 </>
               ) : (
                 <div className="flex flex-col items-center justify-center py-12 text-center space-y-3 border-2 border-dashed rounded-lg">
@@ -656,7 +660,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
   if (variant === "embedded") {
     // Embedded mode: only show settings, no tabs (activity is shown in overview)
     return (
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form id={formId} onSubmit={handleSubmit} className="space-y-6">
         {headerContent}
         {settingsContent}
       </form>
