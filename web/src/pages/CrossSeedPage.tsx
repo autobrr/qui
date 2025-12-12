@@ -1398,7 +1398,7 @@ export function CrossSeedPage() {
                                       </CollapsibleTrigger>
                                       {hasResults && (
                                         <CollapsibleContent>
-                                          <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1">
+                                          <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
                                             {successResults.map((result, i) => (
                                               <div key={`${result.instanceId}-${i}`} className="flex items-center gap-2 text-xs">
                                                 <Badge variant="default" className="text-[10px] shrink-0 w-20 justify-center truncate" title={result.instanceName}>{result.instanceName}</Badge>
@@ -1456,7 +1456,7 @@ export function CrossSeedPage() {
                                       </CollapsibleTrigger>
                                       {hasResults && (
                                         <CollapsibleContent>
-                                          <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1">
+                                          <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
                                             {successResults.map((result, i) => (
                                               <div key={`${result.instanceId}-${i}`} className="flex items-center gap-2 text-xs">
                                                 <Badge variant="default" className="text-[10px] shrink-0 w-20 justify-center truncate" title={result.instanceName}>{result.instanceName}</Badge>
@@ -1514,7 +1514,7 @@ export function CrossSeedPage() {
                                       </CollapsibleTrigger>
                                       {hasResults && (
                                         <CollapsibleContent>
-                                          <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1">
+                                          <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
                                             {successResults.map((result, i) => (
                                               <div key={`${result.instanceId}-${i}`} className="flex items-center gap-2 text-xs">
                                                 <Badge variant="default" className="text-[10px] shrink-0 w-20 justify-center truncate" title={result.instanceName}>{result.instanceName}</Badge>
