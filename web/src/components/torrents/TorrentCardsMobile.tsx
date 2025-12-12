@@ -943,7 +943,7 @@ export function TorrentCardsMobile({
   const sortOrder = sortState.order
 
   // Map sort field to backend field name (e.g., num_seeds -> num_complete)
-  const backendSortField = sortField === "num_seeds" ? "num_complete" : sortField
+  const backendSortField = sortField === "num_seeds" ? "num_complete" : sortField === "num_leechs" ? "num_incomplete" : sortField
 
   const currentSortOption = useMemo(() => {
     return TORRENT_SORT_OPTIONS.find(option => option.value === sortField) ?? TORRENT_SORT_OPTIONS[0]
