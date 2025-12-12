@@ -235,9 +235,8 @@ const (
 
     // MaxWait defaults by priority (applied when RateLimitOptions.MaxWait is 0)
     rssMaxWait        = 15 * time.Second
-    completionMaxWait = 30 * time.Second
-    backgroundMaxWait = 45 * time.Second
-    // Interactive: no limit (0) - will wait as long as needed
+    backgroundMaxWait = 60 * time.Second
+    // Completion and Interactive: no limit (0) - will queue and wait as long as needed
 )
 ```
 
@@ -256,9 +255,9 @@ func (s *searchScheduler) getMaxWait(item *taskItem) time.Duration {
         case RateLimitPriorityRSS:
             return rssMaxWait         // 15s
         case RateLimitPriorityCompletion:
-            return completionMaxWait  // 30s
+            return 0                  // No limit - queues for batch completions
         case RateLimitPriorityBackground:
-            return backgroundMaxWait  // 45s
+            return backgroundMaxWait  // 60s
         case RateLimitPriorityInteractive:
             return 0                  // No limit
         }

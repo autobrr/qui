@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"maps"
 	"sync"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -35,6 +36,9 @@ type CrossSeedRequest struct {
 	// FindIndividualEpisodes controls whether to find individual episodes when searching with season packs
 	// If false (default), season packs will only match with other season packs
 	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
+	// SizeMismatchTolerancePercent is the maximum size difference percentage for matching.
+	// If not set (0), defaults to 5%.
+	SizeMismatchTolerancePercent float64 `json:"size_mismatch_tolerance_percent,omitempty"`
 }
 
 // CrossSeedResponse represents the result of a cross-seed operation
@@ -268,9 +272,7 @@ func (s *AsyncIndexerFilteringState) cloneLocked() *AsyncIndexerFilteringState {
 	}
 	if len(s.ExcludedIndexers) > 0 {
 		clone.ExcludedIndexers = make(map[int]string, len(s.ExcludedIndexers))
-		for id, reason := range s.ExcludedIndexers {
-			clone.ExcludedIndexers[id] = reason
-		}
+		maps.Copy(clone.ExcludedIndexers, s.ExcludedIndexers)
 	}
 	return clone
 }

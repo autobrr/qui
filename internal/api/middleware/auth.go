@@ -23,7 +23,8 @@ func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManag
 			apiKey := r.Header.Get("X-API-Key")
 			if apiKey == "" {
 				path := r.URL.Path
-				if strings.HasPrefix(path, "/api/cross-seed/webhook/") || path == "/api/cross-seed/apply" {
+				// Use Contains/HasSuffix to support custom base URLs (e.g., /qui/api/cross-seed/apply)
+				if strings.Contains(path, "/cross-seed/webhook/") || strings.HasSuffix(path, "/cross-seed/apply") {
 					apiKey = r.URL.Query().Get("apikey") // autobrr doesnt support headers in webhook actions
 				}
 			}

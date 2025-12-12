@@ -267,11 +267,115 @@ func TestNeedsRenameAlignment(t *testing.T) {
 			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2024.mkv", Size: 1000}},
 			expectedResult: false, // handled by contentLayout=NoSubfolder (strips source's folder)
 		},
+		{
+			name:           "folder to single file with different file names - alignment needed",
+			torrentName:    "Vanderpump Rules S12E02 Manifest and Chill 1080p AMZN WEB-DL DDP2 0 H 264-NTb",
+			matchedName:    "Vanderpump.Rules.S12E02.Manifest.and.Chill.1080p.AMZN.WEB-DL.DDP2.0.H.264-NTb.mkv",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Vanderpump Rules S12E02 Manifest and Chill 1080p AMZN WEB-DL DDP2 0 H 264-NTb/Vanderpump Rules S12E02 Manifest and Chill 1080p AMZN WEB-DL DDP2 0 H 264-NTb.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Vanderpump.Rules.S12E02.Manifest.and.Chill.1080p.AMZN.WEB-DL.DDP2.0.H.264-NTb.mkv", Size: 1000}},
+			expectedResult: true, // file names differ (spaces vs periods) - needs recheck after rename
+		},
+		{
+			name:           "single file to folder with different file names - alignment needed",
+			torrentName:    "Movie 2024 1080p BluRay x264-GROUP.mkv",
+			matchedName:    "Movie.2024.1080p.BluRay.x264-GROUP",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie 2024 1080p BluRay x264-GROUP.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2024.1080p.BluRay.x264-GROUP/Movie.2024.1080p.BluRay.x264-GROUP.mkv", Size: 1000}},
+			expectedResult: true, // file names differ (spaces vs periods) - needs recheck after rename
+		},
+		{
+			name:           "folder to single file with multiple files - alignment needed when names differ",
+			torrentName:    "Show S01E01",
+			matchedName:    "Show.S01E01.mkv",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show S01E01/Show S01E01.mkv", Size: 1000000000},
+				{Name: "Show S01E01/Show S01E01.nfo", Size: 1024},
+			},
+			candidateFiles: qbt.TorrentFiles{{Name: "Show.S01E01.mkv", Size: 1000000000}},
+			expectedResult: true, // main file name differs (spaces vs periods)
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := needsRenameAlignment(tt.torrentName, tt.matchedName, tt.sourceFiles, tt.candidateFiles)
+			require.Equal(t, tt.expectedResult, result)
+		})
+	}
+}
+
+func TestFilesNeedRenaming(t *testing.T) {
+	tests := []struct {
+		name           string
+		sourceFiles    qbt.TorrentFiles
+		candidateFiles qbt.TorrentFiles
+		expectedResult bool
+	}{
+		{
+			name:           "identical file names - no rename needed",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+			expectedResult: false,
+		},
+		{
+			name:           "different punctuation (spaces vs periods) - rename needed",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Show S01E01/Show S01E01.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Show.S01E01.mkv", Size: 1000}},
+			expectedResult: true,
+		},
+		{
+			name:           "vanderpump rules case - spaces vs periods",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Vanderpump Rules S12E02 Manifest and Chill 1080p AMZN WEB-DL DDP2 0 H 264-NTb/Vanderpump Rules S12E02 Manifest and Chill 1080p AMZN WEB-DL DDP2 0 H 264-NTb.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Vanderpump.Rules.S12E02.Manifest.and.Chill.1080p.AMZN.WEB-DL.DDP2.0.H.264-NTb.mkv", Size: 1000}},
+			expectedResult: true,
+		},
+		{
+			name:           "empty source files - no rename needed",
+			sourceFiles:    qbt.TorrentFiles{},
+			candidateFiles: qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+			expectedResult: false,
+		},
+		{
+			name:           "empty candidate files - no rename needed",
+			sourceFiles:    qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{},
+			expectedResult: false,
+		},
+		{
+			name: "multiple files with matching names - no rename needed",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show/episode1.mkv", Size: 1000},
+				{Name: "Show/episode2.mkv", Size: 2000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "episode1.mkv", Size: 1000},
+				{Name: "episode2.mkv", Size: 2000},
+			},
+			expectedResult: false,
+		},
+		{
+			name: "multiple files with one differing name - rename needed",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show/Show S01E01.mkv", Size: 1000},
+				{Name: "Show/Show S01E02.mkv", Size: 2000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Show.S01E01.mkv", Size: 1000},
+				{Name: "Show.S01E02.mkv", Size: 2000},
+			},
+			expectedResult: true,
+		},
+		{
+			name:           "different sizes - no match possible, rename needed",
+			sourceFiles:    qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "movie.mkv", Size: 2000}},
+			expectedResult: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := filesNeedRenaming(tt.sourceFiles, tt.candidateFiles)
 			require.Equal(t, tt.expectedResult, result)
 		})
 	}
@@ -353,7 +457,7 @@ func TestHasExtraSourceFiles(t *testing.T) {
 			expectedResult: true,
 		},
 		{
-			name: "same file count but different sizes - no extras",
+			name: "same file count but different sizes - has extras",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "Movie/movie.mkv", Size: 4000000000},
 				{Name: "Movie/extra.mkv", Size: 999999999},
@@ -362,7 +466,7 @@ func TestHasExtraSourceFiles(t *testing.T) {
 				{Name: "Movie/movie.mkv", Size: 4000000000},
 				{Name: "Movie/other.mkv", Size: 888888888},
 			},
-			expectedResult: false, // same count means no "extra" files, size mismatch is handled elsewhere
+			expectedResult: true, // source file (999MB) has no size match in candidate, so it's "extra"
 		},
 		{
 			name:           "empty source files - no extras",
@@ -376,6 +480,75 @@ func TestHasExtraSourceFiles(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := hasExtraSourceFiles(tt.sourceFiles, tt.candidateFiles)
 			require.Equal(t, tt.expectedResult, result)
+		})
+	}
+}
+
+func TestNormalizeFileKey(t *testing.T) {
+	// normalizeFileKey strips all non-alphanumeric characters from the base name,
+	// keeps only the extension (lowercase), and normalizes Unicode characters
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		// Basic normalization - dots in filename are stripped, only extension kept
+		{"simple filename", "movie.mkv", "movie.mkv"},
+		{"with path", "Movie/movie.mkv", "movie.mkv"},
+		{"uppercase", "MOVIE.MKV", "movie.mkv"},
+		{"dots stripped from name", "The.Movie.2024.mkv", "themovie2024.mkv"},
+
+		// Unicode normalization - diacritics removed
+		{"macron", "Shōgun.S01E01.mkv", "shoguns01e01.mkv"},
+		{"accent", "Amélie.2001.mkv", "amelie2001.mkv"},
+		{"umlaut", "Björk.Live.mkv", "bjorklive.mkv"},
+		{"tilde", "El.Niño.mkv", "elnino.mkv"},
+		{"multiple diacritics", "Mötley.Crüe.The.Dirt.mkv", "motleycruethedirt.mkv"},
+
+		// Ligatures
+		{"ligature ae", "Encyclopædia.mkv", "encyclopaedia.mkv"},
+		{"ligature oe", "Cœur.mkv", "coeur.mkv"},
+
+		// Sidecar handling - intermediate video extension stripped
+		{"nfo file", "movie.nfo", "movie.nfo"},
+		{"nfo with video ext", "movie.mkv.nfo", "movie.nfo"},
+		{"srt file", "movie.srt", "movie.srt"},
+		{"srt with video ext", "movie.mkv.srt", "movie.srt"},
+
+		// Edge cases
+		{"empty string", "", ""},
+		{"no extension", "README", "readme"},
+		{"dots only name", "...mkv", ".mkv"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := normalizeFileKey(tt.input)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestNormalizeFileKey_UnicodeMatching(t *testing.T) {
+	// Verify that files with Unicode characters normalize to match their ASCII equivalents
+	pairs := []struct {
+		name  string
+		file1 string
+		file2 string
+	}{
+		{"shogun macron", "Shōgun.S01E01.1080p.mkv", "Shogun.S01E01.1080p.mkv"},
+		{"pokemon accent", "Pokémon.S01E01.mkv", "Pokemon.S01E01.mkv"},
+		{"amelie", "Amélie.2001.1080p.mkv", "Amelie.2001.1080p.mkv"},
+		{"naruto", "Naruto.Shippūden.S01E01.mkv", "Naruto.Shippuden.S01E01.mkv"},
+		{"el nino", "El.Niño.Documentary.mkv", "El.Nino.Documentary.mkv"},
+		{"bjork", "Björk.Live.Concert.mkv", "Bjork.Live.Concert.mkv"},
+	}
+
+	for _, tt := range pairs {
+		t.Run(tt.name, func(t *testing.T) {
+			norm1 := normalizeFileKey(tt.file1)
+			norm2 := normalizeFileKey(tt.file2)
+			require.Equal(t, norm1, norm2, "Expected %q and %q to normalize to the same key", tt.file1, tt.file2)
 		})
 	}
 }

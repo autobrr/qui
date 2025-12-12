@@ -1967,3 +1967,39 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 	w.Header().Set("X-Data-Source", "fresh")
 	RespondJSON(w, http.StatusOK, response)
 }
+
+func (h *TorrentsHandler) GetDirectoryContent(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	dirPath := strings.TrimSpace(r.URL.Query().Get("dirPath"))
+	if dirPath == "" {
+		RespondError(w, http.StatusBadRequest, "Invalid directory path")
+		return
+	}
+
+	withMetadata := false
+	if raw := strings.TrimSpace(r.URL.Query().Get("withMetadata")); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			RespondError(w, http.StatusBadRequest, "Invalid withMetadata")
+			return
+		}
+		withMetadata = parsed
+	}
+
+	response, err := h.syncManager.GetDirectoryContentCtx(r.Context(), instanceID, dirPath, withMetadata)
+	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getDirectoryContent") {
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get directory contents")
+		RespondError(w, http.StatusInternalServerError, "Failed to get directory contents")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, response)
+}

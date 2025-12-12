@@ -2,6 +2,7 @@ package crossseed
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 type fileRenameInstruction struct {
@@ -107,30 +109,117 @@ func (s *Service) alignCrossSeedContentPaths(
 		return true // Episode-in-pack uses season pack path directly, no alignment needed
 	}
 
-	sourceFiles := expectedSourceFiles
+	// Try to get current files from qBittorrent with a few retries for slow clients.
+	// On slow clients, the torrent may be visible but files not yet populated.
+	var sourceFiles qbt.TorrentFiles
 	refreshCtx := qbittorrent.WithForceFilesRefresh(ctx)
-	filesMap, err := s.syncManager.GetTorrentFilesBatch(refreshCtx, instanceID, []string{torrentHash})
-	if err != nil {
-		log.Debug().
-			Err(err).
-			Int("instanceID", instanceID).
-			Str("torrentHash", torrentHash).
-			Msg("Failed to refresh torrent files, using expected source files")
-	} else if currentFiles, ok := filesMap[canonicalHash]; ok && len(currentFiles) > 0 {
-		sourceFiles = currentFiles
-	} else {
-		log.Debug().
-			Int("instanceID", instanceID).
-			Str("torrentHash", torrentHash).
-			Str("canonicalHash", canonicalHash).
-			Msg("Torrent hash not found in file map or files empty, using expected source files")
+	for attempt := range 3 {
+		if ctx.Err() != nil {
+			break
+		}
+		filesMap, err := s.syncManager.GetTorrentFilesBatch(refreshCtx, instanceID, []string{torrentHash})
+		if err != nil {
+			log.Debug().
+				Err(err).
+				Int("instanceID", instanceID).
+				Str("torrentHash", torrentHash).
+				Int("attempt", attempt+1).
+				Msg("Failed to get torrent files, retrying")
+		} else if currentFiles, ok := filesMap[canonicalHash]; ok && len(currentFiles) > 0 {
+			sourceFiles = currentFiles
+			log.Debug().
+				Int("instanceID", instanceID).
+				Str("torrentHash", torrentHash).
+				Int("fileCount", len(currentFiles)).
+				Msg("Got torrent files from qBittorrent")
+			break
+		} else {
+			log.Trace().
+				Int("instanceID", instanceID).
+				Str("torrentHash", torrentHash).
+				Int("attempt", attempt+1).
+				Msg("Torrent files not yet available, retrying")
+		}
+		if attempt < 2 {
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+
+	// Fallback to expected files if we couldn't get them from qBittorrent
+	if len(sourceFiles) == 0 {
+		if ctx.Err() != nil {
+			log.Trace().
+				Err(ctx.Err()).
+				Int("instanceID", instanceID).
+				Str("torrentHash", torrentHash).
+				Msg("Context cancelled while getting torrent files, using expected source files")
+		} else {
+			log.Debug().
+				Int("instanceID", instanceID).
+				Str("torrentHash", torrentHash).
+				Msg("Could not get torrent files after retries, using expected source files")
+		}
+		sourceFiles = expectedSourceFiles
 	}
 
 	sourceRoot := detectCommonRoot(sourceFiles)
 	targetRoot := detectCommonRoot(candidateFiles)
 
-	// Rename folder FIRST if different - this must happen before file renames
-	// because qBittorrent needs to know where to look for files on disk
+	// Build file rename plan using original source paths (before any folder rename).
+	// The plan maps source files to candidate files based on size matching.
+	plan, unmatched := buildFileRenamePlan(sourceFiles, candidateFiles)
+
+	// Rename files FIRST (while still in original folder structure).
+	// This must happen before folder rename to avoid disk conflicts: if we rename the
+	// folder first, then try to rename a file to a name that already exists on disk
+	// (from the matched torrent), qBittorrent will fail with "newPath already in use".
+	// By renaming files first within the original folder, we're just updating metadata
+	// (the original folder doesn't exist on disk anyway for a fresh cross-seed add).
+	renamed := 0
+	for _, instr := range plan {
+		if instr.oldPath == instr.newPath || instr.oldPath == "" || instr.newPath == "" {
+			continue
+		}
+
+		// Compute paths for file rename while keeping the original folder structure.
+		// e.g., plan says: "FolderA/file.mkv" -> "FolderB/file2.mkv"
+		// We rename: "FolderA/file.mkv" -> "FolderA/file2.mkv" (keep source folder)
+		// Then folder rename "FolderA" -> "FolderB" will produce "FolderB/file2.mkv"
+		actualOldPath := instr.oldPath
+		actualNewPath := instr.newPath
+		if sourceRoot != "" && targetRoot != "" && sourceRoot != targetRoot {
+			// Adjust newPath to stay in source folder (file rename only changes the filename)
+			actualNewPath = adjustPathForRootRename(instr.newPath, targetRoot, sourceRoot)
+		}
+
+		if actualOldPath == actualNewPath {
+			continue
+		}
+
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("torrentHash", torrentHash).
+			Str("from", actualOldPath).
+			Str("to", actualNewPath).
+			Msg("Renaming cross-seed file")
+
+		if err := s.syncManager.RenameTorrentFile(ctx, instanceID, torrentHash, actualOldPath, actualNewPath); err != nil {
+			log.Warn().
+				Err(err).
+				Int("instanceID", instanceID).
+				Str("torrentHash", torrentHash).
+				Str("from", actualOldPath).
+				Str("to", actualNewPath).
+				Msg("Failed to rename cross-seed file, aborting alignment")
+			return false
+		}
+		renamed++
+	}
+
+	// Rename folder AFTER file renames are complete.
+	// Now that files have their target names within the source folder, renaming the
+	// folder will update all paths to match the candidate torrent's layout, pointing
+	// to the existing files on disk (from the matched torrent).
 	rootRenamed := false
 	if sourceRoot != "" && targetRoot != "" && sourceRoot != targetRoot {
 		if err := s.syncManager.RenameTorrentFolder(ctx, instanceID, torrentHash, sourceRoot, targetRoot); err != nil {
@@ -140,8 +229,8 @@ func (s *Service) alignCrossSeedContentPaths(
 				Str("torrentHash", torrentHash).
 				Str("from", sourceRoot).
 				Str("to", targetRoot).
-				Msg("Failed to rename cross-seed root folder, skipping file alignment")
-			return false // Don't attempt file renames with wrong folder paths
+				Msg("Failed to rename cross-seed root folder")
+			return false
 		}
 		rootRenamed = true
 		log.Debug().
@@ -150,43 +239,20 @@ func (s *Service) alignCrossSeedContentPaths(
 			Str("from", sourceRoot).
 			Str("to", targetRoot).
 			Msg("Renamed cross-seed root folder to match existing torrent")
-
-		// Update sourceFiles paths to reflect the folder rename for file matching
-		for i := range sourceFiles {
-			sourceFiles[i].Name = adjustPathForRootRename(sourceFiles[i].Name, sourceRoot, targetRoot)
-		}
 	}
-
-	plan, unmatched := buildFileRenamePlan(sourceFiles, candidateFiles)
 
 	if len(plan) == 0 {
 		if len(unmatched) > 0 {
+			// Some files couldn't be mapped - this is OK, the hasExtraSourceFiles check
+			// will detect this and trigger a recheck with threshold-based resume.
 			log.Debug().
 				Int("instanceID", instanceID).
 				Str("torrentHash", torrentHash).
 				Int("unmatchedFiles", len(unmatched)).
-				Msg("Skipping cross-seed file renames because no confident mappings were found")
+				Strs("unmatchedPaths", unmatched).
+				Msg("Some cross-seed files could not be mapped, recheck will handle verification")
 		}
-		return true // No renames needed - paths already match or couldn't determine mappings
-	}
-
-	renamed := 0
-	for _, instr := range plan {
-		if instr.oldPath == instr.newPath || instr.oldPath == "" || instr.newPath == "" {
-			continue
-		}
-
-		if err := s.syncManager.RenameTorrentFile(ctx, instanceID, torrentHash, instr.oldPath, instr.newPath); err != nil {
-			log.Warn().
-				Err(err).
-				Int("instanceID", instanceID).
-				Str("torrentHash", torrentHash).
-				Str("from", instr.oldPath).
-				Str("to", instr.newPath).
-				Msg("Failed to rename cross-seed file, aborting alignment")
-			return false
-		}
-		renamed++
+		return true // No renames needed - paths already match or recheck will verify
 	}
 
 	if renamed == 0 && !rootRenamed {
@@ -385,6 +451,9 @@ func normalizeFileKey(path string) string {
 		}
 	}
 
+	// Normalize Unicode characters (Shōgun → Shogun, etc.)
+	base = stringutils.NormalizeUnicode(base)
+
 	var b strings.Builder
 	for _, r := range base {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
@@ -487,11 +556,9 @@ func namesMatchIgnoringExtension(name1, name2 string) bool {
 // hasExtraSourceFiles checks if source torrent has files that don't exist in the candidate.
 // This happens when source has extra sidecar files (NFO, SRT, etc.) that weren't filtered
 // by ignorePatterns. Returns true if source has files with sizes not present in candidate.
+// This includes cases where source and candidate have the same file count but different files
+// (e.g., source has mkv+srt, candidate has mkv+nfo - the srt won't exist on disk).
 func hasExtraSourceFiles(sourceFiles, candidateFiles qbt.TorrentFiles) bool {
-	if len(sourceFiles) <= len(candidateFiles) {
-		return false
-	}
-
 	// Build size buckets for candidate files
 	candidateSizes := make(map[int64]int)
 	for _, cf := range candidateFiles {
@@ -507,25 +574,27 @@ func hasExtraSourceFiles(sourceFiles, candidateFiles qbt.TorrentFiles) bool {
 		}
 	}
 
-	// If we couldn't match all source files, there are extras
+	// If we couldn't match all source files by size, there are extras/mismatches
 	return matched < len(sourceFiles)
 }
 
 // needsRenameAlignment checks if rename alignment will be required for a cross-seed add.
-// Returns true if torrent name or root folder differs between source and candidate,
-// but NOT for single-file → folder cases (handled by contentLayout=Subfolder).
+// Returns true if torrent name, root folder, or file names differ between source and candidate.
+// For layout-change cases (folder→bare or bare→folder), also checks if file names inside differ.
 func needsRenameAlignment(torrentName string, matchedTorrentName string, sourceFiles, candidateFiles qbt.TorrentFiles) bool {
 	sourceRoot := detectCommonRoot(sourceFiles)
 	candidateRoot := detectCommonRoot(candidateFiles)
 
-	// Single file → folder: handled by contentLayout=Subfolder, no rename needed
+	// Single file → folder: layout handled by contentLayout=Subfolder,
+	// but file renames may still be needed if names differ
 	if sourceRoot == "" && candidateRoot != "" {
-		return false
+		return filesNeedRenaming(sourceFiles, candidateFiles)
 	}
 
-	// Folder → single file: handled by contentLayout=NoSubfolder, no rename needed
+	// Folder → single file: layout handled by contentLayout=NoSubfolder,
+	// but file renames may still be needed if names differ
 	if sourceRoot != "" && candidateRoot == "" {
-		return false
+		return filesNeedRenaming(sourceFiles, candidateFiles)
 	}
 
 	// Check display name (both have folders or both are single files)
@@ -538,6 +607,56 @@ func needsRenameAlignment(torrentName string, matchedTorrentName string, sourceF
 	// Check root folder (both have folders)
 	if sourceRoot != "" && candidateRoot != "" && sourceRoot != candidateRoot {
 		return true
+	}
+
+	return false
+}
+
+// filesNeedRenaming checks if any files would need renaming after a layout change.
+// Compares file names (ignoring folder structure) using normalized keys to detect
+// punctuation differences like spaces vs periods.
+func filesNeedRenaming(sourceFiles, candidateFiles qbt.TorrentFiles) bool {
+	if len(sourceFiles) == 0 || len(candidateFiles) == 0 {
+		return false
+	}
+
+	// Build a set of normalized candidate file keys by size
+	type fileKey struct {
+		normalized string
+		size       int64
+	}
+	candidateKeys := make(map[fileKey]bool)
+	for _, cf := range candidateFiles {
+		candidateKeys[fileKey{normalized: normalizeFileKey(cf.Name), size: cf.Size}] = true
+	}
+
+	// Check if any source file doesn't have a matching candidate
+	for _, sf := range sourceFiles {
+		key := fileKey{normalized: normalizeFileKey(sf.Name), size: sf.Size}
+		if !candidateKeys[key] {
+			// No match by normalized key+size, need rename alignment
+			return true
+		}
+	}
+
+	// All source files have normalized matches - but do actual paths differ?
+	// Build size buckets for detailed comparison
+	candidateBuckets := make(map[int64][]string)
+	for _, cf := range candidateFiles {
+		base := fileBaseName(cf.Name)
+		candidateBuckets[cf.Size] = append(candidateBuckets[cf.Size], base)
+	}
+
+	for _, sf := range sourceFiles {
+		sourceBase := fileBaseName(sf.Name)
+		bucket := candidateBuckets[sf.Size]
+
+		// Check if exact base name exists in bucket
+		found := slices.Contains(bucket, sourceBase)
+		if !found {
+			// Base names differ (even if normalized matches), need rename
+			return true
+		}
 	}
 
 	return false

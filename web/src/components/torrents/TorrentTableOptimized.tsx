@@ -46,7 +46,6 @@ import { InstancePreferencesDialog } from "../instances/preferences/InstancePref
 import { TorrentContextMenu } from "./TorrentContextMenu"
 import { TORRENT_SORT_OPTIONS, getDefaultSortOrder, type TorrentSortOptionValue } from "./torrentSortOptions"
 
-import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -118,6 +117,7 @@ import {
 } from "lucide-react"
 import { createPortal } from "react-dom"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
+import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
 import { SelectAllHotkey } from "./SelectAllHotkey"
 import {
@@ -231,6 +231,14 @@ function shallowEqualTrackerIcons(
 }
 
 // Compact view helper functions and components
+
+// Returns the background class for a row based on selection state and zebra striping
+function getRowBackgroundClass(isRowSelected: boolean, isSelected: boolean, rowIndex: number): string {
+  if (isRowSelected || isSelected) return "bg-accent"
+  if (rowIndex % 2 === 1) return "bg-muted/40"
+  return ""
+}
+
 function getStatusBadgeVariant(state: string): "default" | "secondary" | "destructive" | "outline" {
   switch (state) {
     case "downloading":
@@ -365,6 +373,7 @@ const getTrackerDisplayMeta = (tracker?: string) => {
 interface CompactRowProps {
   torrent: Torrent
   rowId: string
+  rowIndex: number
   isSelected: boolean
   isRowSelected: boolean
   onClick: (e: React.MouseEvent) => void
@@ -381,6 +390,7 @@ interface CompactRowProps {
 const CompactRow = memo(({
   torrent,
   rowId,
+  rowIndex,
   isSelected,
   isRowSelected,
   onClick,
@@ -411,9 +421,8 @@ const CompactRow = memo(({
   return (
     <div
       className={cn(
-        "relative flex flex-col gap-1 px-3 py-2 border-b cursor-pointer hover:bg-muted/50 overflow-hidden",
-        isRowSelected && "bg-muted/50",
-        isSelected && "bg-accent"
+        "relative flex flex-col gap-1 px-3 py-2 cursor-pointer hover:bg-accent/40 overflow-hidden",
+        getRowBackgroundClass(isRowSelected, isSelected, rowIndex)
       )}
       style={style}
       onClick={(e) => onClick(e)}
@@ -529,6 +538,7 @@ const CompactRow = memo(({
 }, (prev, next) =>
   prev.torrent.hash === next.torrent.hash &&
   prev.rowId === next.rowId &&
+  prev.rowIndex === next.rowIndex &&
   prev.torrent.name === next.torrent.name &&
   prev.torrent.category === next.torrent.category &&
   prev.torrent.tags === next.torrent.tags &&
@@ -959,6 +969,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     switch (columnId) {
       case "status_icon":
         return "state"
+      case "num_seeds":
+        return "num_complete" // Sort by total seeds, not connected
       default:
         return columnId
     }
@@ -2562,6 +2574,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       <CompactRow
                         torrent={torrent}
                         rowId={row.id}
+                        rowIndex={virtualRow.index}
                         isSelected={isSelected}
                         isRowSelected={isRowSelected}
                         onClick={(e) => {
@@ -2660,7 +2673,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                     onFilterChange={onFilterChange}
                   >
                     <div
-                      className={`flex border-b cursor-pointer hover:bg-muted/50 ${isRowSelected ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}
+                      className={`flex cursor-pointer hover:bg-accent/40 ${getRowBackgroundClass(isRowSelected, isSelected, virtualRow.index)}`}
                       style={{
                         position: "absolute",
                         top: 0,
@@ -2807,9 +2820,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
             <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
               <ChevronDown className="h-3 w-3 text-muted-foreground"/>
-              <span className="font-medium">{formatSpeedWithUnit(stats?.totalDownloadSpeed ?? 0, speedUnit)}</span>
+              <span className="font-medium">{formatSpeedWithUnit(effectiveServerState?.dl_info_speed ?? 0, speedUnit)}</span>
               <ChevronUp className="h-3 w-3 text-muted-foreground"/>
-              <span className="font-medium">{formatSpeedWithUnit(stats?.totalUploadSpeed ?? 0, speedUnit)}</span>
+              <span className="font-medium">{formatSpeedWithUnit(effectiveServerState?.up_info_speed ?? 0, speedUnit)}</span>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button

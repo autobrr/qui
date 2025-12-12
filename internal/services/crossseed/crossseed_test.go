@@ -22,6 +22,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -2181,7 +2182,6 @@ func TestCheckWebhook_NoInstancesAvailable(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			svc := &Service{
 				instanceStore:    tt.store,
@@ -2291,7 +2291,6 @@ func TestCheckWebhook_MultiInstanceScan(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			resp, err := svc.CheckWebhook(context.Background(), tt.request)
 			require.NoError(t, err)
@@ -3278,4 +3277,727 @@ func TestRecoverErroredTorrents_EmptyList(t *testing.T) {
 
 	// Should not have made any calls
 	assert.Empty(t, mockSync.calls)
+}
+
+func TestExtractTorrentURLForCommentMatch(t *testing.T) {
+	tests := []struct {
+		name     string
+		guid     string
+		infoURL  string
+		expected string
+	}{
+		{
+			name:     "UNIT3D style URL in GUID",
+			guid:     "https://seedpool.org/torrents/607803",
+			infoURL:  "",
+			expected: "https://seedpool.org/torrents/607803",
+		},
+		{
+			name:     "BHD style URL in GUID",
+			guid:     "https://beyond-hd.me/details/500790",
+			infoURL:  "",
+			expected: "https://beyond-hd.me/details/500790",
+		},
+		{
+			name:     "Aither URL",
+			guid:     "https://aither.cc/torrents/318093",
+			infoURL:  "",
+			expected: "https://aither.cc/torrents/318093",
+		},
+		{
+			name:     "Blutopia URL",
+			guid:     "https://blutopia.cc/torrents/294836",
+			infoURL:  "",
+			expected: "https://blutopia.cc/torrents/294836",
+		},
+		{
+			name:     "Falls back to InfoURL when GUID empty",
+			guid:     "",
+			infoURL:  "https://seedpool.org/torrents/123456",
+			expected: "https://seedpool.org/torrents/123456",
+		},
+		{
+			name:     "Falls back to InfoURL when GUID not a torrent URL",
+			guid:     "some-random-guid-12345",
+			infoURL:  "https://seedpool.org/torrents/123456",
+			expected: "https://seedpool.org/torrents/123456",
+		},
+		{
+			name:     "HTTP URL rejected",
+			guid:     "http://seedpool.org/torrents/607803",
+			infoURL:  "",
+			expected: "",
+		},
+		{
+			name:     "Non-torrent URL rejected",
+			guid:     "https://example.com/page/123",
+			infoURL:  "",
+			expected: "",
+		},
+		{
+			name:     "Empty inputs",
+			guid:     "",
+			infoURL:  "",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractTorrentURLForCommentMatch(tt.guid, tt.infoURL)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// infohashTestSyncManager extends episodeSyncManager with configurable HasTorrentByAnyHash behavior
+type infohashTestSyncManager struct {
+	torrents    map[int][]qbt.Torrent
+	files       map[int]map[string]qbt.TorrentFiles
+	props       map[int]map[string]*qbt.TorrentProperties
+	hashResults map[int]*hashCheckResult // instanceID -> result
+}
+
+type hashCheckResult struct {
+	torrent *qbt.Torrent
+	exists  bool
+	err     error
+}
+
+func newInfohashTestSyncManager() *infohashTestSyncManager {
+	return &infohashTestSyncManager{
+		torrents:    make(map[int][]qbt.Torrent),
+		files:       make(map[int]map[string]qbt.TorrentFiles),
+		props:       make(map[int]map[string]*qbt.TorrentProperties),
+		hashResults: make(map[int]*hashCheckResult),
+	}
+}
+
+func (f *infohashTestSyncManager) GetTorrents(_ context.Context, instanceID int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+	list := f.torrents[instanceID]
+	if list == nil {
+		return nil, fmt.Errorf("instance %d has no torrents", instanceID)
+	}
+	copied := make([]qbt.Torrent, len(list))
+	copy(copied, list)
+	return copied, nil
+}
+
+func (f *infohashTestSyncManager) GetTorrentFilesBatch(_ context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	result := make(map[string]qbt.TorrentFiles, len(hashes))
+	if instFiles, ok := f.files[instanceID]; ok {
+		for _, h := range hashes {
+			if files, ok := instFiles[strings.ToLower(h)]; ok {
+				cp := make(qbt.TorrentFiles, len(files))
+				copy(cp, files)
+				result[normalizeHash(h)] = cp
+			}
+		}
+	}
+	return result, nil
+}
+
+func (f *infohashTestSyncManager) HasTorrentByAnyHash(_ context.Context, instanceID int, _ []string) (*qbt.Torrent, bool, error) {
+	if result, ok := f.hashResults[instanceID]; ok {
+		return result.torrent, result.exists, result.err
+	}
+	return nil, false, nil
+}
+
+func (f *infohashTestSyncManager) GetTorrentProperties(_ context.Context, instanceID int, hash string) (*qbt.TorrentProperties, error) {
+	if instProps, ok := f.props[instanceID]; ok {
+		if props, ok := instProps[strings.ToLower(hash)]; ok {
+			cp := *props
+			return &cp, nil
+		}
+	}
+	return &qbt.TorrentProperties{SavePath: "/downloads"}, nil
+}
+
+func (f *infohashTestSyncManager) GetAppPreferences(context.Context, int) (qbt.AppPreferences, error) {
+	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
+}
+
+func (f *infohashTestSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
+	return nil
+}
+
+func (f *infohashTestSyncManager) BulkAction(context.Context, int, []string, string) error {
+	return nil
+}
+
+func (f *infohashTestSyncManager) SetTags(context.Context, int, []string, string) error {
+	return nil
+}
+
+func (f *infohashTestSyncManager) GetCachedInstanceTorrents(_ context.Context, instanceID int) ([]internalqb.CrossInstanceTorrentView, error) {
+	// Build views from torrents
+	if list, ok := f.torrents[instanceID]; ok {
+		views := make([]internalqb.CrossInstanceTorrentView, len(list))
+		for i, t := range list {
+			views[i] = internalqb.CrossInstanceTorrentView{
+				TorrentView: internalqb.TorrentView{
+					Torrent: t,
+				},
+				InstanceID: instanceID,
+			}
+		}
+		return views, nil
+	}
+	return nil, nil
+}
+
+func (f *infohashTestSyncManager) ExtractDomainFromURL(string) string {
+	return ""
+}
+
+func (f *infohashTestSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+	return nil, nil
+}
+
+func (f *infohashTestSyncManager) RenameTorrent(context.Context, int, string, string) error {
+	return nil
+}
+
+func (f *infohashTestSyncManager) RenameTorrentFile(context.Context, int, string, string, string) error {
+	return nil
+}
+
+func (f *infohashTestSyncManager) RenameTorrentFolder(context.Context, int, string, string, string) error {
+	return nil
+}
+
+func (f *infohashTestSyncManager) GetCategories(context.Context, int) (map[string]qbt.Category, error) {
+	return map[string]qbt.Category{}, nil
+}
+
+func (f *infohashTestSyncManager) CreateCategory(context.Context, int, string, string) error {
+	return nil
+}
+
+type infohashTestInstanceStore struct {
+	instances map[int]*models.Instance
+}
+
+func (f *infohashTestInstanceStore) Get(_ context.Context, id int) (*models.Instance, error) {
+	inst, ok := f.instances[id]
+	if !ok {
+		return nil, fmt.Errorf("instance %d not found", id)
+	}
+	return inst, nil
+}
+
+func (f *infohashTestInstanceStore) List(_ context.Context) ([]*models.Instance, error) {
+	list := make([]*models.Instance, 0, len(f.instances))
+	for _, inst := range f.instances {
+		list = append(list, inst)
+	}
+	return list, nil
+}
+
+func TestProcessAutomationCandidate_SkipsWhenInfohashExistsOnAllInstances(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	instance1ID := 1
+	instance2ID := 2
+	testHash := "63e07ff523710ca268567dad344ce1e0e6b7e8a3"
+	torrentName := "Show.S01.1080p.BluRay-GROUP"
+
+	existingTorrent := qbt.Torrent{
+		Hash:     testHash,
+		Name:     torrentName,
+		Progress: 1.0,
+		Category: "tv",
+	}
+
+	sync := newInfohashTestSyncManager()
+	// Set up torrents for both instances
+	sync.torrents[instance1ID] = []qbt.Torrent{existingTorrent}
+	sync.torrents[instance2ID] = []qbt.Torrent{existingTorrent}
+	sync.files[instance1ID] = map[string]qbt.TorrentFiles{
+		strings.ToLower(testHash): {{Name: "Show.S01E01.1080p.BluRay-GROUP.mkv", Size: 1024}},
+	}
+	sync.files[instance2ID] = map[string]qbt.TorrentFiles{
+		strings.ToLower(testHash): {{Name: "Show.S01E01.1080p.BluRay-GROUP.mkv", Size: 1024}},
+	}
+	sync.props[instance1ID] = map[string]*qbt.TorrentProperties{
+		strings.ToLower(testHash): {SavePath: "/downloads"},
+	}
+	sync.props[instance2ID] = map[string]*qbt.TorrentProperties{
+		strings.ToLower(testHash): {SavePath: "/downloads"},
+	}
+
+	// Configure HasTorrentByAnyHash to return existing torrent for both instances
+	sync.hashResults[instance1ID] = &hashCheckResult{
+		torrent: &existingTorrent,
+		exists:  true,
+		err:     nil,
+	}
+	sync.hashResults[instance2ID] = &hashCheckResult{
+		torrent: &existingTorrent,
+		exists:  true,
+		err:     nil,
+	}
+
+	downloadCalled := false
+	service := &Service{
+		instanceStore: &infohashTestInstanceStore{
+			instances: map[int]*models.Instance{
+				instance1ID: {ID: instance1ID, Name: "Instance1"},
+				instance2ID: {ID: instance2ID, Name: "Instance2"},
+			},
+		},
+		syncManager:      sync,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
+			downloadCalled = true
+			return []byte("torrent"), nil
+		},
+	}
+
+	settings := &models.CrossSeedAutomationSettings{
+		StartPaused:       true,
+		RSSAutomationTags: []string{"cross-seed"},
+		IgnorePatterns:    []string{},
+		TargetInstanceIDs: []int{instance1ID, instance2ID},
+	}
+
+	run := &models.CrossSeedRun{}
+	result := jackett.SearchResult{
+		Indexer:              "Example",
+		IndexerID:            10,
+		Title:                torrentName,
+		DownloadURL:          "https://example.invalid/download.torrent",
+		GUID:                 "guid-1",
+		Size:                 1024,
+		InfoHashV1:           testHash,
+		DownloadVolumeFactor: 1.0,
+		UploadVolumeFactor:   1.0,
+	}
+
+	status, returnedHash, err := service.processAutomationCandidate(ctx, run, settings, nil, result, AutomationRunOptions{}, map[int]jackett.EnabledIndexerInfo{})
+
+	require.NoError(t, err)
+	assert.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
+	assert.NotNil(t, returnedHash)
+	assert.Equal(t, testHash, *returnedHash)
+	assert.Equal(t, 2, run.TorrentsSkipped, "should skip for both instances")
+	assert.False(t, downloadCalled, "should NOT download torrent when it exists on all instances")
+}
+
+func TestProcessAutomationCandidate_ProceedsWhenInfohashExistsOnSomeInstances(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	instance1ID := 1
+	instance2ID := 2
+	testHash := "63e07ff523710ca268567dad344ce1e0e6b7e8a3"
+	torrentName := "Show.S01.1080p.BluRay-GROUP"
+
+	existingTorrent := qbt.Torrent{
+		Hash:     testHash,
+		Name:     torrentName,
+		Progress: 1.0,
+		Category: "tv",
+	}
+
+	sync := newInfohashTestSyncManager()
+	sync.torrents[instance1ID] = []qbt.Torrent{existingTorrent}
+	sync.torrents[instance2ID] = []qbt.Torrent{existingTorrent} // Both have the torrent for candidate matching
+	sync.files[instance1ID] = map[string]qbt.TorrentFiles{
+		strings.ToLower(testHash): {{Name: "Show.S01E01.1080p.BluRay-GROUP.mkv", Size: 1024}},
+	}
+	sync.files[instance2ID] = map[string]qbt.TorrentFiles{
+		strings.ToLower(testHash): {{Name: "Show.S01E01.1080p.BluRay-GROUP.mkv", Size: 1024}},
+	}
+	sync.props[instance1ID] = map[string]*qbt.TorrentProperties{
+		strings.ToLower(testHash): {SavePath: "/downloads"},
+	}
+	sync.props[instance2ID] = map[string]*qbt.TorrentProperties{
+		strings.ToLower(testHash): {SavePath: "/downloads"},
+	}
+
+	// Instance 1 has the torrent by hash, Instance 2 does not (simulating different torrent file)
+	sync.hashResults[instance1ID] = &hashCheckResult{
+		torrent: &existingTorrent,
+		exists:  true,
+		err:     nil,
+	}
+	sync.hashResults[instance2ID] = &hashCheckResult{
+		torrent: nil,
+		exists:  false,
+		err:     nil,
+	}
+
+	downloadCalled := false
+	service := &Service{
+		instanceStore: &infohashTestInstanceStore{
+			instances: map[int]*models.Instance{
+				instance1ID: {ID: instance1ID, Name: "Instance1"},
+				instance2ID: {ID: instance2ID, Name: "Instance2"},
+			},
+		},
+		syncManager:      sync,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
+			downloadCalled = true
+			return []byte("torrent"), nil
+		},
+	}
+
+	// Mock crossSeedInvoker to avoid nil panic
+	service.crossSeedInvoker = func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+		return &CrossSeedResponse{
+			Success: true,
+			Results: []InstanceCrossSeedResult{
+				{InstanceID: instance2ID, InstanceName: "Instance2", Success: true, Status: "added"},
+			},
+		}, nil
+	}
+
+	settings := &models.CrossSeedAutomationSettings{
+		StartPaused:       true,
+		RSSAutomationTags: []string{"cross-seed"},
+		IgnorePatterns:    []string{},
+		TargetInstanceIDs: []int{instance1ID, instance2ID},
+	}
+
+	run := &models.CrossSeedRun{}
+	result := jackett.SearchResult{
+		Indexer:              "Example",
+		IndexerID:            10,
+		Title:                torrentName,
+		DownloadURL:          "https://example.invalid/download.torrent",
+		GUID:                 "guid-1",
+		Size:                 1024,
+		InfoHashV1:           testHash,
+		DownloadVolumeFactor: 1.0,
+		UploadVolumeFactor:   1.0,
+	}
+
+	status, _, err := service.processAutomationCandidate(ctx, run, settings, nil, result, AutomationRunOptions{}, map[int]jackett.EnabledIndexerInfo{})
+
+	require.NoError(t, err)
+	// Should proceed with download since not all instances have it
+	assert.True(t, downloadCalled, "should download torrent when not all instances have it")
+	assert.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
+}
+
+func TestProcessAutomationCandidate_ProceedsOnHashCheckError(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	instance1ID := 1
+	testHash := "63e07ff523710ca268567dad344ce1e0e6b7e8a3"
+	torrentName := "Show.S01.1080p.BluRay-GROUP"
+
+	existingTorrent := qbt.Torrent{
+		Hash:     testHash,
+		Name:     torrentName,
+		Progress: 1.0,
+		Category: "tv",
+	}
+
+	sync := newInfohashTestSyncManager()
+	sync.torrents[instance1ID] = []qbt.Torrent{existingTorrent}
+	sync.files[instance1ID] = map[string]qbt.TorrentFiles{
+		strings.ToLower(testHash): {{Name: "Show.S01E01.1080p.BluRay-GROUP.mkv", Size: 1024}},
+	}
+	sync.props[instance1ID] = map[string]*qbt.TorrentProperties{
+		strings.ToLower(testHash): {SavePath: "/downloads"},
+	}
+
+	// Configure HasTorrentByAnyHash to return an error
+	sync.hashResults[instance1ID] = &hashCheckResult{
+		torrent: nil,
+		exists:  false,
+		err:     errors.New("connection refused"),
+	}
+
+	downloadCalled := false
+	service := &Service{
+		instanceStore: &infohashTestInstanceStore{
+			instances: map[int]*models.Instance{
+				instance1ID: {ID: instance1ID, Name: "Instance1"},
+			},
+		},
+		syncManager:      sync,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
+			downloadCalled = true
+			return []byte("torrent"), nil
+		},
+	}
+
+	// Mock crossSeedInvoker
+	service.crossSeedInvoker = func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+		return &CrossSeedResponse{
+			Success: true,
+			Results: []InstanceCrossSeedResult{
+				{InstanceID: instance1ID, InstanceName: "Instance1", Success: true, Status: "added"},
+			},
+		}, nil
+	}
+
+	settings := &models.CrossSeedAutomationSettings{
+		StartPaused:       true,
+		RSSAutomationTags: []string{"cross-seed"},
+		IgnorePatterns:    []string{},
+		TargetInstanceIDs: []int{instance1ID},
+	}
+
+	run := &models.CrossSeedRun{}
+	result := jackett.SearchResult{
+		Indexer:              "Example",
+		IndexerID:            10,
+		Title:                torrentName,
+		DownloadURL:          "https://example.invalid/download.torrent",
+		GUID:                 "guid-1",
+		Size:                 1024,
+		InfoHashV1:           testHash,
+		DownloadVolumeFactor: 1.0,
+		UploadVolumeFactor:   1.0,
+	}
+
+	status, _, err := service.processAutomationCandidate(ctx, run, settings, nil, result, AutomationRunOptions{}, map[int]jackett.EnabledIndexerInfo{})
+
+	require.NoError(t, err)
+	// Should proceed with download on error (graceful degradation)
+	assert.True(t, downloadCalled, "should download torrent when hash check fails")
+	assert.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
+}
+
+func TestProcessAutomationCandidate_PropagatesContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	instance1ID := 1
+	testHash := "63e07ff523710ca268567dad344ce1e0e6b7e8a3"
+	torrentName := "Show.S01.1080p.BluRay-GROUP"
+
+	existingTorrent := qbt.Torrent{
+		Hash:     testHash,
+		Name:     torrentName,
+		Progress: 1.0,
+		Category: "tv",
+	}
+
+	sync := newInfohashTestSyncManager()
+	sync.torrents[instance1ID] = []qbt.Torrent{existingTorrent}
+	sync.files[instance1ID] = map[string]qbt.TorrentFiles{
+		strings.ToLower(testHash): {{Name: "Show.S01E01.1080p.BluRay-GROUP.mkv", Size: 1024}},
+	}
+	sync.props[instance1ID] = map[string]*qbt.TorrentProperties{
+		strings.ToLower(testHash): {SavePath: "/downloads"},
+	}
+
+	// Configure HasTorrentByAnyHash to return context.Canceled error
+	sync.hashResults[instance1ID] = &hashCheckResult{
+		torrent: nil,
+		exists:  false,
+		err:     context.Canceled,
+	}
+
+	downloadCalled := false
+	service := &Service{
+		instanceStore: &infohashTestInstanceStore{
+			instances: map[int]*models.Instance{
+				instance1ID: {ID: instance1ID, Name: "Instance1"},
+			},
+		},
+		syncManager:      sync,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
+			downloadCalled = true
+			return []byte("torrent"), nil
+		},
+	}
+
+	settings := &models.CrossSeedAutomationSettings{
+		StartPaused:       true,
+		RSSAutomationTags: []string{"cross-seed"},
+		IgnorePatterns:    []string{},
+		TargetInstanceIDs: []int{instance1ID},
+	}
+
+	run := &models.CrossSeedRun{}
+	result := jackett.SearchResult{
+		Indexer:              "Example",
+		IndexerID:            10,
+		Title:                torrentName,
+		DownloadURL:          "https://example.invalid/download.torrent",
+		GUID:                 "guid-1",
+		Size:                 1024,
+		InfoHashV1:           testHash,
+		DownloadVolumeFactor: 1.0,
+		UploadVolumeFactor:   1.0,
+	}
+
+	status, _, err := service.processAutomationCandidate(ctx, run, settings, nil, result, AutomationRunOptions{}, map[int]jackett.EnabledIndexerInfo{})
+
+	// Context cancellation should propagate as an error, not trigger fallback
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Contains(t, err.Error(), "hash check canceled")
+	assert.Equal(t, models.CrossSeedFeedItemStatusFailed, status)
+	assert.Equal(t, 1, run.TorrentsFailed, "should increment TorrentsFailed on context cancellation")
+	assert.False(t, downloadCalled, "should NOT download torrent when context is canceled")
+}
+
+func TestProcessAutomationCandidate_PropagatesContextDeadlineExceeded(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	instance1ID := 1
+	testHash := "63e07ff523710ca268567dad344ce1e0e6b7e8a3"
+	torrentName := "Show.S01.1080p.BluRay-GROUP"
+
+	existingTorrent := qbt.Torrent{
+		Hash:     testHash,
+		Name:     torrentName,
+		Progress: 1.0,
+		Category: "tv",
+	}
+
+	sync := newInfohashTestSyncManager()
+	sync.torrents[instance1ID] = []qbt.Torrent{existingTorrent}
+	sync.files[instance1ID] = map[string]qbt.TorrentFiles{
+		strings.ToLower(testHash): {{Name: "Show.S01E01.1080p.BluRay-GROUP.mkv", Size: 1024}},
+	}
+	sync.props[instance1ID] = map[string]*qbt.TorrentProperties{
+		strings.ToLower(testHash): {SavePath: "/downloads"},
+	}
+
+	// Configure HasTorrentByAnyHash to return context.DeadlineExceeded error
+	sync.hashResults[instance1ID] = &hashCheckResult{
+		torrent: nil,
+		exists:  false,
+		err:     context.DeadlineExceeded,
+	}
+
+	downloadCalled := false
+	service := &Service{
+		instanceStore: &infohashTestInstanceStore{
+			instances: map[int]*models.Instance{
+				instance1ID: {ID: instance1ID, Name: "Instance1"},
+			},
+		},
+		syncManager:      sync,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
+			downloadCalled = true
+			return []byte("torrent"), nil
+		},
+	}
+
+	settings := &models.CrossSeedAutomationSettings{
+		StartPaused:       true,
+		RSSAutomationTags: []string{"cross-seed"},
+		IgnorePatterns:    []string{},
+		TargetInstanceIDs: []int{instance1ID},
+	}
+
+	run := &models.CrossSeedRun{}
+	result := jackett.SearchResult{
+		Indexer:              "Example",
+		IndexerID:            10,
+		Title:                torrentName,
+		DownloadURL:          "https://example.invalid/download.torrent",
+		GUID:                 "guid-1",
+		Size:                 1024,
+		InfoHashV1:           testHash,
+		DownloadVolumeFactor: 1.0,
+		UploadVolumeFactor:   1.0,
+	}
+
+	status, _, err := service.processAutomationCandidate(ctx, run, settings, nil, result, AutomationRunOptions{}, map[int]jackett.EnabledIndexerInfo{})
+
+	// Context deadline exceeded should propagate as an error, not trigger fallback
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Contains(t, err.Error(), "hash check canceled")
+	assert.Equal(t, models.CrossSeedFeedItemStatusFailed, status)
+	assert.Equal(t, 1, run.TorrentsFailed, "should increment TorrentsFailed on context deadline exceeded")
+	assert.False(t, downloadCalled, "should NOT download torrent when context deadline exceeded")
+}
+
+func TestProcessAutomationCandidate_SkipsWhenCommentURLMatches(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	instance1ID := 1
+	commentURL := "https://seedpool.org/torrents/607803"
+	torrentName := "Show.S01.1080p.BluRay-GROUP"
+	torrentHash := "abc123def456abc123def456abc123def456abcd"
+
+	// Torrent with matching comment
+	existingTorrent := qbt.Torrent{
+		Hash:     torrentHash,
+		Name:     torrentName,
+		Progress: 1.0,
+		Category: "tv",
+		Comment:  "Uploaded from https://seedpool.org/torrents/607803",
+	}
+
+	sync := newInfohashTestSyncManager()
+	sync.torrents[instance1ID] = []qbt.Torrent{existingTorrent}
+	sync.files[instance1ID] = map[string]qbt.TorrentFiles{
+		strings.ToLower(torrentHash): {{Name: "Show.S01E01.1080p.BluRay-GROUP.mkv", Size: 1024}},
+	}
+	sync.props[instance1ID] = map[string]*qbt.TorrentProperties{
+		strings.ToLower(torrentHash): {SavePath: "/downloads"},
+	}
+
+	// No hash results configured - will return nil, false, nil
+	// This forces the fallback to comment URL matching
+
+	downloadCalled := false
+	service := &Service{
+		instanceStore: &infohashTestInstanceStore{
+			instances: map[int]*models.Instance{
+				instance1ID: {ID: instance1ID, Name: "Instance1"},
+			},
+		},
+		syncManager:      sync,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
+			downloadCalled = true
+			return []byte("torrent"), nil
+		},
+	}
+
+	settings := &models.CrossSeedAutomationSettings{
+		StartPaused:       true,
+		RSSAutomationTags: []string{"cross-seed"},
+		IgnorePatterns:    []string{},
+		TargetInstanceIDs: []int{instance1ID},
+	}
+
+	run := &models.CrossSeedRun{}
+	result := jackett.SearchResult{
+		Indexer:              "Example",
+		IndexerID:            10,
+		Title:                torrentName,
+		DownloadURL:          "https://example.invalid/download.torrent",
+		GUID:                 commentURL, // UNIT3D style: GUID is the torrent details URL
+		Size:                 1024,
+		InfoHashV1:           "", // No infohash provided
+		DownloadVolumeFactor: 1.0,
+		UploadVolumeFactor:   1.0,
+	}
+
+	status, returnedHash, err := service.processAutomationCandidate(ctx, run, settings, nil, result, AutomationRunOptions{}, map[int]jackett.EnabledIndexerInfo{})
+
+	require.NoError(t, err)
+	assert.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
+	assert.Nil(t, returnedHash, "should not return hash for comment URL match")
+	assert.Equal(t, 1, run.TorrentsSkipped, "should skip for instance with matching comment")
+	assert.False(t, downloadCalled, "should NOT download torrent when comment URL matches")
 }

@@ -179,7 +179,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("host", envPrefix+"HOST")
 	c.viper.BindEnv("port", envPrefix+"PORT")
 	c.viper.BindEnv("baseUrl", envPrefix+"BASE_URL")
-	c.viper.BindEnv("sessionSecret", envPrefix+"SESSION_SECRET")
+	c.bindOrReadFromFile("sessionSecret", envPrefix+"SESSION_SECRET")
 	c.viper.BindEnv("logLevel", envPrefix+"LOG_LEVEL")
 	c.viper.BindEnv("logPath", envPrefix+"LOG_PATH")
 	c.viper.BindEnv("logMaxSize", envPrefix+"LOG_MAX_SIZE")
@@ -623,4 +623,27 @@ func (c *AppConfig) GetEncryptionKey() []byte {
 	padded := make([]byte, encryptionKeySize)
 	copy(padded, []byte(secret))
 	return padded
+}
+
+// bindOrReadFromFile sets the viper variable from a file if the _FILE suffixed
+// environment variable is present, otherwise it binds to the regular env var.
+func (c *AppConfig) bindOrReadFromFile(viperVar string, envVar string) {
+	envVarFile := envVar + "_FILE"
+	filePath := os.Getenv(envVarFile)
+	if filePath == "" {
+		c.viper.BindEnv(viperVar, envVar)
+		return
+	}
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		log.Fatal().Err(err).Str("path", filePath).Msg("Could not read " + envVarFile)
+	}
+
+	secret := strings.TrimSpace(string(content))
+	if secret == "" {
+		log.Fatal().Str("path", filePath).Msg(envVarFile + " file is empty")
+	}
+
+	c.viper.Set(viperVar, secret)
 }

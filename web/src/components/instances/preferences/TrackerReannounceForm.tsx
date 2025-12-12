@@ -6,11 +6,12 @@
 import { buildCategoryTree, type CategoryNode } from "@/components/torrents/CategoryTree"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MultiSelect, type Option } from "@/components/ui/multi-select"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -18,16 +19,22 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useInstances } from "@/hooks/useInstances"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { api } from "@/lib/api"
-import { cn, copyTextToClipboard } from "@/lib/utils"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { cn, copyTextToClipboard, formatErrorReason } from "@/lib/utils"
 import { REANNOUNCE_CONSTRAINTS, type InstanceFormData, type InstanceReannounceActivity, type InstanceReannounceSettings } from "@/types"
 import { useQuery } from "@tanstack/react-query"
-import { Copy, Info, RefreshCcw } from "lucide-react"
+import { Copy, HardDrive, Info, RefreshCcw } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
 interface TrackerReannounceFormProps {
   instanceId: number
+  onInstanceChange?: (instanceId: number) => void
   onSuccess?: () => void
+  /** Render variant: "card" wraps in Card component, "embedded" renders without card wrapper */
+  variant?: "card" | "embedded"
+  /** Form ID for external submit button. When provided, the internal submit button is hidden. */
+  formId?: string
 }
 
 const DEFAULT_SETTINGS: InstanceReannounceSettings = {
@@ -50,12 +57,22 @@ const GLOBAL_SCAN_INTERVAL_SECONDS = 7
 
 type MonitorScopeField = keyof Pick<InstanceReannounceSettings, "categories" | "tags" | "trackers">
 
-export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannounceFormProps) {
+export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess, variant = "card", formId }: TrackerReannounceFormProps) {
   const { instances, updateInstance, isUpdating } = useInstances()
+  const { formatISOTimestamp } = useDateTimeFormatters()
   const instance = useMemo(() => instances?.find((item) => item.id === instanceId), [instances, instanceId])
+  const activeInstances = useMemo(
+    () => (instances ?? []).filter((inst) => inst.isActive),
+    [instances]
+  )
   const [settings, setSettings] = useState<InstanceReannounceSettings>(() => cloneSettings(instance?.reannounceSettings))
   const [hideSkipped, setHideSkipped] = useState(true)
   const [activeTab, setActiveTab] = useState("settings")
+
+  // Reset settings when instance changes
+  useEffect(() => {
+    setSettings(cloneSettings(instance?.reannounceSettings))
+  }, [instanceId, instance?.reannounceSettings])
 
   const trackersQuery = useInstanceTrackers(instanceId, { enabled: !!instance })
 
@@ -178,10 +195,11 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
     }
   }
 
+  // Only fetch activity in card mode (embedded mode shows activity in overview)
   const activityQuery = useQuery({
     queryKey: ["instance-reannounce-activity", instanceId],
-    queryFn: () => api.getInstanceReannounceActivity(instanceId, 50),
-    enabled: Boolean(instance && settings.enabled),
+    queryFn: () => api.getInstanceReannounceActivity(instanceId, 100),
+    enabled: variant !== "embedded" && Boolean(instance && settings.enabled),
     refetchInterval: activeTab === "activity" ? 5000 : false,
   })
 
@@ -189,8 +207,11 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
     return <p className="text-sm text-muted-foreground">Instance not found. Please close and reopen the dialog.</p>
   }
 
-  const allActivityEvents: InstanceReannounceActivity[] = (activityQuery.data ?? []).slice().reverse()
-  const activityEvents = hideSkipped ? allActivityEvents.filter((event) => event.outcome !== "skipped") : allActivityEvents
+  // Filter and limit to 50 events for display
+  const allActivityEvents: InstanceReannounceActivity[] = (activityQuery.data ?? []).slice(-50).reverse()
+  const activityEvents = hideSkipped
+    ? (activityQuery.data ?? []).filter((event) => event.outcome !== "skipped").slice(-50).reverse()
+    : allActivityEvents
   const activityEnabled = Boolean(instance && settings.enabled)
 
   const outcomeClasses: Record<InstanceReannounceActivity["outcome"], string> = {
@@ -199,63 +220,76 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
     skipped: "bg-muted text-muted-foreground border-border/60",
   }
 
-  const formatTimestamp = (timestamp: string) => {
-    try {
-      return new Intl.DateTimeFormat(undefined, {
-        dateStyle: "short",
-        timeStyle: "short",
-      }).format(new Date(timestamp))
-    } catch {
-      return timestamp
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit}>
-      <Card className="w-full">
-        <CardHeader className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <CardTitle className="text-lg font-semibold">Automatic Tracker Reannounce</CardTitle>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-4 w-4 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-[300px]">
-                    <p>qBittorrent doesn't retry failed announces quickly. When a tracker is slow to register a new upload or returns an error, you may be stuck waiting. qui handles this automatically while never spamming trackers.</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <CardDescription>
-                qui monitors <strong>stalled</strong> torrents and reannounces them if trackers report "unregistered" or errors.
-                Background scan runs every {GLOBAL_SCAN_INTERVAL_SECONDS} seconds.
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-2 bg-muted/40 p-2 rounded-lg border border-border/40 shrink-0">
-              <Label htmlFor="tracker-monitoring" className="font-medium text-sm cursor-pointer">
-                {settings.enabled ? "Enabled" : "Disabled"}
-              </Label>
-              <Switch
-                id="tracker-monitoring"
-                checked={settings.enabled}
-                onCheckedChange={handleToggleEnabled}
-                disabled={isUpdating}
-              />
-            </div>
+  const headerContent = (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <h3 className={cn(variant === "card" ? "text-lg font-semibold" : "text-base font-medium")}>
+              {variant === "card" ? "Automatic Tracker Reannounce" : "Settings"}
+            </h3>
+            {variant === "card" && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[300px]">
+                  <p>qBittorrent doesn't retry failed announces quickly. When a tracker is slow to register a new upload or returns an error, you may be stuck waiting. qui handles this automatically while never spamming trackers.</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
           </div>
-        </CardHeader>
+          {variant === "card" && (
+            <p className="text-sm text-muted-foreground">
+              qui monitors <strong>stalled</strong> torrents and reannounces them when no tracker is healthy.
+              Background scan runs every {GLOBAL_SCAN_INTERVAL_SECONDS} seconds.
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2 bg-muted/40 p-2 rounded-lg border border-border/40 shrink-0">
+          <Label htmlFor="tracker-monitoring" className="font-medium text-sm cursor-pointer">
+            {settings.enabled ? "Enabled" : "Disabled"}
+          </Label>
+          <Switch
+            id="tracker-monitoring"
+            checked={settings.enabled}
+            onCheckedChange={handleToggleEnabled}
+            disabled={isUpdating}
+          />
+        </div>
+      </div>
 
-        <CardContent>
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <div className="flex items-center justify-between mb-4">
-              <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
-                <TabsTrigger value="settings">Settings</TabsTrigger>
-                <TabsTrigger value="activity">Activity Log</TabsTrigger>
-              </TabsList>
-            </div>
+      {variant === "card" && activeInstances.length > 1 && onInstanceChange && (
+        <div className="flex items-center gap-3 pt-2 border-t border-border/40">
+          <Label className="text-sm text-muted-foreground shrink-0">Instance</Label>
+          <Select
+            value={String(instanceId)}
+            onValueChange={(value) => onInstanceChange?.(Number(value))}
+            disabled={!onInstanceChange}
+          >
+            <SelectTrigger className="w-[200px]">
+              <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+                <HardDrive className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                <span className="truncate">
+                  <SelectValue placeholder="Select instance" />
+                </span>
+              </div>
+            </SelectTrigger>
+            <SelectContent>
+              {activeInstances.map((inst) => (
+                <SelectItem key={inst.id} value={String(inst.id)}>
+                  <span className="truncate">{inst.name}</span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+    </div>
+  )
 
-            <TabsContent value="settings" className="space-y-6 mt-0">
+  const settingsContent = (
+    <div className="space-y-6">
               {settings.enabled ? (
                 <>
                   <div className="space-y-4">
@@ -460,11 +494,13 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                     </div>
                   </div>
 
-                  <div className="flex justify-end pt-4">
-                    <Button type="submit" disabled={isUpdating}>
-                      {isUpdating ? "Saving..." : "Save Changes"}
-                    </Button>
-                  </div>
+                  {!formId && (
+                    <div className="flex justify-end pt-4">
+                      <Button type="submit" disabled={isUpdating}>
+                        {isUpdating ? "Saving..." : "Save Changes"}
+                      </Button>
+                    </div>
+                  )}
                 </>
               ) : (
                 <div className="flex flex-col items-center justify-center py-12 text-center space-y-3 border-2 border-dashed rounded-lg">
@@ -482,9 +518,11 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                   </Button>
                 </div>
               )}
-            </TabsContent>
+    </div>
+  )
 
-            <TabsContent value="activity" className="mt-0 space-y-4">
+  const activityContent = (
+    <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
                   <h3 className="text-sm font-medium leading-none">Recent Activity</h3>
@@ -520,7 +558,14 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                 </div>
               </div>
 
-              {activityQuery.isLoading ? (
+              {activityQuery.isError ? (
+                <div className="h-[150px] flex flex-col items-center justify-center border border-destructive/30 rounded-lg bg-destructive/10 text-center p-4">
+                  <p className="text-sm text-destructive">Failed to load activity</p>
+                  <p className="text-xs text-destructive/70 mt-1">
+                    Check connection to the instance.
+                  </p>
+                </div>
+              ) : activityQuery.isLoading ? (
                  <div className="h-[300px] flex items-center justify-center border rounded-lg bg-muted/10">
                     <p className="text-sm text-muted-foreground">Loading activity...</p>
                  </div>
@@ -572,7 +617,7 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                                 </button>
                               </div>
                               <span className="text-muted-foreground/40">•</span>
-                              <span>{formatTimestamp(event.timestamp)}</span>
+                              <span>{formatISOTimestamp(event.timestamp)}</span>
                             </div>
 
                             {(event.trackers || event.reason) && (
@@ -586,7 +631,18 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                                 {event.reason && (
                                   <div className="flex items-start gap-2">
                                     <span className="font-medium text-muted-foreground shrink-0">Reason:</span>
-                                    <span className="text-foreground break-all">{event.reason}</span>
+                                    {formatErrorReason(event.reason) !== event.reason ? (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="text-foreground break-all cursor-help">{formatErrorReason(event.reason)}</span>
+                                        </TooltipTrigger>
+                                        <TooltipContent className="max-w-md">
+                                          <p className="break-all">{event.reason}</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    ) : (
+                                      <span className="text-foreground break-all">{event.reason}</span>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -598,6 +654,39 @@ export function TrackerReannounceForm({ instanceId, onSuccess }: TrackerReannoun
                   </div>
                 </ScrollArea>
               )}
+    </div>
+  )
+
+  if (variant === "embedded") {
+    // Embedded mode: only show settings, no tabs (activity is shown in overview)
+    return (
+      <form id={formId} onSubmit={handleSubmit} className="space-y-6">
+        {headerContent}
+        {settingsContent}
+      </form>
+    )
+  }
+
+  // Card mode: show tabs with settings and activity
+  return (
+    <form onSubmit={handleSubmit}>
+      <Card className="w-full">
+        <CardHeader className="space-y-4">
+          {headerContent}
+        </CardHeader>
+        <CardContent>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <div className="flex items-center justify-between mb-4">
+              <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
+                <TabsTrigger value="settings">Settings</TabsTrigger>
+                <TabsTrigger value="activity">Activity Log</TabsTrigger>
+              </TabsList>
+            </div>
+            <TabsContent value="settings" className="mt-0">
+              {settingsContent}
+            </TabsContent>
+            <TabsContent value="activity" className="mt-0">
+              {activityContent}
             </TabsContent>
           </Tabs>
         </CardContent>

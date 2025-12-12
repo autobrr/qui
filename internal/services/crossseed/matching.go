@@ -92,10 +92,12 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	}
 
 	// Title should match closely but not necessarily exactly.
-	sourceTitleLower := s.stringNormalizer.Normalize(source.Title)
-	candidateTitleLower := s.stringNormalizer.Normalize(candidate.Title)
+	// Use punctuation-stripping normalization to handle differences like
+	// "Bob's Burgers" vs "Bobs.Burgers" (apostrophes lost in dot notation).
+	sourceTitleNorm := stringutils.NormalizeForMatching(source.Title)
+	candidateTitleNorm := stringutils.NormalizeForMatching(candidate.Title)
 
-	if sourceTitleLower == "" || candidateTitleLower == "" {
+	if sourceTitleNorm == "" || candidateTitleNorm == "" {
 		return false
 	}
 
@@ -104,9 +106,9 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	if isTV {
 		// For TV, allow a bit of fuzziness in the title (e.g. different punctuation)
 		// while still requiring the titles to be closely related.
-		if sourceTitleLower != candidateTitleLower &&
-			!strings.Contains(sourceTitleLower, candidateTitleLower) &&
-			!strings.Contains(candidateTitleLower, sourceTitleLower) {
+		if sourceTitleNorm != candidateTitleNorm &&
+			!strings.Contains(sourceTitleNorm, candidateTitleNorm) &&
+			!strings.Contains(candidateTitleNorm, sourceTitleNorm) {
 			// Title mismatches are expected for most candidates - don't log to avoid noise
 			return false
 		}
@@ -114,7 +116,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		// For non-TV content (movies, music, audiobooks, etc.), require exact title
 		// match after normalization. This avoids very loose substring matches across
 		// unrelated content types.
-		if sourceTitleLower != candidateTitleLower {
+		if sourceTitleNorm != candidateTitleNorm {
 			// Title mismatches are expected for most candidates - don't log to avoid noise
 			return false
 		}
@@ -404,8 +406,8 @@ func (s *Service) getMatchTypeFromTitle(targetName, candidateName string, target
 	// the episode number encoded in the raw torrent names also matches (e.g. anime releases where
 	// rls fails to parse " - 1150 " as an episode).
 	if len(candidateReleases) == 0 {
-		targetTitle := s.stringNormalizer.Normalize(targetRelease.Title)
-		candidateTitle := s.stringNormalizer.Normalize(candidateRelease.Title)
+		targetTitle := stringutils.NormalizeForMatching(targetRelease.Title)
+		candidateTitle := stringutils.NormalizeForMatching(candidateRelease.Title)
 		if targetTitle != "" && targetTitle == candidateTitle {
 			// Extract simple episode number from torrent names of the form "... - 1150 (...)".
 			extractEpisode := func(name string) string {
@@ -453,7 +455,8 @@ type MatchResult struct {
 
 // getMatchTypeWithReason determines if files match for cross-seeding and provides
 // a detailed reason when they don't match.
-func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Release, sourceFiles, candidateFiles qbt.TorrentFiles, ignorePatterns []string) MatchResult {
+// tolerancePercent specifies the maximum size difference percentage for size matching (default 5%).
+func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Release, sourceFiles, candidateFiles qbt.TorrentFiles, ignorePatterns []string, tolerancePercent float64) MatchResult {
 	var timer *prometheus.Timer
 	if s.metrics != nil {
 		timer = prometheus.NewTimer(s.metrics.GetMatchTypeDuration)
@@ -547,12 +550,14 @@ func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Re
 		}
 	}
 
-	// Size match
-	if totalSourceSize > 0 && totalSourceSize == totalCandidateSize && len(filteredSourceFiles) > 0 {
-		if s.metrics != nil {
-			s.metrics.GetMatchTypeSizeMatch.Inc()
+	// Size match with tolerance
+	if totalSourceSize > 0 && len(filteredSourceFiles) > 0 {
+		if s.isSizeWithinTolerance(totalSourceSize, totalCandidateSize, tolerancePercent) {
+			if s.metrics != nil {
+				s.metrics.GetMatchTypeSizeMatch.Inc()
+			}
+			return MatchResult{MatchType: "size", Reason: ""}
 		}
-		return MatchResult{MatchType: "size", Reason: ""}
 	}
 
 	// Fallback to largest file match
@@ -575,6 +580,7 @@ func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Re
 		filteredSourceFiles, filteredCandidateFiles,
 		totalSourceSize, totalCandidateSize,
 		sourceReleaseKeys, candidateReleaseKeys,
+		tolerancePercent,
 	)
 	return MatchResult{MatchType: "", Reason: reason}
 }
@@ -596,6 +602,7 @@ func buildNoMatchReason(
 	sourceFiles, candidateFiles []TorrentFile,
 	sourceSize, candidateSize int64,
 	sourceKeys, candidateKeys map[releaseKey]int64,
+	tolerancePercent float64,
 ) string {
 	if len(sourceFiles) == 0 {
 		return "No usable files in source torrent after filtering"
@@ -604,11 +611,21 @@ func buildNoMatchReason(
 		return "No usable files in existing torrent after filtering"
 	}
 
-	// Size mismatch
+	// Size mismatch - calculate actual difference percentage
 	if sourceSize != candidateSize {
-		return fmt.Sprintf("Size mismatch: source %.2f GB vs existing %.2f GB",
+		var diffPercent float64
+		if sourceSize > 0 {
+			diff := sourceSize - candidateSize
+			if diff < 0 {
+				diff = -diff
+			}
+			diffPercent = (float64(diff) / float64(sourceSize)) * 100
+		}
+		return fmt.Sprintf("Size mismatch: source %.2f GB vs existing %.2f GB (%.2f%% difference, tolerance %.1f%%)",
 			float64(sourceSize)/(1024*1024*1024),
-			float64(candidateSize)/(1024*1024*1024))
+			float64(candidateSize)/(1024*1024*1024),
+			diffPercent,
+			tolerancePercent)
 	}
 
 	// File count mismatch with same size (rare but possible)

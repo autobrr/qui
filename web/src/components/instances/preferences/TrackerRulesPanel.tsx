@@ -5,7 +5,7 @@
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -21,7 +21,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { api } from "@/lib/api"
-import { cn } from "@/lib/utils"
+import { cn, parseTrackerDomains } from "@/lib/utils"
 import type { TrackerRule, TrackerRuleInput } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Clock, Loader2, Pencil, Plus, RefreshCw, Scale, Trash2 } from "lucide-react"
@@ -30,6 +30,8 @@ import { toast } from "sonner"
 
 interface TrackerRulesPanelProps {
   instanceId: number
+  /** Render variant: "card" wraps in Card component, "embedded" renders without card wrapper */
+  variant?: "card" | "embedded"
 }
 
 type FormState = TrackerRuleInput & { trackerDomains: string[] }
@@ -47,7 +49,7 @@ const emptyFormState: FormState = {
   enabled: true,
 }
 
-export function TrackerRulesPanel({ instanceId }: TrackerRulesPanelProps) {
+export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRulesPanelProps) {
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<TrackerRule | null>(null)
@@ -187,26 +189,29 @@ export function TrackerRulesPanel({ instanceId }: TrackerRulesPanelProps) {
     createOrUpdate.mutate(payload)
   }
 
-  return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
-            <CardTitle>Tracker Rules</CardTitle>
-            <CardDescription>Apply speed and ratio caps per tracker domain.</CardDescription>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => applyRules.mutate()} disabled={applyRules.isPending}>
-              {applyRules.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-              Apply now
-            </Button>
-            <Button size="sm" onClick={openForCreate}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add rule
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
+  const headerContent = (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {variant === "card" && (
+        <div className="space-y-1">
+          <h3 className="text-lg font-semibold">Tracker Rules</h3>
+          <p className="text-sm text-muted-foreground">Apply speed and ratio caps per tracker domain.</p>
+        </div>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" size="sm" onClick={() => applyRules.mutate()} disabled={applyRules.isPending}>
+          {applyRules.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+          Apply now
+        </Button>
+        <Button size="sm" onClick={openForCreate}>
+          <Plus className="h-4 w-4 mr-2" />
+          Add rule
+        </Button>
+      </div>
+    </div>
+  )
+
+  const rulesContent = (
+    <div className="space-y-3">
           {rulesQuery.isLoading ? (
             <div className="flex items-center gap-2 text-muted-foreground text-sm">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -297,10 +302,11 @@ export function TrackerRulesPanel({ instanceId }: TrackerRulesPanelProps) {
               })}
             </div>
           )}
-        </CardContent>
-      </Card>
+    </div>
+  )
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+  const dialogContent = (
+    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>{editingRule ? "Edit Tracker Rule" : "Add Tracker Rule"}</DialogTitle>
@@ -435,6 +441,29 @@ export function TrackerRulesPanel({ instanceId }: TrackerRulesPanelProps) {
           </form>
         </DialogContent>
       </Dialog>
+  )
+
+  if (variant === "embedded") {
+    return (
+      <div className="space-y-4">
+        {headerContent}
+        {rulesContent}
+        {dialogContent}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          {headerContent}
+        </CardHeader>
+        <CardContent>
+          {rulesContent}
+        </CardContent>
+      </Card>
+      {dialogContent}
     </div>
   )
 }
@@ -518,13 +547,3 @@ function RuleSummary({ rule }: { rule: TrackerRule }) {
   )
 }
 
-function parseTrackerDomains(rule: TrackerRule): string[] {
-  if (rule.trackerDomains && rule.trackerDomains.length > 0) {
-    return rule.trackerDomains
-  }
-  if (!rule.trackerPattern) return []
-  return rule.trackerPattern
-    .split(/[|,;]/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-}
