@@ -1375,6 +1375,7 @@ export interface CrossSeedApplyResponse {
 export interface CrossSeedRunResult {
   instanceId: number
   instanceName: string
+  indexerName?: string
   success: boolean
   status: string
   message?: string

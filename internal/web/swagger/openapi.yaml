@@ -3744,6 +3744,9 @@ components:
           type: integer
         instanceName:
           type: string
+        indexerName:
+          type: string
+          nullable: true
         success:
           type: boolean
         status:

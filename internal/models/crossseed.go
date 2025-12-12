@@ -161,6 +161,7 @@ const (
 type CrossSeedRunResult struct {
 	InstanceID         int     `json:"instanceId"`
 	InstanceName       string  `json:"instanceName"`
+	IndexerName        string  `json:"indexerName,omitempty"`
 	Success            bool    `json:"success"`
 	Status             string  `json:"status"`
 	Message            string  `json:"message,omitempty"`

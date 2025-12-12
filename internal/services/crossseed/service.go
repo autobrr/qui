@@ -1643,6 +1643,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		run.TorrentsSkipped++
 		run.Results = append(run.Results, models.CrossSeedRunResult{
 			InstanceName: result.Indexer,
+			IndexerName:  result.Indexer,
 			Success:      false,
 			Status:       "no_match",
 			Message:      fmt.Sprintf("No matching torrents for %s", result.Title),
@@ -1656,6 +1657,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		run.TorrentsSkipped++
 		run.Results = append(run.Results, models.CrossSeedRunResult{
 			InstanceName: result.Indexer,
+			IndexerName:  result.Indexer,
 			Success:      true,
 			Status:       "dry-run",
 			Message:      fmt.Sprintf("Dry run: %d viable candidates", candidateCount),
@@ -1694,6 +1696,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 				existingResults = append(existingResults, models.CrossSeedRunResult{
 					InstanceID:         candidate.InstanceID,
 					InstanceName:       candidate.InstanceName,
+					IndexerName:        result.Indexer,
 					Success:            false,
 					Status:             "exists",
 					Message:            "Torrent already exists (infohash pre-check)",
@@ -1750,6 +1753,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 				existingResults = append(existingResults, models.CrossSeedRunResult{
 					InstanceID:         candidate.InstanceID,
 					InstanceName:       candidate.InstanceName,
+					IndexerName:        result.Indexer,
 					Success:            false,
 					Status:             "exists",
 					Message:            "Torrent already exists (comment URL pre-check)",
@@ -1830,6 +1834,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		run.TorrentsSkipped++
 		run.Results = append(run.Results, models.CrossSeedRunResult{
 			InstanceName: result.Indexer,
+			IndexerName:  result.Indexer,
 			Success:      false,
 			Status:       "no_result",
 			Message:      fmt.Sprintf("Cross-seed returned no actionable instances for %s", result.Title),
@@ -1841,6 +1846,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		mapped := models.CrossSeedRunResult{
 			InstanceID:   instanceResult.InstanceID,
 			InstanceName: instanceResult.InstanceName,
+			IndexerName:  result.Indexer,
 			Success:      instanceResult.Success,
 			Status:       instanceResult.Status,
 			Message:      instanceResult.Message,
@@ -6440,7 +6446,7 @@ func matchesSearchFilters(torrent *qbt.Torrent, opts SearchRunOptions) bool {
 		matched := false
 		for _, tag := range torrentTags {
 			for _, desired := range opts.Tags {
-				if strings.EqualFold(tag, desired) {
+				if tag == desired {
 					matched = true
 					break
 				}
@@ -6517,7 +6523,7 @@ func matchesCompletionFilters(torrent *qbt.Torrent, settings models.CompletionFi
 	if len(settings.GetExcludeTags()) > 0 {
 		for _, tag := range torrentTags {
 			for _, excluded := range settings.GetExcludeTags() {
-				if strings.EqualFold(tag, excluded) {
+				if tag == excluded {
 					return false
 				}
 			}
@@ -6527,7 +6533,7 @@ func matchesCompletionFilters(torrent *qbt.Torrent, settings models.CompletionFi
 	if len(settings.GetTags()) > 0 {
 		for _, tag := range torrentTags {
 			for _, allowed := range settings.GetTags() {
-				if strings.EqualFold(tag, allowed) {
+				if tag == allowed {
 					return true
 				}
 			}
@@ -6540,7 +6546,7 @@ func matchesCompletionFilters(torrent *qbt.Torrent, settings models.CompletionFi
 
 func hasCrossSeedTag(rawTags string) bool {
 	for _, tag := range splitTags(rawTags) {
-		if strings.EqualFold(tag, "cross-seed") {
+		if tag == "cross-seed" {
 			return true
 		}
 	}

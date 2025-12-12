@@ -37,13 +37,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import {
   AlertTriangle,
+  CheckCircle2,
   ChevronDown,
+  Clock,
   FlameIcon,
+  History,
   Info,
   Loader2,
   Play,
   Rocket,
-  XCircle
+  XCircle,
+  Zap
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -982,20 +986,16 @@ export function CrossSeedPage() {
     }
   }, [runs])
 
-  const getRunStatusVariant = (status: CrossSeedRun["status"]) => {
-    switch (status) {
-      case "success":
-        return "default"
-      case "running":
-      case "partial":
-        return "secondary"
-      case "failed":
-        return "destructive"
-      case "pending":
-      default:
-        return "outline"
+  const runSummaryStats = useMemo(() => {
+    if (!runs || runs.length === 0) {
+      return { totalAdded: 0, totalFailed: 0, totalRuns: 0 }
     }
-  }
+    return {
+      totalAdded: runs.reduce((sum, run) => sum + run.torrentsAdded, 0),
+      totalFailed: runs.reduce((sum, run) => sum + run.torrentsFailed, 0),
+      totalRuns: runs.length,
+    }
+  }, [runs])
 
 
   return (
@@ -1340,67 +1340,211 @@ export function CrossSeedPage() {
 
               <Separator />
 
-              <Collapsible open={rssRunsOpen} onOpenChange={setRssRunsOpen} className="rounded-md border px-3 py-3 text-sm">
-                <CollapsibleTrigger className="flex w-full items-center justify-between text-sm font-medium hover:cursor-pointer">
-                  <span className="flex items-center gap-2">
-                    Recent RSS runs
-                    <ChevronDown className={`h-4 w-4 transition-transform ${rssRunsOpen ? "" : "-rotate-90"}`} />
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    {groupedRuns.scheduled.length > 0 && (
-                      <Badge variant="secondary" className="text-xs">{groupedRuns.scheduled.length} scheduled</Badge>
-                    )}
-                    {groupedRuns.manual.length > 0 && (
-                      <Badge variant="outline" className="text-xs">{groupedRuns.manual.length} manual</Badge>
-                    )}
-                  </div>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-2 space-y-4">
-                  {runs && runs.length > 0 ? (
-                    <div className="space-y-4">
-                      {(["scheduled", "manual", "other"] as const).map(group => {
-                        const data = groupedRuns[group]
-                        if (!data || data.length === 0) return null
-                        const title =
-                          group === "scheduled" ? "Scheduled" : group === "manual" ? "Manual" : "Other"
-                        return (
-                          <div key={group} className="space-y-2">
-                            <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
-                              <span>{title}</span>
-                              <span className="text-xs normal-case tracking-normal">(last {data.length})</span>
-                            </div>
-                            <div className="space-y-2">
-                              {data.map(run => (
-                                <div key={run.id} className="rounded border p-3 space-y-2 bg-muted/40">
-                                  <div className="flex items-center justify-between text-sm">
-                                    <Badge variant={getRunStatusVariant(run.status)} className="uppercase text-xs tracking-wide">
-                                      {run.status}
-                                    </Badge>
-                                    <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                    <Badge variant="secondary" className="text-xs">
-                                      Added {run.torrentsAdded}
-                                    </Badge>
-                                    <Badge variant="outline" className="text-xs">
-                                      Skipped {run.torrentsSkipped}
-                                    </Badge>
-                                    <Badge variant={run.torrentsFailed > 0 ? "destructive" : "outline"} className="text-xs">
-                                      Failed {run.torrentsFailed}
-                                    </Badge>
-                                    <span className="text-xs">{run.totalFeedItems} feed items</span>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )
-                      })}
+              <Collapsible open={rssRunsOpen} onOpenChange={setRssRunsOpen}>
+                <div className="rounded-xl border bg-card text-card-foreground shadow-sm">
+                  <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-4 hover:cursor-pointer text-left hover:bg-muted/50 transition-colors rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <History className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Recent RSS runs</span>
+                      {runs && runs.length > 0 ? (
+                        <Badge variant="secondary" className="text-xs">
+                          {runSummaryStats.totalRuns} runs • +{runSummaryStats.totalAdded}
+                          {runSummaryStats.totalFailed > 0 && ` • ${runSummaryStats.totalFailed} failed`}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No runs yet</span>
+                      )}
                     </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">No RSS automation runs recorded yet.</p>
-                  )}
-                </CollapsibleContent>
+                    <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${rssRunsOpen ? "rotate-180" : ""}`} />
+                  </CollapsibleTrigger>
+
+                  <CollapsibleContent>
+                    <div className="px-4 pb-3 space-y-3">
+                      {/* Grouped runs */}
+                      {runs && runs.length > 0 ? (
+                        <div className="space-y-4">
+                          {/* Scheduled runs */}
+                          {groupedRuns.scheduled.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2 text-sm font-medium">
+                                <Clock className="h-4 w-4 text-blue-500" />
+                                Scheduled ({groupedRuns.scheduled.length})
+                              </div>
+                              <div className="space-y-1">
+                                {groupedRuns.scheduled.map(run => {
+                                  const hasResults = run.results && run.results.length > 0
+                                  const successResults = run.results?.filter(r => r.success) ?? []
+                                  return (
+                                    <Collapsible key={run.id}>
+                                      <CollapsibleTrigger asChild disabled={!hasResults}>
+                                        <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
+                                          <div className="flex items-center gap-2 min-w-0">
+                                            {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
+                                            {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
+                                            {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
+                                            {run.status === "partial" && <AlertTriangle className="h-3 w-3 text-yellow-500 shrink-0" />}
+                                            {run.status === "pending" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
+                                            <span className="text-xs text-muted-foreground">{run.totalFeedItems} items</span>
+                                          </div>
+                                          <div className="flex items-center gap-2 shrink-0">
+                                            <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>
+                                            {run.torrentsFailed > 0 && (
+                                              <Badge variant="destructive" className="text-xs">{run.torrentsFailed} failed</Badge>
+                                            )}
+                                            <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
+                                            {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+                                          </div>
+                                        </div>
+                                      </CollapsibleTrigger>
+                                      {hasResults && (
+                                        <CollapsibleContent>
+                                          <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1">
+                                            {successResults.map((result, i) => (
+                                              <div key={`${result.instanceId}-${i}`} className="flex items-center gap-2 text-xs">
+                                                <Badge variant="default" className="text-[10px] shrink-0 w-20 justify-center truncate" title={result.instanceName}>{result.instanceName}</Badge>
+                                                {result.indexerName && (
+                                                  <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName}</Badge>
+                                                )}
+                                                <span className="truncate text-muted-foreground">{result.matchedTorrentName}</span>
+                                              </div>
+                                            ))}
+                                            {successResults.length === 0 && run.results && run.results.length > 0 && (
+                                              <span className="text-xs text-muted-foreground">No successful additions</span>
+                                            )}
+                                          </div>
+                                        </CollapsibleContent>
+                                      )}
+                                    </Collapsible>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Manual runs */}
+                          {groupedRuns.manual.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2 text-sm font-medium">
+                                <Zap className="h-4 w-4 text-yellow-500" />
+                                Manual ({groupedRuns.manual.length})
+                              </div>
+                              <div className="space-y-1">
+                                {groupedRuns.manual.map(run => {
+                                  const hasResults = run.results && run.results.length > 0
+                                  const successResults = run.results?.filter(r => r.success) ?? []
+                                  return (
+                                    <Collapsible key={run.id}>
+                                      <CollapsibleTrigger asChild disabled={!hasResults}>
+                                        <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
+                                          <div className="flex items-center gap-2 min-w-0">
+                                            {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
+                                            {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
+                                            {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
+                                            {run.status === "partial" && <AlertTriangle className="h-3 w-3 text-yellow-500 shrink-0" />}
+                                            {run.status === "pending" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
+                                            <span className="text-xs text-muted-foreground">{run.totalFeedItems} items</span>
+                                          </div>
+                                          <div className="flex items-center gap-2 shrink-0">
+                                            <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>
+                                            {run.torrentsFailed > 0 && (
+                                              <Badge variant="destructive" className="text-xs">{run.torrentsFailed} failed</Badge>
+                                            )}
+                                            <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
+                                            {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+                                          </div>
+                                        </div>
+                                      </CollapsibleTrigger>
+                                      {hasResults && (
+                                        <CollapsibleContent>
+                                          <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1">
+                                            {successResults.map((result, i) => (
+                                              <div key={`${result.instanceId}-${i}`} className="flex items-center gap-2 text-xs">
+                                                <Badge variant="default" className="text-[10px] shrink-0 w-20 justify-center truncate" title={result.instanceName}>{result.instanceName}</Badge>
+                                                {result.indexerName && (
+                                                  <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName}</Badge>
+                                                )}
+                                                <span className="truncate text-muted-foreground">{result.matchedTorrentName}</span>
+                                              </div>
+                                            ))}
+                                            {successResults.length === 0 && run.results && run.results.length > 0 && (
+                                              <span className="text-xs text-muted-foreground">No successful additions</span>
+                                            )}
+                                          </div>
+                                        </CollapsibleContent>
+                                      )}
+                                    </Collapsible>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Other runs */}
+                          {groupedRuns.other.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2 text-sm font-medium">
+                                <History className="h-4 w-4 text-muted-foreground" />
+                                Other ({groupedRuns.other.length})
+                              </div>
+                              <div className="space-y-1">
+                                {groupedRuns.other.map(run => {
+                                  const hasResults = run.results && run.results.length > 0
+                                  const successResults = run.results?.filter(r => r.success) ?? []
+                                  return (
+                                    <Collapsible key={run.id}>
+                                      <CollapsibleTrigger asChild disabled={!hasResults}>
+                                        <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
+                                          <div className="flex items-center gap-2 min-w-0">
+                                            {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
+                                            {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
+                                            {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
+                                            {run.status === "partial" && <AlertTriangle className="h-3 w-3 text-yellow-500 shrink-0" />}
+                                            {run.status === "pending" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
+                                            <span className="text-xs text-muted-foreground">{run.totalFeedItems} items</span>
+                                          </div>
+                                          <div className="flex items-center gap-2 shrink-0">
+                                            <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>
+                                            {run.torrentsFailed > 0 && (
+                                              <Badge variant="destructive" className="text-xs">{run.torrentsFailed} failed</Badge>
+                                            )}
+                                            <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
+                                            {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+                                          </div>
+                                        </div>
+                                      </CollapsibleTrigger>
+                                      {hasResults && (
+                                        <CollapsibleContent>
+                                          <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1">
+                                            {successResults.map((result, i) => (
+                                              <div key={`${result.instanceId}-${i}`} className="flex items-center gap-2 text-xs">
+                                                <Badge variant="default" className="text-[10px] shrink-0 w-20 justify-center truncate" title={result.instanceName}>{result.instanceName}</Badge>
+                                                {result.indexerName && (
+                                                  <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName}</Badge>
+                                                )}
+                                                <span className="truncate text-muted-foreground">{result.matchedTorrentName}</span>
+                                              </div>
+                                            ))}
+                                            {successResults.length === 0 && run.results && run.results.length > 0 && (
+                                              <span className="text-xs text-muted-foreground">No successful additions</span>
+                                            )}
+                                          </div>
+                                        </CollapsibleContent>
+                                      )}
+                                    </Collapsible>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-center py-2 text-xs text-muted-foreground">
+                          No RSS automation runs recorded yet.
+                        </div>
+                      )}
+                    </div>
+                  </CollapsibleContent>
+                </div>
               </Collapsible>
             </CardContent>
             <CardFooter className="flex flex-col-reverse gap-3 md:flex-row md:items-center md:justify-between">
