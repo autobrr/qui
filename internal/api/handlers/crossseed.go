@@ -29,9 +29,9 @@ type CrossSeedHandler struct {
 }
 
 type automationSettingsRequest struct {
-	Enabled                      bool                       `json:"enabled"`
-	RunIntervalMinutes           int                        `json:"runIntervalMinutes"`
-	StartPaused                  bool                       `json:"startPaused"`
+	Enabled                      bool     `json:"enabled"`
+	RunIntervalMinutes           int      `json:"runIntervalMinutes"`
+	StartPaused                  bool     `json:"startPaused"`
 	Category                     *string  `json:"category"`
 	IgnorePatterns               []string `json:"ignorePatterns"`
 	TargetInstanceIDs            []int    `json:"targetInstanceIds"`
@@ -64,6 +64,11 @@ type automationSettingsPatchRequest struct {
 	CompletionSearchTags *[]string `json:"completionSearchTags,omitempty"`
 	WebhookTags          *[]string `json:"webhookTags,omitempty"`
 	InheritSourceTags    *bool     `json:"inheritSourceTags,omitempty"`
+	// Skip auto-resume settings per source mode
+	SkipAutoResumeRSS          *bool `json:"skipAutoResumeRss,omitempty"`
+	SkipAutoResumeSeededSearch *bool `json:"skipAutoResumeSeededSearch,omitempty"`
+	SkipAutoResumeCompletion   *bool `json:"skipAutoResumeCompletion,omitempty"`
+	SkipAutoResumeWebhook      *bool `json:"skipAutoResumeWebhook,omitempty"`
 }
 
 type optionalString struct {
@@ -140,7 +145,11 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.SeededSearchTags == nil &&
 		r.CompletionSearchTags == nil &&
 		r.WebhookTags == nil &&
-		r.InheritSourceTags == nil
+		r.InheritSourceTags == nil &&
+		r.SkipAutoResumeRSS == nil &&
+		r.SkipAutoResumeSeededSearch == nil &&
+		r.SkipAutoResumeCompletion == nil &&
+		r.SkipAutoResumeWebhook == nil
 }
 
 func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, patch automationSettingsPatchRequest) {
@@ -207,6 +216,19 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	}
 	if patch.InheritSourceTags != nil {
 		settings.InheritSourceTags = *patch.InheritSourceTags
+	}
+	// Skip auto-resume settings
+	if patch.SkipAutoResumeRSS != nil {
+		settings.SkipAutoResumeRSS = *patch.SkipAutoResumeRSS
+	}
+	if patch.SkipAutoResumeSeededSearch != nil {
+		settings.SkipAutoResumeSeededSearch = *patch.SkipAutoResumeSeededSearch
+	}
+	if patch.SkipAutoResumeCompletion != nil {
+		settings.SkipAutoResumeCompletion = *patch.SkipAutoResumeCompletion
+	}
+	if patch.SkipAutoResumeWebhook != nil {
+		settings.SkipAutoResumeWebhook = *patch.SkipAutoResumeWebhook
 	}
 }
 

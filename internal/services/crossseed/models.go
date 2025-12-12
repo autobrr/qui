@@ -38,6 +38,9 @@ type CrossSeedRequest struct {
 	// SizeMismatchTolerancePercent is the maximum size difference percentage for matching.
 	// If not set (0), defaults to 5%.
 	SizeMismatchTolerancePercent float64 `json:"size_mismatch_tolerance_percent,omitempty"`
+	// SkipAutoResume prevents automatic resume after hash check when true.
+	// Default behavior (false) resumes torrents after verification completes.
+	SkipAutoResume bool `json:"skip_auto_resume,omitempty"`
 }
 
 // CrossSeedResponse represents the result of a cross-seed operation
