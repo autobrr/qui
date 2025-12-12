@@ -70,6 +70,11 @@ interface GlobalCrossSeedSettings {
   completionSearchTags: string[]
   webhookTags: string[]
   inheritSourceTags: boolean
+  // Skip auto-resume settings per source mode
+  skipAutoResumeRss: boolean
+  skipAutoResumeSeededSearch: boolean
+  skipAutoResumeCompletion: boolean
+  skipAutoResumeWebhook: boolean
 }
 
 interface CompletionFormState {
@@ -107,6 +112,11 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   completionSearchTags: ["cross-seed"],
   webhookTags: ["cross-seed"],
   inheritSourceTags: false,
+  // Skip auto-resume defaults (off = preserve existing behavior)
+  skipAutoResumeRss: false,
+  skipAutoResumeSeededSearch: false,
+  skipAutoResumeCompletion: false,
+  skipAutoResumeWebhook: false,
 }
 
 const DEFAULT_COMPLETION_FORM: CompletionFormState = {
@@ -356,6 +366,11 @@ export function CrossSeedPage() {
         completionSearchTags: settings.completionSearchTags ?? ["cross-seed"],
         webhookTags: settings.webhookTags ?? ["cross-seed"],
         inheritSourceTags: settings.inheritSourceTags ?? false,
+        // Skip auto-resume settings
+        skipAutoResumeRss: settings.skipAutoResumeRss ?? false,
+        skipAutoResumeSeededSearch: settings.skipAutoResumeSeededSearch ?? false,
+        skipAutoResumeCompletion: settings.skipAutoResumeCompletion ?? false,
+        skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
       })
       setGlobalSettingsInitialized(true)
     }
@@ -455,6 +470,10 @@ export function CrossSeedPage() {
         completionSearchTags: settings.completionSearchTags ?? ["cross-seed"],
         webhookTags: settings.webhookTags ?? ["cross-seed"],
         inheritSourceTags: settings.inheritSourceTags ?? false,
+        skipAutoResumeRss: settings.skipAutoResumeRss ?? false,
+        skipAutoResumeSeededSearch: settings.skipAutoResumeSeededSearch ?? false,
+        skipAutoResumeCompletion: settings.skipAutoResumeCompletion ?? false,
+        skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
       }
 
     return {
@@ -470,6 +489,11 @@ export function CrossSeedPage() {
       completionSearchTags: globalSource.completionSearchTags,
       webhookTags: globalSource.webhookTags,
       inheritSourceTags: globalSource.inheritSourceTags,
+      // Skip auto-resume settings
+      skipAutoResumeRss: globalSource.skipAutoResumeRss,
+      skipAutoResumeSeededSearch: globalSource.skipAutoResumeSeededSearch,
+      skipAutoResumeCompletion: globalSource.skipAutoResumeCompletion,
+      skipAutoResumeWebhook: globalSource.skipAutoResumeWebhook,
     }
   }, [
     settings,
@@ -1860,6 +1884,66 @@ export function CrossSeedPage() {
                     checked={globalSettings.inheritSourceTags}
                     onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, inheritSourceTags: !!value }))}
                   />
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium leading-none">Auto-resume behavior</p>
+                  <p className="text-xs text-muted-foreground">
+                    Control whether cross-seed torrents are automatically resumed after hash check.
+                    When enabled, torrents remain paused for manual review.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="skip-auto-resume-rss" className="font-medium">Skip for RSS</Label>
+                      <p className="text-xs text-muted-foreground">Keep RSS automation torrents paused</p>
+                    </div>
+                    <Switch
+                      id="skip-auto-resume-rss"
+                      checked={globalSettings.skipAutoResumeRss}
+                      onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeRss: !!value }))}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="skip-auto-resume-seeded" className="font-medium">Skip for Seeded Search</Label>
+                      <p className="text-xs text-muted-foreground">Keep seeded search & interactive dialog torrents paused</p>
+                    </div>
+                    <Switch
+                      id="skip-auto-resume-seeded"
+                      checked={globalSettings.skipAutoResumeSeededSearch}
+                      onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeSeededSearch: !!value }))}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="skip-auto-resume-completion" className="font-medium">Skip for Completion</Label>
+                      <p className="text-xs text-muted-foreground">Keep completion-triggered torrents paused</p>
+                    </div>
+                    <Switch
+                      id="skip-auto-resume-completion"
+                      checked={globalSettings.skipAutoResumeCompletion}
+                      onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeCompletion: !!value }))}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="skip-auto-resume-webhook" className="font-medium">Skip for Webhook</Label>
+                      <p className="text-xs text-muted-foreground">Keep /apply webhook torrents paused</p>
+                    </div>
+                    <Switch
+                      id="skip-auto-resume-webhook"
+                      checked={globalSettings.skipAutoResumeWebhook}
+                      onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeWebhook: !!value }))}
+                    />
+                  </div>
                 </div>
               </div>
 

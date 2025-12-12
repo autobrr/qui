@@ -1419,6 +1419,11 @@ export interface CrossSeedAutomationSettings {
   completionSearchTags: string[]
   webhookTags: string[]
   inheritSourceTags: boolean
+  // Skip auto-resume settings per source mode
+  skipAutoResumeRss: boolean
+  skipAutoResumeSeededSearch: boolean
+  skipAutoResumeCompletion: boolean
+  skipAutoResumeWebhook: boolean
   createdAt?: string
   updatedAt?: string
 }
@@ -1442,6 +1447,11 @@ export interface CrossSeedAutomationSettingsPatch {
   completionSearchTags?: string[]
   webhookTags?: string[]
   inheritSourceTags?: boolean
+  // Skip auto-resume settings per source mode
+  skipAutoResumeRss?: boolean
+  skipAutoResumeSeededSearch?: boolean
+  skipAutoResumeCompletion?: boolean
+  skipAutoResumeWebhook?: boolean
 }
 
 export interface CrossSeedAutomationStatus {

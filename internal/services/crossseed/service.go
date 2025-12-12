@@ -435,6 +435,7 @@ type SearchRunOptions struct {
 	IgnorePatterns               []string
 	SpecificHashes               []string
 	SizeMismatchTolerancePercent float64
+	SkipAutoResume               bool
 }
 
 // SearchSettingsPatch captures optional updates to seeded search defaults.
@@ -1122,6 +1123,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 			InstanceID:             instanceID,
 			FindIndividualEpisodes: settings.FindIndividualEpisodes,
 			StartPaused:            settings.StartPaused,
+			SkipAutoResume:         settings.SkipAutoResumeCompletion,
 			CategoryOverride:       settings.Category,
 			TagsOverride:           append([]string(nil), settings.CompletionSearchTags...),
 			InheritSourceTags:      settings.InheritSourceTags,
@@ -1195,6 +1197,7 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 			opts.IgnorePatterns = append([]string(nil), settings.IgnorePatterns...)
 		}
 		opts.StartPaused = settings.StartPaused
+		opts.SkipAutoResume = settings.SkipAutoResumeSeededSearch
 		if !settings.FindIndividualEpisodes {
 			opts.FindIndividualEpisodes = false
 		} else if !opts.FindIndividualEpisodes {
@@ -1799,6 +1802,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		IndexerName:                  sourceIndexer,
 		FindIndividualEpisodes:       settings.FindIndividualEpisodes,
 		SizeMismatchTolerancePercent: settings.SizeMismatchTolerancePercent,
+		SkipAutoResume:               settings.SkipAutoResumeRSS,
 	}
 	if settings.Category != nil {
 		req.Category = *settings.Category
@@ -2378,6 +2382,11 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		sizeTolerance = settings.SizeMismatchTolerancePercent
 	}
 
+	skipAutoResume := false
+	if settings != nil {
+		skipAutoResume = settings.SkipAutoResumeWebhook
+	}
+
 	crossReq := &CrossSeedRequest{
 		TorrentData:                  req.TorrentData,
 		TargetInstanceIDs:            targetInstanceIDs,
@@ -2389,6 +2398,7 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		SkipIfExists:                 req.SkipIfExists,
 		FindIndividualEpisodes:       findIndividualEpisodes,
 		SizeMismatchTolerancePercent: sizeTolerance,
+		SkipAutoResume:               skipAutoResume,
 	}
 
 	resp, err := s.invokeCrossSeed(ctx, crossReq)
@@ -2816,6 +2826,13 @@ func (s *Service) processCrossSeedCandidate(
 				Str("torrentHash", torrentHash).
 				Msg("Failed to trigger recheck after add, skipping auto-resume")
 			result.Message = result.Message + " - recheck failed, manual intervention required"
+		} else if req.SkipAutoResume {
+			// User requested to skip auto-resume - leave paused after recheck
+			log.Debug().
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentHash", torrentHash).
+				Msg("Skipping auto-resume per user settings (recheck triggered)")
+			result.Message = result.Message + " - auto-resume skipped per settings"
 		} else {
 			// Queue for background resume - threshold is calculated from tolerance setting
 			log.Debug().
@@ -2828,15 +2845,24 @@ func (s *Service) processCrossSeedCandidate(
 		}
 	} else if startPaused && alignmentSucceeded {
 		// Perfect match: skip_checking=true, no alignment needed, torrent is at 100%
-		// Resume immediately since there's nothing to wait for
-		if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "resume"); err != nil {
-			log.Warn().
-				Err(err).
+		if req.SkipAutoResume {
+			// User requested to skip auto-resume - leave paused
+			log.Debug().
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
-				Msg("Failed to resume cross-seed torrent after add")
-			// Update message to indicate manual resume needed
-			result.Message = result.Message + " - auto-resume failed, manual resume required"
+				Msg("Skipping auto-resume for perfect match per user settings")
+			result.Message = result.Message + " - auto-resume skipped per settings"
+		} else {
+			// Resume immediately since there's nothing to wait for
+			if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "resume"); err != nil {
+				log.Warn().
+					Err(err).
+					Int("instanceID", candidate.InstanceID).
+					Str("torrentHash", torrentHash).
+					Msg("Failed to resume cross-seed torrent after add")
+				// Update message to indicate manual resume needed
+				result.Message = result.Message + " - auto-resume failed, manual resume required"
+			}
 		}
 	} else if !alignmentSucceeded {
 		// Alignment failed - pause torrent to prevent unwanted downloads
@@ -4600,6 +4626,12 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				sizeTolerance = settings.SizeMismatchTolerancePercent
 			}
 
+			// Determine skip auto-resume from seeded search setting (interactive dialog uses same setting)
+			skipAutoResume := false
+			if settings != nil {
+				skipAutoResume = settings.SkipAutoResumeSeededSearch
+			}
+
 			payload := &CrossSeedRequest{
 				TorrentData:                  base64.StdEncoding.EncodeToString(torrentBytes),
 				TargetInstanceIDs:            []int{instanceID},
@@ -4609,6 +4641,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				IndexerName:                  indexerName,
 				FindIndividualEpisodes:       req.FindIndividualEpisodes,
 				SizeMismatchTolerancePercent: sizeTolerance,
+				SkipAutoResume:               skipAutoResume,
 			}
 			if settings != nil && len(settings.IgnorePatterns) > 0 {
 				payload.IgnorePatterns = append([]string(nil), settings.IgnorePatterns...)
@@ -5695,6 +5728,7 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		FindIndividualEpisodes:       state.opts.FindIndividualEpisodes,
 		SkipIfExists:                 &skipIfExists,
 		SizeMismatchTolerancePercent: sizeTolerance,
+		SkipAutoResume:               state.opts.SkipAutoResume,
 	}
 	if len(state.opts.IgnorePatterns) > 0 {
 		request.IgnorePatterns = append([]string(nil), state.opts.IgnorePatterns...)
