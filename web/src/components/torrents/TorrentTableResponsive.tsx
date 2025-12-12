@@ -4,11 +4,14 @@
  */
 
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
-import type { Torrent, TorrentFilters } from "@/types"
-import { useEffect, useState } from "react"
 import { useCrossSeedSearch } from "@/hooks/useCrossSeedSearch"
-import { TorrentCardsMobile } from "./TorrentCardsMobile"
+import type { Torrent, TorrentFilters } from "@/types"
+import { lazy, Suspense, useEffect, useState } from "react"
 import { TorrentTableOptimized } from "./TorrentTableOptimized"
+
+const TorrentCardsMobile = lazy(() =>
+  import("./TorrentCardsMobile").then(m => ({ default: m.TorrentCardsMobile }))
+)
 
 interface TorrentTableResponsiveProps {
   instanceId: number
@@ -77,12 +80,14 @@ export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
   if (isMobile) {
     return (
       <>
-        <TorrentCardsMobile
-          {...memoizedProps}
-          canCrossSeedSearch={crossSeed.canCrossSeedSearch}
-          onCrossSeedSearch={crossSeed.openCrossSeedSearch}
-          isCrossSeedSearching={crossSeed.isCrossSeedSearching}
-        />
+        <Suspense fallback={<div className="p-6">Loading...</div>}>
+          <TorrentCardsMobile
+            {...memoizedProps}
+            canCrossSeedSearch={crossSeed.canCrossSeedSearch}
+            onCrossSeedSearch={crossSeed.openCrossSeedSearch}
+            isCrossSeedSearching={crossSeed.isCrossSeedSearching}
+          />
+        </Suspense>
         {crossSeed.crossSeedDialog}
       </>
     )

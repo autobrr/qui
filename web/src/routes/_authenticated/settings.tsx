@@ -3,9 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { createFileRoute } from "@tanstack/react-router"
-import { Settings } from "@/pages/Settings"
+import { createFileRoute, lazyRouteComponent } from "@tanstack/react-router"
 
 export const Route = createFileRoute("/_authenticated/settings")({
-  component: Settings,
+  component: lazyRouteComponent(() => import("@/pages/Settings"), "Settings"),
 })

@@ -59,8 +59,8 @@ import {
   Search as SearchIcon,
   Server,
   Settings,
-  Wrench,
-  Sun
+  Sun,
+  Wrench
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -231,7 +231,8 @@ export function MobileFooterNav() {
                     <Link
                       to="/instances/$instanceId"
                       params={{ instanceId: instance.id.toString() }}
-                      className="flex items-center gap-2 min-w-0"
+                      preload="intent"
+                    className="flex items-center gap-2 min-w-0"
                     >
                       <HardDrive className="h-4 w-4" />
                       <span
@@ -286,6 +287,7 @@ export function MobileFooterNav() {
           <Link
             to="/instances/$instanceId"
             params={{ instanceId: singleActiveInstance.id.toString() }}
+            preload="viewport"
             className={cn(
               "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
               isOnInstancePage ? "text-primary" : "text-muted-foreground hover:text-foreground"
@@ -373,6 +375,7 @@ export function MobileFooterNav() {
             <DropdownMenuItem asChild>
               <Link
                 to="/search"
+                preload="viewport"
                 className="flex items-center gap-2"
               >
                 <SearchIcon className="h-4 w-4" />
@@ -382,7 +385,7 @@ export function MobileFooterNav() {
             <DropdownMenuItem asChild>
               <Link
                 to="/cross-seed"
-                params={{}}
+                preload="viewport"
                 className="flex items-center gap-2"
               >
                 <GitBranch className="h-4 w-4" />
@@ -401,6 +404,7 @@ export function MobileFooterNav() {
             <DropdownMenuItem asChild>
               <Link
                 to="/backups"
+                preload="viewport"
                 className="flex items-center gap-2"
               >
                 <Archive className="h-4 w-4" />
@@ -413,6 +417,7 @@ export function MobileFooterNav() {
             <DropdownMenuItem asChild>
               <Link
                 to="/settings"
+                preload="viewport"
                 className="flex items-center gap-2"
               >
                 <Settings className="h-4 w-4" />
@@ -423,6 +428,7 @@ export function MobileFooterNav() {
               <Link
                 to="/settings"
                 search={{ tab: "instances" }}
+                preload="viewport"
                 className="flex items-center gap-2"
               >
                 <Server className="h-4 w-4" />

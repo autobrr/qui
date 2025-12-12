@@ -41,7 +41,7 @@ import {
   useReactTable
 } from "@tanstack/react-table"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { Suspense, lazy, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
 import { TorrentContextMenu } from "./TorrentContextMenu"
 import { TORRENT_SORT_OPTIONS, getDefaultSortOrder, type TorrentSortOptionValue } from "./torrentSortOptions"
@@ -116,7 +116,7 @@ import {
   X
 } from "lucide-react"
 import { createPortal } from "react-dom"
-import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
+import type { AddTorrentDropPayload } from "./AddTorrentDialog"
 import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
 import { SelectAllHotkey } from "./SelectAllHotkey"
@@ -137,6 +137,10 @@ import {
 } from "./TorrentDialogs"
 import { TorrentDropZone } from "./TorrentDropZone"
 import { createColumns, type TableViewMode } from "./TorrentTableColumns"
+
+const AddTorrentDialog = lazy(() =>
+  import("./AddTorrentDialog").then(m => ({ default: m.AddTorrentDialog }))
+)
 
 const TABLE_ALLOWED_VIEW_MODES = ["normal", "dense", "compact"] as const
 
@@ -2385,14 +2389,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
               return container ? createPortal(actions, container) : actions
             })()}
 
-            <AddTorrentDialog
-              instanceId={instanceId}
-              open={addTorrentModalOpen}
-              onOpenChange={onAddTorrentModalChange}
-              dropPayload={dropPayload}
-              onDropPayloadConsumed={handleDropPayloadConsumed}
-              torrents={torrents}
-            />
+            <Suspense fallback={null}>
+              <AddTorrentDialog
+                instanceId={instanceId}
+                open={addTorrentModalOpen}
+                onOpenChange={onAddTorrentModalChange}
+                dropPayload={dropPayload}
+                onDropPayloadConsumed={handleDropPayloadConsumed}
+                torrents={torrents}
+              />
+            </Suspense>
           </div>
         </div>
       </div>

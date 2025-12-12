@@ -3,13 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { CrossSeedPage } from "@/pages/CrossSeedPage"
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, lazyRouteComponent } from "@tanstack/react-router"
 
 export const Route = createFileRoute("/_authenticated/cross-seed")({
-  component: CrossSeedRoute,
+  component: lazyRouteComponent(() => import("@/pages/CrossSeedPage"), "CrossSeedPage"),
 })
-
-function CrossSeedRoute() {
-  return <CrossSeedPage />
-}
