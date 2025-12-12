@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"maps"
 	"sync"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -271,9 +272,7 @@ func (s *AsyncIndexerFilteringState) cloneLocked() *AsyncIndexerFilteringState {
 	}
 	if len(s.ExcludedIndexers) > 0 {
 		clone.ExcludedIndexers = make(map[int]string, len(s.ExcludedIndexers))
-		for id, reason := range s.ExcludedIndexers {
-			clone.ExcludedIndexers[id] = reason
-		}
+		maps.Copy(clone.ExcludedIndexers, s.ExcludedIndexers)
 	}
 	return clone
 }
