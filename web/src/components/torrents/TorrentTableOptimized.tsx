@@ -971,6 +971,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         return "state"
       case "num_seeds":
         return "num_complete" // Sort by total seeds, not connected
+      case "num_leechs":
+        return "num_incomplete" // Sort by total peers, not connected
       default:
         return columnId
     }
