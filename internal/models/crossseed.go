@@ -76,20 +76,20 @@ type CompletionFilterProvider interface {
 // RSS automation is disabled by default with a 2-hour interval.
 func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 	return &CrossSeedAutomationSettings{
-		Enabled:                      false, // RSS automation disabled by default
-		RunIntervalMinutes:           120,   // RSS: default 2 hours between polls
-		StartPaused:                  true,
-		Category:                     nil,
-		IgnorePatterns:               []string{},
-		TargetInstanceIDs:            []int{},
-		TargetIndexerIDs:             []int{},
-		MaxResultsPerRun:             50,
+		Enabled:            false, // RSS automation disabled by default
+		RunIntervalMinutes: 120,   // RSS: default 2 hours between polls
+		StartPaused:        true,
+		Category:           nil,
+		IgnorePatterns:     []string{},
+		TargetInstanceIDs:  []int{},
+		TargetIndexerIDs:   []int{},
+		MaxResultsPerRun:   50,
 		// RSS source filtering defaults - empty means no filtering (all torrents)
-		RSSSourceCategories:        []string{},
-		RSSSourceTags:              []string{},
-		RSSSourceExcludeCategories: []string{},
-		RSSSourceExcludeTags:       []string{},
-		FindIndividualEpisodes:     false, // Default to false - only find season packs when searching with season packs
+		RSSSourceCategories:          []string{},
+		RSSSourceTags:                []string{},
+		RSSSourceExcludeCategories:   []string{},
+		RSSSourceExcludeTags:         []string{},
+		FindIndividualEpisodes:       false, // Default to false - only find season packs when searching with season packs
 		SizeMismatchTolerancePercent: 5.0,   // Allow 5% size difference by default
 		UseCategoryFromIndexer:       false, // Default to false - don't override categories by default
 		RunExternalProgramID:         nil,   // No external program by default

@@ -45,24 +45,24 @@ type automationSettingsRequest struct {
 }
 
 type automationSettingsPatchRequest struct {
-	Enabled                      *bool          `json:"enabled,omitempty"`
-	RunIntervalMinutes           *int           `json:"runIntervalMinutes,omitempty"`
-	StartPaused                  *bool          `json:"startPaused,omitempty"`
-	Category                     optionalString `json:"category"`
-	IgnorePatterns               *[]string      `json:"ignorePatterns,omitempty"`
-	TargetInstanceIDs            *[]int         `json:"targetInstanceIds,omitempty"`
-	TargetIndexerIDs             *[]int         `json:"targetIndexerIds,omitempty"`
-	MaxResultsPerRun             *int           `json:"maxResultsPerRun,omitempty"` // Deprecated: automation now processes full feeds and ignores this value
+	Enabled            *bool          `json:"enabled,omitempty"`
+	RunIntervalMinutes *int           `json:"runIntervalMinutes,omitempty"`
+	StartPaused        *bool          `json:"startPaused,omitempty"`
+	Category           optionalString `json:"category"`
+	IgnorePatterns     *[]string      `json:"ignorePatterns,omitempty"`
+	TargetInstanceIDs  *[]int         `json:"targetInstanceIds,omitempty"`
+	TargetIndexerIDs   *[]int         `json:"targetIndexerIds,omitempty"`
+	MaxResultsPerRun   *int           `json:"maxResultsPerRun,omitempty"` // Deprecated: automation now processes full feeds and ignores this value
 	// RSS source filtering: filter which local torrents to search when checking RSS feeds
-	RSSSourceCategories        *[]string `json:"rssSourceCategories,omitempty"`
-	RSSSourceTags              *[]string `json:"rssSourceTags,omitempty"`
-	RSSSourceExcludeCategories *[]string `json:"rssSourceExcludeCategories,omitempty"`
-	RSSSourceExcludeTags       *[]string `json:"rssSourceExcludeTags,omitempty"`
-	FindIndividualEpisodes       *bool          `json:"findIndividualEpisodes,omitempty"`
-	SizeMismatchTolerancePercent *float64       `json:"sizeMismatchTolerancePercent,omitempty"`
-	UseCategoryFromIndexer       *bool          `json:"useCategoryFromIndexer,omitempty"`
-	UseCrossCategorySuffix       *bool          `json:"useCrossCategorySuffix,omitempty"`
-	RunExternalProgramID         optionalInt    `json:"runExternalProgramId"`
+	RSSSourceCategories          *[]string   `json:"rssSourceCategories,omitempty"`
+	RSSSourceTags                *[]string   `json:"rssSourceTags,omitempty"`
+	RSSSourceExcludeCategories   *[]string   `json:"rssSourceExcludeCategories,omitempty"`
+	RSSSourceExcludeTags         *[]string   `json:"rssSourceExcludeTags,omitempty"`
+	FindIndividualEpisodes       *bool       `json:"findIndividualEpisodes,omitempty"`
+	SizeMismatchTolerancePercent *float64    `json:"sizeMismatchTolerancePercent,omitempty"`
+	UseCategoryFromIndexer       *bool       `json:"useCategoryFromIndexer,omitempty"`
+	UseCrossCategorySuffix       *bool       `json:"useCrossCategorySuffix,omitempty"`
+	RunExternalProgramID         optionalInt `json:"runExternalProgramId"`
 	// Source-specific tagging
 	RSSAutomationTags    *[]string `json:"rssAutomationTags,omitempty"`
 	SeededSearchTags     *[]string `json:"seededSearchTags,omitempty"`
