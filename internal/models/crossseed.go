@@ -28,6 +28,13 @@ type CrossSeedAutomationSettings struct {
 	TargetIndexerIDs   []int    `json:"targetIndexerIds"`   // RSS: indexers to poll for RSS feeds
 	MaxResultsPerRun   int      `json:"maxResultsPerRun"`   // Deprecated: automation processes full feeds; retained for backward compatibility
 
+	// RSS source filtering: filter which LOCAL torrents are considered when checking RSS feeds.
+	// Empty arrays mean "all" (no filtering).
+	RSSSourceCategories        []string `json:"rssSourceCategories"`        // Only match against torrents in these categories
+	RSSSourceTags              []string `json:"rssSourceTags"`              // Only match against torrents with these tags
+	RSSSourceExcludeCategories []string `json:"rssSourceExcludeCategories"` // Skip torrents in these categories
+	RSSSourceExcludeTags       []string `json:"rssSourceExcludeTags"`       // Skip torrents with these tags
+
 	// Global cross-seed settings (apply to both RSS Automation and Seeded Torrent Search)
 	FindIndividualEpisodes       bool    `json:"findIndividualEpisodes"`       // Match season packs with individual episodes
 	SizeMismatchTolerancePercent float64 `json:"sizeMismatchTolerancePercent"` // Size tolerance for matching (default: 5%)
@@ -66,17 +73,22 @@ type CompletionFilterProvider interface {
 }
 
 // DefaultCrossSeedAutomationSettings returns sensible defaults for RSS automation.
-// RSS automation is disabled by default with a 2-hour interval and 50 results per run.
+// RSS automation is disabled by default with a 2-hour interval.
 func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 	return &CrossSeedAutomationSettings{
-		Enabled:                      false, // RSS automation disabled by default
-		RunIntervalMinutes:           120,   // RSS: default 2 hours between polls
-		StartPaused:                  true,
-		Category:                     nil,
-		IgnorePatterns:               []string{},
-		TargetInstanceIDs:            []int{},
-		TargetIndexerIDs:             []int{},
-		MaxResultsPerRun:             50,
+		Enabled:            false, // RSS automation disabled by default
+		RunIntervalMinutes: 120,   // RSS: default 2 hours between polls
+		StartPaused:        true,
+		Category:           nil,
+		IgnorePatterns:     []string{},
+		TargetInstanceIDs:  []int{},
+		TargetIndexerIDs:   []int{},
+		MaxResultsPerRun:   50,
+		// RSS source filtering defaults - empty means no filtering (all torrents)
+		RSSSourceCategories:          []string{},
+		RSSSourceTags:                []string{},
+		RSSSourceExcludeCategories:   []string{},
+		RSSSourceExcludeTags:         []string{},
 		FindIndividualEpisodes:       false, // Default to false - only find season packs when searching with season packs
 		SizeMismatchTolerancePercent: 5.0,   // Allow 5% size difference by default
 		UseCategoryFromIndexer:       false, // Default to false - don't override categories by default
@@ -149,6 +161,7 @@ const (
 type CrossSeedRunResult struct {
 	InstanceID         int     `json:"instanceId"`
 	InstanceName       string  `json:"instanceName"`
+	IndexerName        string  `json:"indexerName,omitempty"`
 	Success            bool    `json:"success"`
 	Status             string  `json:"status"`
 	Message            string  `json:"message,omitempty"`
@@ -261,7 +274,10 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	query := `
 		SELECT enabled, run_interval_minutes, start_paused, category,
 		       ignore_patterns, target_instance_ids, target_indexer_ids,
-		       max_results_per_run, find_individual_episodes, size_mismatch_tolerance_percent,
+		       max_results_per_run,
+		       rss_source_categories, rss_source_tags,
+		       rss_source_exclude_categories, rss_source_exclude_tags,
+		       find_individual_episodes, size_mismatch_tolerance_percent,
 		       use_category_from_indexer, run_external_program_id,
 		       rss_automation_tags, seeded_search_tags, completion_search_tags,
 		       webhook_tags, inherit_source_tags, use_cross_category_suffix,
@@ -277,6 +293,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	var settings CrossSeedAutomationSettings
 	var category sql.NullString
 	var ignoreJSON, instancesJSON, indexersJSON sql.NullString
+	var rssSourceCategories, rssSourceTags, rssSourceExcludeCategories, rssSourceExcludeTags sql.NullString
 	var rssAutomationTags, seededSearchTags, completionSearchTags, webhookTags sql.NullString
 	var runExternalProgramID sql.NullInt64
 	var createdAt, updatedAt sql.NullTime
@@ -290,6 +307,10 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&instancesJSON,
 		&indexersJSON,
 		&settings.MaxResultsPerRun,
+		&rssSourceCategories,
+		&rssSourceTags,
+		&rssSourceExcludeCategories,
+		&rssSourceExcludeTags,
 		&settings.FindIndividualEpisodes,
 		&settings.SizeMismatchTolerancePercent,
 		&settings.UseCategoryFromIndexer,
@@ -331,6 +352,20 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	}
 	if err := decodeIntSlice(indexersJSON, &settings.TargetIndexerIDs); err != nil {
 		return nil, fmt.Errorf("decode target indexers: %w", err)
+	}
+
+	// Decode RSS source filters
+	if err := decodeStringSlice(rssSourceCategories, &settings.RSSSourceCategories); err != nil {
+		return nil, fmt.Errorf("decode rss source categories: %w", err)
+	}
+	if err := decodeStringSlice(rssSourceTags, &settings.RSSSourceTags); err != nil {
+		return nil, fmt.Errorf("decode rss source tags: %w", err)
+	}
+	if err := decodeStringSlice(rssSourceExcludeCategories, &settings.RSSSourceExcludeCategories); err != nil {
+		return nil, fmt.Errorf("decode rss source exclude categories: %w", err)
+	}
+	if err := decodeStringSlice(rssSourceExcludeTags, &settings.RSSSourceExcludeTags); err != nil {
+		return nil, fmt.Errorf("decode rss source exclude tags: %w", err)
 	}
 
 	// Decode source-specific tags with defaults
@@ -377,6 +412,24 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		return nil, fmt.Errorf("encode target indexers: %w", err)
 	}
 
+	// Encode RSS source filters
+	rssSourceCategoriesJSON, err := encodeStringSlice(settings.RSSSourceCategories)
+	if err != nil {
+		return nil, fmt.Errorf("encode rss source categories: %w", err)
+	}
+	rssSourceTagsJSON, err := encodeStringSlice(settings.RSSSourceTags)
+	if err != nil {
+		return nil, fmt.Errorf("encode rss source tags: %w", err)
+	}
+	rssSourceExcludeCategoriesJSON, err := encodeStringSlice(settings.RSSSourceExcludeCategories)
+	if err != nil {
+		return nil, fmt.Errorf("encode rss source exclude categories: %w", err)
+	}
+	rssSourceExcludeTagsJSON, err := encodeStringSlice(settings.RSSSourceExcludeTags)
+	if err != nil {
+		return nil, fmt.Errorf("encode rss source exclude tags: %w", err)
+	}
+
 	// Encode source-specific tags
 	rssAutomationTags, err := encodeStringSlice(settings.RSSAutomationTags)
 	if err != nil {
@@ -399,14 +452,17 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		INSERT INTO cross_seed_settings (
 			id, enabled, run_interval_minutes, start_paused, category,
 			ignore_patterns, target_instance_ids, target_indexer_ids,
-			max_results_per_run, find_individual_episodes, size_mismatch_tolerance_percent,
+			max_results_per_run,
+			rss_source_categories, rss_source_tags,
+			rss_source_exclude_categories, rss_source_exclude_tags,
+			find_individual_episodes, size_mismatch_tolerance_percent,
 			use_category_from_indexer, run_external_program_id,
 			rss_automation_tags, seeded_search_tags, completion_search_tags,
 			webhook_tags, inherit_source_tags, use_cross_category_suffix,
 			skip_auto_resume_rss, skip_auto_resume_seeded_search,
 			skip_auto_resume_completion, skip_auto_resume_webhook
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -417,6 +473,10 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			target_instance_ids = excluded.target_instance_ids,
 			target_indexer_ids = excluded.target_indexer_ids,
 			max_results_per_run = excluded.max_results_per_run,
+			rss_source_categories = excluded.rss_source_categories,
+			rss_source_tags = excluded.rss_source_tags,
+			rss_source_exclude_categories = excluded.rss_source_exclude_categories,
+			rss_source_exclude_tags = excluded.rss_source_exclude_tags,
 			find_individual_episodes = excluded.find_individual_episodes,
 			size_mismatch_tolerance_percent = excluded.size_mismatch_tolerance_percent,
 			use_category_from_indexer = excluded.use_category_from_indexer,
@@ -454,6 +514,10 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		instanceJSON,
 		indexerJSON,
 		settings.MaxResultsPerRun,
+		rssSourceCategoriesJSON,
+		rssSourceTagsJSON,
+		rssSourceExcludeCategoriesJSON,
+		rssSourceExcludeTagsJSON,
 		settings.FindIndividualEpisodes,
 		settings.SizeMismatchTolerancePercent,
 		settings.UseCategoryFromIndexer,

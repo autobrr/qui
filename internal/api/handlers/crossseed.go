@@ -45,19 +45,24 @@ type automationSettingsRequest struct {
 }
 
 type automationSettingsPatchRequest struct {
-	Enabled                      *bool          `json:"enabled,omitempty"`
-	RunIntervalMinutes           *int           `json:"runIntervalMinutes,omitempty"`
-	StartPaused                  *bool          `json:"startPaused,omitempty"`
-	Category                     optionalString `json:"category"`
-	IgnorePatterns               *[]string      `json:"ignorePatterns,omitempty"`
-	TargetInstanceIDs            *[]int         `json:"targetInstanceIds,omitempty"`
-	TargetIndexerIDs             *[]int         `json:"targetIndexerIds,omitempty"`
-	MaxResultsPerRun             *int           `json:"maxResultsPerRun,omitempty"` // Deprecated: automation now processes full feeds and ignores this value
-	FindIndividualEpisodes       *bool          `json:"findIndividualEpisodes,omitempty"`
-	SizeMismatchTolerancePercent *float64       `json:"sizeMismatchTolerancePercent,omitempty"`
-	UseCategoryFromIndexer       *bool          `json:"useCategoryFromIndexer,omitempty"`
-	UseCrossCategorySuffix       *bool          `json:"useCrossCategorySuffix,omitempty"`
-	RunExternalProgramID         optionalInt    `json:"runExternalProgramId"`
+	Enabled            *bool          `json:"enabled,omitempty"`
+	RunIntervalMinutes *int           `json:"runIntervalMinutes,omitempty"`
+	StartPaused        *bool          `json:"startPaused,omitempty"`
+	Category           optionalString `json:"category"`
+	IgnorePatterns     *[]string      `json:"ignorePatterns,omitempty"`
+	TargetInstanceIDs  *[]int         `json:"targetInstanceIds,omitempty"`
+	TargetIndexerIDs   *[]int         `json:"targetIndexerIds,omitempty"`
+	MaxResultsPerRun   *int           `json:"maxResultsPerRun,omitempty"` // Deprecated: automation now processes full feeds and ignores this value
+	// RSS source filtering: filter which local torrents to search when checking RSS feeds
+	RSSSourceCategories          *[]string   `json:"rssSourceCategories,omitempty"`
+	RSSSourceTags                *[]string   `json:"rssSourceTags,omitempty"`
+	RSSSourceExcludeCategories   *[]string   `json:"rssSourceExcludeCategories,omitempty"`
+	RSSSourceExcludeTags         *[]string   `json:"rssSourceExcludeTags,omitempty"`
+	FindIndividualEpisodes       *bool       `json:"findIndividualEpisodes,omitempty"`
+	SizeMismatchTolerancePercent *float64    `json:"sizeMismatchTolerancePercent,omitempty"`
+	UseCategoryFromIndexer       *bool       `json:"useCategoryFromIndexer,omitempty"`
+	UseCrossCategorySuffix       *bool       `json:"useCrossCategorySuffix,omitempty"`
+	RunExternalProgramID         optionalInt `json:"runExternalProgramId"`
 	// Source-specific tagging
 	RSSAutomationTags    *[]string `json:"rssAutomationTags,omitempty"`
 	SeededSearchTags     *[]string `json:"seededSearchTags,omitempty"`
@@ -136,6 +141,10 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.TargetInstanceIDs == nil &&
 		r.TargetIndexerIDs == nil &&
 		r.MaxResultsPerRun == nil &&
+		r.RSSSourceCategories == nil &&
+		r.RSSSourceTags == nil &&
+		r.RSSSourceExcludeCategories == nil &&
+		r.RSSSourceExcludeTags == nil &&
 		r.FindIndividualEpisodes == nil &&
 		r.SizeMismatchTolerancePercent == nil &&
 		r.UseCategoryFromIndexer == nil &&
@@ -185,6 +194,19 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	}
 	if patch.MaxResultsPerRun != nil {
 		settings.MaxResultsPerRun = *patch.MaxResultsPerRun
+	}
+	// RSS source filtering
+	if patch.RSSSourceCategories != nil {
+		settings.RSSSourceCategories = *patch.RSSSourceCategories
+	}
+	if patch.RSSSourceTags != nil {
+		settings.RSSSourceTags = *patch.RSSSourceTags
+	}
+	if patch.RSSSourceExcludeCategories != nil {
+		settings.RSSSourceExcludeCategories = *patch.RSSSourceExcludeCategories
+	}
+	if patch.RSSSourceExcludeTags != nil {
+		settings.RSSSourceExcludeTags = *patch.RSSSourceExcludeTags
 	}
 	if patch.FindIndividualEpisodes != nil {
 		settings.FindIndividualEpisodes = *patch.FindIndividualEpisodes
