@@ -791,10 +791,7 @@ func (s *Service) RunAutomation(ctx context.Context, opts AutomationRunOptions) 
 			nextAllowed := lastRun.StartedAt.Add(cooldown)
 			now := time.Now()
 			if now.Before(nextAllowed) {
-				remaining := time.Until(nextAllowed)
-				if remaining < time.Second {
-					remaining = time.Second
-				}
+				remaining := max(time.Until(nextAllowed), time.Second)
 				remaining = remaining.Round(time.Second)
 				return nil, fmt.Errorf("%w: manual runs limited to one every %d minutes. Try again in %s (after %s)",
 					ErrAutomationCooldownActive,
@@ -926,7 +923,7 @@ func (s *Service) updateAutomationRunWithRetry(ctx context.Context, run *models.
 	const maxRetries = 3
 	var lastErr error
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for attempt := range maxRetries {
 		if attempt > 0 {
 			// Wait before retry
 			select {
@@ -954,7 +951,7 @@ func (s *Service) updateSearchRunWithRetry(ctx context.Context, run *models.Cros
 	const maxRetries = 3
 	var lastErr error
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for attempt := range maxRetries {
 		if attempt > 0 {
 			// Wait before retry
 			select {
@@ -5790,9 +5787,7 @@ func (s *Service) filterIndexerIDsForTorrentAsync(ctx context.Context, instanceI
 					torrentInfo.FilteredIndexers = append([]int(nil), existingSnapshot.FilteredIndexers...)
 					if len(existingSnapshot.ExcludedIndexers) > 0 {
 						torrentInfo.ExcludedIndexers = make(map[int]string, len(existingSnapshot.ExcludedIndexers))
-						for id, reason := range existingSnapshot.ExcludedIndexers {
-							torrentInfo.ExcludedIndexers[id] = reason
-						}
+						maps.Copy(torrentInfo.ExcludedIndexers, existingSnapshot.ExcludedIndexers)
 					} else {
 						torrentInfo.ExcludedIndexers = nil
 					}
@@ -6767,7 +6762,7 @@ func buildCrossSeedTags(sourceTags []string, matchedTags string, inheritSourceTa
 
 	// Optionally inherit tags from the matched torrent
 	if inheritSourceTags && matchedTags != "" {
-		for _, tag := range strings.Split(matchedTags, ",") {
+		for tag := range strings.SplitSeq(matchedTags, ",") {
 			addTag(tag)
 		}
 	}
@@ -7263,10 +7258,7 @@ func (s *Service) recoverErroredTorrents(ctx context.Context, instanceID int, to
 		appPrefs.DiskCacheTTL = 60
 	}
 
-	cacheTimeout := time.Duration(appPrefs.DiskCacheTTL) * time.Second
-	if cacheTimeout < 1*time.Second {
-		cacheTimeout = 1 * time.Second
-	}
+	cacheTimeout := max(time.Duration(appPrefs.DiskCacheTTL)*time.Second, 1*time.Second)
 
 	// Collect all hashes and build lookup maps
 	allHashes := make([]string, len(erroredTorrents))
