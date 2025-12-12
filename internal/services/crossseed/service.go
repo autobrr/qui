@@ -4626,6 +4626,12 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				sizeTolerance = settings.SizeMismatchTolerancePercent
 			}
 
+			// Determine skip auto-resume from seeded search setting (interactive dialog uses same setting)
+			skipAutoResume := false
+			if settings != nil {
+				skipAutoResume = settings.SkipAutoResumeSeededSearch
+			}
+
 			payload := &CrossSeedRequest{
 				TorrentData:                  base64.StdEncoding.EncodeToString(torrentBytes),
 				TargetInstanceIDs:            []int{instanceID},
@@ -4635,6 +4641,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				IndexerName:                  indexerName,
 				FindIndividualEpisodes:       req.FindIndividualEpisodes,
 				SizeMismatchTolerancePercent: sizeTolerance,
+				SkipAutoResume:               skipAutoResume,
 			}
 			if settings != nil && len(settings.IgnorePatterns) > 0 {
 				payload.IgnorePatterns = append([]string(nil), settings.IgnorePatterns...)

@@ -1912,7 +1912,7 @@ export function CrossSeedPage() {
                   <div className="flex items-center justify-between gap-3">
                     <div className="space-y-0.5">
                       <Label htmlFor="skip-auto-resume-seeded" className="font-medium">Skip for Seeded Search</Label>
-                      <p className="text-xs text-muted-foreground">Keep seeded search torrents paused</p>
+                      <p className="text-xs text-muted-foreground">Keep seeded search & interactive dialog torrents paused</p>
                     </div>
                     <Switch
                       id="skip-auto-resume-seeded"
