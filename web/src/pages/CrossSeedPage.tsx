@@ -54,6 +54,11 @@ interface AutomationFormState {
   runIntervalMinutes: number  // RSS Automation: interval between RSS feed polls (min: 30 minutes)
   targetInstanceIds: number[]
   targetIndexerIds: number[]
+  // RSS source filtering: filter which local torrents to search when checking RSS feeds
+  rssSourceCategories: string[]
+  rssSourceTags: string[]
+  rssSourceExcludeCategories: string[]
+  rssSourceExcludeTags: string[]
 }
 
 // Global cross-seed settings (apply to both RSS Automation and Seeded Torrent Search)
@@ -97,6 +102,10 @@ const DEFAULT_AUTOMATION_FORM: AutomationFormState = {
   runIntervalMinutes: DEFAULT_RSS_INTERVAL_MINUTES,
   targetInstanceIds: [],
   targetIndexerIds: [],
+  rssSourceCategories: [],
+  rssSourceTags: [],
+  rssSourceExcludeCategories: [],
+  rssSourceExcludeTags: [],
 }
 
 const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
@@ -311,6 +320,37 @@ export function CrossSeedPage() {
     enabled: !!searchInstanceId,
   })
 
+  // Fetch categories/tags from all RSS Automation target instances (aggregated)
+  const { data: rssSourceMetadata } = useQuery({
+    queryKey: ["cross-seed", "rss-source-metadata", automationForm.targetInstanceIds],
+    queryFn: async () => {
+      if (automationForm.targetInstanceIds.length === 0) return null
+      const results = await Promise.all(
+        automationForm.targetInstanceIds.map(async (instanceId) => {
+          const [categories, tags] = await Promise.all([
+            api.getCategories(instanceId),
+            api.getTags(instanceId),
+          ])
+          return { categories, tags }
+        })
+      )
+      // Aggregate categories and tags from all instances
+      const allCategories: Record<string, { name: string; savePath: string }> = {}
+      const allTags = new Set<string>()
+      for (const result of results) {
+        for (const [name, cat] of Object.entries(result.categories)) {
+          allCategories[name] = cat
+        }
+        for (const tag of result.tags) {
+          allTags.add(tag)
+        }
+      }
+      return { categories: allCategories, tags: Array.from(allTags) }
+    },
+    enabled: automationForm.targetInstanceIds.length > 0,
+    staleTime: 5 * 60 * 1000,
+  })
+
   const { data: searchCacheStats } = useQuery({
     queryKey: ["torznab", "search-cache", "stats", "cross-seed"],
     queryFn: () => api.getTorznabSearchCacheStats(),
@@ -344,6 +384,10 @@ export function CrossSeedPage() {
         runIntervalMinutes: settings.runIntervalMinutes,
         targetInstanceIds: settings.targetInstanceIds,
         targetIndexerIds: settings.targetIndexerIds,
+        rssSourceCategories: settings.rssSourceCategories ?? [],
+        rssSourceTags: settings.rssSourceTags ?? [],
+        rssSourceExcludeCategories: settings.rssSourceExcludeCategories ?? [],
+        rssSourceExcludeTags: settings.rssSourceExcludeTags ?? [],
       })
       setFormInitialized(true)
     }
@@ -441,6 +485,10 @@ export function CrossSeedPage() {
         runIntervalMinutes: settings.runIntervalMinutes,
         targetInstanceIds: settings.targetInstanceIds,
         targetIndexerIds: settings.targetIndexerIds,
+        rssSourceCategories: settings.rssSourceCategories ?? [],
+        rssSourceTags: settings.rssSourceTags ?? [],
+        rssSourceExcludeCategories: settings.rssSourceExcludeCategories ?? [],
+        rssSourceExcludeTags: settings.rssSourceExcludeTags ?? [],
       }
 
     return {
@@ -448,6 +496,10 @@ export function CrossSeedPage() {
       runIntervalMinutes: automationSource.runIntervalMinutes,
       targetInstanceIds: automationSource.targetInstanceIds,
       targetIndexerIds: automationSource.targetIndexerIds,
+      rssSourceCategories: automationSource.rssSourceCategories,
+      rssSourceTags: automationSource.rssSourceTags,
+      rssSourceExcludeCategories: automationSource.rssSourceExcludeCategories,
+      rssSourceExcludeTags: automationSource.rssSourceExcludeTags,
     }
   }, [settings, automationForm, formInitialized])
 
@@ -774,6 +826,47 @@ export function CrossSeedPage() {
       }))
     },
     [searchTagNames, searchTags]
+  )
+
+  // RSS Source filter select options (aggregated from all target instances)
+  const rssSourceTagNames = useMemo(() => rssSourceMetadata?.tags ?? [], [rssSourceMetadata])
+
+  const rssSourceCategorySelectOptions = useMemo(
+    () => {
+      const categories = rssSourceMetadata?.categories ?? {}
+      const tree = buildCategoryTree(categories, {})
+      const flattened: { label: string; value: string }[] = []
+
+      const visitNodes = (nodes: CategoryNode[]) => {
+        for (const node of nodes) {
+          flattened.push({ label: node.name, value: node.name })
+          visitNodes(node.children)
+        }
+      }
+      visitNodes(tree)
+
+      // Add any extra categories that were selected but not in the list
+      const allSelected = [...automationForm.rssSourceCategories, ...automationForm.rssSourceExcludeCategories]
+      const extras = allSelected.filter(cat => !flattened.some(opt => opt.value === cat))
+      for (const extra of extras) {
+        flattened.push({ label: extra, value: extra })
+      }
+
+      return flattened
+    },
+    [automationForm.rssSourceCategories, automationForm.rssSourceExcludeCategories, rssSourceMetadata?.categories]
+  )
+
+  const rssSourceTagSelectOptions = useMemo(
+    () => {
+      const allSelected = [...automationForm.rssSourceTags, ...automationForm.rssSourceExcludeTags]
+      const extras = allSelected.filter(tag => !rssSourceTagNames.includes(tag))
+      return Array.from(new Set([...rssSourceTagNames, ...extras])).map(tag => ({
+        label: tag,
+        value: tag,
+      }))
+    },
+    [rssSourceTagNames, automationForm.rssSourceTags, automationForm.rssSourceExcludeTags]
   )
 
   const handleStartSearchRun = () => {
@@ -1153,6 +1246,94 @@ export function CrossSeedPage() {
                       : automationForm.targetIndexerIds.length === 0
                         ? "All enabled Torznab indexers are eligible for RSS automation."
                         : `Only ${automationForm.targetIndexerIds.length} selected indexer${automationForm.targetIndexerIds.length === 1 ? "" : "s"} will be polled.`}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-3">
+                  <Label>Include categories</Label>
+                  <MultiSelect
+                    options={rssSourceCategorySelectOptions}
+                    selected={automationForm.rssSourceCategories}
+                    onChange={values => setAutomationForm(prev => ({ ...prev, rssSourceCategories: values }))}
+                    placeholder={
+                      automationForm.targetInstanceIds.length > 0
+                        ? rssSourceCategorySelectOptions.length ? "All categories (leave empty for all)" : "Type to add categories"
+                        : "Select target instances to load categories"
+                    }
+                    creatable
+                    disabled={automationForm.targetInstanceIds.length === 0}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {automationForm.rssSourceCategories.length === 0
+                      ? "All categories will be included."
+                      : `Only ${automationForm.rssSourceCategories.length} selected categor${automationForm.rssSourceCategories.length === 1 ? "y" : "ies"} will be matched.`}
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <Label>Include tags</Label>
+                  <MultiSelect
+                    options={rssSourceTagSelectOptions}
+                    selected={automationForm.rssSourceTags}
+                    onChange={values => setAutomationForm(prev => ({ ...prev, rssSourceTags: values }))}
+                    placeholder={
+                      automationForm.targetInstanceIds.length > 0
+                        ? rssSourceTagSelectOptions.length ? "All tags (leave empty for all)" : "Type to add tags"
+                        : "Select target instances to load tags"
+                    }
+                    creatable
+                    disabled={automationForm.targetInstanceIds.length === 0}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {automationForm.rssSourceTags.length === 0
+                      ? "All tags will be included."
+                      : `Only ${automationForm.rssSourceTags.length} selected tag${automationForm.rssSourceTags.length === 1 ? "" : "s"} will be matched.`}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-3">
+                  <Label>Exclude categories</Label>
+                  <MultiSelect
+                    options={rssSourceCategorySelectOptions}
+                    selected={automationForm.rssSourceExcludeCategories}
+                    onChange={values => setAutomationForm(prev => ({ ...prev, rssSourceExcludeCategories: values }))}
+                    placeholder={
+                      automationForm.targetInstanceIds.length > 0
+                        ? "None"
+                        : "Select target instances to load categories"
+                    }
+                    creatable
+                    disabled={automationForm.targetInstanceIds.length === 0}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {automationForm.rssSourceExcludeCategories.length === 0
+                      ? "No categories excluded."
+                      : `${automationForm.rssSourceExcludeCategories.length} categor${automationForm.rssSourceExcludeCategories.length === 1 ? "y" : "ies"} will be skipped.`}
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <Label>Exclude tags</Label>
+                  <MultiSelect
+                    options={rssSourceTagSelectOptions}
+                    selected={automationForm.rssSourceExcludeTags}
+                    onChange={values => setAutomationForm(prev => ({ ...prev, rssSourceExcludeTags: values }))}
+                    placeholder={
+                      automationForm.targetInstanceIds.length > 0
+                        ? "None"
+                        : "Select target instances to load tags"
+                    }
+                    creatable
+                    disabled={automationForm.targetInstanceIds.length === 0}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {automationForm.rssSourceExcludeTags.length === 0
+                      ? "No tags excluded."
+                      : `${automationForm.rssSourceExcludeTags.length} tag${automationForm.rssSourceExcludeTags.length === 1 ? "" : "s"} will be skipped.`}
                   </p>
                 </div>
               </div>

@@ -1537,7 +1537,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 	}
 
 	autoCtx := &automationContext{
-		snapshots:      s.buildAutomationSnapshots(ctx, settings.TargetInstanceIDs),
+		snapshots:      s.buildAutomationSnapshots(ctx, settings.TargetInstanceIDs, settings),
 		candidateCache: make(map[string]*FindCandidatesResponse),
 	}
 
@@ -1910,7 +1910,7 @@ func (s *Service) markFeedItem(ctx context.Context, result jackett.SearchResult,
 	}
 }
 
-func (s *Service) buildAutomationSnapshots(ctx context.Context, targetInstanceIDs []int) *automationSnapshots {
+func (s *Service) buildAutomationSnapshots(ctx context.Context, targetInstanceIDs []int, settings *models.CrossSeedAutomationSettings) *automationSnapshots {
 	if s == nil || s.instanceStore == nil || s.syncManager == nil {
 		return nil
 	}
@@ -1937,6 +1937,12 @@ func (s *Service) buildAutomationSnapshots(ctx context.Context, targetInstanceID
 		}
 	}
 
+	// Check if RSS source filters are configured
+	hasRSSSourceFilters := settings != nil && (len(settings.RSSSourceCategories) > 0 ||
+		len(settings.RSSSourceTags) > 0 ||
+		len(settings.RSSSourceExcludeCategories) > 0 ||
+		len(settings.RSSSourceExcludeTags) > 0)
+
 	for _, instanceID := range instanceIDs {
 		snap := snapshots.instances[instanceID]
 		if snap == nil {
@@ -1958,6 +1964,27 @@ func (s *Service) buildAutomationSnapshots(ctx context.Context, targetInstanceID
 				Msg("Failed to get torrents for automation snapshot, skipping")
 			continue
 		}
+
+		// Apply RSS source filters if configured
+		if hasRSSSourceFilters {
+			originalCount := len(torrents)
+			filtered := make([]qbt.Torrent, 0, len(torrents))
+			for i := range torrents {
+				if matchesRSSSourceFilters(&torrents[i], settings) {
+					filtered = append(filtered, torrents[i])
+				}
+			}
+			torrents = filtered
+			if len(torrents) != originalCount {
+				log.Debug().
+					Int("instanceID", instanceID).
+					Str("instanceName", snap.instance.Name).
+					Int("original", originalCount).
+					Int("filtered", len(torrents)).
+					Msg("RSS source filters reduced torrent candidates")
+			}
+		}
+
 		snap.torrents = torrents
 	}
 
@@ -6426,6 +6453,47 @@ func matchesSearchFilters(torrent *qbt.Torrent, opts SearchRunOptions) bool {
 			return false
 		}
 	}
+	return true
+}
+
+// matchesRSSSourceFilters checks if a torrent matches RSS source filters.
+// Empty filter arrays mean "all" (no filtering).
+func matchesRSSSourceFilters(torrent *qbt.Torrent, settings *models.CrossSeedAutomationSettings) bool {
+	if torrent == nil || settings == nil {
+		return false
+	}
+
+	// Check exclude categories first (if configured)
+	if len(settings.RSSSourceExcludeCategories) > 0 && slices.Contains(settings.RSSSourceExcludeCategories, torrent.Category) {
+		return false
+	}
+
+	// Check include categories (if configured)
+	if len(settings.RSSSourceCategories) > 0 && !slices.Contains(settings.RSSSourceCategories, torrent.Category) {
+		return false
+	}
+
+	torrentTags := splitTags(torrent.Tags)
+
+	// Check exclude tags (if configured) - case-sensitive to match qBittorrent behavior
+	if len(settings.RSSSourceExcludeTags) > 0 {
+		for _, tag := range torrentTags {
+			if slices.Contains(settings.RSSSourceExcludeTags, tag) {
+				return false
+			}
+		}
+	}
+
+	// Check include tags (if configured) - at least one must match, case-sensitive
+	if len(settings.RSSSourceTags) > 0 {
+		for _, tag := range torrentTags {
+			if slices.Contains(settings.RSSSourceTags, tag) {
+				return true
+			}
+		}
+		return false
+	}
+
 	return true
 }
 

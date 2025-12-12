@@ -1408,6 +1408,11 @@ export interface CrossSeedAutomationSettings {
   ignorePatterns: string[]
   targetInstanceIds: number[]
   targetIndexerIds: number[]
+  // RSS source filtering: filter which local torrents to search when checking RSS feeds
+  rssSourceCategories: string[]
+  rssSourceTags: string[]
+  rssSourceExcludeCategories: string[]
+  rssSourceExcludeTags: string[]
   findIndividualEpisodes: boolean
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
@@ -1436,6 +1441,11 @@ export interface CrossSeedAutomationSettingsPatch {
   ignorePatterns?: string[]
   targetInstanceIds?: number[]
   targetIndexerIds?: number[]
+  // RSS source filtering: filter which local torrents to search when checking RSS feeds
+  rssSourceCategories?: string[]
+  rssSourceTags?: string[]
+  rssSourceExcludeCategories?: string[]
+  rssSourceExcludeTags?: string[]
   findIndividualEpisodes?: boolean
   sizeMismatchTolerancePercent?: number
   useCategoryFromIndexer?: boolean
