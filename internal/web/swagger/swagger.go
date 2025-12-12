@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/autobrr/qui/pkg/httphelpers"
+
 	"github.com/go-chi/chi/v5"
 	"gopkg.in/yaml.v3"
 )
@@ -35,8 +37,8 @@ func NewHandler(baseURL string) (*Handler, error) {
 		return nil, err
 	}
 
-	// Ensure baseURL doesn't have trailing slash
-	baseURL = strings.TrimSuffix(baseURL, "/")
+	// Normalize baseURL: ensures leading slash, no trailing slash, "" for root
+	baseURL = httphelpers.NormalizeBasePath(baseURL)
 
 	return &Handler{
 		spec:    spec,
