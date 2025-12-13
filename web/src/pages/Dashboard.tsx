@@ -849,7 +849,7 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
 }
 
 
-type TrackerSortColumn = "tracker" | "uploaded" | "downloaded" | "ratio" | "buffer" | "count" | "performance"
+type TrackerSortColumn = "tracker" | "uploaded" | "downloaded" | "ratio" | "buffer" | "count" | "size" | "performance"
 type SortDirection = "asc" | "desc"
 
 // Helper to compute ratio display values for tracker stats
@@ -997,6 +997,8 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
           return multiplier * ((a.uploaded - a.downloaded) - (b.uploaded - b.downloaded))
         case "count":
           return multiplier * (a.count - b.count)
+        case "size":
+          return multiplier * (a.totalSize - b.totalSize)
         case "performance": {
           // efficiency = uploaded / totalSize (how many times content has been seeded)
           const perfA = a.totalSize > 0 ? a.uploaded / a.totalSize : 0
@@ -1439,7 +1441,8 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                            sortColumn === "uploaded" ? "Uploaded" :
                            sortColumn === "downloaded" ? "Downloaded" :
                            sortColumn === "ratio" ? "Ratio" :
-                           sortColumn === "count" ? "Torrents" : "Seeded"}
+                           sortColumn === "count" ? "Torrents" :
+                           sortColumn === "size" ? "Size" : "Seeded"}
                   </span>
                   {sortDirection === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
                 </Button>
@@ -1450,6 +1453,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 <DropdownMenuItem onClick={() => handleSort("downloaded")}>Downloaded</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleSort("ratio")}>Ratio</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleSort("count")}>Torrents</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleSort("size")}>Size</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleSort("performance")}>Seeded</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -1576,6 +1580,12 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                         </div>
                       </div>
 
+                      {/* Size */}
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground">Size</div>
+                        <div className="font-semibold text-sm">{formatBytes(totalSize)}</div>
+                      </div>
+
                       {/* Seeded */}
                       <div className="space-y-1">
                         <div className="text-xs text-muted-foreground">Seeded</div>
@@ -1651,6 +1661,16 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                   >
                     Torrents
                     <SortIcon column="count" sortColumn={sortColumn} sortDirection={sortDirection} />
+                  </button>
+                </TableHead>
+                <TableHead className="text-right hidden lg:table-cell">
+                  <button
+                    type="button"
+                    onClick={() => handleSort("size")}
+                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                  >
+                    Size
+                    <SortIcon column="size" sortColumn={sortColumn} sortDirection={sortDirection} />
                   </button>
                 </TableHead>
                 <TableHead className="text-right hidden lg:table-cell pr-4">
@@ -1780,6 +1800,9 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                     </TableCell>
                     <TableCell className="text-right">
                       {count}
+                    </TableCell>
+                    <TableCell className="text-right hidden lg:table-cell font-semibold">
+                      {formatBytes(totalSize)}
                     </TableCell>
                     <TableCell className="text-right hidden lg:table-cell font-semibold pr-4">
                       {formatEfficiency(uploaded, totalSize)}
