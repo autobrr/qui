@@ -6974,10 +6974,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to load automation settings for webhook check, using defaults")
-		settings = &models.CrossSeedAutomationSettings{
-			SizeMismatchTolerancePercent: 5.0,
-			FindIndividualEpisodes:       false,
-		}
+		settings = models.DefaultCrossSeedAutomationSettings()
 	}
 
 	findIndividualEpisodes := settings != nil && settings.FindIndividualEpisodes
@@ -7072,6 +7069,14 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 					Int("original", originalCount).
 					Int("filtered", len(torrents)).
 					Msg("Webhook source filters reduced torrent candidates")
+			}
+			if len(torrents) == 0 && originalCount > 0 {
+				log.Debug().
+					Str("source", "cross-seed.webhook").
+					Int("instanceID", instance.ID).
+					Str("instanceName", instance.Name).
+					Int("original", originalCount).
+					Msg("Webhook source filters excluded all torrents")
 			}
 		}
 

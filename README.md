@@ -577,7 +577,7 @@ This is useful when:
 - Certain content types should never be considered for cross-seeding
 - You want to exclude torrents with specific metadata tags
 
-**Note:** Exclude filters take precedence over include filters. Tag matching is case-sensitive. If you configure both category and tag filters, torrents must match both to be considered.
+**Note:** Exclude filters take precedence over include filters. Tag matching is case-sensitive. When both category and tag include filters are configured, a torrent must pass both filter checks (matching at least one allowed category AND at least one allowed tag).
 
 Configure in qui UI: **Cross-Seed → Global → Webhook Source Filters**
 

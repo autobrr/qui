@@ -4272,6 +4272,50 @@ func TestMatchesWebhookSourceFilters(t *testing.T) {
 			},
 			want: false,
 		},
+		{
+			name:    "exclude tag takes precedence over include tag",
+			torrent: &qbt.Torrent{Tags: "important, blocked"},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceTags:        []string{"important"},
+				WebhookSourceExcludeTags: []string{"blocked"},
+			},
+			want: false,
+		},
+		{
+			name:    "category and tag filters both apply - passes both",
+			torrent: &qbt.Torrent{Category: "movies", Tags: "important"},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceCategories: []string{"movies"},
+				WebhookSourceTags:       []string{"important"},
+			},
+			want: true,
+		},
+		{
+			name:    "passes category filter but fails tag filter",
+			torrent: &qbt.Torrent{Category: "movies", Tags: "random"},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceCategories: []string{"movies"},
+				WebhookSourceTags:       []string{"important"},
+			},
+			want: false,
+		},
+		{
+			name:    "passes tag filter but fails category filter",
+			torrent: &qbt.Torrent{Category: "tv", Tags: "important"},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceCategories: []string{"movies"},
+				WebhookSourceTags:       []string{"important"},
+			},
+			want: false,
+		},
+		{
+			name:    "empty category with include category filter fails",
+			torrent: &qbt.Torrent{Category: ""},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceCategories: []string{"movies"},
+			},
+			want: false,
+		},
 	}
 
 	for _, tt := range tests {
