@@ -208,6 +208,59 @@ function formatDurationShort(ms: number): string {
   return parts.join(" ")
 }
 
+/** Aggregate categories and tags from multiple qBittorrent instances */
+function aggregateInstanceMetadata(
+  results: Array<{ categories: Record<string, { name: string; savePath: string }>; tags: string[] }>
+): { categories: Record<string, { name: string; savePath: string }>; tags: string[] } {
+  const allCategories: Record<string, { name: string; savePath: string }> = {}
+  const allTags = new Set<string>()
+  for (const result of results) {
+    for (const [name, cat] of Object.entries(result.categories)) {
+      allCategories[name] = cat
+    }
+    for (const tag of result.tags) {
+      allTags.add(tag)
+    }
+  }
+  return { categories: allCategories, tags: Array.from(allTags) }
+}
+
+/** Build category select options from categories object, preserving any manually-typed selections */
+function buildCategorySelectOptions(
+  categories: Record<string, { name: string; savePath: string }>,
+  ...selectedArrays: string[][]
+): Array<{ label: string; value: string }> {
+  const tree = buildCategoryTree(categories, {})
+  const flattened: { label: string; value: string }[] = []
+
+  const visitNodes = (nodes: CategoryNode[]) => {
+    for (const node of nodes) {
+      flattened.push({ label: node.name, value: node.name })
+      visitNodes(node.children)
+    }
+  }
+  visitNodes(tree)
+
+  // Add any extras from selected arrays that aren't in the tree
+  const allSelected = selectedArrays.flat()
+  for (const cat of allSelected) {
+    if (!flattened.some(opt => opt.value === cat)) {
+      flattened.push({ label: cat, value: cat })
+    }
+  }
+
+  return flattened
+}
+
+/** Build tag select options from available tags, preserving any manually-typed selections */
+function buildTagSelectOptions(
+  availableTags: string[],
+  ...selectedArrays: string[][]
+): Array<{ label: string; value: string }> {
+  const allTags = new Set([...availableTags, ...selectedArrays.flat()])
+  return Array.from(allTags).map(tag => ({ label: tag, value: tag }))
+}
+
 export function CrossSeedPage() {
   const queryClient = useQueryClient()
   const { formatDate } = useDateTimeFormatters()
@@ -348,20 +401,29 @@ export function CrossSeedPage() {
           return { categories, tags }
         })
       )
-      // Aggregate categories and tags from all instances
-      const allCategories: Record<string, { name: string; savePath: string }> = {}
-      const allTags = new Set<string>()
-      for (const result of results) {
-        for (const [name, cat] of Object.entries(result.categories)) {
-          allCategories[name] = cat
-        }
-        for (const tag of result.tags) {
-          allTags.add(tag)
-        }
-      }
-      return { categories: allCategories, tags: Array.from(allTags) }
+      return aggregateInstanceMetadata(results)
     },
     enabled: automationForm.targetInstanceIds.length > 0,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // Fetch categories/tags from ALL active instances (for webhook source filters)
+  const { data: webhookSourceMetadata } = useQuery({
+    queryKey: ["cross-seed", "webhook-source-metadata", activeInstances.map(i => i.id)],
+    queryFn: async () => {
+      if (activeInstances.length === 0) return null
+      const results = await Promise.all(
+        activeInstances.map(async (instance) => {
+          const [categories, tags] = await Promise.all([
+            api.getCategories(instance.id),
+            api.getTags(instance.id),
+          ])
+          return { categories, tags }
+        })
+      )
+      return aggregateInstanceMetadata(results)
+    },
+    enabled: activeInstances.length > 0,
     staleTime: 5 * 60 * 1000,
   })
 
@@ -816,43 +878,12 @@ export function CrossSeedPage() {
   const searchTagNames = useMemo(() => searchMetadata?.tags ?? [], [searchMetadata])
 
   const searchCategorySelectOptions = useMemo(
-    () => {
-      // Build tree from available categories for indentation
-      const categories = searchMetadata?.categories ?? {}
-      const tree = buildCategoryTree(categories, {})
-      const flattened: { label: string; value: string }[] = []
-
-      const visitNodes = (nodes: CategoryNode[]) => {
-        for (const node of nodes) {
-          flattened.push({
-            label: node.name,
-            value: node.name,
-          })
-          visitNodes(node.children)
-        }
-      }
-
-      visitNodes(tree)
-
-      // Add any extra categories that were manually typed but not in the list
-      const extras = searchCategories.filter(category => !flattened.some(opt => opt.value === category))
-      for (const extra of extras) {
-        flattened.push({ label: extra, value: extra })
-      }
-
-      return flattened
-    },
+    () => buildCategorySelectOptions(searchMetadata?.categories ?? {}, searchCategories),
     [searchCategories, searchMetadata?.categories]
   )
 
   const searchTagSelectOptions = useMemo(
-    () => {
-      const extras = searchTags.filter(tag => !searchTagNames.includes(tag))
-      return Array.from(new Set([...searchTagNames, ...extras])).map(tag => ({
-        label: tag,
-        value: tag,
-      }))
-    },
+    () => buildTagSelectOptions(searchTagNames, searchTags),
     [searchTagNames, searchTags]
   )
 
@@ -860,41 +891,42 @@ export function CrossSeedPage() {
   const rssSourceTagNames = useMemo(() => rssSourceMetadata?.tags ?? [], [rssSourceMetadata])
 
   const rssSourceCategorySelectOptions = useMemo(
-    () => {
-      const categories = rssSourceMetadata?.categories ?? {}
-      const tree = buildCategoryTree(categories, {})
-      const flattened: { label: string; value: string }[] = []
-
-      const visitNodes = (nodes: CategoryNode[]) => {
-        for (const node of nodes) {
-          flattened.push({ label: node.name, value: node.name })
-          visitNodes(node.children)
-        }
-      }
-      visitNodes(tree)
-
-      // Add any extra categories that were selected but not in the list
-      const allSelected = [...automationForm.rssSourceCategories, ...automationForm.rssSourceExcludeCategories]
-      const extras = allSelected.filter(cat => !flattened.some(opt => opt.value === cat))
-      for (const extra of extras) {
-        flattened.push({ label: extra, value: extra })
-      }
-
-      return flattened
-    },
+    () => buildCategorySelectOptions(
+      rssSourceMetadata?.categories ?? {},
+      automationForm.rssSourceCategories,
+      automationForm.rssSourceExcludeCategories
+    ),
     [automationForm.rssSourceCategories, automationForm.rssSourceExcludeCategories, rssSourceMetadata?.categories]
   )
 
   const rssSourceTagSelectOptions = useMemo(
-    () => {
-      const allSelected = [...automationForm.rssSourceTags, ...automationForm.rssSourceExcludeTags]
-      const extras = allSelected.filter(tag => !rssSourceTagNames.includes(tag))
-      return Array.from(new Set([...rssSourceTagNames, ...extras])).map(tag => ({
-        label: tag,
-        value: tag,
-      }))
-    },
+    () => buildTagSelectOptions(
+      rssSourceTagNames,
+      automationForm.rssSourceTags,
+      automationForm.rssSourceExcludeTags
+    ),
     [rssSourceTagNames, automationForm.rssSourceTags, automationForm.rssSourceExcludeTags]
+  )
+
+  // Webhook Source filter select options (aggregated from ALL active instances)
+  const webhookSourceTagNames = useMemo(() => webhookSourceMetadata?.tags ?? [], [webhookSourceMetadata])
+
+  const webhookSourceCategorySelectOptions = useMemo(
+    () => buildCategorySelectOptions(
+      webhookSourceMetadata?.categories ?? {},
+      globalSettings.webhookSourceCategories,
+      globalSettings.webhookSourceExcludeCategories
+    ),
+    [globalSettings.webhookSourceCategories, globalSettings.webhookSourceExcludeCategories, webhookSourceMetadata?.categories]
+  )
+
+  const webhookSourceTagSelectOptions = useMemo(
+    () => buildTagSelectOptions(
+      webhookSourceTagNames,
+      globalSettings.webhookSourceTags,
+      globalSettings.webhookSourceExcludeTags
+    ),
+    [webhookSourceTagNames, globalSettings.webhookSourceTags, globalSettings.webhookSourceExcludeTags]
   )
 
   const handleStartSearchRun = () => {
@@ -2305,17 +2337,17 @@ export function CrossSeedPage() {
                   <div className="border-t border-border/70 p-4 pt-4 space-y-4">
                     <p className="text-xs text-muted-foreground">
                       Filter which local torrents are considered when autobrr calls the webhook endpoint.
-                      Empty filters mean all torrents are checked.
+                      Empty filters mean all torrents are checked. If you configure both category and tag filters, torrents must match both.
                     </p>
 
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="space-y-3">
                         <Label>Exclude categories</Label>
                         <MultiSelect
-                          options={[]}
+                          options={webhookSourceCategorySelectOptions}
                           selected={globalSettings.webhookSourceExcludeCategories}
                           onChange={values => setGlobalSettings(prev => ({ ...prev, webhookSourceExcludeCategories: values }))}
-                          placeholder="None"
+                          placeholder={webhookSourceCategorySelectOptions.length ? "None" : "Type to add categories"}
                           creatable
                         />
                         <p className="text-xs text-muted-foreground">
@@ -2328,10 +2360,10 @@ export function CrossSeedPage() {
                       <div className="space-y-3">
                         <Label>Exclude tags</Label>
                         <MultiSelect
-                          options={[]}
+                          options={webhookSourceTagSelectOptions}
                           selected={globalSettings.webhookSourceExcludeTags}
                           onChange={values => setGlobalSettings(prev => ({ ...prev, webhookSourceExcludeTags: values }))}
-                          placeholder="None"
+                          placeholder={webhookSourceTagSelectOptions.length ? "None" : "Type to add tags"}
                           creatable
                         />
                         <p className="text-xs text-muted-foreground">
@@ -2346,10 +2378,10 @@ export function CrossSeedPage() {
                       <div className="space-y-3">
                         <Label>Include categories</Label>
                         <MultiSelect
-                          options={[]}
+                          options={webhookSourceCategorySelectOptions}
                           selected={globalSettings.webhookSourceCategories}
                           onChange={values => setGlobalSettings(prev => ({ ...prev, webhookSourceCategories: values }))}
-                          placeholder="All categories (leave empty for all)"
+                          placeholder={webhookSourceCategorySelectOptions.length ? "All categories (leave empty for all)" : "Type to add categories"}
                           creatable
                         />
                         <p className="text-xs text-muted-foreground">
@@ -2362,10 +2394,10 @@ export function CrossSeedPage() {
                       <div className="space-y-3">
                         <Label>Include tags</Label>
                         <MultiSelect
-                          options={[]}
+                          options={webhookSourceTagSelectOptions}
                           selected={globalSettings.webhookSourceTags}
                           onChange={values => setGlobalSettings(prev => ({ ...prev, webhookSourceTags: values }))}
-                          placeholder="All tags (leave empty for all)"
+                          placeholder={webhookSourceTagSelectOptions.length ? "All tags (leave empty for all)" : "Type to add tags"}
                           creatable
                         />
                         <p className="text-xs text-muted-foreground">
