@@ -327,75 +327,80 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Desktop: Resizable vertical layout with bottom details panel */}
-        <div className="hidden md:flex flex-col h-full">
-          <ResizablePanelGroup
-            direction="vertical"
-            autoSaveId="qui-torrent-details-panel"
-          >
-            <ResizablePanel
-              defaultSize={selectedTorrent ? 60 : 100}
-              minSize={30}
+        {/* Use React conditional rendering to avoid duplicate dialogs */}
+        {!isMobile && (
+          <div className="flex flex-col h-full">
+            <ResizablePanelGroup
+              direction="vertical"
+              autoSaveId="qui-torrent-details-panel"
             >
-              <div className="h-full">
-                <TorrentTableResponsive
-                  instanceId={instanceId}
-                  filters={filters}
-                  selectedTorrent={selectedTorrent}
-                  onTorrentSelect={handleTorrentSelect}
-                  addTorrentModalOpen={isAddTorrentModalOpen}
-                  onAddTorrentModalChange={handleAddTorrentModalChange}
-                  onFilteredDataUpdate={handleFilteredDataUpdate}
-                  onFilterChange={setFilters}
-                />
-              </div>
-            </ResizablePanel>
+              <ResizablePanel
+                defaultSize={selectedTorrent ? 60 : 100}
+                minSize={30}
+              >
+                <div className="h-full">
+                  <TorrentTableResponsive
+                    instanceId={instanceId}
+                    filters={filters}
+                    selectedTorrent={selectedTorrent}
+                    onTorrentSelect={handleTorrentSelect}
+                    addTorrentModalOpen={isAddTorrentModalOpen}
+                    onAddTorrentModalChange={handleAddTorrentModalChange}
+                    onFilteredDataUpdate={handleFilteredDataUpdate}
+                    onFilterChange={setFilters}
+                  />
+                </div>
+              </ResizablePanel>
 
-            {selectedTorrent && (
-              <>
-                <ResizableHandle withHandle />
-                <ResizablePanel
-                  ref={detailsPanelRef}
-                  defaultSize={40}
-                  minSize={15}
-                  maxSize={70}
-                  collapsible
-                  collapsedSize={0}
-                  onCollapse={() => {
-                    // When user collapses the panel, deselect the torrent
-                    setSelectedTorrent(null)
-                  }}
-                >
-                  <div className="h-full border-t bg-background">
-                    <TorrentDetailsPanel
-                      instanceId={instanceId}
-                      torrent={selectedTorrent}
-                      initialTab={initialDetailsTab}
-                      onInitialTabConsumed={handleInitialTabConsumed}
-                      layout="horizontal"
-                      onClose={() => setSelectedTorrent(null)}
-                    />
-                  </div>
-                </ResizablePanel>
-              </>
-            )}
-          </ResizablePanelGroup>
-        </div>
+              {selectedTorrent && (
+                <>
+                  <ResizableHandle withHandle />
+                  <ResizablePanel
+                    ref={detailsPanelRef}
+                    defaultSize={40}
+                    minSize={15}
+                    maxSize={70}
+                    collapsible
+                    collapsedSize={0}
+                    onCollapse={() => {
+                      // When user collapses the panel, deselect the torrent
+                      setSelectedTorrent(null)
+                    }}
+                  >
+                    <div className="h-full border-t bg-background">
+                      <TorrentDetailsPanel
+                        instanceId={instanceId}
+                        torrent={selectedTorrent}
+                        initialTab={initialDetailsTab}
+                        onInitialTabConsumed={handleInitialTabConsumed}
+                        layout="horizontal"
+                        onClose={() => setSelectedTorrent(null)}
+                      />
+                    </div>
+                  </ResizablePanel>
+                </>
+              )}
+            </ResizablePanelGroup>
+          </div>
+        )}
 
         {/* Mobile: Full height table with Sheet overlay */}
-        <div className="flex md:hidden flex-col h-full px-4">
-          <div className="flex-1 min-h-0">
-            <TorrentTableResponsive
-              instanceId={instanceId}
-              filters={filters}
-              selectedTorrent={selectedTorrent}
-              onTorrentSelect={handleTorrentSelect}
-              addTorrentModalOpen={isAddTorrentModalOpen}
-              onAddTorrentModalChange={handleAddTorrentModalChange}
-              onFilteredDataUpdate={handleFilteredDataUpdate}
-              onFilterChange={setFilters}
-            />
+        {isMobile && (
+          <div className="flex flex-col h-full px-4">
+            <div className="flex-1 min-h-0">
+              <TorrentTableResponsive
+                instanceId={instanceId}
+                filters={filters}
+                selectedTorrent={selectedTorrent}
+                onTorrentSelect={handleTorrentSelect}
+                addTorrentModalOpen={isAddTorrentModalOpen}
+                onAddTorrentModalChange={handleAddTorrentModalChange}
+                onFilteredDataUpdate={handleFilteredDataUpdate}
+                onFilterChange={setFilters}
+              />
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Mobile Details Sheet - only renders on mobile */}
