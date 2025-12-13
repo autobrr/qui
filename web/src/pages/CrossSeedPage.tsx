@@ -1913,8 +1913,20 @@ export function CrossSeedPage() {
                   </div>
                   <div className="flex items-center justify-between gap-3">
                     <div className="space-y-0.5">
-                      <Label htmlFor="global-use-cross-category-suffix" className="font-medium">Add .cross category suffix</Label>
-                      <p className="text-xs text-muted-foreground">Append .cross to categories (e.g., movies → movies.cross) to prevent Sonarr/Radarr import loops. Disable for full TMM support.</p>
+                      <div className="flex items-center gap-1.5">
+                        <Label htmlFor="global-use-cross-category-suffix" className="font-medium">Add .cross category suffix</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Category suffix help">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent align="start" className="max-w-xs text-xs">
+                            Creates isolated categories (e.g., tv.cross) with the same save path as the base category. Cross-seeds inherit autoTMM from the matched torrent and are saved to the same location as the original files.
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Keeps cross-seeds separate from *arr applications to prevent import loops.</p>
                     </div>
                     <Switch
                       id="global-use-cross-category-suffix"
@@ -1925,8 +1937,20 @@ export function CrossSeedPage() {
                   </div>
                   <div className="flex items-center justify-between gap-3">
                     <div className="space-y-0.5">
-                      <Label htmlFor="global-use-category-from-indexer" className="font-medium">Use indexer name as category</Label>
-                      <p className="text-xs text-muted-foreground">Automatically set qBittorrent category to the indexer name. Save path is inherited from the matched torrent. Cannot be used with .cross suffix.</p>
+                      <div className="flex items-center gap-1.5">
+                        <Label htmlFor="global-use-category-from-indexer" className="font-medium">Use indexer name as category</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Indexer category help">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent align="start" className="max-w-xs text-xs">
+                            Creates a category named after the indexer. Save path and autoTMM are inherited from the matched torrent. Useful for tracking which indexer provided each cross-seed.
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Set category to indexer name. Cannot be used with .cross suffix.</p>
                     </div>
                     <Switch
                       id="global-use-category-from-indexer"
