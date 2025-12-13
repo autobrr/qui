@@ -2223,7 +2223,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         isMac={isMac}
         enabled={sortedTorrents.length > 0}
       />
-      <div className="h-full flex flex-col">
+      <div className="relative h-full flex flex-col">
       {/* Search and Actions */}
       <div className="flex flex-col gap-2 flex-shrink-0">
         {/* Search bar row */}
