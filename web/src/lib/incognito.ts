@@ -152,6 +152,51 @@ const LINUX_SAVE_PATHS = [
   "/media/nas/linux",
 ]
 
+// Linux-themed folder names for incognito mode
+const LINUX_FOLDER_NAMES = [
+  "ubuntu",
+  "debian",
+  "fedora",
+  "archlinux",
+  "gentoo",
+  "opensuse",
+  "manjaro",
+  "mint",
+  "centos",
+  "rocky",
+  "alma",
+  "kali",
+  "parrot",
+  "tails",
+  "qubes",
+  "nixos",
+  "void",
+  "alpine",
+  "slackware",
+  "docs",
+  "source",
+  "patches",
+  "builds",
+  "releases",
+  "mirrors",
+  "checksums",
+]
+
+// Generate deterministic Linux folder name based on hash and depth
+export function getLinuxFolderName(hash: string, depth: number): string {
+  if (!hash) {
+    return LINUX_FOLDER_NAMES[depth % LINUX_FOLDER_NAMES.length]
+  }
+
+  let hashSum = 0
+  for (let i = 0; i < hash.length; i++) {
+    hashSum += hash.charCodeAt(i) * (i + 2)
+  }
+
+  const offset = hashSum % LINUX_FOLDER_NAMES.length
+  return LINUX_FOLDER_NAMES[(offset + depth) % LINUX_FOLDER_NAMES.length]
+}
+
 // Generate a deterministic but seemingly random Linux ISO name based on hash
 export function getLinuxIsoName(hash: string): string {
   // Use hash to deterministically select an ISO name
