@@ -4001,3 +4001,283 @@ func TestProcessAutomationCandidate_SkipsWhenCommentURLMatches(t *testing.T) {
 	assert.Equal(t, 1, run.TorrentsSkipped, "should skip for instance with matching comment")
 	assert.False(t, downloadCalled, "should NOT download torrent when comment URL matches")
 }
+
+func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
+	t.Parallel()
+
+	instance := &models.Instance{
+		ID:   1,
+		Name: "Test Instance",
+	}
+	instanceIDs := []int{instance.ID}
+
+	tests := []struct {
+		name               string
+		request            *WebhookCheckRequest
+		existingTorrents   []qbt.Torrent
+		settings           *models.CrossSeedAutomationSettings
+		wantCanCrossSeed   bool
+		wantMatchCount     int
+		wantRecommendation string
+	}{
+		{
+			name: "exclude category filters out matching torrent",
+			request: &WebhookCheckRequest{
+				InstanceIDs: instanceIDs,
+				TorrentName: "Filter.Test.2025.1080p.BluRay.x264-GRP",
+			},
+			existingTorrents: []qbt.Torrent{
+				{Hash: "excluded", Name: "Filter.Test.2025.1080p.BluRay.x264-GRP", Category: "cross-seed-link", Progress: 1.0},
+				{Hash: "included", Name: "Filter.Test.2025.1080p.BluRay.x264-GRP", Category: "movies", Progress: 1.0},
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceExcludeCategories: []string{"cross-seed-link"},
+				SizeMismatchTolerancePercent:   5.0,
+			},
+			wantCanCrossSeed:   true,
+			wantMatchCount:     1, // Only movies category torrent matches
+			wantRecommendation: "download",
+		},
+		{
+			name: "exclude tag filters out matching torrent",
+			request: &WebhookCheckRequest{
+				InstanceIDs: instanceIDs,
+				TorrentName: "Tag.Filter.2025.1080p.BluRay.x264-GRP",
+			},
+			existingTorrents: []qbt.Torrent{
+				{Hash: "excluded", Name: "Tag.Filter.2025.1080p.BluRay.x264-GRP", Tags: "no-cross-seed, other", Progress: 1.0},
+				{Hash: "included", Name: "Tag.Filter.2025.1080p.BluRay.x264-GRP", Tags: "cross-seed", Progress: 1.0},
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceExcludeTags:     []string{"no-cross-seed"},
+				SizeMismatchTolerancePercent: 5.0,
+			},
+			wantCanCrossSeed:   true,
+			wantMatchCount:     1,
+			wantRecommendation: "download",
+		},
+		{
+			name: "all torrents filtered out returns skip",
+			request: &WebhookCheckRequest{
+				InstanceIDs: instanceIDs,
+				TorrentName: "All.Excluded.2025.1080p.BluRay.x264-GRP",
+			},
+			existingTorrents: []qbt.Torrent{
+				{Hash: "excluded1", Name: "All.Excluded.2025.1080p.BluRay.x264-GRP", Category: "cross-seed-link", Progress: 1.0},
+				{Hash: "excluded2", Name: "All.Excluded.2025.1080p.BluRay.x264-GRP", Category: "cross-seed-link", Progress: 1.0},
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceExcludeCategories: []string{"cross-seed-link"},
+				SizeMismatchTolerancePercent:   5.0,
+			},
+			wantCanCrossSeed:   false,
+			wantMatchCount:     0,
+			wantRecommendation: "skip",
+		},
+		{
+			name: "include category restricts matches",
+			request: &WebhookCheckRequest{
+				InstanceIDs: instanceIDs,
+				TorrentName: "Include.Only.2025.1080p.BluRay.x264-GRP",
+			},
+			existingTorrents: []qbt.Torrent{
+				{Hash: "movies", Name: "Include.Only.2025.1080p.BluRay.x264-GRP", Category: "movies", Progress: 1.0},
+				{Hash: "tv", Name: "Include.Only.2025.1080p.BluRay.x264-GRP", Category: "tv", Progress: 1.0},
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceCategories:      []string{"movies"},
+				SizeMismatchTolerancePercent: 5.0,
+			},
+			wantCanCrossSeed:   true,
+			wantMatchCount:     1, // Only movies category matches
+			wantRecommendation: "download",
+		},
+		{
+			name: "empty filters match all torrents",
+			request: &WebhookCheckRequest{
+				InstanceIDs: instanceIDs,
+				TorrentName: "No.Filter.2025.1080p.BluRay.x264-GRP",
+			},
+			existingTorrents: []qbt.Torrent{
+				{Hash: "cat1", Name: "No.Filter.2025.1080p.BluRay.x264-GRP", Category: "movies", Progress: 1.0},
+				{Hash: "cat2", Name: "No.Filter.2025.1080p.BluRay.x264-GRP", Category: "tv", Progress: 1.0},
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceCategories:        []string{},
+				WebhookSourceExcludeCategories: []string{},
+				SizeMismatchTolerancePercent:   5.0,
+			},
+			wantCanCrossSeed:   true,
+			wantMatchCount:     2, // Both match
+			wantRecommendation: "download",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := &fakeInstanceStore{
+				instances: map[int]*models.Instance{
+					instance.ID: instance,
+				},
+			}
+			svc := &Service{
+				instanceStore:    store,
+				syncManager:      newFakeSyncManager(instance, tt.existingTorrents, nil),
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+				automationSettingsLoader: func(_ context.Context) (*models.CrossSeedAutomationSettings, error) {
+					return tt.settings, nil
+				},
+			}
+
+			resp, err := svc.CheckWebhook(context.Background(), tt.request)
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.wantCanCrossSeed, resp.CanCrossSeed, "CanCrossSeed mismatch")
+			assert.Equal(t, tt.wantMatchCount, len(resp.Matches), "Match count mismatch")
+			assert.Equal(t, tt.wantRecommendation, resp.Recommendation, "Recommendation mismatch")
+		})
+	}
+}
+
+func TestMatchesWebhookSourceFilters(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		torrent  *qbt.Torrent
+		settings *models.CrossSeedAutomationSettings
+		want     bool
+	}{
+		{
+			name:     "nil torrent returns false",
+			torrent:  nil,
+			settings: &models.CrossSeedAutomationSettings{},
+			want:     false,
+		},
+		{
+			name:     "nil settings returns false",
+			torrent:  &qbt.Torrent{Category: "movies"},
+			settings: nil,
+			want:     false,
+		},
+		{
+			name:     "empty filters match all torrents",
+			torrent:  &qbt.Torrent{Category: "movies", Tags: "cross-seed"},
+			settings: &models.CrossSeedAutomationSettings{},
+			want:     true,
+		},
+		{
+			name:    "exclude category skips matching torrent",
+			torrent: &qbt.Torrent{Category: "cross-seed-link"},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceExcludeCategories: []string{"cross-seed-link"},
+			},
+			want: false,
+		},
+		{
+			name:    "exclude category allows non-matching torrent",
+			torrent: &qbt.Torrent{Category: "movies"},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceExcludeCategories: []string{"cross-seed-link"},
+			},
+			want: true,
+		},
+		{
+			name:    "multiple exclude categories work",
+			torrent: &qbt.Torrent{Category: "temp"},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceExcludeCategories: []string{"cross-seed-link", "temp", "staging"},
+			},
+			want: false,
+		},
+		{
+			name:    "exclude tag skips matching torrent",
+			torrent: &qbt.Torrent{Tags: "cross-seed, temporary"},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceExcludeTags: []string{"temporary"},
+			},
+			want: false,
+		},
+		{
+			name:    "exclude tag allows non-matching torrent",
+			torrent: &qbt.Torrent{Tags: "cross-seed, important"},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceExcludeTags: []string{"temporary"},
+			},
+			want: true,
+		},
+		{
+			name:    "include category requires match",
+			torrent: &qbt.Torrent{Category: "tv"},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceCategories: []string{"movies"},
+			},
+			want: false,
+		},
+		{
+			name:    "include category allows matching torrent",
+			torrent: &qbt.Torrent{Category: "movies"},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceCategories: []string{"movies", "tv"},
+			},
+			want: true,
+		},
+		{
+			name:    "include tag requires at least one match",
+			torrent: &qbt.Torrent{Tags: "important"},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceTags: []string{"important", "priority"},
+			},
+			want: true,
+		},
+		{
+			name:    "include tag rejects when no match",
+			torrent: &qbt.Torrent{Tags: "random"},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceTags: []string{"important", "priority"},
+			},
+			want: false,
+		},
+		{
+			name:    "exclude takes precedence over include",
+			torrent: &qbt.Torrent{Category: "movies"},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceCategories:        []string{"movies", "tv"},
+				WebhookSourceExcludeCategories: []string{"movies"},
+			},
+			want: false,
+		},
+		{
+			name:    "empty category with exclude filter passes",
+			torrent: &qbt.Torrent{Category: ""},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceExcludeCategories: []string{"cross-seed-link"},
+			},
+			want: true,
+		},
+		{
+			name:    "empty tags with include tag filter fails",
+			torrent: &qbt.Torrent{Tags: ""},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceTags: []string{"important"},
+			},
+			want: false,
+		},
+		{
+			name:    "tags are case-sensitive",
+			torrent: &qbt.Torrent{Tags: "Important"},
+			settings: &models.CrossSeedAutomationSettings{
+				WebhookSourceTags: []string{"important"},
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := matchesWebhookSourceFilters(tt.torrent, tt.settings)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

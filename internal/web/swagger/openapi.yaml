@@ -3903,6 +3903,26 @@ components:
         runExternalProgramId:
           type: integer
           nullable: true
+        webhookSourceCategories:
+          type: array
+          items:
+            type: string
+          description: Only match against torrents in these categories when processing webhook requests (empty means all)
+        webhookSourceTags:
+          type: array
+          items:
+            type: string
+          description: Only match against torrents with these tags when processing webhook requests (empty means all)
+        webhookSourceExcludeCategories:
+          type: array
+          items:
+            type: string
+          description: Skip torrents in these categories when processing webhook requests
+        webhookSourceExcludeTags:
+          type: array
+          items:
+            type: string
+          description: Skip torrents with any of these tags when processing webhook requests
 
     CrossSeedAutomationSettings:
       type: object
@@ -3946,6 +3966,26 @@ components:
         runExternalProgramId:
           type: integer
           nullable: true
+        webhookSourceCategories:
+          type: array
+          items:
+            type: string
+          description: Only match against torrents in these categories when processing webhook requests (empty means all)
+        webhookSourceTags:
+          type: array
+          items:
+            type: string
+          description: Only match against torrents with these tags when processing webhook requests (empty means all)
+        webhookSourceExcludeCategories:
+          type: array
+          items:
+            type: string
+          description: Skip torrents in these categories when processing webhook requests
+        webhookSourceExcludeTags:
+          type: array
+          items:
+            type: string
+          description: Skip torrents with any of these tags when processing webhook requests
         createdAt:
           type: string
           format: date-time

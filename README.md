@@ -563,6 +563,24 @@ When `/check` returns `200 OK`, send the torrent to `/api/cross-seed/apply`:
 
 Cross-seeded torrents are added paused with `skip_checking=true`. qui polls the torrent state and auto-resumes if progress meets the size tolerance threshold. If progress is too low, it remains paused for manual review.
 
+#### Webhook Source Filters
+
+By default, the webhook endpoint scans **all** torrents on your instances when looking for matches. You can configure filters to exclude certain categories or tags from being matched:
+
+- **Exclude Categories:** Skip torrents in specific categories (e.g., `cross-seed-link`)
+- **Exclude Tags:** Skip torrents with specific tags (e.g., `no-cross-seed`)
+- **Include Categories:** Only match against torrents in these categories (leave empty for all)
+- **Include Tags:** Only match against torrents with these tags (leave empty for all)
+
+This is useful when:
+- You have a legacy cross-seed category that shouldn't be re-matched
+- Certain content types should never be considered for cross-seeding
+- You want to exclude torrents with specific metadata tags
+
+**Note:** Exclude filters take precedence over include filters. Tag matching is case-sensitive.
+
+Configure in qui UI: **Cross-Seed → Global → Webhook Source Filters**
+
 ### Troubleshooting
 
 #### Why didn't my cross-seed get added?

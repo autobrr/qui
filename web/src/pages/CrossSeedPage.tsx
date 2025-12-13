@@ -84,6 +84,11 @@ interface GlobalCrossSeedSettings {
   skipAutoResumeSeededSearch: boolean
   skipAutoResumeCompletion: boolean
   skipAutoResumeWebhook: boolean
+  // Webhook source filtering: filter which local torrents to search when checking webhook requests
+  webhookSourceCategories: string[]
+  webhookSourceTags: string[]
+  webhookSourceExcludeCategories: string[]
+  webhookSourceExcludeTags: string[]
 }
 
 interface CompletionFormState {
@@ -130,6 +135,11 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   skipAutoResumeSeededSearch: false,
   skipAutoResumeCompletion: false,
   skipAutoResumeWebhook: false,
+  // Webhook source filtering defaults - empty means no filtering (all torrents)
+  webhookSourceCategories: [],
+  webhookSourceTags: [],
+  webhookSourceExcludeCategories: [],
+  webhookSourceExcludeTags: [],
 }
 
 const DEFAULT_COMPLETION_FORM: CompletionFormState = {
@@ -419,6 +429,11 @@ export function CrossSeedPage() {
         skipAutoResumeSeededSearch: settings.skipAutoResumeSeededSearch ?? false,
         skipAutoResumeCompletion: settings.skipAutoResumeCompletion ?? false,
         skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
+        // Webhook source filtering
+        webhookSourceCategories: settings.webhookSourceCategories ?? [],
+        webhookSourceTags: settings.webhookSourceTags ?? [],
+        webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
+        webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
       })
       setGlobalSettingsInitialized(true)
     }
@@ -530,6 +545,10 @@ export function CrossSeedPage() {
         skipAutoResumeSeededSearch: settings.skipAutoResumeSeededSearch ?? false,
         skipAutoResumeCompletion: settings.skipAutoResumeCompletion ?? false,
         skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
+        webhookSourceCategories: settings.webhookSourceCategories ?? [],
+        webhookSourceTags: settings.webhookSourceTags ?? [],
+        webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
+        webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
       }
 
     return {
@@ -550,6 +569,11 @@ export function CrossSeedPage() {
       skipAutoResumeSeededSearch: globalSource.skipAutoResumeSeededSearch,
       skipAutoResumeCompletion: globalSource.skipAutoResumeCompletion,
       skipAutoResumeWebhook: globalSource.skipAutoResumeWebhook,
+      // Webhook source filtering
+      webhookSourceCategories: globalSource.webhookSourceCategories,
+      webhookSourceTags: globalSource.webhookSourceTags,
+      webhookSourceExcludeCategories: globalSource.webhookSourceExcludeCategories,
+      webhookSourceExcludeTags: globalSource.webhookSourceExcludeTags,
     }
   }, [
     settings,
@@ -2271,6 +2295,89 @@ export function CrossSeedPage() {
                   </div>
                 </div>
               </div>
+
+              <Collapsible className="rounded-lg border border-border/70 bg-muted/40">
+                <CollapsibleTrigger className="flex w-full items-center justify-between p-4 font-medium [&[data-state=open]>svg]:rotate-180">
+                  <span>Webhook Source Filters</span>
+                  <ChevronDown className="h-4 w-4 transition-transform duration-200" />
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="border-t border-border/70 p-4 pt-4 space-y-4">
+                    <p className="text-xs text-muted-foreground">
+                      Filter which local torrents are considered when autobrr calls the webhook endpoint.
+                      Empty filters mean all torrents are checked.
+                    </p>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-3">
+                        <Label>Exclude categories</Label>
+                        <MultiSelect
+                          options={[]}
+                          selected={globalSettings.webhookSourceExcludeCategories}
+                          onChange={values => setGlobalSettings(prev => ({ ...prev, webhookSourceExcludeCategories: values }))}
+                          placeholder="None"
+                          creatable
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {globalSettings.webhookSourceExcludeCategories.length === 0
+                            ? "No categories excluded."
+                            : `${globalSettings.webhookSourceExcludeCategories.length} categor${globalSettings.webhookSourceExcludeCategories.length === 1 ? "y" : "ies"} will be skipped.`}
+                        </p>
+                      </div>
+
+                      <div className="space-y-3">
+                        <Label>Exclude tags</Label>
+                        <MultiSelect
+                          options={[]}
+                          selected={globalSettings.webhookSourceExcludeTags}
+                          onChange={values => setGlobalSettings(prev => ({ ...prev, webhookSourceExcludeTags: values }))}
+                          placeholder="None"
+                          creatable
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {globalSettings.webhookSourceExcludeTags.length === 0
+                            ? "No tags excluded."
+                            : `${globalSettings.webhookSourceExcludeTags.length} tag${globalSettings.webhookSourceExcludeTags.length === 1 ? "" : "s"} will be skipped.`}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-3">
+                        <Label>Include categories</Label>
+                        <MultiSelect
+                          options={[]}
+                          selected={globalSettings.webhookSourceCategories}
+                          onChange={values => setGlobalSettings(prev => ({ ...prev, webhookSourceCategories: values }))}
+                          placeholder="All categories (leave empty for all)"
+                          creatable
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {globalSettings.webhookSourceCategories.length === 0
+                            ? "All categories will be included."
+                            : `Only ${globalSettings.webhookSourceCategories.length} selected categor${globalSettings.webhookSourceCategories.length === 1 ? "y" : "ies"} will be matched.`}
+                        </p>
+                      </div>
+
+                      <div className="space-y-3">
+                        <Label>Include tags</Label>
+                        <MultiSelect
+                          options={[]}
+                          selected={globalSettings.webhookSourceTags}
+                          onChange={values => setGlobalSettings(prev => ({ ...prev, webhookSourceTags: values }))}
+                          placeholder="All tags (leave empty for all)"
+                          creatable
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {globalSettings.webhookSourceTags.length === 0
+                            ? "All tags will be included."
+                            : `Only ${globalSettings.webhookSourceTags.length} selected tag${globalSettings.webhookSourceTags.length === 1 ? "" : "s"} will be matched.`}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
 
               <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
