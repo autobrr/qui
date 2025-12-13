@@ -211,7 +211,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const { data: files, isLoading: loadingFiles } = useQuery({
     queryKey: ["torrent-files", instanceId, torrent?.hash],
     queryFn: () => api.getTorrentFiles(instanceId, torrent!.hash),
-    enabled: !!torrent && isReady, // Fetch immediately, don't wait for tab
+    enabled: !!torrent && isReady && isContentTabActive,
     staleTime: 30000,
     gcTime: 5 * 60 * 1000,
     refetchInterval: () => {
