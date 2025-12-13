@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
@@ -38,26 +40,42 @@ type routeKey struct {
 }
 
 var undocumentedRoutes = map[routeKey]struct{}{
-	{Method: http.MethodGet, Path: "/api/auth/validate"}:                                        {},
-	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/backups/run"}:                  {},
-	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs"}:                  {},
-	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/backups/runs"}:               {},
-	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/backups/runs/{runId}"}:       {},
-	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs/{runId}/manifest"}: {},
-	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/settings"}:              {},
-	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/backups/settings"}:              {},
-	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/tracker-rules"}:                 {},
-	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/tracker-rules"}:                {},
-	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/tracker-rules/apply"}:          {},
-	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/tracker-rules/order"}:           {},
-	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/tracker-rules/{ruleID}"}:     {},
-	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/tracker-rules/{ruleID}"}:        {},
-	{Method: http.MethodGet, Path: "/api/tracker-customizations"}:                               {},
-	{Method: http.MethodPost, Path: "/api/tracker-customizations"}:                              {},
-	{Method: http.MethodPut, Path: "/api/tracker-customizations/{id}"}:                          {},
-	{Method: http.MethodDelete, Path: "/api/tracker-customizations/{id}"}:                       {},
-	{Method: http.MethodGet, Path: "/api/dashboard-settings"}:                                   {},
-	{Method: http.MethodPut, Path: "/api/dashboard-settings"}:                                   {},
+	{Method: http.MethodGet, Path: "/api/auth/validate"}:                                                  {},
+	{Method: http.MethodGet, Path: "/api/stream"}:                                                         {},
+	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/backups/run"}:                            {},
+	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs"}:                            {},
+	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/backups/runs"}:                         {},
+	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/backups/runs/{runId}"}:                 {},
+	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs/{runId}/manifest"}:           {},
+	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/settings"}:                        {},
+	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/backups/settings"}:                        {},
+	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/tracker-rules"}:                           {},
+	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/tracker-rules"}:                          {},
+	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/tracker-rules/apply"}:                    {},
+	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/tracker-rules/order"}:                     {},
+	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/tracker-rules/{ruleID}"}:               {},
+	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/tracker-rules/{ruleID}"}:                  {},
+	{Method: http.MethodGet, Path: "/api/tracker-customizations"}:                                         {},
+	{Method: http.MethodPost, Path: "/api/tracker-customizations"}:                                        {},
+	{Method: http.MethodPut, Path: "/api/tracker-customizations/{id}"}:                                    {},
+	{Method: http.MethodDelete, Path: "/api/tracker-customizations/{id}"}:                                 {},
+	{Method: http.MethodGet, Path: "/api/dashboard-settings"}:                                             {},
+	{Method: http.MethodPut, Path: "/api/dashboard-settings"}:                                             {},
+}
+
+func TestNewServerRegistersStreamManagerAsSyncSink(t *testing.T) {
+	clientPool := &qbittorrent.ClientPool{}
+
+	server := NewServer(&Dependencies{
+		Config:     &config.AppConfig{Config: &domain.Config{BaseURL: "/"}},
+		ClientPool: clientPool,
+	})
+
+	require.NotNil(t, server.streamManager, "expected stream manager to be initialized")
+
+	sink := getClientPoolSyncEventSink(t, clientPool)
+	require.NotNil(t, sink, "expected client pool to have a sync sink registered")
+	require.Same(t, server.streamManager, sink, "stream manager should be registered as sync sink")
 }
 
 func TestAllEndpointsDocumented(t *testing.T) {
@@ -255,4 +273,22 @@ func formatRoutes(routes []routeKey) string {
 		lines[i] = fmt.Sprintf("%s %s", route.Method, route.Path)
 	}
 	return strings.Join(lines, "\n")
+}
+
+func getClientPoolSyncEventSink(t *testing.T, pool *qbittorrent.ClientPool) qbittorrent.SyncEventSink {
+	t.Helper()
+
+	value := reflect.ValueOf(pool).Elem().FieldByName("syncEventSink")
+	if !value.IsValid() {
+		t.Fatalf("client pool does not expose syncEventSink field")
+	}
+
+	exposed := reflect.NewAt(value.Type(), unsafe.Pointer(value.UnsafeAddr())).Elem()
+	if exposed.IsNil() {
+		return nil
+	}
+
+	sink, ok := exposed.Interface().(qbittorrent.SyncEventSink)
+	require.True(t, ok, "unexpected sink type stored on client pool")
+	return sink
 }

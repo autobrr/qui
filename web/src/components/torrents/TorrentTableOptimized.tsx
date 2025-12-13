@@ -15,7 +15,7 @@ import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibili
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
-import { useTorrentsList } from "@/hooks/useTorrentsList"
+import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentsList } from "@/hooks/useTorrentsList"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { columnFiltersToExpr } from "@/lib/column-filter-utils"
 import { formatBytes } from "@/lib/utils"
@@ -184,6 +184,9 @@ const DEFAULT_COLUMN_VISIBILITY = {
   instance: false, // Hidden by default, shown when cross-seed filtering
 }
 const DEFAULT_COLUMN_SIZING = {}
+const STREAM_STATUS_TRANSITION_DELAY_MS = 800
+
+type StreamPhase = "connecting" | "healthy" | "reconnecting" | "fallback"
 
 // Helper function to get default column order (module scope for stable reference)
 function getDefaultColumnOrder(): string[] {
@@ -665,8 +668,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
-  const { formatTimestamp } = useDateTimeFormatters()
-  const { preferences } = useInstancePreferences(instanceId)
+  const { formatTimestamp, formatDate } = useDateTimeFormatters()
+  const { preferences } = useInstancePreferences(instanceId, { fetchIfMissing: false })
   const { instances } = useInstances()
   const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
 
@@ -701,6 +704,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const previousInstanceIdRef = useRef(instanceId)
   const previousSearchRef = useRef("")
   const lastMetadataRef = useRef<{
+    instanceId?: number
     counts?: TorrentCounts
     categories?: Record<string, Category>
     tags?: string[]
@@ -852,7 +856,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   })
 
   // Fetch metadata using shared hook
-  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId)
+  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId, {
+    fallbackDelayMs: 1500,
+  })
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
   const isLoadingTags = isMetadataLoading && availableTags.length === 0
@@ -1001,6 +1007,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     isLoadingMore,
     hasLoadedAll,
     loadMore: backendLoadMore,
+    streamConnected,
+    streamMeta,
+    isStreaming,
+    streamError,
+    streamRetrying,
+    streamNextRetryAt,
+    streamRetryAttempt,
     isCrossSeedFiltering,
   } = useTorrentsList(instanceId, {
     search: effectiveSearch,
@@ -1020,6 +1033,120 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     sort: activeSortField,
     order: activeSortOrder,
   })
+
+  const lastStreamUpdate = useMemo(() => {
+    if (!streamMeta?.timestamp) {
+      return null
+    }
+
+    const parsed = new Date(streamMeta.timestamp)
+    if (Number.isNaN(parsed.getTime())) {
+      return null
+    }
+
+  return parsed
+  }, [streamMeta])
+
+  const derivedStreamPhase = useMemo<StreamPhase>(() => {
+    if (streamRetrying || typeof streamNextRetryAt === "number") {
+      return "reconnecting"
+    }
+    if (streamError) {
+      return "fallback"
+    }
+    if (isStreaming) {
+      return "healthy"
+    }
+    return "connecting"
+  }, [isStreaming, streamError, streamNextRetryAt, streamRetrying])
+
+  const stableStreamPhase = useDebounce(
+    derivedStreamPhase,
+    derivedStreamPhase === "healthy" || derivedStreamPhase === "fallback" ? 0 : STREAM_STATUS_TRANSITION_DELAY_MS
+  )
+
+  const streamStatus = useMemo(() => {
+    if (isCrossSeedFiltering) {
+      return {
+        label: "Cross-instance polling",
+        message: "Aggregated cross-seed results refresh via polling.",
+        secondary: "SSE disabled • polling every 10s",
+        tone: "muted" as const,
+        animate: false,
+      }
+    }
+
+    const serverRetrySeconds =
+      typeof streamMeta?.retryInSeconds === "number" && streamMeta.retryInSeconds > 0
+        ? streamMeta.retryInSeconds
+        : null
+    const safeRetryAttempt =
+      typeof streamRetryAttempt === "number" && streamRetryAttempt > 0 ? streamRetryAttempt : 1
+    const hasClientRetryScheduled = typeof streamNextRetryAt === "number"
+
+    switch (stableStreamPhase) {
+      case "reconnecting":
+        return {
+          label: "Stream reconnecting…",
+          message: streamError ?? "Attempting to restore SSE connection.",
+          secondary: hasClientRetryScheduled
+            ? `Retry attempt ${safeRetryAttempt} queued`
+            : "Polling continues while the stream recovers.",
+          tone: "warning" as const,
+          animate: true,
+        }
+      case "fallback":
+        return {
+          label: "Stream offline – using polling",
+          message: streamError ?? "Falling back to periodic refresh while the stream is unavailable.",
+          secondary:
+            serverRetrySeconds && serverRetrySeconds > 0
+              ? `Server retry in ${serverRetrySeconds}s — polling fallback active`
+              : "Retrying automatically with polling fallback",
+          tone: "error" as const,
+          animate: false,
+        }
+      case "healthy":
+        return {
+          label: "Live updates via SSE",
+          message: "Polling is paused while the stream is healthy.",
+          secondary: lastStreamUpdate ? `Last update ${formatDate(lastStreamUpdate)}` : "Polling paused",
+          tone: "success" as const,
+          animate: false,
+        }
+      default:
+        return {
+          label: "Connecting to stream…",
+          message: `Using ${TORRENT_STREAM_POLL_INTERVAL_SECONDS}s polling until the SSE connection is ready.`,
+          secondary: `Polling every ${TORRENT_STREAM_POLL_INTERVAL_SECONDS}s`,
+          tone: streamConnected ? ("warning" as const) : ("muted" as const),
+          animate: !streamConnected,
+        }
+    }
+  }, [
+    formatDate,
+    isCrossSeedFiltering,
+    lastStreamUpdate,
+    stableStreamPhase,
+    streamConnected,
+    streamError,
+    streamMeta,
+    streamNextRetryAt,
+    streamRetryAttempt,
+  ])
+
+  const streamToneStyles = useMemo(() => {
+    switch (streamStatus.tone) {
+      case "success":
+        return { dot: "bg-emerald-500 shadow-[0_0_0_2px] shadow-emerald-500/25", text: "text-emerald-600 dark:text-emerald-400" }
+      case "error":
+        return { dot: "bg-destructive shadow-[0_0_0_2px] shadow-destructive/20", text: "text-destructive" }
+      case "warning":
+        return { dot: "bg-amber-400 shadow-[0_0_0_2px] shadow-amber-400/25", text: "text-amber-600 dark:text-amber-400" }
+      default:
+        return { dot: "bg-muted-foreground/60", text: "text-muted-foreground" }
+    }
+  }, [streamStatus.tone])
 
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
@@ -1108,11 +1235,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       return
     }
 
-    const nextCounts = counts ?? lastMetadataRef.current.counts
-    const nextCategories = categories ?? lastMetadataRef.current.categories
-    const nextTags = tags ?? lastMetadataRef.current.tags
-    const prevSupportsSubcategories = lastMetadataRef.current.supportsSubcategories ?? false
-    const previousUseSubcategories = lastMetadataRef.current.useSubcategories ?? false
+    const cachedMetadata =
+      lastMetadataRef.current.instanceId === instanceId
+        ? lastMetadataRef.current
+        : ({} as typeof lastMetadataRef.current)
+
+    const nextCounts = counts ?? cachedMetadata.counts
+    const nextCategories = categories ?? cachedMetadata.categories
+    const nextTags = tags ?? cachedMetadata.tags
+    const prevSupportsSubcategories = cachedMetadata.supportsSubcategories ?? false
+    const previousUseSubcategories = cachedMetadata.useSubcategories ?? false
     const nextSupportsSubcategories = supportsSubcategories
     const nextUseSubcategories = nextSupportsSubcategories? (subcategoriesFromData ?? previousUseSubcategories): false
     const nextTotalCount = totalCount
@@ -1129,14 +1261,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
 
     const metadataChanged =
-      nextCounts !== lastMetadataRef.current.counts ||
-      nextCategories !== lastMetadataRef.current.categories ||
-      nextTags !== lastMetadataRef.current.tags ||
+      nextCounts !== cachedMetadata.counts ||
+      nextCategories !== cachedMetadata.categories ||
+      nextTags !== cachedMetadata.tags ||
       nextSupportsSubcategories !== prevSupportsSubcategories ||
       nextUseSubcategories !== previousUseSubcategories ||
-      nextTotalCount !== lastMetadataRef.current.totalCount
+      nextTotalCount !== cachedMetadata.totalCount
 
-    const torrentsLengthChanged = torrents.length !== (lastMetadataRef.current.torrentsLength ?? -1)
+    const torrentsLengthChanged = torrents.length !== (cachedMetadata.torrentsLength ?? -1)
 
     if (!metadataChanged && !torrentsLengthChanged) {
       return
@@ -1152,6 +1284,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     )
 
     lastMetadataRef.current = {
+      instanceId,
       counts: nextCounts,
       categories: nextCategories,
       tags: nextTags,
@@ -2414,7 +2547,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           {/* Loading overlay - positioned absolute to scroll container */}
           {torrents.length === 0 && showLoadingState && (
             <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-50 animate-in fade-in duration-300">
-              <div className="text-center animate-in zoom-in-95 duration-300">
+              <div className="text-center text-xs animate-in zoom-in-95 duration-300">
                 <Logo className="h-12 w-12 animate-pulse mx-auto mb-3"/>
                 <p>Loading torrents...</p>
               </div>
@@ -2771,52 +2904,76 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
         {/* Status bar */}
         <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-1.5 border-t flex-shrink-0 select-none">
-          <div className="text-xs text-muted-foreground min-w-[200px]">
-            {effectiveSelectionCount > 0 ? (
-              <>
-                <span>
-                  {isAllSelected && excludedFromSelectAll.size === 0 ? "All" : effectiveSelectionCount} selected
-                  {selectedTotalSize > 0 && <> • {selectedFormattedSize}</>}
-                </span>
-                {/* Keyboard shortcuts helper - only show on desktop */}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="hidden sm:inline-block ml-2 text-xs opacity-70 cursor-help">
-                      Selection shortcuts
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <div className="text-xs">
-                      <div>Shift+click for range</div>
-                      <div>{isMac ? "Cmd" : "Ctrl"}+click for multiple</div>
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
-              </>
-            ) : (
-              <>
-                {/* Show special loading message when fetching without cache (cold load) */}
-            {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (
-              <>
-                <Loader2 className="h-3 w-3 animate-spin inline mr-1"/>
-                Loading torrents...
-              </>
-            ) : totalCount === 0 ? (
-              emptyStateMessage
-            ) : (
-              <>
-                {hasLoadedAll ? (
-                  `${torrents.length} torrent${torrents.length !== 1 ? "s" : ""}`
-                ) : isLoadingMore ? (
-                  "Loading more torrents..."
-                    ) : (
-                      `${torrents.length} of ${totalCount} torrents loaded`
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            {/* Compact SSE status */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center gap-1.5 cursor-default text-[11px]">
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full transition",
+                      streamToneStyles.dot,
+                      streamStatus.animate && "animate-pulse"
                     )}
-                    {hasLoadedAll && safeLoadedRows < rows.length && " (scroll for more)"}
-                  </>
-                )}
-              </>
-            )}
+                  />
+                  <span className={cn("opacity-80", streamToneStyles.text)}>{streamStatus.label}</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs text-xs">
+                <div className="space-y-1">
+                  <p className="font-medium">{streamStatus.label}</p>
+                  {streamStatus.message && <p>{streamStatus.message}</p>}
+                  {streamStatus.secondary && <p className="text-muted-foreground">{streamStatus.secondary}</p>}
+                </div>
+              </TooltipContent>
+            </Tooltip>
+            <div>
+              {effectiveSelectionCount > 0 ? (
+                <>
+                  <span>
+                    {isAllSelected && excludedFromSelectAll.size === 0 ? "All" : effectiveSelectionCount} selected
+                    {selectedTotalSize > 0 && <> • {selectedFormattedSize}</>}
+                  </span>
+                  {/* Keyboard shortcuts helper - only show on desktop */}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="hidden sm:inline-block ml-2 text-xs opacity-70 cursor-help">
+                        Selection shortcuts
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <div className="text-xs">
+                        <div>Shift+click for range</div>
+                        <div>{isMac ? "Cmd" : "Ctrl"}+click for multiple</div>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </>
+              ) : (
+                <>
+                  {/* Show special loading message when fetching without cache (cold load) */}
+                  {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin inline mr-1"/>
+                      Loading torrents...
+                    </>
+                  ) : totalCount === 0 ? (
+                    emptyStateMessage
+                  ) : (
+                    <>
+                      {hasLoadedAll ? (
+                        `${torrents.length} torrent${torrents.length !== 1 ? "s" : ""}`
+                      ) : isLoadingMore ? (
+                        "Loading more torrents..."
+                      ) : (
+                        `${torrents.length} of ${totalCount} torrents loaded`
+                      )}
+                      {hasLoadedAll && safeLoadedRows < rows.length && " (scroll for more)"}
+                    </>
+                  )}
+                </>
+              )}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2 text-xs">

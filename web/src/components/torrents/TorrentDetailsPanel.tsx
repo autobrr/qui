@@ -88,7 +88,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const [peersToAdd, setPeersToAdd] = useState("")
   const [peerToBan, setPeerToBan] = useState<TorrentPeer | null>(null)
   const [isReady, setIsReady] = useState(false)
-  const { data: metadata } = useInstanceMetadata(instanceId)
+  const { data: metadata } = useInstanceMetadata(instanceId, { fallbackDelayMs: 1500 })
   const { data: capabilities } = useInstanceCapabilities(instanceId)
   const queryClient = useQueryClient()
   const [speedUnit] = useSpeedUnits()
@@ -799,28 +799,34 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                               )}
                             </div>
                           </div>
-                          {(metadata.preferences.max_active_downloads > 0 ||
-                            metadata.preferences.max_active_uploads > 0 ||
-                            metadata.preferences.max_active_torrents > 0) && (
+                          {((metadata?.preferences?.max_active_downloads ?? 0) > 0 ||
+                            (metadata?.preferences?.max_active_uploads ?? 0) > 0 ||
+                            (metadata?.preferences?.max_active_torrents ?? 0) > 0) && (
                             <>
                               <Separator className="opacity-50" />
                               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                                {metadata.preferences.max_active_downloads > 0 && (
+                                {(metadata?.preferences?.max_active_downloads ?? 0) > 0 && (
                                   <div className="space-y-1">
                                     <p className="text-muted-foreground">Max Downloads</p>
-                                    <p className="font-medium">{metadata.preferences.max_active_downloads}</p>
+                                    <p className="font-medium">
+                                      {metadata?.preferences?.max_active_downloads}
+                                    </p>
                                   </div>
                                 )}
-                                {metadata.preferences.max_active_uploads > 0 && (
+                                {(metadata?.preferences?.max_active_uploads ?? 0) > 0 && (
                                   <div className="space-y-1">
                                     <p className="text-muted-foreground">Max Uploads</p>
-                                    <p className="font-medium">{metadata.preferences.max_active_uploads}</p>
+                                    <p className="font-medium">
+                                      {metadata?.preferences?.max_active_uploads}
+                                    </p>
                                   </div>
                                 )}
-                                {metadata.preferences.max_active_torrents > 0 && (
+                                {(metadata?.preferences?.max_active_torrents ?? 0) > 0 && (
                                   <div className="space-y-1">
                                     <p className="text-muted-foreground">Max Active</p>
-                                    <p className="font-medium">{metadata.preferences.max_active_torrents}</p>
+                                    <p className="font-medium">
+                                      {metadata?.preferences?.max_active_torrents}
+                                    </p>
                                   </div>
                                 )}
                               </div>
