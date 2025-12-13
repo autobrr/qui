@@ -191,9 +191,12 @@ export const CrossSeedTable = memo(function CrossSeedTable({
           ? getLinuxTracker(`${info.row.original.hash}-0`)
           : trackerDisplayNames.get(hostname.toLowerCase()) || hostname
 
+        // In incognito mode, pass obfuscated key to prevent real tracker icon lookup
+        const iconKey = incognitoMode ? displayName : hostname
+
         return (
           <div className="flex items-center gap-1.5">
-            <TrackerIconImage tracker={hostname} trackerIcons={trackerIcons} />
+            <TrackerIconImage tracker={iconKey} trackerIcons={trackerIcons} />
             <Tooltip>
               <TooltipTrigger asChild>
                 <span className="truncate block max-w-[100px] text-muted-foreground">

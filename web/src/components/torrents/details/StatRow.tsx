@@ -73,6 +73,7 @@ export const StatRow = memo(function StatRow({
           size="icon"
           className="h-5 w-5 shrink-0 opacity-50 hover:opacity-100"
           onClick={handleCopy}
+          aria-label={`Copy ${label}`}
         >
           <Copy className="h-3 w-3" />
         </Button>

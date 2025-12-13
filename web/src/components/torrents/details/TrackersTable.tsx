@@ -37,9 +37,9 @@ function getStatusBadge(status: number) {
     case 1:
       return <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Not contacted</Badge>
     case 2:
-      return <Badge variant="default" className="text-[10px] px-1.5 py-0 bg-green-600">Working</Badge>
+      return <Badge variant="default" className="text-[10px] px-1.5 py-0 bg-green-500">Working</Badge>
     case 3:
-      return <Badge variant="default" className="text-[10px] px-1.5 py-0 bg-blue-600">Updating</Badge>
+      return <Badge variant="default" className="text-[10px] px-1.5 py-0">Updating</Badge>
     case 4:
       return <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Error</Badge>
     default:
@@ -67,11 +67,16 @@ export const TrackersTable = memo(function TrackersTable({
         const url = info.getValue()
         const displayUrl = incognitoMode ? "https://tracker.example.com/announce" : url
 
+        // In incognito mode, use masked hostname to prevent real tracker icon lookup
         let hostname = ""
-        try {
-          hostname = new URL(url).hostname
-        } catch {
-          hostname = url
+        if (incognitoMode) {
+          hostname = "tracker.example.com"
+        } else {
+          try {
+            hostname = new URL(url).hostname
+          } catch {
+            hostname = url
+          }
         }
 
         return (

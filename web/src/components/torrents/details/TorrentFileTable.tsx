@@ -360,7 +360,7 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                             )}
                           </button>
                         ) : (
-                          <span className="w-4.5" />
+                          <span className="w-4" />
                         )}
                         {isFile ? (
                           <File className="h-3.5 w-3.5 text-muted-foreground shrink-0" />

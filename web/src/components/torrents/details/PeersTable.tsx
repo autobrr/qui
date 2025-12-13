@@ -146,7 +146,7 @@ export const PeersTable = memo(function PeersTable({
         cell: (info) => {
           const flags = info.getValue()
           if (!flags) return <span className="text-muted-foreground">-</span>
-          const details = getPeerFlagDetails(flags)
+          const details = getPeerFlagDetails(flags, info.row.original.flags_desc)
           return (
             <Tooltip>
               <TooltipTrigger asChild>
