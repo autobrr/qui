@@ -1414,6 +1414,11 @@ export interface CrossSeedAutomationSettings {
   rssSourceTags: string[]
   rssSourceExcludeCategories: string[]
   rssSourceExcludeTags: string[]
+  // Webhook source filtering: filter which local torrents to search when checking webhook requests
+  webhookSourceCategories: string[]
+  webhookSourceTags: string[]
+  webhookSourceExcludeCategories: string[]
+  webhookSourceExcludeTags: string[]
   findIndividualEpisodes: boolean
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
@@ -1447,6 +1452,11 @@ export interface CrossSeedAutomationSettingsPatch {
   rssSourceTags?: string[]
   rssSourceExcludeCategories?: string[]
   rssSourceExcludeTags?: string[]
+  // Webhook source filtering: filter which local torrents to search when checking webhook requests
+  webhookSourceCategories?: string[]
+  webhookSourceTags?: string[]
+  webhookSourceExcludeCategories?: string[]
+  webhookSourceExcludeTags?: string[]
   findIndividualEpisodes?: boolean
   sizeMismatchTolerancePercent?: number
   useCategoryFromIndexer?: boolean

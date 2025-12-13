@@ -284,9 +284,9 @@ func TestNeedsRenameAlignment(t *testing.T) {
 			expectedResult: true, // file names differ (spaces vs periods) - needs recheck after rename
 		},
 		{
-			name:           "folder to single file with multiple files - alignment needed when names differ",
-			torrentName:    "Show S01E01",
-			matchedName:    "Show.S01E01.mkv",
+			name:        "folder to single file with multiple files - alignment needed when names differ",
+			torrentName: "Show S01E01",
+			matchedName: "Show.S01E01.mkv",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "Show S01E01/Show S01E01.mkv", Size: 1000000000},
 				{Name: "Show S01E01/Show S01E01.nfo", Size: 1024},

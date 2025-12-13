@@ -6544,6 +6544,47 @@ func matchesCompletionFilters(torrent *qbt.Torrent, settings models.CompletionFi
 	return true
 }
 
+// matchesWebhookSourceFilters checks if a torrent matches webhook source filters.
+// Empty filter arrays mean "all" (no filtering).
+func matchesWebhookSourceFilters(torrent *qbt.Torrent, settings *models.CrossSeedAutomationSettings) bool {
+	if torrent == nil || settings == nil {
+		return false
+	}
+
+	// Check exclude categories first (if configured)
+	if len(settings.WebhookSourceExcludeCategories) > 0 && slices.Contains(settings.WebhookSourceExcludeCategories, torrent.Category) {
+		return false
+	}
+
+	// Check include categories (if configured)
+	if len(settings.WebhookSourceCategories) > 0 && !slices.Contains(settings.WebhookSourceCategories, torrent.Category) {
+		return false
+	}
+
+	torrentTags := splitTags(torrent.Tags)
+
+	// Check exclude tags (if configured) - case-sensitive to match qBittorrent behavior
+	if len(settings.WebhookSourceExcludeTags) > 0 {
+		for _, tag := range torrentTags {
+			if slices.Contains(settings.WebhookSourceExcludeTags, tag) {
+				return false
+			}
+		}
+	}
+
+	// Check include tags (if configured) - at least one must match, case-sensitive
+	if len(settings.WebhookSourceTags) > 0 {
+		for _, tag := range torrentTags {
+			if slices.Contains(settings.WebhookSourceTags, tag) {
+				return true
+			}
+		}
+		return false
+	}
+
+	return true
+}
+
 func hasCrossSeedTag(rawTags string) bool {
 	for _, tag := range splitTags(rawTags) {
 		if tag == "cross-seed" {
@@ -6933,13 +6974,13 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to load automation settings for webhook check, using defaults")
-		settings = &models.CrossSeedAutomationSettings{
-			SizeMismatchTolerancePercent: 5.0,
-			FindIndividualEpisodes:       false,
-		}
+		settings = models.DefaultCrossSeedAutomationSettings()
+	}
+	if settings == nil {
+		settings = models.DefaultCrossSeedAutomationSettings()
 	}
 
-	findIndividualEpisodes := settings != nil && settings.FindIndividualEpisodes
+	findIndividualEpisodes := settings.FindIndividualEpisodes
 	if req.FindIndividualEpisodes != nil {
 		findIndividualEpisodes = *req.FindIndividualEpisodes
 	}
@@ -7006,6 +7047,40 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		torrents := make([]qbt.Torrent, len(torrentsView))
 		for i, tv := range torrentsView {
 			torrents[i] = tv.Torrent
+		}
+
+		// Apply webhook source filters if configured
+		hasWebhookSourceFilters := len(settings.WebhookSourceCategories) > 0 ||
+			len(settings.WebhookSourceTags) > 0 ||
+			len(settings.WebhookSourceExcludeCategories) > 0 ||
+			len(settings.WebhookSourceExcludeTags) > 0
+
+		if hasWebhookSourceFilters {
+			originalCount := len(torrents)
+			filtered := make([]qbt.Torrent, 0, len(torrents))
+			for i := range torrents {
+				if matchesWebhookSourceFilters(&torrents[i], settings) {
+					filtered = append(filtered, torrents[i])
+				}
+			}
+			torrents = filtered
+			if len(torrents) != originalCount {
+				log.Debug().
+					Str("source", "cross-seed.webhook").
+					Int("instanceID", instance.ID).
+					Str("instanceName", instance.Name).
+					Int("original", originalCount).
+					Int("filtered", len(torrents)).
+					Msg("Webhook source filters reduced torrent candidates")
+			}
+			if len(torrents) == 0 && originalCount > 0 {
+				log.Debug().
+					Str("source", "cross-seed.webhook").
+					Int("instanceID", instance.ID).
+					Str("instanceName", instance.Name).
+					Int("original", originalCount).
+					Msg("Webhook source filters excluded all torrents")
+			}
 		}
 
 		log.Debug().

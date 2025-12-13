@@ -84,6 +84,11 @@ interface GlobalCrossSeedSettings {
   skipAutoResumeSeededSearch: boolean
   skipAutoResumeCompletion: boolean
   skipAutoResumeWebhook: boolean
+  // Webhook source filtering: filter which local torrents to search when checking webhook requests
+  webhookSourceCategories: string[]
+  webhookSourceTags: string[]
+  webhookSourceExcludeCategories: string[]
+  webhookSourceExcludeTags: string[]
 }
 
 // RSS Automation constants
@@ -122,6 +127,11 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   skipAutoResumeSeededSearch: false,
   skipAutoResumeCompletion: false,
   skipAutoResumeWebhook: false,
+  // Webhook source filtering defaults - empty means no filtering (all torrents)
+  webhookSourceCategories: [],
+  webhookSourceTags: [],
+  webhookSourceExcludeCategories: [],
+  webhookSourceExcludeTags: [],
 }
 
 function parseList(value: string): string[] {
@@ -180,6 +190,59 @@ function formatDurationShort(ms: number): string {
   parts.push(`${String(minutes).padStart(2, "0")}m`)
   parts.push(`${String(seconds).padStart(2, "0")}s`)
   return parts.join(" ")
+}
+
+/** Aggregate categories and tags from multiple qBittorrent instances */
+function aggregateInstanceMetadata(
+  results: Array<{ categories: Record<string, { name: string; savePath: string }>; tags: string[] }>
+): { categories: Record<string, { name: string; savePath: string }>; tags: string[] } {
+  const allCategories: Record<string, { name: string; savePath: string }> = {}
+  const allTags = new Set<string>()
+  for (const result of results) {
+    for (const [name, cat] of Object.entries(result.categories)) {
+      allCategories[name] = cat
+    }
+    for (const tag of result.tags) {
+      allTags.add(tag)
+    }
+  }
+  return { categories: allCategories, tags: Array.from(allTags) }
+}
+
+/** Build category select options from categories object, preserving any manually-typed selections */
+function buildCategorySelectOptions(
+  categories: Record<string, { name: string; savePath: string }>,
+  ...selectedArrays: string[][]
+): Array<{ label: string; value: string }> {
+  const tree = buildCategoryTree(categories, {})
+  const flattened: { label: string; value: string }[] = []
+
+  const visitNodes = (nodes: CategoryNode[]) => {
+    for (const node of nodes) {
+      flattened.push({ label: node.name, value: node.name })
+      visitNodes(node.children)
+    }
+  }
+  visitNodes(tree)
+
+  // Add any extras from selected arrays that aren't in the tree
+  const allSelected = selectedArrays.flat()
+  for (const cat of allSelected) {
+    if (!flattened.some(opt => opt.value === cat)) {
+      flattened.push({ label: cat, value: cat })
+    }
+  }
+
+  return flattened
+}
+
+/** Build tag select options from available tags, preserving any manually-typed selections */
+function buildTagSelectOptions(
+  availableTags: string[],
+  ...selectedArrays: string[][]
+): Array<{ label: string; value: string }> {
+  const allTags = new Set([...availableTags, ...selectedArrays.flat()])
+  return Array.from(allTags).map(tag => ({ label: tag, value: tag }))
 }
 
 export function CrossSeedPage() {
@@ -319,20 +382,29 @@ export function CrossSeedPage() {
           return { categories, tags }
         })
       )
-      // Aggregate categories and tags from all instances
-      const allCategories: Record<string, { name: string; savePath: string }> = {}
-      const allTags = new Set<string>()
-      for (const result of results) {
-        for (const [name, cat] of Object.entries(result.categories)) {
-          allCategories[name] = cat
-        }
-        for (const tag of result.tags) {
-          allTags.add(tag)
-        }
-      }
-      return { categories: allCategories, tags: Array.from(allTags) }
+      return aggregateInstanceMetadata(results)
     },
     enabled: automationForm.targetInstanceIds.length > 0,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // Fetch categories/tags from ALL active instances (for webhook source filters)
+  const { data: webhookSourceMetadata } = useQuery({
+    queryKey: ["cross-seed", "webhook-source-metadata", activeInstances.map(i => i.id)],
+    queryFn: async () => {
+      if (activeInstances.length === 0) return null
+      const results = await Promise.all(
+        activeInstances.map(async (instance) => {
+          const [categories, tags] = await Promise.all([
+            api.getCategories(instance.id),
+            api.getTags(instance.id),
+          ])
+          return { categories, tags }
+        })
+      )
+      return aggregateInstanceMetadata(results)
+    },
+    enabled: activeInstances.length > 0,
     staleTime: 5 * 60 * 1000,
   })
 
@@ -391,6 +463,11 @@ export function CrossSeedPage() {
         skipAutoResumeSeededSearch: settings.skipAutoResumeSeededSearch ?? false,
         skipAutoResumeCompletion: settings.skipAutoResumeCompletion ?? false,
         skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
+        // Webhook source filtering
+        webhookSourceCategories: settings.webhookSourceCategories ?? [],
+        webhookSourceTags: settings.webhookSourceTags ?? [],
+        webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
+        webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
       })
       setGlobalSettingsInitialized(true)
     }
@@ -481,6 +558,10 @@ export function CrossSeedPage() {
         skipAutoResumeSeededSearch: settings.skipAutoResumeSeededSearch ?? false,
         skipAutoResumeCompletion: settings.skipAutoResumeCompletion ?? false,
         skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
+        webhookSourceCategories: settings.webhookSourceCategories ?? [],
+        webhookSourceTags: settings.webhookSourceTags ?? [],
+        webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
+        webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
       }
 
     return {
@@ -501,6 +582,11 @@ export function CrossSeedPage() {
       skipAutoResumeSeededSearch: globalSource.skipAutoResumeSeededSearch,
       skipAutoResumeCompletion: globalSource.skipAutoResumeCompletion,
       skipAutoResumeWebhook: globalSource.skipAutoResumeWebhook,
+      // Webhook source filtering
+      webhookSourceCategories: globalSource.webhookSourceCategories,
+      webhookSourceTags: globalSource.webhookSourceTags,
+      webhookSourceExcludeCategories: globalSource.webhookSourceExcludeCategories,
+      webhookSourceExcludeTags: globalSource.webhookSourceExcludeTags,
     }
   }, [
     settings,
@@ -713,43 +799,12 @@ export function CrossSeedPage() {
   const searchTagNames = useMemo(() => searchMetadata?.tags ?? [], [searchMetadata])
 
   const searchCategorySelectOptions = useMemo(
-    () => {
-      // Build tree from available categories for indentation
-      const categories = searchMetadata?.categories ?? {}
-      const tree = buildCategoryTree(categories, {})
-      const flattened: { label: string; value: string }[] = []
-
-      const visitNodes = (nodes: CategoryNode[]) => {
-        for (const node of nodes) {
-          flattened.push({
-            label: node.name,
-            value: node.name,
-          })
-          visitNodes(node.children)
-        }
-      }
-
-      visitNodes(tree)
-
-      // Add any extra categories that were manually typed but not in the list
-      const extras = searchCategories.filter(category => !flattened.some(opt => opt.value === category))
-      for (const extra of extras) {
-        flattened.push({ label: extra, value: extra })
-      }
-
-      return flattened
-    },
+    () => buildCategorySelectOptions(searchMetadata?.categories ?? {}, searchCategories),
     [searchCategories, searchMetadata?.categories]
   )
 
   const searchTagSelectOptions = useMemo(
-    () => {
-      const extras = searchTags.filter(tag => !searchTagNames.includes(tag))
-      return Array.from(new Set([...searchTagNames, ...extras])).map(tag => ({
-        label: tag,
-        value: tag,
-      }))
-    },
+    () => buildTagSelectOptions(searchTagNames, searchTags),
     [searchTagNames, searchTags]
   )
 
@@ -757,41 +812,42 @@ export function CrossSeedPage() {
   const rssSourceTagNames = useMemo(() => rssSourceMetadata?.tags ?? [], [rssSourceMetadata])
 
   const rssSourceCategorySelectOptions = useMemo(
-    () => {
-      const categories = rssSourceMetadata?.categories ?? {}
-      const tree = buildCategoryTree(categories, {})
-      const flattened: { label: string; value: string }[] = []
-
-      const visitNodes = (nodes: CategoryNode[]) => {
-        for (const node of nodes) {
-          flattened.push({ label: node.name, value: node.name })
-          visitNodes(node.children)
-        }
-      }
-      visitNodes(tree)
-
-      // Add any extra categories that were selected but not in the list
-      const allSelected = [...automationForm.rssSourceCategories, ...automationForm.rssSourceExcludeCategories]
-      const extras = allSelected.filter(cat => !flattened.some(opt => opt.value === cat))
-      for (const extra of extras) {
-        flattened.push({ label: extra, value: extra })
-      }
-
-      return flattened
-    },
+    () => buildCategorySelectOptions(
+      rssSourceMetadata?.categories ?? {},
+      automationForm.rssSourceCategories,
+      automationForm.rssSourceExcludeCategories
+    ),
     [automationForm.rssSourceCategories, automationForm.rssSourceExcludeCategories, rssSourceMetadata?.categories]
   )
 
   const rssSourceTagSelectOptions = useMemo(
-    () => {
-      const allSelected = [...automationForm.rssSourceTags, ...automationForm.rssSourceExcludeTags]
-      const extras = allSelected.filter(tag => !rssSourceTagNames.includes(tag))
-      return Array.from(new Set([...rssSourceTagNames, ...extras])).map(tag => ({
-        label: tag,
-        value: tag,
-      }))
-    },
+    () => buildTagSelectOptions(
+      rssSourceTagNames,
+      automationForm.rssSourceTags,
+      automationForm.rssSourceExcludeTags
+    ),
     [rssSourceTagNames, automationForm.rssSourceTags, automationForm.rssSourceExcludeTags]
+  )
+
+  // Webhook Source filter select options (aggregated from ALL active instances)
+  const webhookSourceTagNames = useMemo(() => webhookSourceMetadata?.tags ?? [], [webhookSourceMetadata])
+
+  const webhookSourceCategorySelectOptions = useMemo(
+    () => buildCategorySelectOptions(
+      webhookSourceMetadata?.categories ?? {},
+      globalSettings.webhookSourceCategories,
+      globalSettings.webhookSourceExcludeCategories
+    ),
+    [globalSettings.webhookSourceCategories, globalSettings.webhookSourceExcludeCategories, webhookSourceMetadata?.categories]
+  )
+
+  const webhookSourceTagSelectOptions = useMemo(
+    () => buildTagSelectOptions(
+      webhookSourceTagNames,
+      globalSettings.webhookSourceTags,
+      globalSettings.webhookSourceExcludeTags
+    ),
+    [webhookSourceTagNames, globalSettings.webhookSourceTags, globalSettings.webhookSourceExcludeTags]
   )
 
   const handleStartSearchRun = () => {
@@ -2060,6 +2116,89 @@ export function CrossSeedPage() {
                   </div>
                 </div>
               </div>
+
+              <Collapsible className="rounded-lg border border-border/70 bg-muted/40">
+                <CollapsibleTrigger className="flex w-full items-center justify-between p-4 font-medium [&[data-state=open]>svg]:rotate-180">
+                  <span>Webhook Source Filters</span>
+                  <ChevronDown className="h-4 w-4 transition-transform duration-200" />
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="border-t border-border/70 p-4 pt-4 space-y-4">
+                    <p className="text-xs text-muted-foreground">
+                      Filter which local torrents are considered when autobrr calls the webhook endpoint.
+                      Empty filters mean all torrents are checked. If you configure both category and tag filters, torrents must match both.
+                    </p>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-3">
+                        <Label>Exclude categories</Label>
+                        <MultiSelect
+                          options={webhookSourceCategorySelectOptions}
+                          selected={globalSettings.webhookSourceExcludeCategories}
+                          onChange={values => setGlobalSettings(prev => ({ ...prev, webhookSourceExcludeCategories: values }))}
+                          placeholder={webhookSourceCategorySelectOptions.length ? "None" : "Type to add categories"}
+                          creatable
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {globalSettings.webhookSourceExcludeCategories.length === 0
+                            ? "No categories excluded."
+                            : `${globalSettings.webhookSourceExcludeCategories.length} categor${globalSettings.webhookSourceExcludeCategories.length === 1 ? "y" : "ies"} will be skipped.`}
+                        </p>
+                      </div>
+
+                      <div className="space-y-3">
+                        <Label>Exclude tags</Label>
+                        <MultiSelect
+                          options={webhookSourceTagSelectOptions}
+                          selected={globalSettings.webhookSourceExcludeTags}
+                          onChange={values => setGlobalSettings(prev => ({ ...prev, webhookSourceExcludeTags: values }))}
+                          placeholder={webhookSourceTagSelectOptions.length ? "None" : "Type to add tags"}
+                          creatable
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {globalSettings.webhookSourceExcludeTags.length === 0
+                            ? "No tags excluded."
+                            : `${globalSettings.webhookSourceExcludeTags.length} tag${globalSettings.webhookSourceExcludeTags.length === 1 ? "" : "s"} will be skipped.`}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-3">
+                        <Label>Include categories</Label>
+                        <MultiSelect
+                          options={webhookSourceCategorySelectOptions}
+                          selected={globalSettings.webhookSourceCategories}
+                          onChange={values => setGlobalSettings(prev => ({ ...prev, webhookSourceCategories: values }))}
+                          placeholder={webhookSourceCategorySelectOptions.length ? "All categories (leave empty for all)" : "Type to add categories"}
+                          creatable
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {globalSettings.webhookSourceCategories.length === 0
+                            ? "All categories will be included."
+                            : `Only ${globalSettings.webhookSourceCategories.length} selected categor${globalSettings.webhookSourceCategories.length === 1 ? "y" : "ies"} will be matched.`}
+                        </p>
+                      </div>
+
+                      <div className="space-y-3">
+                        <Label>Include tags</Label>
+                        <MultiSelect
+                          options={webhookSourceTagSelectOptions}
+                          selected={globalSettings.webhookSourceTags}
+                          onChange={values => setGlobalSettings(prev => ({ ...prev, webhookSourceTags: values }))}
+                          placeholder={webhookSourceTagSelectOptions.length ? "All tags (leave empty for all)" : "Type to add tags"}
+                          creatable
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {globalSettings.webhookSourceTags.length === 0
+                            ? "All tags will be included."
+                            : `Only ${globalSettings.webhookSourceTags.length} selected tag${globalSettings.webhookSourceTags.length === 1 ? "" : "s"} will be matched.`}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
 
               <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
