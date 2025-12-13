@@ -61,6 +61,8 @@ github.com/autobrr/autobrr v1.70.0 h1:N3NxMuiu6uQ500N9nPxDWXlBtlQx2QlkkGnU/JPcLw
 github.com/autobrr/autobrr v1.70.0/go.mod h1:sCMO8xAaZLLA4H1qbKRiSTZnPsY/stvTngHF9o2F8pI=
 github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251209201933-62cc902b8602 h1:RyJtQJGklw0kJ3Ec5kHakQArHXuXb7EodudkUVGwsDk=
 github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251209201933-62cc902b8602/go.mod h1:mGH+UlSzkZOpTx9hezpL9dnKakskLzOsNfngl2E1ZE0=
+github.com/autobrr/rls v0.7.0 h1:Wzu6f6qMN1D+3QQSDJ6EqwdjOqBPutrz2aa2SXE3Zlo=
+github.com/autobrr/rls v0.7.0/go.mod h1:11YJWgNe5H+UQrfFaNGjnkEy0OEsMFnmV4IL2tRKpPk=
 github.com/avast/retry-go v3.0.0+incompatible h1:4SOWQ7Qs+oroOTQOYnAHqelpCO0biHSxpiH9JdtuBj0=
 github.com/avast/retry-go v3.0.0+incompatible/go.mod h1:XtSnn+n/sHqQIpZ10K1qAevBhOOCWBLXXy3hyiqqBrY=
 github.com/benbjohnson/immutable v0.2.0/go.mod h1:uc6OHo6PN2++n98KHLxW8ef4W42ylHiQSENghE1ezxI=
@@ -234,8 +236,6 @@ github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421/go.mod h1:6dJ
 github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
 github.com/modern-go/reflect2 v0.0.0-20180701023420-4b7aa43c6742/go.mod h1:bx2lNnkwVCuqBIxFjflWJWanXIb3RllmbCylyMrvgv0=
 github.com/modern-go/reflect2 v1.0.1/go.mod h1:bx2lNnkwVCuqBIxFjflWJWanXIb3RllmbCylyMrvgv0=
-github.com/moistari/rls v0.6.0 h1:9AWzsLaTN2zMTdUBkljQsUr5YlXxCQuHMhhoqBYUo5A=
-github.com/moistari/rls v0.6.0/go.mod h1:11YJWgNe5H+UQrfFaNGjnkEy0OEsMFnmV4IL2tRKpPk=
 github.com/mr-tron/base58 v1.2.0 h1:T/HDJBh4ZCPbU39/+c3rRvE0uKBQlU27+QI8LJ4t64o=
 github.com/mr-tron/base58 v1.2.0/go.mod h1:BinMc/sQntlIE1frQmRFPUoPA1Zkr8VRgBdjWI2mNwc=
 github.com/mschoch/smat v0.0.0-20160514031455-90eadee771ae/go.mod h1:qAyveg+e4CE+eKJXWVjKXM4ck2QobLqTDytGJbLLhJg=

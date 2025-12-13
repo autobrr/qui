@@ -444,18 +444,14 @@ func (s *Service) getMatchTypeFromTitle(targetName, candidateName string, target
 		// key matches the target's release key. This prevents unrelated torrents
 		// with generic filenames from matching purely because rls could parse
 		// something from their names.
-		if len(candidateReleases) > 0 {
-			targetKey := makeReleaseKey(targetRelease)
-			if targetKey == (releaseKey{}) {
-				// No usable metadata from the target; be conservative and avoid
-				// treating non-episodic candidates as matches in this pre-filter.
-				return ""
-			}
+		targetKey := makeReleaseKey(targetRelease)
 
+		if len(candidateReleases) > 0 {
 			if _, exists := candidateReleases[targetKey]; exists {
 				return "partial-in-pack"
 			}
 		}
+
 	}
 
 	// Fallback: rls couldn't derive usable release keys from the files, but the titles match and
@@ -488,15 +484,22 @@ func (s *Service) getMatchTypeFromTitle(targetName, candidateName string, target
 			targetEp := extractEpisode(targetName)
 			candidateEp := extractEpisode(candidateName)
 
-			if targetEp == "" || candidateEp == "" || targetEp != candidateEp {
-				return ""
+			// If episode numbers match (anime fallback), accept the match
+			if targetEp != "" && candidateEp != "" && targetEp == candidateEp {
+				log.Debug().
+					Str("title", targetRelease.Title).
+					Str("episode", targetEp).
+					Msg("Falling back to title+episode candidate match")
+				return "partial-in-pack"
 			}
 
-			log.Debug().
-				Str("title", targetRelease.Title).
-				Str("episode", targetEp).
-				Msg("Falling back to title+episode candidate match")
-			return "partial-in-pack"
+			// For content without usable file-level metadata (games, apps, scene releases
+			// with RAR files), trust the torrent-level releasesMatch check that got us here
+			// when no episode pattern exists in the names.
+			targetKey := makeReleaseKey(targetRelease)
+			if targetKey == (releaseKey{}) && targetEp == "" && candidateEp == "" {
+				return "release-match"
+			}
 		}
 	}
 
