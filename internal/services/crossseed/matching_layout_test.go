@@ -277,6 +277,43 @@ func TestGetMatchTypeFromTitle_NonEpisodicWithMatchingReleaseKey(t *testing.T) {
 	require.Equal(t, "partial-in-pack", match, "non-episodic candidates with matching release keys should match")
 }
 
+func TestGetMatchTypeFromTitle_GameSceneReleasesWithRARFiles(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	// Game scene releases have RAR files with group prefixes, no year, no episode info.
+	// These should match based on title alone when the titles match.
+	targetName := "Oddsparks.An.Automation.Adventure.Coaster.Rush-RUNE"
+	targetRelease := rls.Release{
+		Title: "Oddsparks An Automation Adventure Coaster Rush",
+		Group: "RUNE",
+		Type:  rls.Game,
+	}
+
+	candidateName := "Oddsparks.An.Automation.Adventure.Coaster.Rush-RUNE"
+	candidateRelease := rls.Release{
+		Title: "Oddsparks An Automation Adventure Coaster Rush",
+		Group: "RUNE",
+		Type:  rls.Game,
+	}
+
+	// RAR files don't produce usable release keys when parsed
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "rune-oddsparks.rar", Size: 100 << 20},
+		{Name: "rune-oddsparks.r00", Size: 100 << 20},
+		{Name: "rune-oddsparks.r01", Size: 100 << 20},
+		{Name: "rune-oddsparks.sfv", Size: 1024},
+		{Name: "rune-oddsparks.nfo", Size: 4096},
+	}
+
+	match := svc.getMatchTypeFromTitle(targetName, candidateName, &targetRelease, &candidateRelease, candidateFiles, nil)
+	require.Equal(t, "release-match", match, "game scene releases with RAR files should match when titles match")
+}
+
 func TestGetMatchType_FileNameFallback(t *testing.T) {
 	t.Parallel()
 
