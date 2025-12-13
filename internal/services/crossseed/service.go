@@ -6976,8 +6976,11 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		log.Warn().Err(err).Msg("Failed to load automation settings for webhook check, using defaults")
 		settings = models.DefaultCrossSeedAutomationSettings()
 	}
+	if settings == nil {
+		settings = models.DefaultCrossSeedAutomationSettings()
+	}
 
-	findIndividualEpisodes := settings != nil && settings.FindIndividualEpisodes
+	findIndividualEpisodes := settings.FindIndividualEpisodes
 	if req.FindIndividualEpisodes != nil {
 		findIndividualEpisodes = *req.FindIndividualEpisodes
 	}
