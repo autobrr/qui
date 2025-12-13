@@ -8,7 +8,7 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } 
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { getLinuxFileName, getLinuxFolderName } from "@/lib/incognito"
 import { cn, formatBytes } from "@/lib/utils"
 import type { TorrentFile } from "@/types"
@@ -121,6 +121,22 @@ function buildFileTree(
   }
 
   roots.forEach(calculateAggregates)
+
+  // Sort nodes: folders first, then alphabetically within each type (natural sort)
+  function sortNodes(nodes: FileTreeNode[]): void {
+    nodes.sort((a, b) => {
+      // Folders before files
+      if (a.kind === "folder" && b.kind === "file") return -1
+      if (a.kind === "file" && b.kind === "folder") return 1
+      // Alphabetical within same type (natural sort)
+      return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })
+    })
+    for (const node of nodes) {
+      if (node.children) sortNodes(node.children)
+    }
+  }
+  sortNodes(roots)
+
   return roots
 }
 
@@ -301,7 +317,7 @@ export const TorrentFileTable = memo(function TorrentFileTable({
 
       <ScrollArea className="flex-1 min-h-0">
         <div className="min-w-[500px]">
-          <table className="w-full text-xs">
+          <table className="w-full text-xs table-fixed">
             <thead className="sticky top-0 z-10 bg-background border-b">
               <tr>
                 {supportsFilePriority && (
@@ -343,9 +359,9 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                         />
                       </td>
                     )}
-                    <td className="px-2 py-1.5">
+                    <td className="px-2 py-1.5 overflow-hidden">
                       <div
-                        className="flex items-center gap-1"
+                        className="flex items-center gap-1 min-w-0"
                         style={{ paddingLeft: depth * 16 }}
                       >
                         {hasChildren ? (
@@ -367,21 +383,12 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                         ) : (
                           <Folder className="h-3.5 w-3.5 text-yellow-500 shrink-0" />
                         )}
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span
-                              className={cn(
-                                "truncate",
-                                isPending && "opacity-50"
-                              )}
-                            >
-                              {node.name}
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent side="top">
-                            <p className="text-xs">{node.id}</p>
-                          </TooltipContent>
-                        </Tooltip>
+                        <TruncatedText
+                          className={cn(isPending && "opacity-50")}
+                          tooltipSide="top"
+                        >
+                          {node.name}
+                        </TruncatedText>
                         {!isFile && (
                           <span className="text-muted-foreground ml-1">
                             ({node.totalCount})
