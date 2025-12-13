@@ -35,6 +35,7 @@ import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useInstances } from "@/hooks/useInstances"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
@@ -847,38 +848,6 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
   )
 }
 
-interface TrackerIconImageProps {
-  tracker: string
-  trackerIcons?: Record<string, string>
-}
-
-function TrackerIconImage({ tracker, trackerIcons }: TrackerIconImageProps) {
-  const [hasError, setHasError] = useState(false)
-
-  const trimmed = tracker.trim()
-  const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
-  const src = trackerIcons?.[trimmed] ?? null
-
-  const handleImageError = () => {
-    console.debug(`[TrackerIconImage] Failed to load icon for tracker: ${trimmed}`, { src })
-    setHasError(true)
-  }
-
-  return (
-    <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-[10px] font-medium uppercase leading-none flex-shrink-0">
-      {src && !hasError ? (
-        <img
-          src={src}
-          alt=""
-          className="h-full w-full object-contain rounded-sm"
-          onError={handleImageError}
-        />
-      ) : (
-        fallbackLetter
-      )}
-    </div>
-  )
-}
 
 type TrackerSortColumn = "tracker" | "uploaded" | "downloaded" | "ratio" | "buffer" | "count" | "performance"
 type SortDirection = "asc" | "desc"
