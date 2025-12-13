@@ -121,6 +121,22 @@ function buildFileTree(
   }
 
   roots.forEach(calculateAggregates)
+
+  // Sort nodes: folders first, then alphabetically within each type (natural sort)
+  function sortNodes(nodes: FileTreeNode[]): void {
+    nodes.sort((a, b) => {
+      // Folders before files
+      if (a.kind === "folder" && b.kind === "file") return -1
+      if (a.kind === "file" && b.kind === "folder") return 1
+      // Alphabetical within same type (natural sort)
+      return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })
+    })
+    for (const node of nodes) {
+      if (node.children) sortNodes(node.children)
+    }
+  }
+  sortNodes(roots)
+
   return roots
 }
 
