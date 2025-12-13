@@ -37,6 +37,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
@@ -260,6 +261,13 @@ type Service struct {
 	automationCancel context.CancelFunc
 	automationWake   chan struct{}
 	runActive        atomic.Bool
+
+	// categoryCreationGroup deduplicates concurrent category creation calls.
+	// Key format: "instanceID:categoryName"
+	categoryCreationGroup singleflight.Group
+	// createdCategories tracks categories we've successfully created in this session
+	// to avoid relying on potentially stale GetCategories responses.
+	createdCategories sync.Map
 
 	// Cached torrent file metadata for repeated analyze/search calls.
 	torrentFilesCache *ttlcache.Cache[string, qbt.TorrentFiles]
@@ -6727,14 +6735,22 @@ type autoTMMDecision struct {
 // - A cross-seed category was successfully created (crossCategory != "")
 // - The matched torrent uses autoTMM
 // - Not using indexer categories (which may have different paths)
-// - The category has an explicitly configured SavePath that matches the matched torrent's SavePath
+//
+// We trust qBittorrent's implicit path calculation when categories don't have explicit
+// save paths configured. If the matched torrent is using autoTMM successfully, the
+// cross-seed should inherit that setting.
 //
 // Returns the decision struct for logging and whether autoTMM should be enabled.
 func shouldEnableAutoTMM(crossCategory string, matchedAutoManaged bool, useCategoryFromIndexer bool, actualCategorySavePath string, matchedSavePath string) autoTMMDecision {
+	// Check if explicit category save path matches the matched torrent's path (informational).
 	pathsMatch := actualCategorySavePath != "" && matchedSavePath != "" &&
 		normalizePath(actualCategorySavePath) == normalizePath(matchedSavePath)
 
-	enabled := crossCategory != "" && matchedAutoManaged && !useCategoryFromIndexer && pathsMatch
+	// Enable autoTMM if the matched torrent uses autoTMM and we're not using indexer categories.
+	// When a category has no explicit save path, qBittorrent uses an implicit path:
+	// <default_save_path>/<category_name>. Since the matched torrent is already using
+	// autoTMM successfully at its current path, the cross-seed should too.
+	enabled := crossCategory != "" && matchedAutoManaged && !useCategoryFromIndexer
 
 	return autoTMMDecision{
 		Enabled:            enabled,
@@ -6778,44 +6794,66 @@ func appendCrossSuffix(category string) string {
 // ensureCrossCategory ensures a .cross suffixed category exists with the correct save_path.
 // If the category already exists, it verifies the save_path matches (logs warning if different).
 // If it doesn't exist, it creates it with the provided save_path.
+//
+// This function uses singleflight to deduplicate concurrent creation attempts for the same
+// category, and maintains local state to avoid relying on potentially stale GetCategories responses.
 func (s *Service) ensureCrossCategory(ctx context.Context, instanceID int, crossCategory, savePath string) error {
 	if crossCategory == "" {
 		return nil
 	}
 
-	// Get existing categories
-	categories, err := s.syncManager.GetCategories(ctx, instanceID)
-	if err != nil {
-		return fmt.Errorf("get categories: %w", err)
-	}
+	key := fmt.Sprintf("%d:%s", instanceID, crossCategory)
 
-	// Check if category already exists
-	if existing, exists := categories[crossCategory]; exists {
-		// Category exists - check if save_path differs (informational warning only)
-		// Normalize paths for comparison (handle trailing slashes, backslashes)
-		if savePath != "" && existing.SavePath != "" && normalizePath(existing.SavePath) != normalizePath(savePath) {
-			log.Warn().
-				Int("instanceID", instanceID).
-				Str("category", crossCategory).
-				Str("expectedSavePath", savePath).
-				Str("actualSavePath", existing.SavePath).
-				Msg("[CROSSSEED] Cross-seed category exists with different save path")
-		}
+	// Fast path: we already created this category in this session
+	if _, ok := s.createdCategories.Load(key); ok {
 		return nil
 	}
 
-	// Create the category with the save_path
-	if err := s.syncManager.CreateCategory(ctx, instanceID, crossCategory, savePath); err != nil {
-		return fmt.Errorf("create category: %w", err)
-	}
+	// Use singleflight to deduplicate concurrent calls for the same category.
+	// Multiple goroutines trying to create the same category will share a single execution.
+	_, err, _ := s.categoryCreationGroup.Do(key, func() (interface{}, error) {
+		// Double-check inside singleflight (another goroutine might have completed just before us)
+		if _, ok := s.createdCategories.Load(key); ok {
+			return nil, nil
+		}
 
-	log.Debug().
-		Int("instanceID", instanceID).
-		Str("category", crossCategory).
-		Str("savePath", savePath).
-		Msg("[CROSSSEED] Created category for cross-seed")
+		// Get existing categories from qBittorrent
+		categories, err := s.syncManager.GetCategories(ctx, instanceID)
+		if err != nil {
+			return nil, fmt.Errorf("get categories: %w", err)
+		}
 
-	return nil
+		// Check if category already exists
+		if existing, exists := categories[crossCategory]; exists {
+			// Category exists - check if save_path differs (informational warning only)
+			if savePath != "" && existing.SavePath != "" && normalizePath(existing.SavePath) != normalizePath(savePath) {
+				log.Warn().
+					Int("instanceID", instanceID).
+					Str("category", crossCategory).
+					Str("expectedSavePath", savePath).
+					Str("actualSavePath", existing.SavePath).
+					Msg("[CROSSSEED] Cross-seed category exists with different save path")
+			}
+			s.createdCategories.Store(key, true)
+			return nil, nil
+		}
+
+		// Create the category with the save_path
+		if err := s.syncManager.CreateCategory(ctx, instanceID, crossCategory, savePath); err != nil {
+			return nil, fmt.Errorf("create category: %w", err)
+		}
+
+		s.createdCategories.Store(key, true)
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("category", crossCategory).
+			Str("savePath", savePath).
+			Msg("[CROSSSEED] Created category for cross-seed")
+
+		return nil, nil
+	})
+
+	return err
 }
 
 // determineCrossSeedCategory selects the category to apply to a cross-seeded torrent.
