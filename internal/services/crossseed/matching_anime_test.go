@@ -54,7 +54,7 @@ func TestReleasesMatch_SiteMustMatch(t *testing.T) {
 			description: "same fansub group should match",
 		},
 		{
-			name: "source has site, candidate does not - should match",
+			name: "source has site, candidate does not - should not match",
 			source: rls.Release{
 				Title:   "Kingdom",
 				Series:  6,
@@ -66,8 +66,8 @@ func TestReleasesMatch_SiteMustMatch(t *testing.T) {
 				Series:  6,
 				Episode: 11,
 			},
-			wantMatch:   true,
-			description: "missing site on candidate should not block match",
+			wantMatch:   false,
+			description: "candidate must have matching site when source has one",
 		},
 		{
 			name: "candidate has site, source does not - should match",
@@ -83,7 +83,7 @@ func TestReleasesMatch_SiteMustMatch(t *testing.T) {
 				Site:    "SubsPlease",
 			},
 			wantMatch:   true,
-			description: "missing site on source should not block match",
+			description: "source has no site so site matching is not enforced",
 		},
 		{
 			name: "site comparison is case insensitive",
@@ -165,7 +165,7 @@ func TestReleasesMatch_SumMustMatch(t *testing.T) {
 			description: "same checksum should match",
 		},
 		{
-			name: "source has sum, candidate does not - should match",
+			name: "source has sum, candidate does not - should not match",
 			source: rls.Release{
 				Title:   "Kingdom",
 				Series:  6,
@@ -179,8 +179,8 @@ func TestReleasesMatch_SumMustMatch(t *testing.T) {
 				Episode: 11,
 				Site:    "SubsPlease",
 			},
-			wantMatch:   true,
-			description: "missing checksum on candidate should not block match",
+			wantMatch:   false,
+			description: "candidate must have matching checksum when source has one",
 		},
 		{
 			name: "candidate has sum, source does not - should match",
@@ -198,7 +198,7 @@ func TestReleasesMatch_SumMustMatch(t *testing.T) {
 				Sum:     "32ECE75A",
 			},
 			wantMatch:   true,
-			description: "missing checksum on source should not block match",
+			description: "source has no checksum so checksum matching is not enforced",
 		},
 		{
 			name: "sum comparison is case insensitive",
@@ -244,6 +244,15 @@ func TestReleasesMatch_AnimeRealWorld(t *testing.T) {
 		Sum:        "32ECE75A",
 	}
 
+	subsPleaseMatchingSum := rls.Release{
+		Title:      "Kingdom",
+		Series:     6,
+		Episode:    11,
+		Resolution: "1080p",
+		Site:       "SubsPlease",
+		Sum:        "32ECE75A",
+	}
+
 	anoZu := rls.Release{
 		Title:      "Kingdom",
 		Series:     6,
@@ -254,7 +263,7 @@ func TestReleasesMatch_AnimeRealWorld(t *testing.T) {
 		Site:       "AnoZu",
 	}
 
-	// Same release from different tracker (no checksum in name)
+	// Source without checksum can match candidate with or without checksum
 	subsPleaseNoSum := rls.Release{
 		Title:      "Kingdom",
 		Series:     6,
@@ -266,6 +275,12 @@ func TestReleasesMatch_AnimeRealWorld(t *testing.T) {
 	require.False(t, s.releasesMatch(&subsPlease, &anoZu, false),
 		"SubsPlease and AnoZu are different fansub groups - should NOT match")
 
-	require.True(t, s.releasesMatch(&subsPlease, &subsPleaseNoSum, false),
-		"same SubsPlease release from different tracker should match")
+	require.True(t, s.releasesMatch(&subsPlease, &subsPleaseMatchingSum, false),
+		"same SubsPlease release with matching checksum should match")
+
+	require.False(t, s.releasesMatch(&subsPlease, &subsPleaseNoSum, false),
+		"source has checksum so candidate must have matching checksum")
+
+	require.True(t, s.releasesMatch(&subsPleaseNoSum, &subsPlease, false),
+		"source without checksum can match candidate with checksum")
 }
