@@ -205,6 +205,27 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	}
 	// If source has no group, we don't care about candidate's group
 
+	// Site field is used by anime releases where group is in brackets like [SubsPlease].
+	// rls parses these as Site rather than Group. Different fansub groups can never
+	// cross-seed, so enforce strict matching like Group.
+	sourceSite := s.stringNormalizer.Normalize(source.Site)
+	candidateSite := s.stringNormalizer.Normalize(candidate.Site)
+	if sourceSite != "" {
+		if candidateSite == "" || sourceSite != candidateSite {
+			return false
+		}
+	}
+
+	// Sum field contains the CRC32 checksum for anime releases like [32ECE75A].
+	// Different checksums mean different files with 100% certainty.
+	sourceSum := s.stringNormalizer.Normalize(source.Sum)
+	candidateSum := s.stringNormalizer.Normalize(candidate.Sum)
+	if sourceSum != "" {
+		if candidateSum == "" || sourceSum != candidateSum {
+			return false
+		}
+	}
+
 	// Source must match if both are present (WEB-DL vs BluRay produce different files)
 	sourceSource := s.stringNormalizer.Normalize((source.Source))
 	candidateSource := s.stringNormalizer.Normalize((candidate.Source))
