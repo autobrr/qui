@@ -87,6 +87,23 @@ export default defineConfig(() => ({
             purpose: "maskable",
           },
         ],
+        protocol_handlers: [
+          {
+            protocol: "magnet",
+            url: "/add?magnet=%s",
+          },
+        ],
+        file_handlers: [
+          {
+            action: "/add",
+            accept: {
+              "application/x-bittorrent": [".torrent"],
+            },
+          },
+        ],
+        launch_handler: {
+          client_mode: "navigate-existing",
+        },
       },
     }),
   ],
