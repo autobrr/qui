@@ -54,11 +54,16 @@ type automationSettingsPatchRequest struct {
 	TargetIndexerIDs   *[]int         `json:"targetIndexerIds,omitempty"`
 	MaxResultsPerRun   *int           `json:"maxResultsPerRun,omitempty"` // Deprecated: automation now processes full feeds and ignores this value
 	// RSS source filtering: filter which local torrents to search when checking RSS feeds
-	RSSSourceCategories          *[]string   `json:"rssSourceCategories,omitempty"`
-	RSSSourceTags                *[]string   `json:"rssSourceTags,omitempty"`
-	RSSSourceExcludeCategories   *[]string   `json:"rssSourceExcludeCategories,omitempty"`
-	RSSSourceExcludeTags         *[]string   `json:"rssSourceExcludeTags,omitempty"`
-	FindIndividualEpisodes       *bool       `json:"findIndividualEpisodes,omitempty"`
+	RSSSourceCategories        *[]string `json:"rssSourceCategories,omitempty"`
+	RSSSourceTags              *[]string `json:"rssSourceTags,omitempty"`
+	RSSSourceExcludeCategories *[]string `json:"rssSourceExcludeCategories,omitempty"`
+	RSSSourceExcludeTags       *[]string `json:"rssSourceExcludeTags,omitempty"`
+	// Webhook source filtering: filter which local torrents to search when checking webhook requests
+	WebhookSourceCategories        *[]string `json:"webhookSourceCategories,omitempty"`
+	WebhookSourceTags              *[]string `json:"webhookSourceTags,omitempty"`
+	WebhookSourceExcludeCategories *[]string `json:"webhookSourceExcludeCategories,omitempty"`
+	WebhookSourceExcludeTags       *[]string `json:"webhookSourceExcludeTags,omitempty"`
+	FindIndividualEpisodes         *bool     `json:"findIndividualEpisodes,omitempty"`
 	SizeMismatchTolerancePercent *float64    `json:"sizeMismatchTolerancePercent,omitempty"`
 	UseCategoryFromIndexer       *bool       `json:"useCategoryFromIndexer,omitempty"`
 	UseCrossCategorySuffix       *bool       `json:"useCrossCategorySuffix,omitempty"`
@@ -145,6 +150,10 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.RSSSourceTags == nil &&
 		r.RSSSourceExcludeCategories == nil &&
 		r.RSSSourceExcludeTags == nil &&
+		r.WebhookSourceCategories == nil &&
+		r.WebhookSourceTags == nil &&
+		r.WebhookSourceExcludeCategories == nil &&
+		r.WebhookSourceExcludeTags == nil &&
 		r.FindIndividualEpisodes == nil &&
 		r.SizeMismatchTolerancePercent == nil &&
 		r.UseCategoryFromIndexer == nil &&
@@ -207,6 +216,19 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	}
 	if patch.RSSSourceExcludeTags != nil {
 		settings.RSSSourceExcludeTags = *patch.RSSSourceExcludeTags
+	}
+	// Webhook source filtering
+	if patch.WebhookSourceCategories != nil {
+		settings.WebhookSourceCategories = *patch.WebhookSourceCategories
+	}
+	if patch.WebhookSourceTags != nil {
+		settings.WebhookSourceTags = *patch.WebhookSourceTags
+	}
+	if patch.WebhookSourceExcludeCategories != nil {
+		settings.WebhookSourceExcludeCategories = *patch.WebhookSourceExcludeCategories
+	}
+	if patch.WebhookSourceExcludeTags != nil {
+		settings.WebhookSourceExcludeTags = *patch.WebhookSourceExcludeTags
 	}
 	if patch.FindIndividualEpisodes != nil {
 		settings.FindIndividualEpisodes = *patch.FindIndividualEpisodes
