@@ -245,7 +245,12 @@ function buildTagSelectOptions(
   return Array.from(allTags).map(tag => ({ label: tag, value: tag }))
 }
 
-export function CrossSeedPage() {
+interface CrossSeedPageProps {
+  activeTab: "automation" | "search" | "global"
+  onTabChange: (tab: "automation" | "search" | "global") => void
+}
+
+export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const queryClient = useQueryClient()
   const { formatDate } = useDateTimeFormatters()
 
@@ -1092,7 +1097,7 @@ export function CrossSeedPage() {
         </Card>
       </div>
 
-      <Tabs defaultValue="automation" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={(v) => onTabChange(v as typeof activeTab)} className="space-y-4">
         <TabsList className="grid w-full grid-cols-3 gap-2 md:w-auto">
           <TabsTrigger value="automation">Automation</TabsTrigger>
           <TabsTrigger value="search">Seeded search</TabsTrigger>
