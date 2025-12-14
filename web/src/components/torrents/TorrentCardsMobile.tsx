@@ -36,6 +36,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
   ArrowUpDown,
+  Blocks,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -1980,6 +1981,14 @@ export function TorrentCardsMobile({
             >
               <Radio className="mr-2 h-4 w-4"/>
               Reannounce
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => handleBulkAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD)}
+              className="justify-start"
+            >
+              <Blocks className="mr-2 h-4 w-4"/>
+              Sequential Download
             </Button>
             {onFilterChange && (
               <Button

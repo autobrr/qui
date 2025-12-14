@@ -21,6 +21,7 @@ import { getTorrentDisplayHash } from "@/lib/torrent-utils"
 import { copyTextToClipboard } from "@/lib/utils"
 import type { Category, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
 import {
+  Blocks,
   CheckCircle,
   Copy,
   Download,
@@ -325,6 +326,13 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
         >
           <Radio className="mr-2 h-4 w-4" />
           Reannounce {count > 1 ? `(${count})` : ""}
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={() => onAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, hashes)}
+          disabled={isPending}
+        >
+          <Blocks className="mr-2 h-4 w-4" />
+          Sequential Download {count > 1 ? `(${count})` : ""}
         </ContextMenuItem>
         <ContextMenuSeparator />
         <QueueSubmenu

@@ -704,7 +704,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		"recheck", "reannounce", "increasePriority", "decreasePriority",
 		"topPriority", "bottomPriority", "addTags", "removeTags", "setTags", "setCategory",
 		"toggleAutoTMM", "forceStart", "setShareLimit", "setUploadLimit", "setDownloadLimit", "setLocation",
-		"editTrackers", "addTrackers", "removeTrackers",
+		"editTrackers", "addTrackers", "removeTrackers", "toggleSequentialDownload",
 	}
 
 	valid := slices.Contains(validActions, req.Action)

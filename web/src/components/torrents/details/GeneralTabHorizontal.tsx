@@ -187,6 +187,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
               valueStyle={{ color: getRatioColor(properties.share_ratio || 0) }}
             />
             <StatRow label="Wasted" value={formatBytes(properties.total_wasted || 0)} />
+            {torrent.seq_dl && <StatRow label="Sequential Download" value={"Enabled"} />}
           </div>
 
           {/* Speed */}
