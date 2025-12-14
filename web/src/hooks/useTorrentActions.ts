@@ -1009,5 +1009,8 @@ function showSuccessToast(action: TorrentAction, count: number, deleteFiles?: bo
     case "setLocation":
       toast.success(`Set location for ${count} ${torrentText}`)
       break
+    case "toggleSequentialDownload":
+      toast.success(`${enable ? "Enabled" : "Disabled"} sequential download for ${count} ${torrentText}`)
+      break
   }
 }
