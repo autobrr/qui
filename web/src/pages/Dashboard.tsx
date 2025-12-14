@@ -33,6 +33,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
@@ -44,7 +45,7 @@ import { copyTextToClipboard, formatBytes, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Activity, AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, Zap } from "lucide-react"
+import { Activity, AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, X, Zap } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
@@ -906,7 +907,8 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
   const [selectedDomains, setSelectedDomains] = useState<Set<string>>(new Set())
   const [showCustomizeDialog, setShowCustomizeDialog] = useState(false)
   const [customizeDisplayName, setCustomizeDisplayName] = useState("")
-  const [editingCustomization, setEditingCustomization] = useState<{ id: number; domains: string[] } | null>(null)
+  const [editingCustomization, setEditingCustomization] = useState<{ id: number; domains: string[]; includedInStats: string[] } | null>(null)
+  const [includedInStats, setIncludedInStats] = useState<Set<string>>(new Set())
 
   // Import/Export state
   const [showImportDialog, setShowImportDialog] = useState(false)
@@ -940,18 +942,17 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
       }
     }
 
-    // Apply customizations: hide secondary domains, use display names
+    // Apply customizations: sum non-excluded domains, use display names
+    // Two-pass approach to handle domains appearing in any order in the aggregated map
     const processed = new Map<string, ProcessedTrackerStats>()
 
+    // Pass 1: Create entries for primary domains and standalone domains
     for (const [domain, stats] of aggregated) {
       const customization = domainToCustomization.get(domain.toLowerCase())
 
       if (customization) {
-        // Check if this is the primary domain (first in the list)
         const isPrimary = customization.domains[0]?.toLowerCase() === domain.toLowerCase()
-
         if (isPrimary) {
-          // Use this domain's stats with the custom display name
           processed.set(customization.displayName, {
             ...stats,
             domain,
@@ -960,7 +961,6 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
             customizationId: customization.id,
           })
         }
-        // Skip secondary domains - they're merged into primary
       } else {
         // No customization - use domain as-is
         processed.set(domain, {
@@ -969,6 +969,29 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
           displayName: domain,
           originalDomains: [domain],
         })
+      }
+    }
+
+    // Pass 2: Add stats from explicitly included secondary domains
+    for (const [domain, stats] of aggregated) {
+      const customization = domainToCustomization.get(domain.toLowerCase())
+
+      if (customization) {
+        const isPrimary = customization.domains[0]?.toLowerCase() === domain.toLowerCase()
+        const isIncluded = customization.includedInStats?.some(
+          d => d.toLowerCase() === domain.toLowerCase()
+        )
+
+        // Secondary domains only contribute if explicitly in includedInStats
+        if (!isPrimary && isIncluded) {
+          const existing = processed.get(customization.displayName)
+          if (existing) {
+            existing.uploaded += stats.uploaded
+            existing.downloaded += stats.downloaded
+            existing.totalSize += stats.totalSize
+            existing.count += stats.count
+          }
+        }
       }
     }
 
@@ -1045,6 +1068,11 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
     if (domains.length === 0) return
 
+    // Get included domains from state (secondary domains that contribute to stats)
+    const included = editingCustomization
+      ? editingCustomization.includedInStats
+      : Array.from(includedInStats)
+
     if (editingCustomization) {
       // Update existing
       updateCustomization.mutate(
@@ -1053,6 +1081,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
           data: {
             displayName: customizeDisplayName.trim(),
             domains,
+            includedInStats: included,
           },
         },
         {
@@ -1068,13 +1097,15 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
       )
 
       if (existing) {
-        // Merge into existing
+        // Merge into existing - combine inclusions
+        const mergedIncluded = [...(existing.includedInStats ?? []), ...included]
         updateCustomization.mutate(
           {
             id: existing.id,
             data: {
               displayName: existing.displayName,
               domains: [...existing.domains, ...domains],
+              includedInStats: mergedIncluded,
             },
           },
           {
@@ -1090,6 +1121,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
           {
             displayName: customizeDisplayName.trim(),
             domains,
+            includedInStats: included,
           },
           {
             onSuccess: () => {
@@ -1124,7 +1156,13 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
   // Open customize dialog for editing existing customization
   const openEditDialog = (customizationId: number, currentName: string, domains: string[]) => {
-    setEditingCustomization({ id: customizationId, domains })
+    // Look up the full customization to get includedInStats
+    const fullCustomization = customizations?.find(c => c.id === customizationId)
+    setEditingCustomization({
+      id: customizationId,
+      domains,
+      includedInStats: fullCustomization?.includedInStats ?? []
+    })
     setCustomizeDisplayName(currentName)
     setShowCustomizeDialog(true)
   }
@@ -1159,6 +1197,50 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
     setShowCustomizeDialog(false)
     setCustomizeDisplayName("")
     setEditingCustomization(null)
+    setIncludedInStats(new Set())
+  }
+
+  // Remove a domain from the customize dialog
+  const handleRemoveDomainFromDialog = (domainToRemove: string) => {
+    if (editingCustomization) {
+      const newDomains = editingCustomization.domains.filter(d => d !== domainToRemove)
+      const newIncluded = editingCustomization.includedInStats.filter(
+        d => d.toLowerCase() !== domainToRemove.toLowerCase()
+      )
+      if (newDomains.length > 0) {
+        setEditingCustomization({ ...editingCustomization, domains: newDomains, includedInStats: newIncluded })
+      }
+    } else {
+      const newSelected = new Set(selectedDomains)
+      newSelected.delete(domainToRemove)
+      // Also remove from includedInStats for new customizations
+      const newIncluded = new Set(includedInStats)
+      newIncluded.delete(domainToRemove)
+      setIncludedInStats(newIncluded)
+      if (newSelected.size > 0) {
+        setSelectedDomains(newSelected)
+      }
+    }
+  }
+
+  // Toggle stats inclusion for a domain in the dialog
+  // include=true means "add to includedInStats", include=false means "remove from includedInStats"
+  const handleToggleStatsInclusion = (domain: string, include: boolean) => {
+    if (editingCustomization) {
+      const domainLower = domain.toLowerCase()
+      const newIncluded = include
+        ? [...editingCustomization.includedInStats.filter(d => d.toLowerCase() !== domainLower), domain]
+        : editingCustomization.includedInStats.filter(d => d.toLowerCase() !== domainLower)
+      setEditingCustomization({ ...editingCustomization, includedInStats: newIncluded })
+    } else {
+      const newIncluded = new Set(includedInStats)
+      if (include) {
+        newIncluded.add(domain)
+      } else {
+        newIncluded.delete(domain)
+      }
+      setIncludedInStats(newIncluded)
+    }
   }
 
   // Export customizations to clipboard
@@ -1170,10 +1252,17 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
     const exportData = {
       comment: "qui tracker customizations for Dashboard",
-      trackerCustomizations: customizations.map(c => ({
-        displayName: c.displayName,
-        domains: c.domains,
-      })),
+      trackerCustomizations: customizations.map(c => {
+        const entry: { displayName: string; domains: string[]; includedInStats?: string[] } = {
+          displayName: c.displayName,
+          domains: c.domains,
+        }
+        // Only include includedInStats if non-empty
+        if (c.includedInStats && c.includedInStats.length > 0) {
+          entry.includedInStats = c.includedInStats
+        }
+        return entry
+      }),
     }
 
     const jsonString = JSON.stringify(exportData, null, 2)
@@ -1233,7 +1322,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
         }
       }
 
-      const entriesWithConflicts = entries.map((entry: { displayName: string; domains: string[] }, index: number) => {
+      const entriesWithConflicts = entries.map((entry: { displayName: string; domains: string[]; includedInStats?: string[] }, index: number) => {
         const conflictingDomain = entry.domains.find((d: string) => existingDomains.has(d.toLowerCase()))
         const existingCustomization = conflictingDomain ? existingDomains.get(conflictingDomain.toLowerCase()) : null
 
@@ -1249,7 +1338,13 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
           isIdentical = sameDisplayName && sameDomains
         }
 
-        return { ...entry, index, conflict: existingCustomization, isIdentical }
+        return {
+          ...entry,
+          includedInStats: entry.includedInStats ?? [],
+          index,
+          conflict: existingCustomization,
+          isIdentical
+        }
       })
 
       return { valid: true, entries: entriesWithConflicts, error: null }
@@ -1285,7 +1380,11 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
           // Update existing customization
           await updateCustomization.mutateAsync({
             id: entry.conflict.id,
-            data: { displayName: entry.displayName, domains: entry.domains },
+            data: {
+              displayName: entry.displayName,
+              domains: entry.domains,
+              includedInStats: entry.includedInStats,
+            },
           })
           imported++
         } else if (!entry.conflict) {
@@ -1293,6 +1392,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
           await createCustomization.mutateAsync({
             displayName: entry.displayName,
             domains: entry.domains,
+            includedInStats: entry.includedInStats,
           })
           imported++
         } else {
@@ -1846,7 +1946,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
       {/* Customize Dialog (Rename/Merge/Edit) */}
       <Dialog open={showCustomizeDialog} onOpenChange={(open) => !open && closeCustomizeDialog()}>
-        <DialogContent>
+        <DialogContent className="max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>
               {editingCustomization
@@ -1860,10 +1960,10 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 ? "Update the display name for this tracker."
                 : selectedDomains.size === 1
                   ? "Give this tracker a custom display name."
-                  : "Combine these trackers into a single entry with a custom name. Stats will be shown for the first domain only."}
+                  : "Combine these trackers into a single entry with a custom name."}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 min-h-0 flex-1 flex flex-col">
             <div className="space-y-2">
               <Label htmlFor="customize-name">Display Name</Label>
               <Input
@@ -1873,23 +1973,54 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 placeholder="e.g., TorrentLeech"
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 min-h-0 flex-1 flex flex-col">
               <Label>{editingCustomization ? "Domain(s)" : "Selected Tracker(s)"}</Label>
-              <div className="text-sm text-muted-foreground space-y-1">
-                {(editingCustomization ? editingCustomization.domains : Array.from(selectedDomains)).map((domain, index) => (
-                  <div key={domain} className="flex items-center gap-2">
-                    {(editingCustomization ? editingCustomization.domains.length > 1 : selectedDomains.size > 1) && index === 0 && (
-                      <Badge variant="secondary" className="text-[10px]">Primary</Badge>
-                    )}
-                    <span className={index === 0 ? "font-medium" : ""}>{domain}</span>
-                  </div>
-                ))}
-              </div>
-              {!editingCustomization && selectedDomains.size > 1 && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  The first domain&apos;s stats and icon will be displayed. Reselect trackers in preferred order if needed.
+              {((editingCustomization && editingCustomization.domains.length > 1) || (!editingCustomization && selectedDomains.size > 1)) && (
+                <p className="text-xs text-muted-foreground">
+                  Uncheck duplicate tracker URLs to avoid counting the same torrents twice.
                 </p>
               )}
+              <ScrollArea className="max-h-64 flex-1">
+                <div className="text-sm text-muted-foreground space-y-1.5 pr-4">
+                  {(editingCustomization ? editingCustomization.domains : Array.from(selectedDomains)).map((domain, index, arr) => {
+                    const hasMultiple = arr.length > 1
+                    const isPrimary = index === 0
+                    // Get inclusion state from appropriate source
+                    // Primary is always included; secondary domains only if in includedInStats
+                    const currentIncluded = editingCustomization
+                      ? editingCustomization.includedInStats
+                      : Array.from(includedInStats)
+                    const isInList = currentIncluded.some(d => d.toLowerCase() === domain.toLowerCase())
+                    const isIncluded = isPrimary || isInList
+
+                    return (
+                      <div key={domain} className="flex items-center gap-2">
+                        {hasMultiple && (
+                          <Checkbox
+                            checked={isIncluded}
+                            disabled={isPrimary}
+                            onCheckedChange={(checked) => handleToggleStatsInclusion(domain, !!checked)}
+                            className="h-4 w-4"
+                          />
+                        )}
+                        <span className={isPrimary ? "font-medium flex-1" : "flex-1"}>{domain}</span>
+                        {isPrimary && hasMultiple && (
+                          <Badge variant="secondary" className="text-[10px]">Primary</Badge>
+                        )}
+                        {hasMultiple && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveDomainFromDialog(domain)}
+                            className="text-muted-foreground hover:text-destructive cursor-pointer"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </ScrollArea>
             </div>
           </div>
           <DialogFooter>
