@@ -265,7 +265,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
       >
         <div
           className={cn(
-            "overflow-hidden transition-[transform,opacity,width] duration-300 ease-in-out",
+            "h-full overflow-hidden transition-[transform,opacity,width] duration-300 ease-in-out",
             filterSidebarCollapsed ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100"
           )}
           style={{ width: sidebarWidth }}
