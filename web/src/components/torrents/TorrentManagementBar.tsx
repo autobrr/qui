@@ -454,19 +454,26 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
             <TooltipContent>Reannounce</TooltipContent>
           </Tooltip>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => triggerAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD)}
-                disabled={isPending || isDisabled}
-              >
-                <Blocks className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Sequential Download</TooltipContent>
-          </Tooltip>
+          {(() => {
+            const seqDlStates = selectedTorrents?.map(t => t.seq_dl) ?? []
+            const allSeqDlEnabled = seqDlStates.length > 0 && seqDlStates.every(state => state === true)
+
+            return (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => triggerAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, { enable: !allSeqDlEnabled })}
+                    disabled={isPending || isDisabled}
+                  >
+                    <Blocks className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{allSeqDlEnabled ? "Disable" : "Enable"} Sequential Download</TooltipContent>
+              </Tooltip>
+            )
+          })()}
 
           {/* Tag Actions */}
           <DropdownMenu>
