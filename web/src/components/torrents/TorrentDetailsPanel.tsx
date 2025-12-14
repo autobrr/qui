@@ -86,23 +86,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     }
   }, [initialTab, onInitialTabConsumed, setActiveTab])
 
-  // Escape key handler to close the panel
-  useEffect(() => {
-    if (!onClose) return
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !e.defaultPrevented) {
-        // Don't close if a dialog/modal is open
-        const hasOpenDialog = document.querySelector("[role=\"dialog\"]")
-        if (!hasOpenDialog) {
-          onClose()
-        }
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [onClose])
+  // Note: Escape key handling is now unified in Torrents.tsx
+  // to close panel and clear selection atomically
 
   const [showAddPeersDialog, setShowAddPeersDialog] = useState(false)
   const { formatTimestamp } = useDateTimeFormatters()

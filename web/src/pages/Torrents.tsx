@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { VisuallyHidden } from "@/components/ui/visually-hidden"
+import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilters } from "@/hooks/usePersistedFilters"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
@@ -31,6 +32,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   const [filters, setFilters] = usePersistedFilters(instanceId)
   const [filterSidebarCollapsed] = usePersistedFilterSidebarState(false)
   const { viewMode } = usePersistedCompactViewState("normal")
+  const { clearSelection } = useTorrentSelection()
 
   // Sidebar width: 320px normal, 260px dense
   const sidebarWidth = viewMode === "dense" ? "16.25rem" : "20rem"
@@ -219,6 +221,26 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
       detailsPanelRef.current.expand()
     }
   }, [selectedTorrent, isMobile])
+
+  // Unified Escape handler: close panel and clear selection atomically
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return
+      if (e.defaultPrevented) return
+
+      // Skip if a dialog is open (dialogs handle their own Escape)
+      if (document.querySelector("[role=\"dialog\"]")) return
+
+      e.preventDefault()
+
+      // Close panel and clear selection in one action
+      setSelectedTorrent(null)
+      clearSelection()
+    }
+
+    window.addEventListener("keydown", handleEscape)
+    return () => window.removeEventListener("keydown", handleEscape)
+  }, [clearSelection])
 
   // Close the mobile filters sheet when viewport switches to desktop layout
   useEffect(() => {
