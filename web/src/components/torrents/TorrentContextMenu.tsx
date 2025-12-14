@@ -13,14 +13,17 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger
 } from "@/components/ui/context-menu"
+import { useCrossSeedFilter } from "@/hooks/useCrossSeedFilter"
 import type { TorrentAction } from "@/hooks/useTorrentActions"
 import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
-import { useCrossSeedFilter } from "@/hooks/useCrossSeedFilter"
+import { api } from "@/lib/api"
 import { getLinuxIsoName, getLinuxSavePath, useIncognitoMode } from "@/lib/incognito"
 import { getTorrentDisplayHash } from "@/lib/torrent-utils"
 import { copyTextToClipboard } from "@/lib/utils"
-import type { Category, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
+import type { Category, ExternalProgram, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import {
+  Blocks,
   CheckCircle,
   Copy,
   Download,
@@ -41,9 +44,6 @@ import {
 } from "lucide-react"
 import { memo, useCallback, useMemo } from "react"
 import { toast } from "sonner"
-import { useQuery, useMutation } from "@tanstack/react-query"
-import { api } from "@/lib/api"
-import type { ExternalProgram } from "@/types"
 import { CategorySubmenu } from "./CategorySubmenu"
 import { QueueSubmenu } from "./QueueSubmenu"
 import { RenameSubmenu } from "./RenameSubmenu"
@@ -127,12 +127,12 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   // Memoize hashes and torrents to avoid re-creating arrays on every render
   const hashes = useMemo(() =>
     useSelection ? selectedHashes : [torrent.hash],
-  [useSelection, selectedHashes, torrent.hash]
+    [useSelection, selectedHashes, torrent.hash]
   )
 
   const torrents = useMemo(() =>
     useSelection ? selectedTorrents : [torrent],
-  [useSelection, selectedTorrents, torrent]
+    [useSelection, selectedTorrents, torrent]
   )
 
   const count = isAllSelected ? effectiveSelectionCount : hashes.length
@@ -228,12 +228,22 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   const allDisabled = tmmStates.length > 0 && tmmStates.every(state => state === false)
   const mixed = tmmStates.length > 0 && !allEnabled && !allDisabled
 
+  // Sequential download state calculation
+  const seqDlStates = torrents.map(t => t.seq_dl)
+  const allSeqDlEnabled = seqDlStates.length > 0 && seqDlStates.every(state => state === true)
+  const allSeqDlDisabled = seqDlStates.length > 0 && seqDlStates.every(state => state === false)
+  const seqDlMixed = seqDlStates.length > 0 && !allSeqDlEnabled && !allSeqDlDisabled
+
   const handleQueueAction = useCallback((action: "topPriority" | "increasePriority" | "decreasePriority" | "bottomPriority") => {
     onAction(action as TorrentAction, hashes)
   }, [onAction, hashes])
 
   const handleForceStartToggle = useCallback((enable: boolean) => {
     onAction(TORRENT_ACTIONS.FORCE_START, hashes, { enable })
+  }, [onAction, hashes])
+
+  const handleSeqDlToggle = useCallback((enable: boolean) => {
+    onAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, hashes, { enable })
   }, [onAction, hashes])
 
   const handleSetCategory = useCallback((category: string) => {
@@ -326,6 +336,34 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           <Radio className="mr-2 h-4 w-4" />
           Reannounce {count > 1 ? `(${count})` : ""}
         </ContextMenuItem>
+        {seqDlMixed ? (
+          <>
+            <ContextMenuItem
+              onClick={() => handleSeqDlToggle(true)}
+              disabled={isPending}
+            >
+              <Blocks className="mr-2 h-4 w-4" />
+              Enable Sequential Download {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
+            </ContextMenuItem>
+            <ContextMenuItem
+              onClick={() => handleSeqDlToggle(false)}
+              disabled={isPending}
+            >
+              <Blocks className="mr-2 h-4 w-4" />
+              Disable Sequential Download {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
+            </ContextMenuItem>
+          </>
+        ) : (
+          <ContextMenuItem
+            onClick={() => handleSeqDlToggle(!allSeqDlEnabled)}
+            disabled={isPending}
+          >
+            <Blocks className="mr-2 h-4 w-4" />
+            {allSeqDlEnabled
+              ? `Disable Sequential Download ${count > 1 ? `(${count})` : ""}`
+              : `Enable Sequential Download ${count > 1 ? `(${count})` : ""}`}
+          </ContextMenuItem>
+        )}
         <ContextMenuSeparator />
         <QueueSubmenu
           type="context"

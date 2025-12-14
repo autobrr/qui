@@ -457,13 +457,13 @@ paths:
       summary: Execute external program
       description: |
         Execute an external program for one or more torrents.
-        
+
         The program is launched asynchronously, and this endpoint returns immediately after starting the process.
         The 'success' field in the response indicates whether the program was successfully launched, not whether it completed successfully.
-        
+
         The program path and arguments are passed through variable substitution where placeholders
         like {hash}, {name}, {save_path}, etc. are replaced with actual torrent metadata.
-        
+
         Security: On Windows, all arguments are escaped for cmd.exe using ^ before being passed
         to CreateProcess to prevent command injection via malicious torrent names.
         On Unix/Linux, arguments are wrapped in single quotes with proper escaping.
@@ -1158,6 +1158,7 @@ paths:
                     - editTrackers
                     - addTrackers
                     - removeTrackers
+                    - toggleSequentialDownload
                 deleteFiles:
                   type: boolean
                   description: Only for delete action
