@@ -1158,6 +1158,7 @@ paths:
                     - editTrackers
                     - addTrackers
                     - removeTrackers
+                    - toggleSequentialDownload
                 deleteFiles:
                   type: boolean
                   description: Only for delete action
@@ -1202,9 +1203,6 @@ paths:
                 trackerURLs:
                   type: string
                   description: Newline-separated tracker URLs for addTrackers/removeTrackers actions.
-                toggleSequentialDownload:
-                  type: boolean
-                  description: Toggle sequential torrent download
       responses:
         '200':
           description: Action performed successfully
