@@ -321,6 +321,7 @@ export interface TrackerCustomization {
   id: number
   displayName: string
   domains: string[]
+  includedInStats?: string[]
   createdAt: string
   updatedAt: string
 }
@@ -328,6 +329,7 @@ export interface TrackerCustomization {
 export interface TrackerCustomizationInput {
   displayName: string
   domains: string[]
+  includedInStats?: string[]
 }
 
 export interface DashboardSettings {

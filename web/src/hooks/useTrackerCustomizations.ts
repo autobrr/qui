@@ -6,6 +6,7 @@
 import { api } from "@/lib/api"
 import type { TrackerCustomization, TrackerCustomizationInput } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 
 const QUERY_KEY = ["tracker-customizations"]
 
@@ -34,6 +35,7 @@ export function useCreateTrackerCustomization() {
     },
     onError: (error) => {
       console.error("[TrackerCustomization] Create failed:", error)
+      toast.error("Failed to create tracker customization")
     },
   })
 }
@@ -52,6 +54,7 @@ export function useUpdateTrackerCustomization() {
     },
     onError: (error) => {
       console.error("[TrackerCustomization] Update failed:", error)
+      toast.error("Failed to update tracker customization")
     },
   })
 }
@@ -69,6 +72,7 @@ export function useDeleteTrackerCustomization() {
     },
     onError: (error) => {
       console.error("[TrackerCustomization] Delete failed:", error)
+      toast.error("Failed to delete tracker customization")
     },
   })
 }
