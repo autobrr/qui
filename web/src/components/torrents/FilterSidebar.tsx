@@ -28,6 +28,7 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
+import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { TruncatedText } from "@/components/ui/truncated-text"
 
 import { useDebounce } from "@/hooks/useDebounce"
@@ -172,41 +173,6 @@ const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon }> 
   { value: "cross-seeds", label: "Cross Seeds", icon: GitBranch },
 ]
 
-interface TrackerIconImageProps {
-  tracker: string
-  trackerIcons?: Record<string, string>
-}
-
-const TrackerIconImage = memo(({ tracker, trackerIcons }: TrackerIconImageProps) => {
-  const [hasError, setHasError] = useState(false)
-
-  useEffect(() => {
-    setHasError(false)
-  }, [tracker, trackerIcons])
-
-  const trimmed = tracker.trim()
-  const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
-  const src = trackerIcons?.[trimmed] ?? null
-
-  return (
-    <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-[10px] font-medium uppercase leading-none">
-      {src && !hasError ? (
-        <img
-          src={src}
-          alt=""
-          className="h-full w-full rounded-[2px] object-cover"
-          loading="lazy"
-          draggable={false}
-          onError={() => setHasError(true)}
-        />
-      ) : (
-        <span aria-hidden="true">{fallbackLetter}</span>
-      )}
-    </div>
-  )
-})
-
-TrackerIconImage.displayName = "TrackerIconImage"
 
 const FilterSidebarComponent = ({
   instanceId,

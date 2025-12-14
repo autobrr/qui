@@ -8,14 +8,17 @@ import { TrackerReannounceForm } from "@/components/instances/preferences/Tracke
 import { TrackerRulesOverview } from "@/components/instances/preferences/TrackerRulesOverview"
 import { TrackerRulesPanel } from "@/components/instances/preferences/TrackerRulesPanel"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Button } from "@/components/ui/button"
 import { useInstances } from "@/hooks/useInstances"
 import { useState } from "react"
 
 type ConfigureType = "reannounce" | "tracker-rules"
 
+const REANNOUNCE_FORM_ID = "reannounce-settings-form"
+
 export function Services() {
-  const { instances } = useInstances()
+  const { instances, isUpdating } = useInstances()
   const [configureInstanceId, setConfigureInstanceId] = useState<number | null>(null)
   const [configureType, setConfigureType] = useState<ConfigureType>("reannounce")
 
@@ -60,8 +63,8 @@ export function Services() {
 
       {/* Configuration Sheet */}
       <Sheet open={configureInstanceId !== null} onOpenChange={(open) => !open && handleCloseSheet()}>
-        <SheetContent side="right" className="w-full sm:max-w-2xl">
-          <SheetHeader>
+        <SheetContent side="right" className="flex h-full max-h-[100dvh] w-full flex-col overflow-hidden p-0 sm:max-w-2xl">
+          <SheetHeader className="shrink-0 px-6 pt-6">
             <SheetTitle>
               {configureType === "reannounce" ? "Configure Reannounce" : "Configure Tracker Rules"}
             </SheetTitle>
@@ -69,22 +72,29 @@ export function Services() {
               {configureInstance?.name ?? "Instance"}
             </SheetDescription>
           </SheetHeader>
-          <ScrollArea className="flex-1">
-            {configureInstanceId && configureType === "reannounce" && (
-              <div className="px-6 py-4">
+
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <ScrollArea className="h-full px-6 py-4">
+              {configureType === "reannounce" ? (
                 <TrackerReannounceForm
-                  instanceId={configureInstanceId}
+                  instanceId={configureInstanceId!}
                   variant="embedded"
+                  formId={REANNOUNCE_FORM_ID}
                   onSuccess={handleCloseSheet}
                 />
-              </div>
-            )}
-            {configureInstanceId && configureType === "tracker-rules" && (
-              <div className="px-6 py-4">
-                <TrackerRulesPanel instanceId={configureInstanceId} variant="embedded" />
-              </div>
-            )}
-          </ScrollArea>
+              ) : (
+                <TrackerRulesPanel instanceId={configureInstanceId!} variant="embedded" />
+              )}
+            </ScrollArea>
+          </div>
+
+          {configureType === "reannounce" && (
+            <SheetFooter className="shrink-0 border-t bg-muted/30 px-6 py-4">
+              <Button type="submit" form={REANNOUNCE_FORM_ID} disabled={isUpdating}>
+                {isUpdating ? "Saving..." : "Save Changes"}
+              </Button>
+            </SheetFooter>
+          )}
         </SheetContent>
       </Sheet>
     </div>

@@ -321,6 +321,7 @@ export interface TrackerCustomization {
   id: number
   displayName: string
   domains: string[]
+  includedInStats?: string[]
   createdAt: string
   updatedAt: string
 }
@@ -328,6 +329,7 @@ export interface TrackerCustomization {
 export interface TrackerCustomizationInput {
   displayName: string
   domains: string[]
+  includedInStats?: string[]
 }
 
 export interface DashboardSettings {
@@ -1402,6 +1404,7 @@ export interface CrossSeedApplyResponse {
 export interface CrossSeedRunResult {
   instanceId: number
   instanceName: string
+  indexerName?: string
   success: boolean
   status: string
   message?: string
@@ -1435,6 +1438,16 @@ export interface CrossSeedAutomationSettings {
   ignorePatterns: string[]
   targetInstanceIds: number[]
   targetIndexerIds: number[]
+  // RSS source filtering: filter which local torrents to search when checking RSS feeds
+  rssSourceCategories: string[]
+  rssSourceTags: string[]
+  rssSourceExcludeCategories: string[]
+  rssSourceExcludeTags: string[]
+  // Webhook source filtering: filter which local torrents to search when checking webhook requests
+  webhookSourceCategories: string[]
+  webhookSourceTags: string[]
+  webhookSourceExcludeCategories: string[]
+  webhookSourceExcludeTags: string[]
   findIndividualEpisodes: boolean
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
@@ -1446,6 +1459,11 @@ export interface CrossSeedAutomationSettings {
   completionSearchTags: string[]
   webhookTags: string[]
   inheritSourceTags: boolean
+  // Skip auto-resume settings per source mode
+  skipAutoResumeRss: boolean
+  skipAutoResumeSeededSearch: boolean
+  skipAutoResumeCompletion: boolean
+  skipAutoResumeWebhook: boolean
   createdAt?: string
   updatedAt?: string
 }
@@ -1458,6 +1476,16 @@ export interface CrossSeedAutomationSettingsPatch {
   ignorePatterns?: string[]
   targetInstanceIds?: number[]
   targetIndexerIds?: number[]
+  // RSS source filtering: filter which local torrents to search when checking RSS feeds
+  rssSourceCategories?: string[]
+  rssSourceTags?: string[]
+  rssSourceExcludeCategories?: string[]
+  rssSourceExcludeTags?: string[]
+  // Webhook source filtering: filter which local torrents to search when checking webhook requests
+  webhookSourceCategories?: string[]
+  webhookSourceTags?: string[]
+  webhookSourceExcludeCategories?: string[]
+  webhookSourceExcludeTags?: string[]
   findIndividualEpisodes?: boolean
   sizeMismatchTolerancePercent?: number
   useCategoryFromIndexer?: boolean
@@ -1469,6 +1497,11 @@ export interface CrossSeedAutomationSettingsPatch {
   completionSearchTags?: string[]
   webhookTags?: string[]
   inheritSourceTags?: boolean
+  // Skip auto-resume settings per source mode
+  skipAutoResumeRss?: boolean
+  skipAutoResumeSeededSearch?: boolean
+  skipAutoResumeCompletion?: boolean
+  skipAutoResumeWebhook?: boolean
 }
 
 export interface CrossSeedAutomationStatus {

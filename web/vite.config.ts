@@ -38,7 +38,7 @@ export default defineConfig(() => ({
         //maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // Allow larger bundles to be precached
         sourcemap: true,
         // Avoid serving the SPA shell for backend proxy routes (also under custom base URLs)
-        navigateFallbackDenylist: [/^\/api/, /\/proxy(?:\/|$)/],
+        navigateFallbackDenylist: [/\/api(?:\/|$)/, /\/proxy(?:\/|$)/],
         // Some deployments sit behind Basic Auth; skip assets that tend to 401 (e.g. manifest, source maps)
         manifestTransforms: [
           async (entries) => {

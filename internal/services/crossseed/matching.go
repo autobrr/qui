@@ -205,6 +205,27 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	}
 	// If source has no group, we don't care about candidate's group
 
+	// Site field is used by anime releases where group is in brackets like [SubsPlease].
+	// rls parses these as Site rather than Group. Different fansub groups can never
+	// cross-seed, so enforce strict matching like Group.
+	sourceSite := s.stringNormalizer.Normalize(source.Site)
+	candidateSite := s.stringNormalizer.Normalize(candidate.Site)
+	if sourceSite != "" {
+		if candidateSite == "" || sourceSite != candidateSite {
+			return false
+		}
+	}
+
+	// Sum field contains the CRC32 checksum for anime releases like [32ECE75A].
+	// Different checksums mean different files with 100% certainty.
+	sourceSum := s.stringNormalizer.Normalize(source.Sum)
+	candidateSum := s.stringNormalizer.Normalize(candidate.Sum)
+	if sourceSum != "" {
+		if candidateSum == "" || sourceSum != candidateSum {
+			return false
+		}
+	}
+
 	// Source must match if both are present (WEB-DL vs BluRay produce different files)
 	sourceSource := s.stringNormalizer.Normalize((source.Source))
 	candidateSource := s.stringNormalizer.Normalize((candidate.Source))
@@ -226,10 +247,11 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		return false
 	}
 
-	// Codec must match if both are present (H.264 vs HEVC produce different files)
+	// Codec must match if both are present (AVC vs HEVC produce different files).
+	// Uses codec aliasing so x264/H.264/H264/AVC are treated as equivalent.
 	if len(source.Codec) > 0 && len(candidate.Codec) > 0 {
-		sourceCodec := joinNormalizedSlice(source.Codec)
-		candidateCodec := joinNormalizedSlice(candidate.Codec)
+		sourceCodec := joinNormalizedCodecSlice(source.Codec)
+		candidateCodec := joinNormalizedCodecSlice(candidate.Codec)
 		if sourceCodec != candidateCodec {
 			return false
 		}
@@ -340,6 +362,44 @@ func joinNormalizedSlice(slice []string) string {
 	return strings.Join(normalized, " ")
 }
 
+// videoCodecAliases maps equivalent video codec names to a canonical form.
+// x264, H.264, H264, and AVC all refer to the same underlying codec (AVC/H.264).
+// x265, H.265, H265, and HEVC all refer to the same underlying codec (HEVC/H.265).
+var videoCodecAliases = map[string]string{
+	"X264":  "AVC",
+	"H.264": "AVC",
+	"H264":  "AVC",
+	"AVC":   "AVC",
+	"X265":  "HEVC",
+	"H.265": "HEVC",
+	"H265":  "HEVC",
+	"HEVC":  "HEVC",
+}
+
+// normalizeVideoCodec converts a video codec string to its canonical form.
+// Returns the original (uppercased) string if no alias mapping exists.
+func normalizeVideoCodec(codec string) string {
+	upper := strings.ToUpper(strings.TrimSpace(codec))
+	if canonical, ok := videoCodecAliases[upper]; ok {
+		return canonical
+	}
+	return upper
+}
+
+// joinNormalizedCodecSlice converts a codec slice to a normalized string for comparison.
+// Applies codec aliasing so that x264, H.264, H264, and AVC are treated as equivalent.
+func joinNormalizedCodecSlice(slice []string) string {
+	if len(slice) == 0 {
+		return ""
+	}
+	normalized := make([]string, len(slice))
+	for i, s := range slice {
+		normalized[i] = normalizeVideoCodec(s)
+	}
+	sort.Strings(normalized)
+	return strings.Join(normalized, " ")
+}
+
 // getMatchTypeFromTitle checks if a candidate torrent has files matching what we want based on parsed title.
 func (s *Service) getMatchTypeFromTitle(targetName, candidateName string, targetRelease, candidateRelease *rls.Release, candidateFiles qbt.TorrentFiles, ignorePatterns []string) string {
 	// Build candidate release keys from actual files with enrichment.
@@ -388,18 +448,14 @@ func (s *Service) getMatchTypeFromTitle(targetName, candidateName string, target
 		// key matches the target's release key. This prevents unrelated torrents
 		// with generic filenames from matching purely because rls could parse
 		// something from their names.
-		if len(candidateReleases) > 0 {
-			targetKey := makeReleaseKey(targetRelease)
-			if targetKey == (releaseKey{}) {
-				// No usable metadata from the target; be conservative and avoid
-				// treating non-episodic candidates as matches in this pre-filter.
-				return ""
-			}
+		targetKey := makeReleaseKey(targetRelease)
 
+		if len(candidateReleases) > 0 {
 			if _, exists := candidateReleases[targetKey]; exists {
 				return "partial-in-pack"
 			}
 		}
+
 	}
 
 	// Fallback: rls couldn't derive usable release keys from the files, but the titles match and
@@ -432,15 +488,22 @@ func (s *Service) getMatchTypeFromTitle(targetName, candidateName string, target
 			targetEp := extractEpisode(targetName)
 			candidateEp := extractEpisode(candidateName)
 
-			if targetEp == "" || candidateEp == "" || targetEp != candidateEp {
-				return ""
+			// If episode numbers match (anime fallback), accept the match
+			if targetEp != "" && candidateEp != "" && targetEp == candidateEp {
+				log.Debug().
+					Str("title", targetRelease.Title).
+					Str("episode", targetEp).
+					Msg("Falling back to title+episode candidate match")
+				return "partial-in-pack"
 			}
 
-			log.Debug().
-				Str("title", targetRelease.Title).
-				Str("episode", targetEp).
-				Msg("Falling back to title+episode candidate match")
-			return "partial-in-pack"
+			// For content without usable file-level metadata (games, apps, scene releases
+			// with RAR files), trust the torrent-level releasesMatch check that got us here
+			// when no episode pattern exists in the names.
+			targetKey := makeReleaseKey(targetRelease)
+			if targetKey == (releaseKey{}) && targetEp == "" && candidateEp == "" {
+				return "release-match"
+			}
 		}
 	}
 

@@ -1259,6 +1259,11 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		if err == nil {
 			sm.syncAfterModification(instanceID, client, action)
 		}
+	case "toggleSequentialDownload":
+		err = client.ToggleTorrentSequentialDownloadCtx(ctx, hashes)
+		if err == nil {
+			sm.syncAfterModification(instanceID, client, action)
+		}
 	default:
 		return fmt.Errorf("unknown bulk action: %s", action)
 	}

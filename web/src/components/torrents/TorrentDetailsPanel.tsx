@@ -31,9 +31,10 @@ import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/util
 import type { SortedPeersResponse, Torrent, TorrentFile, TorrentPeer } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import "flag-icons/css/flag-icons.min.css"
-import { Ban, Copy, Loader2, Trash2, UserPlus } from "lucide-react"
+import { Ban, Copy, Loader2, Trash2, UserPlus, X } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
+import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackersTable } from "./details"
 import { RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
 import { TorrentFileTree } from "./TorrentFileTree"
 
@@ -42,6 +43,8 @@ interface TorrentDetailsPanelProps {
   torrent: Torrent | null;
   initialTab?: string;
   onInitialTabConsumed?: () => void;
+  layout?: "horizontal" | "vertical";
+  onClose?: () => void;
 }
 
 const TAB_VALUES = ["general", "trackers", "peers", "content", "crossseed"] as const
@@ -72,7 +75,7 @@ function getTrackerStatusBadge(status: number) {
   }
 }
 
-export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent, initialTab, onInitialTabConsumed }: TorrentDetailsPanelProps) {
+export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent, initialTab, onInitialTabConsumed, layout = "vertical", onClose }: TorrentDetailsPanelProps) {
   const [activeTab, setActiveTab] = usePersistedTabState<TabValue>(TAB_STORAGE_KEY, DEFAULT_TAB, isTabValue)
 
   // Apply initialTab override when provided
@@ -82,6 +85,10 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       onInitialTabConsumed?.()
     }
   }, [initialTab, onInitialTabConsumed, setActiveTab])
+
+  // Note: Escape key handling is now unified in Torrents.tsx
+  // to close panel and clear selection atomically
+
   const [showAddPeersDialog, setShowAddPeersDialog] = useState(false)
   const { formatTimestamp } = useDateTimeFormatters()
   const [showBanPeerDialog, setShowBanPeerDialog] = useState(false)
@@ -189,7 +196,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const { data: files, isLoading: loadingFiles } = useQuery({
     queryKey: ["torrent-files", instanceId, torrent?.hash],
     queryFn: () => api.getTorrentFiles(instanceId, torrent!.hash),
-    enabled: !!torrent && isReady, // Fetch immediately, don't wait for tab
+    enabled: !!torrent && isReady && isContentTabActive,
     staleTime: 30000,
     gcTime: 5 * 60 * 1000,
     refetchInterval: () => {
@@ -630,6 +637,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const downloadLimitLabel = formatLimitLabel(properties?.dl_limit ?? torrent.dl_limit)
   const uploadLimitLabel = formatLimitLabel(properties?.up_limit ?? torrent.up_limit)
 
+  // Determine layout mode
+  const isHorizontal = layout === "horizontal"
+
   // Show minimal loading state while waiting for initial data
   const isInitialLoad = !isReady || (loadingProperties && !properties)
   if (isInitialLoad) {
@@ -642,8 +652,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center px-4 py-3 sm:px-6 border-b bg-muted/30 gap-2">
-        <div className="flex flex-1 items-center gap-2 min-w-0 pr-12">
+      <div className="relative flex items-center px-4 py-1.5 sm:px-6 border-b bg-muted/30 gap-2">
+        <div className="flex flex-1 items-center gap-1.5 min-w-0 pr-10">
           <h3 className="text-sm font-semibold truncate flex-1 min-w-0" title={displayName}>
             {displayName}
           </h3>
@@ -651,13 +661,24 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 shrink-0"
+              className="h-6 w-6 shrink-0"
               onClick={() => copyToClipboard(displayName, "Torrent name")}
             >
-              <Copy className="h-3.5 w-3.5" />
+              <Copy className="h-3 w-3" />
             </Button>
           )}
         </div>
+        {onClose && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6"
+            onClick={onClose}
+            aria-label="Close details panel"
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        )}
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
@@ -694,8 +715,29 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
           </TabsTrigger>
         </TabsList>
 
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-hidden">
           <TabsContent value="general" className="m-0 h-full">
+            {isHorizontal ? (
+              <GeneralTabHorizontal
+                torrent={torrent}
+                properties={properties}
+                loading={loadingProperties}
+                speedUnit={speedUnit}
+                downloadLimit={properties?.dl_limit ?? torrent.dl_limit ?? 0}
+                uploadLimit={properties?.up_limit ?? torrent.up_limit ?? 0}
+                displaySavePath={displaySavePath || ""}
+                displayTempPath={displayTempPath}
+                tempPathEnabled={tempPathEnabled}
+                displayInfohashV1={displayInfohashV1 || ""}
+                displayInfohashV2={displayInfohashV2}
+                displayComment={displayComment}
+                displayCreatedBy={displayCreatedBy}
+                queueingEnabled={metadata?.preferences?.queueing_enabled}
+                maxActiveDownloads={metadata?.preferences?.max_active_downloads}
+                maxActiveUploads={metadata?.preferences?.max_active_uploads}
+                maxActiveTorrents={metadata?.preferences?.max_active_torrents}
+              />
+            ) : (
             <ScrollArea className="h-full">
               <div className="p-4 sm:p-6">
                 {loadingProperties && !properties ? (
@@ -995,9 +1037,17 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 ) : null}
               </div>
             </ScrollArea>
+            )}
           </TabsContent>
 
           <TabsContent value="trackers" className="m-0 h-full">
+            {isHorizontal ? (
+              <TrackersTable
+                trackers={trackers}
+                loading={loadingTrackers}
+                incognitoMode={incognitoMode}
+              />
+            ) : (
             <ScrollArea className="h-full">
               <div className="p-4 sm:p-6">
                 {activeTab === "trackers" && loadingTrackers && !trackers ? (
@@ -1080,9 +1130,38 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 )}
               </div>
             </ScrollArea>
+            )}
           </TabsContent>
 
           <TabsContent value="peers" className="m-0 h-full">
+            {isHorizontal ? (
+              <div className="h-full flex flex-col">
+                <div className="flex items-center justify-between px-3 py-1.5 border-b text-xs">
+                  <span className="text-muted-foreground">
+                    {peersData?.sorted_peers?.length ?? 0} peer{(peersData?.sorted_peers?.length ?? 0) !== 1 ? "s" : ""} connected
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 text-xs"
+                    onClick={() => setShowAddPeersDialog(true)}
+                  >
+                    <UserPlus className="h-3 w-3 mr-1.5" />
+                    Add Peers
+                  </Button>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <PeersTable
+                    peers={peersData?.sorted_peers}
+                    loading={loadingPeers}
+                    speedUnit={speedUnit}
+                    showFlags={true}
+                    incognitoMode={incognitoMode}
+                    onBanPeer={handleBanPeerClick}
+                  />
+                </div>
+              </div>
+            ) : (
             <ScrollArea className="h-full">
               <div className="p-4 sm:p-6">
                 {activeTab === "peers" && loadingPeers && !peersData ? (
@@ -1283,10 +1362,24 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 )}
               </div>
             </ScrollArea>
+            )}
           </TabsContent>
 
           <TabsContent value="content" className="m-0 h-full flex flex-col overflow-hidden">
-            {activeTab === "content" && loadingFiles && !files ? (
+            {isHorizontal ? (
+              <TorrentFileTable
+                files={files}
+                loading={loadingFiles}
+                supportsFilePriority={supportsFilePriority}
+                pendingFileIndices={pendingFileIndices}
+                incognitoMode={incognitoMode}
+                torrentHash={torrent.hash}
+                onToggleFile={handleToggleFileDownload}
+                onToggleFolder={handleToggleFolderDownload}
+                onRenameFile={handleRenameFileClick}
+                onRenameFolder={(folderPath) => { void handleRenameFolderDialogOpen(folderPath) }}
+              />
+            ) : activeTab === "content" && loadingFiles && !files ? (
               <div className="flex items-center justify-center p-8 flex-1">
                 <Loader2 className="h-6 w-6 animate-spin" />
               </div>
@@ -1351,6 +1444,20 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
           </TabsContent>
 
           <TabsContent value="crossseed" className="m-0 h-full">
+            {isHorizontal ? (
+              <CrossSeedTable
+                matches={matchingTorrents}
+                loading={isLoadingMatches}
+                speedUnit={speedUnit}
+                incognitoMode={incognitoMode}
+                selectedTorrents={selectedCrossSeedTorrents}
+                onToggleSelection={handleToggleCrossSeedSelection}
+                onSelectAll={handleSelectAllCrossSeed}
+                onDeselectAll={handleDeselectAllCrossSeed}
+                onDeleteMatches={() => setShowDeleteCrossSeedDialog(true)}
+                onDeleteCurrent={() => setShowDeleteCurrentDialog(true)}
+              />
+            ) : (
             <ScrollArea className="h-full">
               <div className="p-4 sm:p-6">
                 {isLoadingMatches ? (
@@ -1566,6 +1673,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 )}
               </div>
             </ScrollArea>
+            )}
           </TabsContent>
         </div>
       </Tabs>

@@ -4,6 +4,7 @@
  */
 
 import { buildCategoryTree, type CategoryNode } from "@/components/torrents/CategoryTree"
+import { CompletionOverview } from "@/components/instances/preferences/CompletionOverview"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -30,20 +31,23 @@ import { api } from "@/lib/api"
 import type {
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
-  CrossSeedRun,
-  InstanceCrossSeedCompletionSettings
+  CrossSeedRun
 } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import {
   AlertTriangle,
+  CheckCircle2,
   ChevronDown,
+  Clock,
   FlameIcon,
+  History,
   Info,
   Loader2,
   Play,
   Rocket,
-  XCircle
+  XCircle,
+  Zap
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -54,6 +58,11 @@ interface AutomationFormState {
   runIntervalMinutes: number  // RSS Automation: interval between RSS feed polls (min: 30 minutes)
   targetInstanceIds: number[]
   targetIndexerIds: number[]
+  // RSS source filtering: filter which local torrents to search when checking RSS feeds
+  rssSourceCategories: string[]
+  rssSourceTags: string[]
+  rssSourceExcludeCategories: string[]
+  rssSourceExcludeTags: string[]
 }
 
 // Global cross-seed settings (apply to both RSS Automation and Seeded Torrent Search)
@@ -70,14 +79,16 @@ interface GlobalCrossSeedSettings {
   completionSearchTags: string[]
   webhookTags: string[]
   inheritSourceTags: boolean
-}
-
-interface CompletionFormState {
-  enabled: boolean
-  categories: string
-  tags: string
-  excludeCategories: string
-  excludeTags: string
+  // Skip auto-resume settings per source mode
+  skipAutoResumeRss: boolean
+  skipAutoResumeSeededSearch: boolean
+  skipAutoResumeCompletion: boolean
+  skipAutoResumeWebhook: boolean
+  // Webhook source filtering: filter which local torrents to search when checking webhook requests
+  webhookSourceCategories: string[]
+  webhookSourceTags: string[]
+  webhookSourceExcludeCategories: string[]
+  webhookSourceExcludeTags: string[]
 }
 
 // RSS Automation constants
@@ -92,6 +103,10 @@ const DEFAULT_AUTOMATION_FORM: AutomationFormState = {
   runIntervalMinutes: DEFAULT_RSS_INTERVAL_MINUTES,
   targetInstanceIds: [],
   targetIndexerIds: [],
+  rssSourceCategories: [],
+  rssSourceTags: [],
+  rssSourceExcludeCategories: [],
+  rssSourceExcludeTags: [],
 }
 
 const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
@@ -107,14 +122,16 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   completionSearchTags: ["cross-seed"],
   webhookTags: ["cross-seed"],
   inheritSourceTags: false,
-}
-
-const DEFAULT_COMPLETION_FORM: CompletionFormState = {
-  enabled: false,
-  categories: "",
-  tags: "",
-  excludeCategories: "",
-  excludeTags: "",
+  // Skip auto-resume defaults (off = preserve existing behavior)
+  skipAutoResumeRss: false,
+  skipAutoResumeSeededSearch: false,
+  skipAutoResumeCompletion: false,
+  skipAutoResumeWebhook: false,
+  // Webhook source filtering defaults - empty means no filtering (all torrents)
+  webhookSourceCategories: [],
+  webhookSourceTags: [],
+  webhookSourceExcludeCategories: [],
+  webhookSourceExcludeTags: [],
 }
 
 function parseList(value: string): string[] {
@@ -175,18 +192,73 @@ function formatDurationShort(ms: number): string {
   return parts.join(" ")
 }
 
-export function CrossSeedPage() {
+/** Aggregate categories and tags from multiple qBittorrent instances */
+function aggregateInstanceMetadata(
+  results: Array<{ categories: Record<string, { name: string; savePath: string }>; tags: string[] }>
+): { categories: Record<string, { name: string; savePath: string }>; tags: string[] } {
+  const allCategories: Record<string, { name: string; savePath: string }> = {}
+  const allTags = new Set<string>()
+  for (const result of results) {
+    for (const [name, cat] of Object.entries(result.categories)) {
+      allCategories[name] = cat
+    }
+    for (const tag of result.tags) {
+      allTags.add(tag)
+    }
+  }
+  return { categories: allCategories, tags: Array.from(allTags) }
+}
+
+/** Build category select options from categories object, preserving any manually-typed selections */
+function buildCategorySelectOptions(
+  categories: Record<string, { name: string; savePath: string }>,
+  ...selectedArrays: string[][]
+): Array<{ label: string; value: string }> {
+  const tree = buildCategoryTree(categories, {})
+  const flattened: { label: string; value: string }[] = []
+
+  const visitNodes = (nodes: CategoryNode[]) => {
+    for (const node of nodes) {
+      flattened.push({ label: node.name, value: node.name })
+      visitNodes(node.children)
+    }
+  }
+  visitNodes(tree)
+
+  // Add any extras from selected arrays that aren't in the tree
+  const allSelected = selectedArrays.flat()
+  for (const cat of allSelected) {
+    if (!flattened.some(opt => opt.value === cat)) {
+      flattened.push({ label: cat, value: cat })
+    }
+  }
+
+  return flattened
+}
+
+/** Build tag select options from available tags, preserving any manually-typed selections */
+function buildTagSelectOptions(
+  availableTags: string[],
+  ...selectedArrays: string[][]
+): Array<{ label: string; value: string }> {
+  const allTags = new Set([...availableTags, ...selectedArrays.flat()])
+  return Array.from(allTags).map(tag => ({ label: tag, value: tag }))
+}
+
+interface CrossSeedPageProps {
+  activeTab: "automation" | "search" | "global"
+  onTabChange: (tab: "automation" | "search" | "global") => void
+}
+
+export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const queryClient = useQueryClient()
   const { formatDate } = useDateTimeFormatters()
 
   // RSS Automation state
   const [automationForm, setAutomationForm] = useState<AutomationFormState>(DEFAULT_AUTOMATION_FORM)
   const [globalSettings, setGlobalSettings] = useState<GlobalCrossSeedSettings>(DEFAULT_GLOBAL_SETTINGS)
-  const [completionForm, setCompletionForm] = useState<CompletionFormState>(DEFAULT_COMPLETION_FORM)
-  const [completionInstanceId, setCompletionInstanceId] = useState<number | null>(null)
   const [formInitialized, setFormInitialized] = useState(false)
   const [globalSettingsInitialized, setGlobalSettingsInitialized] = useState(false)
-  const [completionFormInitialized, setCompletionFormInitialized] = useState(false)
   const [dryRun, setDryRun] = useState(false)
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
 
@@ -302,19 +374,50 @@ export function CrossSeedPage() {
     enabled: !!searchInstanceId,
   })
 
+  // Fetch categories/tags from all RSS Automation target instances (aggregated)
+  const { data: rssSourceMetadata } = useQuery({
+    queryKey: ["cross-seed", "rss-source-metadata", automationForm.targetInstanceIds],
+    queryFn: async () => {
+      if (automationForm.targetInstanceIds.length === 0) return null
+      const results = await Promise.all(
+        automationForm.targetInstanceIds.map(async (instanceId) => {
+          const [categories, tags] = await Promise.all([
+            api.getCategories(instanceId),
+            api.getTags(instanceId),
+          ])
+          return { categories, tags }
+        })
+      )
+      return aggregateInstanceMetadata(results)
+    },
+    enabled: automationForm.targetInstanceIds.length > 0,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // Fetch categories/tags from ALL active instances (for webhook source filters)
+  const { data: webhookSourceMetadata } = useQuery({
+    queryKey: ["cross-seed", "webhook-source-metadata", activeInstances.map(i => i.id)],
+    queryFn: async () => {
+      if (activeInstances.length === 0) return null
+      const results = await Promise.all(
+        activeInstances.map(async (instance) => {
+          const [categories, tags] = await Promise.all([
+            api.getCategories(instance.id),
+            api.getTags(instance.id),
+          ])
+          return { categories, tags }
+        })
+      )
+      return aggregateInstanceMetadata(results)
+    },
+    enabled: activeInstances.length > 0,
+    staleTime: 5 * 60 * 1000,
+  })
+
   const { data: searchCacheStats } = useQuery({
     queryKey: ["torznab", "search-cache", "stats", "cross-seed"],
     queryFn: () => api.getTorznabSearchCacheStats(),
     staleTime: 60 * 1000,
-  })
-
-  // Per-instance completion settings
-  const { data: instanceCompletionSettings, isLoading: isLoadingInstanceCompletion } = useQuery({
-    queryKey: ["cross-seed", "completion", completionInstanceId],
-    queryFn: () => api.getInstanceCompletionSettings(completionInstanceId!),
-    enabled: !!completionInstanceId,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
   })
 
   const formatCacheTimestamp = useCallback((value?: string | null) => {
@@ -335,6 +438,10 @@ export function CrossSeedPage() {
         runIntervalMinutes: settings.runIntervalMinutes,
         targetInstanceIds: settings.targetInstanceIds,
         targetIndexerIds: settings.targetIndexerIds,
+        rssSourceCategories: settings.rssSourceCategories ?? [],
+        rssSourceTags: settings.rssSourceTags ?? [],
+        rssSourceExcludeCategories: settings.rssSourceExcludeCategories ?? [],
+        rssSourceExcludeTags: settings.rssSourceExcludeTags ?? [],
       })
       setFormInitialized(true)
     }
@@ -357,31 +464,20 @@ export function CrossSeedPage() {
         completionSearchTags: settings.completionSearchTags ?? ["cross-seed"],
         webhookTags: settings.webhookTags ?? ["cross-seed"],
         inheritSourceTags: settings.inheritSourceTags ?? false,
+        // Skip auto-resume settings
+        skipAutoResumeRss: settings.skipAutoResumeRss ?? false,
+        skipAutoResumeSeededSearch: settings.skipAutoResumeSeededSearch ?? false,
+        skipAutoResumeCompletion: settings.skipAutoResumeCompletion ?? false,
+        skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
+        // Webhook source filtering
+        webhookSourceCategories: settings.webhookSourceCategories ?? [],
+        webhookSourceTags: settings.webhookSourceTags ?? [],
+        webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
+        webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
       })
       setGlobalSettingsInitialized(true)
     }
   }, [settings, globalSettingsInitialized])
-
-  // Initialize completionInstanceId when instances load
-  useEffect(() => {
-    if (!completionInstanceId && activeInstances.length > 0) {
-      setCompletionInstanceId(activeInstances[0].id)
-    }
-  }, [activeInstances, completionInstanceId])
-
-  // Reset completion form when instance changes or settings load
-  useEffect(() => {
-    if (instanceCompletionSettings) {
-      setCompletionForm({
-        enabled: instanceCompletionSettings.enabled,
-        categories: instanceCompletionSettings.categories.join(", "),
-        tags: instanceCompletionSettings.tags.join(", "),
-        excludeCategories: instanceCompletionSettings.excludeCategories.join(", "),
-        excludeTags: instanceCompletionSettings.excludeTags.join(", "),
-      })
-      setCompletionFormInitialized(true)
-    }
-  }, [instanceCompletionSettings])
 
   useEffect(() => {
     if (!searchSettings || searchSettingsInitialized) {
@@ -427,6 +523,10 @@ export function CrossSeedPage() {
         runIntervalMinutes: settings.runIntervalMinutes,
         targetInstanceIds: settings.targetInstanceIds,
         targetIndexerIds: settings.targetIndexerIds,
+        rssSourceCategories: settings.rssSourceCategories ?? [],
+        rssSourceTags: settings.rssSourceTags ?? [],
+        rssSourceExcludeCategories: settings.rssSourceExcludeCategories ?? [],
+        rssSourceExcludeTags: settings.rssSourceExcludeTags ?? [],
       }
 
     return {
@@ -434,6 +534,10 @@ export function CrossSeedPage() {
       runIntervalMinutes: automationSource.runIntervalMinutes,
       targetInstanceIds: automationSource.targetInstanceIds,
       targetIndexerIds: automationSource.targetIndexerIds,
+      rssSourceCategories: automationSource.rssSourceCategories,
+      rssSourceTags: automationSource.rssSourceTags,
+      rssSourceExcludeCategories: automationSource.rssSourceExcludeCategories,
+      rssSourceExcludeTags: automationSource.rssSourceExcludeTags,
     }
   }, [settings, automationForm, formInitialized])
 
@@ -456,6 +560,14 @@ export function CrossSeedPage() {
         completionSearchTags: settings.completionSearchTags ?? ["cross-seed"],
         webhookTags: settings.webhookTags ?? ["cross-seed"],
         inheritSourceTags: settings.inheritSourceTags ?? false,
+        skipAutoResumeRss: settings.skipAutoResumeRss ?? false,
+        skipAutoResumeSeededSearch: settings.skipAutoResumeSeededSearch ?? false,
+        skipAutoResumeCompletion: settings.skipAutoResumeCompletion ?? false,
+        skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
+        webhookSourceCategories: settings.webhookSourceCategories ?? [],
+        webhookSourceTags: settings.webhookSourceTags ?? [],
+        webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
+        webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
       }
 
     return {
@@ -471,6 +583,16 @@ export function CrossSeedPage() {
       completionSearchTags: globalSource.completionSearchTags,
       webhookTags: globalSource.webhookTags,
       inheritSourceTags: globalSource.inheritSourceTags,
+      // Skip auto-resume settings
+      skipAutoResumeRss: globalSource.skipAutoResumeRss,
+      skipAutoResumeSeededSearch: globalSource.skipAutoResumeSeededSearch,
+      skipAutoResumeCompletion: globalSource.skipAutoResumeCompletion,
+      skipAutoResumeWebhook: globalSource.skipAutoResumeWebhook,
+      // Webhook source filtering
+      webhookSourceCategories: globalSource.webhookSourceCategories,
+      webhookSourceTags: globalSource.webhookSourceTags,
+      webhookSourceExcludeCategories: globalSource.webhookSourceExcludeCategories,
+      webhookSourceExcludeTags: globalSource.webhookSourceExcludeTags,
     }
   }, [
     settings,
@@ -485,18 +607,6 @@ export function CrossSeedPage() {
       // Don't reinitialize the form since we just saved it
       queryClient.setQueryData(["cross-seed", "settings"], data)
       refetchStatus()
-    },
-    onError: (error: Error) => {
-      toast.error(error.message)
-    },
-  })
-
-  const updateInstanceCompletionMutation = useMutation({
-    mutationFn: (payload: { instanceId: number; settings: Omit<InstanceCrossSeedCompletionSettings, "instanceId"> }) =>
-      api.updateInstanceCompletionSettings(payload.instanceId, payload.settings),
-    onSuccess: (data) => {
-      toast.success("Completion settings updated")
-      queryClient.setQueryData(["cross-seed", "completion", data.instanceId], data)
     },
     onError: (error: Error) => {
       toast.error(error.message)
@@ -560,24 +670,6 @@ export function CrossSeedPage() {
     if (!payload) return
 
     patchSettingsMutation.mutate(payload)
-  }
-
-  const handleSaveCompletion = () => {
-    if (!completionInstanceId) {
-      toast.error("Select an instance to save completion settings")
-      return
-    }
-
-    updateInstanceCompletionMutation.mutate({
-      instanceId: completionInstanceId,
-      settings: {
-        enabled: completionForm.enabled,
-        categories: parseList(completionForm.categories),
-        tags: parseList(completionForm.tags),
-        excludeCategories: parseList(completionForm.excludeCategories),
-        excludeTags: parseList(completionForm.excludeTags),
-      },
-    })
   }
 
   const handleSaveGlobal = () => {
@@ -713,44 +805,55 @@ export function CrossSeedPage() {
   const searchTagNames = useMemo(() => searchMetadata?.tags ?? [], [searchMetadata])
 
   const searchCategorySelectOptions = useMemo(
-    () => {
-      // Build tree from available categories for indentation
-      const categories = searchMetadata?.categories ?? {}
-      const tree = buildCategoryTree(categories, {})
-      const flattened: { label: string; value: string }[] = []
-
-      const visitNodes = (nodes: CategoryNode[]) => {
-        for (const node of nodes) {
-          flattened.push({
-            label: node.name,
-            value: node.name,
-          })
-          visitNodes(node.children)
-        }
-      }
-
-      visitNodes(tree)
-
-      // Add any extra categories that were manually typed but not in the list
-      const extras = searchCategories.filter(category => !flattened.some(opt => opt.value === category))
-      for (const extra of extras) {
-        flattened.push({ label: extra, value: extra })
-      }
-
-      return flattened
-    },
+    () => buildCategorySelectOptions(searchMetadata?.categories ?? {}, searchCategories),
     [searchCategories, searchMetadata?.categories]
   )
 
   const searchTagSelectOptions = useMemo(
-    () => {
-      const extras = searchTags.filter(tag => !searchTagNames.includes(tag))
-      return Array.from(new Set([...searchTagNames, ...extras])).map(tag => ({
-        label: tag,
-        value: tag,
-      }))
-    },
+    () => buildTagSelectOptions(searchTagNames, searchTags),
     [searchTagNames, searchTags]
+  )
+
+  // RSS Source filter select options (aggregated from all target instances)
+  const rssSourceTagNames = useMemo(() => rssSourceMetadata?.tags ?? [], [rssSourceMetadata])
+
+  const rssSourceCategorySelectOptions = useMemo(
+    () => buildCategorySelectOptions(
+      rssSourceMetadata?.categories ?? {},
+      automationForm.rssSourceCategories,
+      automationForm.rssSourceExcludeCategories
+    ),
+    [automationForm.rssSourceCategories, automationForm.rssSourceExcludeCategories, rssSourceMetadata?.categories]
+  )
+
+  const rssSourceTagSelectOptions = useMemo(
+    () => buildTagSelectOptions(
+      rssSourceTagNames,
+      automationForm.rssSourceTags,
+      automationForm.rssSourceExcludeTags
+    ),
+    [rssSourceTagNames, automationForm.rssSourceTags, automationForm.rssSourceExcludeTags]
+  )
+
+  // Webhook Source filter select options (aggregated from ALL active instances)
+  const webhookSourceTagNames = useMemo(() => webhookSourceMetadata?.tags ?? [], [webhookSourceMetadata])
+
+  const webhookSourceCategorySelectOptions = useMemo(
+    () => buildCategorySelectOptions(
+      webhookSourceMetadata?.categories ?? {},
+      globalSettings.webhookSourceCategories,
+      globalSettings.webhookSourceExcludeCategories
+    ),
+    [globalSettings.webhookSourceCategories, globalSettings.webhookSourceExcludeCategories, webhookSourceMetadata?.categories]
+  )
+
+  const webhookSourceTagSelectOptions = useMemo(
+    () => buildTagSelectOptions(
+      webhookSourceTagNames,
+      globalSettings.webhookSourceTags,
+      globalSettings.webhookSourceExcludeTags
+    ),
+    [webhookSourceTagNames, globalSettings.webhookSourceTags, globalSettings.webhookSourceExcludeTags]
   )
 
   const handleStartSearchRun = () => {
@@ -809,9 +912,6 @@ export function CrossSeedPage() {
   }, [activeSearchRun])
 
   const automationEnabled = formInitialized ? automationForm.enabled : settings?.enabled ?? false
-  const completionEnabled = completionFormInitialized
-    ? completionForm.enabled
-    : instanceCompletionSettings?.enabled ?? false
 
   const searchInstanceName = useMemo(
     () => instances?.find(instance => instance.id === searchInstanceId)?.name ?? "No instance selected",
@@ -866,20 +966,16 @@ export function CrossSeedPage() {
     }
   }, [runs])
 
-  const getRunStatusVariant = (status: CrossSeedRun["status"]) => {
-    switch (status) {
-      case "success":
-        return "default"
-      case "running":
-      case "partial":
-        return "secondary"
-      case "failed":
-        return "destructive"
-      case "pending":
-      default:
-        return "outline"
+  const runSummaryStats = useMemo(() => {
+    if (!runs || runs.length === 0) {
+      return { totalAdded: 0, totalFailed: 0, totalRuns: 0 }
     }
-  }
+    return {
+      totalAdded: runs.reduce((sum, run) => sum + run.torrentsAdded, 0),
+      totalFailed: runs.reduce((sum, run) => sum + run.torrentsFailed, 0),
+      totalRuns: runs.length,
+    }
+  }, [runs])
 
 
   return (
@@ -894,9 +990,6 @@ export function CrossSeedPage() {
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <Badge variant={automationEnabled ? "default" : "secondary"}>
             Automation {automationEnabled ? "on" : "off"}
-          </Badge>
-          <Badge variant={completionEnabled ? "default" : "secondary"}>
-            On completion {completionEnabled ? "on" : "off"}
           </Badge>
         </div>
       </div>
@@ -1005,7 +1098,7 @@ export function CrossSeedPage() {
         </Card>
       </div>
 
-      <Tabs defaultValue="automation" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={(v) => onTabChange(v as typeof activeTab)} className="space-y-4">
         <TabsList className="grid w-full grid-cols-3 gap-2 md:w-auto">
           <TabsTrigger value="automation">Automation</TabsTrigger>
           <TabsTrigger value="search">Seeded search</TabsTrigger>
@@ -1134,69 +1227,301 @@ export function CrossSeedPage() {
                 </div>
               </div>
 
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-3">
+                  <Label>Include categories</Label>
+                  <MultiSelect
+                    options={rssSourceCategorySelectOptions}
+                    selected={automationForm.rssSourceCategories}
+                    onChange={values => setAutomationForm(prev => ({ ...prev, rssSourceCategories: values }))}
+                    placeholder={
+                      automationForm.targetInstanceIds.length > 0
+                        ? rssSourceCategorySelectOptions.length ? "All categories (leave empty for all)" : "Type to add categories"
+                        : "Select target instances to load categories"
+                    }
+                    creatable
+                    disabled={automationForm.targetInstanceIds.length === 0}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {automationForm.rssSourceCategories.length === 0
+                      ? "All categories will be included."
+                      : `Only ${automationForm.rssSourceCategories.length} selected categor${automationForm.rssSourceCategories.length === 1 ? "y" : "ies"} will be matched.`}
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <Label>Include tags</Label>
+                  <MultiSelect
+                    options={rssSourceTagSelectOptions}
+                    selected={automationForm.rssSourceTags}
+                    onChange={values => setAutomationForm(prev => ({ ...prev, rssSourceTags: values }))}
+                    placeholder={
+                      automationForm.targetInstanceIds.length > 0
+                        ? rssSourceTagSelectOptions.length ? "All tags (leave empty for all)" : "Type to add tags"
+                        : "Select target instances to load tags"
+                    }
+                    creatable
+                    disabled={automationForm.targetInstanceIds.length === 0}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {automationForm.rssSourceTags.length === 0
+                      ? "All tags will be included."
+                      : `Only ${automationForm.rssSourceTags.length} selected tag${automationForm.rssSourceTags.length === 1 ? "" : "s"} will be matched.`}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-3">
+                  <Label>Exclude categories</Label>
+                  <MultiSelect
+                    options={rssSourceCategorySelectOptions}
+                    selected={automationForm.rssSourceExcludeCategories}
+                    onChange={values => setAutomationForm(prev => ({ ...prev, rssSourceExcludeCategories: values }))}
+                    placeholder={
+                      automationForm.targetInstanceIds.length > 0
+                        ? "None"
+                        : "Select target instances to load categories"
+                    }
+                    creatable
+                    disabled={automationForm.targetInstanceIds.length === 0}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {automationForm.rssSourceExcludeCategories.length === 0
+                      ? "No categories excluded."
+                      : `${automationForm.rssSourceExcludeCategories.length} categor${automationForm.rssSourceExcludeCategories.length === 1 ? "y" : "ies"} will be skipped.`}
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <Label>Exclude tags</Label>
+                  <MultiSelect
+                    options={rssSourceTagSelectOptions}
+                    selected={automationForm.rssSourceExcludeTags}
+                    onChange={values => setAutomationForm(prev => ({ ...prev, rssSourceExcludeTags: values }))}
+                    placeholder={
+                      automationForm.targetInstanceIds.length > 0
+                        ? "None"
+                        : "Select target instances to load tags"
+                    }
+                    creatable
+                    disabled={automationForm.targetInstanceIds.length === 0}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {automationForm.rssSourceExcludeTags.length === 0
+                      ? "No tags excluded."
+                      : `${automationForm.rssSourceExcludeTags.length} tag${automationForm.rssSourceExcludeTags.length === 1 ? "" : "s"} will be skipped.`}
+                  </p>
+                </div>
+              </div>
+
               <Separator />
 
-              <Collapsible open={rssRunsOpen} onOpenChange={setRssRunsOpen} className="rounded-md border px-3 py-3 text-sm">
-                <CollapsibleTrigger className="flex w-full items-center justify-between text-sm font-medium hover:cursor-pointer">
-                  <span className="flex items-center gap-2">
-                    Recent RSS runs
-                    <ChevronDown className={`h-4 w-4 transition-transform ${rssRunsOpen ? "" : "-rotate-90"}`} />
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    {groupedRuns.scheduled.length > 0 && (
-                      <Badge variant="secondary" className="text-xs">{groupedRuns.scheduled.length} scheduled</Badge>
-                    )}
-                    {groupedRuns.manual.length > 0 && (
-                      <Badge variant="outline" className="text-xs">{groupedRuns.manual.length} manual</Badge>
-                    )}
-                  </div>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-2 space-y-4">
-                  {runs && runs.length > 0 ? (
-                    <div className="space-y-4">
-                      {(["scheduled", "manual", "other"] as const).map(group => {
-                        const data = groupedRuns[group]
-                        if (!data || data.length === 0) return null
-                        const title =
-                          group === "scheduled" ? "Scheduled" : group === "manual" ? "Manual" : "Other"
-                        return (
-                          <div key={group} className="space-y-2">
-                            <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
-                              <span>{title}</span>
-                              <span className="text-xs normal-case tracking-normal">(last {data.length})</span>
-                            </div>
-                            <div className="space-y-2">
-                              {data.map(run => (
-                                <div key={run.id} className="rounded border p-3 space-y-2 bg-muted/40">
-                                  <div className="flex items-center justify-between text-sm">
-                                    <Badge variant={getRunStatusVariant(run.status)} className="uppercase text-xs tracking-wide">
-                                      {run.status}
-                                    </Badge>
-                                    <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                    <Badge variant="secondary" className="text-xs">
-                                      Added {run.torrentsAdded}
-                                    </Badge>
-                                    <Badge variant="outline" className="text-xs">
-                                      Skipped {run.torrentsSkipped}
-                                    </Badge>
-                                    <Badge variant={run.torrentsFailed > 0 ? "destructive" : "outline"} className="text-xs">
-                                      Failed {run.torrentsFailed}
-                                    </Badge>
-                                    <span className="text-xs">{run.totalFeedItems} feed items</span>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )
-                      })}
+              <Collapsible open={rssRunsOpen} onOpenChange={setRssRunsOpen}>
+                <div className="rounded-xl border bg-card text-card-foreground shadow-sm">
+                  <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-4 hover:cursor-pointer text-left hover:bg-muted/50 transition-colors rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <History className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Recent RSS runs</span>
+                      {runs && runs.length > 0 ? (
+                        <Badge variant="secondary" className="text-xs">
+                          {runSummaryStats.totalRuns} runs • +{runSummaryStats.totalAdded}
+                          {runSummaryStats.totalFailed > 0 && ` • ${runSummaryStats.totalFailed} failed`}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No runs yet</span>
+                      )}
                     </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">No RSS automation runs recorded yet.</p>
-                  )}
-                </CollapsibleContent>
+                    <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${rssRunsOpen ? "rotate-180" : ""}`} />
+                  </CollapsibleTrigger>
+
+                  <CollapsibleContent>
+                    <div className="px-4 pb-3 space-y-3">
+                      {/* Grouped runs */}
+                      {runs && runs.length > 0 ? (
+                        <div className="space-y-4">
+                          {/* Scheduled runs */}
+                          {groupedRuns.scheduled.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2 text-sm font-medium">
+                                <Clock className="h-4 w-4 text-blue-500" />
+                                Scheduled ({groupedRuns.scheduled.length})
+                              </div>
+                              <div className="space-y-1">
+                                {groupedRuns.scheduled.map(run => {
+                                  const hasResults = run.results && run.results.length > 0
+                                  const successResults = run.results?.filter(r => r.success) ?? []
+                                  return (
+                                    <Collapsible key={run.id}>
+                                      <CollapsibleTrigger asChild disabled={!hasResults}>
+                                        <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
+                                          <div className="flex items-center gap-2 min-w-0">
+                                            {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
+                                            {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
+                                            {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
+                                            {run.status === "partial" && <AlertTriangle className="h-3 w-3 text-yellow-500 shrink-0" />}
+                                            {run.status === "pending" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
+                                            <span className="text-xs text-muted-foreground">{run.totalFeedItems} items</span>
+                                          </div>
+                                          <div className="flex items-center gap-2 shrink-0">
+                                            <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>
+                                            {run.torrentsFailed > 0 && (
+                                              <Badge variant="destructive" className="text-xs">{run.torrentsFailed} failed</Badge>
+                                            )}
+                                            <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
+                                            {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+                                          </div>
+                                        </div>
+                                      </CollapsibleTrigger>
+                                      {hasResults && (
+                                        <CollapsibleContent>
+                                          <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
+                                            {successResults.map((result, i) => (
+                                              <div key={`${result.instanceId}-${i}`} className="flex items-center gap-2 text-xs">
+                                                <Badge variant="default" className="text-[10px] shrink-0 w-20 justify-center truncate" title={result.instanceName}>{result.instanceName}</Badge>
+                                                {result.indexerName && (
+                                                  <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName}</Badge>
+                                                )}
+                                                <span className="truncate text-muted-foreground">{result.matchedTorrentName}</span>
+                                              </div>
+                                            ))}
+                                            {successResults.length === 0 && run.results && run.results.length > 0 && (
+                                              <span className="text-xs text-muted-foreground">No successful additions</span>
+                                            )}
+                                          </div>
+                                        </CollapsibleContent>
+                                      )}
+                                    </Collapsible>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Manual runs */}
+                          {groupedRuns.manual.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2 text-sm font-medium">
+                                <Zap className="h-4 w-4 text-yellow-500" />
+                                Manual ({groupedRuns.manual.length})
+                              </div>
+                              <div className="space-y-1">
+                                {groupedRuns.manual.map(run => {
+                                  const hasResults = run.results && run.results.length > 0
+                                  const successResults = run.results?.filter(r => r.success) ?? []
+                                  return (
+                                    <Collapsible key={run.id}>
+                                      <CollapsibleTrigger asChild disabled={!hasResults}>
+                                        <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
+                                          <div className="flex items-center gap-2 min-w-0">
+                                            {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
+                                            {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
+                                            {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
+                                            {run.status === "partial" && <AlertTriangle className="h-3 w-3 text-yellow-500 shrink-0" />}
+                                            {run.status === "pending" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
+                                            <span className="text-xs text-muted-foreground">{run.totalFeedItems} items</span>
+                                          </div>
+                                          <div className="flex items-center gap-2 shrink-0">
+                                            <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>
+                                            {run.torrentsFailed > 0 && (
+                                              <Badge variant="destructive" className="text-xs">{run.torrentsFailed} failed</Badge>
+                                            )}
+                                            <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
+                                            {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+                                          </div>
+                                        </div>
+                                      </CollapsibleTrigger>
+                                      {hasResults && (
+                                        <CollapsibleContent>
+                                          <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
+                                            {successResults.map((result, i) => (
+                                              <div key={`${result.instanceId}-${i}`} className="flex items-center gap-2 text-xs">
+                                                <Badge variant="default" className="text-[10px] shrink-0 w-20 justify-center truncate" title={result.instanceName}>{result.instanceName}</Badge>
+                                                {result.indexerName && (
+                                                  <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName}</Badge>
+                                                )}
+                                                <span className="truncate text-muted-foreground">{result.matchedTorrentName}</span>
+                                              </div>
+                                            ))}
+                                            {successResults.length === 0 && run.results && run.results.length > 0 && (
+                                              <span className="text-xs text-muted-foreground">No successful additions</span>
+                                            )}
+                                          </div>
+                                        </CollapsibleContent>
+                                      )}
+                                    </Collapsible>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Other runs */}
+                          {groupedRuns.other.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2 text-sm font-medium">
+                                <History className="h-4 w-4 text-muted-foreground" />
+                                Other ({groupedRuns.other.length})
+                              </div>
+                              <div className="space-y-1">
+                                {groupedRuns.other.map(run => {
+                                  const hasResults = run.results && run.results.length > 0
+                                  const successResults = run.results?.filter(r => r.success) ?? []
+                                  return (
+                                    <Collapsible key={run.id}>
+                                      <CollapsibleTrigger asChild disabled={!hasResults}>
+                                        <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
+                                          <div className="flex items-center gap-2 min-w-0">
+                                            {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
+                                            {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
+                                            {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
+                                            {run.status === "partial" && <AlertTriangle className="h-3 w-3 text-yellow-500 shrink-0" />}
+                                            {run.status === "pending" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
+                                            <span className="text-xs text-muted-foreground">{run.totalFeedItems} items</span>
+                                          </div>
+                                          <div className="flex items-center gap-2 shrink-0">
+                                            <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>
+                                            {run.torrentsFailed > 0 && (
+                                              <Badge variant="destructive" className="text-xs">{run.torrentsFailed} failed</Badge>
+                                            )}
+                                            <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
+                                            {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+                                          </div>
+                                        </div>
+                                      </CollapsibleTrigger>
+                                      {hasResults && (
+                                        <CollapsibleContent>
+                                          <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
+                                            {successResults.map((result, i) => (
+                                              <div key={`${result.instanceId}-${i}`} className="flex items-center gap-2 text-xs">
+                                                <Badge variant="default" className="text-[10px] shrink-0 w-20 justify-center truncate" title={result.instanceName}>{result.instanceName}</Badge>
+                                                {result.indexerName && (
+                                                  <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName}</Badge>
+                                                )}
+                                                <span className="truncate text-muted-foreground">{result.matchedTorrentName}</span>
+                                              </div>
+                                            ))}
+                                            {successResults.length === 0 && run.results && run.results.length > 0 && (
+                                              <span className="text-xs text-muted-foreground">No successful additions</span>
+                                            )}
+                                          </div>
+                                        </CollapsibleContent>
+                                      )}
+                                    </Collapsible>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-center py-2 text-xs text-muted-foreground">
+                          No RSS automation runs recorded yet.
+                        </div>
+                      )}
+                    </div>
+                  </CollapsibleContent>
+                </div>
               </Collapsible>
             </CardContent>
             <CardFooter className="flex flex-col-reverse gap-3 md:flex-row md:items-center md:justify-between">
@@ -1243,133 +1568,7 @@ export function CrossSeedPage() {
             </CardFooter>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Auto-search on completion</CardTitle>
-              <CardDescription>Kick off a cross-seed search the moment a torrent finishes. Torrents already tagged <span className="font-semibold text-foreground">cross-seed</span> are skipped automatically.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="space-y-3">
-                <Label>Instance</Label>
-                <Select
-                  value={completionInstanceId ? String(completionInstanceId) : ""}
-                  onValueChange={(value) => {
-                    setCompletionInstanceId(Number(value))
-                    setCompletionFormInitialized(false)
-                  }}
-                  disabled={!activeInstances.length}
-                >
-                  <SelectTrigger className="w-full md:w-64">
-                    <SelectValue placeholder="Select an instance" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {activeInstances.map(instance => (
-                      <SelectItem key={instance.id} value={String(instance.id)}>
-                        {instance.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {!activeInstances.length && (
-                  <p className="text-xs text-muted-foreground">Add an instance to configure completion settings.</p>
-                )}
-              </div>
-
-              {completionInstanceId && (
-                <div className="rounded-lg border bg-muted/40 p-4 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium">
-                        Enable for "{activeInstances.find(i => i.id === completionInstanceId)?.name}"
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Automatically search for cross-seeds when torrents complete on this instance.
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {isLoadingInstanceCompletion && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-                      <Switch
-                        id="completion-enabled"
-                        checked={completionForm.enabled}
-                        onCheckedChange={value => setCompletionForm(prev => ({ ...prev, enabled: !!value }))}
-                        disabled={!completionInstanceId || isLoadingInstanceCompletion}
-                      />
-                    </div>
-                  </div>
-
-                  {completionForm.enabled && (
-                    <>
-                      <Separator />
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div className="rounded-md border border-border/50 bg-background/30 p-3 space-y-3">
-                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Include filters</p>
-                          <div className="space-y-2">
-                            <Label htmlFor="completion-categories" className="text-xs">Categories</Label>
-                            <Input
-                              id="completion-categories"
-                              placeholder="All categories"
-                              value={completionForm.categories}
-                              onChange={event => setCompletionForm(prev => ({ ...prev, categories: event.target.value }))}
-                              disabled={isLoadingInstanceCompletion}
-                            />
-                            <p className="text-xs text-muted-foreground">Comma-separated. Leave blank for all.</p>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="completion-tags" className="text-xs">Tags</Label>
-                            <Input
-                              id="completion-tags"
-                              placeholder="All tags"
-                              value={completionForm.tags}
-                              onChange={event => setCompletionForm(prev => ({ ...prev, tags: event.target.value }))}
-                              disabled={isLoadingInstanceCompletion}
-                            />
-                            <p className="text-xs text-muted-foreground">Comma-separated. Leave blank for all.</p>
-                          </div>
-                        </div>
-
-                        <div className="rounded-md border border-border/50 bg-background/30 p-3 space-y-3">
-                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Exclude filters</p>
-                          <div className="space-y-2">
-                            <Label htmlFor="completion-exclude-categories" className="text-xs">Categories</Label>
-                            <Input
-                              id="completion-exclude-categories"
-                              placeholder="None"
-                              value={completionForm.excludeCategories}
-                              onChange={event => setCompletionForm(prev => ({ ...prev, excludeCategories: event.target.value }))}
-                              disabled={isLoadingInstanceCompletion}
-                            />
-                            <p className="text-xs text-muted-foreground">Skip torrents in these categories.</p>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="completion-exclude-tags" className="text-xs">Tags</Label>
-                            <Input
-                              id="completion-exclude-tags"
-                              placeholder="None"
-                              value={completionForm.excludeTags}
-                              onChange={event => setCompletionForm(prev => ({ ...prev, excludeTags: event.target.value }))}
-                              disabled={isLoadingInstanceCompletion}
-                            />
-                            <p className="text-xs text-muted-foreground">Skip torrents with these tags.</p>
-                          </div>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-            </CardContent>
-            {completionInstanceId && (
-              <CardFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-                <Button
-                  onClick={handleSaveCompletion}
-                  disabled={updateInstanceCompletionMutation.isPending || !completionInstanceId || isLoadingInstanceCompletion}
-                >
-                  {updateInstanceCompletionMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Save completion settings
-                </Button>
-              </CardFooter>
-            )}
-          </Card>
+          <CompletionOverview />
 
         </TabsContent>
 
@@ -1720,8 +1919,20 @@ export function CrossSeedPage() {
                   </div>
                   <div className="flex items-center justify-between gap-3">
                     <div className="space-y-0.5">
-                      <Label htmlFor="global-use-cross-category-suffix" className="font-medium">Add .cross category suffix</Label>
-                      <p className="text-xs text-muted-foreground">Append .cross to categories (e.g., movies → movies.cross) to prevent Sonarr/Radarr import loops. Disable for full TMM support.</p>
+                      <div className="flex items-center gap-1.5">
+                        <Label htmlFor="global-use-cross-category-suffix" className="font-medium">Add .cross category suffix</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Category suffix help">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent align="start" className="max-w-xs text-xs">
+                            Creates isolated categories (e.g., tv.cross) with the same save path as the base category. Cross-seeds inherit autoTMM from the matched torrent and are saved to the same location as the original files.
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Keeps cross-seeds separate from *arr applications to prevent import loops.</p>
                     </div>
                     <Switch
                       id="global-use-cross-category-suffix"
@@ -1732,8 +1943,20 @@ export function CrossSeedPage() {
                   </div>
                   <div className="flex items-center justify-between gap-3">
                     <div className="space-y-0.5">
-                      <Label htmlFor="global-use-category-from-indexer" className="font-medium">Use indexer name as category</Label>
-                      <p className="text-xs text-muted-foreground">Automatically set qBittorrent category to the indexer name. Save path is inherited from the matched torrent. Cannot be used with .cross suffix.</p>
+                      <div className="flex items-center gap-1.5">
+                        <Label htmlFor="global-use-category-from-indexer" className="font-medium">Use indexer name as category</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Indexer category help">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent align="start" className="max-w-xs text-xs">
+                            Creates a category named after the indexer. Save path and autoTMM are inherited from the matched torrent. Useful for tracking which indexer provided each cross-seed.
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Set category to indexer name. Cannot be used with .cross suffix.</p>
                     </div>
                     <Switch
                       id="global-use-category-from-indexer"
@@ -1863,6 +2086,149 @@ export function CrossSeedPage() {
                   />
                 </div>
               </div>
+
+              <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium leading-none">Auto-resume behavior</p>
+                  <p className="text-xs text-muted-foreground">
+                    Control whether cross-seed torrents are automatically resumed after hash check.
+                    When enabled, torrents remain paused for manual review.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="skip-auto-resume-rss" className="font-medium">Skip for RSS</Label>
+                      <p className="text-xs text-muted-foreground">Keep RSS automation torrents paused</p>
+                    </div>
+                    <Switch
+                      id="skip-auto-resume-rss"
+                      checked={globalSettings.skipAutoResumeRss}
+                      onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeRss: !!value }))}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="skip-auto-resume-seeded" className="font-medium">Skip for Seeded Search</Label>
+                      <p className="text-xs text-muted-foreground">Keep seeded search & interactive dialog torrents paused</p>
+                    </div>
+                    <Switch
+                      id="skip-auto-resume-seeded"
+                      checked={globalSettings.skipAutoResumeSeededSearch}
+                      onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeSeededSearch: !!value }))}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="skip-auto-resume-completion" className="font-medium">Skip for Completion</Label>
+                      <p className="text-xs text-muted-foreground">Keep completion-triggered torrents paused</p>
+                    </div>
+                    <Switch
+                      id="skip-auto-resume-completion"
+                      checked={globalSettings.skipAutoResumeCompletion}
+                      onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeCompletion: !!value }))}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="skip-auto-resume-webhook" className="font-medium">Skip for Webhook</Label>
+                      <p className="text-xs text-muted-foreground">Keep /apply webhook torrents paused</p>
+                    </div>
+                    <Switch
+                      id="skip-auto-resume-webhook"
+                      checked={globalSettings.skipAutoResumeWebhook}
+                      onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeWebhook: !!value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <Collapsible className="rounded-lg border border-border/70 bg-muted/40">
+                <CollapsibleTrigger className="flex w-full items-center justify-between p-4 font-medium [&[data-state=open]>svg]:rotate-180">
+                  <span>Webhook Source Filters</span>
+                  <ChevronDown className="h-4 w-4 transition-transform duration-200" />
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="border-t border-border/70 p-4 pt-4 space-y-4">
+                    <p className="text-xs text-muted-foreground">
+                      Filter which local torrents are considered when autobrr calls the webhook endpoint.
+                      Empty filters mean all torrents are checked. If you configure both category and tag filters, torrents must match both.
+                    </p>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-3">
+                        <Label>Exclude categories</Label>
+                        <MultiSelect
+                          options={webhookSourceCategorySelectOptions}
+                          selected={globalSettings.webhookSourceExcludeCategories}
+                          onChange={values => setGlobalSettings(prev => ({ ...prev, webhookSourceExcludeCategories: values }))}
+                          placeholder={webhookSourceCategorySelectOptions.length ? "None" : "Type to add categories"}
+                          creatable
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {globalSettings.webhookSourceExcludeCategories.length === 0
+                            ? "No categories excluded."
+                            : `${globalSettings.webhookSourceExcludeCategories.length} categor${globalSettings.webhookSourceExcludeCategories.length === 1 ? "y" : "ies"} will be skipped.`}
+                        </p>
+                      </div>
+
+                      <div className="space-y-3">
+                        <Label>Exclude tags</Label>
+                        <MultiSelect
+                          options={webhookSourceTagSelectOptions}
+                          selected={globalSettings.webhookSourceExcludeTags}
+                          onChange={values => setGlobalSettings(prev => ({ ...prev, webhookSourceExcludeTags: values }))}
+                          placeholder={webhookSourceTagSelectOptions.length ? "None" : "Type to add tags"}
+                          creatable
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {globalSettings.webhookSourceExcludeTags.length === 0
+                            ? "No tags excluded."
+                            : `${globalSettings.webhookSourceExcludeTags.length} tag${globalSettings.webhookSourceExcludeTags.length === 1 ? "" : "s"} will be skipped.`}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-3">
+                        <Label>Include categories</Label>
+                        <MultiSelect
+                          options={webhookSourceCategorySelectOptions}
+                          selected={globalSettings.webhookSourceCategories}
+                          onChange={values => setGlobalSettings(prev => ({ ...prev, webhookSourceCategories: values }))}
+                          placeholder={webhookSourceCategorySelectOptions.length ? "All categories (leave empty for all)" : "Type to add categories"}
+                          creatable
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {globalSettings.webhookSourceCategories.length === 0
+                            ? "All categories will be included."
+                            : `Only ${globalSettings.webhookSourceCategories.length} selected categor${globalSettings.webhookSourceCategories.length === 1 ? "y" : "ies"} will be matched.`}
+                        </p>
+                      </div>
+
+                      <div className="space-y-3">
+                        <Label>Include tags</Label>
+                        <MultiSelect
+                          options={webhookSourceTagSelectOptions}
+                          selected={globalSettings.webhookSourceTags}
+                          onChange={values => setGlobalSettings(prev => ({ ...prev, webhookSourceTags: values }))}
+                          placeholder={webhookSourceTagSelectOptions.length ? "All tags (leave empty for all)" : "Type to add tags"}
+                          creatable
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {globalSettings.webhookSourceTags.length === 0
+                            ? "All tags will be included."
+                            : `Only ${globalSettings.webhookSourceTags.length} selected tag${globalSettings.webhookSourceTags.length === 1 ? "" : "s"} will be matched.`}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
 
               <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">

@@ -9,14 +9,17 @@ import { TorrentCreatorDialog } from "@/components/torrents/TorrentCreatorDialog
 import { TorrentDetailsPanel } from "@/components/torrents/TorrentDetailsPanel"
 import { TorrentTableResponsive } from "@/components/torrents/TorrentTableResponsive"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { VisuallyHidden } from "@/components/ui/visually-hidden"
+import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilters } from "@/hooks/usePersistedFilters"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { cn } from "@/lib/utils"
 import type { Category, Torrent, TorrentCounts } from "@/types"
-import { useCallback, useEffect, useState } from "react"
+import type { ImperativePanelHandle } from "react-resizable-panels"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 interface TorrentsProps {
   instanceId: number
@@ -29,6 +32,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   const [filters, setFilters] = usePersistedFilters(instanceId)
   const [filterSidebarCollapsed] = usePersistedFilterSidebarState(false)
   const { viewMode } = usePersistedCompactViewState("normal")
+  const { clearSelection } = useTorrentSelection()
 
   // Sidebar width: 320px normal, 260px dense
   const sidebarWidth = viewMode === "dense" ? "16.25rem" : "20rem"
@@ -36,6 +40,16 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   const [initialDetailsTab, setInitialDetailsTab] = useState<string | undefined>(undefined)
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
   const handleInitialTabConsumed = useCallback(() => setInitialDetailsTab(undefined), [])
+
+  // Mobile detection for responsive layout
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return false
+    return window.innerWidth < 768
+  })
+
+  // Ref for controlling the details panel imperatively (auto-expand/collapse)
+  const detailsPanelRef = useRef<ImperativePanelHandle>(null)
+
   // Navigation is handled by parent component via onSearchChange prop
 
   // Check if add torrent modal should be open
@@ -175,6 +189,59 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
     return () => window.removeEventListener("qui-open-mobile-filters", handler)
   }, [])
 
+  // Mobile detection media query listener
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 767px)")
+
+    const handleMobileChange = (event: MediaQueryListEvent) => {
+      setIsMobile(event.matches)
+    }
+
+    // Set initial value
+    setIsMobile(mediaQuery.matches)
+
+    // Add listener
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleMobileChange)
+      return () => mediaQuery.removeEventListener("change", handleMobileChange)
+    } else {
+      // Legacy fallback
+      const legacyMediaQuery = mediaQuery as MediaQueryList & {
+        addListener?: (listener: (event: MediaQueryListEvent) => void) => void
+        removeListener?: (listener: (event: MediaQueryListEvent) => void) => void
+      }
+      legacyMediaQuery.addListener?.(handleMobileChange)
+      return () => legacyMediaQuery.removeListener?.(handleMobileChange)
+    }
+  }, [])
+
+  // Auto-expand details panel when a torrent is selected on desktop
+  useEffect(() => {
+    if (!isMobile && selectedTorrent && detailsPanelRef.current?.isCollapsed()) {
+      detailsPanelRef.current.expand()
+    }
+  }, [selectedTorrent, isMobile])
+
+  // Unified Escape handler: close panel and clear selection atomically
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return
+      if (e.defaultPrevented) return
+
+      // Skip if a dialog is open (dialogs handle their own Escape)
+      if (document.querySelector("[role=\"dialog\"]")) return
+
+      e.preventDefault()
+
+      // Close panel and clear selection in one action
+      setSelectedTorrent(null)
+      clearSelection()
+    }
+
+    window.addEventListener("keydown", handleEscape)
+    return () => window.removeEventListener("keydown", handleEscape)
+  }, [clearSelection])
+
   // Close the mobile filters sheet when viewport switches to desktop layout
   useEffect(() => {
     const mediaQuery = window.matchMedia("(min-width: 768px)")
@@ -220,7 +287,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
       >
         <div
           className={cn(
-            "overflow-hidden transition-[transform,opacity,width] duration-300 ease-in-out",
+            "h-full overflow-hidden transition-[transform,opacity,width] duration-300 ease-in-out",
             filterSidebarCollapsed ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100"
           )}
           style={{ width: sidebarWidth }}
@@ -281,51 +348,115 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
-        <div className="px-4 sm:px-0 flex flex-col h-full">
-          <div className="flex-1 min-h-0">
-            <TorrentTableResponsive
-              instanceId={instanceId}
-              filters={filters}
-              selectedTorrent={selectedTorrent}
-              onTorrentSelect={handleTorrentSelect}
-              addTorrentModalOpen={isAddTorrentModalOpen}
-              onAddTorrentModalChange={handleAddTorrentModalChange}
-              onFilteredDataUpdate={handleFilteredDataUpdate}
-              onFilterChange={setFilters}
-            />
+        {/* Desktop: Resizable vertical layout with bottom details panel */}
+        {/* Use React conditional rendering to avoid duplicate dialogs */}
+        {!isMobile && (
+          <div className="flex flex-col h-full">
+            <ResizablePanelGroup
+              direction="vertical"
+              autoSaveId="qui-torrent-details-panel"
+            >
+              <ResizablePanel
+                defaultSize={selectedTorrent ? 60 : 100}
+                minSize={30}
+              >
+                <div className="h-full">
+                  <TorrentTableResponsive
+                    instanceId={instanceId}
+                    filters={filters}
+                    selectedTorrent={selectedTorrent}
+                    onTorrentSelect={handleTorrentSelect}
+                    addTorrentModalOpen={isAddTorrentModalOpen}
+                    onAddTorrentModalChange={handleAddTorrentModalChange}
+                    onFilteredDataUpdate={handleFilteredDataUpdate}
+                    onFilterChange={setFilters}
+                  />
+                </div>
+              </ResizablePanel>
+
+              {selectedTorrent && (
+                <>
+                  <ResizableHandle withHandle />
+                  <ResizablePanel
+                    ref={detailsPanelRef}
+                    defaultSize={40}
+                    minSize={15}
+                    maxSize={70}
+                    collapsible
+                    collapsedSize={0}
+                    onCollapse={() => {
+                      // When user collapses the panel, deselect the torrent
+                      setSelectedTorrent(null)
+                    }}
+                  >
+                    <div className="h-full border-t bg-background">
+                      <TorrentDetailsPanel
+                        instanceId={instanceId}
+                        torrent={selectedTorrent}
+                        initialTab={initialDetailsTab}
+                        onInitialTabConsumed={handleInitialTabConsumed}
+                        layout="horizontal"
+                        onClose={() => setSelectedTorrent(null)}
+                      />
+                    </div>
+                  </ResizablePanel>
+                </>
+              )}
+            </ResizablePanelGroup>
           </div>
-        </div>
+        )}
+
+        {/* Mobile: Full height table with Sheet overlay */}
+        {isMobile && (
+          <div className="flex flex-col h-full px-4">
+            <div className="flex-1 min-h-0">
+              <TorrentTableResponsive
+                instanceId={instanceId}
+                filters={filters}
+                selectedTorrent={selectedTorrent}
+                onTorrentSelect={handleTorrentSelect}
+                addTorrentModalOpen={isAddTorrentModalOpen}
+                onAddTorrentModalChange={handleAddTorrentModalChange}
+                onFilteredDataUpdate={handleFilteredDataUpdate}
+                onFilterChange={setFilters}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
-      <Sheet
-        open={!!selectedTorrent}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSelectedTorrent(null)
-          }
-        }}
-      >
-        <SheetContent
-          side="right"
-          className="w-full md:w-[640px] p-0 gap-0"
+      {/* Mobile Details Sheet - only renders on mobile */}
+      {isMobile && (
+        <Sheet
+          open={!!selectedTorrent}
+          onOpenChange={(open) => {
+            if (!open) {
+              setSelectedTorrent(null)
+            }
+          }}
         >
-          <SheetHeader className="sr-only">
-            <VisuallyHidden>
-              <SheetTitle>
-                {selectedTorrent ? `Torrent Details: ${selectedTorrent.name}` : "Torrent Details"}
-              </SheetTitle>
-            </VisuallyHidden>
-          </SheetHeader>
-          {selectedTorrent && (
-            <TorrentDetailsPanel
-              instanceId={instanceId}
-              torrent={selectedTorrent}
-              initialTab={initialDetailsTab}
-              onInitialTabConsumed={handleInitialTabConsumed}
-            />
-          )}
-        </SheetContent>
-      </Sheet>
+          <SheetContent
+            side="right"
+            className="w-full p-0 gap-0"
+          >
+            <SheetHeader className="sr-only">
+              <VisuallyHidden>
+                <SheetTitle>
+                  {selectedTorrent ? `Torrent Details: ${selectedTorrent.name}` : "Torrent Details"}
+                </SheetTitle>
+              </VisuallyHidden>
+            </SheetHeader>
+            {selectedTorrent && (
+              <TorrentDetailsPanel
+                instanceId={instanceId}
+                torrent={selectedTorrent}
+                initialTab={initialDetailsTab}
+                onInitialTabConsumed={handleInitialTabConsumed}
+              />
+            )}
+          </SheetContent>
+        </Sheet>
+      )}
 
       {/* Torrent Creator Dialog */}
       <TorrentCreatorDialog

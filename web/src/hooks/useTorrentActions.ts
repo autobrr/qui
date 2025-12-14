@@ -31,6 +31,7 @@ export const TORRENT_ACTIONS = {
   SET_UPLOAD_LIMIT: "setUploadLimit",
   SET_DOWNLOAD_LIMIT: "setDownloadLimit",
   SET_LOCATION: "setLocation",
+  TOGGLE_SEQUENTIAL_DOWNLOAD: "toggleSequentialDownload",
 } as const
 
 // Derive the type from the const object - single source of truth
@@ -1007,6 +1008,9 @@ function showSuccessToast(action: TorrentAction, count: number, deleteFiles?: bo
       break
     case "setLocation":
       toast.success(`Set location for ${count} ${torrentText}`)
+      break
+    case "toggleSequentialDownload":
+      toast.success(`${enable ? "Enabled" : "Disabled"} sequential download for ${count} ${torrentText}`)
       break
   }
 }

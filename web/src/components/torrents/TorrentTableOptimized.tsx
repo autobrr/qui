@@ -977,6 +977,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         return "state"
       case "num_seeds":
         return "num_complete" // Sort by total seeds, not connected
+      case "num_leechs":
+        return "num_incomplete" // Sort by total peers, not connected
       default:
         return columnId
     }
@@ -2043,12 +2045,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
   }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length, lastUserAction, resetSelectionState])
 
-  // Clear selection handler for keyboard navigation
-  const clearSelection = useCallback(() => {
-    resetSelectionState()
-  }, [resetSelectionState])
-
-  // Set up keyboard navigation with selection clearing
+  // Set up keyboard navigation (PageUp/Down, Home/End)
   useKeyboardNavigation({
     parentRef,
     virtualizer,
@@ -2057,8 +2054,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     isLoadingMore,
     loadMore,
     estimatedRowHeight,
-    onClearSelection: clearSelection,
-    hasSelection: isAllSelected || selectedRowIds.length > 0,
   })
 
   // Apply Ctrl/Cmd+A shortcut to select all torrents
@@ -2354,7 +2349,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         isMac={isMac}
         enabled={sortedTorrents.length > 0}
       />
-      <div className="h-full flex flex-col">
+      <div className="relative h-full flex flex-col">
       {/* Search and Actions */}
       <div className="flex flex-col gap-2 flex-shrink-0">
         {/* Search bar row */}
@@ -2740,6 +2735,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             handleRowSelection(torrent.hash, !isRowSelected, row.id)
                             lastSelectedIndexRef.current = currentIndex
                           } else {
+                            // Plain click - open details panel
+                            // If row is already selected, keep selection intact
+                            // Otherwise, select only this torrent (replace selection)
+                            if (!isRowSelected) {
+                              const allRows = table.getRowModel().rows
+                              const currentIndex = allRows.findIndex(r => r.id === row.id)
+                              setIsAllSelected(false)
+                              setExcludedFromSelectAll(new Set())
+                              setRowSelection({ [row.id]: true })
+                              lastSelectedIndexRef.current = currentIndex
+                            }
                             onTorrentSelect?.(torrent)
                           }
                         }}
@@ -2853,7 +2859,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             handleRowSelection(torrent.hash, !isRowSelected, row.id)
                             lastSelectedIndexRef.current = currentIndex
                           } else {
-                            // Plain click - open details without changing checkbox selection state
+                            // Plain click - open details panel
+                            // If row is already selected, keep selection intact
+                            // Otherwise, select only this torrent (replace selection)
+                            if (!isRowSelected) {
+                              const allRows = table.getRowModel().rows
+                              const currentIndex = allRows.findIndex(r => r.id === row.id)
+                              setIsAllSelected(false)
+                              setExcludedFromSelectAll(new Set())
+                              setRowSelection({ [row.id]: true })
+                              lastSelectedIndexRef.current = currentIndex
+                            }
                             onTorrentSelect?.(torrent)
                           }
                         }

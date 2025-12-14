@@ -363,6 +363,8 @@ qui includes intelligent cross-seeding capabilities that help you automatically 
 
 > [!NOTE]
 > qui adds cross-seeded torrents by inheriting the **Automatic Torrent Management (AutoTMM)** state from the matched torrent. If the matched torrent uses AutoTMM, the cross-seed will too; if the matched torrent has a custom save path (AutoTMM disabled), the cross-seed will use the same explicit path. This reuses existing files directly without creating hardlinks.
+>
+> For detailed information about category behavior, save paths, and best practices, see the [Cross-Seeding Guide](docs/CROSS_SEEDING.md).
 
 ### Prerequisites
 
@@ -562,6 +564,24 @@ When `/check` returns `200 OK`, send the torrent to `/api/cross-seed/apply`:
 - `category` (optional) - Override category (defaults to matched torrent's category)
 
 Cross-seeded torrents are added paused with `skip_checking=true`. qui polls the torrent state and auto-resumes if progress meets the size tolerance threshold. If progress is too low, it remains paused for manual review.
+
+#### Webhook Source Filters
+
+By default, the webhook endpoint scans **all** torrents on your instances when looking for matches. You can configure filters to exclude certain categories or tags from being matched:
+
+- **Exclude Categories:** Skip torrents in specific categories (e.g., `cross-seed-link`)
+- **Exclude Tags:** Skip torrents with specific tags (e.g., `no-cross-seed`)
+- **Include Categories:** Only match against torrents in these categories (leave empty for all)
+- **Include Tags:** Only match against torrents with these tags (leave empty for all)
+
+This is useful when:
+- You have a legacy cross-seed category that shouldn't be re-matched
+- Certain content types should never be considered for cross-seeding
+- You want to exclude torrents with specific metadata tags
+
+**Note:** Exclude filters take precedence over include filters. Tag matching is case-sensitive. When both category and tag include filters are configured, a torrent must pass both filter checks (matching at least one allowed category AND at least one allowed tag).
+
+Configure in qui UI: **Cross-Seed → Global → Webhook Source Filters**
 
 ### Troubleshooting
 

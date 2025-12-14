@@ -30,6 +30,7 @@ import type { Torrent, TorrentFilters } from "@/types"
 import {
   ArrowDown,
   ArrowUp,
+  Blocks,
   CheckCircle,
   ChevronsDown,
   ChevronsUp,
@@ -454,6 +455,27 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
             </TooltipTrigger>
             <TooltipContent>Reannounce</TooltipContent>
           </Tooltip>
+
+          {(() => {
+            const seqDlStates = selectedTorrents?.map(t => t.seq_dl) ?? []
+            const allSeqDlEnabled = seqDlStates.length > 0 && seqDlStates.every(state => state === true)
+
+            return (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => triggerAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, { enable: !allSeqDlEnabled })}
+                    disabled={isPending || isDisabled}
+                  >
+                    <Blocks className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{allSeqDlEnabled ? "Disable" : "Enable"} Sequential Download</TooltipContent>
+              </Tooltip>
+            )
+          })()}
 
           {/* Tag Actions */}
           <DropdownMenu>

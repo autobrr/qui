@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"slices"
 	"strings"
 	"time"
 
@@ -136,12 +137,7 @@ func variantValueMatches(value, target string) bool {
 		return true
 	}
 	tokens := variantTokens(value)
-	for _, token := range tokens {
-		if token == target {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(tokens, target)
 }
 
 func variantTokens(value string) []string {

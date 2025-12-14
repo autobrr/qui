@@ -26,16 +26,47 @@ func NewTrackerCustomizationHandler(store *models.TrackerCustomizationStore) *Tr
 }
 
 type TrackerCustomizationPayload struct {
-	DisplayName string   `json:"displayName"`
-	Domains     []string `json:"domains"`
+	DisplayName     string   `json:"displayName"`
+	Domains         []string `json:"domains"`
+	IncludedInStats []string `json:"includedInStats,omitempty"`
 }
 
 func (p *TrackerCustomizationPayload) toModel(id int) *models.TrackerCustomization {
+	domains := normalizeDomains(p.Domains)
+	included := sanitizeIncludedInStats(normalizeDomains(p.IncludedInStats), domains)
+
 	return &models.TrackerCustomization{
-		ID:          id,
-		DisplayName: strings.TrimSpace(p.DisplayName),
-		Domains:     normalizeDomains(p.Domains),
+		ID:              id,
+		DisplayName:     strings.TrimSpace(p.DisplayName),
+		Domains:         domains,
+		IncludedInStats: included,
 	}
+}
+
+// sanitizeIncludedInStats filters the included list to only contain secondary domains that:
+// 1. Exist in the domains list
+// 2. Are not the primary domain (first in list - primary is always included implicitly)
+func sanitizeIncludedInStats(included, domains []string) []string {
+	if len(domains) == 0 || len(included) == 0 {
+		return nil
+	}
+
+	// Build set of valid secondary domains (excluding primary)
+	validForInclusion := make(map[string]struct{}, len(domains)-1)
+	for i, d := range domains {
+		if i > 0 { // Skip primary domain
+			validForInclusion[d] = struct{}{}
+		}
+	}
+
+	// Filter included to only valid secondary domains
+	var sanitized []string
+	for _, inc := range included {
+		if _, ok := validForInclusion[inc]; ok {
+			sanitized = append(sanitized, inc)
+		}
+	}
+	return sanitized
 }
 
 func (h *TrackerCustomizationHandler) List(w http.ResponseWriter, r *http.Request) {

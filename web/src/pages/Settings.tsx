@@ -50,20 +50,15 @@ import { copyTextToClipboard, formatBytes } from "@/lib/utils"
 import type { Instance, TorznabSearchCacheStats } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useNavigate, useSearch } from "@tanstack/react-router"
+import type { SettingsSearch } from "@/routes/_authenticated/settings"
 import { Clock, Copy, Database, ExternalLink, Key, Layers, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
 import type { FormEvent } from "react"
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
-const settingsTabs = ["instances", "indexers", "search-cache", "client-api", "api", "external-programs", "datetime", "themes", "security"] as const
-type SettingsTab = (typeof settingsTabs)[number]
+type SettingsTab = NonNullable<SettingsSearch["tab"]>
 
 const TORZNAB_CACHE_MIN_TTL_MINUTES = 1440
-
-const isSettingsTab = (value: unknown): value is SettingsTab => {
-  return typeof value === "string" && settingsTabs.some((tab) => tab === value)
-}
 
 function ChangePasswordForm() {
   const mutation = useMutation({
@@ -428,33 +423,24 @@ function ApiKeysManager() {
   )
 }
 
-function InstancesManager() {
+interface InstancesManagerProps {
+  search: SettingsSearch
+  onSearchChange: (search: SettingsSearch) => void
+}
+
+function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
   const { instances, isLoading, reorderInstances, isReordering } = useInstances()
-  const navigate = useNavigate()
-  const search = useSearch({ strict: false }) as Record<string, unknown> | undefined
-  const tab = isSettingsTab(search?.tab) ? search?.tab : undefined
-  const modal = typeof search?.modal === "string" ? search?.modal : undefined
-  const isDialogOpen = tab === "instances" && modal === "add-instance"
+  const isDialogOpen = search.tab === "instances" && search.modal === "add-instance"
   const [editingInstance, setEditingInstance] = useState<Instance | undefined>()
 
   const handleOpenDialog = (instance?: Instance) => {
     setEditingInstance(instance)
-    const nextSearch: Record<string, unknown> = {
-      ...(search ?? {}),
-      tab: "instances",
-      modal: "add-instance",
-    }
-    navigate({ search: nextSearch as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+    onSearchChange({ ...search, tab: "instances", modal: "add-instance" })
   }
 
   const handleCloseDialog = () => {
     setEditingInstance(undefined)
-    const nextSearch: Record<string, unknown> = {
-      ...(search ?? {}),
-      tab: "instances",
-    }
-    delete nextSearch.modal
-    navigate({ search: nextSearch as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+    onSearchChange({ tab: "instances" })
   }
 
   const handleReorder = (instanceId: number, direction: -1 | 1) => {
@@ -702,21 +688,16 @@ function TorznabSearchCachePanel() {
   )
 }
 
-export function Settings() {
-  const navigate = useNavigate()
-  const search = useSearch({ strict: false }) as Record<string, unknown> | undefined
-  const tabFromSearch = isSettingsTab(search?.tab) ? search?.tab : undefined
-  const activeTab: SettingsTab = tabFromSearch ?? "instances"
+interface SettingsProps {
+  search: SettingsSearch
+  onSearchChange: (search: SettingsSearch) => void
+}
+
+export function Settings({ search, onSearchChange }: SettingsProps) {
+  const activeTab: SettingsTab = search.tab ?? "instances"
 
   const handleTabChange = (tab: SettingsTab) => {
-    const nextSearch: Record<string, unknown> = {
-      ...(search ?? {}),
-      tab,
-    }
-    if (tab !== "instances") {
-      delete nextSearch.modal
-    }
-    navigate({ search: nextSearch as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+    onSearchChange({ tab })
   }
 
   return (
@@ -732,11 +713,7 @@ export function Settings() {
       <div className="md:hidden mb-4">
         <Select
           value={activeTab}
-          onValueChange={(value) => {
-            if (isSettingsTab(value)) {
-              handleTabChange(value)
-            }
-          }}
+          onValueChange={(value) => handleTabChange(value as SettingsTab)}
         >
           <SelectTrigger className="w-full">
             <SelectValue />
@@ -901,7 +878,7 @@ export function Settings() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <InstancesManager />
+                  <InstancesManager search={search} onSearchChange={onSearchChange} />
                 </CardContent>
               </Card>
             </div>

@@ -29,9 +29,9 @@ type CrossSeedHandler struct {
 }
 
 type automationSettingsRequest struct {
-	Enabled                      bool                       `json:"enabled"`
-	RunIntervalMinutes           int                        `json:"runIntervalMinutes"`
-	StartPaused                  bool                       `json:"startPaused"`
+	Enabled                      bool     `json:"enabled"`
+	RunIntervalMinutes           int      `json:"runIntervalMinutes"`
+	StartPaused                  bool     `json:"startPaused"`
 	Category                     *string  `json:"category"`
 	IgnorePatterns               []string `json:"ignorePatterns"`
 	TargetInstanceIDs            []int    `json:"targetInstanceIds"`
@@ -45,25 +45,40 @@ type automationSettingsRequest struct {
 }
 
 type automationSettingsPatchRequest struct {
-	Enabled                      *bool          `json:"enabled,omitempty"`
-	RunIntervalMinutes           *int           `json:"runIntervalMinutes,omitempty"`
-	StartPaused                  *bool          `json:"startPaused,omitempty"`
-	Category                     optionalString `json:"category"`
-	IgnorePatterns               *[]string      `json:"ignorePatterns,omitempty"`
-	TargetInstanceIDs            *[]int         `json:"targetInstanceIds,omitempty"`
-	TargetIndexerIDs             *[]int         `json:"targetIndexerIds,omitempty"`
-	MaxResultsPerRun             *int           `json:"maxResultsPerRun,omitempty"` // Deprecated: automation now processes full feeds and ignores this value
-	FindIndividualEpisodes       *bool          `json:"findIndividualEpisodes,omitempty"`
-	SizeMismatchTolerancePercent *float64       `json:"sizeMismatchTolerancePercent,omitempty"`
-	UseCategoryFromIndexer       *bool          `json:"useCategoryFromIndexer,omitempty"`
-	UseCrossCategorySuffix       *bool          `json:"useCrossCategorySuffix,omitempty"`
-	RunExternalProgramID         optionalInt    `json:"runExternalProgramId"`
+	Enabled            *bool          `json:"enabled,omitempty"`
+	RunIntervalMinutes *int           `json:"runIntervalMinutes,omitempty"`
+	StartPaused        *bool          `json:"startPaused,omitempty"`
+	Category           optionalString `json:"category"`
+	IgnorePatterns     *[]string      `json:"ignorePatterns,omitempty"`
+	TargetInstanceIDs  *[]int         `json:"targetInstanceIds,omitempty"`
+	TargetIndexerIDs   *[]int         `json:"targetIndexerIds,omitempty"`
+	MaxResultsPerRun   *int           `json:"maxResultsPerRun,omitempty"` // Deprecated: automation now processes full feeds and ignores this value
+	// RSS source filtering: filter which local torrents to search when checking RSS feeds
+	RSSSourceCategories        *[]string `json:"rssSourceCategories,omitempty"`
+	RSSSourceTags              *[]string `json:"rssSourceTags,omitempty"`
+	RSSSourceExcludeCategories *[]string `json:"rssSourceExcludeCategories,omitempty"`
+	RSSSourceExcludeTags       *[]string `json:"rssSourceExcludeTags,omitempty"`
+	// Webhook source filtering: filter which local torrents to search when checking webhook requests
+	WebhookSourceCategories        *[]string `json:"webhookSourceCategories,omitempty"`
+	WebhookSourceTags              *[]string `json:"webhookSourceTags,omitempty"`
+	WebhookSourceExcludeCategories *[]string `json:"webhookSourceExcludeCategories,omitempty"`
+	WebhookSourceExcludeTags       *[]string `json:"webhookSourceExcludeTags,omitempty"`
+	FindIndividualEpisodes         *bool     `json:"findIndividualEpisodes,omitempty"`
+	SizeMismatchTolerancePercent *float64    `json:"sizeMismatchTolerancePercent,omitempty"`
+	UseCategoryFromIndexer       *bool       `json:"useCategoryFromIndexer,omitempty"`
+	UseCrossCategorySuffix       *bool       `json:"useCrossCategorySuffix,omitempty"`
+	RunExternalProgramID         optionalInt `json:"runExternalProgramId"`
 	// Source-specific tagging
 	RSSAutomationTags    *[]string `json:"rssAutomationTags,omitempty"`
 	SeededSearchTags     *[]string `json:"seededSearchTags,omitempty"`
 	CompletionSearchTags *[]string `json:"completionSearchTags,omitempty"`
 	WebhookTags          *[]string `json:"webhookTags,omitempty"`
 	InheritSourceTags    *bool     `json:"inheritSourceTags,omitempty"`
+	// Skip auto-resume settings per source mode
+	SkipAutoResumeRSS          *bool `json:"skipAutoResumeRss,omitempty"`
+	SkipAutoResumeSeededSearch *bool `json:"skipAutoResumeSeededSearch,omitempty"`
+	SkipAutoResumeCompletion   *bool `json:"skipAutoResumeCompletion,omitempty"`
+	SkipAutoResumeWebhook      *bool `json:"skipAutoResumeWebhook,omitempty"`
 }
 
 type optionalString struct {
@@ -131,6 +146,14 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.TargetInstanceIDs == nil &&
 		r.TargetIndexerIDs == nil &&
 		r.MaxResultsPerRun == nil &&
+		r.RSSSourceCategories == nil &&
+		r.RSSSourceTags == nil &&
+		r.RSSSourceExcludeCategories == nil &&
+		r.RSSSourceExcludeTags == nil &&
+		r.WebhookSourceCategories == nil &&
+		r.WebhookSourceTags == nil &&
+		r.WebhookSourceExcludeCategories == nil &&
+		r.WebhookSourceExcludeTags == nil &&
 		r.FindIndividualEpisodes == nil &&
 		r.SizeMismatchTolerancePercent == nil &&
 		r.UseCategoryFromIndexer == nil &&
@@ -140,7 +163,11 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.SeededSearchTags == nil &&
 		r.CompletionSearchTags == nil &&
 		r.WebhookTags == nil &&
-		r.InheritSourceTags == nil
+		r.InheritSourceTags == nil &&
+		r.SkipAutoResumeRSS == nil &&
+		r.SkipAutoResumeSeededSearch == nil &&
+		r.SkipAutoResumeCompletion == nil &&
+		r.SkipAutoResumeWebhook == nil
 }
 
 func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, patch automationSettingsPatchRequest) {
@@ -177,6 +204,32 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	if patch.MaxResultsPerRun != nil {
 		settings.MaxResultsPerRun = *patch.MaxResultsPerRun
 	}
+	// RSS source filtering
+	if patch.RSSSourceCategories != nil {
+		settings.RSSSourceCategories = *patch.RSSSourceCategories
+	}
+	if patch.RSSSourceTags != nil {
+		settings.RSSSourceTags = *patch.RSSSourceTags
+	}
+	if patch.RSSSourceExcludeCategories != nil {
+		settings.RSSSourceExcludeCategories = *patch.RSSSourceExcludeCategories
+	}
+	if patch.RSSSourceExcludeTags != nil {
+		settings.RSSSourceExcludeTags = *patch.RSSSourceExcludeTags
+	}
+	// Webhook source filtering
+	if patch.WebhookSourceCategories != nil {
+		settings.WebhookSourceCategories = *patch.WebhookSourceCategories
+	}
+	if patch.WebhookSourceTags != nil {
+		settings.WebhookSourceTags = *patch.WebhookSourceTags
+	}
+	if patch.WebhookSourceExcludeCategories != nil {
+		settings.WebhookSourceExcludeCategories = *patch.WebhookSourceExcludeCategories
+	}
+	if patch.WebhookSourceExcludeTags != nil {
+		settings.WebhookSourceExcludeTags = *patch.WebhookSourceExcludeTags
+	}
 	if patch.FindIndividualEpisodes != nil {
 		settings.FindIndividualEpisodes = *patch.FindIndividualEpisodes
 	}
@@ -207,6 +260,19 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	}
 	if patch.InheritSourceTags != nil {
 		settings.InheritSourceTags = *patch.InheritSourceTags
+	}
+	// Skip auto-resume settings
+	if patch.SkipAutoResumeRSS != nil {
+		settings.SkipAutoResumeRSS = *patch.SkipAutoResumeRSS
+	}
+	if patch.SkipAutoResumeSeededSearch != nil {
+		settings.SkipAutoResumeSeededSearch = *patch.SkipAutoResumeSeededSearch
+	}
+	if patch.SkipAutoResumeCompletion != nil {
+		settings.SkipAutoResumeCompletion = *patch.SkipAutoResumeCompletion
+	}
+	if patch.SkipAutoResumeWebhook != nil {
+		settings.SkipAutoResumeWebhook = *patch.SkipAutoResumeWebhook
 	}
 }
 

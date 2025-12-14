@@ -32,9 +32,11 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useInstances } from "@/hooks/useInstances"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
@@ -54,7 +56,7 @@ import type {
 } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Activity, AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, Zap } from "lucide-react"
+import { Activity, AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, X, Zap } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 
@@ -124,9 +126,9 @@ const STREAM_REFRESH_INTERVAL_MS = 2000
 type InstanceUpdateResult =
   | InstanceStreamData
   | {
-      data: InstanceStreamData
-      immediate?: boolean
-    }
+    data: InstanceStreamData
+    immediate?: boolean
+  }
 
 function cloneInstanceDataRecord(source: Record<number, InstanceStreamData>) {
   const next: Record<number, InstanceStreamData> = {}
@@ -498,11 +500,11 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
     // This allows components to use SSE-based connection status instead of polled data
     const mergedInstance: InstanceResponse = state.instanceMeta
       ? {
-          ...instance,
-          connected: state.instanceMeta.connected,
-          hasDecryptionError: state.instanceMeta.hasDecryptionError,
-          recentErrors: state.instanceMeta.recentErrors,
-        }
+        ...instance,
+        connected: state.instanceMeta.connected,
+        hasDecryptionError: state.instanceMeta.hasDecryptionError,
+        recentErrors: state.instanceMeta.recentErrors,
+      }
       : instance
 
     return {
@@ -581,14 +583,14 @@ function InstanceCard({
   const rawConnectionStatus = serverState?.connection_status ?? instance.connectionStatus ?? ""
   const normalizedConnectionStatus = rawConnectionStatus ? rawConnectionStatus.trim().toLowerCase() : ""
   const formattedConnectionStatus = normalizedConnectionStatus ? normalizedConnectionStatus.replace(/_/g, " ") : ""
-  const connectionStatusDisplay = formattedConnectionStatus? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()): ""
+  const connectionStatusDisplay = formattedConnectionStatus ? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()) : ""
   const hasConnectionStatus = Boolean(formattedConnectionStatus)
 
 
   const isConnectable = normalizedConnectionStatus === "connected"
   const isFirewalled = normalizedConnectionStatus === "firewalled"
   const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : Ban
-  const connectionStatusIconClass = hasConnectionStatus? isConnectable? "text-green-500": isFirewalled? "text-amber-500": "text-destructive": ""
+  const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-green-500" : isFirewalled ? "text-amber-500" : "text-destructive" : ""
 
   const listenPort = preferences?.listen_port
   const connectionStatusTooltip = connectionStatusDisplay
@@ -675,7 +677,7 @@ function InstanceCard({
                   {altSpeedEnabled ? "Disable Alternative Speed Limits?" : "Enable Alternative Speed Limits?"}
                 </AlertDialogTitle>
                 <AlertDialogDescription>
-                  {altSpeedEnabled? `This will disable alternative speed limits for ${instance.name} and return to normal speed limits.`: `This will enable alternative speed limits for ${instance.name}, which will reduce transfer speeds based on your configured limits.`
+                  {altSpeedEnabled ? `This will disable alternative speed limits for ${instance.name} and return to normal speed limits.` : `This will enable alternative speed limits for ${instance.name}, which will reduce transfer speeds based on your configured limits.`
                   }
                 </AlertDialogDescription>
               </AlertDialogHeader>
@@ -1210,40 +1212,8 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
   )
 }
 
-interface TrackerIconImageProps {
-  tracker: string
-  trackerIcons?: Record<string, string>
-}
 
-function TrackerIconImage({ tracker, trackerIcons }: TrackerIconImageProps) {
-  const [hasError, setHasError] = useState(false)
-
-  const trimmed = tracker.trim()
-  const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
-  const src = trackerIcons?.[trimmed] ?? null
-
-  const handleImageError = () => {
-    console.debug(`[TrackerIconImage] Failed to load icon for tracker: ${trimmed}`, { src })
-    setHasError(true)
-  }
-
-  return (
-    <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-[10px] font-medium uppercase leading-none flex-shrink-0">
-      {src && !hasError ? (
-        <img
-          src={src}
-          alt=""
-          className="h-full w-full object-contain rounded-sm"
-          onError={handleImageError}
-        />
-      ) : (
-        fallbackLetter
-      )}
-    </div>
-  )
-}
-
-type TrackerSortColumn = "tracker" | "uploaded" | "downloaded" | "ratio" | "buffer" | "count" | "performance"
+type TrackerSortColumn = "tracker" | "uploaded" | "downloaded" | "ratio" | "buffer" | "count" | "size" | "performance"
 type SortDirection = "asc" | "desc"
 
 // Helper to compute ratio display values for tracker stats
@@ -1300,7 +1270,8 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
   const [selectedDomains, setSelectedDomains] = useState<Set<string>>(new Set())
   const [showCustomizeDialog, setShowCustomizeDialog] = useState(false)
   const [customizeDisplayName, setCustomizeDisplayName] = useState("")
-  const [editingCustomization, setEditingCustomization] = useState<{ id: number; domains: string[] } | null>(null)
+  const [editingCustomization, setEditingCustomization] = useState<{ id: number; domains: string[]; includedInStats: string[] } | null>(null)
+  const [includedInStats, setIncludedInStats] = useState<Set<string>>(new Set())
 
   // Import/Export state
   const [showImportDialog, setShowImportDialog] = useState(false)
@@ -1334,18 +1305,17 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
       }
     }
 
-    // Apply customizations: hide secondary domains, use display names
+    // Apply customizations: sum non-excluded domains, use display names
+    // Two-pass approach to handle domains appearing in any order in the aggregated map
     const processed = new Map<string, ProcessedTrackerStats>()
 
+    // Pass 1: Create entries for primary domains and standalone domains
     for (const [domain, stats] of aggregated) {
       const customization = domainToCustomization.get(domain.toLowerCase())
 
       if (customization) {
-        // Check if this is the primary domain (first in the list)
         const isPrimary = customization.domains[0]?.toLowerCase() === domain.toLowerCase()
-
         if (isPrimary) {
-          // Use this domain's stats with the custom display name
           processed.set(customization.displayName, {
             ...stats,
             domain,
@@ -1354,7 +1324,6 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
             customizationId: customization.id,
           })
         }
-        // Skip secondary domains - they're merged into primary
       } else {
         // No customization - use domain as-is
         processed.set(domain, {
@@ -1363,6 +1332,29 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
           displayName: domain,
           originalDomains: [domain],
         })
+      }
+    }
+
+    // Pass 2: Add stats from explicitly included secondary domains
+    for (const [domain, stats] of aggregated) {
+      const customization = domainToCustomization.get(domain.toLowerCase())
+
+      if (customization) {
+        const isPrimary = customization.domains[0]?.toLowerCase() === domain.toLowerCase()
+        const isIncluded = customization.includedInStats?.some(
+          d => d.toLowerCase() === domain.toLowerCase()
+        )
+
+        // Secondary domains only contribute if explicitly in includedInStats
+        if (!isPrimary && isIncluded) {
+          const existing = processed.get(customization.displayName)
+          if (existing) {
+            existing.uploaded += stats.uploaded
+            existing.downloaded += stats.downloaded
+            existing.totalSize += stats.totalSize
+            existing.count += stats.count
+          }
+        }
       }
     }
 
@@ -1391,6 +1383,8 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
           return multiplier * ((a.uploaded - a.downloaded) - (b.uploaded - b.downloaded))
         case "count":
           return multiplier * (a.count - b.count)
+        case "size":
+          return multiplier * (a.totalSize - b.totalSize)
         case "performance": {
           // efficiency = uploaded / totalSize (how many times content has been seeded)
           const perfA = a.totalSize > 0 ? a.uploaded / a.totalSize : 0
@@ -1437,6 +1431,11 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
     if (domains.length === 0) return
 
+    // Get included domains from state (secondary domains that contribute to stats)
+    const included = editingCustomization
+      ? editingCustomization.includedInStats
+      : Array.from(includedInStats)
+
     if (editingCustomization) {
       // Update existing
       updateCustomization.mutate(
@@ -1445,6 +1444,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
           data: {
             displayName: customizeDisplayName.trim(),
             domains,
+            includedInStats: included,
           },
         },
         {
@@ -1454,19 +1454,46 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
         }
       )
     } else {
-      // Create new
-      createCustomization.mutate(
-        {
-          displayName: customizeDisplayName.trim(),
-          domains,
-        },
-        {
-          onSuccess: () => {
-            closeCustomizeDialog()
-            clearSelection()
-          },
-        }
+      // Check if displayName already exists, merge if so
+      const existing = customizations?.find(
+        c => c.displayName.toLowerCase() === customizeDisplayName.trim().toLowerCase()
       )
+
+      if (existing) {
+        // Merge into existing - combine inclusions
+        const mergedIncluded = [...(existing.includedInStats ?? []), ...included]
+        updateCustomization.mutate(
+          {
+            id: existing.id,
+            data: {
+              displayName: existing.displayName,
+              domains: [...existing.domains, ...domains],
+              includedInStats: mergedIncluded,
+            },
+          },
+          {
+            onSuccess: () => {
+              closeCustomizeDialog()
+              clearSelection()
+            },
+          }
+        )
+      } else {
+        // Create new
+        createCustomization.mutate(
+          {
+            displayName: customizeDisplayName.trim(),
+            domains,
+            includedInStats: included,
+          },
+          {
+            onSuccess: () => {
+              closeCustomizeDialog()
+              clearSelection()
+            },
+          }
+        )
+      }
     }
   }
 
@@ -1492,7 +1519,13 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
   // Open customize dialog for editing existing customization
   const openEditDialog = (customizationId: number, currentName: string, domains: string[]) => {
-    setEditingCustomization({ id: customizationId, domains })
+    // Look up the full customization to get includedInStats
+    const fullCustomization = customizations?.find(c => c.id === customizationId)
+    setEditingCustomization({
+      id: customizationId,
+      domains,
+      includedInStats: fullCustomization?.includedInStats ?? []
+    })
     setCustomizeDisplayName(currentName)
     setShowCustomizeDialog(true)
   }
@@ -1527,6 +1560,50 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
     setShowCustomizeDialog(false)
     setCustomizeDisplayName("")
     setEditingCustomization(null)
+    setIncludedInStats(new Set())
+  }
+
+  // Remove a domain from the customize dialog
+  const handleRemoveDomainFromDialog = (domainToRemove: string) => {
+    if (editingCustomization) {
+      const newDomains = editingCustomization.domains.filter(d => d !== domainToRemove)
+      const newIncluded = editingCustomization.includedInStats.filter(
+        d => d.toLowerCase() !== domainToRemove.toLowerCase()
+      )
+      if (newDomains.length > 0) {
+        setEditingCustomization({ ...editingCustomization, domains: newDomains, includedInStats: newIncluded })
+      }
+    } else {
+      const newSelected = new Set(selectedDomains)
+      newSelected.delete(domainToRemove)
+      // Also remove from includedInStats for new customizations
+      const newIncluded = new Set(includedInStats)
+      newIncluded.delete(domainToRemove)
+      setIncludedInStats(newIncluded)
+      if (newSelected.size > 0) {
+        setSelectedDomains(newSelected)
+      }
+    }
+  }
+
+  // Toggle stats inclusion for a domain in the dialog
+  // include=true means "add to includedInStats", include=false means "remove from includedInStats"
+  const handleToggleStatsInclusion = (domain: string, include: boolean) => {
+    if (editingCustomization) {
+      const domainLower = domain.toLowerCase()
+      const newIncluded = include
+        ? [...editingCustomization.includedInStats.filter(d => d.toLowerCase() !== domainLower), domain]
+        : editingCustomization.includedInStats.filter(d => d.toLowerCase() !== domainLower)
+      setEditingCustomization({ ...editingCustomization, includedInStats: newIncluded })
+    } else {
+      const newIncluded = new Set(includedInStats)
+      if (include) {
+        newIncluded.add(domain)
+      } else {
+        newIncluded.delete(domain)
+      }
+      setIncludedInStats(newIncluded)
+    }
   }
 
   // Export customizations to clipboard
@@ -1538,10 +1615,17 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
     const exportData = {
       comment: "qui tracker customizations for Dashboard",
-      trackerCustomizations: customizations.map(c => ({
-        displayName: c.displayName,
-        domains: c.domains,
-      })),
+      trackerCustomizations: customizations.map(c => {
+        const entry: { displayName: string; domains: string[]; includedInStats?: string[] } = {
+          displayName: c.displayName,
+          domains: c.domains,
+        }
+        // Only include includedInStats if non-empty
+        if (c.includedInStats && c.includedInStats.length > 0) {
+          entry.includedInStats = c.includedInStats
+        }
+        return entry
+      }),
     }
 
     const jsonString = JSON.stringify(exportData, null, 2)
@@ -1601,7 +1685,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
         }
       }
 
-      const entriesWithConflicts = entries.map((entry: { displayName: string; domains: string[] }, index: number) => {
+      const entriesWithConflicts = entries.map((entry: { displayName: string; domains: string[]; includedInStats?: string[] }, index: number) => {
         const conflictingDomain = entry.domains.find((d: string) => existingDomains.has(d.toLowerCase()))
         const existingCustomization = conflictingDomain ? existingDomains.get(conflictingDomain.toLowerCase()) : null
 
@@ -1617,7 +1701,13 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
           isIdentical = sameDisplayName && sameDomains
         }
 
-        return { ...entry, index, conflict: existingCustomization, isIdentical }
+        return {
+          ...entry,
+          includedInStats: entry.includedInStats ?? [],
+          index,
+          conflict: existingCustomization,
+          isIdentical
+        }
       })
 
       return { valid: true, entries: entriesWithConflicts, error: null }
@@ -1653,7 +1743,11 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
           // Update existing customization
           await updateCustomization.mutateAsync({
             id: entry.conflict.id,
-            data: { displayName: entry.displayName, domains: entry.domains },
+            data: {
+              displayName: entry.displayName,
+              domains: entry.domains,
+              includedInStats: entry.includedInStats,
+            },
           })
           imported++
         } else if (!entry.conflict) {
@@ -1661,6 +1755,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
           await createCustomization.mutateAsync({
             displayName: entry.displayName,
             domains: entry.domains,
+            includedInStats: entry.includedInStats,
           })
           imported++
         } else {
@@ -1742,309 +1837,107 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
   return (
     <>
-    <Accordion type="single" collapsible className="rounded-lg border bg-card" value={accordionValue} onValueChange={setAccordionValue}>
-      <AccordionItem value="tracker-breakdown" className="border-0">
-        <AccordionTrigger className="px-4 py-4 hover:no-underline hover:bg-muted/50 transition-colors [&>svg]:hidden group">
-          {/* Mobile layout */}
-          <div className="sm:hidden w-full">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Plus className="h-3.5 w-3.5 text-muted-foreground group-data-[state=open]:hidden" />
-                <Minus className="h-3.5 w-3.5 text-muted-foreground group-data-[state=closed]:hidden" />
-                <h3 className="text-sm font-medium text-muted-foreground">Tracker Breakdown</h3>
+      <Accordion type="single" collapsible className="rounded-lg border bg-card" value={accordionValue} onValueChange={setAccordionValue}>
+        <AccordionItem value="tracker-breakdown" className="border-0">
+          <AccordionTrigger className="px-4 py-4 hover:no-underline hover:bg-muted/50 transition-colors [&>svg]:hidden group">
+            {/* Mobile layout */}
+            <div className="sm:hidden w-full">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Plus className="h-3.5 w-3.5 text-muted-foreground group-data-[state=open]:hidden" />
+                  <Minus className="h-3.5 w-3.5 text-muted-foreground group-data-[state=closed]:hidden" />
+                  <h3 className="text-sm font-medium text-muted-foreground">Tracker Breakdown</h3>
+                </div>
+                <span className="text-xs text-muted-foreground">{sortedTrackerStats.length} trackers</span>
               </div>
-              <span className="text-xs text-muted-foreground">{sortedTrackerStats.length} trackers</span>
             </div>
-          </div>
 
-          {/* Desktop layout */}
-          <div className="hidden sm:flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 w-full">
-            <div className="flex items-center gap-2">
-              <Plus className="h-4 w-4 text-muted-foreground group-data-[state=open]:hidden" />
-              <Minus className="h-4 w-4 text-muted-foreground group-data-[state=closed]:hidden" />
-              <h3 className="text-base font-medium">Tracker Breakdown</h3>
+            {/* Desktop layout */}
+            <div className="hidden sm:flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 w-full">
+              <div className="flex items-center gap-2">
+                <Plus className="h-4 w-4 text-muted-foreground group-data-[state=open]:hidden" />
+                <Minus className="h-4 w-4 text-muted-foreground group-data-[state=closed]:hidden" />
+                <h3 className="text-base font-medium">Tracker Breakdown</h3>
+              </div>
+              <div className="flex items-center gap-1">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); openImportDialog() }}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); openImportDialog() } }}
+                      className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>Import customizations</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); handleExport() }}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); handleExport() } }}
+                      className={`inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer ${!customizations || customizations.length === 0 ? "opacity-50 pointer-events-none" : ""}`}
+                      aria-disabled={!customizations || customizations.length === 0}
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>Export customizations</TooltipContent>
+                </Tooltip>
+                <span className="text-muted-foreground ml-1">{sortedTrackerStats.length} trackers</span>
+              </div>
             </div>
-            <div className="flex items-center gap-1">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={(e) => { e.stopPropagation(); openImportDialog() }}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); openImportDialog() } }}
-                    className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>Import customizations</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={(e) => { e.stopPropagation(); handleExport() }}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); handleExport() } }}
-                    className={`inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer ${!customizations || customizations.length === 0 ? "opacity-50 pointer-events-none" : ""}`}
-                    aria-disabled={!customizations || customizations.length === 0}
-                  >
-                    <Upload className="h-3.5 w-3.5" />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>Export customizations</TooltipContent>
-              </Tooltip>
-              <span className="text-muted-foreground ml-1">{sortedTrackerStats.length} trackers</span>
+          </AccordionTrigger>
+          <AccordionContent className="px-0 pb-0">
+            {/* Mobile Sort Dropdown and Import/Export */}
+            <div className="sm:hidden px-4 py-3 border-b flex items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="flex-1 justify-between">
+                    <span className="flex items-center gap-2 text-xs">
+                      Sort: {sortColumn === "tracker" ? "Tracker" :
+                        sortColumn === "uploaded" ? "Uploaded" :
+                          sortColumn === "downloaded" ? "Downloaded" :
+                            sortColumn === "ratio" ? "Ratio" :
+                              sortColumn === "count" ? "Torrents" :
+                                sortColumn === "size" ? "Size" : "Seeded"}
+                    </span>
+                    {sortDirection === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-full">
+                  <DropdownMenuItem onClick={() => handleSort("tracker")}>Tracker</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("uploaded")}>Uploaded</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("downloaded")}>Downloaded</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("ratio")}>Ratio</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("count")}>Torrents</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("size")}>Size</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("performance")}>Seeded</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button variant="ghost" size="sm" onClick={openImportDialog} className="h-8 px-2">
+                <Download className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleExport}
+                disabled={!customizations || customizations.length === 0}
+                className="h-8 px-2"
+              >
+                <Upload className="h-4 w-4" />
+              </Button>
             </div>
-          </div>
-        </AccordionTrigger>
-        <AccordionContent className="px-0 pb-0">
-          {/* Mobile Sort Dropdown and Import/Export */}
-          <div className="sm:hidden px-4 py-3 border-b flex items-center gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="flex-1 justify-between">
-                  <span className="flex items-center gap-2 text-xs">
-                    Sort: {sortColumn === "tracker" ? "Tracker" :
-                           sortColumn === "uploaded" ? "Uploaded" :
-                           sortColumn === "downloaded" ? "Downloaded" :
-                           sortColumn === "ratio" ? "Ratio" :
-                           sortColumn === "count" ? "Torrents" : "Seeded"}
-                  </span>
-                  {sortDirection === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-full">
-                <DropdownMenuItem onClick={() => handleSort("tracker")}>Tracker</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleSort("uploaded")}>Uploaded</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleSort("downloaded")}>Downloaded</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleSort("ratio")}>Ratio</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleSort("count")}>Torrents</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleSort("performance")}>Seeded</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button variant="ghost" size="sm" onClick={openImportDialog} className="h-8 px-2">
-              <Download className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleExport}
-              disabled={!customizations || customizations.length === 0}
-              className="h-8 px-2"
-            >
-              <Upload className="h-4 w-4" />
-            </Button>
-          </div>
 
 
-          {/* Mobile Card Layout */}
-          <div className="sm:hidden px-4 space-y-2 py-3">
-            {paginatedTrackerStats.map((tracker) => {
-              const { domain, displayName, originalDomains, uploaded, downloaded, totalSize, count, customizationId } = tracker
-              const { isInfinite, ratio, color: ratioColor } = getTrackerRatioDisplay(uploaded, downloaded)
-              const displayValue = incognitoMode ? getLinuxTrackerDomain(displayName) : displayName
-              const iconDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
-              const isSelected = selectedDomains.has(domain)
-              const isMerged = originalDomains.length > 1
-              const hasCustomization = Boolean(customizationId)
-
-              return (
-                <Card key={displayName} className={`overflow-hidden ${isSelected ? "ring-2 ring-primary" : ""}`}>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        {!hasCustomization && (
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={() => toggleSelection(domain)}
-                            className="shrink-0"
-                          />
-                        )}
-                        <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="font-medium truncate text-sm cursor-default">
-                              {displayValue}
-                            </span>
-                          </TooltipTrigger>
-                          {(isMerged || (hasCustomization && displayName !== domain)) && (
-                            <TooltipContent>
-                              <p className="text-xs">
-                                {isMerged ? `Merged from: ${originalDomains.join(", ")}` : `Original: ${domain}`}
-                              </p>
-                            </TooltipContent>
-                          )}
-                        </Tooltip>
-                        {isMerged && <Link2 className="h-3 w-3 text-muted-foreground shrink-0" />}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {hasCustomization && customizationId ? (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 w-6 p-0"
-                              onClick={(e) => { e.stopPropagation(); openEditDialog(customizationId, displayName, originalDomains) }}
-                            >
-                              <Pencil className="h-3 w-3 text-muted-foreground" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 w-6 p-0"
-                              onClick={(e) => { e.stopPropagation(); handleDeleteCustomization(customizationId) }}
-                            >
-                              <Trash2 className="h-3 w-3 text-muted-foreground" />
-                            </Button>
-                          </>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0"
-                            onClick={(e) => { e.stopPropagation(); openRenameDialog(domain) }}
-                          >
-                            {selectedDomains.size > 0 ? (
-                              <Link2 className="h-3 w-3 text-primary" />
-                            ) : (
-                              <Pencil className="h-3 w-3 text-muted-foreground" />
-                            )}
-                          </Button>
-                        )}
-                        <Badge variant="secondary" className="shrink-0 text-xs">
-                          {count}
-                        </Badge>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    <div className="grid grid-cols-2 gap-3">
-                      {/* Uploaded */}
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <ChevronUp className="h-3 w-3" />
-                          <span>Uploaded</span>
-                        </div>
-                        <div className="font-semibold text-sm">{formatBytes(uploaded)}</div>
-                      </div>
-
-                      {/* Downloaded */}
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <ChevronDown className="h-3 w-3" />
-                          <span>Downloaded</span>
-                        </div>
-                        <div className="font-semibold text-sm">{formatBytes(downloaded)}</div>
-                      </div>
-
-                      {/* Ratio */}
-                      <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground">Ratio</div>
-                        <div className="font-semibold text-sm" style={{ color: ratioColor }}>
-                          {isInfinite ? "∞" : ratio.toFixed(2)}
-                        </div>
-                      </div>
-
-                      {/* Seeded */}
-                      <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground">Seeded</div>
-                        <div className="font-semibold text-sm">{formatEfficiency(uploaded, totalSize)}</div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )
-            })}
-          </div>
-
-          {/* Desktop Table */}
-          <Table className="hidden sm:table">
-            <TableHeader>
-              <TableRow className="bg-muted/50">
-                <TableHead className="w-8 pl-4" />
-                <TableHead className="w-[35%]">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("tracker")}
-                    className="flex items-center gap-1.5 hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
-                  >
-                    Tracker
-                    <SortIcon column="tracker" sortColumn={sortColumn} sortDirection={sortDirection} />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("uploaded")}
-                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
-                  >
-                    Uploaded
-                    <SortIcon column="uploaded" sortColumn={sortColumn} sortDirection={sortDirection} />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("downloaded")}
-                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
-                  >
-                    Downloaded
-                    <SortIcon column="downloaded" sortColumn={sortColumn} sortDirection={sortDirection} />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("ratio")}
-                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
-                  >
-                    Ratio
-                    <SortIcon column="ratio" sortColumn={sortColumn} sortDirection={sortDirection} />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right hidden lg:table-cell">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("buffer")}
-                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
-                  >
-                    Buffer
-                    <SortIcon column="buffer" sortColumn={sortColumn} sortDirection={sortDirection} />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("count")}
-                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
-                  >
-                    Torrents
-                    <SortIcon column="count" sortColumn={sortColumn} sortDirection={sortDirection} />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right hidden lg:table-cell pr-4">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        onClick={() => handleSort("performance")}
-                        className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors"
-                      >
-                        Seeded
-                        <Info className="h-3.5 w-3.5 text-muted-foreground" />
-                        <SortIcon column="performance" sortColumn={sortColumn} sortDirection={sortDirection} />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top">
-                      <p className="text-xs">Uploaded ÷ Content Size — how many times you&apos;ve seeded your content</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedTrackerStats.map((tracker, index) => {
+            {/* Mobile Card Layout */}
+            <div className="sm:hidden px-4 space-y-2 py-3">
+              {paginatedTrackerStats.map((tracker) => {
                 const { domain, displayName, originalDomains, uploaded, downloaded, totalSize, count, customizationId } = tracker
                 const { isInfinite, ratio, color: ratioColor } = getTrackerRatioDisplay(uploaded, downloaded)
                 const displayValue = incognitoMode ? getLinuxTrackerDomain(displayName) : displayName
@@ -2052,42 +1945,37 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 const isSelected = selectedDomains.has(domain)
                 const isMerged = originalDomains.length > 1
                 const hasCustomization = Boolean(customizationId)
-                const buffer = uploaded - downloaded
-                const uploadPercent = totalUploaded > 0 ? (uploaded / totalUploaded) * 100 : 0
 
                 return (
-                  <TableRow
-                    key={displayName}
-                    className={`group ${isSelected ? "bg-primary/5" : index % 2 === 1 ? "bg-muted/30" : ""} hover:bg-muted/50`}
-                  >
-                    <TableCell className="w-8 pl-4">
-                      {!hasCustomization && (
-                        <Checkbox
-                          checked={isSelected}
-                          onCheckedChange={() => toggleSelection(domain)}
-                          className="opacity-0 group-hover:opacity-100 data-[state=checked]:opacity-100"
-                        />
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="font-medium truncate cursor-default">
-                              {displayValue}
-                            </span>
-                          </TooltipTrigger>
-                          {(isMerged || (hasCustomization && displayName !== domain)) && (
-                            <TooltipContent>
-                              <p className="text-xs">
-                                {isMerged ? `Merged from: ${originalDomains.join(", ")}` : `Original: ${domain}`}
-                              </p>
-                            </TooltipContent>
+                  <Card key={displayName} className={`overflow-hidden ${isSelected ? "ring-2 ring-primary" : ""}`}>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          {!hasCustomization && (
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={() => toggleSelection(domain)}
+                              className="shrink-0"
+                            />
                           )}
-                        </Tooltip>
-                        {isMerged && <Link2 className="h-3 w-3 text-muted-foreground shrink-0" />}
-                        <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 shrink-0">
+                          <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="font-medium truncate text-sm cursor-default">
+                                {displayValue}
+                              </span>
+                            </TooltipTrigger>
+                            {(isMerged || (hasCustomization && displayName !== domain)) && (
+                              <TooltipContent>
+                                <p className="text-xs">
+                                  {isMerged ? `Merged from: ${originalDomains.join(", ")}` : `Original: ${domain}`}
+                                </p>
+                              </TooltipContent>
+                            )}
+                          </Tooltip>
+                          {isMerged && <Link2 className="h-3 w-3 text-muted-foreground shrink-0" />}
+                        </div>
+                        <div className="flex items-center gap-1">
                           {hasCustomization && customizationId ? (
                             <>
                               <Button
@@ -2108,92 +1996,320 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                               </Button>
                             </>
                           ) : (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={(e) => { e.stopPropagation(); openRenameDialog(domain) }}
+                            >
+                              {selectedDomains.size > 0 ? (
+                                <Link2 className="h-3 w-3 text-primary" />
+                              ) : (
+                                <Pencil className="h-3 w-3 text-muted-foreground" />
+                              )}
+                            </Button>
+                          )}
+                          <Badge variant="secondary" className="shrink-0 text-xs">
+                            {count}
+                          </Badge>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="grid grid-cols-2 gap-3">
+                        {/* Uploaded */}
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <ChevronUp className="h-3 w-3" />
+                            <span>Uploaded</span>
+                          </div>
+                          <div className="font-semibold text-sm">{formatBytes(uploaded)}</div>
+                        </div>
+
+                        {/* Downloaded */}
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <ChevronDown className="h-3 w-3" />
+                            <span>Downloaded</span>
+                          </div>
+                          <div className="font-semibold text-sm">{formatBytes(downloaded)}</div>
+                        </div>
+
+                        {/* Ratio */}
+                        <div className="space-y-1">
+                          <div className="text-xs text-muted-foreground">Ratio</div>
+                          <div className="font-semibold text-sm" style={{ color: ratioColor }}>
+                            {isInfinite ? "∞" : ratio.toFixed(2)}
+                          </div>
+                        </div>
+
+                        {/* Size */}
+                        <div className="space-y-1">
+                          <div className="text-xs text-muted-foreground">Size</div>
+                          <div className="font-semibold text-sm">{formatBytes(totalSize)}</div>
+                        </div>
+
+                        {/* Seeded */}
+                        <div className="space-y-1">
+                          <div className="text-xs text-muted-foreground">Seeded</div>
+                          <div className="font-semibold text-sm">{formatEfficiency(uploaded, totalSize)}</div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+
+            {/* Desktop Table */}
+            <Table className="hidden sm:table">
+              <TableHeader>
+                <TableRow className="bg-muted/50">
+                  <TableHead className="w-8 pl-4" />
+                  <TableHead className="w-[35%]">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("tracker")}
+                      className="flex items-center gap-1.5 hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      Tracker
+                      <SortIcon column="tracker" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("uploaded")}
+                      className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      Uploaded
+                      <SortIcon column="uploaded" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("downloaded")}
+                      className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      Downloaded
+                      <SortIcon column="downloaded" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("ratio")}
+                      className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      Ratio
+                      <SortIcon column="ratio" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right hidden lg:table-cell">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("buffer")}
+                      className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      Buffer
+                      <SortIcon column="buffer" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("count")}
+                      className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      Torrents
+                      <SortIcon column="count" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right hidden lg:table-cell">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("size")}
+                      className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      Size
+                      <SortIcon column="size" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right hidden lg:table-cell pr-4">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => handleSort("performance")}
+                          className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors"
+                        >
+                          Seeded
+                          <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                          <SortIcon column="performance" sortColumn={sortColumn} sortDirection={sortDirection} />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <p className="text-xs">Uploaded ÷ Content Size — how many times you&apos;ve seeded your content</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedTrackerStats.map((tracker, index) => {
+                  const { domain, displayName, originalDomains, uploaded, downloaded, totalSize, count, customizationId } = tracker
+                  const { isInfinite, ratio, color: ratioColor } = getTrackerRatioDisplay(uploaded, downloaded)
+                  const displayValue = incognitoMode ? getLinuxTrackerDomain(displayName) : displayName
+                  const iconDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
+                  const isSelected = selectedDomains.has(domain)
+                  const isMerged = originalDomains.length > 1
+                  const hasCustomization = Boolean(customizationId)
+                  const buffer = uploaded - downloaded
+                  const uploadPercent = totalUploaded > 0 ? (uploaded / totalUploaded) * 100 : 0
+
+                  return (
+                    <TableRow
+                      key={displayName}
+                      className={`group ${isSelected ? "bg-primary/5" : index % 2 === 1 ? "bg-muted/30" : ""} hover:bg-muted/50`}
+                    >
+                      <TableCell className="w-8 pl-4">
+                        {!hasCustomization && (
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => toggleSelection(domain)}
+                            className="opacity-0 group-hover:opacity-100 data-[state=checked]:opacity-100"
+                          />
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="font-medium truncate cursor-default">
+                                {displayValue}
+                              </span>
+                            </TooltipTrigger>
+                            {(isMerged || (hasCustomization && displayName !== domain)) && (
+                              <TooltipContent>
+                                <p className="text-xs">
+                                  {isMerged ? `Merged from: ${originalDomains.join(", ")}` : `Original: ${domain}`}
+                                </p>
+                              </TooltipContent>
+                            )}
+                          </Tooltip>
+                          {isMerged && <Link2 className="h-3 w-3 text-muted-foreground shrink-0" />}
+                          <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 shrink-0">
+                            {hasCustomization && customizationId ? (
+                              <>
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   className="h-6 w-6 p-0"
-                                  onClick={(e) => { e.stopPropagation(); openRenameDialog(domain) }}
+                                  onClick={(e) => { e.stopPropagation(); openEditDialog(customizationId, displayName, originalDomains) }}
                                 >
-                                  {selectedDomains.size > 0 ? (
-                                    <Link2 className="h-3 w-3 text-primary" />
-                                  ) : (
-                                    <Pencil className="h-3 w-3 text-muted-foreground" />
-                                  )}
+                                  <Pencil className="h-3 w-3 text-muted-foreground" />
                                 </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {selectedDomains.size > 0 ? "Add to merge" : "Rename"}
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0"
+                                  onClick={(e) => { e.stopPropagation(); handleDeleteCustomization(customizationId) }}
+                                >
+                                  <Trash2 className="h-3 w-3 text-muted-foreground" />
+                                </Button>
+                              </>
+                            ) : (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-6 p-0"
+                                    onClick={(e) => { e.stopPropagation(); openRenameDialog(domain) }}
+                                  >
+                                    {selectedDomains.size > 0 ? (
+                                      <Link2 className="h-3 w-3 text-primary" />
+                                    ) : (
+                                      <Pencil className="h-3 w-3 text-muted-foreground" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {selectedDomains.size > 0 ? "Add to merge" : "Rename"}
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right font-semibold">
-                      {formatBytes(uploaded)} <span className="text-[10px] text-muted-foreground font-normal">({uploadPercent.toFixed(1)}%)</span>
-                    </TableCell>
-                    <TableCell className="text-right font-semibold">
-                      {formatBytes(downloaded)}
-                    </TableCell>
-                    <TableCell className="text-right font-semibold" style={{ color: ratioColor }}>
-                      {isInfinite ? "∞" : ratio.toFixed(2)}
-                    </TableCell>
-                    <TableCell className="text-right hidden lg:table-cell font-semibold">
-                      <span
-                        className={buffer < 0 ? "text-destructive" : ""}
-                        style={buffer >= 0 ? { color: "oklch(0.7040 0.1910 142)" } : undefined}
-                      >
-                        {buffer >= 0 ? "+" : "-"}{formatBytes(Math.abs(buffer))}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {count}
-                    </TableCell>
-                    <TableCell className="text-right hidden lg:table-cell font-semibold pr-4">
-                      {formatEfficiency(uploaded, totalSize)}
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-          {/* Pagination controls */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t">
-              <span className="text-sm text-muted-foreground">
-                {page * itemsPerPage + 1}-{Math.min((page + 1) * itemsPerPage, sortedTrackerStats.length)} of {sortedTrackerStats.length} trackers
-              </span>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(p => Math.max(0, p - 1))}
-                  disabled={page === 0}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  <span className="hidden sm:inline ml-1">Previous</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-                  disabled={page >= totalPages - 1}
-                >
-                  <span className="hidden sm:inline mr-1">Next</span>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {formatBytes(uploaded)} <span className="text-[10px] text-muted-foreground font-normal">({uploadPercent.toFixed(1)}%)</span>
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {formatBytes(downloaded)}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold" style={{ color: ratioColor }}>
+                        {isInfinite ? "∞" : ratio.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right hidden lg:table-cell font-semibold">
+                        <span
+                          className={buffer < 0 ? "text-destructive" : ""}
+                          style={buffer >= 0 ? { color: "oklch(0.7040 0.1910 142)" } : undefined}
+                        >
+                          {buffer >= 0 ? "+" : "-"}{formatBytes(Math.abs(buffer))}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {count}
+                      </TableCell>
+                      <TableCell className="text-right hidden lg:table-cell font-semibold">
+                        {formatBytes(totalSize)}
+                      </TableCell>
+                      <TableCell className="text-right hidden lg:table-cell font-semibold pr-4">
+                        {formatEfficiency(uploaded, totalSize)}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+            {/* Pagination controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t">
+                <span className="text-sm text-muted-foreground">
+                  {page * itemsPerPage + 1}-{Math.min((page + 1) * itemsPerPage, sortedTrackerStats.length)} of {sortedTrackerStats.length} trackers
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(p => Math.max(0, p - 1))}
+                    disabled={page === 0}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    <span className="hidden sm:inline ml-1">Previous</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                    disabled={page >= totalPages - 1}
+                  >
+                    <span className="hidden sm:inline mr-1">Next</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
-        </AccordionContent>
-      </AccordionItem>
-    </Accordion>
+            )}
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
 
       {/* Customize Dialog (Rename/Merge/Edit) */}
       <Dialog open={showCustomizeDialog} onOpenChange={(open) => !open && closeCustomizeDialog()}>
-        <DialogContent>
+        <DialogContent className="max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>
               {editingCustomization
@@ -2207,10 +2323,10 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 ? "Update the display name for this tracker."
                 : selectedDomains.size === 1
                   ? "Give this tracker a custom display name."
-                  : "Combine these trackers into a single entry with a custom name. Stats will be shown for the first domain only."}
+                  : "Combine these trackers into a single entry with a custom name."}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 min-h-0 flex-1 flex flex-col">
             <div className="space-y-2">
               <Label htmlFor="customize-name">Display Name</Label>
               <Input
@@ -2220,23 +2336,54 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 placeholder="e.g., TorrentLeech"
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 min-h-0 flex-1 flex flex-col">
               <Label>{editingCustomization ? "Domain(s)" : "Selected Tracker(s)"}</Label>
-              <div className="text-sm text-muted-foreground space-y-1">
-                {(editingCustomization ? editingCustomization.domains : Array.from(selectedDomains)).map((domain, index) => (
-                  <div key={domain} className="flex items-center gap-2">
-                    {(editingCustomization ? editingCustomization.domains.length > 1 : selectedDomains.size > 1) && index === 0 && (
-                      <Badge variant="secondary" className="text-[10px]">Primary</Badge>
-                    )}
-                    <span className={index === 0 ? "font-medium" : ""}>{domain}</span>
-                  </div>
-                ))}
-              </div>
-              {!editingCustomization && selectedDomains.size > 1 && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  The first domain&apos;s stats and icon will be displayed. Reselect trackers in preferred order if needed.
+              {((editingCustomization && editingCustomization.domains.length > 1) || (!editingCustomization && selectedDomains.size > 1)) && (
+                <p className="text-xs text-muted-foreground">
+                  Uncheck duplicate tracker URLs to avoid counting the same torrents twice.
                 </p>
               )}
+              <ScrollArea className="max-h-64 flex-1">
+                <div className="text-sm text-muted-foreground space-y-1.5 pr-4">
+                  {(editingCustomization ? editingCustomization.domains : Array.from(selectedDomains)).map((domain, index, arr) => {
+                    const hasMultiple = arr.length > 1
+                    const isPrimary = index === 0
+                    // Get inclusion state from appropriate source
+                    // Primary is always included; secondary domains only if in includedInStats
+                    const currentIncluded = editingCustomization
+                      ? editingCustomization.includedInStats
+                      : Array.from(includedInStats)
+                    const isInList = currentIncluded.some(d => d.toLowerCase() === domain.toLowerCase())
+                    const isIncluded = isPrimary || isInList
+
+                    return (
+                      <div key={domain} className="flex items-center gap-2">
+                        {hasMultiple && (
+                          <Checkbox
+                            checked={isIncluded}
+                            disabled={isPrimary}
+                            onCheckedChange={(checked) => handleToggleStatsInclusion(domain, !!checked)}
+                            className="h-4 w-4"
+                          />
+                        )}
+                        <span className={isPrimary ? "font-medium flex-1" : "flex-1"}>{domain}</span>
+                        {isPrimary && hasMultiple && (
+                          <Badge variant="secondary" className="text-[10px]">Primary</Badge>
+                        )}
+                        {hasMultiple && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveDomainFromDialog(domain)}
+                            className="text-muted-foreground hover:text-destructive cursor-pointer"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </ScrollArea>
             </div>
           </div>
           <DialogFooter>

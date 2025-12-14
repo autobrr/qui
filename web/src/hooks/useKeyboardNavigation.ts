@@ -17,9 +17,6 @@ interface UseKeyboardNavigationProps {
   isLoadingMore: boolean
   loadMore: () => void
   estimatedRowHeight?: number
-  // Selection handling props (optional)
-  onClearSelection?: () => void
-  hasSelection?: boolean
 }
 
 export function useKeyboardNavigation({
@@ -30,8 +27,6 @@ export function useKeyboardNavigation({
   isLoadingMore,
   loadMore,
   estimatedRowHeight = 40,
-  onClearSelection,
-  hasSelection = false,
 }: UseKeyboardNavigationProps) {
 
   // Set up keyboard event listeners
@@ -54,12 +49,8 @@ export function useKeyboardNavigation({
 
       if (!container) return
 
-      // Handle Escape key for clearing selection
-      if (key === "Escape" && onClearSelection && hasSelection) {
-        event.preventDefault()
-        onClearSelection()
-        return
-      }
+      // Note: Escape key handling is now unified in Torrents.tsx
+      // to close panel and clear selection atomically
 
       // Only handle standard navigation keys
       const navigationKeys = ["PageUp", "PageDown", "Home", "End"]
@@ -157,5 +148,5 @@ export function useKeyboardNavigation({
     return () => {
       window.removeEventListener("keydown", handleKeyDown)
     }
-  }, [virtualizer, safeLoadedRows, hasLoadedAll, isLoadingMore, loadMore, estimatedRowHeight, parentRef, onClearSelection, hasSelection])
+  }, [virtualizer, safeLoadedRows, hasLoadedAll, isLoadingMore, loadMore, estimatedRowHeight, parentRef])
 }
