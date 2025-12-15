@@ -348,12 +348,62 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 		Msg("Refreshed tracker health counts")
 }
 
-// GetTrackerHealthCounts returns the cached tracker health counts for an instance.
+// GetTrackerHealthCounts returns a copy of the cached tracker health counts for an instance.
 // Returns nil if no cached counts are available.
+// The returned copy is safe to use without synchronization.
 func (sm *SyncManager) GetTrackerHealthCounts(instanceID int) *TrackerHealthCounts {
 	sm.trackerHealthMu.RLock()
 	defer sm.trackerHealthMu.RUnlock()
-	return sm.trackerHealthCache[instanceID]
+
+	cached := sm.trackerHealthCache[instanceID]
+	if cached == nil {
+		return nil
+	}
+
+	// Return a copy to prevent data races with RemoveHashesFromTrackerHealthCache
+	unregisteredSet := make(map[string]struct{}, len(cached.UnregisteredSet))
+	for k := range cached.UnregisteredSet {
+		unregisteredSet[k] = struct{}{}
+	}
+	trackerDownSet := make(map[string]struct{}, len(cached.TrackerDownSet))
+	for k := range cached.TrackerDownSet {
+		trackerDownSet[k] = struct{}{}
+	}
+
+	return &TrackerHealthCounts{
+		Unregistered:    cached.Unregistered,
+		TrackerDown:     cached.TrackerDown,
+		UnregisteredSet: unregisteredSet,
+		TrackerDownSet:  trackerDownSet,
+		UpdatedAt:       cached.UpdatedAt,
+	}
+}
+
+// RemoveHashesFromTrackerHealthCache removes the given hashes from the tracker health cache.
+// This should be called when torrents are deleted to immediately update sidebar counts.
+func (sm *SyncManager) RemoveHashesFromTrackerHealthCache(instanceID int, hashes []string) {
+	sm.trackerHealthMu.Lock()
+	defer sm.trackerHealthMu.Unlock()
+
+	counts := sm.trackerHealthCache[instanceID]
+	if counts == nil {
+		return
+	}
+
+	for _, hash := range hashes {
+		if _, exists := counts.UnregisteredSet[hash]; exists {
+			delete(counts.UnregisteredSet, hash)
+			if counts.Unregistered > 0 {
+				counts.Unregistered--
+			}
+		}
+		if _, exists := counts.TrackerDownSet[hash]; exists {
+			delete(counts.TrackerDownSet, hash)
+			if counts.TrackerDown > 0 {
+				counts.TrackerDown--
+			}
+		}
+	}
 }
 
 func (sm *SyncManager) getTorrentFilesClient(ctx context.Context, instanceID int) (torrentFilesClient, error) {
@@ -1143,8 +1193,9 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		err = client.ResumeCtx(ctx, hashes)
 	case "delete":
 		err = client.DeleteTorrentsCtx(ctx, hashes, false)
-		// Invalidate file cache for deleted torrents
+		// Invalidate caches for deleted torrents
 		if err == nil {
+			sm.RemoveHashesFromTrackerHealthCache(instanceID, hashes)
 			if fm := sm.getFilesManager(); fm != nil {
 				for _, hash := range hashes {
 					if invalidateErr := fm.InvalidateCache(ctx, instanceID, hash); invalidateErr != nil {
@@ -1156,8 +1207,9 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		}
 	case "deleteWithFiles":
 		err = client.DeleteTorrentsCtx(ctx, hashes, true)
-		// Invalidate file cache for deleted torrents
+		// Invalidate caches for deleted torrents
 		if err == nil {
+			sm.RemoveHashesFromTrackerHealthCache(instanceID, hashes)
 			if fm := sm.getFilesManager(); fm != nil {
 				for _, hash := range hashes {
 					if invalidateErr := fm.InvalidateCache(ctx, instanceID, hash); invalidateErr != nil {
@@ -1937,6 +1989,26 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 	return domain
 }
 
+// torrentBelongsToTrackerDomain checks if a torrent currently has a tracker in the given domain.
+// Checks the Trackers slice (populated by enrichTorrentsWithTrackerData for multi-tracker support),
+// falling back to the primary Tracker field when the slice is empty.
+// This validates against stale MainData.Trackers entries that may persist after tracker changes.
+func (sm *SyncManager) torrentBelongsToTrackerDomain(torrent *qbt.Torrent, domain string) bool {
+	if torrent == nil {
+		return false
+	}
+	if len(torrent.Trackers) > 0 {
+		for _, tracker := range torrent.Trackers {
+			if sm.ExtractDomainFromURL(tracker.Url) == domain {
+				return true
+			}
+		}
+		return false
+	}
+	// Fall back to primary tracker field
+	return sm.ExtractDomainFromURL(torrent.Tracker) == domain
+}
+
 // recordTrackerTransition records temporary exclusions for the old domain while
 // ensuring the new domain remains visible for the affected torrents.
 func (sm *SyncManager) recordTrackerTransition(client *Client, oldURL, newURL string, hashes []string) {
@@ -2093,7 +2165,12 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 			// Add all torrent hashes for this tracker to the domain's set
 			for _, hash := range torrentHashes {
 				// Only count if the torrent exists in our current torrent list
-				if _, exists := torrentMap[hash]; exists {
+				if torrent, exists := torrentMap[hash]; exists {
+					// Validate torrent actually belongs to this tracker domain.
+					// MainData.Trackers can be stale when trackers are modified.
+					if !sm.torrentBelongsToTrackerDomain(torrent, domain) {
+						continue
+					}
 					if hashesToSkip, ok := exclusions[domain]; ok {
 						if _, skip := hashesToSkip[hash]; skip {
 							continue
@@ -2951,6 +3028,12 @@ func (sm *SyncManager) applyManualFilters(
 		trackerExclusions = client.getTrackerExclusionsCopy()
 	}
 	if mainData != nil && mainData.Trackers != nil && (len(filters.Trackers) != 0 || len(filters.ExcludeTrackers) != 0) {
+		// Build torrentMap for O(1) lookups to validate tracker membership
+		torrentMap := make(map[string]*qbt.Torrent, len(torrents))
+		for i := range torrents {
+			torrentMap[torrents[i].Hash] = &torrents[i]
+		}
+
 		for trackerURL, hashes := range mainData.Trackers {
 			domain := sm.ExtractDomainFromURL(trackerURL)
 			if domain == "" {
@@ -2967,6 +3050,14 @@ func (sm *SyncManager) applyManualFilters(
 			}
 
 			for _, h := range hashes {
+				// Validate torrent actually belongs to this tracker domain.
+				// MainData.Trackers can be stale when trackers are modified.
+				if torrent, exists := torrentMap[h]; exists {
+					if !sm.torrentBelongsToTrackerDomain(torrent, domain) {
+						continue
+					}
+				}
+
 				if hashesToSkip, ok := trackerExclusions[domain]; ok {
 					if _, skip := hashesToSkip[h]; skip {
 						continue
