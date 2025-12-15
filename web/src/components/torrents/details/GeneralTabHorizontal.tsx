@@ -228,8 +228,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
             />
             <StatRow
               label="Pieces"
-              value={`${properties.pieces_have || 0} / ${properties.pieces_num || 0}`}
-              tooltip={`${formatBytes(properties.piece_size || 0)} each`}
+              value={`${properties.pieces_have || 0} / ${properties.pieces_num || 0} (${formatBytes(properties.piece_size || 0)} each)`}
             />
             {queueingEnabled && (
               <StatRow
