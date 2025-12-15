@@ -41,7 +41,7 @@ const SORT_COLUMN_LABELS: Record<string, string> = {
   "ratio": "Ratio",
   "buffer": "Buffer",
   "count": "Torrents",
-  "sort": "Sort",
+  "size": "Size",
   "performance": "Seeded",
 }
 
