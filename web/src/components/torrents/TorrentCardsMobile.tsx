@@ -1078,7 +1078,7 @@ export function TorrentCardsMobile({
   const { instances } = useInstances()
   const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
 
-  const { data: metadata } = useInstanceMetadata(instanceId)
+  const { data: metadata } = useInstanceMetadata(instanceId, { fallbackDelayMs: 1500 })
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
   const preferences = metadata?.preferences

@@ -102,6 +102,23 @@ type CrossInstanceTorrentView struct {
 	InstanceName string `json:"instance_name"`
 }
 
+// InstanceMeta provides real-time instance connection status for SSE subscribers.
+// This allows the frontend to get instance health without separate polling.
+type InstanceMeta struct {
+	Connected          bool            `json:"connected"`
+	HasDecryptionError bool            `json:"hasDecryptionError"`
+	RecentErrors       []InstanceError `json:"recentErrors,omitempty"`
+}
+
+// InstanceError represents a recent error for an instance (mirrors models.InstanceError for SSE).
+type InstanceError struct {
+	ID           int    `json:"id"`
+	InstanceID   int    `json:"instanceId"`
+	ErrorType    string `json:"errorType"`
+	ErrorMessage string `json:"errorMessage"`
+	OccurredAt   string `json:"occurredAt"` // ISO8601 string for JSON
+}
+
 type TorrentResponse struct {
 	Torrents               []TorrentView              `json:"torrents"`
 	CrossInstanceTorrents  []CrossInstanceTorrentView `json:"cross_instance_torrents,omitempty"`
@@ -111,13 +128,16 @@ type TorrentResponse struct {
 	Categories             map[string]qbt.Category    `json:"categories,omitempty"`  // Include categories for sidebar
 	Tags                   []string                   `json:"tags,omitempty"`        // Include tags for sidebar
 	ServerState            *qbt.ServerState           `json:"serverState,omitempty"` // Include server state for Dashboard
+	AppInfo                *AppInfo                   `json:"appInfo,omitempty"`     // Include qBittorrent application info
+	AppPreferences         *qbt.AppPreferences        `json:"preferences,omitempty"` // Include qBittorrent application preferences
 	UseSubcategories       bool                       `json:"useSubcategories"`      // Whether subcategories are enabled
 	HasMore                bool                       `json:"hasMore"`               // Whether more pages are available
 	SessionID              string                     `json:"sessionId,omitempty"`   // Optional session tracking
 	CacheMetadata          *CacheMetadata             `json:"cacheMetadata,omitempty"`
 	TrackerHealthSupported bool                       `json:"trackerHealthSupported"`
-	IsCrossInstance        bool                       `json:"isCrossInstance"` // Whether this is a cross-instance response
-	PartialResults         bool                       `json:"partialResults"`  // Whether some instances failed to respond
+	IsCrossInstance        bool                       `json:"isCrossInstance"`        // Whether this is a cross-instance response
+	PartialResults         bool                       `json:"partialResults"`         // Whether some instances failed to respond
+	InstanceMeta           *InstanceMeta              `json:"instanceMeta,omitempty"` // Real-time instance health for SSE
 }
 
 // TorrentStats represents aggregated torrent statistics
@@ -480,9 +500,7 @@ func (sm *SyncManager) validateTorrentsExist(client *Client, hashes []string, op
 }
 
 // GetTorrentsWithFilters gets torrents with filters, search, sorting, and pagination
-// Always fetches fresh data from sync manager for real-time updates
 func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID int, limit, offset int, sort, order, search string, filters FilterOptions) (*TorrentResponse, error) {
-	// Always get fresh data from sync manager for real-time updates
 	var filteredTorrents []qbt.Torrent
 	var allTorrentsForCounts []qbt.Torrent
 	var err error
@@ -493,6 +511,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		return nil, err
 	}
 
+	skipFreshData := shouldSkipFreshData(ctx)
 	skipTrackerHydration := shouldSkipTrackerHydration(ctx)
 
 	trackerHealthSupported := client != nil && client.supportsTrackerInclude()
@@ -502,7 +521,27 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	needsTrackerHealthSorting := trackerHealthSupported && sort == "state"
 
 	// Get MainData for tracker filtering (if needed)
-	mainData := syncManager.GetData()
+	var mainData *qbt.MainData
+	if skipFreshData {
+		mainData = syncManager.GetDataUnchecked()
+		if mainData == nil {
+			mainData = syncManager.GetData()
+		}
+	} else {
+		mainData = syncManager.GetData()
+	}
+
+	// Choose torrent getter based on freshness preference
+	// Use a wrapper for GetTorrentsUnchecked to fall back to GetTorrents if cache is empty
+	getTorrents := syncManager.GetTorrents
+	if skipFreshData {
+		getTorrents = func(opts qbt.TorrentFilterOptions) []qbt.Torrent {
+			if torrents := syncManager.GetTorrentsUnchecked(opts); torrents != nil {
+				return torrents
+			}
+			return syncManager.GetTorrents(opts)
+		}
+	}
 
 	// Determine if we can use library filtering or need manual filtering
 	// Use library filtering only if we have single filters that the library supports
@@ -581,7 +620,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	if useManualFiltering {
 		// Use manual filtering - get all torrents and filter manually
-		log.Debug().
+		log.Trace().
 			Int("instanceID", instanceID).
 			Bool("multipleStatus", hasMultipleStatusFilters).
 			Bool("multipleCategories", hasMultipleCategoryFilters).
@@ -604,7 +643,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		torrentFilterOptions.Sort = sort
 		torrentFilterOptions.Reverse = (order == "desc")
 
-		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
+		filteredTorrents = getTorrents(torrentFilterOptions)
 
 		// Save all torrents for counts before applying manual filters
 		allTorrentsForCounts = make([]qbt.Torrent, len(filteredTorrents))
@@ -618,7 +657,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		filteredTorrents = sm.applyManualFilters(client, filteredTorrents, filters, mainData, categories, useSubcategories)
 	} else {
 		// Use library filtering for single selections
-		log.Debug().
+		log.Trace().
 			Int("instanceID", instanceID).
 			Int("hashFilters", len(filters.Hashes)).
 			Msg("Using library filtering for single selections")
@@ -673,14 +712,14 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		torrentFilterOptions.Reverse = (order == "desc")
 
 		// Use library filtering and sorting
-		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
+		filteredTorrents = getTorrents(torrentFilterOptions)
 
 		if trackerHealthSupported && needsTrackerHealthSorting {
 			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap)
 		}
 	}
 
-	log.Debug().
+	log.Trace().
 		Int("instanceID", instanceID).
 		Int("totalCount", len(filteredTorrents)).
 		Bool("useManualFiltering", useManualFiltering).
@@ -691,7 +730,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		filteredTorrents = sm.filterTorrentsBySearch(filteredTorrents, search)
 	}
 
-	log.Debug().
+	log.Trace().
 		Int("instanceID", instanceID).
 		Int("filtered", len(filteredTorrents)).
 		Msg("Applied search filtering")
@@ -746,7 +785,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	if useManualFiltering {
 		allTorrents = allTorrentsForCounts
 	} else {
-		allTorrents = syncManager.GetTorrents(qbt.TorrentFilterOptions{})
+		allTorrents = getTorrents(qbt.TorrentFilterOptions{})
 	}
 
 	useSubcategories = resolveUseSubcategories(supportsSubcategories, mainData, categories)
@@ -756,6 +795,13 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	if skipTrackerHydration {
 		counts = nil
 	} else {
+		if len(allTorrents) == 0 {
+			log.Trace().
+				Int("instanceID", instanceID).
+				Bool("useManualFiltering", useManualFiltering).
+				Msg("All torrent list empty when calculating counts; refetching")
+			allTorrents = getTorrents(qbt.TorrentFilterOptions{})
+		}
 		counts, trackerMap, enrichedAll = sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap, trackerHealthSupported, useSubcategories)
 	}
 
@@ -820,30 +866,49 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// Determine cache metadata based on last sync update time
 	var cacheMetadata *CacheMetadata
 	var serverState *qbt.ServerState
-	client, clientErr := sm.clientPool.GetClient(ctx, instanceID)
-	if clientErr == nil {
-		syncManager := client.GetSyncManager()
-		if syncManager != nil {
-			lastSyncTime := syncManager.LastSyncTime()
-			now := time.Now()
-			age := int(now.Sub(lastSyncTime).Seconds())
-			isFresh := age <= 1 // Fresh if updated within the last second
+	var appInfo *AppInfo
+	var appPreferences *qbt.AppPreferences
 
-			source := "cache"
-			if isFresh {
-				source = "fresh"
-			}
+	if syncManager != nil {
+		lastSyncTime := syncManager.LastSyncTime()
+		now := time.Now()
+		age := int(now.Sub(lastSyncTime).Seconds())
+		isFresh := age <= 1 // Fresh if updated within the last second
 
-			cacheMetadata = &CacheMetadata{
-				Source:      source,
-				Age:         age,
-				IsStale:     !isFresh,
-				NextRefresh: now.Add(time.Second).Format(time.RFC3339),
-			}
+		source := "cache"
+		if isFresh {
+			source = "fresh"
 		}
 
+		cacheMetadata = &CacheMetadata{
+			Source:      source,
+			Age:         age,
+			IsStale:     !isFresh,
+			NextRefresh: now.Add(time.Second).Format(time.RFC3339),
+		}
+	}
+
+	if client != nil {
 		if cached := client.GetCachedServerState(); cached != nil {
 			serverState = cached
+		}
+
+		if info, err := client.GetAppInfo(ctx); err != nil {
+			log.Error().
+				Err(err).
+				Int("instanceID", instanceID).
+				Msg("Failed to retrieve qBittorrent app info for torrent stream")
+		} else {
+			appInfo = info
+		}
+
+		if prefs, err := client.GetAppPreferences(ctx); err != nil {
+			log.Warn().
+				Err(err).
+				Int("instanceID", instanceID).
+				Msg("Failed to retrieve qBittorrent app preferences for torrent stream")
+		} else {
+			appPreferences = prefs
 		}
 	}
 
@@ -855,6 +920,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Categories:             categories,  // Include categories for sidebar
 		Tags:                   tags,        // Include tags for sidebar
 		ServerState:            serverState, // Include server state for Dashboard
+		AppInfo:                appInfo,     // Include application info for frontend consumers
+		AppPreferences:         appPreferences,
 		UseSubcategories:       useSubcategories,
 		HasMore:                hasMore,
 		CacheMetadata:          cacheMetadata,
@@ -865,7 +932,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// This ensures real-time updates are always reflected
 	// The sync manager is the single source of truth
 
-	log.Debug().
+	log.Trace().
 		Int("instanceID", instanceID).
 		Int("count", len(paginatedViews)).
 		Int("total", len(filteredTorrents)).
@@ -1257,8 +1324,18 @@ func (sm *SyncManager) GetCategories(ctx context.Context, instanceID int) (map[s
 		return nil, err
 	}
 
-	// Get categories from sync manager (real-time)
-	categories := syncManager.GetCategories()
+	skipFreshData := shouldSkipFreshData(ctx)
+
+	// Get categories from sync manager
+	var categories map[string]qbt.Category
+	if skipFreshData {
+		categories = syncManager.GetCategoriesUnchecked()
+		if categories == nil {
+			categories = syncManager.GetCategories()
+		}
+	} else {
+		categories = syncManager.GetCategories()
+	}
 
 	return categories, nil
 }
@@ -1271,8 +1348,18 @@ func (sm *SyncManager) GetTags(ctx context.Context, instanceID int) ([]string, e
 		return nil, err
 	}
 
-	// Get tags from sync manager (real-time)
-	tags := syncManager.GetTags()
+	skipFreshData := shouldSkipFreshData(ctx)
+
+	// Get tags from sync manager
+	var tags []string
+	if skipFreshData {
+		tags = syncManager.GetTagsUnchecked()
+		if tags == nil {
+			tags = syncManager.GetTags()
+		}
+	} else {
+		tags = syncManager.GetTags()
+	}
 
 	slices.SortFunc(tags, func(a, b string) int {
 		return strings.Compare(strings.ToLower(a), strings.ToLower(b))
@@ -2064,7 +2151,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 	}
 
 	if mainData != nil && mainData.Trackers != nil {
-		log.Debug().
+		log.Trace().
 			Int("trackerCount", len(mainData.Trackers)).
 			Msg("Using MainData.Trackers for accurate multi-tracker counting")
 
@@ -3199,7 +3286,7 @@ torrentsLoop:
 		filtered = append(filtered, torrent)
 	}
 
-	log.Debug().
+	log.Trace().
 		Int("inputTorrents", len(torrents)).
 		Int("filteredTorrents", len(filtered)).
 		Int("statusFilters", len(filters.Status)).
@@ -4092,12 +4179,16 @@ func (sm *SyncManager) GetAppPreferences(ctx context.Context, instanceID int) (q
 		return qbt.AppPreferences{}, fmt.Errorf("failed to get client: %w", err)
 	}
 
-	prefs, err := client.GetAppPreferencesCtx(ctx)
+	prefs, err := client.GetAppPreferences(ctx)
 	if err != nil {
 		return qbt.AppPreferences{}, fmt.Errorf("failed to get app preferences: %w", err)
 	}
 
-	return prefs, nil
+	if prefs == nil {
+		return qbt.AppPreferences{}, fmt.Errorf("failed to get app preferences: empty response")
+	}
+
+	return *prefs, nil
 }
 
 // SetAppPreferences updates app preferences
@@ -4110,6 +4201,8 @@ func (sm *SyncManager) SetAppPreferences(ctx context.Context, instanceID int, pr
 	if err := client.SetPreferencesCtx(ctx, prefs); err != nil {
 		return fmt.Errorf("failed to set preferences: %w", err)
 	}
+
+	client.InvalidateAppPreferencesCache()
 
 	// Sync after modification
 	sm.syncAfterModification(instanceID, client, "set_app_preferences")

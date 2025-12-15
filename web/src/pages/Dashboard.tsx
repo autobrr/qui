@@ -32,8 +32,8 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
@@ -42,11 +42,22 @@ import { useInstances } from "@/hooks/useInstances"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { api } from "@/lib/api"
 import { copyTextToClipboard, formatBytes, getRatioColor } from "@/lib/utils"
-import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
-import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
+import type {
+  CacheMetadata,
+  DashboardSettings,
+  InstanceMeta,
+  InstanceResponse,
+  QBittorrentAppInfo,
+  ServerState,
+  TorrentCounts,
+  TorrentStats,
+  TrackerCustomization,
+  TrackerTransferStats
+} from "@/types"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { Activity, AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, X, Zap } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 
 import {
@@ -59,21 +70,96 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 import { DashboardSettingsDialog } from "@/components/dashboard-settings-dialog"
+import { createStreamKey, useSyncStreamManager } from "@/contexts/SyncStreamContext"
 import { DEFAULT_DASHBOARD_SETTINGS, useDashboardSettings, useUpdateDashboardSettings } from "@/hooks/useDashboardSettings"
 import { useCreateTrackerCustomization, useDeleteTrackerCustomization, useTrackerCustomizations, useUpdateTrackerCustomization } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { getLinuxTrackerDomain, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
-import type { DashboardSettings, TrackerCustomization, TrackerTransferStats } from "@/types"
+import type { TorrentStreamPayload } from "@/types"
 
 interface DashboardInstanceStats {
   instance: InstanceResponse
   stats: TorrentStats | null
   serverState: ServerState | null
   torrentCounts?: TorrentCounts
+  appInfo: QBittorrentAppInfo | null
   altSpeedEnabled: boolean
   isLoading: boolean
   error: unknown
+  streamConnected: boolean
+  streamError: string | null
+  cacheMetadata: CacheMetadata | null | undefined
+  instanceMeta: InstanceMeta | null  // Real-time instance health from SSE
+}
+
+type InstanceStreamData = {
+  stats: TorrentStats | null
+  serverState: ServerState | null
+  torrentCounts?: TorrentCounts
+  appInfo: QBittorrentAppInfo | null
+  altSpeedEnabled: boolean
+  isLoading: boolean
+  error: unknown
+  streamConnected: boolean
+  streamError: string | null
+  cacheMetadata: CacheMetadata | null | undefined
+  instanceMeta: InstanceMeta | null  // Real-time instance health from SSE
+}
+
+const createDefaultInstanceStreamData = (): InstanceStreamData => ({
+  stats: null,
+  serverState: null,
+  torrentCounts: undefined,
+  appInfo: null,
+  altSpeedEnabled: false,
+  isLoading: true,
+  error: null,
+  streamConnected: false,
+  streamError: null,
+  cacheMetadata: null,
+  instanceMeta: null,
+})
+
+const STREAM_REFRESH_INTERVAL_MS = 2000
+
+type InstanceUpdateResult =
+  | InstanceStreamData
+  | {
+    data: InstanceStreamData
+    immediate?: boolean
+  }
+
+function cloneInstanceDataRecord(source: Record<number, InstanceStreamData>) {
+  const next: Record<number, InstanceStreamData> = {}
+  for (const [key, value] of Object.entries(source)) {
+    next[Number(key)] = value
+  }
+  return next
+}
+
+function recordsShallowEqual(
+  a: Record<number, InstanceStreamData>,
+  b: Record<number, InstanceStreamData>
+) {
+  if (a === b) {
+    return true
+  }
+
+  const aKeys = Object.keys(a)
+  const bKeys = Object.keys(b)
+  if (aKeys.length !== bKeys.length) {
+    return false
+  }
+
+  for (const key of aKeys) {
+    const numericKey = Number(key)
+    if (a[numericKey] !== b[numericKey]) {
+      return false
+    }
+  }
+
+  return true
 }
 
 // Shared hook for computing global stats across all instances
@@ -138,41 +224,302 @@ function useGlobalStats(statsData: DashboardInstanceStats[]) {
 
 // Optimized hook to get all instance stats using shared TorrentResponse cache
 function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceStats[] {
-  const dashboardQueries = useQueries({
-    queries: instances.map(instance => ({
-      // Use same query key pattern as useTorrentsList for first page with no filters
-      queryKey: ["torrents-list", instance.id, 0, undefined, undefined, "added_on", "desc"],
-      queryFn: () => api.getTorrents(instance.id, {
-        page: 0,
-        limit: 1, // Only need metadata, not actual torrents for Dashboard
-        sort: "added_on",
-        order: "desc" as const,
-      }),
-      enabled: true,
-      refetchInterval: 5000, // Match TorrentTable polling
-      staleTime: 2000,
-      gcTime: 300000, // Match TorrentTable cache time
-      placeholderData: (previousData: TorrentResponse | undefined) => previousData,
-      retry: 1,
-      retryDelay: 1000,
-    })),
-  })
+  const syncStream = useSyncStreamManager()
+  const queryClient = useQueryClient()
+  const streamConnectionsRef = useRef(
+    new Map<
+      number,
+      {
+        key: string
+        disconnect: () => void
+        unsubscribe: () => void
+        cancelRef: { current: boolean }
+      }
+    >()
+  )
+  const baseStreamParams = useMemo(
+    () => ({
+      page: 0,
+      limit: 1,
+      sort: "added_on",
+      order: "desc" as const,
+    }),
+    []
+  )
+  const [instanceData, setInstanceData] = useState<Record<number, InstanceStreamData>>({})
+  const latestDataRef = useRef<Record<number, InstanceStreamData>>({})
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  return instances.map<DashboardInstanceStats>((instance, index) => {
-    const query = dashboardQueries[index]
-    const data = query.data as TorrentResponse | undefined
+  const flushInstanceData = useCallback(
+    (force = false) => {
+      const snapshot = latestDataRef.current
+      setInstanceData(prev => {
+        if (!force && recordsShallowEqual(prev, snapshot)) {
+          return prev
+        }
+        return cloneInstanceDataRecord(snapshot)
+      })
+    },
+    []
+  )
+
+  const scheduleFlush = useCallback(() => {
+    if (flushTimerRef.current) {
+      return
+    }
+
+    flushTimerRef.current = setTimeout(() => {
+      flushTimerRef.current = null
+      flushInstanceData()
+    }, STREAM_REFRESH_INTERVAL_MS)
+  }, [flushInstanceData])
+
+  const applyInstanceData = useCallback(
+    (instanceId: number, buildUpdate: (current: InstanceStreamData) => InstanceUpdateResult) => {
+      const currentRecord = latestDataRef.current
+      let current = currentRecord[instanceId]
+      if (!current) {
+        current = createDefaultInstanceStreamData()
+        currentRecord[instanceId] = current
+      }
+
+      const result = buildUpdate(current)
+      const { data: next, immediate } =
+        "data" in result ? result : { data: result }
+
+      if (next === current) {
+        return
+      }
+
+      currentRecord[instanceId] = next
+
+      if (immediate) {
+        flushInstanceData(true)
+      } else {
+        scheduleFlush()
+      }
+    },
+    [flushInstanceData, scheduleFlush]
+  )
+
+  useEffect(() => {
+    const nextRecord: Record<number, InstanceStreamData> = {}
+    instances.forEach(instance => {
+      nextRecord[instance.id] = latestDataRef.current[instance.id] ?? createDefaultInstanceStreamData()
+    })
+    latestDataRef.current = nextRecord
+    flushInstanceData(true)
+  }, [instances, flushInstanceData])
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return
+    }
+
+    const flushIfVisible = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return
+      }
+
+      if (flushTimerRef.current) {
+        if (typeof window !== "undefined") {
+          window.clearTimeout(flushTimerRef.current)
+        } else {
+          clearTimeout(flushTimerRef.current)
+        }
+        flushTimerRef.current = null
+      }
+
+      flushInstanceData(true)
+    }
+
+    document.addEventListener("visibilitychange", flushIfVisible)
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", flushIfVisible)
+    }
+
+    return () => {
+      document.removeEventListener("visibilitychange", flushIfVisible)
+
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", flushIfVisible)
+      }
+    }
+  }, [flushInstanceData])
+
+  useEffect(() => {
+    const activeInstanceIds = new Set<number>()
+
+    instances.forEach(instance => {
+      const params = {
+        ...baseStreamParams,
+        instanceId: instance.id,
+      }
+      const streamKey = createStreamKey(params)
+      activeInstanceIds.add(instance.id)
+
+      const existing = streamConnectionsRef.current.get(instance.id)
+      if (existing && existing.key === streamKey && !existing.cancelRef.current) {
+        return
+      }
+
+      if (existing) {
+        existing.cancelRef.current = true
+        existing.disconnect()
+        existing.unsubscribe()
+      }
+
+      const cancelRef = { current: false }
+
+      const disconnect = syncStream.connect(params, (payload: TorrentStreamPayload) => {
+        if (cancelRef.current || !payload) {
+          return
+        }
+
+        if (payload.type === "stream-error") {
+          applyInstanceData(instance.id, current => {
+            return {
+              data: {
+                ...current,
+                isLoading: false,
+                error: payload.error ?? current.error,
+                streamError: payload.error ?? current.streamError,
+                streamConnected: false,
+              },
+              immediate: true,
+            }
+          })
+          return
+        }
+
+        if (!payload.data) {
+          return
+        }
+
+        const data = payload.data
+        if (data.appInfo) {
+          queryClient.setQueryData(["qbittorrent-app-info", instance.id], data.appInfo)
+        }
+
+        applyInstanceData(instance.id, current => {
+          const next: InstanceStreamData = {
+            stats: data.stats ?? null,
+            serverState: data.serverState ?? null,
+            torrentCounts: data.counts,
+            appInfo: data.appInfo ?? current.appInfo,
+            altSpeedEnabled: data.serverState?.use_alt_speed_limits || false,
+            isLoading: false,
+            error: null,
+            streamConnected: true,
+            streamError: null,
+            cacheMetadata: data.cacheMetadata ?? null,
+            instanceMeta: data.instanceMeta ?? current.instanceMeta,
+          }
+
+          return {
+            data: next,
+            immediate: current.isLoading && !next.isLoading,
+          }
+        })
+      })
+
+      const unsubscribe = syncStream.subscribe(streamKey, snapshot => {
+        if (cancelRef.current) {
+          return
+        }
+
+        applyInstanceData(instance.id, current => {
+          const next: InstanceStreamData = {
+            ...current,
+            streamConnected: snapshot.connected,
+            streamError: snapshot.error ?? (snapshot.connected ? null : current.streamError),
+          }
+
+          if (snapshot.error) {
+            next.error = snapshot.error
+            next.isLoading = false
+          } else if (snapshot.connected && !current.isLoading) {
+            next.error = null
+          }
+
+          return next
+        })
+      })
+
+      const initialSnapshot = syncStream.getState(streamKey)
+      if (initialSnapshot) {
+        applyInstanceData(instance.id, current => {
+          const next: InstanceStreamData = {
+            ...current,
+            streamConnected: initialSnapshot.connected,
+            streamError: initialSnapshot.error ?? current.streamError,
+          }
+
+          if (initialSnapshot.error) {
+            next.error = initialSnapshot.error
+            next.isLoading = false
+          }
+
+          return next
+        })
+      }
+
+      streamConnectionsRef.current.set(instance.id, { key: streamKey, disconnect, unsubscribe, cancelRef })
+    })
+
+    streamConnectionsRef.current.forEach((entry, instanceId) => {
+      if (!activeInstanceIds.has(instanceId)) {
+        entry.cancelRef.current = true
+        entry.disconnect()
+        entry.unsubscribe()
+        streamConnectionsRef.current.delete(instanceId)
+      }
+    })
+  }, [instances, syncStream, baseStreamParams, queryClient, applyInstanceData])
+
+  useEffect(() => {
+    return () => {
+      streamConnectionsRef.current.forEach(entry => {
+        entry.cancelRef.current = true
+        entry.disconnect()
+        entry.unsubscribe()
+      })
+      streamConnectionsRef.current.clear()
+      if (flushTimerRef.current) {
+        clearTimeout(flushTimerRef.current)
+        flushTimerRef.current = null
+      }
+    }
+  }, [])
+
+  return instances.map<DashboardInstanceStats>((instance) => {
+    const state = instanceData[instance.id] ?? createDefaultInstanceStreamData()
+
+    // Merge SSE instanceMeta into the instance object for real-time status updates
+    // This allows components to use SSE-based connection status instead of polled data
+    const mergedInstance: InstanceResponse = state.instanceMeta
+      ? {
+        ...instance,
+        connected: state.instanceMeta.connected,
+        hasDecryptionError: state.instanceMeta.hasDecryptionError,
+        recentErrors: state.instanceMeta.recentErrors,
+      }
+      : instance
 
     return {
-      instance,
-      // Return TorrentStats directly - no more backwards compatibility conversion
-      stats: data?.stats ?? null,
-      serverState: data?.serverState ?? null,
-      torrentCounts: data?.counts,
-      // Include alt speed status from server state to avoid separate API call
-      altSpeedEnabled: data?.serverState?.use_alt_speed_limits || false,
-      // Include loading/error state for individual instances
-      isLoading: query.isLoading,
-      error: query.error,
+      instance: mergedInstance,
+      stats: state.stats,
+      serverState: state.serverState,
+      torrentCounts: state.torrentCounts,
+      appInfo: state.appInfo,
+      altSpeedEnabled: state.altSpeedEnabled,
+      isLoading: state.isLoading,
+      error: state.error,
+      streamConnected: state.streamConnected,
+      streamError: state.streamError,
+      cacheMetadata: state.cacheMetadata,
+      instanceMeta: state.instanceMeta,
     }
   })
 }
@@ -187,7 +534,16 @@ function InstanceCard({
   isAdvancedMetricsOpen: boolean
   setIsAdvancedMetricsOpen: (open: boolean) => void
 }) {
-  const { instance, stats, serverState, torrentCounts, altSpeedEnabled, isLoading, error } = instanceData
+  const {
+    instance,
+    stats,
+    serverState,
+    torrentCounts,
+    appInfo,
+    altSpeedEnabled,
+    isLoading,
+    error,
+  } = instanceData
   const [showSpeedLimitDialog, setShowSpeedLimitDialog] = useState(false)
 
   // Alternative speed limits toggle - no need to track state, just provide toggle function
@@ -206,7 +562,10 @@ function InstanceCard({
   const {
     data: qbittorrentAppInfo,
     versionInfo: qbittorrentVersionInfo,
-  } = useQBittorrentAppInfo(instance.id)
+  } = useQBittorrentAppInfo(instance.id, {
+    initialData: appInfo ?? undefined,
+    fetchIfMissing: !appInfo,
+  })
   const { preferences } = useInstancePreferences(instance.id, { enabled: instance.connected })
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit] = useSpeedUnits()
@@ -224,14 +583,14 @@ function InstanceCard({
   const rawConnectionStatus = serverState?.connection_status ?? instance.connectionStatus ?? ""
   const normalizedConnectionStatus = rawConnectionStatus ? rawConnectionStatus.trim().toLowerCase() : ""
   const formattedConnectionStatus = normalizedConnectionStatus ? normalizedConnectionStatus.replace(/_/g, " ") : ""
-  const connectionStatusDisplay = formattedConnectionStatus? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()): ""
+  const connectionStatusDisplay = formattedConnectionStatus ? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()) : ""
   const hasConnectionStatus = Boolean(formattedConnectionStatus)
 
 
   const isConnectable = normalizedConnectionStatus === "connected"
   const isFirewalled = normalizedConnectionStatus === "firewalled"
   const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : Ban
-  const connectionStatusIconClass = hasConnectionStatus? isConnectable? "text-green-500": isFirewalled? "text-amber-500": "text-destructive": ""
+  const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-green-500" : isFirewalled ? "text-amber-500" : "text-destructive" : ""
 
   const listenPort = preferences?.listen_port
   const connectionStatusTooltip = connectionStatusDisplay
@@ -318,7 +677,7 @@ function InstanceCard({
                   {altSpeedEnabled ? "Disable Alternative Speed Limits?" : "Enable Alternative Speed Limits?"}
                 </AlertDialogTitle>
                 <AlertDialogDescription>
-                  {altSpeedEnabled? `This will disable alternative speed limits for ${instance.name} and return to normal speed limits.`: `This will enable alternative speed limits for ${instance.name}, which will reduce transfer speeds based on your configured limits.`
+                  {altSpeedEnabled ? `This will disable alternative speed limits for ${instance.name} and return to normal speed limits.` : `This will enable alternative speed limits for ${instance.name}, which will reduce transfer speeds based on your configured limits.`
                   }
                 </AlertDialogDescription>
               </AlertDialogHeader>
@@ -756,7 +1115,9 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
                 {globalStats.totalPeers > 0 && (
                   <div>
                     <span className="text-xs text-muted-foreground">Peers: </span>
-                    <span className="font-semibold">{globalStats.totalPeers}</span>
+                    <span className="font-semibold tabular-nums inline-block min-w-[3rem] text-right">
+                      {globalStats.totalPeers}
+                    </span>
                   </div>
                 )}
               </div>
@@ -791,7 +1152,9 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
               {globalStats.totalPeers > 0 && (
                 <div className="flex items-center gap-2">
                   <span className="text-muted-foreground">Peers:</span>
-                  <span className="text-lg font-semibold">{globalStats.totalPeers}</span>
+                  <span className="text-lg font-semibold tabular-nums inline-block min-w-[3rem] text-right">
+                    {globalStats.totalPeers}
+                  </span>
                 </div>
               )}
             </div>
@@ -1474,327 +1837,107 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
   return (
     <>
-    <Accordion type="single" collapsible className="rounded-lg border bg-card" value={accordionValue} onValueChange={setAccordionValue}>
-      <AccordionItem value="tracker-breakdown" className="border-0">
-        <AccordionTrigger className="px-4 py-4 hover:no-underline hover:bg-muted/50 transition-colors [&>svg]:hidden group">
-          {/* Mobile layout */}
-          <div className="sm:hidden w-full">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Plus className="h-3.5 w-3.5 text-muted-foreground group-data-[state=open]:hidden" />
-                <Minus className="h-3.5 w-3.5 text-muted-foreground group-data-[state=closed]:hidden" />
-                <h3 className="text-sm font-medium text-muted-foreground">Tracker Breakdown</h3>
+      <Accordion type="single" collapsible className="rounded-lg border bg-card" value={accordionValue} onValueChange={setAccordionValue}>
+        <AccordionItem value="tracker-breakdown" className="border-0">
+          <AccordionTrigger className="px-4 py-4 hover:no-underline hover:bg-muted/50 transition-colors [&>svg]:hidden group">
+            {/* Mobile layout */}
+            <div className="sm:hidden w-full">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Plus className="h-3.5 w-3.5 text-muted-foreground group-data-[state=open]:hidden" />
+                  <Minus className="h-3.5 w-3.5 text-muted-foreground group-data-[state=closed]:hidden" />
+                  <h3 className="text-sm font-medium text-muted-foreground">Tracker Breakdown</h3>
+                </div>
+                <span className="text-xs text-muted-foreground">{sortedTrackerStats.length} trackers</span>
               </div>
-              <span className="text-xs text-muted-foreground">{sortedTrackerStats.length} trackers</span>
             </div>
-          </div>
 
-          {/* Desktop layout */}
-          <div className="hidden sm:flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 w-full">
-            <div className="flex items-center gap-2">
-              <Plus className="h-4 w-4 text-muted-foreground group-data-[state=open]:hidden" />
-              <Minus className="h-4 w-4 text-muted-foreground group-data-[state=closed]:hidden" />
-              <h3 className="text-base font-medium">Tracker Breakdown</h3>
+            {/* Desktop layout */}
+            <div className="hidden sm:flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 w-full">
+              <div className="flex items-center gap-2">
+                <Plus className="h-4 w-4 text-muted-foreground group-data-[state=open]:hidden" />
+                <Minus className="h-4 w-4 text-muted-foreground group-data-[state=closed]:hidden" />
+                <h3 className="text-base font-medium">Tracker Breakdown</h3>
+              </div>
+              <div className="flex items-center gap-1">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); openImportDialog() }}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); openImportDialog() } }}
+                      className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>Import customizations</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); handleExport() }}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); handleExport() } }}
+                      className={`inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer ${!customizations || customizations.length === 0 ? "opacity-50 pointer-events-none" : ""}`}
+                      aria-disabled={!customizations || customizations.length === 0}
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>Export customizations</TooltipContent>
+                </Tooltip>
+                <span className="text-muted-foreground ml-1">{sortedTrackerStats.length} trackers</span>
+              </div>
             </div>
-            <div className="flex items-center gap-1">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={(e) => { e.stopPropagation(); openImportDialog() }}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); openImportDialog() } }}
-                    className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>Import customizations</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={(e) => { e.stopPropagation(); handleExport() }}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); handleExport() } }}
-                    className={`inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer ${!customizations || customizations.length === 0 ? "opacity-50 pointer-events-none" : ""}`}
-                    aria-disabled={!customizations || customizations.length === 0}
-                  >
-                    <Upload className="h-3.5 w-3.5" />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>Export customizations</TooltipContent>
-              </Tooltip>
-              <span className="text-muted-foreground ml-1">{sortedTrackerStats.length} trackers</span>
+          </AccordionTrigger>
+          <AccordionContent className="px-0 pb-0">
+            {/* Mobile Sort Dropdown and Import/Export */}
+            <div className="sm:hidden px-4 py-3 border-b flex items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="flex-1 justify-between">
+                    <span className="flex items-center gap-2 text-xs">
+                      Sort: {sortColumn === "tracker" ? "Tracker" :
+                        sortColumn === "uploaded" ? "Uploaded" :
+                          sortColumn === "downloaded" ? "Downloaded" :
+                            sortColumn === "ratio" ? "Ratio" :
+                              sortColumn === "count" ? "Torrents" :
+                                sortColumn === "size" ? "Size" : "Seeded"}
+                    </span>
+                    {sortDirection === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-full">
+                  <DropdownMenuItem onClick={() => handleSort("tracker")}>Tracker</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("uploaded")}>Uploaded</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("downloaded")}>Downloaded</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("ratio")}>Ratio</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("count")}>Torrents</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("size")}>Size</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("performance")}>Seeded</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button variant="ghost" size="sm" onClick={openImportDialog} className="h-8 px-2">
+                <Download className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleExport}
+                disabled={!customizations || customizations.length === 0}
+                className="h-8 px-2"
+              >
+                <Upload className="h-4 w-4" />
+              </Button>
             </div>
-          </div>
-        </AccordionTrigger>
-        <AccordionContent className="px-0 pb-0">
-          {/* Mobile Sort Dropdown and Import/Export */}
-          <div className="sm:hidden px-4 py-3 border-b flex items-center gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="flex-1 justify-between">
-                  <span className="flex items-center gap-2 text-xs">
-                    Sort: {sortColumn === "tracker" ? "Tracker" :
-                           sortColumn === "uploaded" ? "Uploaded" :
-                           sortColumn === "downloaded" ? "Downloaded" :
-                           sortColumn === "ratio" ? "Ratio" :
-                           sortColumn === "count" ? "Torrents" :
-                           sortColumn === "size" ? "Size" : "Seeded"}
-                  </span>
-                  {sortDirection === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-full">
-                <DropdownMenuItem onClick={() => handleSort("tracker")}>Tracker</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleSort("uploaded")}>Uploaded</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleSort("downloaded")}>Downloaded</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleSort("ratio")}>Ratio</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleSort("count")}>Torrents</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleSort("size")}>Size</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleSort("performance")}>Seeded</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button variant="ghost" size="sm" onClick={openImportDialog} className="h-8 px-2">
-              <Download className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleExport}
-              disabled={!customizations || customizations.length === 0}
-              className="h-8 px-2"
-            >
-              <Upload className="h-4 w-4" />
-            </Button>
-          </div>
 
 
-          {/* Mobile Card Layout */}
-          <div className="sm:hidden px-4 space-y-2 py-3">
-            {paginatedTrackerStats.map((tracker) => {
-              const { domain, displayName, originalDomains, uploaded, downloaded, totalSize, count, customizationId } = tracker
-              const { isInfinite, ratio, color: ratioColor } = getTrackerRatioDisplay(uploaded, downloaded)
-              const displayValue = incognitoMode ? getLinuxTrackerDomain(displayName) : displayName
-              const iconDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
-              const isSelected = selectedDomains.has(domain)
-              const isMerged = originalDomains.length > 1
-              const hasCustomization = Boolean(customizationId)
-
-              return (
-                <Card key={displayName} className={`overflow-hidden ${isSelected ? "ring-2 ring-primary" : ""}`}>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        {!hasCustomization && (
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={() => toggleSelection(domain)}
-                            className="shrink-0"
-                          />
-                        )}
-                        <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="font-medium truncate text-sm cursor-default">
-                              {displayValue}
-                            </span>
-                          </TooltipTrigger>
-                          {(isMerged || (hasCustomization && displayName !== domain)) && (
-                            <TooltipContent>
-                              <p className="text-xs">
-                                {isMerged ? `Merged from: ${originalDomains.join(", ")}` : `Original: ${domain}`}
-                              </p>
-                            </TooltipContent>
-                          )}
-                        </Tooltip>
-                        {isMerged && <Link2 className="h-3 w-3 text-muted-foreground shrink-0" />}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {hasCustomization && customizationId ? (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 w-6 p-0"
-                              onClick={(e) => { e.stopPropagation(); openEditDialog(customizationId, displayName, originalDomains) }}
-                            >
-                              <Pencil className="h-3 w-3 text-muted-foreground" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 w-6 p-0"
-                              onClick={(e) => { e.stopPropagation(); handleDeleteCustomization(customizationId) }}
-                            >
-                              <Trash2 className="h-3 w-3 text-muted-foreground" />
-                            </Button>
-                          </>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0"
-                            onClick={(e) => { e.stopPropagation(); openRenameDialog(domain) }}
-                          >
-                            {selectedDomains.size > 0 ? (
-                              <Link2 className="h-3 w-3 text-primary" />
-                            ) : (
-                              <Pencil className="h-3 w-3 text-muted-foreground" />
-                            )}
-                          </Button>
-                        )}
-                        <Badge variant="secondary" className="shrink-0 text-xs">
-                          {count}
-                        </Badge>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    <div className="grid grid-cols-2 gap-3">
-                      {/* Uploaded */}
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <ChevronUp className="h-3 w-3" />
-                          <span>Uploaded</span>
-                        </div>
-                        <div className="font-semibold text-sm">{formatBytes(uploaded)}</div>
-                      </div>
-
-                      {/* Downloaded */}
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <ChevronDown className="h-3 w-3" />
-                          <span>Downloaded</span>
-                        </div>
-                        <div className="font-semibold text-sm">{formatBytes(downloaded)}</div>
-                      </div>
-
-                      {/* Ratio */}
-                      <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground">Ratio</div>
-                        <div className="font-semibold text-sm" style={{ color: ratioColor }}>
-                          {isInfinite ? "∞" : ratio.toFixed(2)}
-                        </div>
-                      </div>
-
-                      {/* Size */}
-                      <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground">Size</div>
-                        <div className="font-semibold text-sm">{formatBytes(totalSize)}</div>
-                      </div>
-
-                      {/* Seeded */}
-                      <div className="space-y-1">
-                        <div className="text-xs text-muted-foreground">Seeded</div>
-                        <div className="font-semibold text-sm">{formatEfficiency(uploaded, totalSize)}</div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )
-            })}
-          </div>
-
-          {/* Desktop Table */}
-          <Table className="hidden sm:table">
-            <TableHeader>
-              <TableRow className="bg-muted/50">
-                <TableHead className="w-8 pl-4" />
-                <TableHead className="w-[35%]">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("tracker")}
-                    className="flex items-center gap-1.5 hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
-                  >
-                    Tracker
-                    <SortIcon column="tracker" sortColumn={sortColumn} sortDirection={sortDirection} />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("uploaded")}
-                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
-                  >
-                    Uploaded
-                    <SortIcon column="uploaded" sortColumn={sortColumn} sortDirection={sortDirection} />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("downloaded")}
-                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
-                  >
-                    Downloaded
-                    <SortIcon column="downloaded" sortColumn={sortColumn} sortDirection={sortDirection} />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("ratio")}
-                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
-                  >
-                    Ratio
-                    <SortIcon column="ratio" sortColumn={sortColumn} sortDirection={sortDirection} />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right hidden lg:table-cell">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("buffer")}
-                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
-                  >
-                    Buffer
-                    <SortIcon column="buffer" sortColumn={sortColumn} sortDirection={sortDirection} />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("count")}
-                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
-                  >
-                    Torrents
-                    <SortIcon column="count" sortColumn={sortColumn} sortDirection={sortDirection} />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right hidden lg:table-cell">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("size")}
-                    className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
-                  >
-                    Size
-                    <SortIcon column="size" sortColumn={sortColumn} sortDirection={sortDirection} />
-                  </button>
-                </TableHead>
-                <TableHead className="text-right hidden lg:table-cell pr-4">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        onClick={() => handleSort("performance")}
-                        className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors"
-                      >
-                        Seeded
-                        <Info className="h-3.5 w-3.5 text-muted-foreground" />
-                        <SortIcon column="performance" sortColumn={sortColumn} sortDirection={sortDirection} />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top">
-                      <p className="text-xs">Uploaded ÷ Content Size — how many times you&apos;ve seeded your content</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedTrackerStats.map((tracker, index) => {
+            {/* Mobile Card Layout */}
+            <div className="sm:hidden px-4 space-y-2 py-3">
+              {paginatedTrackerStats.map((tracker) => {
                 const { domain, displayName, originalDomains, uploaded, downloaded, totalSize, count, customizationId } = tracker
                 const { isInfinite, ratio, color: ratioColor } = getTrackerRatioDisplay(uploaded, downloaded)
                 const displayValue = incognitoMode ? getLinuxTrackerDomain(displayName) : displayName
@@ -1802,42 +1945,37 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 const isSelected = selectedDomains.has(domain)
                 const isMerged = originalDomains.length > 1
                 const hasCustomization = Boolean(customizationId)
-                const buffer = uploaded - downloaded
-                const uploadPercent = totalUploaded > 0 ? (uploaded / totalUploaded) * 100 : 0
 
                 return (
-                  <TableRow
-                    key={displayName}
-                    className={`group ${isSelected ? "bg-primary/5" : index % 2 === 1 ? "bg-muted/30" : ""} hover:bg-muted/50`}
-                  >
-                    <TableCell className="w-8 pl-4">
-                      {!hasCustomization && (
-                        <Checkbox
-                          checked={isSelected}
-                          onCheckedChange={() => toggleSelection(domain)}
-                          className="opacity-0 group-hover:opacity-100 data-[state=checked]:opacity-100"
-                        />
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="font-medium truncate cursor-default">
-                              {displayValue}
-                            </span>
-                          </TooltipTrigger>
-                          {(isMerged || (hasCustomization && displayName !== domain)) && (
-                            <TooltipContent>
-                              <p className="text-xs">
-                                {isMerged ? `Merged from: ${originalDomains.join(", ")}` : `Original: ${domain}`}
-                              </p>
-                            </TooltipContent>
+                  <Card key={displayName} className={`overflow-hidden ${isSelected ? "ring-2 ring-primary" : ""}`}>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          {!hasCustomization && (
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={() => toggleSelection(domain)}
+                              className="shrink-0"
+                            />
                           )}
-                        </Tooltip>
-                        {isMerged && <Link2 className="h-3 w-3 text-muted-foreground shrink-0" />}
-                        <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 shrink-0">
+                          <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="font-medium truncate text-sm cursor-default">
+                                {displayValue}
+                              </span>
+                            </TooltipTrigger>
+                            {(isMerged || (hasCustomization && displayName !== domain)) && (
+                              <TooltipContent>
+                                <p className="text-xs">
+                                  {isMerged ? `Merged from: ${originalDomains.join(", ")}` : `Original: ${domain}`}
+                                </p>
+                              </TooltipContent>
+                            )}
+                          </Tooltip>
+                          {isMerged && <Link2 className="h-3 w-3 text-muted-foreground shrink-0" />}
+                        </div>
+                        <div className="flex items-center gap-1">
                           {hasCustomization && customizationId ? (
                             <>
                               <Button
@@ -1858,91 +1996,316 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                               </Button>
                             </>
                           ) : (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={(e) => { e.stopPropagation(); openRenameDialog(domain) }}
+                            >
+                              {selectedDomains.size > 0 ? (
+                                <Link2 className="h-3 w-3 text-primary" />
+                              ) : (
+                                <Pencil className="h-3 w-3 text-muted-foreground" />
+                              )}
+                            </Button>
+                          )}
+                          <Badge variant="secondary" className="shrink-0 text-xs">
+                            {count}
+                          </Badge>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="grid grid-cols-2 gap-3">
+                        {/* Uploaded */}
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <ChevronUp className="h-3 w-3" />
+                            <span>Uploaded</span>
+                          </div>
+                          <div className="font-semibold text-sm">{formatBytes(uploaded)}</div>
+                        </div>
+
+                        {/* Downloaded */}
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <ChevronDown className="h-3 w-3" />
+                            <span>Downloaded</span>
+                          </div>
+                          <div className="font-semibold text-sm">{formatBytes(downloaded)}</div>
+                        </div>
+
+                        {/* Ratio */}
+                        <div className="space-y-1">
+                          <div className="text-xs text-muted-foreground">Ratio</div>
+                          <div className="font-semibold text-sm" style={{ color: ratioColor }}>
+                            {isInfinite ? "∞" : ratio.toFixed(2)}
+                          </div>
+                        </div>
+
+                        {/* Size */}
+                        <div className="space-y-1">
+                          <div className="text-xs text-muted-foreground">Size</div>
+                          <div className="font-semibold text-sm">{formatBytes(totalSize)}</div>
+                        </div>
+
+                        {/* Seeded */}
+                        <div className="space-y-1">
+                          <div className="text-xs text-muted-foreground">Seeded</div>
+                          <div className="font-semibold text-sm">{formatEfficiency(uploaded, totalSize)}</div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+
+            {/* Desktop Table */}
+            <Table className="hidden sm:table">
+              <TableHeader>
+                <TableRow className="bg-muted/50">
+                  <TableHead className="w-8 pl-4" />
+                  <TableHead className="w-[35%]">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("tracker")}
+                      className="flex items-center gap-1.5 hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      Tracker
+                      <SortIcon column="tracker" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("uploaded")}
+                      className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      Uploaded
+                      <SortIcon column="uploaded" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("downloaded")}
+                      className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      Downloaded
+                      <SortIcon column="downloaded" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("ratio")}
+                      className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      Ratio
+                      <SortIcon column="ratio" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right hidden lg:table-cell">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("buffer")}
+                      className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      Buffer
+                      <SortIcon column="buffer" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("count")}
+                      className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      Torrents
+                      <SortIcon column="count" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right hidden lg:table-cell">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("size")}
+                      className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      Size
+                      <SortIcon column="size" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right hidden lg:table-cell pr-4">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => handleSort("performance")}
+                          className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors"
+                        >
+                          Seeded
+                          <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                          <SortIcon column="performance" sortColumn={sortColumn} sortDirection={sortDirection} />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <p className="text-xs">Uploaded ÷ Content Size — how many times you&apos;ve seeded your content</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedTrackerStats.map((tracker, index) => {
+                  const { domain, displayName, originalDomains, uploaded, downloaded, totalSize, count, customizationId } = tracker
+                  const { isInfinite, ratio, color: ratioColor } = getTrackerRatioDisplay(uploaded, downloaded)
+                  const displayValue = incognitoMode ? getLinuxTrackerDomain(displayName) : displayName
+                  const iconDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
+                  const isSelected = selectedDomains.has(domain)
+                  const isMerged = originalDomains.length > 1
+                  const hasCustomization = Boolean(customizationId)
+                  const buffer = uploaded - downloaded
+                  const uploadPercent = totalUploaded > 0 ? (uploaded / totalUploaded) * 100 : 0
+
+                  return (
+                    <TableRow
+                      key={displayName}
+                      className={`group ${isSelected ? "bg-primary/5" : index % 2 === 1 ? "bg-muted/30" : ""} hover:bg-muted/50`}
+                    >
+                      <TableCell className="w-8 pl-4">
+                        {!hasCustomization && (
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => toggleSelection(domain)}
+                            className="opacity-0 group-hover:opacity-100 data-[state=checked]:opacity-100"
+                          />
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="font-medium truncate cursor-default">
+                                {displayValue}
+                              </span>
+                            </TooltipTrigger>
+                            {(isMerged || (hasCustomization && displayName !== domain)) && (
+                              <TooltipContent>
+                                <p className="text-xs">
+                                  {isMerged ? `Merged from: ${originalDomains.join(", ")}` : `Original: ${domain}`}
+                                </p>
+                              </TooltipContent>
+                            )}
+                          </Tooltip>
+                          {isMerged && <Link2 className="h-3 w-3 text-muted-foreground shrink-0" />}
+                          <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 shrink-0">
+                            {hasCustomization && customizationId ? (
+                              <>
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   className="h-6 w-6 p-0"
-                                  onClick={(e) => { e.stopPropagation(); openRenameDialog(domain) }}
+                                  onClick={(e) => { e.stopPropagation(); openEditDialog(customizationId, displayName, originalDomains) }}
                                 >
-                                  {selectedDomains.size > 0 ? (
-                                    <Link2 className="h-3 w-3 text-primary" />
-                                  ) : (
-                                    <Pencil className="h-3 w-3 text-muted-foreground" />
-                                  )}
+                                  <Pencil className="h-3 w-3 text-muted-foreground" />
                                 </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {selectedDomains.size > 0 ? "Add to merge" : "Rename"}
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0"
+                                  onClick={(e) => { e.stopPropagation(); handleDeleteCustomization(customizationId) }}
+                                >
+                                  <Trash2 className="h-3 w-3 text-muted-foreground" />
+                                </Button>
+                              </>
+                            ) : (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-6 p-0"
+                                    onClick={(e) => { e.stopPropagation(); openRenameDialog(domain) }}
+                                  >
+                                    {selectedDomains.size > 0 ? (
+                                      <Link2 className="h-3 w-3 text-primary" />
+                                    ) : (
+                                      <Pencil className="h-3 w-3 text-muted-foreground" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {selectedDomains.size > 0 ? "Add to merge" : "Rename"}
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right font-semibold">
-                      {formatBytes(uploaded)} <span className="text-[10px] text-muted-foreground font-normal">({uploadPercent.toFixed(1)}%)</span>
-                    </TableCell>
-                    <TableCell className="text-right font-semibold">
-                      {formatBytes(downloaded)}
-                    </TableCell>
-                    <TableCell className="text-right font-semibold" style={{ color: ratioColor }}>
-                      {isInfinite ? "∞" : ratio.toFixed(2)}
-                    </TableCell>
-                    <TableCell className="text-right hidden lg:table-cell font-semibold">
-                      <span
-                        className={buffer < 0 ? "text-destructive" : ""}
-                        style={buffer >= 0 ? { color: "oklch(0.7040 0.1910 142)" } : undefined}
-                      >
-                        {buffer >= 0 ? "+" : "-"}{formatBytes(Math.abs(buffer))}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {count}
-                    </TableCell>
-                    <TableCell className="text-right hidden lg:table-cell font-semibold">
-                      {formatBytes(totalSize)}
-                    </TableCell>
-                    <TableCell className="text-right hidden lg:table-cell font-semibold pr-4">
-                      {formatEfficiency(uploaded, totalSize)}
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-          {/* Pagination controls */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t">
-              <span className="text-sm text-muted-foreground">
-                {page * itemsPerPage + 1}-{Math.min((page + 1) * itemsPerPage, sortedTrackerStats.length)} of {sortedTrackerStats.length} trackers
-              </span>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(p => Math.max(0, p - 1))}
-                  disabled={page === 0}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  <span className="hidden sm:inline ml-1">Previous</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-                  disabled={page >= totalPages - 1}
-                >
-                  <span className="hidden sm:inline mr-1">Next</span>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {formatBytes(uploaded)} <span className="text-[10px] text-muted-foreground font-normal">({uploadPercent.toFixed(1)}%)</span>
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {formatBytes(downloaded)}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold" style={{ color: ratioColor }}>
+                        {isInfinite ? "∞" : ratio.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right hidden lg:table-cell font-semibold">
+                        <span
+                          className={buffer < 0 ? "text-destructive" : ""}
+                          style={buffer >= 0 ? { color: "oklch(0.7040 0.1910 142)" } : undefined}
+                        >
+                          {buffer >= 0 ? "+" : "-"}{formatBytes(Math.abs(buffer))}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {count}
+                      </TableCell>
+                      <TableCell className="text-right hidden lg:table-cell font-semibold">
+                        {formatBytes(totalSize)}
+                      </TableCell>
+                      <TableCell className="text-right hidden lg:table-cell font-semibold pr-4">
+                        {formatEfficiency(uploaded, totalSize)}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+            {/* Pagination controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t">
+                <span className="text-sm text-muted-foreground">
+                  {page * itemsPerPage + 1}-{Math.min((page + 1) * itemsPerPage, sortedTrackerStats.length)} of {sortedTrackerStats.length} trackers
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(p => Math.max(0, p - 1))}
+                    disabled={page === 0}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    <span className="hidden sm:inline ml-1">Previous</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                    disabled={page >= totalPages - 1}
+                  >
+                    <span className="hidden sm:inline mr-1">Next</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
-        </AccordionContent>
-      </AccordionItem>
-    </Accordion>
+            )}
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
 
       {/* Customize Dialog (Rename/Merge/Edit) */}
       <Dialog open={showCustomizeDialog} onOpenChange={(open) => !open && closeCustomizeDialog()}>
@@ -2198,8 +2561,14 @@ function QuickActionsDropdown({ statsData }: { statsData: DashboardInstanceStats
 
 export function Dashboard() {
   const { instances, isLoading } = useInstances()
-  const allInstances = instances || []
-  const activeInstances = allInstances.filter(instance => instance.isActive)
+  const allInstances = useMemo(
+    () => instances ?? [],
+    [instances]
+  )
+  const activeInstances = useMemo(
+    () => allInstances.filter(instance => instance.isActive),
+    [allInstances]
+  )
   const hasInstances = allInstances.length > 0
   const hasActiveInstances = activeInstances.length > 0
   const [isAdvancedMetricsOpen, setIsAdvancedMetricsOpen] = useState(false)
