@@ -4,7 +4,7 @@
  */
 
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
-import type { Torrent, TorrentFilters } from "@/types"
+import type { ServerState, Torrent, TorrentFilters } from "@/types"
 import { useEffect, useState } from "react"
 import { useCrossSeedSearch } from "@/hooks/useCrossSeedSearch"
 import { TorrentCardsMobile } from "./TorrentCardsMobile"
@@ -26,6 +26,7 @@ interface TorrentTableResponsiveProps {
     useSubcategories?: boolean
   ) => void
   onFilterChange?: (filters: TorrentFilters) => void
+  onServerStateUpdate?: (serverState: ServerState | null, listenPort?: number | null) => void
 }
 
 export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
