@@ -3207,6 +3207,29 @@ paths:
           description: Failed to retrieve torrent file
 
   # RSS Feed Management
+  /api/instances/{instanceID}/rss/events:
+    get:
+      tags:
+        - RSS
+      summary: RSS events stream (SSE)
+      description: Server-Sent Events stream for real-time RSS feed updates
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: SSE stream established
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-Sent Events stream with feed updates
+        '400':
+          description: Invalid instance ID
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to establish SSE stream
+
   /api/instances/{instanceID}/rss/items:
     get:
       tags:
