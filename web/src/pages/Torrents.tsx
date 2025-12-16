@@ -4,7 +4,7 @@
  */
 
 import { FilterSidebar } from "@/components/torrents/FilterSidebar"
-import { GlobalStatusBar } from "@/components/torrents/GlobalStatusBar"
+import { GlobalStatusBar, type SelectionInfo } from "@/components/torrents/GlobalStatusBar"
 import { TorrentCreationTasks } from "@/components/torrents/TorrentCreationTasks"
 import { TorrentCreatorDialog } from "@/components/torrents/TorrentCreatorDialog"
 import { TorrentDetailsPanel } from "@/components/torrents/TorrentDetailsPanel"
@@ -14,14 +14,14 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { VisuallyHidden } from "@/components/ui/visually-hidden"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
+import { useInstances } from "@/hooks/useInstances"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilters } from "@/hooks/usePersistedFilters"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
-import { useInstances } from "@/hooks/useInstances"
 import { cn } from "@/lib/utils"
 import type { Category, ServerState, Torrent, TorrentCounts } from "@/types"
-import type { ImperativePanelHandle } from "react-resizable-panels"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import type { ImperativePanelHandle } from "react-resizable-panels"
 
 interface TorrentsProps {
   instanceId: number
@@ -44,6 +44,12 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   const handleServerStateUpdate = useCallback((state: ServerState | null, port?: number | null) => {
     setServerState(state)
     setListenPort(port ?? null)
+  }, [])
+
+  // Selection info for global status bar
+  const [selectionInfo, setSelectionInfo] = useState<SelectionInfo | null>(null)
+  const handleSelectionInfoUpdate = useCallback((info: SelectionInfo) => {
+    setSelectionInfo(info)
   }, [])
 
   // Sidebar width: 320px normal, 260px dense
@@ -383,6 +389,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
                     onFilteredDataUpdate={handleFilteredDataUpdate}
                     onFilterChange={setFilters}
                     onServerStateUpdate={handleServerStateUpdate}
+                    onSelectionInfoUpdate={handleSelectionInfoUpdate}
                   />
                 </div>
               </ResizablePanel>
@@ -422,6 +429,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
               serverState={serverState}
               instance={instance}
               listenPort={listenPort}
+              selectionInfo={selectionInfo}
             />
           </div>
         )}
@@ -429,25 +437,15 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
         {/* Mobile: Full height table with Sheet overlay */}
         {isMobile && (
           <div className="flex flex-col h-full px-4">
-            <div className="flex-1 min-h-0">
-              <TorrentTableResponsive
-                instanceId={instanceId}
-                filters={filters}
-                selectedTorrent={selectedTorrent}
-                onTorrentSelect={handleTorrentSelect}
-                addTorrentModalOpen={isAddTorrentModalOpen}
-                onAddTorrentModalChange={handleAddTorrentModalChange}
-                onFilteredDataUpdate={handleFilteredDataUpdate}
-                onFilterChange={setFilters}
-                onServerStateUpdate={handleServerStateUpdate}
-              />
-            </div>
-            {/* Global status bar - at bottom of mobile layout */}
-            <GlobalStatusBar
+            <TorrentTableResponsive
               instanceId={instanceId}
-              serverState={serverState}
-              instance={instance}
-              listenPort={listenPort}
+              filters={filters}
+              selectedTorrent={selectedTorrent}
+              onTorrentSelect={handleTorrentSelect}
+              addTorrentModalOpen={isAddTorrentModalOpen}
+              onAddTorrentModalChange={handleAddTorrentModalChange}
+              onFilteredDataUpdate={handleFilteredDataUpdate}
+              onFilterChange={setFilters}
             />
           </div>
         )}
