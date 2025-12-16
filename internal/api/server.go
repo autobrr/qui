@@ -272,6 +272,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	trackerRulesHandler := handlers.NewTrackerRuleHandler(s.trackerRuleStore, s.trackerRuleService)
 	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore)
 	rssHandler := handlers.NewRSSHandler(s.syncManager)
+	rssSSEHandler := handlers.NewRSSSSEHandler(s.syncManager)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
 
 	// Torznab/Jackett handler
@@ -444,6 +445,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					// RSS management
 					r.Route("/rss", func(r chi.Router) {
 						rssHandler.Routes(r)
+						r.Get("/events", rssSSEHandler.HandleSSE)
 					})
 
 					// Preferences

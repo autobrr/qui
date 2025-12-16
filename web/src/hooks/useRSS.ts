@@ -3,9 +3,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { useCallback, useEffect, useRef } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { api } from "@/lib/api"
+import { RSSEventSource, type FeedsUpdatePayload } from "@/lib/rss-events"
 import type {
   AddRSSFeedRequest,
   AddRSSFolderRequest,
@@ -35,12 +37,54 @@ export const rssKeys = {
 export function useRSSFeeds(instanceId: number, options?: { enabled?: boolean; withData?: boolean }) {
   const shouldEnable = (options?.enabled ?? true) && instanceId > 0
   const withData = options?.withData ?? true
+  const queryClient = useQueryClient()
+  const eventSourceRef = useRef<RSSEventSource | null>(null)
 
+  // Handle SSE updates - update query cache directly
+  const handleFeedsUpdate = useCallback(
+    (data: FeedsUpdatePayload) => {
+      if (data.instanceId === instanceId) {
+        // Set the data and invalidate to ensure re-render
+        queryClient.setQueryData(rssKeys.feeds(instanceId), data.items)
+        queryClient.invalidateQueries({ queryKey: rssKeys.feeds(instanceId), refetchType: "none" })
+      }
+    },
+    [instanceId, queryClient]
+  )
+
+  // Setup SSE connection
+  useEffect(() => {
+    if (!shouldEnable) return
+
+    const eventSource = new RSSEventSource(instanceId, {
+      onFeedsUpdate: handleFeedsUpdate,
+      onConnected: () => {
+        console.debug(`RSS SSE connected for instance ${instanceId}`)
+      },
+      onDisconnected: () => {
+        console.debug(`RSS SSE disconnected for instance ${instanceId}`)
+      },
+      onError: () => {
+        console.warn(`RSS SSE error for instance ${instanceId}`)
+      },
+    })
+
+    eventSource.connect()
+    eventSourceRef.current = eventSource
+
+    return () => {
+      eventSource.disconnect()
+      eventSourceRef.current = null
+    }
+  }, [instanceId, shouldEnable, handleFeedsUpdate])
+
+  // Initial data fetch - SSE handles subsequent updates
   return useQuery({
     queryKey: rssKeys.feeds(instanceId),
     queryFn: () => api.getRSSItems(instanceId, withData),
     enabled: shouldEnable,
-    staleTime: 10_000,
+    staleTime: Infinity, // SSE handles freshness, no automatic refetching
+    // No refetchInterval - SSE replaces polling
   })
 }
 

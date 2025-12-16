@@ -3,8 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useEffect, useMemo, useState } from "react"
-import { toast } from "sonner"
 import {
   AlertCircle,
   Check,
@@ -17,6 +15,7 @@ import {
   HardDrive,
   Loader2,
   MoreHorizontal,
+  Pencil,
   Plus,
   RefreshCw,
   Regex,
@@ -27,6 +26,8 @@ import {
   Tv,
   X,
 } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { toast } from "sonner"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -70,15 +71,18 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
-import { useInstances } from "@/hooks/useInstances"
+import { MultiSelect } from "@/components/ui/multi-select"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useInstances } from "@/hooks/useInstances"
 import { usePersistedInstanceSelection } from "@/hooks/usePersistedInstanceSelection"
 import {
   rssKeys,
   useAddRSSFeed,
   useAddRSSFolder,
   useMarkRSSAsRead,
+  useMoveRSSItem,
   useRefreshRSSFeed,
   useRemoveRSSItem,
   useRemoveRSSRule,
@@ -88,8 +92,6 @@ import {
   useRSSRules,
   useSetRSSRule,
 } from "@/hooks/useRSS"
-import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
-import { MultiSelect } from "@/components/ui/multi-select"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import type {
   AppPreferences,
@@ -189,11 +191,10 @@ export function RSSPage({
             <div className="flex items-center max-w-40 gap-2">
               <span className="truncate">{inst.name}</span>
               <span
-                className={`ml-auto h-2 w-2 rounded-full flex-shrink-0 ${
-                  inst.connected
+                className={`ml-auto h-2 w-2 rounded-full flex-shrink-0 ${inst.connected
                     ? "bg-green-500"
                     : "bg-red-500"
-                }`}
+                  }`}
               />
             </div>
           </SelectItem>
@@ -464,6 +465,15 @@ function FeedsTab({ instanceId, feedsData, feedsLoading, selectedFeedPath, onFee
   const removeFeed = useRemoveRSSItem(instanceId)
   const refreshFeed = useRefreshRSSFeed(instanceId)
   const markAsRead = useMarkRSSAsRead(instanceId)
+  const moveFeed = useMoveRSSItem(instanceId)
+
+  // Rename dialog state
+  const [renameDialog, setRenameDialog] = useState<{ open: boolean; path: string; currentName: string }>({
+    open: false,
+    path: "",
+    currentName: "",
+  })
+  const [newName, setNewName] = useState("")
 
   // Find selected feed
   const selectedFeed = useMemo(() => {
@@ -529,6 +539,41 @@ function FeedsTab({ instanceId, feedsData, feedsLoading, selectedFeedPath, onFee
     }
   }
 
+  const openRenameDialog = (path: string) => {
+    // Extract the current name from the path (last segment)
+    const segments = path.split("\\")
+    const currentName = segments[segments.length - 1]
+    setRenameDialog({ open: true, path, currentName })
+    setNewName(currentName)
+  }
+
+  const handleRenameFeed = async () => {
+    if (!newName.trim() || newName === renameDialog.currentName) {
+      setRenameDialog({ open: false, path: "", currentName: "" })
+      return
+    }
+
+    try {
+      // Build the new path by replacing the last segment
+      const segments = renameDialog.path.split("\\")
+      segments[segments.length - 1] = newName.trim()
+      const destPath = segments.join("\\")
+
+      await moveFeed.mutateAsync({ itemPath: renameDialog.path, destPath })
+      toast.success("Feed renamed successfully")
+
+      // Update selection if the renamed feed was selected
+      if (selectedFeedPath === renameDialog.path) {
+        onFeedSelect(destPath)
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to rename feed"
+      toast.error(message)
+    } finally {
+      setRenameDialog({ open: false, path: "", currentName: "" })
+    }
+  }
+
   const unreadCount = countUnreadArticles(feedsData)
   const selectedFeedArticles = selectedFeed?.articles ?? []
   const selectedFeedUnread = selectedFeedArticles.filter(a => !a.isRead).length
@@ -537,15 +582,13 @@ function FeedsTab({ instanceId, feedsData, feedsLoading, selectedFeedPath, onFee
     <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4 h-full">
       {/* Feed Tree - Narrow sidebar */}
       <Card className="flex flex-col min-h-0">
-        <CardHeader className="pb-2 shrink-0">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-medium">Feeds</CardTitle>
-            {unreadCount > 0 && (
-              <span className="text-xs text-muted-foreground">{unreadCount}</span>
-            )}
-          </div>
+        <CardHeader className="shrink-0 flex flex-row items-center justify-between space-y-0 py-0">
+          <CardTitle className="text-sm font-medium">Feeds</CardTitle>
+          {unreadCount > 0 && (
+            <span className="text-xs text-muted-foreground">{unreadCount}</span>
+          )}
         </CardHeader>
-        <CardContent className="pt-0 flex-1 min-h-0 overflow-y-auto">
+        <CardContent className="pt-0 px-3 flex-1 min-h-0 overflow-y-auto">
           <FeedTree
             items={feedsData}
             path=""
@@ -553,33 +596,53 @@ function FeedsTab({ instanceId, feedsData, feedsLoading, selectedFeedPath, onFee
             onSelect={onFeedSelect}
             onRemove={handleRemoveFeed}
             onRefresh={handleRefreshFeed}
+            onRename={openRenameDialog}
           />
         </CardContent>
       </Card>
 
+      {/* Rename Dialog */}
+      <Dialog open={renameDialog.open} onOpenChange={(open) => !open && setRenameDialog({ open: false, path: "", currentName: "" })}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rename Feed</DialogTitle>
+            <DialogDescription>Enter a new name for this feed.</DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Feed name"
+              onKeyDown={(e) => e.key === "Enter" && handleRenameFeed()}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameDialog({ open: false, path: "", currentName: "" })}>
+              Cancel
+            </Button>
+            <Button onClick={handleRenameFeed} disabled={!newName.trim() || newName === renameDialog.currentName}>
+              Rename
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Articles Panel - Main content */}
       <Card className="flex flex-col min-h-0">
-        <CardHeader className="py-3 shrink-0">
-          <div className="flex items-center justify-between gap-4">
-            <div className="min-w-0">
-              <CardTitle className="text-sm font-medium truncate">
-                {selectedFeed ? (selectedFeed.title || "Articles") : "Articles"}
-              </CardTitle>
-              {selectedFeed && (
-                <CardDescription className="truncate text-xs">{selectedFeed.url}</CardDescription>
+        <CardHeader className="shrink-0 flex flex-row items-center justify-between space-y-0 py-0">
+          <CardTitle className="text-sm font-medium truncate min-w-0" title={selectedFeed?.url}>
+            {selectedFeed ? (selectedFeed.title || "Articles") : "Articles"}
+          </CardTitle>
+          {selectedFeed && (
+            <div className="flex items-center gap-3 shrink-0">
+              {selectedFeedUnread > 0 && (
+                <span className="text-xs text-muted-foreground">{selectedFeedUnread} unread</span>
               )}
+              <Button variant="outline" size="sm" onClick={() => handleMarkAllAsRead(selectedFeedPath!)}>
+                Mark all as read
+              </Button>
             </div>
-            {selectedFeed && (
-              <div className="flex items-center gap-3 shrink-0">
-                {selectedFeedUnread > 0 && (
-                  <span className="text-xs text-muted-foreground">{selectedFeedUnread} unread</span>
-                )}
-                <Button variant="outline" size="sm" onClick={() => handleMarkAllAsRead(selectedFeedPath!)}>
-                  Mark all as read
-                </Button>
-              </div>
-            )}
-          </div>
+          )}
         </CardHeader>
         <CardContent className="pt-0 flex-1 min-h-0 flex flex-col">
           {selectedFeed ? (
@@ -607,9 +670,10 @@ interface FeedTreeProps {
   onSelect: (path: string | undefined) => void
   onRemove: (path: string) => void
   onRefresh: (path: string) => void
+  onRename: (path: string) => void
 }
 
-function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh }: FeedTreeProps) {
+function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh, onRename }: FeedTreeProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
 
   const toggleFolder = (folderPath: string) => {
@@ -640,18 +704,16 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh }: 
           return (
             <div
               key={itemPath}
-              className={`group flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors ${
-                isSelected
+              className={`group flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors ${isSelected
                   ? "bg-primary/10 text-primary"
                   : "hover:bg-muted"
-              }`}
+                }`}
               onClick={() => onSelect(itemPath)}
             >
-              <Rss className={`h-3.5 w-3.5 flex-shrink-0 ${
-                feed.hasError ? "text-destructive" : isSelected ? "text-primary" : "text-muted-foreground"
-              }`} />
-              <span className={`flex-1 truncate text-sm ${hasUnread ? "font-medium" : ""}`}>
-                {feed.title || name}
+              <Rss className={`h-3.5 w-3.5 flex-shrink-0 ${feed.hasError ? "text-destructive" : isSelected ? "text-primary" : "text-muted-foreground"
+                }`} />
+              <span className={`flex-1 truncate text-sm ${hasUnread ? "font-medium" : ""}`} title={feed.title && feed.title !== name ? feed.title : undefined}>
+                {name}
               </span>
               {feed.isLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
               {feed.hasError && <AlertCircle className="h-3.5 w-3.5 text-destructive" />}
@@ -668,6 +730,10 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh }: 
                   <DropdownMenuItem onClick={() => onRefresh(itemPath)}>
                     <RefreshCw className="h-4 w-4 mr-2" />
                     Refresh
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onRename(itemPath)}>
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Rename
                   </DropdownMenuItem>
                   {feed.url && (
                     <DropdownMenuItem asChild>
@@ -712,6 +778,11 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh }: 
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => onRename(itemPath)}>
+                      <Pencil className="h-4 w-4 mr-2" />
+                      Rename
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
                     <DropdownMenuItem className="text-destructive" onClick={() => onRemove(itemPath)}>
                       <Trash2 className="h-4 w-4 mr-2" />
                       Remove Folder
@@ -728,6 +799,7 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh }: 
                     onSelect={onSelect}
                     onRemove={onRemove}
                     onRefresh={onRefresh}
+                    onRename={onRename}
                   />
                 </div>
               )}
@@ -800,9 +872,8 @@ function ArticleRow({ article, formatDate, onMarkAsRead }: ArticleRowProps) {
 
   return (
     <div
-      className={`group flex items-center gap-2 py-1.5 transition-colors ${
-        article.isRead ? "opacity-50 hover:opacity-100" : ""
-      }`}
+      className={`group flex items-center gap-2 py-1.5 transition-colors ${article.isRead ? "opacity-50 hover:opacity-100" : ""
+        }`}
     >
       <div className="flex-1 min-w-0">
         <p className={`text-sm leading-snug truncate ${article.isRead ? "" : "font-medium"}`}>
