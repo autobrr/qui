@@ -4797,3 +4797,166 @@ func (sm *SyncManager) DeleteTorrentCreationTask(ctx context.Context, instanceID
 
 	return client.DeleteTorrentCreationTaskCtx(ctx, taskID)
 }
+
+// RSS Methods - thin proxies to qBittorrent RSS API
+
+// GetRSSItems retrieves all RSS feeds and folders for an instance
+func (sm *SyncManager) GetRSSItems(ctx context.Context, instanceID int, withData bool) (qbt.RSSItems, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.GetRSSItemsCtx(ctx, withData)
+}
+
+// AddRSSFolder creates a new RSS folder
+func (sm *SyncManager) AddRSSFolder(ctx context.Context, instanceID int, path string) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.AddRSSFolderCtx(ctx, path)
+}
+
+// AddRSSFeed adds a new RSS feed
+func (sm *SyncManager) AddRSSFeed(ctx context.Context, instanceID int, url, path string, refreshInterval int64) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.AddRSSFeedCtx(ctx, url, path, refreshInterval)
+}
+
+// SetRSSFeedURL changes the URL of an existing feed
+func (sm *SyncManager) SetRSSFeedURL(ctx context.Context, instanceID int, path, url string) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.SetRSSFeedURLCtx(ctx, path, url)
+}
+
+// SetRSSFeedRefreshInterval sets the refresh interval for a feed
+func (sm *SyncManager) SetRSSFeedRefreshInterval(ctx context.Context, instanceID int, path string, refreshInterval int64) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.SetRSSFeedRefreshIntervalCtx(ctx, path, refreshInterval)
+}
+
+// RemoveRSSItem removes a feed or folder
+func (sm *SyncManager) RemoveRSSItem(ctx context.Context, instanceID int, path string) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.RemoveRSSItemCtx(ctx, path)
+}
+
+// MoveRSSItem moves a feed or folder to a new location
+func (sm *SyncManager) MoveRSSItem(ctx context.Context, instanceID int, itemPath, destPath string) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.MoveRSSItemCtx(ctx, itemPath, destPath)
+}
+
+// RefreshRSSItem triggers a manual refresh of a feed or folder
+func (sm *SyncManager) RefreshRSSItem(ctx context.Context, instanceID int, itemPath string) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.RefreshRSSItemCtx(ctx, itemPath)
+}
+
+// MarkRSSItemAsRead marks articles as read
+func (sm *SyncManager) MarkRSSItemAsRead(ctx context.Context, instanceID int, itemPath, articleID string) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.MarkRSSItemAsReadCtx(ctx, itemPath, articleID)
+}
+
+// GetRSSRules retrieves all RSS auto-download rules
+func (sm *SyncManager) GetRSSRules(ctx context.Context, instanceID int) (qbt.RSSRules, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.GetRSSRulesCtx(ctx)
+}
+
+// SetRSSRule creates or updates an auto-download rule
+func (sm *SyncManager) SetRSSRule(ctx context.Context, instanceID int, ruleName string, rule qbt.RSSAutoDownloadRule) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.SetRSSRuleCtx(ctx, ruleName, rule)
+}
+
+// RenameRSSRule renames an existing rule
+func (sm *SyncManager) RenameRSSRule(ctx context.Context, instanceID int, ruleName, newRuleName string) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.RenameRSSRuleCtx(ctx, ruleName, newRuleName)
+}
+
+// RemoveRSSRule deletes an auto-download rule
+func (sm *SyncManager) RemoveRSSRule(ctx context.Context, instanceID int, ruleName string) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.RemoveRSSRuleCtx(ctx, ruleName)
+}
+
+// GetRSSMatchingArticles gets articles matching a rule for preview
+func (sm *SyncManager) GetRSSMatchingArticles(ctx context.Context, instanceID int, ruleName string) (qbt.RSSMatchingArticles, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.GetRSSMatchingArticlesCtx(ctx, ruleName)
+}
+
+// ReprocessRSSRules triggers qBittorrent to reprocess all unread articles against rules.
+// It does this by toggling auto-downloading off then on, which calls startProcessing().
+func (sm *SyncManager) ReprocessRSSRules(ctx context.Context, instanceID int) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	// Toggle off
+	if err := client.SetRSSAutoDownloadingEnabled(false); err != nil {
+		return fmt.Errorf("failed to disable RSS auto-downloading: %w", err)
+	}
+
+	// Toggle back on - this triggers startProcessing() which processes all unread articles
+	if err := client.SetRSSAutoDownloadingEnabled(true); err != nil {
+		return fmt.Errorf("failed to enable RSS auto-downloading: %w", err)
+	}
+
+	return nil
+}

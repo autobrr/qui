@@ -271,6 +271,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	crossSeedHandler := handlers.NewCrossSeedHandler(s.crossSeedService, s.instanceCrossSeedCompletionStore, s.instanceStore)
 	trackerRulesHandler := handlers.NewTrackerRuleHandler(s.trackerRuleStore, s.trackerRuleService)
 	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore)
+	rssHandler := handlers.NewRSSHandler(s.syncManager)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
 
 	// Torznab/Jackett handler
@@ -438,6 +439,11 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Put("/", trackerRulesHandler.Update)
 							r.Delete("/", trackerRulesHandler.Delete)
 						})
+					})
+
+					// RSS management
+					r.Route("/rss", func(r chi.Router) {
+						rssHandler.Routes(r)
 					})
 
 					// Preferences

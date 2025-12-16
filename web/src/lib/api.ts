@@ -73,7 +73,21 @@ import type {
   TrackerRuleInput,
   User,
   DashboardSettings,
-  DashboardSettingsInput
+  DashboardSettingsInput,
+  RSSItems,
+  RSSRules,
+  RSSMatchingArticles,
+  AddRSSFeedRequest,
+  AddRSSFolderRequest,
+  SetRSSFeedURLRequest,
+  SetRSSFeedRefreshIntervalRequest,
+  MoveRSSItemRequest,
+  RemoveRSSItemRequest,
+  RefreshRSSItemRequest,
+  MarkRSSAsReadRequest,
+  SetRSSRuleRequest,
+  RenameRSSRuleRequest,
+  WarningResponse,
 } from "@/types"
 import { getApiBaseUrl, withBasePath } from "./base-url"
 
@@ -1705,6 +1719,104 @@ class ApiClient {
 
   async getIndexerStats(id: number): Promise<TorznabIndexerLatencyStats[]> {
     return this.request<TorznabIndexerLatencyStats[]>(`/torznab/indexers/${id}/stats`)
+  }
+
+  // RSS Feed Management
+
+  async getRSSItems(instanceId: number, withData = true): Promise<RSSItems> {
+    return this.request<RSSItems>(`/instances/${instanceId}/rss/items?withData=${withData}`)
+  }
+
+  async addRSSFolder(instanceId: number, data: AddRSSFolderRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/folders`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async addRSSFeed(instanceId: number, data: AddRSSFeedRequest): Promise<WarningResponse> {
+    return this.request<WarningResponse>(`/instances/${instanceId}/rss/feeds`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async setRSSFeedURL(instanceId: number, data: SetRSSFeedURLRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/feeds/url`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async setRSSFeedRefreshInterval(instanceId: number, data: SetRSSFeedRefreshIntervalRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/feeds/interval`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async moveRSSItem(instanceId: number, data: MoveRSSItemRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/items/move`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async removeRSSItem(instanceId: number, data: RemoveRSSItemRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/items`, {
+      method: "DELETE",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async refreshRSSItem(instanceId: number, data: RefreshRSSItemRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/items/refresh`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async markRSSAsRead(instanceId: number, data: MarkRSSAsReadRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/articles/read`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  // RSS Auto-Download Rules
+
+  async getRSSRules(instanceId: number): Promise<RSSRules> {
+    return this.request<RSSRules>(`/instances/${instanceId}/rss/rules`)
+  }
+
+  async setRSSRule(instanceId: number, data: SetRSSRuleRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/rules`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async renameRSSRule(instanceId: number, ruleName: string, data: RenameRSSRuleRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/rules/${encodeURIComponent(ruleName)}/rename`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async removeRSSRule(instanceId: number, ruleName: string): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/rules/${encodeURIComponent(ruleName)}`, {
+      method: "DELETE",
+    })
+  }
+
+  async getRSSMatchingArticles(instanceId: number, ruleName: string): Promise<RSSMatchingArticles> {
+    return this.request<RSSMatchingArticles>(`/instances/${instanceId}/rss/rules/${encodeURIComponent(ruleName)}/preview`)
+  }
+
+  async reprocessRSSRules(instanceId: number): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/rules/reprocess`, {
+      method: "POST",
+    })
   }
 }
 

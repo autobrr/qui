@@ -1,0 +1,2021 @@
+/*
+ * Copyright (c) 2025, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { useEffect, useMemo, useState } from "react"
+import { toast } from "sonner"
+import {
+  AlertCircle,
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  FileText,
+  Folder,
+  FolderOpen,
+  HardDrive,
+  Loader2,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+  Rss,
+  Settings,
+  Trash2,
+} from "lucide-react"
+
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Separator } from "@/components/ui/separator"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import { Switch } from "@/components/ui/switch"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+
+import { useInstances } from "@/hooks/useInstances"
+import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
+import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { usePersistedInstanceSelection } from "@/hooks/usePersistedInstanceSelection"
+import {
+  rssKeys,
+  useAddRSSFeed,
+  useAddRSSFolder,
+  useMarkRSSAsRead,
+  useRefreshRSSFeed,
+  useRemoveRSSItem,
+  useRemoveRSSRule,
+  useReprocessRSSRules,
+  useRSSFeeds,
+  useRSSMatchingArticles,
+  useRSSRules,
+  useSetRSSRule,
+} from "@/hooks/useRSS"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { MultiSelect } from "@/components/ui/multi-select"
+import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
+import type {
+  AppPreferences,
+  Category,
+  RSSArticle,
+  RSSAutoDownloadRule,
+  RSSFeed,
+  RSSItems,
+} from "@/types"
+import { isRSSFeed } from "@/types"
+import { useQueryClient } from "@tanstack/react-query"
+
+interface RSSPageProps {
+  activeTab: "feeds" | "rules"
+  selectedFeedPath?: string
+  selectedRuleName?: string
+  onTabChange: (tab: "feeds" | "rules") => void
+  onFeedSelect: (feedPath: string | undefined) => void
+  onRuleSelect: (ruleName: string | undefined) => void
+}
+
+export function RSSPage({
+  activeTab,
+  selectedFeedPath,
+  selectedRuleName,
+  onTabChange,
+  onFeedSelect,
+  onRuleSelect,
+}: RSSPageProps) {
+  const { instances } = useInstances()
+  const [selectedInstanceId, setSelectedInstanceId] = usePersistedInstanceSelection("rss")
+
+  // Auto-select first instance if none selected
+  useEffect(() => {
+    if (selectedInstanceId === undefined && instances && instances.length > 0) {
+      const firstConnected = instances.find((i) => i.connected)
+      if (firstConnected) {
+        setSelectedInstanceId(firstConnected.id)
+      } else if (instances[0]) {
+        setSelectedInstanceId(instances[0].id)
+      }
+    }
+  }, [selectedInstanceId, setSelectedInstanceId, instances])
+
+  const instanceId = selectedInstanceId ?? 0
+
+  const handleInstanceSelection = (value: string) => {
+    const parsed = parseInt(value, 10)
+    if (Number.isNaN(parsed)) {
+      setSelectedInstanceId(undefined)
+      return
+    }
+    setSelectedInstanceId(parsed)
+  }
+
+  const instance = instances?.find((i) => i.id === instanceId)
+  const hasInstances = (instances?.length ?? 0) > 0
+
+  // Queries
+  const { data: feedsData, isLoading: feedsLoading } = useRSSFeeds(instanceId, {
+    enabled: instanceId > 0,
+  })
+  const { data: rulesData, isLoading: rulesLoading } = useRSSRules(instanceId, {
+    enabled: instanceId > 0,
+  })
+  const { preferences, updatePreferences, isUpdating: isUpdatingPreferences } = useInstancePreferences(instanceId, {
+    enabled: instanceId > 0,
+  })
+  const { data: metadata } = useInstanceMetadata(instanceId)
+
+  // Derived state
+  const isRSSProcessingEnabled = preferences?.rss_processing_enabled ?? true
+  const isRSSAutoDownloadingEnabled = preferences?.rss_auto_downloading_enabled ?? true
+
+  // Mutations
+  const reprocessRules = useReprocessRSSRules(instanceId)
+  const refreshAllFeeds = useRefreshRSSFeed(instanceId)
+
+  // Dialog states
+  const [addFeedOpen, setAddFeedOpen] = useState(false)
+  const [addFolderOpen, setAddFolderOpen] = useState(false)
+  const [addRuleOpen, setAddRuleOpen] = useState(false)
+
+  // Instance selector component (reused in different places)
+  const renderInstanceSelector = () => (
+    <Select value={instanceId?.toString() ?? ""} onValueChange={handleInstanceSelection}>
+      <SelectTrigger className="!w-[240px] !max-w-[240px]">
+        <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+          <HardDrive className="h-4 w-4 flex-shrink-0" />
+          <span className="truncate">
+            <SelectValue placeholder="Select instance" />
+          </span>
+        </div>
+      </SelectTrigger>
+      <SelectContent>
+        {instances?.map((inst) => (
+          <SelectItem key={inst.id} value={inst.id.toString()}>
+            <div className="flex items-center max-w-40 gap-2">
+              <span className="truncate">{inst.name}</span>
+              <span
+                className={`ml-auto h-2 w-2 rounded-full flex-shrink-0 ${
+                  inst.connected
+                    ? "bg-green-500"
+                    : "bg-red-500"
+                }`}
+              />
+            </div>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+
+  // No instances view
+  if (!hasInstances) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-8">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
+            <CardTitle>No Instances Available</CardTitle>
+            <CardDescription>
+              Add a qBittorrent instance to manage RSS feeds and auto-download rules.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    )
+  }
+
+  // No instance selected view
+  if (!instanceId) {
+    return (
+      <div className="flex flex-1 flex-col p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <Rss className="h-6 w-6" />
+            <h1 className="text-2xl font-semibold">RSS</h1>
+          </div>
+          {renderInstanceSelector()}
+        </div>
+        <div className="flex flex-1 items-center justify-center">
+          <Card className="w-full max-w-md">
+            <CardHeader className="text-center">
+              <HardDrive className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
+              <CardTitle>Select an Instance</CardTitle>
+              <CardDescription>
+                Choose a qBittorrent instance to manage its RSS feeds and auto-download rules.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-1 flex-col p-6">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <Rss className="h-6 w-6" />
+          <h1 className="text-2xl font-semibold">RSS</h1>
+          {instance && (
+            <Badge variant="outline" className="ml-2">
+              {instance.name}
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {renderInstanceSelector()}
+          <RssSettingsPopover
+            preferences={preferences}
+            updatePreferences={updatePreferences}
+            isUpdating={isUpdatingPreferences}
+          />
+        </div>
+      </div>
+
+      {/* Warning Banners */}
+      {!isRSSProcessingEnabled && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription className="flex items-center justify-between">
+            <span>RSS feed fetching is disabled. Feeds will not be refreshed automatically.</span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                updatePreferences({ rss_processing_enabled: true })
+                toast.success("RSS processing enabled")
+              }}
+              disabled={isUpdatingPreferences}
+            >
+              {isUpdatingPreferences ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enable RSS"}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {isRSSProcessingEnabled && !isRSSAutoDownloadingEnabled && (
+        <Alert className="mb-4 border-yellow-500/50 bg-yellow-500/10">
+          <AlertCircle className="h-4 w-4 text-yellow-500" />
+          <AlertDescription className="flex items-center justify-between">
+            <span>RSS auto-downloading is disabled. Rules will not automatically download torrents.</span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                updatePreferences({ rss_auto_downloading_enabled: true })
+                toast.success("RSS auto-downloading enabled")
+              }}
+              disabled={isUpdatingPreferences}
+            >
+              {isUpdatingPreferences ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enable Auto-Download"}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={(v) => onTabChange(v as "feeds" | "rules")}>
+        <div className="flex items-center justify-between mb-4">
+          <TabsList>
+            <TabsTrigger value="feeds" className="gap-2">
+              <Rss className="h-4 w-4" />
+              Feeds
+            </TabsTrigger>
+            <TabsTrigger value="rules" className="gap-2">
+              <FileText className="h-4 w-4" />
+              Rules
+            </TabsTrigger>
+          </TabsList>
+
+          {activeTab === "feeds" && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  refreshAllFeeds.mutate(
+                    { itemPath: "" },
+                    {
+                      onSuccess: () => toast.success("Refreshing all feeds..."),
+                      onError: () => toast.error("Failed to refresh feeds"),
+                    }
+                  )
+                }}
+                disabled={refreshAllFeeds.isPending}
+              >
+                {refreshAllFeeds.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                Refresh All
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setAddFolderOpen(true)}>
+                <Folder className="h-4 w-4 mr-2" />
+                Add Folder
+              </Button>
+              <Button size="sm" onClick={() => setAddFeedOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Feed
+              </Button>
+            </div>
+          )}
+
+          {activeTab === "rules" && (
+            <div className="flex items-center gap-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      reprocessRules.mutate(undefined, {
+                        onSuccess: () => {
+                          toast.success("Rules reprocessed - unread articles will be checked against all rules")
+                        },
+                        onError: () => {
+                          toast.error("Failed to reprocess rules")
+                        },
+                      })
+                    }}
+                    disabled={reprocessRules.isPending}
+                  >
+                    {reprocessRules.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Re-process all unread articles against rules</p>
+                </TooltipContent>
+              </Tooltip>
+              <Button size="sm" onClick={() => setAddRuleOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Rule
+              </Button>
+            </div>
+          )}
+        </div>
+
+        <TabsContent value="feeds" className="mt-0">
+          <FeedsTab
+            instanceId={instanceId}
+            feedsData={feedsData}
+            feedsLoading={feedsLoading}
+            selectedFeedPath={selectedFeedPath}
+            onFeedSelect={onFeedSelect}
+          />
+        </TabsContent>
+
+        <TabsContent value="rules" className="mt-0">
+          <RulesTab
+            instanceId={instanceId}
+            rulesData={rulesData}
+            rulesLoading={rulesLoading}
+            selectedRuleName={selectedRuleName}
+            onRuleSelect={onRuleSelect}
+            feedsData={feedsData}
+            categories={metadata?.categories ?? {}}
+            tags={metadata?.tags ?? []}
+          />
+        </TabsContent>
+      </Tabs>
+
+      {/* Dialogs */}
+      <AddFeedDialog
+        instanceId={instanceId}
+        open={addFeedOpen}
+        onOpenChange={setAddFeedOpen}
+        feedsData={feedsData}
+      />
+      <AddFolderDialog instanceId={instanceId} open={addFolderOpen} onOpenChange={setAddFolderOpen} />
+      <AddRuleDialog
+        instanceId={instanceId}
+        open={addRuleOpen}
+        onOpenChange={setAddRuleOpen}
+        feedsData={feedsData}
+        categories={metadata?.categories ?? {}}
+        tags={metadata?.tags ?? []}
+      />
+    </div>
+  )
+}
+
+// ============================================================================
+// Feeds Tab
+// ============================================================================
+
+interface FeedsTabProps {
+  instanceId: number
+  feedsData: RSSItems | undefined
+  feedsLoading: boolean
+  selectedFeedPath?: string
+  onFeedSelect: (feedPath: string | undefined) => void
+}
+
+function FeedsTab({ instanceId, feedsData, feedsLoading, selectedFeedPath, onFeedSelect }: FeedsTabProps) {
+  const queryClient = useQueryClient()
+  const removeFeed = useRemoveRSSItem(instanceId)
+  const refreshFeed = useRefreshRSSFeed(instanceId)
+
+  // Find selected feed
+  const selectedFeed = useMemo(() => {
+    if (!selectedFeedPath || !feedsData) return null
+    return findFeedByPath(feedsData, selectedFeedPath)
+  }, [selectedFeedPath, feedsData])
+
+  if (feedsLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (!feedsData || Object.keys(feedsData).length === 0) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <Rss className="h-12 w-12 text-muted-foreground mb-4" />
+          <p className="text-muted-foreground text-center">
+            No RSS feeds configured. Add a feed to get started.
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const handleRemoveFeed = async (path: string) => {
+    try {
+      await removeFeed.mutateAsync({ path })
+      toast.success("Feed removed successfully")
+      if (selectedFeedPath === path) {
+        onFeedSelect(undefined)
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to remove feed"
+      toast.error(message)
+    }
+  }
+
+  const handleRefreshFeed = async (path: string) => {
+    try {
+      await refreshFeed.mutateAsync({ itemPath: path })
+      toast.success("Feed refresh triggered")
+      // Invalidate to pick up changes
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: rssKeys.feeds(instanceId) })
+      }, 2000)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to refresh feed"
+      toast.error(message)
+    }
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Feed Tree */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">Feeds</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ScrollArea className="h-[500px]">
+            <FeedTree
+              items={feedsData}
+              path=""
+              selectedPath={selectedFeedPath}
+              onSelect={onFeedSelect}
+              onRemove={handleRemoveFeed}
+              onRefresh={handleRefreshFeed}
+            />
+          </ScrollArea>
+        </CardContent>
+      </Card>
+
+      {/* Articles Panel */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">
+            {selectedFeed ? (selectedFeed.title || "Articles") : "Articles"}
+          </CardTitle>
+          {selectedFeed && (
+            <CardDescription className="truncate">{selectedFeed.url}</CardDescription>
+          )}
+        </CardHeader>
+        <CardContent>
+          {selectedFeed ? (
+            <ArticlesPanel instanceId={instanceId} feed={selectedFeed} feedPath={selectedFeedPath!} />
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+              <FileText className="h-12 w-12 mb-4" />
+              <p>Select a feed to view articles</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+// ============================================================================
+// Feed Tree Component
+// ============================================================================
+
+interface FeedTreeProps {
+  items: RSSItems
+  path: string
+  selectedPath?: string
+  onSelect: (path: string | undefined) => void
+  onRemove: (path: string) => void
+  onRefresh: (path: string) => void
+}
+
+function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh }: FeedTreeProps) {
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
+
+  const toggleFolder = (folderPath: string) => {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev)
+      if (next.has(folderPath)) {
+        next.delete(folderPath)
+      } else {
+        next.add(folderPath)
+      }
+      return next
+    })
+  }
+
+  const entries = Object.entries(items).sort(([a], [b]) => a.localeCompare(b))
+
+  return (
+    <div className="space-y-1">
+      {entries.map(([name, item]) => {
+        const itemPath = path ? `${path}\\${name}` : name
+
+        if (isRSSFeed(item)) {
+          const feed = item as RSSFeed
+          const unreadCount = feed.articles?.filter((a) => !a.isRead).length ?? 0
+          const isSelected = selectedPath === itemPath
+
+          return (
+            <div
+              key={itemPath}
+              className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors ${
+                isSelected ? "bg-accent" : "hover:bg-accent/50"
+              }`}
+              onClick={() => onSelect(itemPath)}
+            >
+              <Rss className={`h-4 w-4 flex-shrink-0 ${feed.hasError ? "text-red-500" : "text-orange-500"}`} />
+              <span className="flex-1 truncate text-sm">{feed.title || name}</span>
+              {feed.isLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+              {feed.hasError && (
+                <Tooltip>
+                  <TooltipTrigger>
+                    <AlertCircle className="h-4 w-4 text-red-500" />
+                  </TooltipTrigger>
+                  <TooltipContent>Feed has errors</TooltipContent>
+                </Tooltip>
+              )}
+              {unreadCount > 0 && (
+                <Badge variant="secondary" className="text-xs">
+                  {unreadCount}
+                </Badge>
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                  <Button variant="ghost" size="icon" className="h-6 w-6">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => onRefresh(itemPath)}>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Refresh
+                  </DropdownMenuItem>
+                  {feed.url && (
+                    <DropdownMenuItem asChild>
+                      <a href={feed.url} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        Open URL
+                      </a>
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-destructive"
+                    onClick={() => onRemove(itemPath)}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Remove
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )
+        } else {
+          // It's a folder
+          const folder = item as RSSItems
+          const isExpanded = expandedFolders.has(itemPath)
+          const feedCount = countFeeds(folder)
+
+          return (
+            <div key={itemPath}>
+              <div
+                className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-accent/50"
+                onClick={() => toggleFolder(itemPath)}
+              >
+                {isExpanded ? (
+                  <ChevronDown className="h-4 w-4 flex-shrink-0" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 flex-shrink-0" />
+                )}
+                {isExpanded ? (
+                  <FolderOpen className="h-4 w-4 flex-shrink-0 text-blue-500" />
+                ) : (
+                  <Folder className="h-4 w-4 flex-shrink-0 text-blue-500" />
+                )}
+                <span className="flex-1 truncate text-sm">{name}</span>
+                <Badge variant="outline" className="text-xs">
+                  {feedCount}
+                </Badge>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                    <Button variant="ghost" size="icon" className="h-6 w-6">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      className="text-destructive"
+                      onClick={() => onRemove(itemPath)}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Remove Folder
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+              {isExpanded && (
+                <div className="ml-4 border-l pl-2">
+                  <FeedTree
+                    items={folder}
+                    path={itemPath}
+                    selectedPath={selectedPath}
+                    onSelect={onSelect}
+                    onRemove={onRemove}
+                    onRefresh={onRefresh}
+                  />
+                </div>
+              )}
+            </div>
+          )
+        }
+      })}
+    </div>
+  )
+}
+
+// ============================================================================
+// Articles Panel
+// ============================================================================
+
+interface ArticlesPanelProps {
+  instanceId: number
+  feed: RSSFeed
+  feedPath: string
+}
+
+function ArticlesPanel({ instanceId, feed, feedPath }: ArticlesPanelProps) {
+  const { formatDate } = useDateTimeFormatters()
+  const markAsRead = useMarkRSSAsRead(instanceId)
+
+  const articles = feed.articles ?? []
+
+  const handleMarkAsRead = async (articleId: string) => {
+    try {
+      await markAsRead.mutateAsync({ itemPath: feedPath, articleId })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to mark as read"
+      toast.error(message)
+    }
+  }
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      await markAsRead.mutateAsync({ itemPath: feedPath })
+      toast.success("Marked all articles as read")
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to mark all as read"
+      toast.error(message)
+    }
+  }
+
+  if (articles.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+        <FileText className="h-12 w-12 mb-4" />
+        <p>No articles in this feed</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-end mb-2">
+        <Button variant="outline" size="sm" onClick={handleMarkAllAsRead}>
+          Mark all as read
+        </Button>
+      </div>
+      <ScrollArea className="h-[400px]">
+        <div className="space-y-2">
+          {articles.map((article) => (
+            <ArticleRow
+              key={article.id}
+              article={article}
+              formatDate={formatDate}
+              onMarkAsRead={() => handleMarkAsRead(article.id)}
+            />
+          ))}
+        </div>
+      </ScrollArea>
+    </div>
+  )
+}
+
+interface ArticleRowProps {
+  article: RSSArticle
+  formatDate: (date: Date) => string
+  onMarkAsRead: () => void
+}
+
+function ArticleRow({ article, formatDate, onMarkAsRead }: ArticleRowProps) {
+  const formattedDate = article.date ? formatDate(new Date(article.date)) : ""
+
+  return (
+    <div
+      className={`p-3 rounded-md border ${
+        article.isRead ? "bg-muted/30 opacity-70" : "bg-card"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm font-medium truncate ${article.isRead ? "" : "font-semibold"}`}>
+            {article.title}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {formattedDate}
+            {article.author && ` • ${article.author}`}
+          </p>
+        </div>
+        <div className="flex items-center gap-1">
+          {article.torrentURL && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
+                  <a href={article.torrentURL} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Open torrent URL</TooltipContent>
+            </Tooltip>
+          )}
+          {!article.isRead && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onMarkAsRead}>
+                  <FileText className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Mark as read</TooltipContent>
+            </Tooltip>
+          )}
+        </div>
+      </div>
+      {article.description && (
+        <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{article.description}</p>
+      )}
+    </div>
+  )
+}
+
+// ============================================================================
+// Rules Tab
+// ============================================================================
+
+interface RulesTabProps {
+  instanceId: number
+  rulesData: Record<string, RSSAutoDownloadRule> | undefined
+  rulesLoading: boolean
+  selectedRuleName?: string
+  onRuleSelect: (ruleName: string | undefined) => void
+  feedsData: RSSItems | undefined
+  categories: Record<string, Category>
+  tags: string[]
+}
+
+function RulesTab({
+  instanceId,
+  rulesData,
+  rulesLoading,
+  selectedRuleName,
+  onRuleSelect,
+  feedsData,
+  categories,
+  tags,
+}: RulesTabProps) {
+  const setRule = useSetRSSRule(instanceId)
+  const removeRule = useRemoveRSSRule(instanceId)
+  const [editRuleOpen, setEditRuleOpen] = useState(false)
+  const [editingRule, setEditingRule] = useState<{ name: string; rule: RSSAutoDownloadRule } | null>(null)
+
+  if (rulesLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (!rulesData || Object.keys(rulesData).length === 0) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <FileText className="h-12 w-12 text-muted-foreground mb-4" />
+          <p className="text-muted-foreground text-center">
+            No auto-download rules configured. Add a rule to automatically download torrents from feeds.
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const handleToggleRule = async (name: string, rule: RSSAutoDownloadRule) => {
+    try {
+      await setRule.mutateAsync({
+        name,
+        rule: { ...rule, enabled: !rule.enabled },
+      })
+      toast.success(`Rule ${rule.enabled ? "disabled" : "enabled"}`)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update rule"
+      toast.error(message)
+    }
+  }
+
+  const handleRemoveRule = async (name: string) => {
+    try {
+      await removeRule.mutateAsync(name)
+      toast.success("Rule removed successfully")
+      if (selectedRuleName === name) {
+        onRuleSelect(undefined)
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to remove rule"
+      toast.error(message)
+    }
+  }
+
+  const handleEditRule = (name: string, rule: RSSAutoDownloadRule) => {
+    setEditingRule({ name, rule })
+    setEditRuleOpen(true)
+  }
+
+  const rules = Object.entries(rulesData).sort(([a], [b]) => a.localeCompare(b))
+
+  return (
+    <>
+      <div className="grid gap-4">
+        {rules.map(([name, rule]) => (
+          <RuleCard
+            key={name}
+            name={name}
+            rule={rule}
+            isSelected={selectedRuleName === name}
+            onSelect={() => onRuleSelect(selectedRuleName === name ? undefined : name)}
+            onToggle={() => handleToggleRule(name, rule)}
+            onEdit={() => handleEditRule(name, rule)}
+            onRemove={() => handleRemoveRule(name)}
+          />
+        ))}
+      </div>
+
+      {/* Rule Preview Sheet */}
+      <RulePreviewSheet
+        instanceId={instanceId}
+        ruleName={selectedRuleName}
+        open={!!selectedRuleName}
+        onOpenChange={(open) => !open && onRuleSelect(undefined)}
+      />
+
+      {/* Edit Rule Dialog */}
+      <EditRuleDialog
+        instanceId={instanceId}
+        open={editRuleOpen}
+        onOpenChange={setEditRuleOpen}
+        ruleName={editingRule?.name}
+        rule={editingRule?.rule}
+        feedsData={feedsData}
+        categories={categories}
+        tags={tags}
+      />
+    </>
+  )
+}
+
+// ============================================================================
+// Rule Card
+// ============================================================================
+
+interface RuleCardProps {
+  name: string
+  rule: RSSAutoDownloadRule
+  isSelected: boolean
+  onSelect: () => void
+  onToggle: () => void
+  onEdit: () => void
+  onRemove: () => void
+}
+
+function RuleCard({ name, rule, isSelected, onSelect, onToggle, onEdit, onRemove }: RuleCardProps) {
+  return (
+    <Card className={isSelected ? "ring-2 ring-primary" : ""}>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <Switch checked={rule.enabled} onCheckedChange={onToggle} />
+            <CardTitle className="text-base truncate">{name}</CardTitle>
+            {rule.smartFilter && (
+              <Badge variant="secondary" className="flex-shrink-0">
+                Smart
+              </Badge>
+            )}
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onSelect}>
+                <FileText className="h-4 w-4 mr-2" />
+                Preview Matches
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onEdit}>
+                Edit Rule
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="text-destructive" onClick={onRemove}>
+                <Trash2 className="h-4 w-4 mr-2" />
+                Remove
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </CardHeader>
+      <CardContent className="pb-3">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+          {rule.mustContain && (
+            <div>
+              <span className="text-muted-foreground">Must contain:</span>{" "}
+              <span className="font-mono text-xs">{rule.mustContain}</span>
+            </div>
+          )}
+          {rule.mustNotContain && (
+            <div>
+              <span className="text-muted-foreground">Must not contain:</span>{" "}
+              <span className="font-mono text-xs">{rule.mustNotContain}</span>
+            </div>
+          )}
+          {rule.episodeFilter && (
+            <div>
+              <span className="text-muted-foreground">Episode filter:</span>{" "}
+              <span className="font-mono text-xs">{rule.episodeFilter}</span>
+            </div>
+          )}
+          {rule.affectedFeeds.length > 0 && (
+            <div className="col-span-2">
+              <span className="text-muted-foreground">Feeds:</span>{" "}
+              <span className="text-xs">{rule.affectedFeeds.length} feed(s)</span>
+            </div>
+          )}
+          {rule.lastMatch && (
+            <div className="col-span-2 text-xs text-muted-foreground">
+              Last match: {rule.lastMatch}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ============================================================================
+// Rule Preview Sheet
+// ============================================================================
+
+interface RulePreviewSheetProps {
+  instanceId: number
+  ruleName?: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
+
+function RulePreviewSheet({ instanceId, ruleName, open, onOpenChange }: RulePreviewSheetProps) {
+  const { data: matchingArticles, isLoading } = useRSSMatchingArticles(instanceId, ruleName ?? "", {
+    enabled: !!ruleName,
+  })
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-[500px] sm:max-w-[500px]">
+        <SheetHeader>
+          <SheetTitle>Matching Articles</SheetTitle>
+          <SheetDescription>Articles that match the rule "{ruleName}"</SheetDescription>
+        </SheetHeader>
+        <div className="mt-4">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : matchingArticles && Object.keys(matchingArticles).length > 0 ? (
+            <ScrollArea className="h-[calc(100vh-200px)]">
+              <div className="space-y-4">
+                {Object.entries(matchingArticles).map(([feedUrl, articles]) => (
+                  <div key={feedUrl}>
+                    <p className="text-sm font-medium text-muted-foreground mb-2 truncate">
+                      {feedUrl}
+                    </p>
+                    <div className="space-y-1">
+                      {articles.map((title, idx) => (
+                        <div key={idx} className="text-sm py-1 px-2 bg-muted rounded">
+                          {title}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+              <FileText className="h-12 w-12 mb-4" />
+              <p>No matching articles found</p>
+            </div>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+// ============================================================================
+// Add Feed Dialog
+// ============================================================================
+
+interface AddFeedDialogProps {
+  instanceId: number
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  feedsData: RSSItems | undefined
+}
+
+const ROOT_FOLDER_VALUE = "__root__"
+
+function AddFeedDialog({ instanceId, open, onOpenChange, feedsData }: AddFeedDialogProps) {
+  const [url, setUrl] = useState("")
+  const [path, setPath] = useState(ROOT_FOLDER_VALUE)
+  const [refreshInterval, setRefreshInterval] = useState<number | undefined>(undefined)
+  const addFeed = useAddRSSFeed(instanceId)
+
+  const folders = useMemo(() => getFolderPaths(feedsData), [feedsData])
+
+  const handleSubmit = async () => {
+    if (!url.trim()) {
+      toast.error("URL is required")
+      return
+    }
+
+    try {
+      const result = await addFeed.mutateAsync({
+        url: url.trim(),
+        path: path === ROOT_FOLDER_VALUE ? undefined : path,
+        refreshInterval,
+      })
+      if (result?.warning) {
+        toast.warning(result.warning)
+      } else {
+        toast.success("Feed added successfully")
+      }
+      setUrl("")
+      setPath(ROOT_FOLDER_VALUE)
+      setRefreshInterval(undefined)
+      onOpenChange(false)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to add feed"
+      toast.error(message)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add RSS Feed</DialogTitle>
+          <DialogDescription>Add a new RSS feed to monitor for torrents.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="feed-url">Feed URL</Label>
+            <Input
+              id="feed-url"
+              placeholder="https://example.com/rss"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="feed-path">Folder (optional)</Label>
+            <Select value={path} onValueChange={setPath}>
+              <SelectTrigger>
+                <SelectValue placeholder="Root" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ROOT_FOLDER_VALUE}>Root</SelectItem>
+                {folders.map((folder) => (
+                  <SelectItem key={folder} value={folder}>
+                    {folder}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="refresh-interval">Refresh Interval (minutes, 0 = default)</Label>
+            <Input
+              id="refresh-interval"
+              type="number"
+              min={0}
+              placeholder="0"
+              value={refreshInterval ?? ""}
+              onChange={(e) =>
+                setRefreshInterval(e.target.value ? parseInt(e.target.value, 10) : undefined)
+              }
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={addFeed.isPending}>
+            {addFeed.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Add Feed
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ============================================================================
+// Add Folder Dialog
+// ============================================================================
+
+interface AddFolderDialogProps {
+  instanceId: number
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
+
+function AddFolderDialog({ instanceId, open, onOpenChange }: AddFolderDialogProps) {
+  const [path, setPath] = useState("")
+  const addFolder = useAddRSSFolder(instanceId)
+
+  const handleSubmit = async () => {
+    if (!path.trim()) {
+      toast.error("Folder name is required")
+      return
+    }
+
+    try {
+      await addFolder.mutateAsync({ path: path.trim() })
+      toast.success("Folder created successfully")
+      setPath("")
+      onOpenChange(false)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to create folder"
+      toast.error(message)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Folder</DialogTitle>
+          <DialogDescription>
+            Create a new folder to organize your RSS feeds. Use backslash (\) for nested folders.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="folder-path">Folder Path</Label>
+            <Input
+              id="folder-path"
+              placeholder="My Feeds\Subfolder"
+              value={path}
+              onChange={(e) => setPath(e.target.value)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={addFolder.isPending}>
+            {addFolder.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Create Folder
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ============================================================================
+// Add Rule Dialog
+// ============================================================================
+
+interface AddRuleDialogProps {
+  instanceId: number
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  feedsData: RSSItems | undefined
+  categories: Record<string, Category>
+  tags: string[]
+}
+
+function AddRuleDialog({ instanceId, open, onOpenChange, feedsData, categories, tags: availableTags }: AddRuleDialogProps) {
+  const [name, setName] = useState("")
+  const [mustContain, setMustContain] = useState("")
+  const [mustNotContain, setMustNotContain] = useState("")
+  const [episodeFilter, setEpisodeFilter] = useState("")
+  const [useRegex, setUseRegex] = useState(false)
+  const [smartFilter, setSmartFilter] = useState(false)
+  const [affectedFeeds, setAffectedFeeds] = useState<string[]>([])
+  const [savePath, setSavePath] = useState("")
+  const [category, setCategory] = useState("")
+  // New fields
+  const [tags, setTags] = useState<string[]>([])
+  const [ignoreDays, setIgnoreDays] = useState(0)
+  const [contentLayout, setContentLayout] = useState("")
+  const [addStopped, setAddStopped] = useState<boolean | null>(null)
+
+  const setRule = useSetRSSRule(instanceId)
+
+  const feedUrls = useMemo(() => getFeedUrls(feedsData), [feedsData])
+
+  const handleSubmit = async () => {
+    if (!name.trim()) {
+      toast.error("Rule name is required")
+      return
+    }
+
+    try {
+      await setRule.mutateAsync({
+        name: name.trim(),
+        rule: {
+          enabled: true,
+          priority: 0,
+          useRegex,
+          mustContain,
+          mustNotContain,
+          episodeFilter: episodeFilter || undefined,
+          affectedFeeds,
+          ignoreDays,
+          smartFilter,
+          previouslyMatchedEpisodes: [],
+          torrentParams: {
+            save_path: savePath || undefined,
+            category: category || undefined,
+            tags: tags.length > 0 ? tags : undefined,
+            content_layout: contentLayout || undefined,
+            stopped: addStopped ?? undefined,
+          },
+        },
+      })
+      toast.success("Rule created successfully")
+      resetForm()
+      onOpenChange(false)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to create rule"
+      toast.error(message)
+    }
+  }
+
+  const resetForm = () => {
+    setName("")
+    setMustContain("")
+    setMustNotContain("")
+    setEpisodeFilter("")
+    setUseRegex(false)
+    setSmartFilter(false)
+    setAffectedFeeds([])
+    setSavePath("")
+    setCategory("")
+    setTags([])
+    setIgnoreDays(0)
+    setContentLayout("")
+    setAddStopped(null)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Add Auto-Download Rule</DialogTitle>
+          <DialogDescription>
+            Create a rule to automatically download torrents matching your criteria.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="rule-name">Rule Name</Label>
+            <Input
+              id="rule-name"
+              placeholder="My Show S01"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+
+          <Separator />
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="must-contain">Must Contain</Label>
+              <Input
+                id="must-contain"
+                placeholder="keyword1|keyword2"
+                value={mustContain}
+                onChange={(e) => setMustContain(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="must-not-contain">Must Not Contain</Label>
+              <Input
+                id="must-not-contain"
+                placeholder="unwanted"
+                value={mustNotContain}
+                onChange={(e) => setMustNotContain(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="episode-filter">Episode Filter</Label>
+            <Input
+              id="episode-filter"
+              placeholder="S01-S03;E01-E10"
+              value={episodeFilter}
+              onChange={(e) => setEpisodeFilter(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Format: S01-S03;E01-E10 (season and episode ranges)
+            </p>
+          </div>
+
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <Switch checked={useRegex} onCheckedChange={setUseRegex} id="use-regex" />
+              <Label htmlFor="use-regex">Use Regex</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={smartFilter} onCheckedChange={setSmartFilter} id="smart-filter" />
+              <Label htmlFor="smart-filter">Smart Episode Filter</Label>
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-2">
+            <Label>Affected Feeds</Label>
+            <div className="grid grid-cols-1 gap-2 max-h-32 overflow-y-auto">
+              {feedUrls.map((feedUrl) => (
+                <label key={feedUrl} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={affectedFeeds.includes(feedUrl)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setAffectedFeeds([...affectedFeeds, feedUrl])
+                      } else {
+                        setAffectedFeeds(affectedFeeds.filter((f) => f !== feedUrl))
+                      }
+                    }}
+                    className="rounded"
+                  />
+                  <span className="truncate">{feedUrl}</span>
+                </label>
+              ))}
+              {feedUrls.length === 0 && (
+                <p className="text-sm text-muted-foreground">No feeds available</p>
+              )}
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="save-path">Save Path</Label>
+              <Input
+                id="save-path"
+                placeholder="/downloads/shows"
+                value={savePath}
+                onChange={(e) => setSavePath(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="category">Category</Label>
+              <Select
+                value={category || "__none__"}
+                onValueChange={(v) => setCategory(v === "__none__" ? "" : v)}
+              >
+                <SelectTrigger id="category">
+                  <SelectValue placeholder="Select category..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {buildCategorySelectOptions(categories).map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Tags</Label>
+            <MultiSelect
+              options={buildTagSelectOptions(availableTags, tags)}
+              selected={tags}
+              onChange={setTags}
+              placeholder="Select tags..."
+              creatable
+            />
+          </div>
+
+          <Separator />
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="ignore-days">Ignore subsequent matches for</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="ignore-days"
+                  type="number"
+                  className="w-20"
+                  min={0}
+                  value={ignoreDays}
+                  onChange={(e) => setIgnoreDays(parseInt(e.target.value) || 0)}
+                />
+                <span className="text-sm text-muted-foreground">days</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="content-layout">Torrent Content Layout</Label>
+              <Select
+                value={contentLayout || "__global__"}
+                onValueChange={(v) => setContentLayout(v === "__global__" ? "" : v)}
+              >
+                <SelectTrigger id="content-layout">
+                  <SelectValue placeholder="Use global settings" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__global__">Use global settings</SelectItem>
+                  <SelectItem value="Original">Original</SelectItem>
+                  <SelectItem value="Subfolder">Create subfolder</SelectItem>
+                  <SelectItem value="NoSubfolder">Don't create subfolder</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="add-stopped">Add Stopped</Label>
+            <Select
+              value={addStopped === null ? "__global__" : addStopped ? "true" : "false"}
+              onValueChange={(v) => setAddStopped(v === "__global__" ? null : v === "true")}
+            >
+              <SelectTrigger id="add-stopped">
+                <SelectValue placeholder="Use global settings" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__global__">Use global settings</SelectItem>
+                <SelectItem value="true">Always add stopped</SelectItem>
+                <SelectItem value="false">Never add stopped</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={setRule.isPending}>
+            {setRule.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Create Rule
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ============================================================================
+// Edit Rule Dialog
+// ============================================================================
+
+interface EditRuleDialogProps {
+  instanceId: number
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  ruleName?: string
+  rule?: RSSAutoDownloadRule
+  feedsData: RSSItems | undefined
+  categories: Record<string, Category>
+  tags: string[]
+}
+
+function EditRuleDialog({
+  instanceId,
+  open,
+  onOpenChange,
+  ruleName,
+  rule,
+  feedsData,
+  categories,
+  tags: availableTags,
+}: EditRuleDialogProps) {
+  const [mustContain, setMustContain] = useState("")
+  const [mustNotContain, setMustNotContain] = useState("")
+  const [episodeFilter, setEpisodeFilter] = useState("")
+  const [useRegex, setUseRegex] = useState(false)
+  const [smartFilter, setSmartFilter] = useState(false)
+  const [affectedFeeds, setAffectedFeeds] = useState<string[]>([])
+  const [savePath, setSavePath] = useState("")
+  const [category, setCategory] = useState("")
+  // New fields
+  const [tags, setTags] = useState<string[]>([])
+  const [ignoreDays, setIgnoreDays] = useState(0)
+  const [contentLayout, setContentLayout] = useState("")
+  const [addStopped, setAddStopped] = useState<boolean | null>(null)
+
+  const setRuleMutation = useSetRSSRule(instanceId)
+  const feedUrls = useMemo(() => getFeedUrls(feedsData), [feedsData])
+
+  // Initialize form when rule changes
+  useEffect(() => {
+    if (rule) {
+      setMustContain(rule.mustContain)
+      setMustNotContain(rule.mustNotContain)
+      setEpisodeFilter(rule.episodeFilter ?? "")
+      setUseRegex(rule.useRegex)
+      setSmartFilter(rule.smartFilter)
+      setAffectedFeeds(rule.affectedFeeds)
+      setSavePath(rule.torrentParams?.save_path ?? rule.savePath ?? "")
+      setCategory(rule.torrentParams?.category ?? rule.assignedCategory ?? "")
+      // New fields
+      setTags(rule.torrentParams?.tags ?? [])
+      setIgnoreDays(rule.ignoreDays ?? 0)
+      setContentLayout(rule.torrentParams?.content_layout ?? "")
+      setAddStopped(rule.torrentParams?.stopped ?? null)
+    }
+  }, [rule])
+
+  const handleSubmit = async () => {
+    if (!ruleName || !rule) return
+
+    try {
+      await setRuleMutation.mutateAsync({
+        name: ruleName,
+        rule: {
+          ...rule,
+          useRegex,
+          mustContain,
+          mustNotContain,
+          episodeFilter: episodeFilter || undefined,
+          affectedFeeds,
+          smartFilter,
+          ignoreDays,
+          torrentParams: {
+            ...rule.torrentParams,
+            save_path: savePath || undefined,
+            category: category || undefined,
+            tags: tags.length > 0 ? tags : undefined,
+            content_layout: contentLayout || undefined,
+            stopped: addStopped ?? undefined,
+          },
+        },
+      })
+      toast.success("Rule updated successfully")
+      onOpenChange(false)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update rule"
+      toast.error(message)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit Rule: {ruleName}</DialogTitle>
+          <DialogDescription>Modify the auto-download rule settings.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-must-contain">Must Contain</Label>
+              <Input
+                id="edit-must-contain"
+                placeholder="keyword1|keyword2"
+                value={mustContain}
+                onChange={(e) => setMustContain(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-must-not-contain">Must Not Contain</Label>
+              <Input
+                id="edit-must-not-contain"
+                placeholder="unwanted"
+                value={mustNotContain}
+                onChange={(e) => setMustNotContain(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="edit-episode-filter">Episode Filter</Label>
+            <Input
+              id="edit-episode-filter"
+              placeholder="S01-S03;E01-E10"
+              value={episodeFilter}
+              onChange={(e) => setEpisodeFilter(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Format: S01-S03;E01-E10 (season and episode ranges)
+            </p>
+          </div>
+
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <Switch checked={useRegex} onCheckedChange={setUseRegex} id="edit-use-regex" />
+              <Label htmlFor="edit-use-regex">Use Regex</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={smartFilter}
+                onCheckedChange={setSmartFilter}
+                id="edit-smart-filter"
+              />
+              <Label htmlFor="edit-smart-filter">Smart Episode Filter</Label>
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-2">
+            <Label>Affected Feeds</Label>
+            <div className="grid grid-cols-1 gap-2 max-h-32 overflow-y-auto">
+              {feedUrls.map((feedUrl) => (
+                <label key={feedUrl} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={affectedFeeds.includes(feedUrl)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setAffectedFeeds([...affectedFeeds, feedUrl])
+                      } else {
+                        setAffectedFeeds(affectedFeeds.filter((f) => f !== feedUrl))
+                      }
+                    }}
+                    className="rounded"
+                  />
+                  <span className="truncate">{feedUrl}</span>
+                </label>
+              ))}
+              {feedUrls.length === 0 && (
+                <p className="text-sm text-muted-foreground">No feeds available</p>
+              )}
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-save-path">Save Path</Label>
+              <Input
+                id="edit-save-path"
+                placeholder="/downloads/shows"
+                value={savePath}
+                onChange={(e) => setSavePath(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-category">Category</Label>
+              <Select
+                value={category || "__none__"}
+                onValueChange={(v) => setCategory(v === "__none__" ? "" : v)}
+              >
+                <SelectTrigger id="edit-category">
+                  <SelectValue placeholder="Select category..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {buildCategorySelectOptions(categories).map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Tags</Label>
+            <MultiSelect
+              options={buildTagSelectOptions(availableTags, tags)}
+              selected={tags}
+              onChange={setTags}
+              placeholder="Select tags..."
+              creatable
+            />
+          </div>
+
+          <Separator />
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-ignore-days">Ignore subsequent matches for</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="edit-ignore-days"
+                  type="number"
+                  className="w-20"
+                  min={0}
+                  value={ignoreDays}
+                  onChange={(e) => setIgnoreDays(parseInt(e.target.value) || 0)}
+                />
+                <span className="text-sm text-muted-foreground">days</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-content-layout">Torrent Content Layout</Label>
+              <Select
+                value={contentLayout || "__global__"}
+                onValueChange={(v) => setContentLayout(v === "__global__" ? "" : v)}
+              >
+                <SelectTrigger id="edit-content-layout">
+                  <SelectValue placeholder="Use global settings" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__global__">Use global settings</SelectItem>
+                  <SelectItem value="Original">Original</SelectItem>
+                  <SelectItem value="Subfolder">Create subfolder</SelectItem>
+                  <SelectItem value="NoSubfolder">Don't create subfolder</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-add-stopped">Add Stopped</Label>
+              <Select
+                value={addStopped === null ? "__global__" : addStopped ? "true" : "false"}
+                onValueChange={(v) => setAddStopped(v === "__global__" ? null : v === "true")}
+              >
+                <SelectTrigger id="edit-add-stopped">
+                  <SelectValue placeholder="Use global settings" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__global__">Use global settings</SelectItem>
+                  <SelectItem value="true">Always add stopped</SelectItem>
+                  <SelectItem value="false">Never add stopped</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {rule?.lastMatch && (
+              <div className="space-y-2">
+                <Label>Last Match</Label>
+                <p className="text-sm text-muted-foreground pt-2">
+                  {new Date(rule.lastMatch).toLocaleString()}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={setRuleMutation.isPending}>
+            {setRuleMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Save Changes
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+function findFeedByPath(items: RSSItems, path: string): RSSFeed | null {
+  const parts = path.split("\\")
+
+  let current: RSSItems | RSSFeed = items
+  for (const part of parts) {
+    if (isRSSFeed(current)) return null
+    const next = (current as RSSItems)[part]
+    if (!next) return null
+    current = next as RSSItems | RSSFeed
+  }
+
+  return isRSSFeed(current) ? current : null
+}
+
+function countFeeds(items: RSSItems): number {
+  let count = 0
+  for (const item of Object.values(items)) {
+    if (isRSSFeed(item)) {
+      count++
+    } else {
+      count += countFeeds(item as RSSItems)
+    }
+  }
+  return count
+}
+
+function getFolderPaths(items: RSSItems | undefined, prefix = ""): string[] {
+  if (!items) return []
+
+  const paths: string[] = []
+  for (const [name, item] of Object.entries(items)) {
+    if (!isRSSFeed(item)) {
+      const path = prefix ? `${prefix}\\${name}` : name
+      paths.push(path)
+      paths.push(...getFolderPaths(item as RSSItems, path))
+    }
+  }
+  return paths
+}
+
+function getFeedUrls(items: RSSItems | undefined): string[] {
+  if (!items) return []
+
+  const urls: string[] = []
+  for (const item of Object.values(items)) {
+    if (isRSSFeed(item)) {
+      urls.push(item.url)
+    } else {
+      urls.push(...getFeedUrls(item as RSSItems))
+    }
+  }
+  return urls
+}
+
+// ============================================================================
+// RSS Settings Popover
+// ============================================================================
+
+function RssSettingsPopover({
+  preferences,
+  updatePreferences,
+  isUpdating,
+}: {
+  preferences: AppPreferences | undefined
+  updatePreferences: (prefs: Partial<AppPreferences>) => void
+  isUpdating: boolean
+}) {
+  return (
+    <Popover>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Settings className="h-4 w-4" />
+            </Button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent>RSS Settings</TooltipContent>
+      </Tooltip>
+      <PopoverContent className="w-72" align="end">
+        <div className="space-y-4">
+          <h4 className="font-medium">RSS Settings</h4>
+
+          <div className="space-y-3">
+            <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
+              <Label className="text-sm">Refresh interval</Label>
+              <Input
+                type="number"
+                className="w-16 h-8 text-center"
+                min={1}
+                value={preferences?.rss_refresh_interval ?? 30}
+                onChange={(e) =>
+                  updatePreferences({
+                    rss_refresh_interval: parseInt(e.target.value) || 30,
+                  })
+                }
+                disabled={isUpdating}
+              />
+              <span className="text-xs text-muted-foreground w-6">min</span>
+            </div>
+
+            <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
+              <Label className="text-sm">Max articles per feed</Label>
+              <Input
+                type="number"
+                className="w-16 h-8 text-center"
+                min={1}
+                value={preferences?.rss_max_articles_per_feed ?? 50}
+                onChange={(e) =>
+                  updatePreferences({
+                    rss_max_articles_per_feed: parseInt(e.target.value) || 50,
+                  })
+                }
+                disabled={isUpdating}
+              />
+              <span className="w-6" />
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Auto-Download Settings */}
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">Auto-Download</p>
+
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">Download REPACK/PROPER</Label>
+              <Switch
+                checked={preferences?.rss_download_repack_proper_episodes ?? false}
+                onCheckedChange={(checked) =>
+                  updatePreferences({
+                    rss_download_repack_proper_episodes: checked,
+                  })
+                }
+                disabled={isUpdating}
+              />
+            </div>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
