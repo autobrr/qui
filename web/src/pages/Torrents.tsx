@@ -464,6 +464,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
           <SheetContent
             side="right"
             className="w-full p-0 gap-0"
+            hideClose
           >
             <SheetHeader className="sr-only">
               <VisuallyHidden>
@@ -478,6 +479,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
                 torrent={selectedTorrent}
                 initialTab={initialDetailsTab}
                 onInitialTabConsumed={handleInitialTabConsumed}
+                onClose={() => setSelectedTorrent(null)}
               />
             )}
           </SheetContent>

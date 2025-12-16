@@ -652,8 +652,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between px-4 py-1 sm:px-6 border-b bg-muted/30 gap-2">
-        <div className="flex items-center gap-1 min-w-0">
+      <div className="flex items-center gap-2 px-4 py-1 sm:px-6 border-b bg-muted/30">
+        <div className="flex items-center gap-1 min-w-0 flex-1">
           <h3 className="text-sm font-semibold truncate" title={displayName}>
             {displayName}
           </h3>
