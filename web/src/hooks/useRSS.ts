@@ -18,7 +18,6 @@ import type {
   SetRSSRuleRequest,
   RenameRSSRuleRequest,
   SetRSSFeedURLRequest,
-  SetRSSFeedRefreshIntervalRequest,
 } from "@/types"
 
 // Query keys
@@ -181,18 +180,6 @@ export function useSetRSSFeedURL(instanceId: number) {
 
   return useMutation({
     mutationFn: (data: SetRSSFeedURLRequest) => api.setRSSFeedURL(instanceId, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: rssKeys.feeds(instanceId) })
-    },
-  })
-}
-
-export function useSetRSSFeedRefreshInterval(instanceId: number) {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: (data: SetRSSFeedRefreshIntervalRequest) =>
-      api.setRSSFeedRefreshInterval(instanceId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: rssKeys.feeds(instanceId) })
     },

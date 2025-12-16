@@ -4821,13 +4821,13 @@ func (sm *SyncManager) AddRSSFolder(ctx context.Context, instanceID int, path st
 }
 
 // AddRSSFeed adds a new RSS feed
-func (sm *SyncManager) AddRSSFeed(ctx context.Context, instanceID int, url, path string, refreshInterval int64) error {
+func (sm *SyncManager) AddRSSFeed(ctx context.Context, instanceID int, url, path string) error {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
 
-	return client.AddRSSFeedCtx(ctx, url, path, refreshInterval)
+	return client.AddRSSFeedCtx(ctx, url, path)
 }
 
 // SetRSSFeedURL changes the URL of an existing feed
@@ -4838,16 +4838,6 @@ func (sm *SyncManager) SetRSSFeedURL(ctx context.Context, instanceID int, path, 
 	}
 
 	return client.SetRSSFeedURLCtx(ctx, path, url)
-}
-
-// SetRSSFeedRefreshInterval sets the refresh interval for a feed
-func (sm *SyncManager) SetRSSFeedRefreshInterval(ctx context.Context, instanceID int, path string, refreshInterval int64) error {
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
-	if err != nil {
-		return fmt.Errorf("failed to get client: %w", err)
-	}
-
-	return client.SetRSSFeedRefreshIntervalCtx(ctx, path, refreshInterval)
 }
 
 // RemoveRSSItem removes a feed or folder

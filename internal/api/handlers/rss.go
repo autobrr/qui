@@ -34,7 +34,6 @@ func (h *RSSHandler) Routes(r chi.Router) {
 	r.Post("/folders", h.AddFolder)
 	r.Post("/feeds", h.AddFeed)
 	r.Put("/feeds/url", h.SetFeedURL)
-	r.Put("/feeds/interval", h.SetFeedRefreshInterval)
 	r.Post("/items/move", h.MoveItem)
 	r.Delete("/items", h.RemoveItem)
 	r.Post("/items/refresh", h.RefreshItem)
@@ -58,19 +57,13 @@ type AddFolderRequest struct {
 }
 
 type AddFeedRequest struct {
-	URL             string `json:"url"`
-	Path            string `json:"path"`
-	RefreshInterval int64  `json:"refreshInterval,omitempty"`
+	URL  string `json:"url"`
+	Path string `json:"path"`
 }
 
 type SetFeedURLRequest struct {
 	Path string `json:"path"`
 	URL  string `json:"url"`
-}
-
-type SetFeedRefreshIntervalRequest struct {
-	Path            string `json:"path"`
-	RefreshInterval int64  `json:"refreshInterval"`
 }
 
 type MoveItemRequest struct {
@@ -196,7 +189,7 @@ func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Add feed to root
-		if err := h.syncManager.AddRSSFeed(ctx, instanceID, req.URL, "", req.RefreshInterval); err != nil {
+		if err := h.syncManager.AddRSSFeed(ctx, instanceID, req.URL, ""); err != nil {
 			if respondIfInstanceDisabled(w, err, instanceID, "AddRSSFeed") {
 				return
 			}
@@ -266,7 +259,7 @@ func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// No folder specified - add directly to root
-	if err := h.syncManager.AddRSSFeed(ctx, instanceID, req.URL, "", req.RefreshInterval); err != nil {
+	if err := h.syncManager.AddRSSFeed(ctx, instanceID, req.URL, ""); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "AddRSSFeed") {
 			return
 		}
@@ -302,36 +295,6 @@ func (h *RSSHandler) SetFeedURL(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Error().Err(err).Int("instanceID", instanceID).Str("path", req.Path).Msg("failed to set RSS feed URL")
 		RespondError(w, http.StatusInternalServerError, "Failed to set RSS feed URL")
-		return
-	}
-
-	RespondJSON(w, http.StatusOK, nil)
-}
-
-// SetFeedRefreshInterval sets the refresh interval for a feed
-func (h *RSSHandler) SetFeedRefreshInterval(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := parseInstanceID(w, r)
-	if err != nil {
-		return
-	}
-
-	var req SetFeedRefreshIntervalRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request payload")
-		return
-	}
-
-	if req.Path == "" {
-		RespondError(w, http.StatusBadRequest, "Path is required")
-		return
-	}
-
-	if err := h.syncManager.SetRSSFeedRefreshInterval(r.Context(), instanceID, req.Path, req.RefreshInterval); err != nil {
-		if respondIfInstanceDisabled(w, err, instanceID, "SetRSSFeedRefreshInterval") {
-			return
-		}
-		log.Error().Err(err).Int("instanceID", instanceID).Str("path", req.Path).Msg("failed to set RSS feed refresh interval")
-		RespondError(w, http.StatusInternalServerError, "Failed to set RSS feed refresh interval")
 		return
 	}
 

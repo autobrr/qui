@@ -3404,10 +3404,6 @@ paths:
                 path:
                   type: string
                   description: Optional folder path to add the feed to
-                refreshInterval:
-                  type: integer
-                  format: int64
-                  description: Custom refresh interval in minutes (0 for default)
       responses:
         '201':
           description: Feed added successfully
@@ -3456,41 +3452,6 @@ paths:
           description: Instance is disabled
         '500':
           description: Failed to set RSS feed URL
-
-  /api/instances/{instanceID}/rss/feeds/interval:
-    put:
-      tags:
-        - RSS
-      summary: Set feed refresh interval
-      description: Set the refresh interval for an RSS feed
-      parameters:
-        - $ref: '#/components/parameters/instanceID'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - path
-                - refreshInterval
-              properties:
-                path:
-                  type: string
-                  description: Path of the feed
-                refreshInterval:
-                  type: integer
-                  format: int64
-                  description: Refresh interval in minutes
-      responses:
-        '200':
-          description: Refresh interval updated successfully
-        '400':
-          description: Invalid request
-        '409':
-          description: Instance is disabled
-        '500':
-          description: Failed to set RSS feed refresh interval
 
   /api/instances/{instanceID}/rss/articles/read:
     post:

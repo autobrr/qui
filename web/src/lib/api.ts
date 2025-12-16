@@ -80,7 +80,6 @@ import type {
   AddRSSFeedRequest,
   AddRSSFolderRequest,
   SetRSSFeedURLRequest,
-  SetRSSFeedRefreshIntervalRequest,
   MoveRSSItemRequest,
   RemoveRSSItemRequest,
   RefreshRSSItemRequest,
@@ -1743,13 +1742,6 @@ class ApiClient {
 
   async setRSSFeedURL(instanceId: number, data: SetRSSFeedURLRequest): Promise<void> {
     return this.request<void>(`/instances/${instanceId}/rss/feeds/url`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    })
-  }
-
-  async setRSSFeedRefreshInterval(instanceId: number, data: SetRSSFeedRefreshIntervalRequest): Promise<void> {
-    return this.request<void>(`/instances/${instanceId}/rss/feeds/interval`, {
       method: "PUT",
       body: JSON.stringify(data),
     })

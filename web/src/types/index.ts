@@ -162,6 +162,7 @@ export interface InstanceCapabilities {
   supportsSubcategories: boolean
   supportsTorrentTmpPath: boolean
   supportsPathAutocomplete: boolean
+  supportsSetRSSFeedURL: boolean
   webAPIVersion?: string
 }
 
@@ -1647,17 +1648,11 @@ export interface AddRSSFolderRequest {
 export interface AddRSSFeedRequest {
   url: string
   path?: string
-  refreshInterval?: number
 }
 
 export interface SetRSSFeedURLRequest {
   path: string
   url: string
-}
-
-export interface SetRSSFeedRefreshIntervalRequest {
-  path: string
-  refreshInterval: number
 }
 
 export interface MoveRSSItemRequest {

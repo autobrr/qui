@@ -13,6 +13,7 @@ import {
   Folder,
   FolderInput,
   HardDrive,
+  Link,
   Loader2,
   MoreHorizontal,
   Pencil,
@@ -73,6 +74,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 
 import { MultiSelect } from "@/components/ui/multi-select"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useInstances } from "@/hooks/useInstances"
@@ -90,6 +92,7 @@ import {
   useRSSFeeds,
   useRSSMatchingArticles,
   useRSSRules,
+  useSetRSSFeedURL,
   useSetRSSRule,
 } from "@/hooks/useRSS"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
@@ -466,6 +469,11 @@ function FeedsTab({ instanceId, feedsData, feedsLoading, selectedFeedPath, onFee
   const refreshFeed = useRefreshRSSFeed(instanceId)
   const markAsRead = useMarkRSSAsRead(instanceId)
   const moveFeed = useMoveRSSItem(instanceId)
+  const setFeedURL = useSetRSSFeedURL(instanceId)
+
+  // Capabilities for version-gated features
+  const { data: capabilities } = useInstanceCapabilities(instanceId)
+  const supportsSetRSSFeedURL = capabilities?.supportsSetRSSFeedURL ?? false
 
   // Rename dialog state
   const [renameDialog, setRenameDialog] = useState<{ open: boolean; path: string; currentName: string }>({
@@ -474,6 +482,14 @@ function FeedsTab({ instanceId, feedsData, feedsLoading, selectedFeedPath, onFee
     currentName: "",
   })
   const [newName, setNewName] = useState("")
+
+  // Edit URL dialog state
+  const [editURLDialog, setEditURLDialog] = useState<{ open: boolean; path: string; currentURL: string }>({
+    open: false,
+    path: "",
+    currentURL: "",
+  })
+  const [newURL, setNewURL] = useState("")
 
   // Find selected feed
   const selectedFeed = useMemo(() => {
@@ -574,6 +590,28 @@ function FeedsTab({ instanceId, feedsData, feedsLoading, selectedFeedPath, onFee
     }
   }
 
+  const openEditURLDialog = (path: string, currentURL: string) => {
+    setEditURLDialog({ open: true, path, currentURL })
+    setNewURL(currentURL)
+  }
+
+  const handleEditURL = async () => {
+    if (!newURL.trim() || newURL === editURLDialog.currentURL) {
+      setEditURLDialog({ open: false, path: "", currentURL: "" })
+      return
+    }
+
+    try {
+      await setFeedURL.mutateAsync({ path: editURLDialog.path, url: newURL.trim() })
+      toast.success("Feed URL updated successfully")
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update feed URL"
+      toast.error(message)
+    } finally {
+      setEditURLDialog({ open: false, path: "", currentURL: "" })
+    }
+  }
+
   const unreadCount = countUnreadArticles(feedsData)
   const selectedFeedArticles = selectedFeed?.articles ?? []
   const selectedFeedUnread = selectedFeedArticles.filter(a => !a.isRead).length
@@ -597,6 +635,8 @@ function FeedsTab({ instanceId, feedsData, feedsLoading, selectedFeedPath, onFee
             onRemove={handleRemoveFeed}
             onRefresh={handleRefreshFeed}
             onRename={openRenameDialog}
+            onEditURL={openEditURLDialog}
+            supportsEditURL={supportsSetRSSFeedURL}
           />
         </CardContent>
       </Card>
@@ -622,6 +662,32 @@ function FeedsTab({ instanceId, feedsData, feedsLoading, selectedFeedPath, onFee
             </Button>
             <Button onClick={handleRenameFeed} disabled={!newName.trim() || newName === renameDialog.currentName}>
               Rename
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit URL Dialog */}
+      <Dialog open={editURLDialog.open} onOpenChange={(open) => !open && setEditURLDialog({ open: false, path: "", currentURL: "" })}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Feed URL</DialogTitle>
+            <DialogDescription>Enter a new URL for this feed.</DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Input
+              value={newURL}
+              onChange={(e) => setNewURL(e.target.value)}
+              placeholder="https://example.com/rss"
+              onKeyDown={(e) => e.key === "Enter" && handleEditURL()}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditURLDialog({ open: false, path: "", currentURL: "" })}>
+              Cancel
+            </Button>
+            <Button onClick={handleEditURL} disabled={!newURL.trim() || newURL === editURLDialog.currentURL}>
+              Save
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -671,9 +737,11 @@ interface FeedTreeProps {
   onRemove: (path: string) => void
   onRefresh: (path: string) => void
   onRename: (path: string) => void
+  onEditURL: (path: string, currentURL: string) => void
+  supportsEditURL: boolean
 }
 
-function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh, onRename }: FeedTreeProps) {
+function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh, onRename, onEditURL, supportsEditURL }: FeedTreeProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
 
   const toggleFolder = (folderPath: string) => {
@@ -735,6 +803,12 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh, on
                     <Pencil className="h-4 w-4 mr-2" />
                     Rename
                   </DropdownMenuItem>
+                  {supportsEditURL && feed.url && (
+                    <DropdownMenuItem onClick={() => onEditURL(itemPath, feed.url)}>
+                      <Link className="h-4 w-4 mr-2" />
+                      Edit URL
+                    </DropdownMenuItem>
+                  )}
                   {feed.url && (
                     <DropdownMenuItem asChild>
                       <a href={feed.url} target="_blank" rel="noopener noreferrer">
@@ -800,6 +874,8 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh, on
                     onRemove={onRemove}
                     onRefresh={onRefresh}
                     onRename={onRename}
+                    onEditURL={onEditURL}
+                    supportsEditURL={supportsEditURL}
                   />
                 </div>
               )}
@@ -1260,7 +1336,6 @@ const ROOT_FOLDER_VALUE = "__root__"
 function AddFeedDialog({ instanceId, open, onOpenChange, feedsData }: AddFeedDialogProps) {
   const [url, setUrl] = useState("")
   const [path, setPath] = useState(ROOT_FOLDER_VALUE)
-  const [refreshInterval, setRefreshInterval] = useState<number | undefined>(undefined)
   const addFeed = useAddRSSFeed(instanceId)
 
   const folders = useMemo(() => getFolderPaths(feedsData), [feedsData])
@@ -1275,7 +1350,6 @@ function AddFeedDialog({ instanceId, open, onOpenChange, feedsData }: AddFeedDia
       const result = await addFeed.mutateAsync({
         url: url.trim(),
         path: path === ROOT_FOLDER_VALUE ? undefined : path,
-        refreshInterval,
       })
       if (result?.warning) {
         toast.warning(result.warning)
@@ -1284,7 +1358,6 @@ function AddFeedDialog({ instanceId, open, onOpenChange, feedsData }: AddFeedDia
       }
       setUrl("")
       setPath(ROOT_FOLDER_VALUE)
-      setRefreshInterval(undefined)
       onOpenChange(false)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to add feed"
@@ -1324,19 +1397,6 @@ function AddFeedDialog({ instanceId, open, onOpenChange, feedsData }: AddFeedDia
                 ))}
               </SelectContent>
             </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="refresh-interval">Refresh Interval (minutes, 0 = default)</Label>
-            <Input
-              id="refresh-interval"
-              type="number"
-              min={0}
-              placeholder="0"
-              value={refreshInterval ?? ""}
-              onChange={(e) =>
-                setRefreshInterval(e.target.value ? parseInt(e.target.value, 10) : undefined)
-              }
-            />
           </div>
         </div>
         <DialogFooter>
