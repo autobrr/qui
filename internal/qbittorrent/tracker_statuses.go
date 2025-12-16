@@ -34,6 +34,7 @@ var defaultUnregisteredStatuses = []string{
 	"trump",
 	"unknown",
 	"unregistered",
+	"não registrado",
 	"upgraded",
 	"uploaded",
 }
