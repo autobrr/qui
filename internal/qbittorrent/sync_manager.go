@@ -4957,18 +4957,18 @@ func (sm *SyncManager) ReprocessRSSRules(ctx context.Context, instanceID int) er
 	originalEnabled := prefs.RssAutoDownloadingEnabled
 
 	// Ensure it's disabled first (may already be disabled)
-	if err := client.SetRSSAutoDownloadingEnabled(false); err != nil {
+	if err := client.SetRSSAutoDownloadingEnabledCtx(ctx, false); err != nil {
 		return fmt.Errorf("failed to disable RSS auto-downloading: %w", err)
 	}
 
 	// Enable to trigger startProcessing() which processes all unread articles
-	if err := client.SetRSSAutoDownloadingEnabled(true); err != nil {
+	if err := client.SetRSSAutoDownloadingEnabledCtx(ctx, true); err != nil {
 		return fmt.Errorf("failed to enable RSS auto-downloading: %w", err)
 	}
 
 	// Restore original state if it was disabled
 	if !originalEnabled {
-		if err := client.SetRSSAutoDownloadingEnabled(false); err != nil {
+		if err := client.SetRSSAutoDownloadingEnabledCtx(ctx, false); err != nil {
 			return fmt.Errorf("failed to restore RSS auto-downloading state: %w", err)
 		}
 	}

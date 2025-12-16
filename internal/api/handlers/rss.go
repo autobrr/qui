@@ -5,9 +5,7 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -106,7 +104,7 @@ type RenameRuleRequest struct {
 
 // GetItems retrieves all RSS feeds and folders
 func (h *RSSHandler) GetItems(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := parseRSSInstanceID(w, r)
+	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
 	}
@@ -128,7 +126,7 @@ func (h *RSSHandler) GetItems(w http.ResponseWriter, r *http.Request) {
 
 // AddFolder creates a new RSS folder
 func (h *RSSHandler) AddFolder(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := parseRSSInstanceID(w, r)
+	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
 	}
@@ -158,7 +156,7 @@ func (h *RSSHandler) AddFolder(w http.ResponseWriter, r *http.Request) {
 
 // AddFeed adds a new RSS feed
 func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := parseRSSInstanceID(w, r)
+	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
 	}
@@ -282,7 +280,7 @@ func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
 
 // SetFeedURL changes the URL of an existing feed
 func (h *RSSHandler) SetFeedURL(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := parseRSSInstanceID(w, r)
+	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
 	}
@@ -312,7 +310,7 @@ func (h *RSSHandler) SetFeedURL(w http.ResponseWriter, r *http.Request) {
 
 // SetFeedRefreshInterval sets the refresh interval for a feed
 func (h *RSSHandler) SetFeedRefreshInterval(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := parseRSSInstanceID(w, r)
+	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
 	}
@@ -342,7 +340,7 @@ func (h *RSSHandler) SetFeedRefreshInterval(w http.ResponseWriter, r *http.Reque
 
 // MoveItem moves a feed or folder to a new location
 func (h *RSSHandler) MoveItem(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := parseRSSInstanceID(w, r)
+	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
 	}
@@ -372,7 +370,7 @@ func (h *RSSHandler) MoveItem(w http.ResponseWriter, r *http.Request) {
 
 // RemoveItem removes a feed or folder
 func (h *RSSHandler) RemoveItem(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := parseRSSInstanceID(w, r)
+	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
 	}
@@ -403,7 +401,7 @@ func (h *RSSHandler) RemoveItem(w http.ResponseWriter, r *http.Request) {
 // RefreshItem triggers a manual refresh of a feed or folder.
 // An empty ItemPath refreshes all feeds.
 func (h *RSSHandler) RefreshItem(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := parseRSSInstanceID(w, r)
+	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
 	}
@@ -431,7 +429,7 @@ func (h *RSSHandler) RefreshItem(w http.ResponseWriter, r *http.Request) {
 
 // MarkAsRead marks articles as read
 func (h *RSSHandler) MarkAsRead(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := parseRSSInstanceID(w, r)
+	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
 	}
@@ -461,7 +459,7 @@ func (h *RSSHandler) MarkAsRead(w http.ResponseWriter, r *http.Request) {
 
 // GetRules retrieves all RSS auto-download rules
 func (h *RSSHandler) GetRules(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := parseRSSInstanceID(w, r)
+	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
 	}
@@ -481,7 +479,7 @@ func (h *RSSHandler) GetRules(w http.ResponseWriter, r *http.Request) {
 
 // SetRule creates or updates an auto-download rule
 func (h *RSSHandler) SetRule(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := parseRSSInstanceID(w, r)
+	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
 	}
@@ -511,7 +509,7 @@ func (h *RSSHandler) SetRule(w http.ResponseWriter, r *http.Request) {
 
 // RenameRule renames an existing rule
 func (h *RSSHandler) RenameRule(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := parseRSSInstanceID(w, r)
+	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
 	}
@@ -547,7 +545,7 @@ func (h *RSSHandler) RenameRule(w http.ResponseWriter, r *http.Request) {
 
 // RemoveRule deletes an auto-download rule
 func (h *RSSHandler) RemoveRule(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := parseRSSInstanceID(w, r)
+	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
 	}
@@ -572,7 +570,7 @@ func (h *RSSHandler) RemoveRule(w http.ResponseWriter, r *http.Request) {
 
 // GetMatchingArticles gets articles matching a rule for preview
 func (h *RSSHandler) GetMatchingArticles(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := parseRSSInstanceID(w, r)
+	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
 	}
@@ -599,7 +597,7 @@ func (h *RSSHandler) GetMatchingArticles(w http.ResponseWriter, r *http.Request)
 // ReprocessRules triggers qBittorrent to reprocess all unread articles against rules.
 // It does this by toggling auto-downloading off then on.
 func (h *RSSHandler) ReprocessRules(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := parseRSSInstanceID(w, r)
+	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
 	}
@@ -616,14 +614,3 @@ func (h *RSSHandler) ReprocessRules(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, nil)
 }
 
-// Helper functions
-
-func parseRSSInstanceID(w http.ResponseWriter, r *http.Request) (int, error) {
-	instanceIDStr := chi.URLParam(r, "instanceID")
-	instanceID, err := strconv.Atoi(instanceIDStr)
-	if err != nil || instanceID <= 0 {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
-		return 0, fmt.Errorf("invalid instance ID: %s", instanceIDStr)
-	}
-	return instanceID, nil
-}

@@ -275,8 +275,13 @@ export function RSSPage({
               size="sm"
               variant="outline"
               onClick={() => {
-                updatePreferences({ rss_processing_enabled: true })
-                toast.success("RSS processing enabled")
+                updatePreferences(
+                  { rss_processing_enabled: true },
+                  {
+                    onSuccess: () => toast.success("RSS processing enabled"),
+                    onError: () => toast.error("Failed to enable RSS processing"),
+                  }
+                )
               }}
               disabled={isUpdatingPreferences}
             >
@@ -295,8 +300,13 @@ export function RSSPage({
               size="sm"
               variant="outline"
               onClick={() => {
-                updatePreferences({ rss_auto_downloading_enabled: true })
-                toast.success("RSS auto-downloading enabled")
+                updatePreferences(
+                  { rss_auto_downloading_enabled: true },
+                  {
+                    onSuccess: () => toast.success("RSS auto-downloading enabled"),
+                    onError: () => toast.error("Failed to enable RSS auto-downloading"),
+                  }
+                )
               }}
               disabled={isUpdatingPreferences}
             >
