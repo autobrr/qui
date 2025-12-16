@@ -358,7 +358,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
                     <th
                       key={header.id}
                       className={cn(
-                        "px-2 py-2 text-left font-medium text-muted-foreground select-none",
+                        "px-2 py-1.5 text-left font-medium text-muted-foreground select-none whitespace-nowrap",
                         header.column.getCanSort() && "cursor-pointer hover:bg-muted/50"
                       )}
                       style={{ width: header.getSize() }}

@@ -59,15 +59,15 @@ type automationSettingsPatchRequest struct {
 	RSSSourceExcludeCategories *[]string `json:"rssSourceExcludeCategories,omitempty"`
 	RSSSourceExcludeTags       *[]string `json:"rssSourceExcludeTags,omitempty"`
 	// Webhook source filtering: filter which local torrents to search when checking webhook requests
-	WebhookSourceCategories        *[]string `json:"webhookSourceCategories,omitempty"`
-	WebhookSourceTags              *[]string `json:"webhookSourceTags,omitempty"`
-	WebhookSourceExcludeCategories *[]string `json:"webhookSourceExcludeCategories,omitempty"`
-	WebhookSourceExcludeTags       *[]string `json:"webhookSourceExcludeTags,omitempty"`
-	FindIndividualEpisodes         *bool     `json:"findIndividualEpisodes,omitempty"`
-	SizeMismatchTolerancePercent *float64    `json:"sizeMismatchTolerancePercent,omitempty"`
-	UseCategoryFromIndexer       *bool       `json:"useCategoryFromIndexer,omitempty"`
-	UseCrossCategorySuffix       *bool       `json:"useCrossCategorySuffix,omitempty"`
-	RunExternalProgramID         optionalInt `json:"runExternalProgramId"`
+	WebhookSourceCategories        *[]string   `json:"webhookSourceCategories,omitempty"`
+	WebhookSourceTags              *[]string   `json:"webhookSourceTags,omitempty"`
+	WebhookSourceExcludeCategories *[]string   `json:"webhookSourceExcludeCategories,omitempty"`
+	WebhookSourceExcludeTags       *[]string   `json:"webhookSourceExcludeTags,omitempty"`
+	FindIndividualEpisodes         *bool       `json:"findIndividualEpisodes,omitempty"`
+	SizeMismatchTolerancePercent   *float64    `json:"sizeMismatchTolerancePercent,omitempty"`
+	UseCategoryFromIndexer         *bool       `json:"useCategoryFromIndexer,omitempty"`
+	UseCrossCategorySuffix         *bool       `json:"useCrossCategorySuffix,omitempty"`
+	RunExternalProgramID           optionalInt `json:"runExternalProgramId"`
 	// Source-specific tagging
 	RSSAutomationTags    *[]string `json:"rssAutomationTags,omitempty"`
 	SeededSearchTags     *[]string `json:"seededSearchTags,omitempty"`
@@ -691,6 +691,19 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 	if req.isEmpty() {
 		RespondError(w, http.StatusBadRequest, "No fields provided to update")
 		return
+	}
+
+	// Log what the API received for debugging source filter issues
+	if req.RSSSourceCategories != nil || req.RSSSourceExcludeCategories != nil ||
+		req.WebhookSourceCategories != nil || req.WebhookSourceExcludeCategories != nil {
+		log.Debug().
+			Interface("rssSourceCategories", req.RSSSourceCategories).
+			Interface("rssSourceExcludeCategories", req.RSSSourceExcludeCategories).
+			Interface("rssSourceTags", req.RSSSourceTags).
+			Interface("rssSourceExcludeTags", req.RSSSourceExcludeTags).
+			Interface("webhookSourceCategories", req.WebhookSourceCategories).
+			Interface("webhookSourceExcludeCategories", req.WebhookSourceExcludeCategories).
+			Msg("[API] Received source filter patch request")
 	}
 
 	current, err := h.service.GetAutomationSettings(r.Context())

@@ -16,6 +16,7 @@ import {
   flexRender,
   getCoreRowModel,
   getSortedRowModel,
+  type SortingFn,
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table"
@@ -35,6 +36,15 @@ interface PeersTableProps {
 }
 
 const columnHelper = createColumnHelper<SortedPeer>()
+
+// Sorting function that pushes 0/null/undefined values to the bottom
+const zeroLastSortingFn: SortingFn<SortedPeer> = (rowA, rowB, columnId) => {
+  const a = (rowA.getValue(columnId) as number | undefined | null) ?? 0
+  const b = (rowB.getValue(columnId) as number | undefined | null) ?? 0
+  if (a === 0 && b !== 0) return 1
+  if (b === 0 && a !== 0) return -1
+  return a - b
+}
 
 export const PeersTable = memo(function PeersTable({
   peers,
@@ -112,6 +122,8 @@ export const PeersTable = memo(function PeersTable({
         </span>
       ),
       size: 90,
+      sortUndefined: "last",
+      sortingFn: zeroLastSortingFn,
     }),
     columnHelper.accessor("up_speed", {
       header: "UL Speed",
@@ -121,6 +133,8 @@ export const PeersTable = memo(function PeersTable({
         </span>
       ),
       size: 90,
+      sortUndefined: "last",
+      sortingFn: zeroLastSortingFn,
     }),
     columnHelper.accessor("downloaded", {
       header: "Downloaded",
@@ -130,6 +144,8 @@ export const PeersTable = memo(function PeersTable({
         </span>
       ),
       size: 90,
+      sortUndefined: "last",
+      sortingFn: zeroLastSortingFn,
     }),
     columnHelper.accessor("uploaded", {
       header: "Uploaded",
@@ -139,6 +155,8 @@ export const PeersTable = memo(function PeersTable({
         </span>
       ),
       size: 90,
+      sortUndefined: "last",
+      sortingFn: zeroLastSortingFn,
     }),
     ...(showFlags ? [
       columnHelper.accessor("flags", {

@@ -1973,16 +1973,16 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 placeholder="e.g., TorrentLeech"
               />
             </div>
-            <div className="space-y-2 min-h-0 flex-1 flex flex-col">
+            <div className="space-y-2 min-h-0 flex-1 flex flex-col overflow-hidden">
               <Label>{editingCustomization ? "Domain(s)" : "Selected Tracker(s)"}</Label>
               {((editingCustomization && editingCustomization.domains.length > 1) || (!editingCustomization && selectedDomains.size > 1)) && (
                 <p className="text-xs text-muted-foreground">
                   Uncheck duplicate tracker URLs to avoid counting the same torrents twice.
                 </p>
               )}
-              <ScrollArea className="max-h-64 flex-1">
-                <div className="text-sm text-muted-foreground space-y-1.5 pr-4">
-                  {(editingCustomization ? editingCustomization.domains : Array.from(selectedDomains)).map((domain, index, arr) => {
+              <ScrollArea className="h-[300px]">
+                  <div className="text-sm text-muted-foreground space-y-1.5 pr-4">
+                    {(editingCustomization ? editingCustomization.domains : Array.from(selectedDomains)).map((domain, index, arr) => {
                     const hasMultiple = arr.length > 1
                     const isPrimary = index === 0
                     // Get inclusion state from appropriate source
@@ -1994,7 +1994,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                     const isIncluded = isPrimary || isInList
 
                     return (
-                      <div key={domain} className="flex items-center gap-2">
+                      <div key={domain} className={`grid items-center gap-2 ${hasMultiple ? "grid-cols-[auto_1fr_auto_auto]" : "grid-cols-[1fr]"}`}>
                         {hasMultiple && (
                           <Checkbox
                             checked={isIncluded}
@@ -2003,9 +2003,11 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                             className="h-4 w-4"
                           />
                         )}
-                        <span className={isPrimary ? "font-medium flex-1" : "flex-1"}>{domain}</span>
-                        {isPrimary && hasMultiple && (
-                          <Badge variant="secondary" className="text-[10px]">Primary</Badge>
+                        <span className={`truncate${isPrimary ? " font-medium" : ""}`} title={domain}>{domain}</span>
+                        {hasMultiple && (
+                          isPrimary ? (
+                            <Badge variant="secondary" className="text-[10px]">Primary</Badge>
+                          ) : <span />
                         )}
                         {hasMultiple && (
                           <button
@@ -2019,8 +2021,8 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                       </div>
                     )
                   })}
-                </div>
-              </ScrollArea>
+                  </div>
+                </ScrollArea>
             </div>
           </div>
           <DialogFooter>

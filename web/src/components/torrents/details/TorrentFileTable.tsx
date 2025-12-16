@@ -321,11 +321,11 @@ export const TorrentFileTable = memo(function TorrentFileTable({
             <thead className="sticky top-0 z-10 bg-background border-b">
               <tr>
                 {supportsFilePriority && (
-                  <th className="w-8 px-2 py-2 text-left"></th>
+                  <th className="w-8 px-2 py-1.5 text-left"></th>
                 )}
-                <th className="px-2 py-2 text-left font-medium text-muted-foreground">Name</th>
-                <th className="w-28 px-2 py-2 text-left font-medium text-muted-foreground">Progress</th>
-                <th className="w-24 px-2 py-2 text-right font-medium text-muted-foreground">Size</th>
+                <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Name</th>
+                <th className="w-28 px-2 py-1.5 text-left font-medium text-muted-foreground">Progress</th>
+                <th className="w-24 px-2 py-1.5 text-right font-medium text-muted-foreground">Size</th>
               </tr>
             </thead>
             <tbody>

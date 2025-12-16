@@ -77,6 +77,13 @@ const COLUMN_TO_QB_FIELD: Partial<Record<keyof (Torrent & CrossInstanceTorrent),
   instanceName: "InstanceName", // Cross-seed filtering instance column
 }
 
+// Remap column IDs for filtering to use total counts instead of connected counts
+// This matches the sorting behavior in TorrentTableOptimized.tsx (lines 972-976)
+const FILTER_COLUMN_REMAP: Record<string, string> = {
+  num_seeds: "num_complete",    // Filter by total seeds, not connected
+  num_leechs: "num_incomplete", // Filter by total peers, not connected
+}
+
 const OPERATION_TO_EXPR: Record<FilterOperation, string> = {
   eq: "==",
   ne: "!=",
@@ -149,7 +156,9 @@ function convertDurationToSeconds(value: number, unit: DurationUnit): number {
  * - { columnId: "added_on", operation: "gt", value: "2024-01-01" } => "AddedOn > 1704067200"
  */
 export function columnFilterToExpr(filter: ColumnFilter): string | null {
-  const fieldName = COLUMN_TO_QB_FIELD[filter.columnId as keyof Torrent]
+  // Apply column remapping for filtering (use total counts instead of connected)
+  const effectiveColumnId = FILTER_COLUMN_REMAP[filter.columnId] ?? filter.columnId
+  const fieldName = COLUMN_TO_QB_FIELD[effectiveColumnId as keyof Torrent]
 
   if (!fieldName) {
     console.warn(`Unknown column ID: ${filter.columnId}`)
@@ -163,13 +172,13 @@ export function columnFilterToExpr(filter: ColumnFilter): string | null {
     return null
   }
 
-  const columnType = getColumnType(filter.columnId)
+  const columnType = getColumnType(effectiveColumnId)
   const isSizeColumn = columnType === "size"
   const isSpeedColumn = columnType === "speed"
   const isDurationColumn = columnType === "duration"
   const isDateColumn = columnType === "date"
   const isBooleanColumn = columnType === "boolean"
-  const isProgressColumn = filter.columnId === "progress"
+  const isProgressColumn = effectiveColumnId === "progress"
 
   if (filter.operation === "between") {
     if (!filter.value2) {
