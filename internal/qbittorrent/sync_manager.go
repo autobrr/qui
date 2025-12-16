@@ -5148,7 +5148,7 @@ func (sm *SyncManager) BulkAddTrackers(ctx context.Context, instanceID int, hash
 		return err
 	}
 
-	var success bool
+	successfulHashes := make([]string, 0, len(hashes))
 	var lastErr error
 
 	// Add trackers to each torrent
@@ -5159,29 +5159,29 @@ func (sm *SyncManager) BulkAddTrackers(ctx context.Context, instanceID int, hash
 			lastErr = err
 			continue
 		}
-		success = true
+		successfulHashes = append(successfulHashes, hash)
 	}
 
-	if !success {
+	if len(successfulHashes) == 0 {
 		if lastErr != nil {
 			return fmt.Errorf("failed to add trackers: %w", lastErr)
 		}
 		return fmt.Errorf("failed to add trackers")
 	}
 
-	client.invalidateTrackerCache(hashes...)
+	client.invalidateTrackerCache(successfulHashes...)
 
-	// Update validated tracker mapping immediately for all successful hashes
+	// Update validated tracker mapping immediately for successful hashes only
 	for trackerURL := range strings.SplitSeq(urls, "\n") {
 		if domain := sm.ExtractDomainFromURL(strings.TrimSpace(trackerURL)); domain != "" && domain != "Unknown" {
-			for _, hash := range hashes {
+			for _, hash := range successfulHashes {
 				sm.addHashToTrackerMapping(instanceID, hash, domain)
 			}
 		}
 	}
 
 	// Optimistically remove from tracker health cache - the new trackers may be working
-	sm.RemoveHashesFromTrackerHealthCache(instanceID, hashes)
+	sm.RemoveHashesFromTrackerHealthCache(instanceID, successfulHashes)
 
 	sm.syncAfterModification(instanceID, client, "bulk_add_trackers")
 
@@ -5200,7 +5200,7 @@ func (sm *SyncManager) BulkRemoveTrackers(ctx context.Context, instanceID int, h
 		return err
 	}
 
-	var success bool
+	successfulHashes := make([]string, 0, len(hashes))
 	var lastErr error
 
 	// Remove trackers from each torrent
@@ -5211,29 +5211,29 @@ func (sm *SyncManager) BulkRemoveTrackers(ctx context.Context, instanceID int, h
 			lastErr = err
 			continue
 		}
-		success = true
+		successfulHashes = append(successfulHashes, hash)
 	}
 
-	if !success {
+	if len(successfulHashes) == 0 {
 		if lastErr != nil {
 			return fmt.Errorf("failed to remove trackers: %w", lastErr)
 		}
 		return fmt.Errorf("failed to remove trackers")
 	}
 
-	client.invalidateTrackerCache(hashes...)
+	client.invalidateTrackerCache(successfulHashes...)
 
-	// Update validated tracker mapping immediately for all successful hashes
+	// Update validated tracker mapping immediately for successful hashes only
 	for trackerURL := range strings.SplitSeq(urls, "\n") {
 		if domain := sm.ExtractDomainFromURL(strings.TrimSpace(trackerURL)); domain != "" && domain != "Unknown" {
-			for _, hash := range hashes {
+			for _, hash := range successfulHashes {
 				sm.removeHashFromTrackerMapping(instanceID, hash, domain)
 			}
 		}
 	}
 
 	// Optimistically remove from tracker health cache - status may change after removal
-	sm.RemoveHashesFromTrackerHealthCache(instanceID, hashes)
+	sm.RemoveHashesFromTrackerHealthCache(instanceID, successfulHashes)
 
 	sm.syncAfterModification(instanceID, client, "bulk_remove_trackers")
 
