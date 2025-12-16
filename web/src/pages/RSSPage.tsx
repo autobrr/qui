@@ -7,20 +7,25 @@ import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import {
   AlertCircle,
-  ChevronDown,
+  Check,
   ChevronRight,
+  Download,
   ExternalLink,
   FileText,
   Folder,
-  FolderOpen,
+  FolderInput,
   HardDrive,
   Loader2,
   MoreHorizontal,
   Plus,
   RefreshCw,
+  Regex,
   Rss,
   Settings,
+  Tag,
   Trash2,
+  Tv,
+  X,
 } from "lucide-react"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -140,7 +145,6 @@ export function RSSPage({
     setSelectedInstanceId(parsed)
   }
 
-  const instance = instances?.find((i) => i.id === instanceId)
   const hasInstances = (instances?.length ?? 0) > 0
 
   // Queries
@@ -242,17 +246,14 @@ export function RSSPage({
   }
 
   return (
-    <div className="flex flex-1 flex-col p-6">
+    <div className="flex flex-col h-[calc(100vh-4rem)] p-6 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <Rss className="h-6 w-6" />
+      <div className="flex items-center justify-between mb-4 shrink-0">
+        <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold">RSS</h1>
-          {instance && (
-            <Badge variant="outline" className="ml-2">
-              {instance.name}
-            </Badge>
-          )}
+          <p className="text-sm text-muted-foreground">
+            Manage qBittorrent's native RSS feeds and auto-download rules
+          </p>
         </div>
         <div className="flex items-center gap-2">
           {renderInstanceSelector()}
@@ -306,8 +307,8 @@ export function RSSPage({
       )}
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={(v) => onTabChange(v as "feeds" | "rules")}>
-        <div className="flex items-center justify-between mb-4">
+      <Tabs value={activeTab} onValueChange={(v) => onTabChange(v as "feeds" | "rules")} className="flex-1 min-h-0 flex flex-col">
+        <div className="flex items-center justify-between mb-4 shrink-0">
           <TabsList>
             <TabsTrigger value="feeds" className="gap-2">
               <Rss className="h-4 w-4" />
@@ -373,14 +374,15 @@ export function RSSPage({
                     disabled={reprocessRules.isPending}
                   >
                     {reprocessRules.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     ) : (
-                      <RefreshCw className="h-4 w-4" />
+                      <RefreshCw className="h-4 w-4 mr-2" />
                     )}
+                    Reprocess
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Re-process all unread articles against rules</p>
+                  <p>Re-check all unread articles against rules</p>
                 </TooltipContent>
               </Tooltip>
               <Button size="sm" onClick={() => setAddRuleOpen(true)}>
@@ -391,7 +393,7 @@ export function RSSPage({
           )}
         </div>
 
-        <TabsContent value="feeds" className="mt-0">
+        <TabsContent value="feeds" className="mt-0 flex-1 min-h-0">
           <FeedsTab
             instanceId={instanceId}
             feedsData={feedsData}
@@ -401,7 +403,7 @@ export function RSSPage({
           />
         </TabsContent>
 
-        <TabsContent value="rules" className="mt-0">
+        <TabsContent value="rules" className="mt-0 flex-1 min-h-0">
           <RulesTab
             instanceId={instanceId}
             rulesData={rulesData}
@@ -451,6 +453,7 @@ function FeedsTab({ instanceId, feedsData, feedsLoading, selectedFeedPath, onFee
   const queryClient = useQueryClient()
   const removeFeed = useRemoveRSSItem(instanceId)
   const refreshFeed = useRefreshRSSFeed(instanceId)
+  const markAsRead = useMarkRSSAsRead(instanceId)
 
   // Find selected feed
   const selectedFeed = useMemo(() => {
@@ -506,44 +509,75 @@ function FeedsTab({ instanceId, feedsData, feedsLoading, selectedFeedPath, onFee
     }
   }
 
+  const handleMarkAllAsRead = async (feedPath: string) => {
+    try {
+      await markAsRead.mutateAsync({ itemPath: feedPath })
+      toast.success("Marked all articles as read")
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to mark all as read"
+      toast.error(message)
+    }
+  }
+
+  const unreadCount = countUnreadArticles(feedsData)
+  const selectedFeedArticles = selectedFeed?.articles ?? []
+  const selectedFeedUnread = selectedFeedArticles.filter(a => !a.isRead).length
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* Feed Tree */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Feeds</CardTitle>
+    <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4 h-full">
+      {/* Feed Tree - Narrow sidebar */}
+      <Card className="flex flex-col min-h-0">
+        <CardHeader className="pb-2 shrink-0">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-medium">Feeds</CardTitle>
+            {unreadCount > 0 && (
+              <span className="text-xs text-muted-foreground">{unreadCount}</span>
+            )}
+          </div>
         </CardHeader>
-        <CardContent>
-          <ScrollArea className="h-[500px]">
-            <FeedTree
-              items={feedsData}
-              path=""
-              selectedPath={selectedFeedPath}
-              onSelect={onFeedSelect}
-              onRemove={handleRemoveFeed}
-              onRefresh={handleRefreshFeed}
-            />
-          </ScrollArea>
+        <CardContent className="pt-0 flex-1 min-h-0 overflow-y-auto">
+          <FeedTree
+            items={feedsData}
+            path=""
+            selectedPath={selectedFeedPath}
+            onSelect={onFeedSelect}
+            onRemove={handleRemoveFeed}
+            onRefresh={handleRefreshFeed}
+          />
         </CardContent>
       </Card>
 
-      {/* Articles Panel */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">
-            {selectedFeed ? (selectedFeed.title || "Articles") : "Articles"}
-          </CardTitle>
-          {selectedFeed && (
-            <CardDescription className="truncate">{selectedFeed.url}</CardDescription>
-          )}
+      {/* Articles Panel - Main content */}
+      <Card className="flex flex-col min-h-0">
+        <CardHeader className="py-3 shrink-0">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <CardTitle className="text-sm font-medium truncate">
+                {selectedFeed ? (selectedFeed.title || "Articles") : "Articles"}
+              </CardTitle>
+              {selectedFeed && (
+                <CardDescription className="truncate text-xs">{selectedFeed.url}</CardDescription>
+              )}
+            </div>
+            {selectedFeed && (
+              <div className="flex items-center gap-3 shrink-0">
+                {selectedFeedUnread > 0 && (
+                  <span className="text-xs text-muted-foreground">{selectedFeedUnread} unread</span>
+                )}
+                <Button variant="outline" size="sm" onClick={() => handleMarkAllAsRead(selectedFeedPath!)}>
+                  Mark all as read
+                </Button>
+              </div>
+            )}
+          </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-0 flex-1 min-h-0 flex flex-col">
           {selectedFeed ? (
             <ArticlesPanel instanceId={instanceId} feed={selectedFeed} feedPath={selectedFeedPath!} />
           ) : (
-            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-              <FileText className="h-12 w-12 mb-4" />
-              <p>Select a feed to view articles</p>
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+              <Rss className="h-8 w-8 mb-3 opacity-50" />
+              <p className="text-sm">Select a feed to view articles</p>
             </div>
           )}
         </CardContent>
@@ -583,7 +617,7 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh }: 
   const entries = Object.entries(items).sort(([a], [b]) => a.localeCompare(b))
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-0.5">
       {entries.map(([name, item]) => {
         const itemPath = path ? `${path}\\${name}` : name
 
@@ -591,34 +625,32 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh }: 
           const feed = item as RSSFeed
           const unreadCount = feed.articles?.filter((a) => !a.isRead).length ?? 0
           const isSelected = selectedPath === itemPath
+          const hasUnread = unreadCount > 0
 
           return (
             <div
               key={itemPath}
-              className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors ${
-                isSelected ? "bg-accent" : "hover:bg-accent/50"
+              className={`group flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors ${
+                isSelected
+                  ? "bg-primary/10 text-primary"
+                  : "hover:bg-muted"
               }`}
               onClick={() => onSelect(itemPath)}
             >
-              <Rss className={`h-4 w-4 flex-shrink-0 ${feed.hasError ? "text-red-500" : "text-orange-500"}`} />
-              <span className="flex-1 truncate text-sm">{feed.title || name}</span>
-              {feed.isLoading && <Loader2 className="h-3 w-3 animate-spin" />}
-              {feed.hasError && (
-                <Tooltip>
-                  <TooltipTrigger>
-                    <AlertCircle className="h-4 w-4 text-red-500" />
-                  </TooltipTrigger>
-                  <TooltipContent>Feed has errors</TooltipContent>
-                </Tooltip>
-              )}
-              {unreadCount > 0 && (
-                <Badge variant="secondary" className="text-xs">
-                  {unreadCount}
-                </Badge>
+              <Rss className={`h-3.5 w-3.5 flex-shrink-0 ${
+                feed.hasError ? "text-destructive" : isSelected ? "text-primary" : "text-muted-foreground"
+              }`} />
+              <span className={`flex-1 truncate text-sm ${hasUnread ? "font-medium" : ""}`}>
+                {feed.title || name}
+              </span>
+              {feed.isLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+              {feed.hasError && <AlertCircle className="h-3.5 w-3.5 text-destructive" />}
+              {hasUnread && (
+                <span className="text-xs text-muted-foreground tabular-nums">{unreadCount}</span>
               )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                  <Button variant="ghost" size="icon" className="h-6 w-6">
+                  <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-muted-foreground/60 hover:text-foreground hover:bg-muted">
                     <MoreHorizontal className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -636,10 +668,7 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh }: 
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="text-destructive"
-                    onClick={() => onRemove(itemPath)}
-                  >
+                  <DropdownMenuItem className="text-destructive" onClick={() => onRemove(itemPath)}>
                     <Trash2 className="h-4 w-4 mr-2" />
                     Remove
                   </DropdownMenuItem>
@@ -648,42 +677,32 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh }: 
             </div>
           )
         } else {
-          // It's a folder
+          // Folder
           const folder = item as RSSItems
           const isExpanded = expandedFolders.has(itemPath)
           const feedCount = countFeeds(folder)
+          const folderUnread = countUnreadArticles(folder)
 
           return (
             <div key={itemPath}>
               <div
-                className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-accent/50"
+                className="group flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors hover:bg-muted"
                 onClick={() => toggleFolder(itemPath)}
               >
-                {isExpanded ? (
-                  <ChevronDown className="h-4 w-4 flex-shrink-0" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 flex-shrink-0" />
-                )}
-                {isExpanded ? (
-                  <FolderOpen className="h-4 w-4 flex-shrink-0 text-blue-500" />
-                ) : (
-                  <Folder className="h-4 w-4 flex-shrink-0 text-blue-500" />
-                )}
-                <span className="flex-1 truncate text-sm">{name}</span>
-                <Badge variant="outline" className="text-xs">
-                  {feedCount}
-                </Badge>
+                <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`} />
+                <Folder className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="flex-1 truncate text-sm font-medium">{name}</span>
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {folderUnread > 0 ? folderUnread : feedCount}
+                </span>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                    <Button variant="ghost" size="icon" className="h-6 w-6">
+                    <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-muted-foreground/60 hover:text-foreground hover:bg-muted">
                       <MoreHorizontal className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      className="text-destructive"
-                      onClick={() => onRemove(itemPath)}
-                    >
+                    <DropdownMenuItem className="text-destructive" onClick={() => onRemove(itemPath)}>
                       <Trash2 className="h-4 w-4 mr-2" />
                       Remove Folder
                     </DropdownMenuItem>
@@ -691,7 +710,7 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh }: 
                 </DropdownMenu>
               </div>
               {isExpanded && (
-                <div className="ml-4 border-l pl-2">
+                <div className="ml-5">
                   <FeedTree
                     items={folder}
                     path={itemPath}
@@ -735,44 +754,27 @@ function ArticlesPanel({ instanceId, feed, feedPath }: ArticlesPanelProps) {
     }
   }
 
-  const handleMarkAllAsRead = async () => {
-    try {
-      await markAsRead.mutateAsync({ itemPath: feedPath })
-      toast.success("Marked all articles as read")
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to mark all as read"
-      toast.error(message)
-    }
-  }
-
   if (articles.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-        <FileText className="h-12 w-12 mb-4" />
-        <p>No articles in this feed</p>
+      <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+        <Rss className="h-8 w-8 mb-3 opacity-50" />
+        <p className="text-sm">No articles in this feed</p>
       </div>
     )
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex justify-end mb-2">
-        <Button variant="outline" size="sm" onClick={handleMarkAllAsRead}>
-          Mark all as read
-        </Button>
+    <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="space-y-0.5 pr-1">
+        {articles.map((article) => (
+          <ArticleRow
+            key={article.id}
+            article={article}
+            formatDate={formatDate}
+            onMarkAsRead={() => handleMarkAsRead(article.id)}
+          />
+        ))}
       </div>
-      <ScrollArea className="h-[400px]">
-        <div className="space-y-2">
-          {articles.map((article) => (
-            <ArticleRow
-              key={article.id}
-              article={article}
-              formatDate={formatDate}
-              onMarkAsRead={() => handleMarkAsRead(article.id)}
-            />
-          ))}
-        </div>
-      </ScrollArea>
     </div>
   )
 }
@@ -788,48 +790,37 @@ function ArticleRow({ article, formatDate, onMarkAsRead }: ArticleRowProps) {
 
   return (
     <div
-      className={`p-3 rounded-md border ${
-        article.isRead ? "bg-muted/30 opacity-70" : "bg-card"
+      className={`group flex items-center gap-2 py-1.5 transition-colors ${
+        article.isRead ? "opacity-50 hover:opacity-100" : ""
       }`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <p className={`text-sm font-medium truncate ${article.isRead ? "" : "font-semibold"}`}>
-            {article.title}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            {formattedDate}
-            {article.author && ` • ${article.author}`}
-          </p>
-        </div>
-        <div className="flex items-center gap-1">
-          {article.torrentURL && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
-                  <a href={article.torrentURL} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Open torrent URL</TooltipContent>
-            </Tooltip>
-          )}
-          {!article.isRead && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onMarkAsRead}>
-                  <FileText className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Mark as read</TooltipContent>
-            </Tooltip>
-          )}
-        </div>
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm leading-snug truncate ${article.isRead ? "" : "font-medium"}`}>
+          {article.title}
+        </p>
+        <span className="text-xs text-muted-foreground">{formattedDate}</span>
       </div>
-      {article.description && (
-        <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{article.description}</p>
-      )}
+      <div className="flex items-center gap-0.5 shrink-0">
+        {article.torrentURL && (
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" asChild>
+            <a href={article.torrentURL} target="_blank" rel="noopener noreferrer">
+              <Download className="h-4 w-4" />
+            </a>
+          </Button>
+        )}
+        {article.link && article.link !== article.torrentURL && (
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" asChild>
+            <a href={article.link} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          </Button>
+        )}
+        {!article.isRead && (
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={onMarkAsRead}>
+            <Check className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
     </div>
   )
 }
@@ -973,74 +964,141 @@ interface RuleCardProps {
 }
 
 function RuleCard({ name, rule, isSelected, onSelect, onToggle, onEdit, onRemove }: RuleCardProps) {
+  const category = rule.torrentParams?.category || rule.assignedCategory
+  const savePath = rule.torrentParams?.save_path || rule.savePath
+
+  // Parse filter patterns into individual terms
+  const mustContainTerms = rule.mustContain ? rule.mustContain.split("|").map(t => t.trim()).filter(Boolean) : []
+  const mustNotContainTerms = rule.mustNotContain ? rule.mustNotContain.split("|").map(t => t.trim()).filter(Boolean) : []
+
   return (
-    <Card className={isSelected ? "ring-2 ring-primary" : ""}>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
+    <Card className={`transition-all duration-200 ${isSelected ? "ring-2 ring-primary shadow-md" : "hover:shadow-md hover:border-muted-foreground/30"}`}>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <Switch checked={rule.enabled} onCheckedChange={onToggle} />
-            <CardTitle className="text-base truncate">{name}</CardTitle>
-            {rule.smartFilter && (
-              <Badge variant="secondary" className="flex-shrink-0">
-                Smart
-              </Badge>
-            )}
+            <div className="flex-1 min-w-0">
+              <CardTitle className="text-base truncate">{name}</CardTitle>
+            </div>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onSelect}>
-                <FileText className="h-4 w-4 mr-2" />
-                Preview Matches
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={onEdit}>
-                Edit Rule
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive" onClick={onRemove}>
-                <Trash2 className="h-4 w-4 mr-2" />
-                Remove
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center gap-2">
+            {/* Status badges */}
+            <div className="flex items-center gap-1.5">
+              {rule.useRegex && (
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Badge variant="outline" className="h-6 px-1.5">
+                      <Regex className="h-3 w-3" />
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>Uses regex patterns</TooltipContent>
+                </Tooltip>
+              )}
+              {rule.smartFilter && (
+                <Badge variant="secondary" className="h-6">Smart</Badge>
+              )}
+              <Badge variant={rule.enabled ? "default" : "outline"} className="h-6">
+                {rule.enabled ? "Active" : "Disabled"}
+              </Badge>
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={onSelect}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Preview Matches
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onEdit}>
+                  Edit Rule
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="text-destructive" onClick={onRemove}>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Remove
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </CardHeader>
-      <CardContent className="pb-3">
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-          {rule.mustContain && (
-            <div>
-              <span className="text-muted-foreground">Must contain:</span>{" "}
-              <span className="font-mono text-xs">{rule.mustContain}</span>
+      <CardContent className="pb-4 pt-0">
+        {/* Filters section - using colored pills */}
+        {(mustContainTerms.length > 0 || mustNotContainTerms.length > 0 || rule.episodeFilter) && (
+          <div className="space-y-2.5 mb-4">
+            {mustContainTerms.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-green-600 dark:text-green-500 flex items-center gap-1 shrink-0">
+                  <Check className="h-3 w-3" /> Match
+                </span>
+                {mustContainTerms.map((term, i) => (
+                  <Badge key={i} variant="outline" className="bg-green-500/10 border-green-500/30 text-green-700 dark:text-green-400 text-xs font-mono">
+                    {term}
+                  </Badge>
+                ))}
+              </div>
+            )}
+            {mustNotContainTerms.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-red-600 dark:text-red-500 flex items-center gap-1 shrink-0">
+                  <X className="h-3 w-3" /> Exclude
+                </span>
+                {mustNotContainTerms.map((term, i) => (
+                  <Badge key={i} variant="outline" className="bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-400 text-xs font-mono">
+                    {term}
+                  </Badge>
+                ))}
+              </div>
+            )}
+            {rule.episodeFilter && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-blue-600 dark:text-blue-500 flex items-center gap-1 shrink-0">
+                  <Tv className="h-3 w-3" /> Episodes
+                </span>
+                <Badge variant="outline" className="bg-blue-500/10 border-blue-500/30 text-blue-700 dark:text-blue-400 text-xs font-mono">
+                  {rule.episodeFilter}
+                </Badge>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Metadata row */}
+        <div className="flex items-center gap-4 text-sm flex-wrap">
+          {/* Feeds */}
+          <div className="flex items-center gap-1.5">
+            <Rss className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">
+              {rule.affectedFeeds.length > 0 ? `${rule.affectedFeeds.length} feed(s)` : "All feeds"}
+            </span>
+          </div>
+
+          {/* Category */}
+          {category && (
+            <div className="flex items-center gap-1.5">
+              <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground truncate max-w-32">{category}</span>
             </div>
           )}
-          {rule.mustNotContain && (
-            <div>
-              <span className="text-muted-foreground">Must not contain:</span>{" "}
-              <span className="font-mono text-xs">{rule.mustNotContain}</span>
-            </div>
-          )}
-          {rule.episodeFilter && (
-            <div>
-              <span className="text-muted-foreground">Episode filter:</span>{" "}
-              <span className="font-mono text-xs">{rule.episodeFilter}</span>
-            </div>
-          )}
-          {rule.affectedFeeds.length > 0 && (
-            <div className="col-span-2">
-              <span className="text-muted-foreground">Feeds:</span>{" "}
-              <span className="text-xs">{rule.affectedFeeds.length} feed(s)</span>
-            </div>
-          )}
-          {rule.lastMatch && (
-            <div className="col-span-2 text-xs text-muted-foreground">
-              Last match: {rule.lastMatch}
+
+          {/* Save path */}
+          {savePath && (
+            <div className="flex items-center gap-1.5">
+              <FolderInput className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+              <span className="text-xs text-muted-foreground truncate max-w-48">{savePath}</span>
             </div>
           )}
         </div>
+
+        {/* Last match */}
+        {rule.lastMatch && (
+          <div className="mt-3 pt-3 border-t text-xs text-muted-foreground">
+            Last match: {new Date(rule.lastMatch).toLocaleDateString()}
+          </div>
+        )}
       </CardContent>
     </Card>
   )
@@ -1897,6 +1955,18 @@ function countFeeds(items: RSSItems): number {
       count++
     } else {
       count += countFeeds(item as RSSItems)
+    }
+  }
+  return count
+}
+
+function countUnreadArticles(items: RSSItems): number {
+  let count = 0
+  for (const item of Object.values(items)) {
+    if (isRSSFeed(item)) {
+      count += item.articles?.filter((a) => !a.isRead).length ?? 0
+    } else {
+      count += countUnreadArticles(item as RSSItems)
     }
   }
   return count
