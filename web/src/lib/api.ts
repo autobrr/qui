@@ -1734,8 +1734,8 @@ class ApiClient {
     })
   }
 
-  async addRSSFeed(instanceId: number, data: AddRSSFeedRequest): Promise<WarningResponse> {
-    return this.request<WarningResponse>(`/instances/${instanceId}/rss/feeds`, {
+  async addRSSFeed(instanceId: number, data: AddRSSFeedRequest): Promise<WarningResponse | undefined> {
+    return this.request<WarningResponse | undefined>(`/instances/${instanceId}/rss/feeds`, {
       method: "POST",
       body: JSON.stringify(data),
     })

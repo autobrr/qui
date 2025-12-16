@@ -4942,20 +4942,35 @@ func (sm *SyncManager) GetRSSMatchingArticles(ctx context.Context, instanceID in
 
 // ReprocessRSSRules triggers qBittorrent to reprocess all unread articles against rules.
 // It does this by toggling auto-downloading off then on, which calls startProcessing().
+// The original auto-downloading state is preserved after reprocessing.
 func (sm *SyncManager) ReprocessRSSRules(ctx context.Context, instanceID int) error {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
 
-	// Toggle off
+	// Get current preference to restore later
+	prefs, err := client.GetAppPreferencesCtx(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get app preferences: %w", err)
+	}
+	originalEnabled := prefs.RssAutoDownloadingEnabled
+
+	// Ensure it's disabled first (may already be disabled)
 	if err := client.SetRSSAutoDownloadingEnabled(false); err != nil {
 		return fmt.Errorf("failed to disable RSS auto-downloading: %w", err)
 	}
 
-	// Toggle back on - this triggers startProcessing() which processes all unread articles
+	// Enable to trigger startProcessing() which processes all unread articles
 	if err := client.SetRSSAutoDownloadingEnabled(true); err != nil {
 		return fmt.Errorf("failed to enable RSS auto-downloading: %w", err)
+	}
+
+	// Restore original state if it was disabled
+	if !originalEnabled {
+		if err := client.SetRSSAutoDownloadingEnabled(false); err != nil {
+			return fmt.Errorf("failed to restore RSS auto-downloading state: %w", err)
+		}
 	}
 
 	return nil

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
@@ -395,7 +396,8 @@ func (h *RSSHandler) RemoveItem(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, nil)
 }
 
-// RefreshItem triggers a manual refresh of a feed or folder
+// RefreshItem triggers a manual refresh of a feed or folder.
+// An empty ItemPath refreshes all feeds.
 func (h *RSSHandler) RefreshItem(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseRSSInstanceID(w, r)
 	if err != nil {
@@ -408,16 +410,14 @@ func (h *RSSHandler) RefreshItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.ItemPath == "" {
-		RespondError(w, http.StatusBadRequest, "ItemPath is required")
-		return
-	}
+	// Trim whitespace - empty string is valid (refreshes all feeds)
+	itemPath := strings.TrimSpace(req.ItemPath)
 
-	if err := h.syncManager.RefreshRSSItem(r.Context(), instanceID, req.ItemPath); err != nil {
+	if err := h.syncManager.RefreshRSSItem(r.Context(), instanceID, itemPath); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "RefreshRSSItem") {
 			return
 		}
-		log.Error().Err(err).Int("instanceID", instanceID).Str("itemPath", req.ItemPath).Msg("failed to refresh RSS item")
+		log.Error().Err(err).Int("instanceID", instanceID).Str("itemPath", itemPath).Msg("failed to refresh RSS item")
 		RespondError(w, http.StatusInternalServerError, "Failed to refresh RSS item")
 		return
 	}
