@@ -185,14 +185,16 @@ func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
 	if targetFolder != "" {
 		// Get existing feeds before adding
 		existingFeeds, err := h.syncManager.GetRSSItems(ctx, instanceID, false)
+		hasBaseline := err == nil
 		if err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("failed to get existing RSS items before add")
-			// Continue anyway, we'll try the direct approach
 		}
 
 		existingNames := make(map[string]bool)
-		for name := range existingFeeds {
-			existingNames[name] = true
+		if hasBaseline {
+			for name := range existingFeeds {
+				existingNames[name] = true
+			}
 		}
 
 		// Add feed to root
@@ -216,20 +218,22 @@ func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Find the new feed name
+		// Find the new feed name (only if we have a baseline to compare against)
 		var newFeedName string
-		for name, rawItem := range newFeeds {
-			// Check if this is a new item (not in existingNames) and is a feed (has url field)
-			if !existingNames[name] {
-				// Check if it's a feed by unmarshaling and looking for url field
-				var itemMap map[string]interface{}
-				if err := json.Unmarshal(rawItem, &itemMap); err != nil {
-					log.Warn().Err(err).Str("itemName", name).Msg("failed to unmarshal RSS item while finding new feed")
-					continue
-				}
-				if _, hasURL := itemMap["url"]; hasURL {
-					newFeedName = name
-					break
+		if hasBaseline {
+			for name, rawItem := range newFeeds {
+				// Check if this is a new item (not in existingNames) and is a feed (has url field)
+				if !existingNames[name] {
+					// Check if it's a feed by unmarshaling and looking for url field
+					var itemMap map[string]interface{}
+					if err := json.Unmarshal(rawItem, &itemMap); err != nil {
+						log.Warn().Err(err).Str("itemName", name).Msg("failed to unmarshal RSS item while finding new feed")
+						continue
+					}
+					if _, hasURL := itemMap["url"]; hasURL {
+						newFeedName = name
+						break
+					}
 				}
 			}
 		}
