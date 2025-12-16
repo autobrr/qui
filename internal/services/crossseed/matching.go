@@ -240,10 +240,11 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		return false
 	}
 
-	// Collection must match if both are present (NF vs AMZN vs Criterion are different sources)
+	// Collection must match if either is present (NF vs AMZN vs Criterion are different sources)
+	// If one release has a collection/service tag and the other doesn't, they cannot match
 	sourceCollection := s.stringNormalizer.Normalize((source.Collection))
 	candidateCollection := s.stringNormalizer.Normalize((candidate.Collection))
-	if sourceCollection != "" && candidateCollection != "" && sourceCollection != candidateCollection {
+	if sourceCollection != candidateCollection {
 		return false
 	}
 
@@ -257,13 +258,12 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		}
 	}
 
-	// HDR must match if both are present (HDR vs SDR are different encodes)
-	if len(source.HDR) > 0 && len(candidate.HDR) > 0 {
-		sourceHDR := joinNormalizedSlice(source.HDR)
-		candidateHDR := joinNormalizedSlice(candidate.HDR)
-		if sourceHDR != candidateHDR {
-			return false
-		}
+	// HDR must match if either is present (HDR vs SDR are different encodes)
+	// If one release has HDR metadata and the other doesn't, they cannot match
+	sourceHDR := joinNormalizedSlice(source.HDR)
+	candidateHDR := joinNormalizedSlice(candidate.HDR)
+	if sourceHDR != candidateHDR {
+		return false
 	}
 
 	// Audio must match if both are present (different audio codecs mean different files)
