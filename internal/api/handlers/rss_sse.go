@@ -34,6 +34,7 @@ type rssSSEClient struct {
 	instanceID int
 	events     chan rssSSEEvent
 	done       chan struct{}
+	closeOnce  sync.Once
 }
 
 // rssSSEEvent represents an SSE event
@@ -152,11 +153,17 @@ func (h *RSSSSEHandler) addClient(instanceID int, client *rssSSEClient) {
 	log.Debug().Int("instanceID", instanceID).Int("clients", len(h.clients[instanceID])).Msg("RSS SSE client connected")
 }
 
+func (c *rssSSEClient) closeDone() {
+	c.closeOnce.Do(func() {
+		close(c.done)
+	})
+}
+
 func (h *RSSSSEHandler) removeClient(instanceID int, client *rssSSEClient) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	close(client.done)
+	client.closeDone()
 	if h.clients[instanceID] != nil {
 		delete(h.clients[instanceID], client)
 		if len(h.clients[instanceID]) == 0 {
@@ -171,10 +178,14 @@ func (h *RSSSSEHandler) removeClient(instanceID int, client *rssSSEClient) {
 
 func (h *RSSSSEHandler) broadcast(instanceID int, event rssSSEEvent) {
 	h.mu.RLock()
-	clients := h.clients[instanceID]
+	// Copy clients while holding lock to avoid race during iteration
+	clientsCopy := make([]*rssSSEClient, 0, len(h.clients[instanceID]))
+	for client := range h.clients[instanceID] {
+		clientsCopy = append(clientsCopy, client)
+	}
 	h.mu.RUnlock()
 
-	for client := range clients {
+	for _, client := range clientsCopy {
 		select {
 		case client.events <- event:
 		default:
@@ -277,7 +288,7 @@ func (h *RSSSSEHandler) Shutdown() {
 	h.mu.Lock()
 	for _, clients := range h.clients {
 		for client := range clients {
-			close(client.done)
+			client.closeDone()
 		}
 	}
 	h.clients = make(map[int]map[*rssSSEClient]struct{})
