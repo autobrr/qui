@@ -431,7 +431,7 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
                   value={formState.deleteMode ?? "none"}
                   onValueChange={(value) => setFormState(prev => ({
                     ...prev,
-                    deleteMode: value === "none" ? undefined : value as "delete" | "deleteWithFiles"
+                    deleteMode: value === "none" ? undefined : value as "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds"
                   }))}
                 >
                   <SelectTrigger id="rule-delete-mode">
@@ -441,10 +441,11 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
                     <SelectItem value="none">Don't delete</SelectItem>
                     <SelectItem value="delete">Delete torrent (keep files)</SelectItem>
                     <SelectItem value="deleteWithFiles">Delete torrent and files</SelectItem>
+                    <SelectItem value="deleteWithFilesPreserveCrossSeeds">Delete torrent and files (preserve cross-seeds)</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Automatically delete torrents when ratio or seeding time limit is reached.
+                  Automatically delete torrents when ratio or seeding time limit is reached. Cross-seed mode preserves files if another torrent shares the same data.
                 </p>
               </div>
             </div>
@@ -582,7 +583,11 @@ function RuleSummary({ rule }: { rule: TrackerRule }) {
       {rule.deleteMode && rule.deleteMode !== "none" && (
         <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-destructive border-destructive/50">
           <Trash2 className="h-3 w-3" />
-          {rule.deleteMode === "deleteWithFiles" ? "Delete + files" : "Delete"}
+          {rule.deleteMode === "deleteWithFilesPreserveCrossSeeds"
+            ? "Delete + files (XS safe)"
+            : rule.deleteMode === "deleteWithFiles"
+              ? "Delete + files"
+              : "Delete"}
         </Badge>
       )}
     </div>

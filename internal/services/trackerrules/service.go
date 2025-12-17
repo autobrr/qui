@@ -269,7 +269,20 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 
 		if shouldDeleteTorrent(torrent, rule) {
 			deleteMode := *rule.DeleteMode
-			deleteHashesByMode[deleteMode] = append(deleteHashesByMode[deleteMode], torrent.Hash)
+
+			// Handle cross-seed aware deletion
+			if deleteMode == "deleteWithFilesPreserveCrossSeeds" {
+				if detectCrossSeeds(torrent, torrents) {
+					// Cross-seed found: preserve files, only remove torrent entry
+					log.Info().Str("hash", torrent.Hash).Str("name", torrent.Name).Msg("tracker rules: cross-seed detected, preserving files")
+					deleteHashesByMode["delete"] = append(deleteHashesByMode["delete"], torrent.Hash)
+				} else {
+					// No cross-seed: safe to delete files
+					deleteHashesByMode["deleteWithFiles"] = append(deleteHashesByMode["deleteWithFiles"], torrent.Hash)
+				}
+			} else {
+				deleteHashesByMode[deleteMode] = append(deleteHashesByMode[deleteMode], torrent.Hash)
+			}
 
 			// Mark as processed for deletion
 			s.mu.Lock()
@@ -437,9 +450,39 @@ func torrentHasTag(tags string, candidate string) bool {
 	return false
 }
 
-// shouldDeleteTorrent checks if a torrent has reached its seeding goals and should be deleted.
-// Returns true if the torrent is completed, has a delete mode set, and has reached either
-// the ratio limit or seeding time limit specified in the rule.
+// normalizePath standardizes a file path for comparison by lowercasing,
+// converting backslashes to forward slashes, and removing trailing slashes.
+func normalizePath(p string) string {
+	if p == "" {
+		return ""
+	}
+	// Lowercase for case-insensitive comparison
+	p = strings.ToLower(p)
+	// Normalize path separators (Windows backslashes to forward slashes)
+	p = strings.ReplaceAll(p, "\\", "/")
+	// Remove trailing slash
+	p = strings.TrimSuffix(p, "/")
+	return p
+}
+
+// detectCrossSeeds checks if any other torrent shares the same ContentPath,
+// indicating they are cross-seeds sharing the same data files.
+func detectCrossSeeds(target qbt.Torrent, allTorrents []qbt.Torrent) bool {
+	targetPath := normalizePath(target.ContentPath)
+	if targetPath == "" {
+		return false
+	}
+	for _, other := range allTorrents {
+		if other.Hash == target.Hash {
+			continue // skip self
+		}
+		if normalizePath(other.ContentPath) == targetPath {
+			return true // cross-seed found
+		}
+	}
+	return false
+}
+
 func shouldDeleteTorrent(torrent qbt.Torrent, rule *models.TrackerRule) bool {
 	// Only delete completed torrents
 	if torrent.Progress < 1.0 {
