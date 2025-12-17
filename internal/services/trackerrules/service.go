@@ -44,6 +44,7 @@ type Service struct {
 
 	// keep lightweight memory of recent applications to avoid hammering qBittorrent
 	lastApplied map[int]map[string]time.Time // instanceID -> hash -> timestamp
+	lastDeleted map[int]map[string]time.Time // instanceID -> hash -> timestamp (tracks deleted torrents)
 	mu          sync.RWMutex
 }
 
@@ -63,6 +64,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		ruleStore:     ruleStore,
 		syncManager:   syncManager,
 		lastApplied:   make(map[int]map[string]time.Time),
+		lastDeleted:   make(map[int]map[string]time.Time),
 	}
 }
 
@@ -233,6 +235,65 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 		}
 	}
 
+	// Process deletions for torrents that have reached their limits
+	s.mu.RLock()
+	instDeletedMap, deletedMapOk := s.lastDeleted[instanceID]
+	s.mu.RUnlock()
+	if !deletedMapOk || instDeletedMap == nil {
+		s.mu.Lock()
+		if s.lastDeleted[instanceID] == nil {
+			s.lastDeleted[instanceID] = make(map[string]time.Time)
+		}
+		instDeletedMap = s.lastDeleted[instanceID]
+		s.mu.Unlock()
+	}
+
+	// Batch torrents for deletion by delete mode
+	deleteHashesByMode := make(map[string][]string) // "delete" or "deleteWithFiles" -> hashes
+
+	for _, torrent := range torrents {
+		// Skip if recently processed for deletion (avoid duplicate attempts)
+		s.mu.RLock()
+		if ts, deleted := instDeletedMap[torrent.Hash]; deleted {
+			if now.Sub(ts) < 5*time.Minute {
+				s.mu.RUnlock()
+				continue
+			}
+		}
+		s.mu.RUnlock()
+
+		rule := selectRule(torrent, rules, s.syncManager)
+		if rule == nil {
+			continue
+		}
+
+		if shouldDeleteTorrent(torrent, rule) {
+			deleteMode := *rule.DeleteMode
+			deleteHashesByMode[deleteMode] = append(deleteHashesByMode[deleteMode], torrent.Hash)
+
+			// Mark as processed for deletion
+			s.mu.Lock()
+			instDeletedMap[torrent.Hash] = now
+			s.mu.Unlock()
+		}
+	}
+
+	// Execute deletions
+	for mode, hashes := range deleteHashesByMode {
+		if len(hashes) == 0 {
+			continue
+		}
+
+		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
+		for _, batch := range limited {
+			if err := s.syncManager.BulkAction(ctx, instanceID, batch, mode); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Str("action", mode).Int("count", len(batch)).Msg("tracker rules: delete failed")
+			} else {
+				log.Info().Int("instanceID", instanceID).Str("action", mode).Int("count", len(batch)).Msg("tracker rules: deleted torrents")
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -373,5 +434,43 @@ func torrentHasTag(tags string, candidate string) bool {
 			return true
 		}
 	}
+	return false
+}
+
+// shouldDeleteTorrent checks if a torrent has reached its seeding goals and should be deleted.
+// Returns true if the torrent is completed, has a delete mode set, and has reached either
+// the ratio limit or seeding time limit specified in the rule.
+func shouldDeleteTorrent(torrent qbt.Torrent, rule *models.TrackerRule) bool {
+	// Only delete completed torrents
+	if torrent.Progress < 1.0 {
+		return false
+	}
+
+	// Must have delete mode enabled
+	if rule.DeleteMode == nil || *rule.DeleteMode == "" || *rule.DeleteMode == "none" {
+		return false
+	}
+
+	// Must have at least one limit configured
+	hasRatioLimit := rule.RatioLimit != nil && *rule.RatioLimit > 0
+	hasSeedingTimeLimit := rule.SeedingTimeLimitMinutes != nil && *rule.SeedingTimeLimitMinutes > 0
+
+	if !hasRatioLimit && !hasSeedingTimeLimit {
+		return false
+	}
+
+	// Check ratio limit (if set)
+	if hasRatioLimit && torrent.Ratio >= *rule.RatioLimit {
+		return true
+	}
+
+	// Check seeding time limit (if set) - torrent.SeedingTime is in seconds
+	if hasSeedingTimeLimit {
+		limitSeconds := *rule.SeedingTimeLimitMinutes * 60
+		if torrent.SeedingTime >= limitSeconds {
+			return true
+		}
+	}
+
 	return false
 }

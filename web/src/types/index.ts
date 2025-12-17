@@ -117,6 +117,7 @@ export interface TrackerRule {
   downloadLimitKiB?: number
   ratioLimit?: number
   seedingTimeLimitMinutes?: number
+  deleteMode?: "none" | "delete" | "deleteWithFiles"
   enabled: boolean
   sortOrder: number
   createdAt?: string
@@ -133,6 +134,7 @@ export interface TrackerRuleInput {
   downloadLimitKiB?: number
   ratioLimit?: number
   seedingTimeLimitMinutes?: number
+  deleteMode?: "none" | "delete" | "deleteWithFiles"
   enabled?: boolean
   sortOrder?: number
 }

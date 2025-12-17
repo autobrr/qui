@@ -17,6 +17,13 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MultiSelect, type Option } from "@/components/ui/multi-select"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
@@ -46,6 +53,7 @@ const emptyFormState: FormState = {
   downloadLimitKiB: undefined,
   ratioLimit: undefined,
   seedingTimeLimitMinutes: undefined,
+  deleteMode: undefined,
   enabled: true,
 }
 
@@ -149,6 +157,7 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
       downloadLimitKiB: rule.downloadLimitKiB,
       ratioLimit: rule.ratioLimit,
       seedingTimeLimitMinutes: rule.seedingTimeLimitMinutes,
+      deleteMode: rule.deleteMode,
       enabled: rule.enabled,
       sortOrder: rule.sortOrder,
     })
@@ -416,6 +425,31 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
             </div>
 
             <div className="grid gap-4 sm:grid-cols-1">
+              <div className="space-y-2">
+                <Label htmlFor="rule-delete-mode">Delete when limits reached</Label>
+                <Select
+                  value={formState.deleteMode ?? "none"}
+                  onValueChange={(value) => setFormState(prev => ({
+                    ...prev,
+                    deleteMode: value === "none" ? undefined : value as "delete" | "deleteWithFiles"
+                  }))}
+                >
+                  <SelectTrigger id="rule-delete-mode">
+                    <SelectValue placeholder="Select delete mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Don't delete</SelectItem>
+                    <SelectItem value="delete">Delete torrent (keep files)</SelectItem>
+                    <SelectItem value="deleteWithFiles">Delete torrent and files</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Automatically delete torrents when ratio or seeding time limit is reached.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-1">
               <div className="flex items-center justify-between rounded-lg border p-3">
                 <div>
                   <Label htmlFor="rule-enabled">Enabled</Label>
@@ -475,7 +509,8 @@ function RuleSummary({ rule }: { rule: TrackerRule }) {
     rule.downloadLimitKiB !== undefined ||
     rule.uploadLimitKiB !== undefined ||
     rule.ratioLimit !== undefined ||
-    rule.seedingTimeLimitMinutes !== undefined
+    rule.seedingTimeLimitMinutes !== undefined ||
+    (rule.deleteMode && rule.deleteMode !== "none")
 
   if (!hasActions && trackers.length === 0 && !rule.category && !rule.tag) {
     return <span className="text-xs text-muted-foreground">No actions set</span>
@@ -541,6 +576,13 @@ function RuleSummary({ rule }: { rule: TrackerRule }) {
         <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal">
           <Clock className="h-3 w-3 text-muted-foreground/70" />
           {rule.seedingTimeLimitMinutes}m
+        </Badge>
+      )}
+
+      {rule.deleteMode && rule.deleteMode !== "none" && (
+        <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-destructive border-destructive/50">
+          <Trash2 className="h-3 w-3" />
+          {rule.deleteMode === "deleteWithFiles" ? "Delete + files" : "Delete"}
         </Badge>
       )}
     </div>
