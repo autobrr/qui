@@ -34,7 +34,7 @@ import "flag-icons/css/flag-icons.min.css"
 import { Ban, Copy, Loader2, Trash2, UserPlus, X } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
-import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackersTable } from "./details"
+import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackersTable, WebSeedsTable } from "./details"
 import { RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
 import { TorrentFileTree } from "./TorrentFileTree"
 
@@ -47,7 +47,7 @@ interface TorrentDetailsPanelProps {
   onClose?: () => void;
 }
 
-const TAB_VALUES = ["general", "trackers", "peers", "content", "crossseed"] as const
+const TAB_VALUES = ["general", "trackers", "peers", "webseeds", "content", "crossseed"] as const
 type TabValue = typeof TAB_VALUES[number]
 const DEFAULT_TAB: TabValue = "general"
 const TAB_STORAGE_KEY = "torrent-details-last-tab"
@@ -342,6 +342,23 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     staleTime: 0,
     gcTime: 5 * 60 * 1000,
   })
+
+  // Fetch web seeds (HTTP sources) - always fetch to determine if tab should be shown
+  const { data: webseedsData, isLoading: loadingWebseeds } = useQuery({
+    queryKey: ["torrent-webseeds", instanceId, torrent?.hash],
+    queryFn: () => api.getTorrentWebSeeds(instanceId, torrent!.hash),
+    enabled: !!torrent && isReady,
+    staleTime: 30000,
+    gcTime: 5 * 60 * 1000,
+  })
+  const hasWebseeds = (webseedsData?.length ?? 0) > 0
+
+  // Redirect away from webseeds tab if it becomes hidden (e.g., switching to a torrent without web seeds)
+  useEffect(() => {
+    if (activeTab === "webseeds" && !hasWebseeds && !loadingWebseeds) {
+      setActiveTab("general")
+    }
+  }, [activeTab, hasWebseeds, loadingWebseeds, setActiveTab])
 
   // Add peers mutation
   const addPeersMutation = useMutation({
@@ -701,6 +718,14 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
           >
             Peers
           </TabsTrigger>
+          {hasWebseeds && (
+            <TabsTrigger
+              value="webseeds"
+              className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
+            >
+              HTTP Sources
+            </TabsTrigger>
+          )}
           <TabsTrigger
             value="content"
             className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
@@ -1352,6 +1377,64 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                         <UserPlus className="h-4 w-4 mr-2" />
                         Add Peers
                       </Button>
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            )}
+          </TabsContent>
+
+          <TabsContent value="webseeds" className="m-0 h-full">
+            {isHorizontal ? (
+              <WebSeedsTable
+                webseeds={webseedsData}
+                loading={loadingWebseeds}
+                incognitoMode={incognitoMode}
+              />
+            ) : (
+              <ScrollArea className="h-full">
+                <div className="p-4 sm:p-6">
+                  {activeTab === "webseeds" && loadingWebseeds && !webseedsData ? (
+                    <div className="flex items-center justify-center p-8">
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                    </div>
+                  ) : webseedsData && webseedsData.length > 0 ? (
+                    <div className="space-y-3">
+                      <div>
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">HTTP Sources</h3>
+                        <p className="text-xs text-muted-foreground mt-1">{webseedsData.length} source{webseedsData.length !== 1 ? "s" : ""}</p>
+                      </div>
+                      <div className="space-y-2 mt-4">
+                        {webseedsData.map((webseed, index) => (
+                          <ContextMenu key={index}>
+                            <ContextMenuTrigger asChild>
+                              <div className="p-3 rounded-lg border bg-card hover:bg-muted/30 transition-colors cursor-default">
+                                <p className="font-mono text-xs break-all">
+                                  {incognitoMode ? "***masked***" : renderTextWithLinks(webseed.url)}
+                                </p>
+                              </div>
+                            </ContextMenuTrigger>
+                            <ContextMenuContent>
+                              <ContextMenuItem
+                                onClick={() => {
+                                  if (!incognitoMode) {
+                                    copyTextToClipboard(webseed.url)
+                                    toast.success("URL copied to clipboard")
+                                  }
+                                }}
+                                disabled={incognitoMode}
+                              >
+                                <Copy className="h-3.5 w-3.5 mr-2" />
+                                Copy URL
+                              </ContextMenuItem>
+                            </ContextMenuContent>
+                          </ContextMenu>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
+                      No HTTP sources
                     </div>
                   )}
                 </div>

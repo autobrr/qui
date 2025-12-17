@@ -1,4 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useRef, useState } from "react";
+import { getApiBaseUrl } from "../lib/base-url";
+
+const API_BASE = getApiBaseUrl();
 
 export function usePathAutocomplete(
   onSuggestionSelect: (path: string) => void,
@@ -51,7 +54,7 @@ export function usePathAutocomplete(
 
       try {
         const response = await fetch(
-          `/api/instances/${instanceId}/getDirectoryContent?dirPath=${encodeURIComponent(key)}`,
+          `${API_BASE}/instances/${instanceId}/getDirectoryContent?dirPath=${encodeURIComponent(key)}`,
           { signal: controller.signal }
         );
 

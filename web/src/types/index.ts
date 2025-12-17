@@ -502,6 +502,10 @@ export interface SortedPeersResponse extends TorrentPeersResponse {
   sorted_peers?: SortedPeer[]
 }
 
+export interface WebSeed {
+  url: string
+}
+
 export type BackupRunKind = "manual" | "hourly" | "daily" | "weekly" | "monthly" | "import"
 
 export type BackupRunStatus = "pending" | "running" | "success" | "failed" | "canceled"
