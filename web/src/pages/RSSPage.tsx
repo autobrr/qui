@@ -8,6 +8,7 @@ import {
   Check,
   ChevronRight,
   Download,
+  Search,
   ExternalLink,
   FileText,
   Folder,
@@ -49,6 +50,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -96,6 +98,7 @@ import {
   useSetRSSRule,
 } from "@/hooks/useRSS"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
+import { renderTextWithLinks } from "@/lib/linkUtils"
 import type {
   AppPreferences,
   Category,
@@ -106,6 +109,8 @@ import type {
 } from "@/types"
 import { isRSSFeed } from "@/types"
 import { useQueryClient } from "@tanstack/react-query"
+
+import { AddTorrentDialog, type AddTorrentDropPayload } from "@/components/torrents/AddTorrentDialog"
 
 interface RSSPageProps {
   activeTab: "feeds" | "rules"
@@ -195,8 +200,8 @@ export function RSSPage({
               <span className="truncate">{inst.name}</span>
               <span
                 className={`ml-auto h-2 w-2 rounded-full flex-shrink-0 ${inst.connected
-                    ? "bg-green-500"
-                    : "bg-red-500"
+                  ? "bg-green-500"
+                  : "bg-red-500"
                   }`}
               />
             </div>
@@ -491,6 +496,10 @@ function FeedsTab({ instanceId, feedsData, feedsLoading, selectedFeedPath, onFee
   })
   const [newURL, setNewURL] = useState("")
 
+  // AddTorrentDialog state
+  const [addTorrentOpen, setAddTorrentOpen] = useState(false)
+  const [addTorrentPayload, setAddTorrentPayload] = useState<AddTorrentDropPayload | null>(null)
+
   // Find selected feed
   const selectedFeed = useMemo(() => {
     if (!selectedFeedPath || !feedsData) return null
@@ -612,6 +621,11 @@ function FeedsTab({ instanceId, feedsData, feedsLoading, selectedFeedPath, onFee
     }
   }
 
+  const handleDownloadArticle = (torrentURL: string) => {
+    setAddTorrentPayload({ type: "url", urls: [torrentURL] })
+    setAddTorrentOpen(true)
+  }
+
   const unreadCount = countUnreadArticles(feedsData)
   const selectedFeedArticles = selectedFeed?.articles ?? []
   const selectedFeedUnread = selectedFeedArticles.filter(a => !a.isRead).length
@@ -693,6 +707,15 @@ function FeedsTab({ instanceId, feedsData, feedsLoading, selectedFeedPath, onFee
         </DialogContent>
       </Dialog>
 
+      {/* Add Torrent Dialog */}
+      <AddTorrentDialog
+        instanceId={instanceId}
+        open={addTorrentOpen}
+        onOpenChange={setAddTorrentOpen}
+        dropPayload={addTorrentPayload}
+        onDropPayloadConsumed={() => setAddTorrentPayload(null)}
+      />
+
       {/* Articles Panel - Main content */}
       <Card className="flex flex-col min-h-0">
         <CardHeader className="shrink-0 flex flex-row items-center justify-between space-y-0 py-0">
@@ -712,7 +735,7 @@ function FeedsTab({ instanceId, feedsData, feedsLoading, selectedFeedPath, onFee
         </CardHeader>
         <CardContent className="pt-0 flex-1 min-h-0 flex flex-col">
           {selectedFeed ? (
-            <ArticlesPanel instanceId={instanceId} feed={selectedFeed} feedPath={selectedFeedPath!} />
+            <ArticlesPanel instanceId={instanceId} feed={selectedFeed} feedPath={selectedFeedPath!} onDownload={handleDownloadArticle} />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
               <Rss className="h-8 w-8 mb-3 opacity-50" />
@@ -744,6 +767,24 @@ interface FeedTreeProps {
 function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh, onRename, onEditURL, supportsEditURL }: FeedTreeProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
 
+  // Auto-expand parent folders when selectedPath changes (e.g., on page load)
+  useEffect(() => {
+    if (!selectedPath) return
+    const parts = selectedPath.split("\\")
+    if (parts.length <= 1) return // No parent folders
+
+    const parentPaths: string[] = []
+    for (let i = 1; i < parts.length; i++) {
+      parentPaths.push(parts.slice(0, i).join("\\"))
+    }
+
+    setExpandedFolders((prev) => {
+      const next = new Set(prev)
+      parentPaths.forEach((p) => next.add(p))
+      return next
+    })
+  }, [selectedPath])
+
   const toggleFolder = (folderPath: string) => {
     setExpandedFolders((prev) => {
       const next = new Set(prev)
@@ -773,8 +814,8 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh, on
             <div
               key={itemPath}
               className={`group flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors ${isSelected
-                  ? "bg-primary/10 text-primary"
-                  : "hover:bg-muted"
+                ? "bg-primary/10 text-primary"
+                : "hover:bg-muted"
                 }`}
               onClick={() => onSelect(itemPath)}
             >
@@ -895,13 +936,24 @@ interface ArticlesPanelProps {
   instanceId: number
   feed: RSSFeed
   feedPath: string
+  onDownload: (torrentURL: string) => void
 }
 
-function ArticlesPanel({ instanceId, feed, feedPath }: ArticlesPanelProps) {
+function ArticlesPanel({ instanceId, feed, feedPath, onDownload }: ArticlesPanelProps) {
   const { formatDate } = useDateTimeFormatters()
   const markAsRead = useMarkRSSAsRead(instanceId)
+  const [search, setSearch] = useState("")
 
   const articles = feed.articles ?? []
+
+  const filteredArticles = useMemo(() => {
+    if (!search.trim()) return articles
+    const term = search.toLowerCase()
+    return articles.filter((article) =>
+      article.title?.toLowerCase().includes(term) ||
+      article.description?.toLowerCase().includes(term)
+    )
+  }, [articles, search])
 
   const handleMarkAsRead = async (articleId: string) => {
     try {
@@ -922,16 +974,34 @@ function ArticlesPanel({ instanceId, feed, feedPath }: ArticlesPanelProps) {
   }
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto">
-      <div className="space-y-0.5 pr-1">
-        {articles.map((article) => (
-          <ArticleRow
-            key={article.id}
-            article={article}
-            formatDate={formatDate}
-            onMarkAsRead={() => handleMarkAsRead(article.id)}
-          />
-        ))}
+    <div className="flex flex-col h-full min-h-0">
+      <div className="relative mb-2">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search articles..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-8 h-8"
+        />
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {filteredArticles.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
+            <p className="text-sm">No matching articles</p>
+          </div>
+        ) : (
+          <div className="space-y-0.5 pr-1">
+            {filteredArticles.map((article) => (
+              <ArticleRow
+                key={article.id}
+                article={article}
+                formatDate={formatDate}
+                onMarkAsRead={() => handleMarkAsRead(article.id)}
+                onDownload={onDownload}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -941,44 +1011,93 @@ interface ArticleRowProps {
   article: RSSArticle
   formatDate: (date: Date) => string
   onMarkAsRead: () => void
+  onDownload: (torrentURL: string) => void
 }
 
-function ArticleRow({ article, formatDate, onMarkAsRead }: ArticleRowProps) {
+// Strip HTML tags and decode common HTML entities, preserving link URLs
+function stripHtml(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>([^<]*)<\/a>/gi, "$2 $1")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&apos;/g, "'")
+    .replace(/&#x([0-9a-fA-F]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(parseInt(num, 10)))
+}
+
+function ArticleRow({ article, formatDate, onMarkAsRead, onDownload }: ArticleRowProps) {
   const formattedDate = article.date ? formatDate(new Date(article.date)) : ""
+  const hasDetails = article.description || article.author
+  const rowClass = `group grid grid-cols-[1fr_auto] items-center gap-2 py-1.5 transition-colors ${article.isRead ? "opacity-50 hover:opacity-100" : ""}`
+  const titleClass = `text-sm leading-snug truncate ${article.isRead ? "" : "font-medium"}`
+
+  const titleContent = (
+    <>
+      <p className={titleClass}>{article.title}</p>
+      <span className="text-xs text-muted-foreground">{formattedDate}</span>
+    </>
+  )
+
+  const actionButtons = (
+    <>
+      {article.torrentURL && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+          onClick={() => onDownload(article.torrentURL!)}
+          title="Download torrent"
+        >
+          <Download className="h-4 w-4" />
+        </Button>
+      )}
+      {article.link && article.link !== article.torrentURL && (
+        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" asChild title="Open link">
+          <a href={article.link} target="_blank" rel="noopener noreferrer">
+            <ExternalLink className="h-4 w-4" />
+          </a>
+        </Button>
+      )}
+      {!article.isRead && (
+        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={onMarkAsRead} title="Mark as read">
+          <Check className="h-4 w-4" />
+        </Button>
+      )}
+    </>
+  )
+
+  if (!hasDetails) {
+    return (
+      <div className={rowClass}>
+        <div className="min-w-0 text-left">{titleContent}</div>
+        <div className="flex items-center gap-0.5 shrink-0">{actionButtons}</div>
+      </div>
+    )
+  }
 
   return (
-    <div
-      className={`group flex items-center gap-2 py-1.5 transition-colors ${article.isRead ? "opacity-50 hover:opacity-100" : ""
-        }`}
-    >
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm leading-snug truncate ${article.isRead ? "" : "font-medium"}`}>
-          {article.title}
-        </p>
-        <span className="text-xs text-muted-foreground">{formattedDate}</span>
+    <Collapsible>
+      <div className={rowClass}>
+        <CollapsibleTrigger className="min-w-0 text-left">{titleContent}</CollapsibleTrigger>
+        <div className="flex items-center gap-0.5 shrink-0">
+          <CollapsibleTrigger className="h-7 w-7 inline-flex items-center justify-center text-muted-foreground hover:text-foreground" title="Toggle details">
+            <ChevronRight className="h-4 w-4 transition-transform [[data-state=open]_&]:rotate-90" />
+          </CollapsibleTrigger>
+          {actionButtons}
+        </div>
       </div>
-      <div className="flex items-center gap-0.5 shrink-0">
-        {article.torrentURL && (
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" asChild>
-            <a href={article.torrentURL} target="_blank" rel="noopener noreferrer">
-              <Download className="h-4 w-4" />
-            </a>
-          </Button>
-        )}
-        {article.link && article.link !== article.torrentURL && (
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" asChild>
-            <a href={article.link} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="h-4 w-4" />
-            </a>
-          </Button>
-        )}
-        {!article.isRead && (
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={onMarkAsRead}>
-            <Check className="h-4 w-4" />
-          </Button>
-        )}
-      </div>
-    </div>
+      <CollapsibleContent>
+        <div className="pb-4 text-sm text-muted-foreground">
+          {article.description && <p className="whitespace-pre-wrap">{renderTextWithLinks(stripHtml(article.description))}</p>}
+          {article.author && <p className="text-xs mt-1">By {article.author}</p>}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
 
@@ -2154,6 +2273,25 @@ function RssSettingsPopover({
   updatePreferences: (prefs: Partial<AppPreferences>) => void
   isUpdating: boolean
 }) {
+  const [refreshInterval, setRefreshInterval] = useState(preferences?.rss_refresh_interval ?? 30)
+  const [maxArticles, setMaxArticles] = useState(preferences?.rss_max_articles_per_feed ?? 50)
+  const [downloadRepack, setDownloadRepack] = useState(preferences?.rss_download_repack_proper_episodes ?? false)
+
+  // Sync local state when preferences change
+  useEffect(() => {
+    setRefreshInterval(preferences?.rss_refresh_interval ?? 30)
+    setMaxArticles(preferences?.rss_max_articles_per_feed ?? 50)
+    setDownloadRepack(preferences?.rss_download_repack_proper_episodes ?? false)
+  }, [preferences])
+
+  const handleSave = () => {
+    updatePreferences({
+      rss_refresh_interval: refreshInterval,
+      rss_max_articles_per_feed: maxArticles,
+      rss_download_repack_proper_episodes: downloadRepack,
+    })
+  }
+
   return (
     <Popover>
       <Tooltip>
@@ -2177,13 +2315,8 @@ function RssSettingsPopover({
                 type="number"
                 className="w-16 h-8 text-center"
                 min={1}
-                value={preferences?.rss_refresh_interval ?? 30}
-                onChange={(e) =>
-                  updatePreferences({
-                    rss_refresh_interval: parseInt(e.target.value) || 30,
-                  })
-                }
-                disabled={isUpdating}
+                value={refreshInterval}
+                onChange={(e) => setRefreshInterval(parseInt(e.target.value) || 30)}
               />
               <span className="text-xs text-muted-foreground w-6">min</span>
             </div>
@@ -2194,13 +2327,8 @@ function RssSettingsPopover({
                 type="number"
                 className="w-16 h-8 text-center"
                 min={1}
-                value={preferences?.rss_max_articles_per_feed ?? 50}
-                onChange={(e) =>
-                  updatePreferences({
-                    rss_max_articles_per_feed: parseInt(e.target.value) || 50,
-                  })
-                }
-                disabled={isUpdating}
+                value={maxArticles}
+                onChange={(e) => setMaxArticles(parseInt(e.target.value) || 50)}
               />
               <span className="w-6" />
             </div>
@@ -2215,16 +2343,15 @@ function RssSettingsPopover({
             <div className="flex items-center justify-between">
               <Label className="text-sm">Download REPACK/PROPER</Label>
               <Switch
-                checked={preferences?.rss_download_repack_proper_episodes ?? false}
-                onCheckedChange={(checked) =>
-                  updatePreferences({
-                    rss_download_repack_proper_episodes: checked,
-                  })
-                }
-                disabled={isUpdating}
+                checked={downloadRepack}
+                onCheckedChange={setDownloadRepack}
               />
             </div>
           </div>
+
+          <Button onClick={handleSave} disabled={isUpdating} className="w-full">
+            {isUpdating ? "Saving..." : "Save"}
+          </Button>
         </div>
       </PopoverContent>
     </Popover>
