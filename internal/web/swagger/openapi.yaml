@@ -3623,6 +3623,8 @@ components:
 
     WebSeed:
       type: object
+      required:
+        - url
       properties:
         url:
           type: string

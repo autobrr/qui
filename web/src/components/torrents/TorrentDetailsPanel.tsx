@@ -343,15 +343,22 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     gcTime: 5 * 60 * 1000,
   })
 
-  // Fetch web seeds (HTTP sources)
-  const isWebseedsTabActive = activeTab === "webseeds"
+  // Fetch web seeds (HTTP sources) - always fetch to determine if tab should be shown
   const { data: webseedsData, isLoading: loadingWebseeds } = useQuery({
     queryKey: ["torrent-webseeds", instanceId, torrent?.hash],
     queryFn: () => api.getTorrentWebSeeds(instanceId, torrent!.hash),
-    enabled: !!torrent && isReady && isWebseedsTabActive,
+    enabled: !!torrent && isReady,
     staleTime: 30000,
     gcTime: 5 * 60 * 1000,
   })
+  const hasWebseeds = (webseedsData?.length ?? 0) > 0
+
+  // Redirect away from webseeds tab if it becomes hidden (e.g., switching to a torrent without web seeds)
+  useEffect(() => {
+    if (activeTab === "webseeds" && !hasWebseeds && !loadingWebseeds) {
+      setActiveTab("general")
+    }
+  }, [activeTab, hasWebseeds, loadingWebseeds, setActiveTab])
 
   // Add peers mutation
   const addPeersMutation = useMutation({
@@ -711,12 +718,14 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
           >
             Peers
           </TabsTrigger>
-          <TabsTrigger
-            value="webseeds"
-            className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
-          >
-            HTTP Sources
-          </TabsTrigger>
+          {hasWebseeds && (
+            <TabsTrigger
+              value="webseeds"
+              className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
+            >
+              HTTP Sources
+            </TabsTrigger>
+          )}
           <TabsTrigger
             value="content"
             className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
