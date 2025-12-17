@@ -719,6 +719,9 @@ const FilterSidebarComponent = ({
       }
     }
 
+    // Sort by display name (case-insensitive) for consistent alphabetical ordering
+    processed.sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' }))
+
     return processed
   }, [trackers, trackerCustomizationMaps])
 
