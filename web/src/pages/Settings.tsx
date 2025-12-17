@@ -46,6 +46,7 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
+import { canRegisterProtocolHandler, registerMagnetHandler } from "@/lib/protocol-handler"
 import { copyTextToClipboard, formatBytes } from "@/lib/utils"
 import type { Instance, TorznabSearchCacheStats } from "@/types"
 import { useForm } from "@tanstack/react-form"
@@ -994,6 +995,41 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                   <ChangePasswordForm />
                 </CardContent>
               </Card>
+
+              {canRegisterProtocolHandler() && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Browser Integration</CardTitle>
+                    <CardDescription>
+                      Configure how your browser handles magnet links
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-sm text-muted-foreground">
+                        Register qui as your browser's handler for magnet links.
+                        This allows you to open magnet links directly in qui.
+                      </p>
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          const success = registerMagnetHandler()
+                          if (success) {
+                            toast.success("Magnet handler registration requested", {
+                              description: "If prompted by your browser, please accept to complete registration.",
+                            })
+                          } else {
+                            toast.error("Failed to register magnet handler")
+                          }
+                        }}
+                        className="w-fit"
+                      >
+                        Register as Handler
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           )}
         </div>
