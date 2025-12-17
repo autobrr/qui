@@ -47,6 +47,7 @@ import type {
   RestoreResult,
   SearchHistoryResponse,
   SortedPeersResponse,
+  WebSeed,
   TorrentCreationParams,
   TorrentCreationTask,
   TorrentCreationTaskResponse,
@@ -1148,6 +1149,10 @@ class ApiClient {
 
   async getTorrentPeers(instanceId: number, hash: string): Promise<SortedPeersResponse> {
     return this.request<SortedPeersResponse>(`/instances/${instanceId}/torrents/${hash}/peers`)
+  }
+
+  async getTorrentWebSeeds(instanceId: number, hash: string): Promise<WebSeed[]> {
+    return this.request<WebSeed[]>(`/instances/${instanceId}/torrents/${hash}/webseeds`)
   }
 
   async addPeersToTorrents(instanceId: number, hashes: string[], peers: string[]): Promise<void> {
