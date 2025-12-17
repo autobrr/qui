@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/anacrolix/torrent/bencode"
 	"github.com/anacrolix/torrent/metainfo"
@@ -5012,4 +5013,274 @@ func (m *rssFilterTestSyncManager) GetCategories(context.Context, int) (map[stri
 
 func (m *rssFilterTestSyncManager) CreateCategory(context.Context, int, string, string) error {
 	return nil
+}
+
+// TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters verifies that completion source
+// filters are passed through to the CrossSeedRequest. This tests the path from
+// executeCompletionSearch → executeCrossSeedSearchAttempt → CrossSeed where completion settings
+// filters should be propagated to FindCandidates.
+func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	instanceID := 1
+
+	// Create a minimal valid torrent file for encoding
+	createTorrentData := func() []byte {
+		info := metainfo.Info{
+			Name:        "Test.Movie.2025.1080p.BluRay-GROUP",
+			PieceLength: 262144,
+			Pieces:      make([]byte, 20), // Minimal piece hash
+			Length:      1024,
+		}
+		mi := metainfo.MetaInfo{
+			InfoBytes: bencode.MustMarshal(info),
+		}
+		var buf bytes.Buffer
+		if err := mi.Write(&buf); err != nil {
+			t.Fatalf("failed to create torrent data: %v", err)
+		}
+		return buf.Bytes()
+	}
+
+	tests := []struct {
+		name                    string
+		opts                    SearchRunOptions
+		expectCategories        []string
+		expectTags              []string
+		expectExcludeCategories []string
+		expectExcludeTags       []string
+	}{
+		{
+			name: "completion include categories passed through",
+			opts: SearchRunOptions{
+				InstanceID: instanceID,
+				Categories: []string{"movies-LTS", "tv-LTS"},
+			},
+			expectCategories:        []string{"movies-LTS", "tv-LTS"},
+			expectTags:              nil,
+			expectExcludeCategories: nil,
+			expectExcludeTags:       nil,
+		},
+		{
+			name: "completion include tags passed through",
+			opts: SearchRunOptions{
+				InstanceID: instanceID,
+				Tags:       []string{"cross-seed", "priority"},
+			},
+			expectCategories:        nil,
+			expectTags:              []string{"cross-seed", "priority"},
+			expectExcludeCategories: nil,
+			expectExcludeTags:       nil,
+		},
+		{
+			name: "completion exclude categories passed through",
+			opts: SearchRunOptions{
+				InstanceID:        instanceID,
+				ExcludeCategories: []string{"movies-Race", "tv-Race"},
+			},
+			expectCategories:        nil,
+			expectTags:              nil,
+			expectExcludeCategories: []string{"movies-Race", "tv-Race"},
+			expectExcludeTags:       nil,
+		},
+		{
+			name: "completion exclude tags passed through",
+			opts: SearchRunOptions{
+				InstanceID:  instanceID,
+				ExcludeTags: []string{"no-cross-seed", "temporary"},
+			},
+			expectCategories:        nil,
+			expectTags:              nil,
+			expectExcludeCategories: nil,
+			expectExcludeTags:       []string{"no-cross-seed", "temporary"},
+		},
+		{
+			name: "all completion filters passed through together",
+			opts: SearchRunOptions{
+				InstanceID:        instanceID,
+				Categories:        []string{"movies-LTS"},
+				Tags:              []string{"important"},
+				ExcludeCategories: []string{"movies-Race"},
+				ExcludeTags:       []string{"temporary"},
+			},
+			expectCategories:        []string{"movies-LTS"},
+			expectTags:              []string{"important"},
+			expectExcludeCategories: []string{"movies-Race"},
+			expectExcludeTags:       []string{"temporary"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			torrentData := createTorrentData()
+
+			service := &Service{
+				torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
+					return torrentData, nil
+				},
+			}
+
+			var captured *CrossSeedRequest
+			service.crossSeedInvoker = func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+				captured = req
+				return &CrossSeedResponse{
+					Success: true,
+					Results: []InstanceCrossSeedResult{
+						{InstanceID: instanceID, InstanceName: "TestInstance", Success: true, Status: "added"},
+					},
+				}, nil
+			}
+
+			state := &searchRunState{opts: tt.opts}
+			torrent := &qbt.Torrent{
+				Hash:     "testhash",
+				Name:     "Test.Movie.2025.1080p.BluRay-GROUP",
+				Progress: 1.0,
+				Category: "movies-LTS",
+			}
+			match := TorrentSearchResult{
+				Indexer:     "TestIndexer",
+				IndexerID:   1,
+				Title:       "Test.Movie.2025.1080p.BluRay-GROUP",
+				DownloadURL: "https://example.invalid/download.torrent",
+				GUID:        "guid-1",
+				Size:        1024,
+			}
+
+			_, err := service.executeCrossSeedSearchAttempt(ctx, state, torrent, match, time.Now().UTC())
+			require.NoError(t, err)
+			require.NotNil(t, captured, "CrossSeedRequest should have been captured")
+
+			// Verify completion source filters were passed through
+			assert.Equal(t, tt.expectCategories, captured.SourceFilterCategories, "SourceFilterCategories mismatch")
+			assert.Equal(t, tt.expectTags, captured.SourceFilterTags, "SourceFilterTags mismatch")
+			assert.Equal(t, tt.expectExcludeCategories, captured.SourceFilterExcludeCategories, "SourceFilterExcludeCategories mismatch")
+			assert.Equal(t, tt.expectExcludeTags, captured.SourceFilterExcludeTags, "SourceFilterExcludeTags mismatch")
+		})
+	}
+}
+
+func TestMatchesSearchFilters(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		torrent *qbt.Torrent
+		opts    SearchRunOptions
+		want    bool
+	}{
+		{
+			name:    "nil torrent returns false",
+			torrent: nil,
+			opts:    SearchRunOptions{},
+			want:    false,
+		},
+		{
+			name:    "empty filters match all torrents",
+			torrent: &qbt.Torrent{Category: "movies", Tags: "cross-seed"},
+			opts:    SearchRunOptions{},
+			want:    true,
+		},
+		{
+			name:    "exclude category skips matching torrent",
+			torrent: &qbt.Torrent{Category: "movies-Race"},
+			opts: SearchRunOptions{
+				ExcludeCategories: []string{"movies-Race"},
+			},
+			want: false,
+		},
+		{
+			name:    "exclude category allows non-matching torrent",
+			torrent: &qbt.Torrent{Category: "movies-LTS"},
+			opts: SearchRunOptions{
+				ExcludeCategories: []string{"movies-Race"},
+			},
+			want: true,
+		},
+		{
+			name:    "include category requires match",
+			torrent: &qbt.Torrent{Category: "tv-Race"},
+			opts: SearchRunOptions{
+				Categories: []string{"movies-LTS", "tv-LTS"},
+			},
+			want: false,
+		},
+		{
+			name:    "include category allows matching torrent",
+			torrent: &qbt.Torrent{Category: "movies-LTS"},
+			opts: SearchRunOptions{
+				Categories: []string{"movies-LTS", "tv-LTS"},
+			},
+			want: true,
+		},
+		{
+			name:    "exclude tag skips matching torrent",
+			torrent: &qbt.Torrent{Tags: "cross-seed, temporary"},
+			opts: SearchRunOptions{
+				ExcludeTags: []string{"temporary"},
+			},
+			want: false,
+		},
+		{
+			name:    "exclude tag allows non-matching torrent",
+			torrent: &qbt.Torrent{Tags: "cross-seed, important"},
+			opts: SearchRunOptions{
+				ExcludeTags: []string{"temporary"},
+			},
+			want: true,
+		},
+		{
+			name:    "include tag requires at least one match",
+			torrent: &qbt.Torrent{Tags: "important"},
+			opts: SearchRunOptions{
+				Tags: []string{"important", "priority"},
+			},
+			want: true,
+		},
+		{
+			name:    "include tag rejects when no match",
+			torrent: &qbt.Torrent{Tags: "random"},
+			opts: SearchRunOptions{
+				Tags: []string{"important", "priority"},
+			},
+			want: false,
+		},
+		{
+			name:    "exclude takes precedence over include",
+			torrent: &qbt.Torrent{Category: "movies-LTS"},
+			opts: SearchRunOptions{
+				Categories:        []string{"movies-LTS", "tv-LTS"},
+				ExcludeCategories: []string{"movies-LTS"},
+			},
+			want: false,
+		},
+		{
+			name:    "category and tag filters both apply - passes both",
+			torrent: &qbt.Torrent{Category: "movies-LTS", Tags: "important"},
+			opts: SearchRunOptions{
+				Categories: []string{"movies-LTS"},
+				Tags:       []string{"important"},
+			},
+			want: true,
+		},
+		{
+			name:    "passes category filter but fails tag filter",
+			torrent: &qbt.Torrent{Category: "movies-LTS", Tags: "random"},
+			opts: SearchRunOptions{
+				Categories: []string{"movies-LTS"},
+				Tags:       []string{"important"},
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := matchesSearchFilters(tt.torrent, tt.opts)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }

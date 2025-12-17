@@ -6513,30 +6513,38 @@ func matchesSearchFilters(torrent *qbt.Torrent, opts SearchRunOptions) bool {
 	if torrent == nil {
 		return false
 	}
-	if len(opts.Categories) > 0 {
-		matched := slices.Contains(opts.Categories, torrent.Category)
-		if !matched {
-			return false
-		}
+
+	// Check exclude categories first (if configured)
+	if len(opts.ExcludeCategories) > 0 && slices.Contains(opts.ExcludeCategories, torrent.Category) {
+		return false
 	}
-	if len(opts.Tags) > 0 {
-		torrentTags := splitTags(torrent.Tags)
-		matched := false
+
+	// Check include categories (if configured)
+	if len(opts.Categories) > 0 && !slices.Contains(opts.Categories, torrent.Category) {
+		return false
+	}
+
+	torrentTags := splitTags(torrent.Tags)
+
+	// Check exclude tags (if configured)
+	if len(opts.ExcludeTags) > 0 {
 		for _, tag := range torrentTags {
-			for _, desired := range opts.Tags {
-				if tag == desired {
-					matched = true
-					break
-				}
+			if slices.Contains(opts.ExcludeTags, tag) {
+				return false
 			}
-			if matched {
-				break
-			}
-		}
-		if !matched {
-			return false
 		}
 	}
+
+	// Check include tags (if configured)
+	if len(opts.Tags) > 0 {
+		for _, tag := range torrentTags {
+			if slices.Contains(opts.Tags, tag) {
+				return true
+			}
+		}
+		return false
+	}
+
 	return true
 }
 
