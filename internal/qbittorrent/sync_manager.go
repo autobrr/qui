@@ -1325,6 +1325,21 @@ func (sm *SyncManager) GetTorrentTrackers(ctx context.Context, instanceID int, h
 	return trackers, nil
 }
 
+// GetTorrentWebSeeds returns the web seeds (HTTP sources) for a torrent
+func (sm *SyncManager) GetTorrentWebSeeds(ctx context.Context, instanceID int, hash string) ([]qbt.WebSeed, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	webseeds, err := client.GetTorrentsWebSeedsCtx(ctx, hash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get torrent web seeds: %w", err)
+	}
+
+	return webseeds, nil
+}
+
 // GetTorrentPeers gets peers for a specific torrent with incremental updates
 func (sm *SyncManager) GetTorrentPeers(ctx context.Context, instanceID int, hash string) (*qbt.TorrentPeersResponse, error) {
 	// Get client

@@ -61,8 +61,8 @@ github.com/autobrr/autobrr v1.70.0 h1:N3NxMuiu6uQ500N9nPxDWXlBtlQx2QlkkGnU/JPcLw
 github.com/autobrr/autobrr v1.70.0/go.mod h1:sCMO8xAaZLLA4H1qbKRiSTZnPsY/stvTngHF9o2F8pI=
 github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251209201933-62cc902b8602 h1:RyJtQJGklw0kJ3Ec5kHakQArHXuXb7EodudkUVGwsDk=
 github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251209201933-62cc902b8602/go.mod h1:mGH+UlSzkZOpTx9hezpL9dnKakskLzOsNfngl2E1ZE0=
-github.com/autobrr/rls v0.7.0 h1:Wzu6f6qMN1D+3QQSDJ6EqwdjOqBPutrz2aa2SXE3Zlo=
-github.com/autobrr/rls v0.7.0/go.mod h1:11YJWgNe5H+UQrfFaNGjnkEy0OEsMFnmV4IL2tRKpPk=
+github.com/autobrr/rls v0.7.1-0.20251216090501-a93fa08d24d2 h1:BKYdKcK64fnbm8EoTsWcBOXU/syjVJap6eOD2NUa3b8=
+github.com/autobrr/rls v0.7.1-0.20251216090501-a93fa08d24d2/go.mod h1:11YJWgNe5H+UQrfFaNGjnkEy0OEsMFnmV4IL2tRKpPk=
 github.com/avast/retry-go v3.0.0+incompatible h1:4SOWQ7Qs+oroOTQOYnAHqelpCO0biHSxpiH9JdtuBj0=
 github.com/avast/retry-go v3.0.0+incompatible/go.mod h1:XtSnn+n/sHqQIpZ10K1qAevBhOOCWBLXXy3hyiqqBrY=
 github.com/benbjohnson/immutable v0.2.0/go.mod h1:uc6OHo6PN2++n98KHLxW8ef4W42ylHiQSENghE1ezxI=
@@ -100,8 +100,8 @@ github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+m
 github.com/eapache/go-resiliency v1.1.0/go.mod h1:kFI+JgMyC7bLPUVY133qvEBtVayf5mFgVsvEsIPBvNs=
 github.com/eapache/go-xerial-snappy v0.0.0-20180814174437-776d5712da21/go.mod h1:+020luEh2TKB4/GOp8oxxtq0Daoen/Cii55CzbTV6DU=
 github.com/eapache/queue v1.1.0/go.mod h1:6eCeP0CKFpHLu8blIFXhExK/dRa7WDZfr6jVFPTqq+I=
-github.com/expr-lang/expr v1.17.6 h1:1h6i8ONk9cexhDmowO/A64VPxHScu7qfSl2k8OlINec=
-github.com/expr-lang/expr v1.17.6/go.mod h1:8/vRC7+7HBzESEqt5kKpYXxrxkr31SaO8r40VO/1IT4=
+github.com/expr-lang/expr v1.17.7 h1:Q0xY/e/2aCIp8g9s/LGvMDCC5PxYlvHgDZRQ4y16JX8=
+github.com/expr-lang/expr v1.17.7/go.mod h1:8/vRC7+7HBzESEqt5kKpYXxrxkr31SaO8r40VO/1IT4=
 github.com/fatih/color v1.16.0 h1:zmkK9Ngbjj+K0yRhTVONQh1p/HknKYSlNT+vZCzyokM=
 github.com/fatih/color v1.16.0/go.mod h1:fL2Sau1YI5c0pdGEVCbKQbLXB6edEj1ZgiY4NijnWvE=
 github.com/frankban/quicktest v1.14.6 h1:7Xjx+VpznH+oBnejlPUj8oUpdxnVs4f8XU8WnHkI4W8=

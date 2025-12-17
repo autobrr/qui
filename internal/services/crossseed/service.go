@@ -1957,6 +1957,16 @@ func (s *Service) buildAutomationSnapshots(ctx context.Context, targetInstanceID
 		len(settings.RSSSourceExcludeCategories) > 0 ||
 		len(settings.RSSSourceExcludeTags) > 0)
 
+	if settings != nil {
+		log.Debug().
+			Strs("includeCategories", settings.RSSSourceCategories).
+			Strs("excludeCategories", settings.RSSSourceExcludeCategories).
+			Strs("includeTags", settings.RSSSourceTags).
+			Strs("excludeTags", settings.RSSSourceExcludeTags).
+			Bool("hasFilters", hasRSSSourceFilters).
+			Msg("[RSS] Source filter settings loaded for automation snapshot")
+	}
+
 	for _, instanceID := range instanceIDs {
 		snap := snapshots.instances[instanceID]
 		if snap == nil {
@@ -1983,20 +1993,36 @@ func (s *Service) buildAutomationSnapshots(ctx context.Context, targetInstanceID
 		if hasRSSSourceFilters {
 			originalCount := len(torrents)
 			filtered := make([]qbt.Torrent, 0, len(torrents))
+			excludedCategories := make(map[string]int)
+			includedCategories := make(map[string]int)
 			for i := range torrents {
 				if matchesRSSSourceFilters(&torrents[i], settings) {
 					filtered = append(filtered, torrents[i])
+					includedCategories[torrents[i].Category]++
+				} else {
+					excludedCategories[torrents[i].Category]++
 				}
 			}
 			torrents = filtered
-			if len(torrents) != originalCount {
-				log.Debug().
-					Int("instanceID", instanceID).
-					Str("instanceName", snap.instance.Name).
-					Int("original", originalCount).
-					Int("filtered", len(torrents)).
-					Msg("RSS source filters reduced torrent candidates")
+
+			// Build summary of excluded categories
+			excludedSummary := make([]string, 0, len(excludedCategories))
+			for cat, count := range excludedCategories {
+				excludedSummary = append(excludedSummary, fmt.Sprintf("%s(%d)", cat, count))
 			}
+			includedSummary := make([]string, 0, len(includedCategories))
+			for cat, count := range includedCategories {
+				includedSummary = append(includedSummary, fmt.Sprintf("%s(%d)", cat, count))
+			}
+
+			log.Debug().
+				Int("instanceID", instanceID).
+				Str("instanceName", snap.instance.Name).
+				Int("original", originalCount).
+				Int("filtered", len(torrents)).
+				Strs("excludedCategories", excludedSummary).
+				Strs("includedCategories", includedSummary).
+				Msg("[RSS] Source filter results")
 		}
 
 		snap.torrents = torrents
@@ -7093,32 +7119,51 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 			len(settings.WebhookSourceExcludeCategories) > 0 ||
 			len(settings.WebhookSourceExcludeTags) > 0
 
+		// Log webhook filter settings once per instance
+		log.Debug().
+			Str("source", "cross-seed.webhook").
+			Int("instanceID", instance.ID).
+			Strs("includeCategories", settings.WebhookSourceCategories).
+			Strs("excludeCategories", settings.WebhookSourceExcludeCategories).
+			Strs("includeTags", settings.WebhookSourceTags).
+			Strs("excludeTags", settings.WebhookSourceExcludeTags).
+			Bool("hasFilters", hasWebhookSourceFilters).
+			Msg("[Webhook] Source filter settings for instance")
+
 		if hasWebhookSourceFilters {
 			originalCount := len(torrents)
 			filtered := make([]qbt.Torrent, 0, len(torrents))
+			excludedCategories := make(map[string]int)
+			includedCategories := make(map[string]int)
 			for i := range torrents {
 				if matchesWebhookSourceFilters(&torrents[i], settings) {
 					filtered = append(filtered, torrents[i])
+					includedCategories[torrents[i].Category]++
+				} else {
+					excludedCategories[torrents[i].Category]++
 				}
 			}
 			torrents = filtered
-			if len(torrents) != originalCount {
-				log.Debug().
-					Str("source", "cross-seed.webhook").
-					Int("instanceID", instance.ID).
-					Str("instanceName", instance.Name).
-					Int("original", originalCount).
-					Int("filtered", len(torrents)).
-					Msg("Webhook source filters reduced torrent candidates")
+
+			// Build summary of excluded categories
+			excludedSummary := make([]string, 0, len(excludedCategories))
+			for cat, count := range excludedCategories {
+				excludedSummary = append(excludedSummary, fmt.Sprintf("%s(%d)", cat, count))
 			}
-			if len(torrents) == 0 && originalCount > 0 {
-				log.Debug().
-					Str("source", "cross-seed.webhook").
-					Int("instanceID", instance.ID).
-					Str("instanceName", instance.Name).
-					Int("original", originalCount).
-					Msg("Webhook source filters excluded all torrents")
+			includedSummary := make([]string, 0, len(includedCategories))
+			for cat, count := range includedCategories {
+				includedSummary = append(includedSummary, fmt.Sprintf("%s(%d)", cat, count))
 			}
+
+			log.Debug().
+				Str("source", "cross-seed.webhook").
+				Int("instanceID", instance.ID).
+				Str("instanceName", instance.Name).
+				Int("original", originalCount).
+				Int("filtered", len(torrents)).
+				Strs("excludedCategories", excludedSummary).
+				Strs("includedCategories", includedSummary).
+				Msg("[Webhook] Source filter results")
 		}
 
 		log.Debug().

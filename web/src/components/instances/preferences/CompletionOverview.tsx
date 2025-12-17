@@ -6,12 +6,13 @@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { MultiSelect } from "@/components/ui/multi-select"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
+import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { cn } from "@/lib/utils"
 import type { Instance, InstanceCrossSeedCompletionSettings } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
@@ -21,49 +22,38 @@ import { toast } from "sonner"
 
 interface CompletionFormState {
   enabled: boolean
-  categories: string
-  tags: string
-  excludeCategories: string
-  excludeTags: string
+  categories: string[]
+  tags: string[]
+  excludeCategories: string[]
+  excludeTags: string[]
 }
 
 const DEFAULT_COMPLETION_FORM: CompletionFormState = {
   enabled: false,
-  categories: "",
-  tags: "",
-  excludeCategories: "",
-  excludeTags: "",
-}
-
-function parseList(value: string): string[] {
-  return value
-    .split(/[\n,]/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-}
-
-function formatList(arr: string[]): string {
-  return arr.join(", ")
+  categories: [],
+  tags: [],
+  excludeCategories: [],
+  excludeTags: [],
 }
 
 function settingsToForm(settings: InstanceCrossSeedCompletionSettings | undefined): CompletionFormState {
   if (!settings) return DEFAULT_COMPLETION_FORM
   return {
     enabled: settings.enabled,
-    categories: formatList(settings.categories),
-    tags: formatList(settings.tags),
-    excludeCategories: formatList(settings.excludeCategories),
-    excludeTags: formatList(settings.excludeTags),
+    categories: settings.categories ?? [],
+    tags: settings.tags ?? [],
+    excludeCategories: settings.excludeCategories ?? [],
+    excludeTags: settings.excludeTags ?? [],
   }
 }
 
 function formToSettings(form: CompletionFormState): Omit<InstanceCrossSeedCompletionSettings, "instanceId"> {
   return {
     enabled: form.enabled,
-    categories: parseList(form.categories),
-    tags: parseList(form.tags),
-    excludeCategories: parseList(form.excludeCategories),
-    excludeTags: parseList(form.excludeTags),
+    categories: form.categories,
+    tags: form.tags,
+    excludeCategories: form.excludeCategories,
+    excludeTags: form.excludeTags,
   }
 }
 
@@ -85,6 +75,21 @@ export function CompletionOverview() {
       queryKey: ["cross-seed", "completion", instance.id],
       queryFn: () => api.getInstanceCompletionSettings(instance.id),
       staleTime: 30000,
+    })),
+  })
+
+  // Fetch categories/tags for all active instances
+  const metadataQueries = useQueries({
+    queries: activeInstances.map((instance) => ({
+      queryKey: ["instance-metadata", instance.id],
+      queryFn: async () => {
+        const [categories, tags] = await Promise.all([
+          api.getCategories(instance.id),
+          api.getTags(instance.id),
+        ])
+        return { categories, tags }
+      },
+      staleTime: 5 * 60 * 1000,
     })),
   })
 
@@ -128,11 +133,16 @@ export function CompletionOverview() {
     })
   }
 
-  const handleFormChange = (instanceId: number, field: keyof CompletionFormState, value: string | boolean) => {
+  const handleFormChange = (
+    instanceId: number,
+    field: keyof CompletionFormState,
+    value: string[] | boolean,
+    currentForm: CompletionFormState
+  ) => {
     setFormMap((prev) => ({
       ...prev,
       [instanceId]: {
-        ...(prev[instanceId] ?? DEFAULT_COMPLETION_FORM),
+        ...(prev[instanceId] ?? currentForm),
         [field]: value,
       },
     }))
@@ -214,12 +224,25 @@ export function CompletionOverview() {
         >
           {activeInstances.map((instance, index) => {
             const query = settingsQueries[index]
+            const metadataQuery = metadataQueries[index]
             const isLoading = query?.isLoading ?? false
             const isError = query?.isError ?? false
+            const isMetadataError = metadataQuery?.isError ?? false
             const form = formMap[instance.id] ?? settingsToForm(query?.data)
             const isEnabled = form.enabled
             const isDirty = dirtyMap[instance.id] ?? false
             const isSaving = updateMutation.isPending && updateMutation.variables?.instanceId === instance.id
+
+            const categoryOptions = buildCategorySelectOptions(
+              metadataQuery?.data?.categories ?? {},
+              form.categories,
+              form.excludeCategories
+            )
+            const tagOptions = buildTagSelectOptions(
+              metadataQuery?.data?.tags ?? [],
+              form.tags,
+              form.excludeTags
+            )
 
             return (
               <AccordionItem key={instance.id} value={String(instance.id)}>
@@ -272,53 +295,75 @@ export function CompletionOverview() {
                     {/* Settings form */}
                     {!isError && isEnabled && (
                       <>
+                        {/* Metadata warning */}
+                        {isMetadataError && (
+                          <div className="flex items-center gap-2 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10">
+                            <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0" />
+                            <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                              Could not load categories and tags from qBittorrent. You can still type custom values.
+                            </p>
+                          </div>
+                        )}
+
                         <div className="grid gap-4 md:grid-cols-2">
                           <div className="rounded-md border border-border/50 bg-muted/30 p-3 space-y-3">
                             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Include filters</p>
                             <div className="space-y-2">
-                              <Label htmlFor={`categories-${instance.id}`} className="text-xs">Categories</Label>
-                              <Input
-                                id={`categories-${instance.id}`}
+                              <Label className="text-xs">Categories</Label>
+                              <MultiSelect
+                                options={categoryOptions}
+                                selected={form.categories}
+                                onChange={(values) => handleFormChange(instance.id, "categories", values, form)}
                                 placeholder="All categories"
-                                value={form.categories}
-                                onChange={(e) => handleFormChange(instance.id, "categories", e.target.value)}
+                                creatable
                                 disabled={isSaving}
                               />
-                              <p className="text-xs text-muted-foreground">Comma-separated. Leave blank for all.</p>
+                              <p className="text-xs text-muted-foreground">
+                                {form.categories.length === 0
+                                  ? "All categories will be included."
+                                  : `Only ${form.categories.length} selected ${form.categories.length === 1 ? "category" : "categories"} will be matched.`}
+                              </p>
                             </div>
                             <div className="space-y-2">
-                              <Label htmlFor={`tags-${instance.id}`} className="text-xs">Tags</Label>
-                              <Input
-                                id={`tags-${instance.id}`}
+                              <Label className="text-xs">Tags</Label>
+                              <MultiSelect
+                                options={tagOptions}
+                                selected={form.tags}
+                                onChange={(values) => handleFormChange(instance.id, "tags", values, form)}
                                 placeholder="All tags"
-                                value={form.tags}
-                                onChange={(e) => handleFormChange(instance.id, "tags", e.target.value)}
+                                creatable
                                 disabled={isSaving}
                               />
-                              <p className="text-xs text-muted-foreground">Comma-separated. Leave blank for all.</p>
+                              <p className="text-xs text-muted-foreground">
+                                {form.tags.length === 0
+                                  ? "All tags will be included."
+                                  : `Only ${form.tags.length} selected ${form.tags.length === 1 ? "tag" : "tags"} will be matched.`}
+                              </p>
                             </div>
                           </div>
 
                           <div className="rounded-md border border-border/50 bg-muted/30 p-3 space-y-3">
                             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Exclude filters</p>
                             <div className="space-y-2">
-                              <Label htmlFor={`exclude-categories-${instance.id}`} className="text-xs">Categories</Label>
-                              <Input
-                                id={`exclude-categories-${instance.id}`}
+                              <Label className="text-xs">Categories</Label>
+                              <MultiSelect
+                                options={categoryOptions}
+                                selected={form.excludeCategories}
+                                onChange={(values) => handleFormChange(instance.id, "excludeCategories", values, form)}
                                 placeholder="None"
-                                value={form.excludeCategories}
-                                onChange={(e) => handleFormChange(instance.id, "excludeCategories", e.target.value)}
+                                creatable
                                 disabled={isSaving}
                               />
                               <p className="text-xs text-muted-foreground">Skip torrents in these categories.</p>
                             </div>
                             <div className="space-y-2">
-                              <Label htmlFor={`exclude-tags-${instance.id}`} className="text-xs">Tags</Label>
-                              <Input
-                                id={`exclude-tags-${instance.id}`}
+                              <Label className="text-xs">Tags</Label>
+                              <MultiSelect
+                                options={tagOptions}
+                                selected={form.excludeTags}
+                                onChange={(values) => handleFormChange(instance.id, "excludeTags", values, form)}
                                 placeholder="None"
-                                value={form.excludeTags}
-                                onChange={(e) => handleFormChange(instance.id, "excludeTags", e.target.value)}
+                                creatable
                                 disabled={isSaving}
                               />
                               <p className="text-xs text-muted-foreground">Skip torrents with these tags.</p>

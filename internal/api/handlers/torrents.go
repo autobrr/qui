@@ -1152,6 +1152,33 @@ func (h *TorrentsHandler) GetTorrentTrackers(w http.ResponseWriter, r *http.Requ
 	RespondJSON(w, http.StatusOK, trackers)
 }
 
+// GetTorrentWebSeeds returns the web seeds (HTTP sources) for a torrent
+func (h *TorrentsHandler) GetTorrentWebSeeds(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+		return
+	}
+
+	webseeds, err := h.syncManager.GetTorrentWebSeeds(r.Context(), instanceID, hash)
+	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getWebSeeds") {
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent web seeds")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrent web seeds")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, webseeds)
+}
+
 // EditTrackerRequest represents a tracker edit request
 type EditTrackerRequest struct {
 	OldURL string `json:"oldURL"`
