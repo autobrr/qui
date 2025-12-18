@@ -431,6 +431,8 @@ type SearchRunOptions struct {
 	InstanceID                   int
 	Categories                   []string
 	Tags                         []string
+	ExcludeCategories            []string // Categories to exclude from source filtering
+	ExcludeTags                  []string // Tags to exclude from source filtering
 	IntervalSeconds              int
 	IndexerIDs                   []int
 	CooldownMinutes              int
@@ -915,7 +917,7 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 	}
 
 	// Execute cross-seed search immediately
-	err = s.executeCompletionSearch(ctx, instanceID, &torrent, settings)
+	err = s.executeCompletionSearch(ctx, instanceID, &torrent, settings, completionSettings)
 	if err != nil {
 		log.Warn().
 			Err(err).
@@ -1046,7 +1048,7 @@ func (s *Service) ListAutomationRuns(ctx context.Context, limit, offset int) ([]
 	return runs, nil
 }
 
-func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, torrent *qbt.Torrent, settings *models.CrossSeedAutomationSettings) error {
+func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, torrent *qbt.Torrent, settings *models.CrossSeedAutomationSettings, completionSettings *models.InstanceCrossSeedCompletionSettings) error {
 	if torrent == nil {
 		return nil
 	}
@@ -1137,6 +1139,13 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 			InheritSourceTags:      settings.InheritSourceTags,
 			IgnorePatterns:         append([]string(nil), settings.IgnorePatterns...),
 		},
+	}
+	// Pass completion source filters to ensure CrossSeed respects them when finding candidates
+	if completionSettings != nil {
+		searchState.opts.Categories = append([]string(nil), completionSettings.Categories...)
+		searchState.opts.Tags = append([]string(nil), completionSettings.Tags...)
+		searchState.opts.ExcludeCategories = append([]string(nil), completionSettings.ExcludeCategories...)
+		searchState.opts.ExcludeTags = append([]string(nil), completionSettings.ExcludeTags...)
 	}
 
 	successCount := 0
@@ -1815,6 +1824,11 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		FindIndividualEpisodes:       settings.FindIndividualEpisodes,
 		SizeMismatchTolerancePercent: settings.SizeMismatchTolerancePercent,
 		SkipAutoResume:               settings.SkipAutoResumeRSS,
+		// Pass RSS source filters so CrossSeed respects them when finding candidates
+		SourceFilterCategories:        append([]string(nil), settings.RSSSourceCategories...),
+		SourceFilterTags:              append([]string(nil), settings.RSSSourceTags...),
+		SourceFilterExcludeCategories: append([]string(nil), settings.RSSSourceExcludeCategories...),
+		SourceFilterExcludeTags:       append([]string(nil), settings.RSSSourceExcludeTags...),
 	}
 	if settings.Category != nil {
 		req.Category = *settings.Category
@@ -2200,6 +2214,11 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 				continue
 			}
 
+			// Apply source filters if provided (from RSS automation source filter settings)
+			if !matchesSourceFilters(&torrent, req) {
+				continue
+			}
+
 			candidateRelease := s.releaseCache.Parse(torrent.Name)
 
 			// Check if releases are related (quick filter)
@@ -2329,6 +2348,19 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	}
 	if len(req.IgnorePatterns) > 0 {
 		findReq.IgnorePatterns = append([]string(nil), req.IgnorePatterns...)
+	}
+	// Pass through source filters for RSS automation
+	if len(req.SourceFilterCategories) > 0 {
+		findReq.SourceFilterCategories = append([]string(nil), req.SourceFilterCategories...)
+	}
+	if len(req.SourceFilterTags) > 0 {
+		findReq.SourceFilterTags = append([]string(nil), req.SourceFilterTags...)
+	}
+	if len(req.SourceFilterExcludeCategories) > 0 {
+		findReq.SourceFilterExcludeCategories = append([]string(nil), req.SourceFilterExcludeCategories...)
+	}
+	if len(req.SourceFilterExcludeTags) > 0 {
+		findReq.SourceFilterExcludeTags = append([]string(nil), req.SourceFilterExcludeTags...)
 	}
 
 	candidatesResp, err := s.FindCandidates(ctx, findReq)
@@ -2466,6 +2498,13 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		FindIndividualEpisodes:       findIndividualEpisodes,
 		SizeMismatchTolerancePercent: sizeTolerance,
 		SkipAutoResume:               skipAutoResume,
+	}
+	// Pass webhook source filters so CrossSeed respects them when finding candidates
+	if settings != nil {
+		crossReq.SourceFilterCategories = append([]string(nil), settings.WebhookSourceCategories...)
+		crossReq.SourceFilterTags = append([]string(nil), settings.WebhookSourceTags...)
+		crossReq.SourceFilterExcludeCategories = append([]string(nil), settings.WebhookSourceExcludeCategories...)
+		crossReq.SourceFilterExcludeTags = append([]string(nil), settings.WebhookSourceExcludeTags...)
 	}
 
 	resp, err := s.invokeCrossSeed(ctx, crossReq)
@@ -5796,6 +5835,11 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		SkipIfExists:                 &skipIfExists,
 		SizeMismatchTolerancePercent: sizeTolerance,
 		SkipAutoResume:               state.opts.SkipAutoResume,
+		// Pass seeded search filters so CrossSeed respects them when finding candidates
+		SourceFilterCategories:        append([]string(nil), state.opts.Categories...),
+		SourceFilterTags:              append([]string(nil), state.opts.Tags...),
+		SourceFilterExcludeCategories: append([]string(nil), state.opts.ExcludeCategories...),
+		SourceFilterExcludeTags:       append([]string(nil), state.opts.ExcludeTags...),
 	}
 	if len(state.opts.IgnorePatterns) > 0 {
 		request.IgnorePatterns = append([]string(nil), state.opts.IgnorePatterns...)
@@ -6469,30 +6513,40 @@ func matchesSearchFilters(torrent *qbt.Torrent, opts SearchRunOptions) bool {
 	if torrent == nil {
 		return false
 	}
-	if len(opts.Categories) > 0 {
-		matched := slices.Contains(opts.Categories, torrent.Category)
-		if !matched {
-			return false
-		}
+
+	// TODO: ExcludeCategories and ExcludeTags are not yet exposed in the Seeded Search UI.
+
+	// Check exclude categories first (if configured)
+	if len(opts.ExcludeCategories) > 0 && slices.Contains(opts.ExcludeCategories, torrent.Category) {
+		return false
 	}
-	if len(opts.Tags) > 0 {
-		torrentTags := splitTags(torrent.Tags)
-		matched := false
+
+	// Check include categories (if configured)
+	if len(opts.Categories) > 0 && !slices.Contains(opts.Categories, torrent.Category) {
+		return false
+	}
+
+	torrentTags := splitTags(torrent.Tags)
+
+	// Check exclude tags (if configured)
+	if len(opts.ExcludeTags) > 0 {
 		for _, tag := range torrentTags {
-			for _, desired := range opts.Tags {
-				if tag == desired {
-					matched = true
-					break
-				}
+			if slices.Contains(opts.ExcludeTags, tag) {
+				return false
 			}
-			if matched {
-				break
-			}
-		}
-		if !matched {
-			return false
 		}
 	}
+
+	// Check include tags (if configured)
+	if len(opts.Tags) > 0 {
+		for _, tag := range torrentTags {
+			if slices.Contains(opts.Tags, tag) {
+				return true
+			}
+		}
+		return false
+	}
+
 	return true
 }
 
@@ -6610,6 +6664,58 @@ func matchesWebhookSourceFilters(torrent *qbt.Torrent, settings *models.CrossSee
 	if len(settings.WebhookSourceTags) > 0 {
 		for _, tag := range torrentTags {
 			if slices.Contains(settings.WebhookSourceTags, tag) {
+				return true
+			}
+		}
+		return false
+	}
+
+	return true
+}
+
+// matchesSourceFilters checks if a torrent matches source filters from FindCandidatesRequest.
+// This is used when FindCandidates is called without pre-built snapshots (e.g., from CrossSeed).
+// Empty filter arrays mean "all" (no filtering).
+func matchesSourceFilters(torrent *qbt.Torrent, req *FindCandidatesRequest) bool {
+	if torrent == nil || req == nil {
+		return true // No filters to apply
+	}
+
+	// Check if any source filters are configured
+	hasFilters := len(req.SourceFilterCategories) > 0 ||
+		len(req.SourceFilterTags) > 0 ||
+		len(req.SourceFilterExcludeCategories) > 0 ||
+		len(req.SourceFilterExcludeTags) > 0
+
+	if !hasFilters {
+		return true
+	}
+
+	// Check exclude categories first (if configured)
+	if len(req.SourceFilterExcludeCategories) > 0 && slices.Contains(req.SourceFilterExcludeCategories, torrent.Category) {
+		return false
+	}
+
+	// Check include categories (if configured)
+	if len(req.SourceFilterCategories) > 0 && !slices.Contains(req.SourceFilterCategories, torrent.Category) {
+		return false
+	}
+
+	torrentTags := splitTags(torrent.Tags)
+
+	// Check exclude tags (if configured) - case-sensitive to match qBittorrent behavior
+	if len(req.SourceFilterExcludeTags) > 0 {
+		for _, tag := range torrentTags {
+			if slices.Contains(req.SourceFilterExcludeTags, tag) {
+				return false
+			}
+		}
+	}
+
+	// Check include tags (if configured) - at least one must match, case-sensitive
+	if len(req.SourceFilterTags) > 0 {
+		for _, tag := range torrentTags {
+			if slices.Contains(req.SourceFilterTags, tag) {
 				return true
 			}
 		}
