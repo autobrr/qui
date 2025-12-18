@@ -1661,7 +1661,7 @@ export interface SetRSSFeedURLRequest {
 
 export interface MoveRSSItemRequest {
   itemPath: string
-  destPath: string
+  destPath?: string // Optional: empty moves item to root
 }
 
 export interface RemoveRSSItemRequest {

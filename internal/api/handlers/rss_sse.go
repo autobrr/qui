@@ -39,8 +39,8 @@ type rssSSEClient struct {
 
 // rssSSEEvent represents an SSE event
 type rssSSEEvent struct {
-	Type string      `json:"type"`
-	Data interface{} `json:"data"`
+	Type string `json:"type"`
+	Data any    `json:"data"`
 }
 
 // Event type constants
@@ -100,13 +100,16 @@ func (h *RSSSSEHandler) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	h.ensurePoller(instanceID)
 
 	// Send connected event
-	h.sendEvent(w, flusher, rssSSEEvent{
+	if err := h.sendEvent(w, flusher, rssSSEEvent{
 		Type: rssEventConnected,
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"instanceId": instanceID,
 			"timestamp":  time.Now().Unix(),
 		},
-	})
+	}); err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("RSS SSE failed to send connected event")
+		return
+	}
 
 	// Stream events
 	ctx := r.Context()
@@ -169,7 +172,7 @@ func (h *RSSSSEHandler) removeClient(instanceID int, client *rssSSEClient) {
 		if len(h.clients[instanceID]) == 0 {
 			delete(h.clients, instanceID)
 			// Stop poller if no more clients
-			h.stopPollerLocked(instanceID)
+			h.stopPoller(instanceID)
 		}
 	}
 
@@ -209,7 +212,7 @@ func (h *RSSSSEHandler) ensurePoller(instanceID int) {
 	go h.pollLoop(ctx, instanceID)
 }
 
-func (h *RSSSSEHandler) stopPollerLocked(instanceID int) {
+func (h *RSSSSEHandler) stopPoller(instanceID int) {
 	h.pollerMu.Lock()
 	defer h.pollerMu.Unlock()
 
@@ -246,13 +249,19 @@ func (h *RSSSSEHandler) pollLoop(ctx context.Context, instanceID int) {
 func (h *RSSSSEHandler) pollAndBroadcast(ctx context.Context, instanceID int, lastItems []byte) []byte {
 	items, err := h.syncManager.GetRSSItems(ctx, instanceID, true)
 	if err != nil {
-		log.Debug().Err(err).Int("instanceID", instanceID).Msg("RSS SSE poll failed")
+		// Context cancellation is expected during shutdown
+		if ctx.Err() != nil {
+			log.Debug().Int("instanceID", instanceID).Msg("RSS SSE poll cancelled")
+			return lastItems
+		}
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("RSS SSE poll failed")
 		return lastItems
 	}
 
 	// Serialize for comparison
 	currentItems, err := json.Marshal(items)
 	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to marshal RSS items for SSE comparison")
 		return lastItems
 	}
 

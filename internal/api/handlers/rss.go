@@ -6,6 +6,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -165,6 +166,12 @@ func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	parsedURL, err := url.Parse(req.URL)
+	if err != nil || parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+		RespondError(w, http.StatusBadRequest, "Invalid URL: must be a valid http or https URL")
+		return
+	}
+
 	ctx := r.Context()
 	targetFolder := req.Path
 
@@ -286,6 +293,12 @@ func (h *RSSHandler) SetFeedURL(w http.ResponseWriter, r *http.Request) {
 
 	if req.Path == "" || req.URL == "" {
 		RespondError(w, http.StatusBadRequest, "Path and URL are required")
+		return
+	}
+
+	parsedURL, err := url.Parse(req.URL)
+	if err != nil || parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+		RespondError(w, http.StatusBadRequest, "Invalid URL: must be a valid http or https URL")
 		return
 	}
 

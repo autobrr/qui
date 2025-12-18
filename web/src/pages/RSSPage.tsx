@@ -1598,6 +1598,243 @@ function AddFolderDialog({ instanceId, open, onOpenChange }: AddFolderDialogProp
 }
 
 // ============================================================================
+// Rule Form State & Fields (shared between Add and Edit dialogs)
+// ============================================================================
+
+interface RuleFormState {
+  mustContain: string
+  mustNotContain: string
+  episodeFilter: string
+  useRegex: boolean
+  smartFilter: boolean
+  affectedFeeds: string[]
+  savePath: string
+  category: string
+  tags: string[]
+  ignoreDays: number
+  contentLayout: string
+  addStopped: boolean | null
+}
+
+const DEFAULT_RULE_FORM_STATE: RuleFormState = {
+  mustContain: "",
+  mustNotContain: "",
+  episodeFilter: "",
+  useRegex: false,
+  smartFilter: false,
+  affectedFeeds: [],
+  savePath: "",
+  category: "",
+  tags: [],
+  ignoreDays: 0,
+  contentLayout: "",
+  addStopped: null,
+}
+
+interface RuleFormFieldsProps {
+  state: RuleFormState
+  onChange: <K extends keyof RuleFormState>(field: K, value: RuleFormState[K]) => void
+  feedUrls: string[]
+  categories: Record<string, Category>
+  availableTags: string[]
+  idPrefix: string
+}
+
+function RuleFormFields({
+  state,
+  onChange,
+  feedUrls,
+  categories,
+  availableTags,
+  idPrefix,
+}: RuleFormFieldsProps) {
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor={`${idPrefix}-must-contain`}>Must Contain</Label>
+          <Input
+            id={`${idPrefix}-must-contain`}
+            placeholder="keyword1|keyword2"
+            value={state.mustContain}
+            onChange={(e) => onChange("mustContain", e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor={`${idPrefix}-must-not-contain`}>Must Not Contain</Label>
+          <Input
+            id={`${idPrefix}-must-not-contain`}
+            placeholder="unwanted"
+            value={state.mustNotContain}
+            onChange={(e) => onChange("mustNotContain", e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor={`${idPrefix}-episode-filter`}>Episode Filter</Label>
+        <Input
+          id={`${idPrefix}-episode-filter`}
+          placeholder="S01-S03;E01-E10"
+          value={state.episodeFilter}
+          onChange={(e) => onChange("episodeFilter", e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          Format: S01-S03;E01-E10 (season and episode ranges)
+        </p>
+      </div>
+
+      <div className="flex items-center gap-6">
+        <div className="flex items-center gap-2">
+          <Switch
+            checked={state.useRegex}
+            onCheckedChange={(v) => onChange("useRegex", v)}
+            id={`${idPrefix}-use-regex`}
+          />
+          <Label htmlFor={`${idPrefix}-use-regex`}>Use Regex</Label>
+        </div>
+        <div className="flex items-center gap-2">
+          <Switch
+            checked={state.smartFilter}
+            onCheckedChange={(v) => onChange("smartFilter", v)}
+            id={`${idPrefix}-smart-filter`}
+          />
+          <Label htmlFor={`${idPrefix}-smart-filter`}>Smart Episode Filter</Label>
+        </div>
+      </div>
+
+      <Separator />
+
+      <div className="space-y-2">
+        <Label>Affected Feeds</Label>
+        <div className="grid grid-cols-1 gap-2 max-h-32 overflow-y-auto">
+          {feedUrls.map((feedUrl) => (
+            <label key={feedUrl} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={state.affectedFeeds.includes(feedUrl)}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    onChange("affectedFeeds", [...state.affectedFeeds, feedUrl])
+                  } else {
+                    onChange(
+                      "affectedFeeds",
+                      state.affectedFeeds.filter((f) => f !== feedUrl)
+                    )
+                  }
+                }}
+                className="rounded"
+              />
+              <span className="truncate">{feedUrl}</span>
+            </label>
+          ))}
+          {feedUrls.length === 0 && (
+            <p className="text-sm text-muted-foreground">No feeds available</p>
+          )}
+        </div>
+      </div>
+
+      <Separator />
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor={`${idPrefix}-save-path`}>Save Path</Label>
+          <Input
+            id={`${idPrefix}-save-path`}
+            placeholder="/downloads/shows"
+            value={state.savePath}
+            onChange={(e) => onChange("savePath", e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor={`${idPrefix}-category`}>Category</Label>
+          <Select
+            value={state.category || "__none__"}
+            onValueChange={(v) => onChange("category", v === "__none__" ? "" : v)}
+          >
+            <SelectTrigger id={`${idPrefix}-category`}>
+              <SelectValue placeholder="Select category..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">None</SelectItem>
+              {buildCategorySelectOptions(categories).map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Tags</Label>
+        <MultiSelect
+          options={buildTagSelectOptions(availableTags, state.tags)}
+          selected={state.tags}
+          onChange={(v) => onChange("tags", v)}
+          placeholder="Select tags..."
+          creatable
+        />
+      </div>
+
+      <Separator />
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor={`${idPrefix}-ignore-days`}>Ignore subsequent matches for</Label>
+          <div className="flex items-center gap-2">
+            <Input
+              id={`${idPrefix}-ignore-days`}
+              type="number"
+              className="w-20"
+              min={0}
+              value={state.ignoreDays}
+              onChange={(e) => onChange("ignoreDays", parseInt(e.target.value) || 0)}
+            />
+            <span className="text-sm text-muted-foreground">days</span>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor={`${idPrefix}-content-layout`}>Torrent Content Layout</Label>
+          <Select
+            value={state.contentLayout || "__global__"}
+            onValueChange={(v) => onChange("contentLayout", v === "__global__" ? "" : v)}
+          >
+            <SelectTrigger id={`${idPrefix}-content-layout`}>
+              <SelectValue placeholder="Use global settings" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__global__">Use global settings</SelectItem>
+              <SelectItem value="Original">Original</SelectItem>
+              <SelectItem value="Subfolder">Create subfolder</SelectItem>
+              <SelectItem value="NoSubfolder">Don't create subfolder</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor={`${idPrefix}-add-stopped`}>Add Stopped</Label>
+        <Select
+          value={state.addStopped === null ? "__global__" : state.addStopped ? "true" : "false"}
+          onValueChange={(v) => onChange("addStopped", v === "__global__" ? null : v === "true")}
+        >
+          <SelectTrigger id={`${idPrefix}-add-stopped`}>
+            <SelectValue placeholder="Use global settings" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__global__">Use global settings</SelectItem>
+            <SelectItem value="true">Always add stopped</SelectItem>
+            <SelectItem value="false">Never add stopped</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </>
+  )
+}
+
+// ============================================================================
 // Add Rule Dialog
 // ============================================================================
 
@@ -1610,25 +1847,23 @@ interface AddRuleDialogProps {
   tags: string[]
 }
 
-function AddRuleDialog({ instanceId, open, onOpenChange, feedsData, categories, tags: availableTags }: AddRuleDialogProps) {
+function AddRuleDialog({
+  instanceId,
+  open,
+  onOpenChange,
+  feedsData,
+  categories,
+  tags: availableTags,
+}: AddRuleDialogProps) {
   const [name, setName] = useState("")
-  const [mustContain, setMustContain] = useState("")
-  const [mustNotContain, setMustNotContain] = useState("")
-  const [episodeFilter, setEpisodeFilter] = useState("")
-  const [useRegex, setUseRegex] = useState(false)
-  const [smartFilter, setSmartFilter] = useState(false)
-  const [affectedFeeds, setAffectedFeeds] = useState<string[]>([])
-  const [savePath, setSavePath] = useState("")
-  const [category, setCategory] = useState("")
-  // New fields
-  const [tags, setTags] = useState<string[]>([])
-  const [ignoreDays, setIgnoreDays] = useState(0)
-  const [contentLayout, setContentLayout] = useState("")
-  const [addStopped, setAddStopped] = useState<boolean | null>(null)
+  const [formState, setFormState] = useState<RuleFormState>(DEFAULT_RULE_FORM_STATE)
 
   const setRule = useSetRSSRule(instanceId)
-
   const feedUrls = useMemo(() => getFeedUrls(feedsData), [feedsData])
+
+  const handleFieldChange = <K extends keyof RuleFormState>(field: K, value: RuleFormState[K]) => {
+    setFormState((prev) => ({ ...prev, [field]: value }))
+  }
 
   const handleSubmit = async () => {
     if (!name.trim()) {
@@ -1642,46 +1877,31 @@ function AddRuleDialog({ instanceId, open, onOpenChange, feedsData, categories, 
         rule: {
           enabled: true,
           priority: 0,
-          useRegex,
-          mustContain,
-          mustNotContain,
-          episodeFilter: episodeFilter || undefined,
-          affectedFeeds,
-          ignoreDays,
-          smartFilter,
+          useRegex: formState.useRegex,
+          mustContain: formState.mustContain,
+          mustNotContain: formState.mustNotContain,
+          episodeFilter: formState.episodeFilter || undefined,
+          affectedFeeds: formState.affectedFeeds,
+          ignoreDays: formState.ignoreDays,
+          smartFilter: formState.smartFilter,
           previouslyMatchedEpisodes: [],
           torrentParams: {
-            save_path: savePath || undefined,
-            category: category || undefined,
-            tags: tags.length > 0 ? tags : undefined,
-            content_layout: contentLayout || undefined,
-            stopped: addStopped ?? undefined,
+            save_path: formState.savePath || undefined,
+            category: formState.category || undefined,
+            tags: formState.tags.length > 0 ? formState.tags : undefined,
+            content_layout: formState.contentLayout || undefined,
+            stopped: formState.addStopped ?? undefined,
           },
         },
       })
       toast.success("Rule created successfully")
-      resetForm()
+      setName("")
+      setFormState(DEFAULT_RULE_FORM_STATE)
       onOpenChange(false)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to create rule"
       toast.error(message)
     }
-  }
-
-  const resetForm = () => {
-    setName("")
-    setMustContain("")
-    setMustNotContain("")
-    setEpisodeFilter("")
-    setUseRegex(false)
-    setSmartFilter(false)
-    setAffectedFeeds([])
-    setSavePath("")
-    setCategory("")
-    setTags([])
-    setIgnoreDays(0)
-    setContentLayout("")
-    setAddStopped(null)
   }
 
   return (
@@ -1695,9 +1915,9 @@ function AddRuleDialog({ instanceId, open, onOpenChange, feedsData, categories, 
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="rule-name">Rule Name</Label>
+            <Label htmlFor="add-rule-name">Rule Name</Label>
             <Input
-              id="rule-name"
+              id="add-rule-name"
               placeholder="My Show S01"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -1706,175 +1926,14 @@ function AddRuleDialog({ instanceId, open, onOpenChange, feedsData, categories, 
 
           <Separator />
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="must-contain">Must Contain</Label>
-              <Input
-                id="must-contain"
-                placeholder="keyword1|keyword2"
-                value={mustContain}
-                onChange={(e) => setMustContain(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="must-not-contain">Must Not Contain</Label>
-              <Input
-                id="must-not-contain"
-                placeholder="unwanted"
-                value={mustNotContain}
-                onChange={(e) => setMustNotContain(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="episode-filter">Episode Filter</Label>
-            <Input
-              id="episode-filter"
-              placeholder="S01-S03;E01-E10"
-              value={episodeFilter}
-              onChange={(e) => setEpisodeFilter(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Format: S01-S03;E01-E10 (season and episode ranges)
-            </p>
-          </div>
-
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <Switch checked={useRegex} onCheckedChange={setUseRegex} id="use-regex" />
-              <Label htmlFor="use-regex">Use Regex</Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch checked={smartFilter} onCheckedChange={setSmartFilter} id="smart-filter" />
-              <Label htmlFor="smart-filter">Smart Episode Filter</Label>
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-2">
-            <Label>Affected Feeds</Label>
-            <div className="grid grid-cols-1 gap-2 max-h-32 overflow-y-auto">
-              {feedUrls.map((feedUrl) => (
-                <label key={feedUrl} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={affectedFeeds.includes(feedUrl)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setAffectedFeeds([...affectedFeeds, feedUrl])
-                      } else {
-                        setAffectedFeeds(affectedFeeds.filter((f) => f !== feedUrl))
-                      }
-                    }}
-                    className="rounded"
-                  />
-                  <span className="truncate">{feedUrl}</span>
-                </label>
-              ))}
-              {feedUrls.length === 0 && (
-                <p className="text-sm text-muted-foreground">No feeds available</p>
-              )}
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="save-path">Save Path</Label>
-              <Input
-                id="save-path"
-                placeholder="/downloads/shows"
-                value={savePath}
-                onChange={(e) => setSavePath(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="category">Category</Label>
-              <Select
-                value={category || "__none__"}
-                onValueChange={(v) => setCategory(v === "__none__" ? "" : v)}
-              >
-                <SelectTrigger id="category">
-                  <SelectValue placeholder="Select category..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">None</SelectItem>
-                  {buildCategorySelectOptions(categories).map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Tags</Label>
-            <MultiSelect
-              options={buildTagSelectOptions(availableTags, tags)}
-              selected={tags}
-              onChange={setTags}
-              placeholder="Select tags..."
-              creatable
-            />
-          </div>
-
-          <Separator />
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="ignore-days">Ignore subsequent matches for</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="ignore-days"
-                  type="number"
-                  className="w-20"
-                  min={0}
-                  value={ignoreDays}
-                  onChange={(e) => setIgnoreDays(parseInt(e.target.value) || 0)}
-                />
-                <span className="text-sm text-muted-foreground">days</span>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="content-layout">Torrent Content Layout</Label>
-              <Select
-                value={contentLayout || "__global__"}
-                onValueChange={(v) => setContentLayout(v === "__global__" ? "" : v)}
-              >
-                <SelectTrigger id="content-layout">
-                  <SelectValue placeholder="Use global settings" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__global__">Use global settings</SelectItem>
-                  <SelectItem value="Original">Original</SelectItem>
-                  <SelectItem value="Subfolder">Create subfolder</SelectItem>
-                  <SelectItem value="NoSubfolder">Don't create subfolder</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="add-stopped">Add Stopped</Label>
-            <Select
-              value={addStopped === null ? "__global__" : addStopped ? "true" : "false"}
-              onValueChange={(v) => setAddStopped(v === "__global__" ? null : v === "true")}
-            >
-              <SelectTrigger id="add-stopped">
-                <SelectValue placeholder="Use global settings" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__global__">Use global settings</SelectItem>
-                <SelectItem value="true">Always add stopped</SelectItem>
-                <SelectItem value="false">Never add stopped</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <RuleFormFields
+            state={formState}
+            onChange={handleFieldChange}
+            feedUrls={feedUrls}
+            categories={categories}
+            availableTags={availableTags}
+            idPrefix="add"
+          />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -1915,19 +1974,7 @@ function EditRuleDialog({
   categories,
   tags: availableTags,
 }: EditRuleDialogProps) {
-  const [mustContain, setMustContain] = useState("")
-  const [mustNotContain, setMustNotContain] = useState("")
-  const [episodeFilter, setEpisodeFilter] = useState("")
-  const [useRegex, setUseRegex] = useState(false)
-  const [smartFilter, setSmartFilter] = useState(false)
-  const [affectedFeeds, setAffectedFeeds] = useState<string[]>([])
-  const [savePath, setSavePath] = useState("")
-  const [category, setCategory] = useState("")
-  // New fields
-  const [tags, setTags] = useState<string[]>([])
-  const [ignoreDays, setIgnoreDays] = useState(0)
-  const [contentLayout, setContentLayout] = useState("")
-  const [addStopped, setAddStopped] = useState<boolean | null>(null)
+  const [formState, setFormState] = useState<RuleFormState>(DEFAULT_RULE_FORM_STATE)
 
   const setRuleMutation = useSetRSSRule(instanceId)
   const feedUrls = useMemo(() => getFeedUrls(feedsData), [feedsData])
@@ -1935,21 +1982,26 @@ function EditRuleDialog({
   // Initialize form when rule changes
   useEffect(() => {
     if (rule) {
-      setMustContain(rule.mustContain)
-      setMustNotContain(rule.mustNotContain)
-      setEpisodeFilter(rule.episodeFilter ?? "")
-      setUseRegex(rule.useRegex)
-      setSmartFilter(rule.smartFilter)
-      setAffectedFeeds(rule.affectedFeeds)
-      setSavePath(rule.torrentParams?.save_path ?? rule.savePath ?? "")
-      setCategory(rule.torrentParams?.category ?? rule.assignedCategory ?? "")
-      // New fields
-      setTags(rule.torrentParams?.tags ?? [])
-      setIgnoreDays(rule.ignoreDays ?? 0)
-      setContentLayout(rule.torrentParams?.content_layout ?? "")
-      setAddStopped(rule.torrentParams?.stopped ?? null)
+      setFormState({
+        mustContain: rule.mustContain,
+        mustNotContain: rule.mustNotContain,
+        episodeFilter: rule.episodeFilter ?? "",
+        useRegex: rule.useRegex,
+        smartFilter: rule.smartFilter,
+        affectedFeeds: rule.affectedFeeds,
+        savePath: rule.torrentParams?.save_path ?? rule.savePath ?? "",
+        category: rule.torrentParams?.category ?? rule.assignedCategory ?? "",
+        tags: rule.torrentParams?.tags ?? [],
+        ignoreDays: rule.ignoreDays ?? 0,
+        contentLayout: rule.torrentParams?.content_layout ?? "",
+        addStopped: rule.torrentParams?.stopped ?? null,
+      })
     }
   }, [rule])
+
+  const handleFieldChange = <K extends keyof RuleFormState>(field: K, value: RuleFormState[K]) => {
+    setFormState((prev) => ({ ...prev, [field]: value }))
+  }
 
   const handleSubmit = async () => {
     if (!ruleName || !rule) return
@@ -1959,20 +2011,20 @@ function EditRuleDialog({
         name: ruleName,
         rule: {
           ...rule,
-          useRegex,
-          mustContain,
-          mustNotContain,
-          episodeFilter: episodeFilter || undefined,
-          affectedFeeds,
-          smartFilter,
-          ignoreDays,
+          useRegex: formState.useRegex,
+          mustContain: formState.mustContain,
+          mustNotContain: formState.mustNotContain,
+          episodeFilter: formState.episodeFilter || undefined,
+          affectedFeeds: formState.affectedFeeds,
+          smartFilter: formState.smartFilter,
+          ignoreDays: formState.ignoreDays,
           torrentParams: {
             ...rule.torrentParams,
-            save_path: savePath || undefined,
-            category: category || undefined,
-            tags: tags.length > 0 ? tags : undefined,
-            content_layout: contentLayout || undefined,
-            stopped: addStopped ?? undefined,
+            save_path: formState.savePath || undefined,
+            category: formState.category || undefined,
+            tags: formState.tags.length > 0 ? formState.tags : undefined,
+            content_layout: formState.contentLayout || undefined,
+            stopped: formState.addStopped ?? undefined,
           },
         },
       })
@@ -1992,189 +2044,23 @@ function EditRuleDialog({
           <DialogDescription>Modify the auto-download rule settings.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
-          <div className="grid grid-cols-2 gap-4">
+          <RuleFormFields
+            state={formState}
+            onChange={handleFieldChange}
+            feedUrls={feedUrls}
+            categories={categories}
+            availableTags={availableTags}
+            idPrefix="edit"
+          />
+
+          {rule?.lastMatch && (
             <div className="space-y-2">
-              <Label htmlFor="edit-must-contain">Must Contain</Label>
-              <Input
-                id="edit-must-contain"
-                placeholder="keyword1|keyword2"
-                value={mustContain}
-                onChange={(e) => setMustContain(e.target.value)}
-              />
+              <Label>Last Match</Label>
+              <p className="text-sm text-muted-foreground">
+                {new Date(rule.lastMatch).toLocaleString()}
+              </p>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-must-not-contain">Must Not Contain</Label>
-              <Input
-                id="edit-must-not-contain"
-                placeholder="unwanted"
-                value={mustNotContain}
-                onChange={(e) => setMustNotContain(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="edit-episode-filter">Episode Filter</Label>
-            <Input
-              id="edit-episode-filter"
-              placeholder="S01-S03;E01-E10"
-              value={episodeFilter}
-              onChange={(e) => setEpisodeFilter(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Format: S01-S03;E01-E10 (season and episode ranges)
-            </p>
-          </div>
-
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <Switch checked={useRegex} onCheckedChange={setUseRegex} id="edit-use-regex" />
-              <Label htmlFor="edit-use-regex">Use Regex</Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={smartFilter}
-                onCheckedChange={setSmartFilter}
-                id="edit-smart-filter"
-              />
-              <Label htmlFor="edit-smart-filter">Smart Episode Filter</Label>
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-2">
-            <Label>Affected Feeds</Label>
-            <div className="grid grid-cols-1 gap-2 max-h-32 overflow-y-auto">
-              {feedUrls.map((feedUrl) => (
-                <label key={feedUrl} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={affectedFeeds.includes(feedUrl)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setAffectedFeeds([...affectedFeeds, feedUrl])
-                      } else {
-                        setAffectedFeeds(affectedFeeds.filter((f) => f !== feedUrl))
-                      }
-                    }}
-                    className="rounded"
-                  />
-                  <span className="truncate">{feedUrl}</span>
-                </label>
-              ))}
-              {feedUrls.length === 0 && (
-                <p className="text-sm text-muted-foreground">No feeds available</p>
-              )}
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-save-path">Save Path</Label>
-              <Input
-                id="edit-save-path"
-                placeholder="/downloads/shows"
-                value={savePath}
-                onChange={(e) => setSavePath(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-category">Category</Label>
-              <Select
-                value={category || "__none__"}
-                onValueChange={(v) => setCategory(v === "__none__" ? "" : v)}
-              >
-                <SelectTrigger id="edit-category">
-                  <SelectValue placeholder="Select category..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">None</SelectItem>
-                  {buildCategorySelectOptions(categories).map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Tags</Label>
-            <MultiSelect
-              options={buildTagSelectOptions(availableTags, tags)}
-              selected={tags}
-              onChange={setTags}
-              placeholder="Select tags..."
-              creatable
-            />
-          </div>
-
-          <Separator />
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-ignore-days">Ignore subsequent matches for</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="edit-ignore-days"
-                  type="number"
-                  className="w-20"
-                  min={0}
-                  value={ignoreDays}
-                  onChange={(e) => setIgnoreDays(parseInt(e.target.value) || 0)}
-                />
-                <span className="text-sm text-muted-foreground">days</span>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-content-layout">Torrent Content Layout</Label>
-              <Select
-                value={contentLayout || "__global__"}
-                onValueChange={(v) => setContentLayout(v === "__global__" ? "" : v)}
-              >
-                <SelectTrigger id="edit-content-layout">
-                  <SelectValue placeholder="Use global settings" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__global__">Use global settings</SelectItem>
-                  <SelectItem value="Original">Original</SelectItem>
-                  <SelectItem value="Subfolder">Create subfolder</SelectItem>
-                  <SelectItem value="NoSubfolder">Don't create subfolder</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-add-stopped">Add Stopped</Label>
-              <Select
-                value={addStopped === null ? "__global__" : addStopped ? "true" : "false"}
-                onValueChange={(v) => setAddStopped(v === "__global__" ? null : v === "true")}
-              >
-                <SelectTrigger id="edit-add-stopped">
-                  <SelectValue placeholder="Use global settings" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__global__">Use global settings</SelectItem>
-                  <SelectItem value="true">Always add stopped</SelectItem>
-                  <SelectItem value="false">Never add stopped</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {rule?.lastMatch && (
-              <div className="space-y-2">
-                <Label>Last Match</Label>
-                <p className="text-sm text-muted-foreground pt-2">
-                  {new Date(rule.lastMatch).toLocaleString()}
-                </p>
-              </div>
-            )}
-          </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
