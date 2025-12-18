@@ -447,13 +447,29 @@ func selectRule(torrent qbt.Torrent, rules []*models.TrackerRule, sm *qbittorren
 		if !matchesTracker(rule.TrackerPattern, trackerDomains) {
 			continue
 		}
-		if rule.Category != nil && strings.TrimSpace(*rule.Category) != "" {
-			if !strings.EqualFold(torrent.Category, strings.TrimSpace(*rule.Category)) {
+		// Check if torrent's category matches ANY of the rule's categories
+		if len(rule.Categories) > 0 {
+			matched := false
+			for _, cat := range rule.Categories {
+				if strings.EqualFold(torrent.Category, cat) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
 				continue
 			}
 		}
-		if rule.Tag != nil && strings.TrimSpace(*rule.Tag) != "" {
-			if !torrentHasTag(torrent.Tags, strings.TrimSpace(*rule.Tag)) {
+		// Check if torrent has ANY of the rule's tags
+		if len(rule.Tags) > 0 {
+			matched := false
+			for _, tag := range rule.Tags {
+				if torrentHasTag(torrent.Tags, tag) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
 				continue
 			}
 		}

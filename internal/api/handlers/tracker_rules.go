@@ -35,8 +35,8 @@ type TrackerRulePayload struct {
 	Name                    string   `json:"name"`
 	TrackerPattern          string   `json:"trackerPattern"`
 	TrackerDomains          []string `json:"trackerDomains"`
-	Category                *string  `json:"category"`
-	Tag                     *string  `json:"tag"`
+	Categories              []string `json:"categories"`
+	Tags                    []string `json:"tags"`
 	UploadLimitKiB          *int64   `json:"uploadLimitKiB"`
 	DownloadLimitKiB        *int64   `json:"downloadLimitKiB"`
 	RatioLimit              *float64 `json:"ratioLimit"`
@@ -60,8 +60,8 @@ func (p *TrackerRulePayload) toModel(instanceID int, id int) *models.TrackerRule
 		Name:                    p.Name,
 		TrackerPattern:          trackerPattern,
 		TrackerDomains:          normalizedDomains,
-		Category:                cleanStringPtr(p.Category),
-		Tag:                     cleanStringPtr(p.Tag),
+		Categories:              cleanStringSlice(p.Categories),
+		Tags:                    cleanStringSlice(p.Tags),
 		UploadLimitKiB:          p.UploadLimitKiB,
 		DownloadLimitKiB:        p.DownloadLimitKiB,
 		RatioLimit:              p.RatioLimit,
@@ -260,6 +260,17 @@ func cleanStringPtr(value *string) *string {
 		return nil
 	}
 	return &trimmed
+}
+
+func cleanStringSlice(values []string) []string {
+	var out []string
+	for _, v := range values {
+		trimmed := strings.TrimSpace(v)
+		if trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
 
 func normalizeTrackerDomains(domains []string) []string {

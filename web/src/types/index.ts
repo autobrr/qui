@@ -111,8 +111,8 @@ export interface TrackerRule {
   name: string
   trackerPattern: string
   trackerDomains?: string[]
-  category?: string
-  tag?: string
+  categories?: string[]
+  tags?: string[]
   uploadLimitKiB?: number
   downloadLimitKiB?: number
   ratioLimit?: number
@@ -129,8 +129,8 @@ export interface TrackerRuleInput {
   name: string
   trackerPattern?: string
   trackerDomains?: string[]
-  category?: string
-  tag?: string
+  categories?: string[]
+  tags?: string[]
   uploadLimitKiB?: number
   downloadLimitKiB?: number
   ratioLimit?: number

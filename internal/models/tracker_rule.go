@@ -19,8 +19,8 @@ type TrackerRule struct {
 	Name                    string    `json:"name"`
 	TrackerPattern          string    `json:"trackerPattern"`
 	TrackerDomains          []string  `json:"trackerDomains,omitempty"`
-	Category                *string   `json:"category,omitempty"`
-	Tag                     *string   `json:"tag,omitempty"`
+	Categories              []string  `json:"categories,omitempty"`
+	Tags                    []string  `json:"tags,omitempty"`
 	UploadLimitKiB          *int64    `json:"uploadLimitKiB,omitempty"`
 	DownloadLimitKiB        *int64    `json:"downloadLimitKiB,omitempty"`
 	RatioLimit              *float64  `json:"ratioLimit,omitempty"`
@@ -97,7 +97,7 @@ func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) (
 	var rules []*TrackerRule
 	for rows.Next() {
 		var rule TrackerRule
-		var category, tag, deleteMode sql.NullString
+		var categories, tags, deleteMode sql.NullString
 		var upload, download sql.NullInt64
 		var ratio sql.NullFloat64
 		var seeding sql.NullInt64
@@ -108,8 +108,8 @@ func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) (
 			&rule.InstanceID,
 			&rule.Name,
 			&rule.TrackerPattern,
-			&category,
-			&tag,
+			&categories,
+			&tags,
 			&upload,
 			&download,
 			&ratio,
@@ -124,11 +124,11 @@ func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) (
 			return nil, err
 		}
 
-		if category.Valid {
-			rule.Category = &category.String
+		if categories.Valid && categories.String != "" {
+			rule.Categories = splitPatterns(categories.String)
 		}
-		if tag.Valid {
-			rule.Tag = &tag.String
+		if tags.Valid && tags.String != "" {
+			rule.Tags = splitPatterns(tags.String)
 		}
 		if upload.Valid {
 			rule.UploadLimitKiB = &upload.Int64
@@ -168,7 +168,7 @@ func (s *TrackerRuleStore) Get(ctx context.Context, id int) (*TrackerRule, error
 	`, id)
 
 	var rule TrackerRule
-	var category, tag, deleteMode sql.NullString
+	var categories, tags, deleteMode sql.NullString
 	var upload, download sql.NullInt64
 	var ratio sql.NullFloat64
 	var seeding sql.NullInt64
@@ -179,8 +179,8 @@ func (s *TrackerRuleStore) Get(ctx context.Context, id int) (*TrackerRule, error
 		&rule.InstanceID,
 		&rule.Name,
 		&rule.TrackerPattern,
-		&category,
-		&tag,
+		&categories,
+		&tags,
 		&upload,
 		&download,
 		&ratio,
@@ -195,11 +195,11 @@ func (s *TrackerRuleStore) Get(ctx context.Context, id int) (*TrackerRule, error
 		return nil, err
 	}
 
-	if category.Valid {
-		rule.Category = &category.String
+	if categories.Valid && categories.String != "" {
+		rule.Categories = splitPatterns(categories.String)
 	}
-	if tag.Valid {
-		rule.Tag = &tag.String
+	if tags.Valid && tags.String != "" {
+		rule.Tags = splitPatterns(tags.String)
 	}
 	if upload.Valid {
 		rule.UploadLimitKiB = &upload.Int64
@@ -254,12 +254,16 @@ func (s *TrackerRuleStore) Create(ctx context.Context, rule *TrackerRule) (*Trac
 		deleteMode = *rule.DeleteMode
 	}
 
+	// Join arrays to comma-separated strings for storage
+	categoriesStr := nullableSlice(rule.Categories)
+	tagsStr := nullableSlice(rule.Tags)
+
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO tracker_rules
 			(instance_id, name, tracker_pattern, category, tag, upload_limit_kib, download_limit_kib, ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, enabled, sort_order)
 		VALUES
 			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, rule.InstanceID, rule.Name, rule.TrackerPattern, nullableString(rule.Category), nullableString(rule.Tag),
+	`, rule.InstanceID, rule.Name, rule.TrackerPattern, categoriesStr, tagsStr,
 		nullableInt64(rule.UploadLimitKiB), nullableInt64(rule.DownloadLimitKiB), nullableFloat64(rule.RatioLimit),
 		nullableInt64(rule.SeedingTimeLimitMinutes), deleteMode, boolToInt(rule.DeleteUnregistered), boolToInt(rule.Enabled), sortOrder)
 	if err != nil {
@@ -287,12 +291,16 @@ func (s *TrackerRuleStore) Update(ctx context.Context, rule *TrackerRule) (*Trac
 		deleteMode = *rule.DeleteMode
 	}
 
+	// Join arrays to comma-separated strings for storage
+	categoriesStr := nullableSlice(rule.Categories)
+	tagsStr := nullableSlice(rule.Tags)
+
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE tracker_rules
 		SET name = ?, tracker_pattern = ?, category = ?, tag = ?, upload_limit_kib = ?, download_limit_kib = ?,
 		    ratio_limit = ?, seeding_time_limit_minutes = ?, delete_mode = ?, delete_unregistered = ?, enabled = ?, sort_order = ?
 		WHERE id = ? AND instance_id = ?
-	`, rule.Name, rule.TrackerPattern, nullableString(rule.Category), nullableString(rule.Tag),
+	`, rule.Name, rule.TrackerPattern, categoriesStr, tagsStr,
 		nullableInt64(rule.UploadLimitKiB), nullableInt64(rule.DownloadLimitKiB), nullableFloat64(rule.RatioLimit),
 		nullableInt64(rule.SeedingTimeLimitMinutes), deleteMode, boolToInt(rule.DeleteUnregistered), boolToInt(rule.Enabled), rule.SortOrder, rule.ID, rule.InstanceID)
 	if err != nil {
@@ -336,11 +344,11 @@ func (s *TrackerRuleStore) Reorder(ctx context.Context, instanceID int, orderedI
 	return tx.Commit()
 }
 
-func nullableString(value *string) any {
-	if value == nil {
+func nullableSlice(values []string) any {
+	if len(values) == 0 {
 		return nil
 	}
-	return *value
+	return strings.Join(values, ",")
 }
 
 func nullableInt64(value *int64) any {

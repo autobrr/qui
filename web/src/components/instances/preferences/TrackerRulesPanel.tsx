@@ -38,6 +38,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { api } from "@/lib/api"
+import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { cn, parseTrackerDomains } from "@/lib/utils"
 import type { TrackerRule, TrackerRuleInput } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -51,9 +52,11 @@ interface TrackerRulesPanelProps {
   variant?: "card" | "embedded"
 }
 
-type FormState = TrackerRuleInput & {
+type FormState = Omit<TrackerRuleInput, "categories" | "tags"> & {
   trackerDomains: string[]
   applyToAllTrackers: boolean
+  categories: string[]
+  tags: string[]
 }
 
 const emptyFormState: FormState = {
@@ -61,8 +64,8 @@ const emptyFormState: FormState = {
   trackerPattern: "",
   trackerDomains: [],
   applyToAllTrackers: false,
-  category: "",
-  tag: "",
+  categories: [],
+  tags: [],
   uploadLimitKiB: undefined,
   downloadLimitKiB: undefined,
   ratioLimit: undefined,
@@ -80,12 +83,31 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
   const [deleteConfirmRule, setDeleteConfirmRule] = useState<TrackerRule | null>(null)
 
   const trackersQuery = useInstanceTrackers(instanceId, { enabled: true })
+  const categoriesQuery = useQuery({
+    queryKey: ["instance-categories", instanceId],
+    queryFn: () => api.getCategories(instanceId),
+  })
+  const tagsQuery = useQuery({
+    queryKey: ["instance-tags", instanceId],
+    queryFn: () => api.getTags(instanceId),
+  })
+
   const trackerOptions: Option[] = useMemo(() => {
     if (!trackersQuery.data) return []
     return Object.keys(trackersQuery.data)
       .map((domain) => ({ label: domain, value: domain }))
       .sort((a, b) => a.label.localeCompare(b.label))
   }, [trackersQuery.data])
+
+  const categoryOptions = useMemo(() => {
+    if (!categoriesQuery.data) return []
+    return buildCategorySelectOptions(categoriesQuery.data)
+  }, [categoriesQuery.data])
+
+  const tagOptions = useMemo(() => {
+    if (!tagsQuery.data) return []
+    return buildTagSelectOptions(tagsQuery.data)
+  }, [tagsQuery.data])
 
   const rulesQuery = useQuery({
     queryKey: ["tracker-rules", instanceId],
@@ -169,8 +191,8 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
       trackerPattern: rule.trackerPattern,
       trackerDomains: domains,
       applyToAllTrackers: isAllTrackers,
-      category: rule.category,
-      tag: rule.tag,
+      categories: rule.categories ?? [],
+      tags: rule.tags ?? [],
       uploadLimitKiB: rule.uploadLimitKiB,
       downloadLimitKiB: rule.downloadLimitKiB,
       ratioLimit: rule.ratioLimit,
@@ -207,12 +229,12 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
       toast.error("Select at least one tracker")
       return
     }
-    const payload: FormState = {
+    const payload = {
       ...formState,
       trackerDomains: formState.applyToAllTrackers ? [] : selectedTrackers,
       trackerPattern: formState.applyToAllTrackers ? "*" : selectedTrackers.join(","),
-      category: formState.category || undefined,
-      tag: formState.tag || undefined,
+      categories: formState.categories.filter(Boolean),
+      tags: formState.tags.filter(Boolean),
     }
     createOrUpdate.mutate(payload)
   }
@@ -394,21 +416,25 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="rule-category">Category (optional)</Label>
-                <Input
-                  id="rule-category"
-                  value={formState.category ?? ""}
-                  onChange={(e) => setFormState(prev => ({ ...prev, category: e.target.value || undefined }))}
-                  placeholder="e.g. tv"
+                <Label>Categories (optional)</Label>
+                <MultiSelect
+                  options={categoryOptions}
+                  selected={formState.categories}
+                  onChange={(values) => setFormState(prev => ({ ...prev, categories: values }))}
+                  placeholder="Select categories..."
+                  creatable
+                  onCreateOption={(value) => setFormState(prev => ({ ...prev, categories: [...prev.categories, value] }))}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="rule-tag">Tag (optional)</Label>
-                <Input
-                  id="rule-tag"
-                  value={formState.tag ?? ""}
-                  onChange={(e) => setFormState(prev => ({ ...prev, tag: e.target.value || undefined }))}
-                  placeholder="e.g. autobrr"
+                <Label>Tags (optional)</Label>
+                <MultiSelect
+                  options={tagOptions}
+                  selected={formState.tags}
+                  onChange={(values) => setFormState(prev => ({ ...prev, tags: values }))}
+                  placeholder="Select tags..."
+                  creatable
+                  onCreateOption={(value) => setFormState(prev => ({ ...prev, tags: [...prev.tags, value] }))}
                 />
               </div>
             </div>
@@ -610,6 +636,8 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
 function RuleSummary({ rule }: { rule: TrackerRule }) {
   const trackers = parseTrackerDomains(rule)
   const isAllTrackers = rule.trackerPattern === "*"
+  const categories = rule.categories ?? []
+  const tags = rule.tags ?? []
 
   const hasActions =
     rule.downloadLimitKiB !== undefined ||
@@ -619,7 +647,7 @@ function RuleSummary({ rule }: { rule: TrackerRule }) {
     (rule.deleteMode && rule.deleteMode !== "none") ||
     rule.deleteUnregistered
 
-  if (!hasActions && !isAllTrackers && trackers.length === 0 && !rule.category && !rule.tag) {
+  if (!hasActions && !isAllTrackers && trackers.length === 0 && categories.length === 0 && tags.length === 0) {
     return <span className="text-xs text-muted-foreground">No actions set</span>
   }
 
@@ -648,16 +676,42 @@ function RuleSummary({ rule }: { rule: TrackerRule }) {
         </Tooltip>
       )}
 
-      {rule.category && (
-        <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal">
-          Cat: {rule.category}
-        </Badge>
+      {categories.length > 0 && categories.length <= 2 ? (
+        categories.map((cat) => (
+          <Badge key={cat} variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal">
+            Cat: {cat}
+          </Badge>
+        ))
+      ) : categories.length > 2 && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal cursor-help">
+              Cat: {categories[0]} +{categories.length - 1}
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-[300px] break-all">
+            <p>{categories.join(", ")}</p>
+          </TooltipContent>
+        </Tooltip>
       )}
 
-      {rule.tag && (
-        <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal">
-          Tag: {rule.tag}
-        </Badge>
+      {tags.length > 0 && tags.length <= 2 ? (
+        tags.map((tag) => (
+          <Badge key={tag} variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal">
+            Tag: {tag}
+          </Badge>
+        ))
+      ) : tags.length > 2 && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal cursor-help">
+              Tag: {tags[0]} +{tags.length - 1}
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-[300px] break-all">
+            <p>{tags.join(", ")}</p>
+          </TooltipContent>
+        </Tooltip>
       )}
 
       {rule.uploadLimitKiB !== undefined && (
