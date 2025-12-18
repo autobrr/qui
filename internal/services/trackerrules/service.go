@@ -33,7 +33,7 @@ func DefaultConfig() Config {
 	return Config{
 		ScanInterval:          20 * time.Second,
 		SkipWithin:            2 * time.Minute,
-		MaxBatchHashes:        150,
+		MaxBatchHashes:        50, // matches qBittorrent's max_concurrent_http_announces default
 		ActivityRetentionDays: 7,
 	}
 }
@@ -513,6 +513,17 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 	}
 
 	// Execute deletions
+	//
+	// Note on tracker announces: No explicit pause/reannounce step is needed before
+	// deletion. When qBittorrent's DeleteTorrents API is called, libtorrent automatically
+	// sends a "stopped" announce to all trackers with the final uploaded/downloaded stats.
+	//
+	// References:
+	// - libtorrent/src/torrent.cpp:stop_announcing() - sends stopped event to all trackers
+	// - qBittorrent/src/base/bittorrent/sessionimpl.cpp:removeTorrent() - triggers libtorrent removal
+	// - stop_tracker_timeout setting (default 2s) controls how long to wait for tracker ack
+	//
+	// This behavior is identical for both BitTorrent v1 and v2 torrents.
 	for mode, hashes := range deleteHashesByMode {
 		if len(hashes) == 0 {
 			continue
