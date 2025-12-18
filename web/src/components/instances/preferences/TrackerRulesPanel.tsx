@@ -52,12 +52,16 @@ interface TrackerRulesPanelProps {
   variant?: "card" | "embedded"
 }
 
-type FormState = TrackerRuleInput & { trackerDomains: string[] }
+type FormState = TrackerRuleInput & {
+  trackerDomains: string[]
+  applyToAllTrackers: boolean
+}
 
 const emptyFormState: FormState = {
   name: "",
   trackerPattern: "",
   trackerDomains: [],
+  applyToAllTrackers: false,
   category: "",
   tag: "",
   uploadLimitKiB: undefined,
@@ -158,12 +162,14 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
   }
 
   const openForEdit = (rule: TrackerRule) => {
-    const domains = parseTrackerDomains(rule)
+    const isAllTrackers = rule.trackerPattern === "*"
+    const domains = isAllTrackers ? [] : parseTrackerDomains(rule)
     setEditingRule(rule)
     setFormState({
       name: rule.name,
       trackerPattern: rule.trackerPattern,
       trackerDomains: domains,
+      applyToAllTrackers: isAllTrackers,
       category: rule.category,
       tag: rule.tag,
       uploadLimitKiB: rule.uploadLimitKiB,
@@ -198,14 +204,14 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
       return
     }
     const selectedTrackers = formState.trackerDomains.filter(Boolean)
-    if (selectedTrackers.length === 0) {
+    if (!formState.applyToAllTrackers && selectedTrackers.length === 0) {
       toast.error("Select at least one tracker")
       return
     }
     const payload: FormState = {
       ...formState,
-      trackerDomains: selectedTrackers,
-      trackerPattern: selectedTrackers.join(","),
+      trackerDomains: formState.applyToAllTrackers ? [] : selectedTrackers,
+      trackerPattern: formState.applyToAllTrackers ? "*" : selectedTrackers.join(","),
       category: formState.category || undefined,
       tag: formState.tag || undefined,
     }
@@ -349,20 +355,40 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
                   data-1p-ignore
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Trackers</Label>
-                <MultiSelect
-                  options={trackerOptions}
-                  selected={formState.trackerDomains}
-                  onChange={(next) => setFormState(prev => ({ ...prev, trackerDomains: next }))}
-                  placeholder="Select trackers..."
-                  creatable
-                  onCreateOption={(value) => setFormState(prev => ({ ...prev, trackerDomains: [...prev.trackerDomains, value] }))}
-                  disabled={trackersQuery.isLoading}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Choose from detected trackers or type a custom domain/glob (creates an entry).
-                </p>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <Label htmlFor="all-trackers">Apply to all trackers</Label>
+                    <p className="text-sm text-muted-foreground">Rule will match torrents from any tracker</p>
+                  </div>
+                  <Switch
+                    id="all-trackers"
+                    checked={formState.applyToAllTrackers}
+                    onCheckedChange={(checked) => setFormState(prev => ({
+                      ...prev,
+                      applyToAllTrackers: checked,
+                      trackerDomains: checked ? [] : prev.trackerDomains,
+                    }))}
+                  />
+                </div>
+
+                {!formState.applyToAllTrackers && (
+                  <div className="space-y-2">
+                    <Label>Trackers</Label>
+                    <MultiSelect
+                      options={trackerOptions}
+                      selected={formState.trackerDomains}
+                      onChange={(next) => setFormState(prev => ({ ...prev, trackerDomains: next }))}
+                      placeholder="Select trackers..."
+                      creatable
+                      onCreateOption={(value) => setFormState(prev => ({ ...prev, trackerDomains: [...prev.trackerDomains, value] }))}
+                      disabled={trackersQuery.isLoading}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Choose from detected trackers or type a custom domain/glob (creates an entry).
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -580,6 +606,7 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
 
 function RuleSummary({ rule }: { rule: TrackerRule }) {
   const trackers = parseTrackerDomains(rule)
+  const isAllTrackers = rule.trackerPattern === "*"
 
   const hasActions =
     rule.downloadLimitKiB !== undefined ||
@@ -589,13 +616,15 @@ function RuleSummary({ rule }: { rule: TrackerRule }) {
     (rule.deleteMode && rule.deleteMode !== "none") ||
     rule.deleteUnregistered
 
-  if (!hasActions && trackers.length === 0 && !rule.category && !rule.tag) {
+  if (!hasActions && !isAllTrackers && trackers.length === 0 && !rule.category && !rule.tag) {
     return <span className="text-xs text-muted-foreground">No actions set</span>
   }
 
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-      {trackers.length > 0 && (
+      {isAllTrackers ? (
+        <Badge variant="outline" className="text-[11px]">All trackers</Badge>
+      ) : trackers.length > 0 && (
         <Tooltip>
           <TooltipTrigger asChild>
             <Badge

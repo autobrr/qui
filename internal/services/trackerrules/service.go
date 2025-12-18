@@ -464,6 +464,9 @@ func selectRule(torrent qbt.Torrent, rules []*models.TrackerRule, sm *qbittorren
 }
 
 func matchesTracker(pattern string, domains []string) bool {
+	if pattern == "*" {
+		return true // Match all trackers
+	}
 	if pattern == "" {
 		return false
 	}

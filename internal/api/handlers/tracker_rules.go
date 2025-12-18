@@ -114,8 +114,9 @@ func (h *TrackerRuleHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(normalizeTrackerDomains(payload.TrackerDomains)) == 0 && strings.TrimSpace(payload.TrackerPattern) == "" {
-		RespondError(w, http.StatusBadRequest, "Select at least one tracker")
+	isAllTrackers := strings.TrimSpace(payload.TrackerPattern) == "*"
+	if !isAllTrackers && len(normalizeTrackerDomains(payload.TrackerDomains)) == 0 && strings.TrimSpace(payload.TrackerPattern) == "" {
+		RespondError(w, http.StatusBadRequest, "Select at least one tracker or enable 'Apply to all'")
 		return
 	}
 
@@ -153,8 +154,9 @@ func (h *TrackerRuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(normalizeTrackerDomains(payload.TrackerDomains)) == 0 && strings.TrimSpace(payload.TrackerPattern) == "" {
-		RespondError(w, http.StatusBadRequest, "Select at least one tracker")
+	isAllTrackers := strings.TrimSpace(payload.TrackerPattern) == "*"
+	if !isAllTrackers && len(normalizeTrackerDomains(payload.TrackerDomains)) == 0 && strings.TrimSpace(payload.TrackerPattern) == "" {
+		RespondError(w, http.StatusBadRequest, "Select at least one tracker or enable 'Apply to all'")
 		return
 	}
 
