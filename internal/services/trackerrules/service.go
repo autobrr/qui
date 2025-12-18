@@ -270,19 +270,55 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 		if shouldDeleteTorrent(torrent, rule) {
 			deleteMode := *rule.DeleteMode
 
+			// Determine which criterion triggered the deletion
+			var reason string
+			hasRatioLimit := rule.RatioLimit != nil && *rule.RatioLimit > 0
+			hasSeedingTimeLimit := rule.SeedingTimeLimitMinutes != nil && *rule.SeedingTimeLimitMinutes > 0
+			ratioMet := hasRatioLimit && torrent.Ratio >= *rule.RatioLimit
+			seedingTimeMet := hasSeedingTimeLimit && torrent.SeedingTime >= *rule.SeedingTimeLimitMinutes*60
+
+			if ratioMet && seedingTimeMet {
+				reason = "ratio and seeding time limits reached"
+			} else if ratioMet {
+				reason = "ratio limit reached"
+			} else {
+				reason = "seeding time limit reached"
+			}
+
 			// Handle cross-seed aware deletion
+			var actualMode string
+			var logMsg string
+			var keepingFiles bool
+
 			if deleteMode == "deleteWithFilesPreserveCrossSeeds" {
 				if detectCrossSeeds(torrent, torrents) {
-					// Cross-seed found: preserve files, only remove torrent entry
-					log.Info().Str("hash", torrent.Hash).Str("name", torrent.Name).Msg("tracker rules: cross-seed detected, preserving files")
-					deleteHashesByMode["delete"] = append(deleteHashesByMode["delete"], torrent.Hash)
+					actualMode = "delete"
+					logMsg = "tracker rules: removing torrent (cross-seed detected - keeping files)"
+					keepingFiles = true
 				} else {
-					// No cross-seed: safe to delete files
-					deleteHashesByMode["deleteWithFiles"] = append(deleteHashesByMode["deleteWithFiles"], torrent.Hash)
+					actualMode = "deleteWithFiles"
+					logMsg = "tracker rules: removing torrent with files"
+					keepingFiles = false
 				}
+			} else if deleteMode == "delete" {
+				actualMode = "delete"
+				logMsg = "tracker rules: removing torrent (keeping files)"
+				keepingFiles = true
 			} else {
-				deleteHashesByMode[deleteMode] = append(deleteHashesByMode[deleteMode], torrent.Hash)
+				actualMode = deleteMode
+				logMsg = "tracker rules: removing torrent with files"
+				keepingFiles = false
 			}
+
+			logEvent := log.Info().Str("hash", torrent.Hash).Str("name", torrent.Name).Str("reason", reason)
+			if ratioMet {
+				logEvent = logEvent.Float64("ratio", torrent.Ratio).Float64("ratioLimit", *rule.RatioLimit)
+			}
+			if seedingTimeMet {
+				logEvent = logEvent.Int64("seedingMinutes", torrent.SeedingTime/60).Int64("seedingLimitMinutes", *rule.SeedingTimeLimitMinutes)
+			}
+			logEvent.Bool("filesKept", keepingFiles).Msg(logMsg)
+			deleteHashesByMode[actualMode] = append(deleteHashesByMode[actualMode], torrent.Hash)
 
 			// Mark as processed for deletion
 			s.mu.Lock()
@@ -324,18 +360,32 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 			deleteMode := *rule.DeleteMode
 
 			// Handle cross-seed aware mode (reuse existing logic)
+			var actualMode string
+			var logMsg string
+			var keepingFiles bool
+
 			if deleteMode == "deleteWithFilesPreserveCrossSeeds" {
 				if detectCrossSeeds(torrent, torrents) {
-					log.Info().Str("hash", torrent.Hash).Str("name", torrent.Name).Msg("tracker rules: unregistered torrent has cross-seed, preserving files")
-					deleteHashesByMode["delete"] = append(deleteHashesByMode["delete"], torrent.Hash)
+					actualMode = "delete"
+					logMsg = "tracker rules: removing unregistered torrent (cross-seed detected - keeping files)"
+					keepingFiles = true
 				} else {
-					deleteHashesByMode["deleteWithFiles"] = append(deleteHashesByMode["deleteWithFiles"], torrent.Hash)
+					actualMode = "deleteWithFiles"
+					logMsg = "tracker rules: removing unregistered torrent with files"
+					keepingFiles = false
 				}
+			} else if deleteMode == "delete" {
+				actualMode = "delete"
+				logMsg = "tracker rules: removing unregistered torrent (keeping files)"
+				keepingFiles = true
 			} else {
-				deleteHashesByMode[deleteMode] = append(deleteHashesByMode[deleteMode], torrent.Hash)
+				actualMode = deleteMode
+				logMsg = "tracker rules: removing unregistered torrent with files"
+				keepingFiles = false
 			}
 
-			log.Info().Str("hash", torrent.Hash).Str("name", torrent.Name).Str("mode", deleteMode).Msg("tracker rules: queuing unregistered torrent for deletion")
+			log.Info().Str("hash", torrent.Hash).Str("name", torrent.Name).Str("reason", "unregistered").Bool("filesKept", keepingFiles).Msg(logMsg)
+			deleteHashesByMode[actualMode] = append(deleteHashesByMode[actualMode], torrent.Hash)
 
 			// Mark as processed for deletion
 			s.mu.Lock()
@@ -355,7 +405,11 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 			if err := s.syncManager.BulkAction(ctx, instanceID, batch, mode); err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Str("action", mode).Int("count", len(batch)).Msg("tracker rules: delete failed")
 			} else {
-				log.Info().Int("instanceID", instanceID).Str("action", mode).Int("count", len(batch)).Msg("tracker rules: deleted torrents")
+				if mode == "delete" {
+					log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("tracker rules: removed torrents (files kept)")
+				} else {
+					log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("tracker rules: removed torrents with files")
+				}
 			}
 		}
 	}
