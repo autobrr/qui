@@ -20,14 +20,16 @@ import (
 )
 
 type TrackerRuleHandler struct {
-	store   *models.TrackerRuleStore
-	service *trackerrules.Service
+	store         *models.TrackerRuleStore
+	activityStore *models.TrackerRuleActivityStore
+	service       *trackerrules.Service
 }
 
-func NewTrackerRuleHandler(store *models.TrackerRuleStore, service *trackerrules.Service) *TrackerRuleHandler {
+func NewTrackerRuleHandler(store *models.TrackerRuleStore, activityStore *models.TrackerRuleActivityStore, service *trackerrules.Service) *TrackerRuleHandler {
 	return &TrackerRuleHandler{
-		store:   store,
-		service: service,
+		store:         store,
+		activityStore: activityStore,
+		service:       service,
 	}
 }
 
@@ -305,4 +307,64 @@ func normalizeTrackerDomains(domains []string) []string {
 		out = append(out, trimmed)
 	}
 	return out
+}
+
+func (h *TrackerRuleHandler) ListActivity(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := parseInstanceID(w, r)
+	if err != nil {
+		return
+	}
+
+	limit := 100
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	if h.activityStore == nil {
+		RespondJSON(w, http.StatusOK, []*models.TrackerRuleActivity{})
+		return
+	}
+
+	activities, err := h.activityStore.ListByInstance(r.Context(), instanceID, limit)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to list tracker rule activity")
+		RespondError(w, http.StatusInternalServerError, "Failed to load activity")
+		return
+	}
+
+	if activities == nil {
+		activities = []*models.TrackerRuleActivity{}
+	}
+
+	RespondJSON(w, http.StatusOK, activities)
+}
+
+func (h *TrackerRuleHandler) DeleteActivity(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := parseInstanceID(w, r)
+	if err != nil {
+		return
+	}
+
+	olderThanDays := 7
+	if olderThanStr := r.URL.Query().Get("older_than"); olderThanStr != "" {
+		if parsed, err := strconv.Atoi(olderThanStr); err == nil && parsed > 0 {
+			olderThanDays = parsed
+		}
+	}
+
+	if h.activityStore == nil {
+		RespondJSON(w, http.StatusOK, map[string]int64{"deleted": 0})
+		return
+	}
+
+	deleted, err := h.activityStore.DeleteOlderThan(r.Context(), instanceID, olderThanDays)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Int("olderThanDays", olderThanDays).Msg("failed to delete tracker rule activity")
+		RespondError(w, http.StatusInternalServerError, "Failed to delete activity")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]int64{"deleted": deleted})
 }

@@ -5,6 +5,7 @@
 
 import { ReannounceOverview } from "@/components/instances/preferences/ReannounceOverview"
 import { TrackerReannounceForm } from "@/components/instances/preferences/TrackerReannounceForm"
+import { TrackerRulesActivityOverview } from "@/components/instances/preferences/TrackerRulesActivityOverview"
 import { TrackerRulesOverview } from "@/components/instances/preferences/TrackerRulesOverview"
 import { TrackerRulesPanel } from "@/components/instances/preferences/TrackerRulesPanel"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -54,6 +55,9 @@ export function Services() {
 
       {/* Tracker Rules Overview - shows all instances in accordion */}
       <TrackerRulesOverview onConfigureInstance={handleConfigureTrackerRules} />
+
+      {/* Tracker Rules Activity - shows deletion/error history */}
+      <TrackerRulesActivityOverview />
 
       {instances && instances.length === 0 && (
         <p className="text-sm text-muted-foreground">

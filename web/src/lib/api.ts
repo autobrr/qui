@@ -71,6 +71,7 @@ import type {
   TrackerCustomization,
   TrackerCustomizationInput,
   TrackerRule,
+  TrackerRuleActivity,
   TrackerRuleInput,
   User,
   DashboardSettings,
@@ -1310,6 +1311,17 @@ class ApiClient {
   async applyTrackerRules(instanceId: number): Promise<void> {
     return this.request(`/instances/${instanceId}/tracker-rules/apply`, {
       method: "POST",
+    })
+  }
+
+  async getTrackerRuleActivity(instanceId: number, limit?: number): Promise<TrackerRuleActivity[]> {
+    const query = typeof limit === "number" ? `?limit=${limit}` : ""
+    return this.request<TrackerRuleActivity[]>(`/instances/${instanceId}/tracker-rules/activity${query}`)
+  }
+
+  async deleteTrackerRuleActivity(instanceId: number, olderThanDays: number): Promise<{ deleted: number }> {
+    return this.request<{ deleted: number }>(`/instances/${instanceId}/tracker-rules/activity?older_than=${olderThanDays}`, {
+      method: "DELETE",
     })
   }
 

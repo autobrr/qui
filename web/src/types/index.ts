@@ -143,6 +143,30 @@ export interface TrackerRuleInput {
   sortOrder?: number
 }
 
+export interface TrackerRuleActivity {
+  id: number
+  instanceId: number
+  hash: string
+  torrentName?: string
+  trackerDomain?: string
+  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "delete_failed" | "limit_failed"
+  ruleId?: number
+  ruleName?: string
+  outcome: "success" | "failed"
+  reason?: string
+  details?: {
+    ratio?: number
+    ratioLimit?: number
+    seedingMinutes?: number
+    seedingLimitMinutes?: number
+    filesKept?: boolean
+    limitKiB?: number
+    count?: number
+    type?: string
+  }
+  createdAt: string
+}
+
 export interface InstanceResponse extends Instance {
   connected: boolean
   hasDecryptionError: boolean

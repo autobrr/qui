@@ -65,6 +65,7 @@ type Server struct {
 	jackettService                   *jackett.Service
 	torznabIndexerStore              *models.TorznabIndexerStore
 	trackerRuleStore                 *models.TrackerRuleStore
+	trackerRuleActivityStore         *models.TrackerRuleActivityStore
 	trackerRuleService               *trackerrules.Service
 	trackerCustomizationStore        *models.TrackerCustomizationStore
 	dashboardSettingsStore           *models.DashboardSettingsStore
@@ -94,6 +95,7 @@ type Dependencies struct {
 	JackettService                   *jackett.Service
 	TorznabIndexerStore              *models.TorznabIndexerStore
 	TrackerRuleStore                 *models.TrackerRuleStore
+	TrackerRuleActivityStore         *models.TrackerRuleActivityStore
 	TrackerRuleService               *trackerrules.Service
 	TrackerCustomizationStore        *models.TrackerCustomizationStore
 	DashboardSettingsStore           *models.DashboardSettingsStore
@@ -130,6 +132,7 @@ func NewServer(deps *Dependencies) *Server {
 		jackettService:                   deps.JackettService,
 		torznabIndexerStore:              deps.TorznabIndexerStore,
 		trackerRuleStore:                 deps.TrackerRuleStore,
+		trackerRuleActivityStore:         deps.TrackerRuleActivityStore,
 		trackerRuleService:               deps.TrackerRuleService,
 		trackerCustomizationStore:        deps.TrackerCustomizationStore,
 		dashboardSettingsStore:           deps.DashboardSettingsStore,
@@ -269,7 +272,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.reannounceCache, s.reannounceService, s.config.Config.BaseURL)
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
 	crossSeedHandler := handlers.NewCrossSeedHandler(s.crossSeedService, s.instanceCrossSeedCompletionStore, s.instanceStore)
-	trackerRulesHandler := handlers.NewTrackerRuleHandler(s.trackerRuleStore, s.trackerRuleService)
+	trackerRulesHandler := handlers.NewTrackerRuleHandler(s.trackerRuleStore, s.trackerRuleActivityStore, s.trackerRuleService)
 	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
 
@@ -434,6 +437,8 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						r.Post("/", trackerRulesHandler.Create)
 						r.Put("/order", trackerRulesHandler.Reorder)
 						r.Post("/apply", trackerRulesHandler.ApplyNow)
+						r.Get("/activity", trackerRulesHandler.ListActivity)
+						r.Delete("/activity", trackerRulesHandler.DeleteActivity)
 
 						r.Route("/{ruleID}", func(r chi.Router) {
 							r.Put("/", trackerRulesHandler.Update)

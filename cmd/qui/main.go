@@ -548,7 +548,8 @@ func (app *Application) runServer() {
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
 	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore, instanceCrossSeedCompletionStore)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
-	trackerRuleService := trackerrules.NewService(trackerrules.DefaultConfig(), instanceStore, trackerRuleStore, syncManager)
+	trackerRuleActivityStore := models.NewTrackerRuleActivityStore(db)
+	trackerRuleService := trackerrules.NewService(trackerrules.DefaultConfig(), instanceStore, trackerRuleStore, trackerRuleActivityStore, syncManager)
 
 	syncManager.SetTorrentCompletionHandler(crossSeedService.HandleTorrentCompletion)
 
@@ -650,6 +651,7 @@ func (app *Application) runServer() {
 		JackettService:                   jackettService,
 		TorznabIndexerStore:              torznabIndexerStore,
 		TrackerRuleStore:                 trackerRuleStore,
+		TrackerRuleActivityStore:         trackerRuleActivityStore,
 		TrackerRuleService:               trackerRuleService,
 		TrackerCustomizationStore:        trackerCustomizationStore,
 		DashboardSettingsStore:           dashboardSettingsStore,

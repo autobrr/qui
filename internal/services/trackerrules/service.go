@@ -6,6 +6,7 @@ package trackerrules
 
 import (
 	"context"
+	"encoding/json"
 	"path"
 	"regexp"
 	"slices"
@@ -22,16 +23,18 @@ import (
 
 // Config controls how often rules are re-applied and how long to debounce repeats.
 type Config struct {
-	ScanInterval   time.Duration
-	SkipWithin     time.Duration
-	MaxBatchHashes int
+	ScanInterval          time.Duration
+	SkipWithin            time.Duration
+	MaxBatchHashes        int
+	ActivityRetentionDays int
 }
 
 func DefaultConfig() Config {
 	return Config{
-		ScanInterval:   20 * time.Second,
-		SkipWithin:     2 * time.Minute,
-		MaxBatchHashes: 150,
+		ScanInterval:          20 * time.Second,
+		SkipWithin:            2 * time.Minute,
+		MaxBatchHashes:        150,
+		ActivityRetentionDays: 7,
 	}
 }
 
@@ -40,6 +43,7 @@ type Service struct {
 	cfg           Config
 	instanceStore *models.InstanceStore
 	ruleStore     *models.TrackerRuleStore
+	activityStore *models.TrackerRuleActivityStore
 	syncManager   *qbittorrent.SyncManager
 
 	// keep lightweight memory of recent applications to avoid hammering qBittorrent
@@ -48,7 +52,7 @@ type Service struct {
 	mu          sync.RWMutex
 }
 
-func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.TrackerRuleStore, syncManager *qbittorrent.SyncManager) *Service {
+func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.TrackerRuleStore, activityStore *models.TrackerRuleActivityStore, syncManager *qbittorrent.SyncManager) *Service {
 	if cfg.ScanInterval <= 0 {
 		cfg.ScanInterval = DefaultConfig().ScanInterval
 	}
@@ -58,10 +62,14 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 	if cfg.MaxBatchHashes <= 0 {
 		cfg.MaxBatchHashes = DefaultConfig().MaxBatchHashes
 	}
+	if cfg.ActivityRetentionDays <= 0 {
+		cfg.ActivityRetentionDays = DefaultConfig().ActivityRetentionDays
+	}
 	return &Service{
 		cfg:           cfg,
 		instanceStore: instanceStore,
 		ruleStore:     ruleStore,
+		activityStore: activityStore,
 		syncManager:   syncManager,
 		lastApplied:   make(map[int]map[string]time.Time),
 		lastDeleted:   make(map[int]map[string]time.Time),
@@ -79,12 +87,33 @@ func (s *Service) loop(ctx context.Context) {
 	ticker := time.NewTicker(s.cfg.ScanInterval)
 	defer ticker.Stop()
 
+	// Prune old activity on startup
+	if s.activityStore != nil {
+		if pruned, err := s.activityStore.Prune(ctx, s.cfg.ActivityRetentionDays); err != nil {
+			log.Warn().Err(err).Msg("tracker rules: failed to prune old activity")
+		} else if pruned > 0 {
+			log.Info().Int64("count", pruned).Msg("tracker rules: pruned old activity entries")
+		}
+	}
+
+	lastPrune := time.Now()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			s.applyAll(ctx)
+
+			// Prune hourly
+			if s.activityStore != nil && time.Since(lastPrune) > time.Hour {
+				if pruned, err := s.activityStore.Prune(ctx, s.cfg.ActivityRetentionDays); err != nil {
+					log.Warn().Err(err).Msg("tracker rules: failed to prune old activity")
+				} else if pruned > 0 {
+					log.Info().Int64("count", pruned).Msg("tracker rules: pruned old activity entries")
+				}
+				lastPrune = time.Now()
+			}
 		}
 	}
 }
@@ -213,6 +242,17 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 		for _, batch := range limited {
 			if err := s.syncManager.SetTorrentUploadLimit(ctx, instanceID, batch, limit); err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Int64("limitKiB", limit).Int("count", len(batch)).Msg("tracker rules: upload limit failed")
+				if s.activityStore != nil {
+					detailsJSON, _ := json.Marshal(map[string]any{"limitKiB": limit, "count": len(batch), "type": "upload"})
+					_ = s.activityStore.Create(ctx, &models.TrackerRuleActivity{
+						InstanceID: instanceID,
+						Hash:       strings.Join(batch, ","),
+						Action:     models.ActivityActionLimitFailed,
+						Outcome:    models.ActivityOutcomeFailed,
+						Reason:     "upload limit failed: " + err.Error(),
+						Details:    detailsJSON,
+					})
+				}
 			}
 		}
 	}
@@ -222,6 +262,17 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 		for _, batch := range limited {
 			if err := s.syncManager.SetTorrentDownloadLimit(ctx, instanceID, batch, limit); err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Int64("limitKiB", limit).Int("count", len(batch)).Msg("tracker rules: download limit failed")
+				if s.activityStore != nil {
+					detailsJSON, _ := json.Marshal(map[string]any{"limitKiB": limit, "count": len(batch), "type": "download"})
+					_ = s.activityStore.Create(ctx, &models.TrackerRuleActivity{
+						InstanceID: instanceID,
+						Hash:       strings.Join(batch, ","),
+						Action:     models.ActivityActionLimitFailed,
+						Outcome:    models.ActivityOutcomeFailed,
+						Reason:     "download limit failed: " + err.Error(),
+						Details:    detailsJSON,
+					})
+				}
 			}
 		}
 	}
@@ -231,6 +282,17 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 		for _, batch := range limited {
 			if err := s.syncManager.SetTorrentShareLimit(ctx, instanceID, batch, key.ratio, key.seed, -1); err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Float64("ratio", key.ratio).Int64("seedMinutes", key.seed).Int("count", len(batch)).Msg("tracker rules: share limit failed")
+				if s.activityStore != nil {
+					detailsJSON, _ := json.Marshal(map[string]any{"ratio": key.ratio, "seedMinutes": key.seed, "count": len(batch), "type": "share"})
+					_ = s.activityStore.Create(ctx, &models.TrackerRuleActivity{
+						InstanceID: instanceID,
+						Hash:       strings.Join(batch, ","),
+						Action:     models.ActivityActionLimitFailed,
+						Outcome:    models.ActivityOutcomeFailed,
+						Reason:     "share limit failed: " + err.Error(),
+						Details:    detailsJSON,
+					})
+				}
 			}
 		}
 	}
@@ -248,9 +310,22 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 		s.mu.Unlock()
 	}
 
+	// Pending deletion info for activity recording
+	type pendingDeletion struct {
+		hash          string
+		torrentName   string
+		trackerDomain string
+		action        string // "deleted_ratio", "deleted_seeding", "deleted_unregistered"
+		ruleID        int
+		ruleName      string
+		reason        string
+		details       map[string]any
+	}
+
 	// Batch torrents for deletion by delete mode
-	deleteHashesByMode := make(map[string][]string) // "delete" or "deleteWithFiles" -> hashes
-	queuedForDeletion := make(map[string]struct{})  // track hashes already queued
+	deleteHashesByMode := make(map[string][]string)          // "delete" or "deleteWithFiles" -> hashes
+	pendingByHash := make(map[string]pendingDeletion)        // hash -> deletion context
+	queuedForDeletion := make(map[string]struct{})           // track hashes already queued
 
 	for _, torrent := range torrents {
 		// Skip if recently processed for deletion (avoid duplicate attempts)
@@ -321,6 +396,36 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 			logEvent.Bool("filesKept", keepingFiles).Msg(logMsg)
 			deleteHashesByMode[actualMode] = append(deleteHashesByMode[actualMode], torrent.Hash)
 			queuedForDeletion[torrent.Hash] = struct{}{}
+
+			// Track pending deletion for activity recording
+			action := models.ActivityActionDeletedRatio
+			if seedingTimeMet && !ratioMet {
+				action = models.ActivityActionDeletedSeeding
+			}
+			details := map[string]any{"filesKept": keepingFiles}
+			if ratioMet {
+				details["ratio"] = torrent.Ratio
+				details["ratioLimit"] = *rule.RatioLimit
+			}
+			if seedingTimeMet {
+				details["seedingMinutes"] = torrent.SeedingTime / 60
+				details["seedingLimitMinutes"] = *rule.SeedingTimeLimitMinutes
+			}
+			// Get primary tracker domain for activity record
+			trackerDomain := ""
+			if domains := collectTrackerDomains(torrent, s.syncManager); len(domains) > 0 {
+				trackerDomain = domains[0]
+			}
+			pendingByHash[torrent.Hash] = pendingDeletion{
+				hash:          torrent.Hash,
+				torrentName:   torrent.Name,
+				trackerDomain: trackerDomain,
+				action:        action,
+				ruleID:        rule.ID,
+				ruleName:      rule.Name,
+				reason:        reason,
+				details:       details,
+			}
 		}
 	}
 
@@ -388,6 +493,22 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 
 			log.Info().Str("hash", torrent.Hash).Str("name", torrent.Name).Str("reason", "unregistered").Bool("filesKept", keepingFiles).Msg(logMsg)
 			deleteHashesByMode[actualMode] = append(deleteHashesByMode[actualMode], torrent.Hash)
+
+			// Track pending deletion for activity recording
+			trackerDomain := ""
+			if domains := collectTrackerDomains(torrent, s.syncManager); len(domains) > 0 {
+				trackerDomain = domains[0]
+			}
+			pendingByHash[torrent.Hash] = pendingDeletion{
+				hash:          torrent.Hash,
+				torrentName:   torrent.Name,
+				trackerDomain: trackerDomain,
+				action:        models.ActivityActionDeletedUnregistered,
+				ruleID:        rule.ID,
+				ruleName:      rule.Name,
+				reason:        "unregistered",
+				details:       map[string]any{"filesKept": keepingFiles},
+			}
 		}
 	}
 
@@ -401,6 +522,27 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 		for _, batch := range limited {
 			if err := s.syncManager.BulkAction(ctx, instanceID, batch, mode); err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Str("action", mode).Int("count", len(batch)).Strs("hashes", batch).Msg("tracker rules: delete failed")
+
+				// Record failed deletion activity
+				if s.activityStore != nil {
+					for _, hash := range batch {
+						if pending, ok := pendingByHash[hash]; ok {
+							detailsJSON, _ := json.Marshal(pending.details)
+							_ = s.activityStore.Create(ctx, &models.TrackerRuleActivity{
+								InstanceID:    instanceID,
+								Hash:          hash,
+								TorrentName:   pending.torrentName,
+								TrackerDomain: pending.trackerDomain,
+								Action:        models.ActivityActionDeleteFailed,
+								RuleID:        &pending.ruleID,
+								RuleName:      pending.ruleName,
+								Outcome:       models.ActivityOutcomeFailed,
+								Reason:        err.Error(),
+								Details:       detailsJSON,
+							})
+						}
+					}
+				}
 			} else {
 				// Mark as processed only after successful deletion
 				s.mu.Lock()
@@ -413,6 +555,27 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 					log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("tracker rules: removed torrents (files kept)")
 				} else {
 					log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("tracker rules: removed torrents with files")
+				}
+
+				// Record successful deletion activity
+				if s.activityStore != nil {
+					for _, hash := range batch {
+						if pending, ok := pendingByHash[hash]; ok {
+							detailsJSON, _ := json.Marshal(pending.details)
+							_ = s.activityStore.Create(ctx, &models.TrackerRuleActivity{
+								InstanceID:    instanceID,
+								Hash:          hash,
+								TorrentName:   pending.torrentName,
+								TrackerDomain: pending.trackerDomain,
+								Action:        pending.action,
+								RuleID:        &pending.ruleID,
+								RuleName:      pending.ruleName,
+								Outcome:       models.ActivityOutcomeSuccess,
+								Reason:        pending.reason,
+								Details:       detailsJSON,
+							})
+						}
+					}
 				}
 			}
 		}
