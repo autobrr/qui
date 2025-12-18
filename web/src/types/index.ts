@@ -118,6 +118,7 @@ export interface TrackerRule {
   ratioLimit?: number
   seedingTimeLimitMinutes?: number
   deleteMode?: "none" | "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds"
+  deleteUnregistered?: boolean
   enabled: boolean
   sortOrder: number
   createdAt?: string
@@ -135,6 +136,7 @@ export interface TrackerRuleInput {
   ratioLimit?: number
   seedingTimeLimitMinutes?: number
   deleteMode?: "none" | "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds"
+  deleteUnregistered?: boolean
   enabled?: boolean
   sortOrder?: number
 }

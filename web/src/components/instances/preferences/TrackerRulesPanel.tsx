@@ -5,6 +5,7 @@
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import {
   Dialog,
@@ -31,7 +32,7 @@ import { api } from "@/lib/api"
 import { cn, parseTrackerDomains } from "@/lib/utils"
 import type { TrackerRule, TrackerRuleInput } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Clock, Loader2, Pencil, Plus, RefreshCw, Scale, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, Clock, Loader2, Pencil, Plus, RefreshCw, Scale, Trash2, XCircle } from "lucide-react"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 
@@ -54,6 +55,7 @@ const emptyFormState: FormState = {
   ratioLimit: undefined,
   seedingTimeLimitMinutes: undefined,
   deleteMode: undefined,
+  deleteUnregistered: false,
   enabled: true,
 }
 
@@ -158,6 +160,7 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
       ratioLimit: rule.ratioLimit,
       seedingTimeLimitMinutes: rule.seedingTimeLimitMinutes,
       deleteMode: rule.deleteMode,
+      deleteUnregistered: rule.deleteUnregistered ?? false,
       enabled: rule.enabled,
       sortOrder: rule.sortOrder,
     })
@@ -448,6 +451,27 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
                   Automatically delete torrents when ratio or seeding time limit is reached. Cross-seed mode preserves files if another torrent shares the same data.
                 </p>
               </div>
+
+              <div className="flex items-center space-x-2 pt-2">
+                <Checkbox
+                  id="delete-unregistered"
+                  checked={formState.deleteUnregistered ?? false}
+                  onCheckedChange={(checked: boolean) => setFormState(prev => ({
+                    ...prev,
+                    deleteUnregistered: checked,
+                    // Auto-select delete mode if enabling and none set
+                    deleteMode: checked && (!prev.deleteMode || prev.deleteMode === "none")
+                      ? "delete"
+                      : prev.deleteMode
+                  }))}
+                />
+                <Label htmlFor="delete-unregistered" className="text-sm font-normal cursor-pointer">
+                  Delete unregistered torrents
+                </Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Automatically delete torrents no longer registered with the tracker (checked every 60s).
+              </p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-1">
@@ -511,7 +535,8 @@ function RuleSummary({ rule }: { rule: TrackerRule }) {
     rule.uploadLimitKiB !== undefined ||
     rule.ratioLimit !== undefined ||
     rule.seedingTimeLimitMinutes !== undefined ||
-    (rule.deleteMode && rule.deleteMode !== "none")
+    (rule.deleteMode && rule.deleteMode !== "none") ||
+    rule.deleteUnregistered
 
   if (!hasActions && trackers.length === 0 && !rule.category && !rule.tag) {
     return <span className="text-xs text-muted-foreground">No actions set</span>
@@ -588,6 +613,13 @@ function RuleSummary({ rule }: { rule: TrackerRule }) {
             : rule.deleteMode === "deleteWithFiles"
               ? "Delete + files"
               : "Delete"}
+        </Badge>
+      )}
+
+      {rule.deleteUnregistered && (
+        <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-orange-600 border-orange-600/50">
+          <XCircle className="h-3 w-3" />
+          Unregistered
         </Badge>
       )}
     </div>

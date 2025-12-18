@@ -291,6 +291,59 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 		}
 	}
 
+	// Process unregistered torrents (separate from ratio/seeding time based deletions)
+	healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID)
+	if healthCounts != nil && len(healthCounts.UnregisteredSet) > 0 {
+		for _, torrent := range torrents {
+			// Skip if not unregistered
+			if _, isUnregistered := healthCounts.UnregisteredSet[torrent.Hash]; !isUnregistered {
+				continue
+			}
+
+			// Skip if recently processed for deletion
+			s.mu.RLock()
+			if ts, deleted := instDeletedMap[torrent.Hash]; deleted {
+				if now.Sub(ts) < 5*time.Minute {
+					s.mu.RUnlock()
+					continue
+				}
+			}
+			s.mu.RUnlock()
+
+			// Find matching rule with DeleteUnregistered enabled
+			rule := selectRule(torrent, rules, s.syncManager)
+			if rule == nil || !rule.DeleteUnregistered {
+				continue
+			}
+
+			// Must have delete mode set
+			if rule.DeleteMode == nil || *rule.DeleteMode == "" || *rule.DeleteMode == "none" {
+				continue
+			}
+
+			deleteMode := *rule.DeleteMode
+
+			// Handle cross-seed aware mode (reuse existing logic)
+			if deleteMode == "deleteWithFilesPreserveCrossSeeds" {
+				if detectCrossSeeds(torrent, torrents) {
+					log.Info().Str("hash", torrent.Hash).Str("name", torrent.Name).Msg("tracker rules: unregistered torrent has cross-seed, preserving files")
+					deleteHashesByMode["delete"] = append(deleteHashesByMode["delete"], torrent.Hash)
+				} else {
+					deleteHashesByMode["deleteWithFiles"] = append(deleteHashesByMode["deleteWithFiles"], torrent.Hash)
+				}
+			} else {
+				deleteHashesByMode[deleteMode] = append(deleteHashesByMode[deleteMode], torrent.Hash)
+			}
+
+			log.Info().Str("hash", torrent.Hash).Str("name", torrent.Name).Str("mode", deleteMode).Msg("tracker rules: queuing unregistered torrent for deletion")
+
+			// Mark as processed for deletion
+			s.mu.Lock()
+			instDeletedMap[torrent.Hash] = now
+			s.mu.Unlock()
+		}
+	}
+
 	// Execute deletions
 	for mode, hashes := range deleteHashesByMode {
 		if len(hashes) == 0 {

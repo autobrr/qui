@@ -42,6 +42,7 @@ type TrackerRulePayload struct {
 	RatioLimit              *float64 `json:"ratioLimit"`
 	SeedingTimeLimitMinutes *int64   `json:"seedingTimeLimitMinutes"`
 	DeleteMode              *string  `json:"deleteMode"` // "none", "delete", "deleteWithFiles"
+	DeleteUnregistered      *bool    `json:"deleteUnregistered"`
 	Enabled                 *bool    `json:"enabled"`
 	SortOrder               *int     `json:"sortOrder"`
 }
@@ -67,6 +68,9 @@ func (p *TrackerRulePayload) toModel(instanceID int, id int) *models.TrackerRule
 		SeedingTimeLimitMinutes: p.SeedingTimeLimitMinutes,
 		DeleteMode:              cleanStringPtr(p.DeleteMode),
 		Enabled:                 true,
+	}
+	if p.DeleteUnregistered != nil {
+		rule.DeleteUnregistered = *p.DeleteUnregistered
 	}
 	if p.Enabled != nil {
 		rule.Enabled = *p.Enabled
