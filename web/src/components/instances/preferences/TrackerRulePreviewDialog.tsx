@@ -13,10 +13,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { Button } from "@/components/ui/button"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { TruncatedText } from "@/components/ui/truncated-text"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
+import { getRatioColor } from "@/lib/utils"
 import type { TrackerRulePreviewResult } from "@/types"
 import { Loader2 } from "lucide-react"
 
@@ -29,6 +31,8 @@ interface TrackerRulePreviewDialogProps {
   onConfirm: () => void
   confirmLabel: string
   isConfirming: boolean
+  onLoadMore?: () => void
+  isLoadingMore?: boolean
   /** Use destructive styling (red button) */
   destructive?: boolean
 }
@@ -42,10 +46,13 @@ export function TrackerRulePreviewDialog({
   onConfirm,
   confirmLabel,
   isConfirming,
+  onLoadMore,
+  isLoadingMore = false,
   destructive = true,
 }: TrackerRulePreviewDialogProps) {
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
+  const hasMore = !!preview && preview.examples.length < preview.totalMatches
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -63,15 +70,15 @@ export function TrackerRulePreviewDialog({
           <div className="flex-1 min-h-0 overflow-hidden border rounded-lg">
             <div className="overflow-auto max-h-[50vh]">
               <table className="w-full text-sm">
-                <thead className="bg-muted/50 sticky top-0">
+                <thead className="sticky top-0">
                   <tr className="border-b">
-                    <th className="text-left p-2 font-medium">Tracker</th>
-                    <th className="text-left p-2 font-medium">Name</th>
-                    <th className="text-right p-2 font-medium">Size</th>
-                    <th className="text-right p-2 font-medium">Ratio</th>
-                    <th className="text-right p-2 font-medium">Seed Time</th>
-                    <th className="text-left p-2 font-medium">Category</th>
-                    <th className="text-center p-2 font-medium">Status</th>
+                    <th className="text-left p-2 font-medium bg-muted">Tracker</th>
+                    <th className="text-left p-2 font-medium bg-muted">Name</th>
+                    <th className="text-right p-2 font-medium bg-muted">Size</th>
+                    <th className="text-right p-2 font-medium bg-muted">Ratio</th>
+                    <th className="text-right p-2 font-medium bg-muted">Seed Time</th>
+                    <th className="text-left p-2 font-medium bg-muted">Category</th>
+                    <th className="text-center p-2 font-medium bg-muted">Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -100,16 +107,19 @@ export function TrackerRulePreviewDialog({
                         <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
                           {formatBytes(t.size)}
                         </td>
-                        <td className="p-2 text-right font-mono whitespace-nowrap">
-                          {t.ratio.toFixed(2)}
+                        <td
+                          className="p-2 text-right font-mono whitespace-nowrap font-medium"
+                          style={{ color: getRatioColor(t.ratio) }}
+                        >
+                          {t.ratio === -1 ? "∞" : t.ratio.toFixed(2)}
                         </td>
                         <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
                           {formatDuration(t.seedingTime)}
                         </td>
                         <td className="p-2">
-                          <span className="truncate max-w-[80px] block text-muted-foreground" title={t.category}>
+                          <TruncatedText className="block max-w-[80px] text-muted-foreground">
                             {t.category || "-"}
-                          </span>
+                          </TruncatedText>
                         </td>
                         <td className="p-2 text-center">
                           {t.isUnregistered && (
@@ -124,9 +134,20 @@ export function TrackerRulePreviewDialog({
                 </tbody>
               </table>
             </div>
-            {preview.totalMatches > preview.examples.length && (
-              <div className="p-2 text-xs text-muted-foreground text-center border-t bg-muted/30">
-                ... and {preview.totalMatches - preview.examples.length} more torrents
+            {hasMore && (
+              <div className="flex items-center justify-between gap-3 p-2 text-xs text-muted-foreground border-t bg-muted/30">
+                <span>... and {preview.totalMatches - preview.examples.length} more torrents</span>
+                {onLoadMore && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={onLoadMore}
+                    disabled={isLoadingMore}
+                  >
+                    {isLoadingMore && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                    Load more
+                  </Button>
+                )}
               </div>
             )}
           </div>

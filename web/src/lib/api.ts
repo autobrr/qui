@@ -73,6 +73,7 @@ import type {
   TrackerRule,
   TrackerRuleActivity,
   TrackerRuleInput,
+  TrackerRulePreviewInput,
   TrackerRulePreviewResult,
   User,
   DashboardSettings,
@@ -1326,7 +1327,7 @@ class ApiClient {
     })
   }
 
-  async previewTrackerRule(instanceId: number, payload: TrackerRuleInput): Promise<TrackerRulePreviewResult> {
+  async previewTrackerRule(instanceId: number, payload: TrackerRulePreviewInput): Promise<TrackerRulePreviewResult> {
     return this.request<TrackerRulePreviewResult>(`/instances/${instanceId}/tracker-rules/preview`, {
       method: "POST",
       body: JSON.stringify(payload),

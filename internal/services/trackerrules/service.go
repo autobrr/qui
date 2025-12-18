@@ -195,7 +195,7 @@ type PreviewTorrent struct {
 
 // PreviewDeleteRule returns torrents that would be deleted by the given rule.
 // This is used to show users what a rule would affect before saving.
-func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *models.TrackerRule, maxExamples int) (*PreviewResult, error) {
+func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *models.TrackerRule, limit int, offset int) (*PreviewResult, error) {
 	if s == nil || s.syncManager == nil {
 		return &PreviewResult{}, nil
 	}
@@ -205,12 +205,15 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		return nil, err
 	}
 
-	if maxExamples <= 0 {
-		maxExamples = 10
+	if limit <= 0 {
+		limit = 25
+	}
+	if offset < 0 {
+		offset = 0
 	}
 
 	result := &PreviewResult{
-		Examples: make([]PreviewTorrent, 0, maxExamples),
+		Examples: make([]PreviewTorrent, 0, limit),
 	}
 
 	// Get health counts for unregistered torrent preview
@@ -221,6 +224,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		}
 	}
 
+	matchIndex := 0
 	for _, torrent := range torrents {
 		// Check tracker match
 		trackerDomains := collectTrackerDomains(torrent, s.syncManager)
@@ -304,8 +308,11 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		}
 
 		if wouldDelete {
-			result.TotalMatches++
-			if len(result.Examples) < maxExamples {
+			matchIndex++
+			if matchIndex <= offset {
+				continue
+			}
+			if len(result.Examples) < limit {
 				// Get primary tracker domain for display
 				tracker := ""
 				if domains := collectTrackerDomains(torrent, s.syncManager); len(domains) > 0 {
@@ -332,6 +339,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		}
 	}
 
+	result.TotalMatches = matchIndex
 	return result, nil
 }
 

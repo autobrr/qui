@@ -103,7 +103,9 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
   const queryClient = useQueryClient()
   const [formState, setFormState] = useState<FormState>(emptyFormState)
   const [previewResult, setPreviewResult] = useState<TrackerRulePreviewResult | null>(null)
+  const [previewInput, setPreviewInput] = useState<FormState | null>(null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const previewPageSize = 25
 
   const trackersQuery = useInstanceTrackers(instanceId, { enabled: open })
   const { data: trackerCustomizations } = useTrackerCustomizations()
@@ -353,7 +355,11 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
 
   const previewMutation = useMutation({
     mutationFn: async (input: FormState) => {
-      const payload = buildPayload(input)
+      const payload = {
+        ...buildPayload(input),
+        previewLimit: previewPageSize,
+        previewOffset: 0,
+      }
       return api.previewTrackerRule(instanceId, payload)
     },
     onSuccess: (result, input) => {
@@ -362,6 +368,7 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
         createOrUpdate.mutate(input)
       } else {
         // Has matches - show confirmation dialog
+        setPreviewInput(input)
         setPreviewResult(result)
         setShowConfirmDialog(true)
       }
@@ -370,6 +377,36 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
       toast.error(error instanceof Error ? error.message : "Failed to preview rule")
     },
   })
+
+  const loadMorePreview = useMutation({
+    mutationFn: async () => {
+      if (!previewInput || !previewResult) {
+        throw new Error("Preview data not available")
+      }
+      const payload = {
+        ...buildPayload(previewInput),
+        previewLimit: previewPageSize,
+        previewOffset: previewResult.examples.length,
+      }
+      return api.previewTrackerRule(instanceId, payload)
+    },
+    onSuccess: (result) => {
+      setPreviewResult(prev => prev
+        ? { ...prev, examples: [...prev.examples, ...result.examples], totalMatches: result.totalMatches }
+        : result
+      )
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to load more previews")
+    },
+  })
+
+  const handleLoadMore = () => {
+    if (!previewInput || !previewResult) {
+      return
+    }
+    loadMorePreview.mutate()
+  }
 
   const createOrUpdate = useMutation({
     mutationFn: async (input: FormState) => {
@@ -383,6 +420,7 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
       toast.success(`Tracker rule ${rule ? "updated" : "created"}`)
       setShowConfirmDialog(false)
       setPreviewResult(null)
+      setPreviewInput(null)
       onOpenChange(false)
       void queryClient.invalidateQueries({ queryKey: ["tracker-rules", instanceId] })
       onSuccess?.()
@@ -834,7 +872,13 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
 
     <TrackerRulePreviewDialog
       open={showConfirmDialog}
-      onOpenChange={setShowConfirmDialog}
+      onOpenChange={(open) => {
+        if (!open) {
+          setPreviewResult(null)
+          setPreviewInput(null)
+        }
+        setShowConfirmDialog(open)
+      }}
       title={
         formState.enabled
           ? "Confirm Delete Rule"
@@ -857,6 +901,8 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
       }
       preview={previewResult}
       onConfirm={handleConfirmSave}
+      onLoadMore={handleLoadMore}
+      isLoadingMore={loadMorePreview.isPending}
       confirmLabel="Save Rule"
       isConfirming={createOrUpdate.isPending}
       destructive={formState.enabled}

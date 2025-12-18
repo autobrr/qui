@@ -239,6 +239,11 @@ export interface TrackerRuleInput {
   conditions?: ActionConditions
 }
 
+export interface TrackerRulePreviewInput extends TrackerRuleInput {
+  previewLimit?: number
+  previewOffset?: number
+}
+
 export interface TrackerRuleActivity {
   id: number
   instanceId: number
@@ -1706,4 +1711,3 @@ export interface CrossSeedSearchStatus {
   recentResults: CrossSeedSearchResult[]
   nextRunAt?: string
 }
-

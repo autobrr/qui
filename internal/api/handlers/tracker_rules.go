@@ -49,6 +49,8 @@ type TrackerRulePayload struct {
 	Enabled                 *bool                    `json:"enabled"`
 	SortOrder               *int                     `json:"sortOrder"`
 	Conditions              *models.ActionConditions `json:"conditions"`
+	PreviewLimit            *int                     `json:"previewLimit"`
+	PreviewOffset           *int                     `json:"previewOffset"`
 }
 
 func (p *TrackerRulePayload) toModel(instanceID int, id int) *models.TrackerRule {
@@ -412,7 +414,16 @@ func (h *TrackerRuleHandler) PreviewDeleteRule(w http.ResponseWriter, r *http.Re
 
 	rule := payload.toModel(instanceID, 0)
 
-	result, err := h.service.PreviewDeleteRule(r.Context(), instanceID, rule, 10)
+	previewLimit := 0
+	previewOffset := 0
+	if payload.PreviewLimit != nil {
+		previewLimit = *payload.PreviewLimit
+	}
+	if payload.PreviewOffset != nil {
+		previewOffset = *payload.PreviewOffset
+	}
+
+	result, err := h.service.PreviewDeleteRule(r.Context(), instanceID, rule, previewLimit, previewOffset)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("tracker rules: failed to preview delete rule")
 		RespondError(w, http.StatusInternalServerError, "Failed to preview rule")

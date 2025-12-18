@@ -40,6 +40,7 @@ export function TrackerRulesOverview() {
   const [editingInstanceId, setEditingInstanceId] = useState<number | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ instanceId: number; rule: TrackerRule } | null>(null)
   const [enableConfirm, setEnableConfirm] = useState<{ instanceId: number; rule: TrackerRule; preview: TrackerRulePreviewResult } | null>(null)
+  const previewPageSize = 25
 
   const deleteRule = useMutation({
     mutationFn: ({ instanceId, ruleId }: { instanceId: number; ruleId: number }) =>
@@ -66,7 +67,7 @@ export function TrackerRulesOverview() {
 
   const previewRule = useMutation({
     mutationFn: ({ instanceId, rule }: { instanceId: number; rule: TrackerRule }) =>
-      api.previewTrackerRule(instanceId, { ...rule, enabled: true }),
+      api.previewTrackerRule(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: 0 }),
     onSuccess: (preview, { instanceId, rule }) => {
       if (preview.totalMatches === 0) {
         // No matches - just enable without confirmation
@@ -78,6 +79,20 @@ export function TrackerRulesOverview() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to preview rule")
+    },
+  })
+
+  const loadMorePreview = useMutation({
+    mutationFn: ({ instanceId, rule, offset }: { instanceId: number; rule: TrackerRule; offset: number }) =>
+      api.previewTrackerRule(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: offset }),
+    onSuccess: (preview) => {
+      setEnableConfirm(prev => prev
+        ? { ...prev, preview: { ...prev.preview, examples: [...prev.preview.examples, ...preview.examples], totalMatches: preview.totalMatches } }
+        : prev
+      )
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to load more previews")
     },
   })
 
@@ -104,6 +119,17 @@ export function TrackerRulesOverview() {
       toggleEnabled.mutate({ instanceId: enableConfirm.instanceId, rule: enableConfirm.rule })
       setEnableConfirm(null)
     }
+  }
+
+  const handleLoadMorePreview = () => {
+    if (!enableConfirm) {
+      return
+    }
+    loadMorePreview.mutate({
+      instanceId: enableConfirm.instanceId,
+      rule: enableConfirm.rule,
+      offset: enableConfirm.preview.examples.length,
+    })
   }
 
   const activeInstances = useMemo(
@@ -305,6 +331,8 @@ export function TrackerRulesOverview() {
         }
         preview={enableConfirm?.preview ?? null}
         onConfirm={confirmEnableRule}
+        onLoadMore={handleLoadMorePreview}
+        isLoadingMore={loadMorePreview.isPending}
         confirmLabel="Enable Rule"
         isConfirming={toggleEnabled.isPending}
       />
