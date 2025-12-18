@@ -34,20 +34,21 @@ func NewTrackerRuleHandler(store *models.TrackerRuleStore, activityStore *models
 }
 
 type TrackerRulePayload struct {
-	Name                    string   `json:"name"`
-	TrackerPattern          string   `json:"trackerPattern"`
-	TrackerDomains          []string `json:"trackerDomains"`
-	Categories              []string `json:"categories"`
-	Tags                    []string `json:"tags"`
-	TagMatchMode            *string  `json:"tagMatchMode"` // "any" or "all"
-	UploadLimitKiB          *int64   `json:"uploadLimitKiB"`
-	DownloadLimitKiB        *int64   `json:"downloadLimitKiB"`
-	RatioLimit              *float64 `json:"ratioLimit"`
-	SeedingTimeLimitMinutes *int64   `json:"seedingTimeLimitMinutes"`
-	DeleteMode              *string  `json:"deleteMode"` // "none", "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds"
-	DeleteUnregistered      *bool    `json:"deleteUnregistered"`
-	Enabled                 *bool    `json:"enabled"`
-	SortOrder               *int     `json:"sortOrder"`
+	Name                    string                   `json:"name"`
+	TrackerPattern          string                   `json:"trackerPattern"`
+	TrackerDomains          []string                 `json:"trackerDomains"`
+	Categories              []string                 `json:"categories"`
+	Tags                    []string                 `json:"tags"`
+	TagMatchMode            *string                  `json:"tagMatchMode"` // "any" or "all"
+	UploadLimitKiB          *int64                   `json:"uploadLimitKiB"`
+	DownloadLimitKiB        *int64                   `json:"downloadLimitKiB"`
+	RatioLimit              *float64                 `json:"ratioLimit"`
+	SeedingTimeLimitMinutes *int64                   `json:"seedingTimeLimitMinutes"`
+	DeleteMode              *string                  `json:"deleteMode"` // "none", "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds"
+	DeleteUnregistered      *bool                    `json:"deleteUnregistered"`
+	Enabled                 *bool                    `json:"enabled"`
+	SortOrder               *int                     `json:"sortOrder"`
+	Conditions              *models.ActionConditions `json:"conditions"`
 }
 
 func (p *TrackerRulePayload) toModel(instanceID int, id int) *models.TrackerRule {
@@ -76,6 +77,7 @@ func (p *TrackerRulePayload) toModel(instanceID int, id int) *models.TrackerRule
 		RatioLimit:              p.RatioLimit,
 		SeedingTimeLimitMinutes: p.SeedingTimeLimitMinutes,
 		DeleteMode:              cleanStringPtr(p.DeleteMode),
+		Conditions:              p.Conditions,
 		Enabled:                 true,
 	}
 	if p.DeleteUnregistered != nil {
@@ -388,4 +390,34 @@ func (h *TrackerRuleHandler) DeleteActivity(w http.ResponseWriter, r *http.Reque
 	}
 
 	RespondJSON(w, http.StatusOK, map[string]int64{"deleted": deleted})
+}
+
+func (h *TrackerRuleHandler) PreviewDeleteRule(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := parseInstanceID(w, r)
+	if err != nil {
+		return
+	}
+
+	var payload TrackerRulePayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("tracker rules: failed to decode preview payload")
+		RespondError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	if h.service == nil {
+		RespondError(w, http.StatusServiceUnavailable, "Tracker rules service not available")
+		return
+	}
+
+	rule := payload.toModel(instanceID, 0)
+
+	result, err := h.service.PreviewDeleteRule(r.Context(), instanceID, rule, 10)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("tracker rules: failed to preview delete rule")
+		RespondError(w, http.StatusInternalServerError, "Failed to preview rule")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, result)
 }

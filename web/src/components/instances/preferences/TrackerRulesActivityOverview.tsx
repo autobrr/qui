@@ -32,7 +32,7 @@ import type { TrackerRuleActivity } from "@/types"
 import { useQueries, useQueryClient } from "@tanstack/react-query"
 import { TruncatedText } from "@/components/ui/truncated-text"
 import { Copy, Info, RefreshCcw, Search, Settings2, Trash2 } from "lucide-react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { toast } from "sonner"
 
 interface TrackerRulesActivityOverviewProps {
@@ -78,6 +78,8 @@ function formatAction(action: TrackerRuleActivity["action"]): string {
       return "Seeding time"
     case "deleted_unregistered":
       return "Unregistered"
+    case "deleted_condition":
+      return "Condition"
     case "delete_failed":
       return "Delete"
     case "limit_failed":
@@ -92,10 +94,10 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
   const queryClient = useQueryClient()
   const { formatISOTimestamp } = useDateTimeFormatters()
   const [expandedInstances, setExpandedInstances] = useState<string[]>([])
-  const hasInitializedRef = useRef(false)
   const [filterMap, setFilterMap] = useState<Record<number, "all" | "deletions" | "errors">>({})
   const [searchMap, setSearchMap] = useState<Record<number, string>>({})
   const [clearDaysMap, setClearDaysMap] = useState<Record<number, string>>({})
+  const [displayLimitMap, setDisplayLimitMap] = useState<Record<number, number>>({})
 
   // Tracker customizations for display names and icons
   const { data: trackerCustomizations } = useTrackerCustomizations()
@@ -135,14 +137,6 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
     [instances]
   )
 
-  // Expand all instances by default on first load
-  useEffect(() => {
-    if (!hasInitializedRef.current && activeInstances.length > 0) {
-      setExpandedInstances(activeInstances.map((inst) => String(inst.id)))
-      hasInitializedRef.current = true
-    }
-  }, [activeInstances])
-
   // Fetch activity for all active instances
   const activityQueries = useQueries({
     queries: activeInstances.map((instance) => ({
@@ -174,6 +168,7 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
     deleted_ratio: "bg-blue-500/10 text-blue-500 border-blue-500/20",
     deleted_seeding: "bg-purple-500/10 text-purple-500 border-purple-500/20",
     deleted_unregistered: "bg-orange-500/10 text-orange-500 border-orange-500/20",
+    deleted_condition: "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",
     delete_failed: "bg-destructive/10 text-destructive border-destructive/30",
     limit_failed: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
   }
@@ -226,21 +221,24 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
             const stats = computeStats(events)
             const filter = filterMap[instance.id] ?? "all"
             const searchTerm = (searchMap[instance.id] ?? "").toLowerCase().trim()
+            const displayLimit = displayLimitMap[instance.id] ?? 50
 
-            // Filter events
-            const filteredEvents = events
-              .filter((e) => {
-                if (filter === "deletions" && e.outcome !== "success") return false
-                if (filter === "errors" && e.outcome !== "failed") return false
-                if (searchTerm) {
-                  const nameMatch = e.torrentName?.toLowerCase().includes(searchTerm)
-                  const hashMatch = e.hash.toLowerCase().includes(searchTerm)
-                  const ruleMatch = e.ruleName?.toLowerCase().includes(searchTerm)
-                  if (!nameMatch && !hashMatch && !ruleMatch) return false
-                }
-                return true
-              })
-              .slice(0, 50)
+            // Filter events (without limit)
+            const allFilteredEvents = events.filter((e) => {
+              if (filter === "deletions" && e.outcome !== "success") return false
+              if (filter === "errors" && e.outcome !== "failed") return false
+              if (searchTerm) {
+                const nameMatch = e.torrentName?.toLowerCase().includes(searchTerm)
+                const hashMatch = e.hash.toLowerCase().includes(searchTerm)
+                const ruleMatch = e.ruleName?.toLowerCase().includes(searchTerm)
+                if (!nameMatch && !hashMatch && !ruleMatch) return false
+              }
+              return true
+            })
+
+            // Apply display limit
+            const filteredEvents = allFilteredEvents.slice(0, displayLimit)
+            const hasMore = allFilteredEvents.length > displayLimit
 
             return (
               <AccordionItem key={instance.id} value={String(instance.id)}>
@@ -359,9 +357,9 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
                         <div className="flex items-center gap-2">
                           <h4 className="text-sm font-medium">Recent Activity</h4>
                           <span className="text-xs text-muted-foreground">
-                            {filteredEvents.length === events.length
+                            {allFilteredEvents.length === events.length
                               ? `${events.length} events`
-                              : `${filteredEvents.length} of ${events.length}`}
+                              : `${allFilteredEvents.length} of ${events.length}`}
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -559,6 +557,21 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
                               </div>
                             ))}
                           </div>
+                          {hasMore && (
+                            <div className="p-2 border-t">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="w-full text-xs"
+                                onClick={() => setDisplayLimitMap((prev) => ({
+                                  ...prev,
+                                  [instance.id]: displayLimit + 50,
+                                }))}
+                              >
+                                Load more ({allFilteredEvents.length - displayLimit} remaining)
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

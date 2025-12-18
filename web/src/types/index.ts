@@ -105,6 +105,100 @@ export interface InstanceError {
   occurredAt: string
 }
 
+// Condition field types for expression-based tracker rules
+export type ConditionField =
+  // String fields
+  | "NAME"
+  | "HASH"
+  | "CATEGORY"
+  | "TAGS"
+  | "SAVE_PATH"
+  | "CONTENT_PATH"
+  | "STATE"
+  | "TRACKER"
+  | "COMMENT"
+  // Numeric fields (bytes)
+  | "SIZE"
+  | "TOTAL_SIZE"
+  | "DOWNLOADED"
+  | "UPLOADED"
+  | "AMOUNT_LEFT"
+  // Numeric fields (timestamps/seconds)
+  | "ADDED_ON"
+  | "COMPLETION_ON"
+  | "LAST_ACTIVITY"
+  | "SEEDING_TIME"
+  | "TIME_ACTIVE"
+  // Numeric fields (float64)
+  | "RATIO"
+  | "PROGRESS"
+  | "AVAILABILITY"
+  // Numeric fields (speeds)
+  | "DL_SPEED"
+  | "UP_SPEED"
+  // Numeric fields (counts)
+  | "NUM_SEEDS"
+  | "NUM_LEECHS"
+  | "NUM_COMPLETE"
+  | "NUM_INCOMPLETE"
+  | "TRACKERS_COUNT"
+  // Boolean fields
+  | "PRIVATE"
+
+export type ConditionOperator =
+  // Logical operators (for groups)
+  | "AND"
+  | "OR"
+  // Comparison operators
+  | "EQUAL"
+  | "NOT_EQUAL"
+  | "CONTAINS"
+  | "NOT_CONTAINS"
+  | "STARTS_WITH"
+  | "ENDS_WITH"
+  | "GREATER_THAN"
+  | "GREATER_THAN_OR_EQUAL"
+  | "LESS_THAN"
+  | "LESS_THAN_OR_EQUAL"
+  | "BETWEEN"
+  | "MATCHES"
+
+export interface RuleCondition {
+  field?: ConditionField
+  operator: ConditionOperator
+  value?: string
+  minValue?: number
+  maxValue?: number
+  regex?: boolean
+  negate?: boolean
+  conditions?: RuleCondition[]
+}
+
+export interface SpeedLimitAction {
+  enabled: boolean
+  uploadKiB?: number
+  downloadKiB?: number
+  condition?: RuleCondition
+}
+
+export interface PauseAction {
+  enabled: boolean
+  condition?: RuleCondition
+}
+
+export interface DeleteAction {
+  enabled: boolean
+  mode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds"
+  condition?: RuleCondition
+}
+
+export interface ActionConditions {
+  schemaVersion: string
+  speedLimits?: SpeedLimitAction
+  pause?: PauseAction
+  delete?: DeleteAction
+}
+
 export interface TrackerRule {
   id: number
   instanceId: number
@@ -122,6 +216,7 @@ export interface TrackerRule {
   deleteUnregistered?: boolean
   enabled: boolean
   sortOrder: number
+  conditions?: ActionConditions
   createdAt?: string
   updatedAt?: string
 }
@@ -141,6 +236,7 @@ export interface TrackerRuleInput {
   deleteUnregistered?: boolean
   enabled?: boolean
   sortOrder?: number
+  conditions?: ActionConditions
 }
 
 export interface TrackerRuleActivity {
@@ -149,7 +245,7 @@ export interface TrackerRuleActivity {
   hash: string
   torrentName?: string
   trackerDomain?: string
-  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "delete_failed" | "limit_failed"
+  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed"
   ruleId?: number
   ruleName?: string
   outcome: "success" | "failed"
@@ -166,6 +262,27 @@ export interface TrackerRuleActivity {
     type?: string
   }
   createdAt: string
+}
+
+export interface TrackerRulePreviewTorrent {
+  name: string
+  hash: string
+  size: number
+  ratio: number
+  seedingTime: number
+  tracker: string
+  category: string
+  tags: string
+  state: string
+  addedOn: number
+  uploaded: number
+  downloaded: number
+  isUnregistered?: boolean
+}
+
+export interface TrackerRulePreviewResult {
+  totalMatches: number
+  examples: TrackerRulePreviewTorrent[]
 }
 
 export interface InstanceResponse extends Instance {

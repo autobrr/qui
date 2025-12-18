@@ -17,27 +17,29 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { cn, parseTrackerDomains } from "@/lib/utils"
-import type { TrackerRule } from "@/types"
+import type { TrackerRule, TrackerRulePreviewResult } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
-import { TruncatedText } from "@/components/ui/truncated-text"
 import { ArrowDown, ArrowUp, Clock, Info, Loader2, Pencil, Plus, Scale, Trash2 } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { TrackerRuleDialog } from "./TrackerRuleDialog"
+import { TrackerRulePreviewDialog } from "./TrackerRulePreviewDialog"
 
 export function TrackerRulesOverview() {
   const { instances } = useInstances()
   const queryClient = useQueryClient()
   const [expandedInstances, setExpandedInstances] = useState<string[]>([])
-  const hasInitializedRef = useRef(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<TrackerRule | null>(null)
   const [editingInstanceId, setEditingInstanceId] = useState<number | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ instanceId: number; rule: TrackerRule } | null>(null)
+  const [enableConfirm, setEnableConfirm] = useState<{ instanceId: number; rule: TrackerRule; preview: TrackerRulePreviewResult } | null>(null)
 
   const deleteRule = useMutation({
     mutationFn: ({ instanceId, ruleId }: { instanceId: number; ruleId: number }) =>
@@ -51,18 +53,63 @@ export function TrackerRulesOverview() {
     },
   })
 
+  const toggleEnabled = useMutation({
+    mutationFn: ({ instanceId, rule }: { instanceId: number; rule: TrackerRule }) =>
+      api.updateTrackerRule(instanceId, rule.id, { ...rule, enabled: !rule.enabled }),
+    onSuccess: (_, { instanceId }) => {
+      void queryClient.invalidateQueries({ queryKey: ["tracker-rules", instanceId] })
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to toggle rule")
+    },
+  })
+
+  const previewRule = useMutation({
+    mutationFn: ({ instanceId, rule }: { instanceId: number; rule: TrackerRule }) =>
+      api.previewTrackerRule(instanceId, { ...rule, enabled: true }),
+    onSuccess: (preview, { instanceId, rule }) => {
+      if (preview.totalMatches === 0) {
+        // No matches - just enable without confirmation
+        toggleEnabled.mutate({ instanceId, rule })
+      } else {
+        // Has matches - show confirmation dialog
+        setEnableConfirm({ instanceId, rule, preview })
+      }
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to preview rule")
+    },
+  })
+
+  // Check if a rule is a delete rule
+  const isDeleteRule = (rule: TrackerRule): boolean => {
+    const hasExpressionDelete = rule.conditions?.delete?.enabled === true
+    const hasLegacyDelete = !!rule.deleteMode || !!rule.deleteUnregistered
+    return hasExpressionDelete || hasLegacyDelete
+  }
+
+  // Handle toggle - show preview when enabling delete rules
+  const handleToggle = (instanceId: number, rule: TrackerRule) => {
+    if (!rule.enabled && isDeleteRule(rule)) {
+      // Enabling a delete rule - show preview first
+      previewRule.mutate({ instanceId, rule })
+    } else {
+      // Disabling or non-delete rule - just toggle
+      toggleEnabled.mutate({ instanceId, rule })
+    }
+  }
+
+  const confirmEnableRule = () => {
+    if (enableConfirm) {
+      toggleEnabled.mutate({ instanceId: enableConfirm.instanceId, rule: enableConfirm.rule })
+      setEnableConfirm(null)
+    }
+  }
+
   const activeInstances = useMemo(
     () => (instances ?? []).filter((inst) => inst.isActive),
     [instances]
   )
-
-  // Expand all instances by default on first load
-  useEffect(() => {
-    if (!hasInitializedRef.current && activeInstances.length > 0) {
-      setExpandedInstances(activeInstances.map((inst) => String(inst.id)))
-      hasInitializedRef.current = true
-    }
-  }, [activeInstances])
 
   // Fetch rules for all active instances
   const rulesQueries = useQueries({
@@ -184,6 +231,8 @@ export function TrackerRulesOverview() {
                           <RulePreview
                             key={rule.id}
                             rule={rule}
+                            onToggle={() => handleToggle(instance.id, rule)}
+                            isToggling={toggleEnabled.isPending || previewRule.isPending}
                             onEdit={() => openEditDialog(instance.id, rule)}
                             onDelete={() => setDeleteConfirm({ instanceId: instance.id, rule })}
                           />
@@ -240,19 +289,52 @@ export function TrackerRulesOverview() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <TrackerRulePreviewDialog
+        open={!!enableConfirm}
+        onOpenChange={(open) => !open && setEnableConfirm(null)}
+        title="Enable Delete Rule"
+        description={
+          enableConfirm?.preview && enableConfirm.preview.totalMatches > 0 ? (
+            <p className="text-destructive font-medium">
+              Enabling "{enableConfirm.rule.name}" will affect {enableConfirm.preview.totalMatches} torrent{enableConfirm.preview.totalMatches !== 1 ? "s" : ""} that currently match
+            </p>
+          ) : (
+            <p>No torrents currently match "{enableConfirm?.rule.name}".</p>
+          )
+        }
+        preview={enableConfirm?.preview ?? null}
+        onConfirm={confirmEnableRule}
+        confirmLabel="Enable Rule"
+        isConfirming={toggleEnabled.isPending}
+      />
     </Card>
   )
 }
 
-function RulePreview({ rule, onEdit, onDelete }: { rule: TrackerRule; onEdit: () => void; onDelete: () => void }) {
+interface RulePreviewProps {
+  rule: TrackerRule
+  onToggle: () => void
+  isToggling: boolean
+  onEdit: () => void
+  onDelete: () => void
+}
+
+function RulePreview({ rule, onToggle, isToggling, onEdit, onDelete }: RulePreviewProps) {
   const trackers = parseTrackerDomains(rule)
   const isAllTrackers = rule.trackerPattern === "*"
 
   return (
     <div className={cn(
-      "rounded-lg border bg-muted/20 p-3 grid grid-cols-[1fr_auto] items-center gap-3",
-      !rule.enabled && "opacity-50"
+      "rounded-lg border bg-muted/20 p-3 grid grid-cols-[auto_1fr_auto] items-center gap-3",
+      !rule.enabled && "opacity-60"
     )}>
+      <Switch
+        checked={rule.enabled}
+        onCheckedChange={onToggle}
+        disabled={isToggling}
+        className="shrink-0"
+      />
       <div className="min-w-0">
         <TruncatedText className={cn(
           "text-sm font-medium block cursor-default",
@@ -262,11 +344,6 @@ function RulePreview({ rule, onEdit, onDelete }: { rule: TrackerRule; onEdit: ()
         </TruncatedText>
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
-        {!rule.enabled && (
-          <Badge variant="outline" className="text-[10px] text-muted-foreground cursor-default">
-            Off
-          </Badge>
-        )}
         {isAllTrackers ? (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 cursor-default">
             All trackers

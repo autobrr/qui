@@ -170,6 +170,171 @@ func (s *Service) ApplyOnceForInstance(ctx context.Context, instanceID int) erro
 	return s.applyForInstance(ctx, instanceID)
 }
 
+// PreviewResult contains torrents that would match a rule.
+type PreviewResult struct {
+	TotalMatches int              `json:"totalMatches"`
+	Examples     []PreviewTorrent `json:"examples"`
+}
+
+// PreviewTorrent is a simplified torrent for preview display.
+type PreviewTorrent struct {
+	Name           string  `json:"name"`
+	Hash           string  `json:"hash"`
+	Size           int64   `json:"size"`
+	Ratio          float64 `json:"ratio"`
+	SeedingTime    int64   `json:"seedingTime"`
+	Tracker        string  `json:"tracker"`
+	Category       string  `json:"category"`
+	Tags           string  `json:"tags"`
+	State          string  `json:"state"`
+	AddedOn        int64   `json:"addedOn"`
+	Uploaded       int64   `json:"uploaded"`
+	Downloaded     int64   `json:"downloaded"`
+	IsUnregistered bool    `json:"isUnregistered,omitempty"`
+}
+
+// PreviewDeleteRule returns torrents that would be deleted by the given rule.
+// This is used to show users what a rule would affect before saving.
+func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *models.TrackerRule, maxExamples int) (*PreviewResult, error) {
+	if s == nil || s.syncManager == nil {
+		return &PreviewResult{}, nil
+	}
+
+	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+
+	if maxExamples <= 0 {
+		maxExamples = 10
+	}
+
+	result := &PreviewResult{
+		Examples: make([]PreviewTorrent, 0, maxExamples),
+	}
+
+	// Get health counts for unregistered torrent preview
+	var unregisteredSet map[string]struct{}
+	if rule.DeleteUnregistered {
+		if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil {
+			unregisteredSet = healthCounts.UnregisteredSet
+		}
+	}
+
+	for _, torrent := range torrents {
+		// Check tracker match
+		trackerDomains := collectTrackerDomains(torrent, s.syncManager)
+		if !matchesTracker(rule.TrackerPattern, trackerDomains) {
+			continue
+		}
+
+		// For legacy mode, also check category/tag filters
+		if !rule.UsesExpressions() {
+			// Check category filter
+			if len(rule.Categories) > 0 {
+				matched := false
+				for _, cat := range rule.Categories {
+					if strings.EqualFold(torrent.Category, cat) {
+						matched = true
+						break
+					}
+				}
+				if !matched {
+					continue
+				}
+			}
+
+			// Check tag filter
+			if len(rule.Tags) > 0 {
+				if rule.TagMatchMode == models.TagMatchModeAll {
+					allMatched := true
+					for _, tag := range rule.Tags {
+						if !torrentHasTag(torrent.Tags, tag) {
+							allMatched = false
+							break
+						}
+					}
+					if !allMatched {
+						continue
+					}
+				} else {
+					matched := false
+					for _, tag := range rule.Tags {
+						if torrentHasTag(torrent.Tags, tag) {
+							matched = true
+							break
+						}
+					}
+					if !matched {
+						continue
+					}
+				}
+			}
+		}
+
+		// Check if torrent would be deleted
+		wouldDelete := false
+
+		if rule.UsesExpressions() {
+			// Advanced mode: evaluate delete condition
+			if rule.Conditions.Delete != nil && rule.Conditions.Delete.Enabled {
+				// Must be completed to delete
+				if torrent.Progress >= 1.0 {
+					// Evaluate condition (if no condition, match all completed)
+					if rule.Conditions.Delete.Condition == nil {
+						wouldDelete = true
+					} else {
+						wouldDelete = EvaluateCondition(rule.Conditions.Delete.Condition, torrent, 0)
+					}
+				}
+			}
+		} else {
+			// Legacy mode: use existing shouldDeleteTorrent logic
+			wouldDelete = shouldDeleteTorrent(torrent, rule)
+		}
+
+		// Check for unregistered torrent deletion (applies to both expression and legacy modes)
+		if !wouldDelete && unregisteredSet != nil {
+			if _, isUnregistered := unregisteredSet[torrent.Hash]; isUnregistered {
+				// Must have delete mode set for unregistered deletion
+				if rule.DeleteMode != nil && *rule.DeleteMode != "" && *rule.DeleteMode != "none" {
+					wouldDelete = true
+				}
+			}
+		}
+
+		if wouldDelete {
+			result.TotalMatches++
+			if len(result.Examples) < maxExamples {
+				// Get primary tracker domain for display
+				tracker := ""
+				if domains := collectTrackerDomains(torrent, s.syncManager); len(domains) > 0 {
+					tracker = domains[0]
+				}
+				// Check if torrent is unregistered
+				_, isUnregistered := unregisteredSet[torrent.Hash]
+				result.Examples = append(result.Examples, PreviewTorrent{
+					Name:           torrent.Name,
+					Hash:           torrent.Hash,
+					Size:           torrent.Size,
+					Ratio:          torrent.Ratio,
+					SeedingTime:    torrent.SeedingTime,
+					Tracker:        tracker,
+					Category:       torrent.Category,
+					Tags:           torrent.Tags,
+					State:          string(torrent.State),
+					AddedOn:        torrent.AddedOn,
+					Uploaded:       torrent.Uploaded,
+					Downloaded:     torrent.Downloaded,
+					IsUnregistered: isUnregistered,
+				})
+			}
+		}
+	}
+
+	return result, nil
+}
+
 func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 	rules, err := s.ruleStore.ListByInstance(ctx, instanceID)
 	if err != nil {
@@ -213,6 +378,9 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 	uploadBatches := make(map[int64][]string)
 	downloadBatches := make(map[int64][]string)
 
+	// Batches for expression-based pause action
+	pauseHashes := make([]string, 0)
+
 	for _, torrent := range torrents {
 		s.mu.RLock()
 		ts, ok := instLastApplied[torrent.Hash]
@@ -226,6 +394,51 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 			continue
 		}
 
+		// Expression-based rules: evaluate each action's condition independently
+		if rule.UsesExpressions() {
+			conditions := rule.Conditions
+
+			// Speed limits action with condition evaluation
+			if conditions.SpeedLimits != nil && conditions.SpeedLimits.Enabled {
+				// Evaluate condition (if no condition, always apply)
+				shouldApply := conditions.SpeedLimits.Condition == nil ||
+					EvaluateCondition(conditions.SpeedLimits.Condition, torrent, 0)
+
+				if shouldApply {
+					if conditions.SpeedLimits.UploadKiB != nil {
+						desired := *conditions.SpeedLimits.UploadKiB * 1024
+						if torrent.UpLimit != desired {
+							uploadBatches[*conditions.SpeedLimits.UploadKiB] = append(uploadBatches[*conditions.SpeedLimits.UploadKiB], torrent.Hash)
+						}
+					}
+					if conditions.SpeedLimits.DownloadKiB != nil {
+						desired := *conditions.SpeedLimits.DownloadKiB * 1024
+						if torrent.DlLimit != desired {
+							downloadBatches[*conditions.SpeedLimits.DownloadKiB] = append(downloadBatches[*conditions.SpeedLimits.DownloadKiB], torrent.Hash)
+						}
+					}
+				}
+			}
+
+			// Pause action with condition evaluation
+			if conditions.Pause != nil && conditions.Pause.Enabled && conditions.Pause.Condition != nil {
+				if EvaluateCondition(conditions.Pause.Condition, torrent, 0) {
+					// Only pause if not already paused
+					if torrent.State != qbt.TorrentStatePausedUp && torrent.State != qbt.TorrentStatePausedDl {
+						pauseHashes = append(pauseHashes, torrent.Hash)
+					}
+				}
+			}
+
+			// Note: Delete action for expression-based rules is handled in the deletion phase below
+
+			s.mu.Lock()
+			instLastApplied[torrent.Hash] = now
+			s.mu.Unlock()
+			continue
+		}
+
+		// Legacy rules: use existing field-based logic
 		if rule.UploadLimitKiB != nil {
 			desired := *rule.UploadLimitKiB * 1024
 			if torrent.UpLimit != desired {
@@ -329,6 +542,18 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 		}
 	}
 
+	// Execute pause actions for expression-based rules
+	if len(pauseHashes) > 0 {
+		limited := limitHashBatch(pauseHashes, s.cfg.MaxBatchHashes)
+		for _, batch := range limited {
+			if err := s.syncManager.BulkAction(ctx, instanceID, batch, "pause"); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Msg("tracker rules: pause action failed")
+			} else {
+				log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("tracker rules: paused torrents")
+			}
+		}
+	}
+
 	// Process deletions for torrents that have reached their limits
 	s.mu.RLock()
 	instDeletedMap, deletedMapOk := s.lastDeleted[instanceID]
@@ -375,6 +600,77 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 			continue
 		}
 
+		// Expression-based delete action
+		if rule.UsesExpressions() {
+			conditions := rule.Conditions
+			if conditions.Delete != nil && conditions.Delete.Enabled {
+				// Only delete completed torrents (consistent with preview and legacy logic)
+				if torrent.Progress < 1.0 {
+					continue
+				}
+
+				// Evaluate condition (if no condition, match all completed torrents)
+				shouldDelete := conditions.Delete.Condition == nil ||
+					EvaluateCondition(conditions.Delete.Condition, torrent, 0)
+
+				if shouldDelete {
+					deleteMode := conditions.Delete.Mode
+					if deleteMode == "" {
+						deleteMode = "delete" // default to keeping files
+					}
+
+					reason := "expression condition matched"
+
+					// Handle cross-seed aware deletion
+					var actualMode string
+					var logMsg string
+					var keepingFiles bool
+
+					if deleteMode == "deleteWithFilesPreserveCrossSeeds" {
+						if detectCrossSeeds(torrent, torrents) {
+							actualMode = "delete"
+							logMsg = "tracker rules: removing torrent (cross-seed detected - keeping files)"
+							keepingFiles = true
+						} else {
+							actualMode = "deleteWithFiles"
+							logMsg = "tracker rules: removing torrent with files"
+							keepingFiles = false
+						}
+					} else if deleteMode == "delete" {
+						actualMode = "delete"
+						logMsg = "tracker rules: removing torrent (keeping files)"
+						keepingFiles = true
+					} else {
+						actualMode = deleteMode
+						logMsg = "tracker rules: removing torrent with files"
+						keepingFiles = false
+					}
+
+					log.Info().Str("hash", torrent.Hash).Str("name", torrent.Name).Str("reason", reason).Bool("filesKept", keepingFiles).Msg(logMsg)
+					deleteHashesByMode[actualMode] = append(deleteHashesByMode[actualMode], torrent.Hash)
+					queuedForDeletion[torrent.Hash] = struct{}{}
+
+					// Track pending deletion for activity recording
+					trackerDomain := ""
+					if domains := collectTrackerDomains(torrent, s.syncManager); len(domains) > 0 {
+						trackerDomain = domains[0]
+					}
+					pendingByHash[torrent.Hash] = pendingDeletion{
+						hash:          torrent.Hash,
+						torrentName:   torrent.Name,
+						trackerDomain: trackerDomain,
+						action:        models.ActivityActionDeletedCondition,
+						ruleID:        rule.ID,
+						ruleName:      rule.Name,
+						reason:        reason,
+						details:       map[string]any{"filesKept": keepingFiles, "deleteMode": deleteMode, "expressionBased": true},
+					}
+				}
+			}
+			continue
+		}
+
+		// Legacy delete logic
 		if shouldDeleteTorrent(torrent, rule) {
 			deleteMode := *rule.DeleteMode
 
@@ -430,9 +726,16 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 			queuedForDeletion[torrent.Hash] = struct{}{}
 
 			// Track pending deletion for activity recording
-			action := models.ActivityActionDeletedRatio
-			if seedingTimeMet && !ratioMet {
+			// Determine action based on which limits are configured and met
+			var action string
+			switch {
+			case ratioMet && seedingTimeMet:
+				// Both met - prefer seeding since it's often the stricter HnR requirement
 				action = models.ActivityActionDeletedSeeding
+			case seedingTimeMet:
+				action = models.ActivityActionDeletedSeeding
+			default:
+				action = models.ActivityActionDeletedRatio
 			}
 			details := map[string]any{"filesKept": keepingFiles, "deleteMode": deleteMode}
 			if ratioMet {

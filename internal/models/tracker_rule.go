@@ -6,7 +6,10 @@ package models
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -19,24 +22,31 @@ const (
 )
 
 type TrackerRule struct {
-	ID                      int       `json:"id"`
-	InstanceID              int       `json:"instanceId"`
-	Name                    string    `json:"name"`
-	TrackerPattern          string    `json:"trackerPattern"`
-	TrackerDomains          []string  `json:"trackerDomains,omitempty"`
-	Categories              []string  `json:"categories,omitempty"`
-	Tags                    []string  `json:"tags,omitempty"`
-	TagMatchMode            string    `json:"tagMatchMode,omitempty"` // "any" (default) or "all"
-	UploadLimitKiB          *int64    `json:"uploadLimitKiB,omitempty"`
-	DownloadLimitKiB        *int64    `json:"downloadLimitKiB,omitempty"`
-	RatioLimit              *float64  `json:"ratioLimit,omitempty"`
-	SeedingTimeLimitMinutes *int64    `json:"seedingTimeLimitMinutes,omitempty"`
-	DeleteMode              *string   `json:"deleteMode,omitempty"` // "none", "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds"
-	DeleteUnregistered      bool      `json:"deleteUnregistered"`
-	Enabled                 bool      `json:"enabled"`
-	SortOrder               int       `json:"sortOrder"`
-	CreatedAt               time.Time `json:"createdAt"`
-	UpdatedAt               time.Time `json:"updatedAt"`
+	ID                      int               `json:"id"`
+	InstanceID              int               `json:"instanceId"`
+	Name                    string            `json:"name"`
+	TrackerPattern          string            `json:"trackerPattern"`
+	TrackerDomains          []string          `json:"trackerDomains,omitempty"`
+	Categories              []string          `json:"categories,omitempty"`
+	Tags                    []string          `json:"tags,omitempty"`
+	TagMatchMode            string            `json:"tagMatchMode,omitempty"` // "any" (default) or "all"
+	UploadLimitKiB          *int64            `json:"uploadLimitKiB,omitempty"`
+	DownloadLimitKiB        *int64            `json:"downloadLimitKiB,omitempty"`
+	RatioLimit              *float64          `json:"ratioLimit,omitempty"`
+	SeedingTimeLimitMinutes *int64            `json:"seedingTimeLimitMinutes,omitempty"`
+	DeleteMode              *string           `json:"deleteMode,omitempty"` // "none", "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds"
+	DeleteUnregistered      bool              `json:"deleteUnregistered"`
+	Enabled                 bool              `json:"enabled"`
+	SortOrder               int               `json:"sortOrder"`
+	Conditions              *ActionConditions `json:"conditions,omitempty"` // expression-based conditions for actions
+	CreatedAt               time.Time         `json:"createdAt"`
+	UpdatedAt               time.Time         `json:"updatedAt"`
+}
+
+// UsesExpressions returns true if this rule uses expression-based conditions
+// instead of the legacy static fields.
+func (r *TrackerRule) UsesExpressions() bool {
+	return r.Conditions != nil && r.Conditions.SchemaVersion != ""
 }
 
 type TrackerRuleStore struct {
@@ -90,7 +100,7 @@ func normalizeTrackerPattern(pattern string, domains []string) string {
 func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) ([]*TrackerRule, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, instance_id, name, tracker_pattern, category, tag, tag_match_mode, upload_limit_kib, download_limit_kib,
-		       ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, enabled, sort_order, created_at, updated_at
+		       ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, enabled, sort_order, conditions, created_at, updated_at
 		FROM tracker_rules
 		WHERE instance_id = ?
 		ORDER BY sort_order ASC, id ASC
@@ -103,7 +113,7 @@ func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) (
 	var rules []*TrackerRule
 	for rows.Next() {
 		var rule TrackerRule
-		var categories, tags, tagMatchMode, deleteMode sql.NullString
+		var categories, tags, tagMatchMode, deleteMode, conditionsJSON sql.NullString
 		var upload, download sql.NullInt64
 		var ratio sql.NullFloat64
 		var seeding sql.NullInt64
@@ -125,6 +135,7 @@ func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) (
 			&deleteUnregistered,
 			&rule.Enabled,
 			&rule.SortOrder,
+			&conditionsJSON,
 			&rule.CreatedAt,
 			&rule.UpdatedAt,
 		); err != nil {
@@ -159,6 +170,14 @@ func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) (
 		}
 		rule.DeleteUnregistered = deleteUnregistered != 0
 
+		// Parse conditions JSON if present
+		if conditionsJSON.Valid && conditionsJSON.String != "" {
+			var conditions ActionConditions
+			if err := json.Unmarshal([]byte(conditionsJSON.String), &conditions); err == nil {
+				rule.Conditions = &conditions
+			}
+		}
+
 		rule.TrackerDomains = splitPatterns(rule.TrackerPattern)
 
 		rules = append(rules, &rule)
@@ -174,13 +193,13 @@ func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) (
 func (s *TrackerRuleStore) Get(ctx context.Context, id int) (*TrackerRule, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, name, tracker_pattern, category, tag, tag_match_mode, upload_limit_kib, download_limit_kib,
-		       ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, enabled, sort_order, created_at, updated_at
+		       ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, enabled, sort_order, conditions, created_at, updated_at
 		FROM tracker_rules
 		WHERE id = ?
 	`, id)
 
 	var rule TrackerRule
-	var categories, tags, tagMatchMode, deleteMode sql.NullString
+	var categories, tags, tagMatchMode, deleteMode, conditionsJSON sql.NullString
 	var upload, download sql.NullInt64
 	var ratio sql.NullFloat64
 	var seeding sql.NullInt64
@@ -202,6 +221,7 @@ func (s *TrackerRuleStore) Get(ctx context.Context, id int) (*TrackerRule, error
 		&deleteUnregistered,
 		&rule.Enabled,
 		&rule.SortOrder,
+		&conditionsJSON,
 		&rule.CreatedAt,
 		&rule.UpdatedAt,
 	); err != nil {
@@ -235,6 +255,14 @@ func (s *TrackerRuleStore) Get(ctx context.Context, id int) (*TrackerRule, error
 		rule.DeleteMode = &deleteMode.String
 	}
 	rule.DeleteUnregistered = deleteUnregistered != 0
+
+	// Parse conditions JSON if present
+	if conditionsJSON.Valid && conditionsJSON.String != "" {
+		var conditions ActionConditions
+		if err := json.Unmarshal([]byte(conditionsJSON.String), &conditions); err == nil {
+			rule.Conditions = &conditions
+		}
+	}
 
 	rule.TrackerDomains = splitPatterns(rule.TrackerPattern)
 
@@ -282,14 +310,24 @@ func (s *TrackerRuleStore) Create(ctx context.Context, rule *TrackerRule) (*Trac
 	categoriesStr := nullableSlice(rule.Categories)
 	tagsStr := nullableSlice(rule.Tags)
 
+	// Serialize conditions to JSON if present
+	var conditionsJSON any
+	if rule.Conditions != nil && !rule.Conditions.IsEmpty() {
+		data, err := json.Marshal(rule.Conditions)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal conditions: %w", err)
+		}
+		conditionsJSON = string(data)
+	}
+
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO tracker_rules
-			(instance_id, name, tracker_pattern, category, tag, tag_match_mode, upload_limit_kib, download_limit_kib, ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, enabled, sort_order)
+			(instance_id, name, tracker_pattern, category, tag, tag_match_mode, upload_limit_kib, download_limit_kib, ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, enabled, sort_order, conditions)
 		VALUES
-			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, rule.InstanceID, rule.Name, rule.TrackerPattern, categoriesStr, tagsStr, tagMatchMode,
 		nullableInt64(rule.UploadLimitKiB), nullableInt64(rule.DownloadLimitKiB), nullableFloat64(rule.RatioLimit),
-		nullableInt64(rule.SeedingTimeLimitMinutes), deleteMode, boolToInt(rule.DeleteUnregistered), boolToInt(rule.Enabled), sortOrder)
+		nullableInt64(rule.SeedingTimeLimitMinutes), deleteMode, boolToInt(rule.DeleteUnregistered), boolToInt(rule.Enabled), sortOrder, conditionsJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -325,14 +363,24 @@ func (s *TrackerRuleStore) Update(ctx context.Context, rule *TrackerRule) (*Trac
 	categoriesStr := nullableSlice(rule.Categories)
 	tagsStr := nullableSlice(rule.Tags)
 
+	// Serialize conditions to JSON if present
+	var conditionsJSON any
+	if rule.Conditions != nil && !rule.Conditions.IsEmpty() {
+		data, err := json.Marshal(rule.Conditions)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal conditions: %w", err)
+		}
+		conditionsJSON = string(data)
+	}
+
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE tracker_rules
 		SET name = ?, tracker_pattern = ?, category = ?, tag = ?, tag_match_mode = ?, upload_limit_kib = ?, download_limit_kib = ?,
-		    ratio_limit = ?, seeding_time_limit_minutes = ?, delete_mode = ?, delete_unregistered = ?, enabled = ?, sort_order = ?
+		    ratio_limit = ?, seeding_time_limit_minutes = ?, delete_mode = ?, delete_unregistered = ?, enabled = ?, sort_order = ?, conditions = ?
 		WHERE id = ? AND instance_id = ?
 	`, rule.Name, rule.TrackerPattern, categoriesStr, tagsStr, tagMatchMode,
 		nullableInt64(rule.UploadLimitKiB), nullableInt64(rule.DownloadLimitKiB), nullableFloat64(rule.RatioLimit),
-		nullableInt64(rule.SeedingTimeLimitMinutes), deleteMode, boolToInt(rule.DeleteUnregistered), boolToInt(rule.Enabled), rule.SortOrder, rule.ID, rule.InstanceID)
+		nullableInt64(rule.SeedingTimeLimitMinutes), deleteMode, boolToInt(rule.DeleteUnregistered), boolToInt(rule.Enabled), rule.SortOrder, conditionsJSON, rule.ID, rule.InstanceID)
 	if err != nil {
 		return nil, err
 	}
@@ -400,4 +448,145 @@ func boolToInt(v bool) int {
 		return 1
 	}
 	return 0
+}
+
+// ConditionField represents a field from the qBittorrent Torrent struct that can be filtered on.
+type ConditionField string
+
+const (
+	// String fields
+	FieldName        ConditionField = "NAME"
+	FieldHash        ConditionField = "HASH"
+	FieldCategory    ConditionField = "CATEGORY"
+	FieldTags        ConditionField = "TAGS"
+	FieldSavePath    ConditionField = "SAVE_PATH"
+	FieldContentPath ConditionField = "CONTENT_PATH"
+	FieldState       ConditionField = "STATE"
+	FieldTracker     ConditionField = "TRACKER"
+	FieldComment     ConditionField = "COMMENT"
+
+	// Numeric fields (bytes)
+	FieldSize       ConditionField = "SIZE"
+	FieldTotalSize  ConditionField = "TOTAL_SIZE"
+	FieldDownloaded ConditionField = "DOWNLOADED"
+	FieldUploaded   ConditionField = "UPLOADED"
+	FieldAmountLeft ConditionField = "AMOUNT_LEFT"
+
+	// Numeric fields (timestamps/seconds)
+	FieldAddedOn      ConditionField = "ADDED_ON"
+	FieldCompletionOn ConditionField = "COMPLETION_ON"
+	FieldLastActivity ConditionField = "LAST_ACTIVITY"
+	FieldSeedingTime  ConditionField = "SEEDING_TIME"
+	FieldTimeActive   ConditionField = "TIME_ACTIVE"
+
+	// Numeric fields (float64)
+	FieldRatio        ConditionField = "RATIO"
+	FieldProgress     ConditionField = "PROGRESS"
+	FieldAvailability ConditionField = "AVAILABILITY"
+
+	// Numeric fields (speeds)
+	FieldDlSpeed ConditionField = "DL_SPEED"
+	FieldUpSpeed ConditionField = "UP_SPEED"
+
+	// Numeric fields (counts)
+	FieldNumSeeds      ConditionField = "NUM_SEEDS"
+	FieldNumLeechs     ConditionField = "NUM_LEECHS"
+	FieldNumComplete   ConditionField = "NUM_COMPLETE"
+	FieldNumIncomplete ConditionField = "NUM_INCOMPLETE"
+	FieldTrackersCount ConditionField = "TRACKERS_COUNT"
+
+	// Boolean fields
+	FieldPrivate ConditionField = "PRIVATE"
+)
+
+// ConditionOperator represents operators for comparing field values.
+type ConditionOperator string
+
+const (
+	// Logical operators (for groups)
+	OperatorAnd ConditionOperator = "AND"
+	OperatorOr  ConditionOperator = "OR"
+
+	// Comparison operators
+	OperatorEqual              ConditionOperator = "EQUAL"
+	OperatorNotEqual           ConditionOperator = "NOT_EQUAL"
+	OperatorContains           ConditionOperator = "CONTAINS"
+	OperatorNotContains        ConditionOperator = "NOT_CONTAINS"
+	OperatorStartsWith         ConditionOperator = "STARTS_WITH"
+	OperatorEndsWith           ConditionOperator = "ENDS_WITH"
+	OperatorGreaterThan        ConditionOperator = "GREATER_THAN"
+	OperatorGreaterThanOrEqual ConditionOperator = "GREATER_THAN_OR_EQUAL"
+	OperatorLessThan           ConditionOperator = "LESS_THAN"
+	OperatorLessThanOrEqual    ConditionOperator = "LESS_THAN_OR_EQUAL"
+	OperatorBetween            ConditionOperator = "BETWEEN"
+	OperatorMatches            ConditionOperator = "MATCHES" // regex
+)
+
+// RuleCondition represents a condition or group of conditions for filtering torrents.
+type RuleCondition struct {
+	Field      ConditionField    `json:"field,omitempty"`
+	Operator   ConditionOperator `json:"operator"`
+	Value      string            `json:"value,omitempty"`
+	MinValue   *float64          `json:"minValue,omitempty"`
+	MaxValue   *float64          `json:"maxValue,omitempty"`
+	Regex      bool              `json:"regex,omitempty"`
+	Negate     bool              `json:"negate,omitempty"`
+	Conditions []*RuleCondition  `json:"conditions,omitempty"`
+	Compiled   *regexp.Regexp    `json:"-"` // compiled regex, not serialized
+}
+
+// IsGroup returns true if this condition is an AND/OR group containing child conditions.
+func (c *RuleCondition) IsGroup() bool {
+	return len(c.Conditions) > 0 && (c.Operator == OperatorAnd || c.Operator == OperatorOr)
+}
+
+// CompileRegex compiles the regex pattern if needed. Safe to call multiple times.
+func (c *RuleCondition) CompileRegex() error {
+	if c.Compiled != nil {
+		return nil
+	}
+	if !c.Regex && c.Operator != OperatorMatches {
+		return nil
+	}
+	var err error
+	c.Compiled, err = regexp.Compile("(?i)" + c.Value)
+	return err
+}
+
+// ActionConditions holds per-action conditions with action configuration.
+// This is the top-level structure stored in the `conditions` JSON column.
+type ActionConditions struct {
+	SchemaVersion string            `json:"schemaVersion"`
+	SpeedLimits   *SpeedLimitAction `json:"speedLimits,omitempty"`
+	Pause         *PauseAction      `json:"pause,omitempty"`
+	Delete        *DeleteAction     `json:"delete,omitempty"`
+}
+
+// SpeedLimitAction configures speed limit application with optional conditions.
+type SpeedLimitAction struct {
+	Enabled     bool           `json:"enabled"`
+	UploadKiB   *int64         `json:"uploadKiB,omitempty"`
+	DownloadKiB *int64         `json:"downloadKiB,omitempty"`
+	Condition   *RuleCondition `json:"condition,omitempty"`
+}
+
+// PauseAction configures pause action with conditions.
+type PauseAction struct {
+	Enabled   bool           `json:"enabled"`
+	Condition *RuleCondition `json:"condition,omitempty"`
+}
+
+// DeleteAction configures deletion with mode and conditions.
+type DeleteAction struct {
+	Enabled   bool           `json:"enabled"`
+	Mode      string         `json:"mode"` // "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds"
+	Condition *RuleCondition `json:"condition,omitempty"`
+}
+
+// IsEmpty returns true if no actions are configured.
+func (ac *ActionConditions) IsEmpty() bool {
+	if ac == nil {
+		return true
+	}
+	return ac.SpeedLimits == nil && ac.Pause == nil && ac.Delete == nil
 }

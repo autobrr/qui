@@ -17,6 +17,7 @@ const (
 	ActivityActionDeletedRatio        = "deleted_ratio"
 	ActivityActionDeletedSeeding      = "deleted_seeding"
 	ActivityActionDeletedUnregistered = "deleted_unregistered"
+	ActivityActionDeletedCondition    = "deleted_condition" // Expression-based deletion
 	ActivityActionDeleteFailed        = "delete_failed"
 	ActivityActionLimitFailed         = "limit_failed"
 )

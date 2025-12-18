@@ -73,6 +73,7 @@ import type {
   TrackerRule,
   TrackerRuleActivity,
   TrackerRuleInput,
+  TrackerRulePreviewResult,
   User,
   DashboardSettings,
   DashboardSettingsInput
@@ -1322,6 +1323,13 @@ class ApiClient {
   async deleteTrackerRuleActivity(instanceId: number, olderThanDays: number): Promise<{ deleted: number }> {
     return this.request<{ deleted: number }>(`/instances/${instanceId}/tracker-rules/activity?older_than=${olderThanDays}`, {
       method: "DELETE",
+    })
+  }
+
+  async previewTrackerRule(instanceId: number, payload: TrackerRuleInput): Promise<TrackerRulePreviewResult> {
+    return this.request<TrackerRulePreviewResult>(`/instances/${instanceId}/tracker-rules/preview`, {
+      method: "POST",
+      body: JSON.stringify(payload),
     })
   }
 

@@ -437,6 +437,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						r.Post("/", trackerRulesHandler.Create)
 						r.Put("/order", trackerRulesHandler.Reorder)
 						r.Post("/apply", trackerRulesHandler.ApplyNow)
+						r.Post("/preview", trackerRulesHandler.PreviewDeleteRule)
 						r.Get("/activity", trackerRulesHandler.ListActivity)
 						r.Delete("/activity", trackerRulesHandler.DeleteActivity)
 
