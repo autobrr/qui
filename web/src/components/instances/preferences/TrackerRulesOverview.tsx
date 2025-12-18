@@ -25,7 +25,7 @@ import type { TrackerRule } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { TruncatedText } from "@/components/ui/truncated-text"
 import { ArrowDown, ArrowUp, Clock, Info, Loader2, Pencil, Plus, Scale, Trash2 } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { TrackerRuleDialog } from "./TrackerRuleDialog"
 
@@ -33,6 +33,7 @@ export function TrackerRulesOverview() {
   const { instances } = useInstances()
   const queryClient = useQueryClient()
   const [expandedInstances, setExpandedInstances] = useState<string[]>([])
+  const hasInitializedRef = useRef(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<TrackerRule | null>(null)
   const [editingInstanceId, setEditingInstanceId] = useState<number | null>(null)
@@ -54,6 +55,14 @@ export function TrackerRulesOverview() {
     () => (instances ?? []).filter((inst) => inst.isActive),
     [instances]
   )
+
+  // Expand all instances by default on first load
+  useEffect(() => {
+    if (!hasInitializedRef.current && activeInstances.length > 0) {
+      setExpandedInstances(activeInstances.map((inst) => String(inst.id)))
+      hasInitializedRef.current = true
+    }
+  }, [activeInstances])
 
   // Fetch rules for all active instances
   const rulesQueries = useQueries({
@@ -107,7 +116,7 @@ export function TrackerRulesOverview() {
           </Tooltip>
         </div>
         <CardDescription>
-          Apply speed and ratio caps per tracker domain.
+          Automatic limits and deletion.
         </CardDescription>
       </CardHeader>
 

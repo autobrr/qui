@@ -115,7 +115,7 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
       {variant === "card" && (
         <div className="space-y-1">
           <h3 className="text-lg font-semibold">Tracker Rules</h3>
-          <p className="text-sm text-muted-foreground">Apply speed and ratio caps per tracker domain.</p>
+          <p className="text-sm text-muted-foreground">Automatic limits and deletion.</p>
         </div>
       )}
       <div className="flex flex-wrap gap-2">

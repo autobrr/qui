@@ -32,7 +32,7 @@ import type { TrackerRuleActivity } from "@/types"
 import { useQueries, useQueryClient } from "@tanstack/react-query"
 import { TruncatedText } from "@/components/ui/truncated-text"
 import { Copy, Info, RefreshCcw, Search, Settings2, Trash2 } from "lucide-react"
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 
 interface TrackerRulesActivityOverviewProps {
@@ -92,6 +92,7 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
   const queryClient = useQueryClient()
   const { formatISOTimestamp } = useDateTimeFormatters()
   const [expandedInstances, setExpandedInstances] = useState<string[]>([])
+  const hasInitializedRef = useRef(false)
   const [filterMap, setFilterMap] = useState<Record<number, "all" | "deletions" | "errors">>({})
   const [searchMap, setSearchMap] = useState<Record<number, string>>({})
   const [clearDaysMap, setClearDaysMap] = useState<Record<number, string>>({})
@@ -133,6 +134,14 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
     () => (instances ?? []).filter((inst) => inst.isActive),
     [instances]
   )
+
+  // Expand all instances by default on first load
+  useEffect(() => {
+    if (!hasInitializedRef.current && activeInstances.length > 0) {
+      setExpandedInstances(activeInstances.map((inst) => String(inst.id)))
+      hasInitializedRef.current = true
+    }
+  }, [activeInstances])
 
   // Fetch activity for all active instances
   const activityQueries = useQueries({
@@ -501,12 +510,6 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
                                         </>
                                       )
                                     })()}
-                                    {event.ruleName && (
-                                      <>
-                                        <span className="text-muted-foreground/40">·</span>
-                                        <span className="text-xs">Rule: {event.ruleName}</span>
-                                      </>
-                                    )}
                                     <span className="text-muted-foreground/40">·</span>
                                     <span>{formatISOTimestamp(event.createdAt)}</span>
                                   </div>
@@ -517,15 +520,15 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
                                     </div>
                                   )}
 
-                                  {event.details && (
+                                  {(event.details || event.ruleName) && (
                                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                      {event.details.ratio !== undefined && (
+                                      {event.details?.ratio !== undefined && (
                                         <span>Ratio: {event.details.ratio.toFixed(2)}/{event.details.ratioLimit?.toFixed(2)}</span>
                                       )}
-                                      {event.details.seedingMinutes !== undefined && (
+                                      {event.details?.seedingMinutes !== undefined && (
                                         <span>Seeding: {event.details.seedingMinutes}m/{event.details.seedingLimitMinutes}m</span>
                                       )}
-                                      {event.details.filesKept !== undefined && (() => {
+                                      {event.details?.filesKept !== undefined && (() => {
                                         const { filesKept, deleteMode } = event.details
                                         let label: string
                                         let className = "text-[10px] px-1.5 py-0 h-5"
@@ -547,6 +550,9 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
                                           </Badge>
                                         )
                                       })()}
+                                      {event.ruleName && (
+                                        <span className="text-muted-foreground">Rule: {event.ruleName}</span>
+                                      )}
                                     </div>
                                   )}
                                 </div>

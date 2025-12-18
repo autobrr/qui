@@ -24,7 +24,10 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
+import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
+import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { cn, parseTrackerDomains } from "@/lib/utils"
@@ -73,6 +76,8 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
   const [formState, setFormState] = useState<FormState>(emptyFormState)
 
   const trackersQuery = useInstanceTrackers(instanceId, { enabled: open })
+  const { data: trackerCustomizations } = useTrackerCustomizations()
+  const { data: trackerIcons } = useTrackerIcons()
   const categoriesQuery = useQuery({
     queryKey: ["instance-categories", instanceId],
     queryFn: () => api.getCategories(instanceId),
@@ -84,12 +89,82 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
     enabled: open,
   })
 
+  // Build lookup maps from tracker customizations for merging and nicknames
+  const trackerCustomizationMaps = useMemo(() => {
+    const domainToCustomization = new Map<string, { displayName: string; domains: string[]; id: number }>()
+    const secondaryDomains = new Set<string>()
+
+    for (const custom of trackerCustomizations ?? []) {
+      const domains = custom.domains
+      if (domains.length === 0) continue
+
+      for (let i = 0; i < domains.length; i++) {
+        const domain = domains[i].toLowerCase()
+        domainToCustomization.set(domain, {
+          displayName: custom.displayName,
+          domains: custom.domains,
+          id: custom.id,
+        })
+        // Secondary domains (not the first one) should be hidden/merged
+        if (i > 0) {
+          secondaryDomains.add(domain)
+        }
+      }
+    }
+
+    return { domainToCustomization, secondaryDomains }
+  }, [trackerCustomizations])
+
+  // Process trackers to apply customizations (nicknames and merged domains)
   const trackerOptions: Option[] = useMemo(() => {
     if (!trackersQuery.data) return []
-    return Object.keys(trackersQuery.data)
-      .map((domain) => ({ label: domain, value: domain }))
-      .sort((a, b) => a.label.localeCompare(b.label))
-  }, [trackersQuery.data])
+
+    const { domainToCustomization, secondaryDomains } = trackerCustomizationMaps
+    const trackers = Object.keys(trackersQuery.data)
+    const processed: Option[] = []
+    const seenDisplayNames = new Set<string>()
+
+    for (const tracker of trackers) {
+      const lowerTracker = tracker.toLowerCase()
+
+      // Skip secondary domains - they're merged into their primary
+      if (secondaryDomains.has(lowerTracker)) {
+        continue
+      }
+
+      const customization = domainToCustomization.get(lowerTracker)
+
+      if (customization) {
+        // Use displayName as uniqueness key for merged trackers
+        const displayKey = customization.displayName.toLowerCase()
+        if (seenDisplayNames.has(displayKey)) continue
+        seenDisplayNames.add(displayKey)
+
+        const primaryDomain = customization.domains[0]
+        processed.push({
+          label: customization.displayName,
+          // Store all domains as comma-separated value for the rule pattern
+          value: customization.domains.join(","),
+          icon: <TrackerIconImage tracker={primaryDomain} trackerIcons={trackerIcons} />,
+        })
+      } else {
+        // No customization - use domain as-is
+        if (seenDisplayNames.has(lowerTracker)) continue
+        seenDisplayNames.add(lowerTracker)
+
+        processed.push({
+          label: tracker,
+          value: tracker,
+          icon: <TrackerIconImage tracker={tracker} trackerIcons={trackerIcons} />,
+        })
+      }
+    }
+
+    // Sort by display name (case-insensitive)
+    processed.sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }))
+
+    return processed
+  }, [trackersQuery.data, trackerCustomizationMaps, trackerIcons])
 
   const categoryOptions = useMemo(() => {
     if (!categoriesQuery.data) return []
@@ -101,16 +176,53 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
     return buildTagSelectOptions(tagsQuery.data)
   }, [tagsQuery.data])
 
+  // Map individual domains to merged option values
+  // e.g., if a rule has "domain1,domain2" and there's a merged option with value "domain1,domain2",
+  // this returns ["domain1,domain2"] instead of ["domain1", "domain2"]
+  const mapDomainsToOptionValues = useMemo(() => {
+    const { domainToCustomization } = trackerCustomizationMaps
+    return (domains: string[]): string[] => {
+      const result: string[] = []
+      const processed = new Set<string>()
+
+      for (const domain of domains) {
+        const lowerDomain = domain.toLowerCase()
+        if (processed.has(lowerDomain)) continue
+
+        const customization = domainToCustomization.get(lowerDomain)
+        if (customization) {
+          // Use the merged value (all domains comma-separated)
+          const mergedValue = customization.domains.join(",")
+          if (!result.includes(mergedValue)) {
+            result.push(mergedValue)
+          }
+          // Mark all domains in this group as processed
+          for (const d of customization.domains) {
+            processed.add(d.toLowerCase())
+          }
+        } else {
+          // Not part of a merged group, use as-is
+          result.push(domain)
+          processed.add(lowerDomain)
+        }
+      }
+
+      return result
+    }
+  }, [trackerCustomizationMaps])
+
   // Initialize form state when dialog opens or rule changes
   useEffect(() => {
     if (open) {
       if (rule) {
         const isAllTrackers = rule.trackerPattern === "*"
-        const domains = isAllTrackers ? [] : parseTrackerDomains(rule)
+        const rawDomains = isAllTrackers ? [] : parseTrackerDomains(rule)
+        // Map to merged option values if customizations are loaded
+        const mappedDomains = mapDomainsToOptionValues(rawDomains)
         setFormState({
           name: rule.name,
           trackerPattern: rule.trackerPattern,
-          trackerDomains: domains,
+          trackerDomains: mappedDomains,
           applyToAllTrackers: isAllTrackers,
           categories: rule.categories ?? [],
           tags: rule.tags ?? [],
@@ -128,7 +240,7 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
         setFormState(emptyFormState)
       }
     }
-  }, [open, rule])
+  }, [open, rule, mapDomainsToOptionValues])
 
   const createOrUpdate = useMutation({
     mutationFn: async (input: FormState) => {

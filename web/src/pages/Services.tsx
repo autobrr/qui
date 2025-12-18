@@ -43,11 +43,11 @@ export function Services() {
       {/* Reannounce Overview - shows all instances in accordion */}
       <ReannounceOverview onConfigureInstance={handleConfigureReannounce} />
 
-      {/* Tracker Rules Overview - shows all instances in accordion */}
-      <TrackerRulesOverview />
-
-      {/* Tracker Rules Activity - shows deletion/error history */}
-      <TrackerRulesActivityOverview />
+      {/* Tracker Rules: 2-col grid with independent heights */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        <TrackerRulesOverview />
+        <TrackerRulesActivityOverview />
+      </div>
 
       {instances && instances.length === 0 && (
         <p className="text-sm text-muted-foreground">
