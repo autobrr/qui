@@ -3,21 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { MultiSelect, type Option } from "@/components/ui/multi-select"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,6 +13,20 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { MultiSelect, type Option } from "@/components/ui/multi-select"
 import {
   Select,
   SelectContent,
@@ -241,108 +240,109 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
 
   const rulesContent = (
     <div className="space-y-3">
-          {rulesQuery.isLoading ? (
-            <div className="flex items-center gap-2 text-muted-foreground text-sm">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading rules...
-            </div>
-          ) : (sortedRules?.length ?? 0) === 0 ? (
-            <p className="text-muted-foreground text-sm">No tracker rules yet. Add one to start enforcing per-tracker limits.</p>
-          ) : (
-            <div className="space-y-2">
-              {sortedRules.map((rule) => {
-                const actions = (
-                  <>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleMove(rule.id, -1)}
-                      disabled={reorderRules.isPending}
-                      className="h-8 w-8 sm:h-9 sm:w-9"
-                    >
-                      <ArrowUp className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleMove(rule.id, 1)}
-                      disabled={reorderRules.isPending}
-                      className="h-8 w-8 sm:h-9 sm:w-9"
-                    >
-                      <ArrowDown className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => openForEdit(rule)}
-                      aria-label="Edit"
-                      className="h-8 w-8 sm:h-9 sm:w-9"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setDeleteConfirmRule(rule)}
-                      className="text-destructive h-8 w-8 sm:h-9 sm:w-9"
-                      disabled={deleteRule.isPending}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </>
-                )
+      {rulesQuery.isLoading ? (
+        <div className="flex items-center gap-2 text-muted-foreground text-sm">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading rules...
+        </div>
+      ) : (sortedRules?.length ?? 0) === 0 ? (
+        <p className="text-muted-foreground text-sm">No tracker rules yet. Add one to start enforcing per-tracker limits.</p>
+      ) : (
+        <div className="space-y-2">
+          {sortedRules.map((rule) => {
+            const actions = (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleMove(rule.id, -1)}
+                  disabled={reorderRules.isPending}
+                  className="h-8 w-8 sm:h-9 sm:w-9"
+                >
+                  <ArrowUp className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleMove(rule.id, 1)}
+                  disabled={reorderRules.isPending}
+                  className="h-8 w-8 sm:h-9 sm:w-9"
+                >
+                  <ArrowDown className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => openForEdit(rule)}
+                  aria-label="Edit"
+                  className="h-8 w-8 sm:h-9 sm:w-9"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setDeleteConfirmRule(rule)}
+                  className="text-destructive h-8 w-8 sm:h-9 sm:w-9"
+                  disabled={deleteRule.isPending}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </>
+            )
 
-                return (
-                  <div
-                    key={rule.id}
-                    className={cn(
-                      "rounded-lg border-dashed border bg-muted/40 p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4",
-                      !rule.enabled && "opacity-60"
-                    )}
-                  >
-                    <div className="space-y-1.5 flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Switch
-                            checked={rule.enabled}
-                            onCheckedChange={() => toggleEnabled.mutate(rule)}
-                            disabled={toggleEnabled.isPending}
-                            className="shrink-0"
-                          />
-                          <span className={cn("font-medium truncate", !rule.enabled && "text-muted-foreground")}>{rule.name}</span>
-                          {!rule.enabled && (
-                            <Badge variant="outline" className="shrink-0 text-muted-foreground">
-                              Disabled
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-0.5 sm:hidden shrink-0 -mr-1">
-                          {actions}
-                        </div>
-                      </div>
-                      <RuleSummary rule={rule} />
+            return (
+              <div
+                key={rule.id}
+                className={cn(
+                  "rounded-lg border-dashed border bg-muted/40 p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4",
+                  !rule.enabled && "opacity-60"
+                )}
+              >
+                <div className="space-y-1.5 flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Switch
+                        checked={rule.enabled}
+                        onCheckedChange={() => toggleEnabled.mutate(rule)}
+                        disabled={toggleEnabled.isPending}
+                        className="shrink-0"
+                      />
+                      <span className={cn("font-medium truncate", !rule.enabled && "text-muted-foreground")}>{rule.name}</span>
+                      {!rule.enabled && (
+                        <Badge variant="outline" className="shrink-0 text-muted-foreground">
+                          Disabled
+                        </Badge>
+                      )}
                     </div>
-
-                    <div className="hidden sm:flex items-center gap-1 shrink-0">
+                    <div className="flex items-center gap-0.5 sm:hidden shrink-0 -mr-1">
                       {actions}
                     </div>
                   </div>
-                )
-              })}
-            </div>
-          )}
+                  <RuleSummary rule={rule} />
+                </div>
+
+                <div className="hidden sm:flex items-center gap-1 shrink-0">
+                  {actions}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 
   const dialogContent = (
     <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>{editingRule ? "Edit Tracker Rule" : "Add Tracker Rule"}</DialogTitle>
-            <DialogDescription>Match on tracker domain and optionally category/tag, then apply limits.</DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-1">
+      <DialogContent className="sm:max-w-3xl max-h-[90dvh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>{editingRule ? "Edit Tracker Rule" : "Add Tracker Rule"}</DialogTitle>
+          <DialogDescription>Match on tracker domain and optionally category/tag, then apply limits.</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+            <div className="grid gap-4">
               <div className="space-y-2">
                 <Label htmlFor="rule-name">Name</Label>
                 <Input
@@ -413,58 +413,93 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="rule-upload">Upload limit (KiB/s)</Label>
-                <Input
-                  id="rule-upload"
-                  type="number"
-                  min={0}
-                  value={formState.uploadLimitKiB ?? ""}
-                  onChange={(e) => setFormState(prev => ({ ...prev, uploadLimitKiB: e.target.value ? Number(e.target.value) : undefined }))}
-                  placeholder="Leave blank to skip"
-                />
+            {/* Speed Limits Group */}
+            <div className="rounded-lg border p-4 space-y-3">
+              <div>
+                <h4 className="text-sm font-medium">Speed limits</h4>
+                <p className="text-xs text-muted-foreground">Limit transfer speeds only</p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="rule-download">Download limit (KiB/s)</Label>
-                <Input
-                  id="rule-download"
-                  type="number"
-                  min={0}
-                  value={formState.downloadLimitKiB ?? ""}
-                  onChange={(e) => setFormState(prev => ({ ...prev, downloadLimitKiB: e.target.value ? Number(e.target.value) : undefined }))}
-                  placeholder="Leave blank to skip"
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="rule-ratio">Ratio limit</Label>
-                <Input
-                  id="rule-ratio"
-                  type="number"
-                  step="0.01"
-                  min={-1}
-                  value={formState.ratioLimit ?? ""}
-                  onChange={(e) => setFormState(prev => ({ ...prev, ratioLimit: e.target.value ? Number(e.target.value) : undefined }))}
-                  placeholder="e.g. 2.0"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="rule-seedtime">Seeding time limit (minutes)</Label>
-                <Input
-                  id="rule-seedtime"
-                  type="number"
-                  min={-1}
-                  value={formState.seedingTimeLimitMinutes ?? ""}
-                  onChange={(e) => setFormState(prev => ({ ...prev, seedingTimeLimitMinutes: e.target.value ? Number(e.target.value) : undefined }))}
-                  placeholder="e.g. 1440"
-                />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="rule-upload">Upload (KiB/s)</Label>
+                  <Input
+                    id="rule-upload"
+                    type="number"
+                    min={0}
+                    value={formState.uploadLimitKiB ?? ""}
+                    onChange={(e) => setFormState(prev => ({ ...prev, uploadLimitKiB: e.target.value ? Number(e.target.value) : undefined }))}
+                    placeholder="Leave blank to skip"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="rule-download">Download (KiB/s)</Label>
+                  <Input
+                    id="rule-download"
+                    type="number"
+                    min={0}
+                    value={formState.downloadLimitKiB ?? ""}
+                    onChange={(e) => setFormState(prev => ({ ...prev, downloadLimitKiB: e.target.value ? Number(e.target.value) : undefined }))}
+                    placeholder="Leave blank to skip"
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-1">
+            {/* Seeding Limits & Auto-Delete Group */}
+            <div className="rounded-lg border p-4 space-y-4">
+              <div>
+                <h4 className="text-sm font-medium">Seeding limits & auto-delete</h4>
+                <p className="text-xs text-muted-foreground">Torrents are deleted when ratio or seeding time is reached</p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-[1fr_auto_1fr] items-end">
+                <div className="space-y-2">
+                  <Label htmlFor="rule-ratio">Ratio limit</Label>
+                  <Input
+                    id="rule-ratio"
+                    type="number"
+                    step="0.01"
+                    min={-1}
+                    value={formState.ratioLimit ?? ""}
+                    onChange={(e) => setFormState(prev => ({ ...prev, ratioLimit: e.target.value ? Number(e.target.value) : undefined }))}
+                    placeholder="e.g. 2.0"
+                  />
+                </div>
+                <span className="text-xs text-muted-foreground pb-2.5">OR</span>
+                <div className="space-y-2">
+                  <Label htmlFor="rule-seedtime">Seeding time (minutes)</Label>
+                  <Input
+                    id="rule-seedtime"
+                    type="number"
+                    min={-1}
+                    value={formState.seedingTimeLimitMinutes ?? ""}
+                    onChange={(e) => setFormState(prev => ({ ...prev, seedingTimeLimitMinutes: e.target.value ? Number(e.target.value) : undefined }))}
+                    placeholder="e.g. 1440"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="rule-delete-mode">Delete mode</Label>
+                <Select
+                  value={formState.deleteMode ?? "none"}
+                  onValueChange={(value) => setFormState(prev => ({
+                    ...prev,
+                    deleteMode: value === "none" ? undefined : value as "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds",
+                    deleteUnregistered: value === "none" ? false : prev.deleteUnregistered
+                  }))}
+                >
+                  <SelectTrigger id="rule-delete-mode">
+                    <SelectValue placeholder="Select delete mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Don't delete (torrent pauses when limit reached)</SelectItem>
+                    <SelectItem value="delete">Delete torrent (keep files)</SelectItem>
+                    <SelectItem value="deleteWithFiles">Delete torrent and files</SelectItem>
+                    <SelectItem value="deleteWithFilesPreserveCrossSeeds">Delete torrent and files (preserve cross-seeds)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className={cn("flex items-center space-x-2", !formState.deleteMode && "opacity-50")}>
@@ -481,62 +516,29 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
                       htmlFor="delete-unregistered"
                       className={cn("text-sm font-normal", formState.deleteMode ? "cursor-pointer" : "cursor-not-allowed")}
                     >
-                      Delete unregistered torrents
+                      Also delete unregistered torrents
                     </Label>
                   </div>
                 </TooltipTrigger>
                 {!formState.deleteMode && (
                   <TooltipContent>
-                    <p>Select a delete mode below to enable this option</p>
+                    <p>Select a delete mode above to enable this option</p>
                   </TooltipContent>
                 )}
               </Tooltip>
-              <p className="text-xs text-muted-foreground">
-                Automatically delete torrents no longer registered with the tracker (checked every 60s).
-              </p>
-
-              <div className="space-y-2 pt-2">
-                <Label htmlFor="rule-delete-mode">Delete when limits reached</Label>
-                <Select
-                  value={formState.deleteMode ?? "none"}
-                  onValueChange={(value) => setFormState(prev => ({
-                    ...prev,
-                    deleteMode: value === "none" ? undefined : value as "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds",
-                    // Clear deleteUnregistered if switching to "none"
-                    deleteUnregistered: value === "none" ? false : prev.deleteUnregistered
-                  }))}
-                >
-                  <SelectTrigger id="rule-delete-mode">
-                    <SelectValue placeholder="Select delete mode" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Don't delete (torrent pauses when limit reached)</SelectItem>
-                    <SelectItem value="delete">Delete torrent (keep files)</SelectItem>
-                    <SelectItem value="deleteWithFiles">Delete torrent and files</SelectItem>
-                    <SelectItem value="deleteWithFilesPreserveCrossSeeds">Delete torrent and files (preserve cross-seeds)</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  When ratio or seeding time limit is reached, qBittorrent pauses the torrent. Select a delete mode to also remove it. Cross-seed mode preserves files if another torrent shares the same data.
-                </p>
-              </div>
             </div>
+          </div>
 
-            <div className="grid gap-4 sm:grid-cols-1">
-              <div className="flex items-center justify-between rounded-lg border p-3">
-                <div>
-                  <Label htmlFor="rule-enabled">Enabled</Label>
-                  <p className="text-sm text-muted-foreground">Rule is active and will be applied.</p>
-                </div>
-                <Switch
-                  id="rule-enabled"
-                  checked={formState.enabled ?? true}
-                  onCheckedChange={(checked) => setFormState(prev => ({ ...prev, enabled: checked }))}
-                />
-              </div>
+          <div className="flex items-center justify-between pt-4 border-t mt-4">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="rule-enabled"
+                checked={formState.enabled ?? true}
+                onCheckedChange={(checked) => setFormState(prev => ({ ...prev, enabled: checked }))}
+              />
+              <Label htmlFor="rule-enabled" className="text-sm font-normal cursor-pointer">Enabled</Label>
             </div>
-
-            <DialogFooter>
+            <div className="flex gap-2">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                 Cancel
               </Button>
@@ -544,10 +546,11 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
                 {createOrUpdate.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 {editingRule ? "Save changes" : "Create rule"}
               </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+            </div>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 
   const deleteDialogContent = (
