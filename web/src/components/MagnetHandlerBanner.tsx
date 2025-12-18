@@ -15,7 +15,7 @@ import {
 } from "@/lib/protocol-handler"
 
 export function MagnetHandlerBanner() {
-  const [dismissed, setDismissed] = useState(isProtocolHandlerBannerDismissed)
+  const [dismissed, setDismissed] = useState(() => isProtocolHandlerBannerDismissed())
 
   // Don't show if browser doesn't support registerProtocolHandler or not HTTPS
   if (!canRegisterProtocolHandler()) {
