@@ -19,6 +19,16 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MultiSelect, type Option } from "@/components/ui/multi-select"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog"
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -64,6 +74,7 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<TrackerRule | null>(null)
   const [formState, setFormState] = useState<FormState>(emptyFormState)
+  const [deleteConfirmRule, setDeleteConfirmRule] = useState<TrackerRule | null>(null)
 
   const trackersQuery = useInstanceTrackers(instanceId, { enabled: true })
   const trackerOptions: Option[] = useMemo(() => {
@@ -266,7 +277,7 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => deleteRule.mutate(rule.id)}
+                      onClick={() => setDeleteConfirmRule(rule)}
                       className="text-destructive h-8 w-8 sm:h-9 sm:w-9"
                       disabled={deleteRule.isPending}
                     >
@@ -513,12 +524,40 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
       </Dialog>
   )
 
+  const deleteDialogContent = (
+    <AlertDialog open={!!deleteConfirmRule} onOpenChange={(open) => !open && setDeleteConfirmRule(null)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete Rule</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to delete "{deleteConfirmRule?.name}"? This action cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              if (deleteConfirmRule) {
+                deleteRule.mutate(deleteConfirmRule.id)
+                setDeleteConfirmRule(null)
+              }
+            }}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+
   if (variant === "embedded") {
     return (
       <div className="space-y-4">
         {headerContent}
         {rulesContent}
         {dialogContent}
+        {deleteDialogContent}
       </div>
     )
   }
@@ -534,6 +573,7 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
         </CardContent>
       </Card>
       {dialogContent}
+      {deleteDialogContent}
     </div>
   )
 }
