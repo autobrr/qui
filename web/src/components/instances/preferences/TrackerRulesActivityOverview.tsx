@@ -4,10 +4,6 @@
  */
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,17 +15,22 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
-import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { cn, copyTextToClipboard, formatRelativeTime } from "@/lib/utils"
 import type { TrackerRuleActivity } from "@/types"
 import { useQueries, useQueryClient } from "@tanstack/react-query"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { Copy, Info, RefreshCcw, Search, Settings2, Trash2 } from "lucide-react"
 import { useCallback, useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -436,16 +437,9 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
                                 <div className="flex flex-col gap-2">
                                   <div className="grid grid-cols-[1fr_auto] items-center gap-2">
                                     <div className="min-w-0">
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <span className="font-medium text-sm truncate block cursor-help">
-                                            {event.torrentName || event.hash}
-                                          </span>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          <p className="font-semibold">{event.torrentName || "N/A"}</p>
-                                        </TooltipContent>
-                                      </Tooltip>
+                                      <TruncatedText className="font-medium text-sm block cursor-default">
+                                        {event.torrentName || event.hash}
+                                      </TruncatedText>
                                     </div>
                                     <div className="flex items-center gap-1.5">
                                       <Badge
@@ -540,7 +534,6 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
                                           label = "Torrent only"
                                         } else if (deleteMode === "deleteWithFilesPreserveCrossSeeds" && filesKept) {
                                           label = "Files kept due to cross-seeds"
-                                          className += " bg-blue-500/10 text-blue-500 border-blue-500/20"
                                         } else if (deleteMode === "deleteWithFiles" || deleteMode === "deleteWithFilesPreserveCrossSeeds") {
                                           label = "With files"
                                         } else {

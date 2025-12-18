@@ -4,6 +4,16 @@
  */
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,17 +22,33 @@ import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { cn, parseTrackerDomains } from "@/lib/utils"
 import type { TrackerRule } from "@/types"
-import { useQueries } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Clock, Info, Loader2, Scale, Settings2 } from "lucide-react"
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
+import { TruncatedText } from "@/components/ui/truncated-text"
+import { ArrowDown, ArrowUp, Clock, Info, Loader2, Pencil, Plus, Scale, Trash2 } from "lucide-react"
 import { useMemo, useState } from "react"
+import { toast } from "sonner"
+import { TrackerRuleDialog } from "./TrackerRuleDialog"
 
-interface TrackerRulesOverviewProps {
-  onConfigureInstance?: (instanceId: number) => void
-}
-
-export function TrackerRulesOverview({ onConfigureInstance }: TrackerRulesOverviewProps) {
+export function TrackerRulesOverview() {
   const { instances } = useInstances()
+  const queryClient = useQueryClient()
   const [expandedInstances, setExpandedInstances] = useState<string[]>([])
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingRule, setEditingRule] = useState<TrackerRule | null>(null)
+  const [editingInstanceId, setEditingInstanceId] = useState<number | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ instanceId: number; rule: TrackerRule } | null>(null)
+
+  const deleteRule = useMutation({
+    mutationFn: ({ instanceId, ruleId }: { instanceId: number; ruleId: number }) =>
+      api.deleteTrackerRule(instanceId, ruleId),
+    onSuccess: (_, { instanceId }) => {
+      toast.success("Tracker rule deleted")
+      void queryClient.invalidateQueries({ queryKey: ["tracker-rules", instanceId] })
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to delete tracker rule")
+    },
+  })
 
   const activeInstances = useMemo(
     () => (instances ?? []).filter((inst) => inst.isActive),
@@ -38,13 +64,16 @@ export function TrackerRulesOverview({ onConfigureInstance }: TrackerRulesOvervi
     })),
   })
 
-  const getRulesSummary = (rules: TrackerRule[] | undefined): string => {
-    if (!rules || rules.length === 0) return "No rules configured"
-    const enabledCount = rules.filter(r => r.enabled).length
-    if (enabledCount === rules.length) {
-      return `${rules.length} rule${rules.length === 1 ? "" : "s"}`
-    }
-    return `${enabledCount}/${rules.length} rules enabled`
+  const openCreateDialog = (instanceId: number) => {
+    setEditingInstanceId(instanceId)
+    setEditingRule(null)
+    setDialogOpen(true)
+  }
+
+  const openEditDialog = (instanceId: number, rule: TrackerRule) => {
+    setEditingInstanceId(instanceId)
+    setEditingRule(rule)
+    setDialogOpen(true)
   }
 
   if (!instances || instances.length === 0) {
@@ -115,27 +144,7 @@ export function TrackerRulesOverview({ onConfigureInstance }: TrackerRulesOvervi
 
                 <AccordionContent className="px-6 pb-4">
                   <div className="space-y-4">
-                    {/* Rules summary */}
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border/40">
-                      <div className="space-y-0.5">
-                        <p className="text-sm text-muted-foreground">
-                          {getRulesSummary(rules)}
-                        </p>
-                      </div>
-                      {onConfigureInstance && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onConfigureInstance(instance.id)}
-                          className="h-8"
-                        >
-                          <Settings2 className="h-4 w-4 mr-2" />
-                          Configure
-                        </Button>
-                      )}
-                    </div>
-
-                    {/* Rules list preview */}
+                    {/* Rules list */}
                     {rulesQuery?.isError ? (
                       <div className="h-[100px] flex flex-col items-center justify-center border border-destructive/30 rounded-lg bg-destructive/10 text-center p-4">
                         <p className="text-sm text-destructive">Failed to load rules</p>
@@ -151,26 +160,34 @@ export function TrackerRulesOverview({ onConfigureInstance }: TrackerRulesOvervi
                         <p className="text-sm text-muted-foreground">
                           No tracker rules configured yet.
                         </p>
-                        {onConfigureInstance && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => onConfigureInstance(instance.id)}
-                          >
-                            Add your first rule
-                          </Button>
-                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openCreateDialog(instance.id)}
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add your first rule
+                        </Button>
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        {sortedRules.slice(0, 5).map((rule) => (
-                          <RulePreview key={rule.id} rule={rule} />
+                        {sortedRules.map((rule) => (
+                          <RulePreview
+                            key={rule.id}
+                            rule={rule}
+                            onEdit={() => openEditDialog(instance.id, rule)}
+                            onDelete={() => setDeleteConfirm({ instanceId: instance.id, rule })}
+                          />
                         ))}
-                        {sortedRules.length > 5 && (
-                          <p className="text-xs text-muted-foreground text-center py-2">
-                            +{sortedRules.length - 5} more rule{sortedRules.length - 5 === 1 ? "" : "s"}
-                          </p>
-                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openCreateDialog(instance.id)}
+                          className="w-full"
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add rule
+                        </Button>
                       </div>
                     )}
                   </div>
@@ -180,33 +197,72 @@ export function TrackerRulesOverview({ onConfigureInstance }: TrackerRulesOvervi
           })}
         </Accordion>
       </CardContent>
+
+      {editingInstanceId !== null && (
+        <TrackerRuleDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          instanceId={editingInstanceId}
+          rule={editingRule}
+        />
+      )}
+
+      <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Rule</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{deleteConfirm?.rule.name}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleteConfirm) {
+                  deleteRule.mutate({ instanceId: deleteConfirm.instanceId, ruleId: deleteConfirm.rule.id })
+                  setDeleteConfirm(null)
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   )
 }
 
-function RulePreview({ rule }: { rule: TrackerRule }) {
+function RulePreview({ rule, onEdit, onDelete }: { rule: TrackerRule; onEdit: () => void; onDelete: () => void }) {
   const trackers = parseTrackerDomains(rule)
+  const isAllTrackers = rule.trackerPattern === "*"
 
   return (
     <div className={cn(
-      "rounded-lg border bg-muted/20 p-3 flex items-center justify-between gap-3",
+      "rounded-lg border bg-muted/20 p-3 grid grid-cols-[1fr_auto] items-center gap-3",
       !rule.enabled && "opacity-50"
     )}>
-      <div className="flex items-center gap-2 min-w-0">
-        <span className={cn(
-          "text-sm font-medium truncate",
+      <div className="min-w-0">
+        <TruncatedText className={cn(
+          "text-sm font-medium block cursor-default",
           !rule.enabled && "text-muted-foreground"
         )}>
           {rule.name}
-        </span>
+        </TruncatedText>
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
         {!rule.enabled && (
-          <Badge variant="outline" className="text-[10px] text-muted-foreground shrink-0">
+          <Badge variant="outline" className="text-[10px] text-muted-foreground cursor-default">
             Off
           </Badge>
         )}
-      </div>
-      <div className="flex items-center gap-1.5 shrink-0">
-        {trackers.length > 0 && (
+        {isAllTrackers ? (
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 cursor-default">
+            All trackers
+          </Badge>
+        ) : trackers.length > 0 && (
           <Tooltip>
             <TooltipTrigger asChild>
               <Badge variant="outline" className="text-[10px] px-1.5 h-5 cursor-help">
@@ -219,31 +275,56 @@ function RulePreview({ rule }: { rule: TrackerRule }) {
           </Tooltip>
         )}
         {rule.uploadLimitKiB !== undefined && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5">
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <ArrowUp className="h-3 w-3" />
             {rule.uploadLimitKiB}
           </Badge>
         )}
         {rule.downloadLimitKiB !== undefined && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5">
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <ArrowDown className="h-3 w-3" />
             {rule.downloadLimitKiB}
           </Badge>
         )}
         {rule.ratioLimit !== undefined && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5">
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <Scale className="h-3 w-3" />
             {rule.ratioLimit}
           </Badge>
         )}
         {rule.seedingTimeLimitMinutes !== undefined && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5">
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <Clock className="h-3 w-3" />
             {rule.seedingTimeLimitMinutes}m
           </Badge>
         )}
+        {rule.deleteMode && rule.deleteMode !== "none" && (
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-destructive border-destructive/50">
+            <Trash2 className="h-3 w-3" />
+            {rule.deleteMode === "deleteWithFilesPreserveCrossSeeds"
+              ? "XS safe"
+              : rule.deleteMode === "deleteWithFiles"
+                ? "+ files"
+                : ""}
+          </Badge>
+        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onEdit}
+          className="h-7 w-7 ml-1"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onDelete}
+          className="h-7 w-7 text-destructive"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
       </div>
     </div>
   )
 }
-
