@@ -114,6 +114,7 @@ func (h *TrackerRuleHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	var payload TrackerRulePayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("tracker rules: failed to decode create payload")
 		RespondError(w, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
@@ -132,6 +133,14 @@ func (h *TrackerRuleHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if payload.TagMatchMode != nil && *payload.TagMatchMode != "" && *payload.TagMatchMode != models.TagMatchModeAny && *payload.TagMatchMode != models.TagMatchModeAll {
 		RespondError(w, http.StatusBadRequest, "tagMatchMode must be 'any' or 'all'")
 		return
+	}
+
+	if payload.DeleteMode != nil && *payload.DeleteMode != "" {
+		validModes := map[string]bool{"none": true, "delete": true, "deleteWithFiles": true, "deleteWithFilesPreserveCrossSeeds": true}
+		if !validModes[*payload.DeleteMode] {
+			RespondError(w, http.StatusBadRequest, "Invalid deleteMode")
+			return
+		}
 	}
 
 	rule, err := h.store.Create(r.Context(), payload.toModel(instanceID, 0))
@@ -159,6 +168,7 @@ func (h *TrackerRuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	var payload TrackerRulePayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Int("ruleID", ruleID).Msg("tracker rules: failed to decode update payload")
 		RespondError(w, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
@@ -177,6 +187,14 @@ func (h *TrackerRuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if payload.TagMatchMode != nil && *payload.TagMatchMode != "" && *payload.TagMatchMode != models.TagMatchModeAny && *payload.TagMatchMode != models.TagMatchModeAll {
 		RespondError(w, http.StatusBadRequest, "tagMatchMode must be 'any' or 'all'")
 		return
+	}
+
+	if payload.DeleteMode != nil && *payload.DeleteMode != "" {
+		validModes := map[string]bool{"none": true, "delete": true, "deleteWithFiles": true, "deleteWithFilesPreserveCrossSeeds": true}
+		if !validModes[*payload.DeleteMode] {
+			RespondError(w, http.StatusBadRequest, "Invalid deleteMode")
+			return
+		}
 	}
 
 	rule, err := h.store.Update(r.Context(), payload.toModel(instanceID, ruleID))
@@ -249,12 +267,15 @@ func (h *TrackerRuleHandler) ApplyNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.service != nil {
-		if err := h.service.ApplyOnceForInstance(r.Context(), instanceID); err != nil {
-			log.Error().Err(err).Int("instanceID", instanceID).Msg("tracker rules: manual apply failed")
-			RespondError(w, http.StatusInternalServerError, "Failed to apply tracker rules")
-			return
-		}
+	if h.service == nil {
+		RespondError(w, http.StatusServiceUnavailable, "Tracker rules service not available")
+		return
+	}
+
+	if err := h.service.ApplyOnceForInstance(r.Context(), instanceID); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("tracker rules: manual apply failed")
+		RespondError(w, http.StatusInternalServerError, "Failed to apply tracker rules")
+		return
 	}
 
 	RespondJSON(w, http.StatusAccepted, map[string]string{"status": "applied"})
@@ -349,7 +370,7 @@ func (h *TrackerRuleHandler) DeleteActivity(w http.ResponseWriter, r *http.Reque
 
 	olderThanDays := 7
 	if olderThanStr := r.URL.Query().Get("older_than"); olderThanStr != "" {
-		if parsed, err := strconv.Atoi(olderThanStr); err == nil && parsed > 0 {
+		if parsed, err := strconv.Atoi(olderThanStr); err == nil && parsed >= 0 {
 			olderThanDays = parsed
 		}
 	}

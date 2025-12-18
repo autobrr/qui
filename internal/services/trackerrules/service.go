@@ -76,6 +76,29 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 	}
 }
 
+// cleanupStaleEntries removes entries from lastApplied and lastDeleted maps
+// that are older than 10 minutes to prevent unbounded memory growth.
+func (s *Service) cleanupStaleEntries() {
+	cutoff := time.Now().Add(-10 * time.Minute)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, instMap := range s.lastApplied {
+		for hash, ts := range instMap {
+			if ts.Before(cutoff) {
+				delete(instMap, hash)
+			}
+		}
+	}
+	for _, instMap := range s.lastDeleted {
+		for hash, ts := range instMap {
+			if ts.Before(cutoff) {
+				delete(instMap, hash)
+			}
+		}
+	}
+}
+
 func (s *Service) Start(ctx context.Context) {
 	if s == nil {
 		return
@@ -106,12 +129,15 @@ func (s *Service) loop(ctx context.Context) {
 			s.applyAll(ctx)
 
 			// Prune hourly
-			if s.activityStore != nil && time.Since(lastPrune) > time.Hour {
-				if pruned, err := s.activityStore.Prune(ctx, s.cfg.ActivityRetentionDays); err != nil {
-					log.Warn().Err(err).Msg("tracker rules: failed to prune old activity")
-				} else if pruned > 0 {
-					log.Info().Int64("count", pruned).Msg("tracker rules: pruned old activity entries")
+			if time.Since(lastPrune) > time.Hour {
+				if s.activityStore != nil {
+					if pruned, err := s.activityStore.Prune(ctx, s.cfg.ActivityRetentionDays); err != nil {
+						log.Warn().Err(err).Msg("tracker rules: failed to prune old activity")
+					} else if pruned > 0 {
+						log.Info().Int64("count", pruned).Msg("tracker rules: pruned old activity entries")
+					}
 				}
+				s.cleanupStaleEntries()
 				lastPrune = time.Now()
 			}
 		}
@@ -244,14 +270,16 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 				log.Warn().Err(err).Int("instanceID", instanceID).Int64("limitKiB", limit).Int("count", len(batch)).Msg("tracker rules: upload limit failed")
 				if s.activityStore != nil {
 					detailsJSON, _ := json.Marshal(map[string]any{"limitKiB": limit, "count": len(batch), "type": "upload"})
-					_ = s.activityStore.Create(ctx, &models.TrackerRuleActivity{
+					if err := s.activityStore.Create(ctx, &models.TrackerRuleActivity{
 						InstanceID: instanceID,
 						Hash:       strings.Join(batch, ","),
 						Action:     models.ActivityActionLimitFailed,
 						Outcome:    models.ActivityOutcomeFailed,
 						Reason:     "upload limit failed: " + err.Error(),
 						Details:    detailsJSON,
-					})
+					}); err != nil {
+						log.Warn().Err(err).Int("instanceID", instanceID).Msg("tracker rules: failed to record activity")
+					}
 				}
 			}
 		}
@@ -264,14 +292,16 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 				log.Warn().Err(err).Int("instanceID", instanceID).Int64("limitKiB", limit).Int("count", len(batch)).Msg("tracker rules: download limit failed")
 				if s.activityStore != nil {
 					detailsJSON, _ := json.Marshal(map[string]any{"limitKiB": limit, "count": len(batch), "type": "download"})
-					_ = s.activityStore.Create(ctx, &models.TrackerRuleActivity{
+					if err := s.activityStore.Create(ctx, &models.TrackerRuleActivity{
 						InstanceID: instanceID,
 						Hash:       strings.Join(batch, ","),
 						Action:     models.ActivityActionLimitFailed,
 						Outcome:    models.ActivityOutcomeFailed,
 						Reason:     "download limit failed: " + err.Error(),
 						Details:    detailsJSON,
-					})
+					}); err != nil {
+						log.Warn().Err(err).Int("instanceID", instanceID).Msg("tracker rules: failed to record activity")
+					}
 				}
 			}
 		}
@@ -284,14 +314,16 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 				log.Warn().Err(err).Int("instanceID", instanceID).Float64("ratio", key.ratio).Int64("seedMinutes", key.seed).Int("count", len(batch)).Msg("tracker rules: share limit failed")
 				if s.activityStore != nil {
 					detailsJSON, _ := json.Marshal(map[string]any{"ratio": key.ratio, "seedMinutes": key.seed, "count": len(batch), "type": "share"})
-					_ = s.activityStore.Create(ctx, &models.TrackerRuleActivity{
+					if err := s.activityStore.Create(ctx, &models.TrackerRuleActivity{
 						InstanceID: instanceID,
 						Hash:       strings.Join(batch, ","),
 						Action:     models.ActivityActionLimitFailed,
 						Outcome:    models.ActivityOutcomeFailed,
 						Reason:     "share limit failed: " + err.Error(),
 						Details:    detailsJSON,
-					})
+					}); err != nil {
+						log.Warn().Err(err).Int("instanceID", instanceID).Msg("tracker rules: failed to record activity")
+					}
 				}
 			}
 		}
@@ -323,9 +355,9 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 	}
 
 	// Batch torrents for deletion by delete mode
-	deleteHashesByMode := make(map[string][]string)          // "delete" or "deleteWithFiles" -> hashes
-	pendingByHash := make(map[string]pendingDeletion)        // hash -> deletion context
-	queuedForDeletion := make(map[string]struct{})           // track hashes already queued
+	deleteHashesByMode := make(map[string][]string)   // "delete" or "deleteWithFiles" -> hashes
+	pendingByHash := make(map[string]pendingDeletion) // hash -> deletion context
+	queuedForDeletion := make(map[string]struct{})    // track hashes already queued
 
 	for _, torrent := range torrents {
 		// Skip if recently processed for deletion (avoid duplicate attempts)
@@ -539,7 +571,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 					for _, hash := range batch {
 						if pending, ok := pendingByHash[hash]; ok {
 							detailsJSON, _ := json.Marshal(pending.details)
-							_ = s.activityStore.Create(ctx, &models.TrackerRuleActivity{
+							if err := s.activityStore.Create(ctx, &models.TrackerRuleActivity{
 								InstanceID:    instanceID,
 								Hash:          hash,
 								TorrentName:   pending.torrentName,
@@ -550,7 +582,9 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 								Outcome:       models.ActivityOutcomeFailed,
 								Reason:        err.Error(),
 								Details:       detailsJSON,
-							})
+							}); err != nil {
+								log.Warn().Err(err).Str("hash", hash).Int("instanceID", instanceID).Msg("tracker rules: failed to record activity")
+							}
 						}
 					}
 				}
@@ -573,7 +607,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 					for _, hash := range batch {
 						if pending, ok := pendingByHash[hash]; ok {
 							detailsJSON, _ := json.Marshal(pending.details)
-							_ = s.activityStore.Create(ctx, &models.TrackerRuleActivity{
+							if err := s.activityStore.Create(ctx, &models.TrackerRuleActivity{
 								InstanceID:    instanceID,
 								Hash:          hash,
 								TorrentName:   pending.torrentName,
@@ -584,7 +618,9 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 								Outcome:       models.ActivityOutcomeSuccess,
 								Reason:        pending.reason,
 								Details:       detailsJSON,
-							})
+							}); err != nil {
+								log.Warn().Err(err).Str("hash", hash).Int("instanceID", instanceID).Msg("tracker rules: failed to record activity")
+							}
 						}
 					}
 				}

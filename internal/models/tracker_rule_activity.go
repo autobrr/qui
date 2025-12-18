@@ -147,7 +147,16 @@ func (s *TrackerRuleActivityStore) ListByInstance(ctx context.Context, instanceI
 }
 
 func (s *TrackerRuleActivityStore) DeleteOlderThan(ctx context.Context, instanceID int, days int) (int64, error) {
-	if days <= 0 {
+	// days == 0 means delete ALL activity for this instance
+	if days == 0 {
+		res, err := s.db.ExecContext(ctx, `DELETE FROM tracker_rule_activity WHERE instance_id = ?`, instanceID)
+		if err != nil {
+			return 0, err
+		}
+		return res.RowsAffected()
+	}
+
+	if days < 0 {
 		days = 7
 	}
 
