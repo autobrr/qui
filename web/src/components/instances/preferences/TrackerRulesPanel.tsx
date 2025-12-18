@@ -428,50 +428,61 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
             </div>
 
             <div className="grid gap-4 sm:grid-cols-1">
-              <div className="space-y-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className={cn("flex items-center space-x-2", !formState.deleteMode && "opacity-50")}>
+                    <Checkbox
+                      id="delete-unregistered"
+                      checked={formState.deleteUnregistered ?? false}
+                      disabled={!formState.deleteMode}
+                      onCheckedChange={(checked: boolean) => setFormState(prev => ({
+                        ...prev,
+                        deleteUnregistered: checked,
+                      }))}
+                    />
+                    <Label
+                      htmlFor="delete-unregistered"
+                      className={cn("text-sm font-normal", formState.deleteMode ? "cursor-pointer" : "cursor-not-allowed")}
+                    >
+                      Delete unregistered torrents
+                    </Label>
+                  </div>
+                </TooltipTrigger>
+                {!formState.deleteMode && (
+                  <TooltipContent>
+                    <p>Select a delete mode below to enable this option</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+              <p className="text-xs text-muted-foreground">
+                Automatically delete torrents no longer registered with the tracker (checked every 60s).
+              </p>
+
+              <div className="space-y-2 pt-2">
                 <Label htmlFor="rule-delete-mode">Delete when limits reached</Label>
                 <Select
                   value={formState.deleteMode ?? "none"}
                   onValueChange={(value) => setFormState(prev => ({
                     ...prev,
-                    deleteMode: value === "none" ? undefined : value as "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds"
+                    deleteMode: value === "none" ? undefined : value as "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds",
+                    // Clear deleteUnregistered if switching to "none"
+                    deleteUnregistered: value === "none" ? false : prev.deleteUnregistered
                   }))}
                 >
                   <SelectTrigger id="rule-delete-mode">
                     <SelectValue placeholder="Select delete mode" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Don't delete</SelectItem>
+                    <SelectItem value="none">Don't delete (torrent pauses when limit reached)</SelectItem>
                     <SelectItem value="delete">Delete torrent (keep files)</SelectItem>
                     <SelectItem value="deleteWithFiles">Delete torrent and files</SelectItem>
                     <SelectItem value="deleteWithFilesPreserveCrossSeeds">Delete torrent and files (preserve cross-seeds)</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Automatically delete torrents when ratio or seeding time limit is reached. Cross-seed mode preserves files if another torrent shares the same data.
+                  When ratio or seeding time limit is reached, qBittorrent pauses the torrent. Select a delete mode to also remove it. Cross-seed mode preserves files if another torrent shares the same data.
                 </p>
               </div>
-
-              <div className="flex items-center space-x-2 pt-2">
-                <Checkbox
-                  id="delete-unregistered"
-                  checked={formState.deleteUnregistered ?? false}
-                  onCheckedChange={(checked: boolean) => setFormState(prev => ({
-                    ...prev,
-                    deleteUnregistered: checked,
-                    // Auto-select delete mode if enabling and none set
-                    deleteMode: checked && (!prev.deleteMode || prev.deleteMode === "none")
-                      ? "delete"
-                      : prev.deleteMode
-                  }))}
-                />
-                <Label htmlFor="delete-unregistered" className="text-sm font-normal cursor-pointer">
-                  Delete unregistered torrents
-                </Label>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Automatically delete torrents no longer registered with the tracker (checked every 60s).
-              </p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-1">
