@@ -13,6 +13,11 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
+const (
+	TagMatchModeAny = "any"
+	TagMatchModeAll = "all"
+)
+
 type TrackerRule struct {
 	ID                      int       `json:"id"`
 	InstanceID              int       `json:"instanceId"`
@@ -21,6 +26,7 @@ type TrackerRule struct {
 	TrackerDomains          []string  `json:"trackerDomains,omitempty"`
 	Categories              []string  `json:"categories,omitempty"`
 	Tags                    []string  `json:"tags,omitempty"`
+	TagMatchMode            string    `json:"tagMatchMode,omitempty"` // "any" (default) or "all"
 	UploadLimitKiB          *int64    `json:"uploadLimitKiB,omitempty"`
 	DownloadLimitKiB        *int64    `json:"downloadLimitKiB,omitempty"`
 	RatioLimit              *float64  `json:"ratioLimit,omitempty"`
@@ -83,7 +89,7 @@ func normalizeTrackerPattern(pattern string, domains []string) string {
 
 func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) ([]*TrackerRule, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, instance_id, name, tracker_pattern, category, tag, upload_limit_kib, download_limit_kib,
+		SELECT id, instance_id, name, tracker_pattern, category, tag, tag_match_mode, upload_limit_kib, download_limit_kib,
 		       ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, enabled, sort_order, created_at, updated_at
 		FROM tracker_rules
 		WHERE instance_id = ?
@@ -97,7 +103,7 @@ func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) (
 	var rules []*TrackerRule
 	for rows.Next() {
 		var rule TrackerRule
-		var categories, tags, deleteMode sql.NullString
+		var categories, tags, tagMatchMode, deleteMode sql.NullString
 		var upload, download sql.NullInt64
 		var ratio sql.NullFloat64
 		var seeding sql.NullInt64
@@ -110,6 +116,7 @@ func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) (
 			&rule.TrackerPattern,
 			&categories,
 			&tags,
+			&tagMatchMode,
 			&upload,
 			&download,
 			&ratio,
@@ -129,6 +136,11 @@ func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) (
 		}
 		if tags.Valid && tags.String != "" {
 			rule.Tags = splitPatterns(tags.String)
+		}
+		if tagMatchMode.Valid && tagMatchMode.String != "" {
+			rule.TagMatchMode = tagMatchMode.String
+		} else {
+			rule.TagMatchMode = TagMatchModeAny
 		}
 		if upload.Valid {
 			rule.UploadLimitKiB = &upload.Int64
@@ -161,14 +173,14 @@ func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) (
 
 func (s *TrackerRuleStore) Get(ctx context.Context, id int) (*TrackerRule, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, instance_id, name, tracker_pattern, category, tag, upload_limit_kib, download_limit_kib,
+		SELECT id, instance_id, name, tracker_pattern, category, tag, tag_match_mode, upload_limit_kib, download_limit_kib,
 		       ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, enabled, sort_order, created_at, updated_at
 		FROM tracker_rules
 		WHERE id = ?
 	`, id)
 
 	var rule TrackerRule
-	var categories, tags, deleteMode sql.NullString
+	var categories, tags, tagMatchMode, deleteMode sql.NullString
 	var upload, download sql.NullInt64
 	var ratio sql.NullFloat64
 	var seeding sql.NullInt64
@@ -181,6 +193,7 @@ func (s *TrackerRuleStore) Get(ctx context.Context, id int) (*TrackerRule, error
 		&rule.TrackerPattern,
 		&categories,
 		&tags,
+		&tagMatchMode,
 		&upload,
 		&download,
 		&ratio,
@@ -200,6 +213,11 @@ func (s *TrackerRuleStore) Get(ctx context.Context, id int) (*TrackerRule, error
 	}
 	if tags.Valid && tags.String != "" {
 		rule.Tags = splitPatterns(tags.String)
+	}
+	if tagMatchMode.Valid && tagMatchMode.String != "" {
+		rule.TagMatchMode = tagMatchMode.String
+	} else {
+		rule.TagMatchMode = TagMatchModeAny
 	}
 	if upload.Valid {
 		rule.UploadLimitKiB = &upload.Int64
@@ -254,16 +272,22 @@ func (s *TrackerRuleStore) Create(ctx context.Context, rule *TrackerRule) (*Trac
 		deleteMode = *rule.DeleteMode
 	}
 
+	// Default tag_match_mode to "any" if not set
+	tagMatchMode := TagMatchModeAny
+	if rule.TagMatchMode != "" {
+		tagMatchMode = rule.TagMatchMode
+	}
+
 	// Join arrays to comma-separated strings for storage
 	categoriesStr := nullableSlice(rule.Categories)
 	tagsStr := nullableSlice(rule.Tags)
 
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO tracker_rules
-			(instance_id, name, tracker_pattern, category, tag, upload_limit_kib, download_limit_kib, ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, enabled, sort_order)
+			(instance_id, name, tracker_pattern, category, tag, tag_match_mode, upload_limit_kib, download_limit_kib, ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, enabled, sort_order)
 		VALUES
-			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, rule.InstanceID, rule.Name, rule.TrackerPattern, categoriesStr, tagsStr,
+			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, rule.InstanceID, rule.Name, rule.TrackerPattern, categoriesStr, tagsStr, tagMatchMode,
 		nullableInt64(rule.UploadLimitKiB), nullableInt64(rule.DownloadLimitKiB), nullableFloat64(rule.RatioLimit),
 		nullableInt64(rule.SeedingTimeLimitMinutes), deleteMode, boolToInt(rule.DeleteUnregistered), boolToInt(rule.Enabled), sortOrder)
 	if err != nil {
@@ -291,16 +315,22 @@ func (s *TrackerRuleStore) Update(ctx context.Context, rule *TrackerRule) (*Trac
 		deleteMode = *rule.DeleteMode
 	}
 
+	// Default tag_match_mode to "any" if not set
+	tagMatchMode := TagMatchModeAny
+	if rule.TagMatchMode != "" {
+		tagMatchMode = rule.TagMatchMode
+	}
+
 	// Join arrays to comma-separated strings for storage
 	categoriesStr := nullableSlice(rule.Categories)
 	tagsStr := nullableSlice(rule.Tags)
 
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE tracker_rules
-		SET name = ?, tracker_pattern = ?, category = ?, tag = ?, upload_limit_kib = ?, download_limit_kib = ?,
+		SET name = ?, tracker_pattern = ?, category = ?, tag = ?, tag_match_mode = ?, upload_limit_kib = ?, download_limit_kib = ?,
 		    ratio_limit = ?, seeding_time_limit_minutes = ?, delete_mode = ?, delete_unregistered = ?, enabled = ?, sort_order = ?
 		WHERE id = ? AND instance_id = ?
-	`, rule.Name, rule.TrackerPattern, categoriesStr, tagsStr,
+	`, rule.Name, rule.TrackerPattern, categoriesStr, tagsStr, tagMatchMode,
 		nullableInt64(rule.UploadLimitKiB), nullableInt64(rule.DownloadLimitKiB), nullableFloat64(rule.RatioLimit),
 		nullableInt64(rule.SeedingTimeLimitMinutes), deleteMode, boolToInt(rule.DeleteUnregistered), boolToInt(rule.Enabled), rule.SortOrder, rule.ID, rule.InstanceID)
 	if err != nil {

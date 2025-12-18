@@ -460,17 +460,32 @@ func selectRule(torrent qbt.Torrent, rules []*models.TrackerRule, sm *qbittorren
 				continue
 			}
 		}
-		// Check if torrent has ANY of the rule's tags
+		// Check if torrent has the rule's tags based on match mode
 		if len(rule.Tags) > 0 {
-			matched := false
-			for _, tag := range rule.Tags {
-				if torrentHasTag(torrent.Tags, tag) {
-					matched = true
-					break
+			if rule.TagMatchMode == models.TagMatchModeAll {
+				// ALL: torrent must have every tag in the rule
+				allMatched := true
+				for _, tag := range rule.Tags {
+					if !torrentHasTag(torrent.Tags, tag) {
+						allMatched = false
+						break
+					}
 				}
-			}
-			if !matched {
-				continue
+				if !allMatched {
+					continue
+				}
+			} else {
+				// ANY (default): torrent must have at least one tag
+				matched := false
+				for _, tag := range rule.Tags {
+					if torrentHasTag(torrent.Tags, tag) {
+						matched = true
+						break
+					}
+				}
+				if !matched {
+					continue
+				}
 			}
 		}
 		return rule

@@ -37,6 +37,7 @@ type TrackerRulePayload struct {
 	TrackerDomains          []string `json:"trackerDomains"`
 	Categories              []string `json:"categories"`
 	Tags                    []string `json:"tags"`
+	TagMatchMode            *string  `json:"tagMatchMode"` // "any" or "all"
 	UploadLimitKiB          *int64   `json:"uploadLimitKiB"`
 	DownloadLimitKiB        *int64   `json:"downloadLimitKiB"`
 	RatioLimit              *float64 `json:"ratioLimit"`
@@ -54,6 +55,11 @@ func (p *TrackerRulePayload) toModel(instanceID int, id int) *models.TrackerRule
 		trackerPattern = strings.Join(normalizedDomains, ",")
 	}
 
+	tagMatchMode := models.TagMatchModeAny
+	if p.TagMatchMode != nil && *p.TagMatchMode != "" {
+		tagMatchMode = *p.TagMatchMode
+	}
+
 	rule := &models.TrackerRule{
 		ID:                      id,
 		InstanceID:              instanceID,
@@ -62,6 +68,7 @@ func (p *TrackerRulePayload) toModel(instanceID int, id int) *models.TrackerRule
 		TrackerDomains:          normalizedDomains,
 		Categories:              cleanStringSlice(p.Categories),
 		Tags:                    cleanStringSlice(p.Tags),
+		TagMatchMode:            tagMatchMode,
 		UploadLimitKiB:          p.UploadLimitKiB,
 		DownloadLimitKiB:        p.DownloadLimitKiB,
 		RatioLimit:              p.RatioLimit,
@@ -120,6 +127,11 @@ func (h *TrackerRuleHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if payload.TagMatchMode != nil && *payload.TagMatchMode != "" && *payload.TagMatchMode != models.TagMatchModeAny && *payload.TagMatchMode != models.TagMatchModeAll {
+		RespondError(w, http.StatusBadRequest, "tagMatchMode must be 'any' or 'all'")
+		return
+	}
+
 	rule, err := h.store.Create(r.Context(), payload.toModel(instanceID, 0))
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to create tracker rule")
@@ -157,6 +169,11 @@ func (h *TrackerRuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 	isAllTrackers := strings.TrimSpace(payload.TrackerPattern) == "*"
 	if !isAllTrackers && len(normalizeTrackerDomains(payload.TrackerDomains)) == 0 && strings.TrimSpace(payload.TrackerPattern) == "" {
 		RespondError(w, http.StatusBadRequest, "Select at least one tracker or enable 'Apply to all'")
+		return
+	}
+
+	if payload.TagMatchMode != nil && *payload.TagMatchMode != "" && *payload.TagMatchMode != models.TagMatchModeAny && *payload.TagMatchMode != models.TagMatchModeAll {
+		RespondError(w, http.StatusBadRequest, "tagMatchMode must be 'any' or 'all'")
 		return
 	}
 

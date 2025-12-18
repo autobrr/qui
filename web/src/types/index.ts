@@ -113,6 +113,7 @@ export interface TrackerRule {
   trackerDomains?: string[]
   categories?: string[]
   tags?: string[]
+  tagMatchMode?: "any" | "all"
   uploadLimitKiB?: number
   downloadLimitKiB?: number
   ratioLimit?: number
@@ -131,6 +132,7 @@ export interface TrackerRuleInput {
   trackerDomains?: string[]
   categories?: string[]
   tags?: string[]
+  tagMatchMode?: "any" | "all"
   uploadLimitKiB?: number
   downloadLimitKiB?: number
   ratioLimit?: number

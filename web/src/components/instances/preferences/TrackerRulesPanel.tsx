@@ -52,11 +52,12 @@ interface TrackerRulesPanelProps {
   variant?: "card" | "embedded"
 }
 
-type FormState = Omit<TrackerRuleInput, "categories" | "tags"> & {
+type FormState = Omit<TrackerRuleInput, "categories" | "tags" | "tagMatchMode"> & {
   trackerDomains: string[]
   applyToAllTrackers: boolean
   categories: string[]
   tags: string[]
+  tagMatchMode: "any" | "all"
 }
 
 const emptyFormState: FormState = {
@@ -66,6 +67,7 @@ const emptyFormState: FormState = {
   applyToAllTrackers: false,
   categories: [],
   tags: [],
+  tagMatchMode: "any",
   uploadLimitKiB: undefined,
   downloadLimitKiB: undefined,
   ratioLimit: undefined,
@@ -193,6 +195,7 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
       applyToAllTrackers: isAllTrackers,
       categories: rule.categories ?? [],
       tags: rule.tags ?? [],
+      tagMatchMode: rule.tagMatchMode ?? "any",
       uploadLimitKiB: rule.uploadLimitKiB,
       downloadLimitKiB: rule.downloadLimitKiB,
       ratioLimit: rule.ratioLimit,
@@ -431,11 +434,32 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
                 <MultiSelect
                   options={tagOptions}
                   selected={formState.tags}
-                  onChange={(values) => setFormState(prev => ({ ...prev, tags: values }))}
+                  onChange={(values) => setFormState(prev => ({
+                    ...prev,
+                    tags: values,
+                    tagMatchMode: values.length < 2 ? "any" : prev.tagMatchMode,
+                  }))}
                   placeholder="Select tags..."
                   creatable
                   onCreateOption={(value) => setFormState(prev => ({ ...prev, tags: [...prev.tags, value] }))}
                 />
+                {formState.tags.length > 1 && (
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs text-muted-foreground">Match</Label>
+                    <Select
+                      value={formState.tagMatchMode}
+                      onValueChange={(value: "any" | "all") => setFormState(prev => ({ ...prev, tagMatchMode: value }))}
+                    >
+                      <SelectTrigger className="h-7 w-24 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="any">Any tag</SelectItem>
+                        <SelectItem value="all">All tags</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -695,17 +719,26 @@ function RuleSummary({ rule }: { rule: TrackerRule }) {
         </Tooltip>
       )}
 
-      {tags.length > 0 && tags.length <= 2 ? (
-        tags.map((tag) => (
-          <Badge key={tag} variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal">
-            Tag: {tag}
-          </Badge>
-        ))
+      {tags.length === 1 ? (
+        <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal">
+          Tag: {tags[0]}
+        </Badge>
+      ) : tags.length === 2 ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal cursor-help">
+              Tags ({rule.tagMatchMode === "all" ? "all" : "any"}): {tags[0]} +1
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-[300px] break-all">
+            <p>{tags.join(", ")}</p>
+          </TooltipContent>
+        </Tooltip>
       ) : tags.length > 2 && (
         <Tooltip>
           <TooltipTrigger asChild>
             <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal cursor-help">
-              Tag: {tags[0]} +{tags.length - 1}
+              Tags ({rule.tagMatchMode === "all" ? "all" : "any"}): {tags[0]} +{tags.length - 1}
             </Badge>
           </TooltipTrigger>
           <TooltipContent className="max-w-[300px] break-all">
