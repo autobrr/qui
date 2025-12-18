@@ -250,6 +250,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 
 	// Batch torrents for deletion by delete mode
 	deleteHashesByMode := make(map[string][]string) // "delete" or "deleteWithFiles" -> hashes
+	queuedForDeletion := make(map[string]struct{})  // track hashes already queued
 
 	for _, torrent := range torrents {
 		// Skip if recently processed for deletion (avoid duplicate attempts)
@@ -319,6 +320,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 			}
 			logEvent.Bool("filesKept", keepingFiles).Msg(logMsg)
 			deleteHashesByMode[actualMode] = append(deleteHashesByMode[actualMode], torrent.Hash)
+			queuedForDeletion[torrent.Hash] = struct{}{}
 		}
 	}
 
@@ -326,6 +328,11 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 	healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID)
 	if healthCounts != nil && len(healthCounts.UnregisteredSet) > 0 {
 		for _, torrent := range torrents {
+			// Skip if already queued for deletion (e.g., by ratio/seeding limits)
+			if _, queued := queuedForDeletion[torrent.Hash]; queued {
+				continue
+			}
+
 			// Skip if not unregistered
 			if _, isUnregistered := healthCounts.UnregisteredSet[torrent.Hash]; !isUnregistered {
 				continue

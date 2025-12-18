@@ -41,7 +41,7 @@ type TrackerRulePayload struct {
 	DownloadLimitKiB        *int64   `json:"downloadLimitKiB"`
 	RatioLimit              *float64 `json:"ratioLimit"`
 	SeedingTimeLimitMinutes *int64   `json:"seedingTimeLimitMinutes"`
-	DeleteMode              *string  `json:"deleteMode"` // "none", "delete", "deleteWithFiles"
+	DeleteMode              *string  `json:"deleteMode"` // "none", "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds"
 	DeleteUnregistered      *bool    `json:"deleteUnregistered"`
 	Enabled                 *bool    `json:"enabled"`
 	SortOrder               *int     `json:"sortOrder"`

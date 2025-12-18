@@ -25,7 +25,7 @@ type TrackerRule struct {
 	DownloadLimitKiB        *int64    `json:"downloadLimitKiB,omitempty"`
 	RatioLimit              *float64  `json:"ratioLimit,omitempty"`
 	SeedingTimeLimitMinutes *int64    `json:"seedingTimeLimitMinutes,omitempty"`
-	DeleteMode              *string   `json:"deleteMode,omitempty"` // "none", "delete", "deleteWithFiles"
+	DeleteMode              *string   `json:"deleteMode,omitempty"` // "none", "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds"
 	DeleteUnregistered      bool      `json:"deleteUnregistered"`
 	Enabled                 bool      `json:"enabled"`
 	SortOrder               int       `json:"sortOrder"`
