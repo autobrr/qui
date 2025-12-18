@@ -19,7 +19,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useInstances } from "@/hooks/useInstances"
+import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
+import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { cn, copyTextToClipboard, formatRelativeTime } from "@/lib/utils"
@@ -28,7 +31,7 @@ import { useQueries, useQueryClient } from "@tanstack/react-query"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Copy, Info, RefreshCcw, Search, Settings2, Trash2 } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { toast } from "sonner"
 
 interface TrackerRulesActivityOverviewProps {
@@ -75,9 +78,9 @@ function formatAction(action: TrackerRuleActivity["action"]): string {
     case "deleted_unregistered":
       return "Unregistered"
     case "delete_failed":
-      return "Delete failed"
+      return "Delete"
     case "limit_failed":
-      return "Limit failed"
+      return "Set limits"
     default:
       return action
   }
@@ -91,6 +94,39 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
   const [filterMap, setFilterMap] = useState<Record<number, "all" | "deletions" | "errors">>({})
   const [searchMap, setSearchMap] = useState<Record<number, string>>({})
   const [clearDaysMap, setClearDaysMap] = useState<Record<number, string>>({})
+
+  // Tracker customizations for display names and icons
+  const { data: trackerCustomizations } = useTrackerCustomizations()
+  const { data: trackerIcons } = useTrackerIcons()
+
+  const domainToCustomization = useMemo(() => {
+    const map = new Map<string, { displayName: string; domains: string[] }>()
+    for (const custom of trackerCustomizations ?? []) {
+      for (const domain of custom.domains) {
+        map.set(domain.toLowerCase(), {
+          displayName: custom.displayName,
+          domains: custom.domains,
+        })
+      }
+    }
+    return map
+  }, [trackerCustomizations])
+
+  const getTrackerDisplay = useCallback((domain: string): { displayName: string; iconDomain: string; isCustomized: boolean } => {
+    const customization = domainToCustomization.get(domain.toLowerCase())
+    if (customization) {
+      return {
+        displayName: customization.displayName,
+        iconDomain: customization.domains[0],
+        isCustomized: true,
+      }
+    }
+    return {
+      displayName: domain,
+      iconDomain: domain,
+      isCustomized: false,
+    }
+  }, [domainToCustomization])
 
   const activeInstances = useMemo(
     () => (instances ?? []).filter((inst) => inst.isActive),
@@ -163,7 +199,7 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
           </Tooltip>
         </div>
         <CardDescription>
-          Persistent history of tracker rule deletions and errors.
+          History of torrents removed by tracker rules.
         </CardDescription>
       </CardHeader>
 
@@ -424,11 +460,11 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
                                       <Badge
                                         variant="outline"
                                         className={cn(
-                                          "capitalize text-[10px] px-1.5 py-0 h-5 shrink-0",
+                                          "text-[10px] px-1.5 py-0 h-5 shrink-0",
                                           outcomeClasses[event.outcome]
                                         )}
                                       >
-                                        {event.outcome}
+                                        {event.outcome === "success" ? "Removed" : "Failed"}
                                       </Badge>
                                     </div>
                                   </div>
@@ -448,12 +484,29 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
                                         <Copy className="h-3 w-3" />
                                       </button>
                                     </div>
-                                    {event.trackerDomain && (
-                                      <>
-                                        <span className="text-muted-foreground/40">·</span>
-                                        <span className="text-xs font-medium">{event.trackerDomain}</span>
-                                      </>
-                                    )}
+                                    {event.trackerDomain && (() => {
+                                      const tracker = getTrackerDisplay(event.trackerDomain)
+                                      return (
+                                        <>
+                                          <span className="text-muted-foreground/40">·</span>
+                                          <div className="flex items-center gap-1">
+                                            <TrackerIconImage tracker={tracker.iconDomain} trackerIcons={trackerIcons} />
+                                            {tracker.isCustomized ? (
+                                              <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                  <span className="text-xs font-medium cursor-default">{tracker.displayName}</span>
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                  <p className="text-xs">Original: {event.trackerDomain}</p>
+                                                </TooltipContent>
+                                              </Tooltip>
+                                            ) : (
+                                              <span className="text-xs font-medium">{tracker.displayName}</span>
+                                            )}
+                                          </div>
+                                        </>
+                                      )
+                                    })()}
                                     {event.ruleName && (
                                       <>
                                         <span className="text-muted-foreground/40">·</span>
