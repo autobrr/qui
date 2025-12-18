@@ -434,7 +434,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 			if seedingTimeMet && !ratioMet {
 				action = models.ActivityActionDeletedSeeding
 			}
-			details := map[string]any{"filesKept": keepingFiles}
+			details := map[string]any{"filesKept": keepingFiles, "deleteMode": deleteMode}
 			if ratioMet {
 				details["ratio"] = torrent.Ratio
 				details["ratioLimit"] = *rule.RatioLimit
@@ -539,7 +539,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 				ruleID:        rule.ID,
 				ruleName:      rule.Name,
 				reason:        "unregistered",
-				details:       map[string]any{"filesKept": keepingFiles},
+				details:       map[string]any{"filesKept": keepingFiles, "deleteMode": deleteMode},
 			}
 		}
 	}

@@ -160,6 +160,7 @@ export interface TrackerRuleActivity {
     seedingMinutes?: number
     seedingLimitMinutes?: number
     filesKept?: boolean
+    deleteMode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds"
     limitKiB?: number
     count?: number
     type?: string

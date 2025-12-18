@@ -531,11 +531,29 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
                                       {event.details.seedingMinutes !== undefined && (
                                         <span>Seeding: {event.details.seedingMinutes}m/{event.details.seedingLimitMinutes}m</span>
                                       )}
-                                      {event.details.filesKept !== undefined && (
-                                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5">
-                                          {event.details.filesKept ? "Files kept" : "Files deleted"}
-                                        </Badge>
-                                      )}
+                                      {event.details.filesKept !== undefined && (() => {
+                                        const { filesKept, deleteMode } = event.details
+                                        let label: string
+                                        let className = "text-[10px] px-1.5 py-0 h-5"
+
+                                        if (deleteMode === "delete") {
+                                          label = "Torrent only"
+                                        } else if (deleteMode === "deleteWithFilesPreserveCrossSeeds" && filesKept) {
+                                          label = "Files kept due to cross-seeds"
+                                          className += " bg-blue-500/10 text-blue-500 border-blue-500/20"
+                                        } else if (deleteMode === "deleteWithFiles" || deleteMode === "deleteWithFilesPreserveCrossSeeds") {
+                                          label = "With files"
+                                        } else {
+                                          // Legacy fallback for records without deleteMode
+                                          label = filesKept ? "Files kept" : "Files deleted"
+                                        }
+
+                                        return (
+                                          <Badge variant="outline" className={className}>
+                                            {label}
+                                          </Badge>
+                                        )
+                                      })()}
                                     </div>
                                   )}
                                 </div>
