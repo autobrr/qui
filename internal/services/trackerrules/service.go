@@ -319,11 +319,6 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 			}
 			logEvent.Bool("filesKept", keepingFiles).Msg(logMsg)
 			deleteHashesByMode[actualMode] = append(deleteHashesByMode[actualMode], torrent.Hash)
-
-			// Mark as processed for deletion
-			s.mu.Lock()
-			instDeletedMap[torrent.Hash] = now
-			s.mu.Unlock()
 		}
 	}
 
@@ -386,11 +381,6 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 
 			log.Info().Str("hash", torrent.Hash).Str("name", torrent.Name).Str("reason", "unregistered").Bool("filesKept", keepingFiles).Msg(logMsg)
 			deleteHashesByMode[actualMode] = append(deleteHashesByMode[actualMode], torrent.Hash)
-
-			// Mark as processed for deletion
-			s.mu.Lock()
-			instDeletedMap[torrent.Hash] = now
-			s.mu.Unlock()
 		}
 	}
 
@@ -403,8 +393,15 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
 			if err := s.syncManager.BulkAction(ctx, instanceID, batch, mode); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Str("action", mode).Int("count", len(batch)).Msg("tracker rules: delete failed")
+				log.Warn().Err(err).Int("instanceID", instanceID).Str("action", mode).Int("count", len(batch)).Strs("hashes", batch).Msg("tracker rules: delete failed")
 			} else {
+				// Mark as processed only after successful deletion
+				s.mu.Lock()
+				for _, hash := range batch {
+					instDeletedMap[hash] = now
+				}
+				s.mu.Unlock()
+
 				if mode == "delete" {
 					log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("tracker rules: removed torrents (files kept)")
 				} else {
