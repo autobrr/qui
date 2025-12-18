@@ -6514,6 +6514,8 @@ func matchesSearchFilters(torrent *qbt.Torrent, opts SearchRunOptions) bool {
 		return false
 	}
 
+	// TODO: ExcludeCategories and ExcludeTags are not yet exposed in the Seeded Search UI.
+
 	// Check exclude categories first (if configured)
 	if len(opts.ExcludeCategories) > 0 && slices.Contains(opts.ExcludeCategories, torrent.Category) {
 		return false
