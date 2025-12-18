@@ -8,7 +8,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog"
@@ -23,7 +22,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
@@ -271,6 +269,10 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
       toast.error("Select at least one tracker")
       return
     }
+    if (formState.deleteUnregistered && !formState.deleteMode) {
+      toast.error("Unregistered cleanup requires a removal action")
+      return
+    }
     const payload = {
       ...formState,
       trackerDomains: formState.applyToAllTrackers ? [] : selectedTrackers,
@@ -286,7 +288,6 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
       <DialogContent className="sm:max-w-3xl max-h-[90dvh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{rule ? "Edit Tracker Rule" : "Add Tracker Rule"}</DialogTitle>
-          <DialogDescription>Match on tracker domain and optionally category/tag, then apply limits.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
           <div className="flex-1 overflow-y-auto space-y-4 pr-1">
@@ -390,7 +391,7 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
             <div className="rounded-lg border p-4 space-y-3">
               <div>
                 <h4 className="text-sm font-medium">Speed limits</h4>
-                <p className="text-xs text-muted-foreground">Limit transfer speeds only</p>
+                <p className="text-xs text-muted-foreground">Applied continuously to matching torrents</p>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
@@ -418,87 +419,99 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
               </div>
             </div>
 
-            {/* Seeding Limits & Auto-Delete Group */}
+            {/* Auto-removal Group */}
             <div className="rounded-lg border p-4 space-y-4">
               <div>
-                <h4 className="text-sm font-medium">Seeding limits & auto-delete</h4>
-                <p className="text-xs text-muted-foreground">Torrents are deleted when ratio or seeding time is reached</p>
+                <h4 className="text-sm font-medium">Auto-removal</h4>
+                <p className="text-xs text-muted-foreground">Automatically pause or remove torrents based on triggers</p>
               </div>
-              <div className="grid gap-4 sm:grid-cols-[1fr_auto_1fr] items-end">
-                <div className="space-y-2">
-                  <Label htmlFor="rule-ratio">Ratio limit</Label>
-                  <Input
-                    id="rule-ratio"
-                    type="number"
-                    step="0.01"
-                    min={-1}
-                    value={formState.ratioLimit ?? ""}
-                    onChange={(e) => setFormState(prev => ({ ...prev, ratioLimit: e.target.value ? Number(e.target.value) : undefined }))}
-                    placeholder="e.g. 2.0"
-                  />
+
+              <div className="space-y-3">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Triggers</p>
+
+                <div className="rounded-md border bg-muted/30 p-3 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">Seeding limits</span>
+                    <span className="text-xs text-muted-foreground">(leave blank to disable)</span>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] items-end">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="rule-ratio" className="text-xs">Ratio</Label>
+                      <Input
+                        id="rule-ratio"
+                        type="number"
+                        step="0.01"
+                        min={0.01}
+                        value={formState.ratioLimit ?? ""}
+                        onChange={(e) => setFormState(prev => ({ ...prev, ratioLimit: e.target.value ? Number(e.target.value) : undefined }))}
+                        placeholder="e.g. 2.0"
+                      />
+                    </div>
+                    <span className="text-xs text-muted-foreground pb-2">OR</span>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="rule-seedtime" className="text-xs">Time (minutes)</Label>
+                      <Input
+                        id="rule-seedtime"
+                        type="number"
+                        min={1}
+                        value={formState.seedingTimeLimitMinutes ?? ""}
+                        onChange={(e) => setFormState(prev => ({ ...prev, seedingTimeLimitMinutes: e.target.value ? Number(e.target.value) : undefined }))}
+                        placeholder="e.g. 1440"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <span className="text-xs text-muted-foreground pb-2.5">OR</span>
-                <div className="space-y-2">
-                  <Label htmlFor="rule-seedtime">Seeding time (minutes)</Label>
-                  <Input
-                    id="rule-seedtime"
-                    type="number"
-                    min={-1}
-                    value={formState.seedingTimeLimitMinutes ?? ""}
-                    onChange={(e) => setFormState(prev => ({ ...prev, seedingTimeLimitMinutes: e.target.value ? Number(e.target.value) : undefined }))}
-                    placeholder="e.g. 1440"
-                  />
+
+                <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="delete-unregistered"
+                      checked={formState.deleteUnregistered ?? false}
+                      onCheckedChange={(checked: boolean) => setFormState(prev => ({
+                        ...prev,
+                        deleteUnregistered: checked,
+                        // Auto-set removal action if enabling unregistered and currently set to pause
+                        deleteMode: checked && !prev.deleteMode ? "deleteWithFilesPreserveCrossSeeds" : prev.deleteMode,
+                      }))}
+                    />
+                    <Label
+                      htmlFor="delete-unregistered"
+                      className="text-sm font-medium cursor-pointer"
+                    >
+                      Unregistered torrents
+                    </Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground pl-6">
+                    Remove torrents that tracker reports as unregistered
+                  </p>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="rule-delete-mode">Delete mode</Label>
+              <div className="space-y-2 pt-2 border-t">
+                <Label htmlFor="rule-delete-mode">Action</Label>
                 <Select
                   value={formState.deleteMode ?? "none"}
                   onValueChange={(value) => setFormState(prev => ({
                     ...prev,
                     deleteMode: value === "none" ? undefined : value as "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds",
-                    deleteUnregistered: value === "none" ? false : prev.deleteUnregistered
                   }))}
                 >
-                  <SelectTrigger id="rule-delete-mode">
-                    <SelectValue placeholder="Select delete mode" />
+                  <SelectTrigger id="rule-delete-mode" className={cn(formState.deleteMode && "text-destructive")}>
+                    <SelectValue placeholder="Select action" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Don't delete (torrent pauses when limit reached)</SelectItem>
-                    <SelectItem value="delete">Delete torrent (keep files)</SelectItem>
-                    <SelectItem value="deleteWithFiles">Delete torrent and files</SelectItem>
-                    <SelectItem value="deleteWithFilesPreserveCrossSeeds">Delete torrent and files (preserve cross-seeds)</SelectItem>
+                    <SelectItem value="none">Pause torrent</SelectItem>
+                    <SelectItem value="delete" className="text-destructive focus:text-destructive">Remove torrent (keep files)</SelectItem>
+                    <SelectItem value="deleteWithFiles" className="text-destructive focus:text-destructive">Remove torrent and files</SelectItem>
+                    <SelectItem value="deleteWithFilesPreserveCrossSeeds" className="text-destructive focus:text-destructive">Remove torrent and files (preserve cross-seeds)</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className={cn("flex items-center space-x-2", !formState.deleteMode && "opacity-50")}>
-                    <Checkbox
-                      id="delete-unregistered"
-                      checked={formState.deleteUnregistered ?? false}
-                      disabled={!formState.deleteMode}
-                      onCheckedChange={(checked: boolean) => setFormState(prev => ({
-                        ...prev,
-                        deleteUnregistered: checked,
-                      }))}
-                    />
-                    <Label
-                      htmlFor="delete-unregistered"
-                      className={cn("text-sm font-normal", formState.deleteMode ? "cursor-pointer" : "cursor-not-allowed")}
-                    >
-                      Also delete unregistered torrents
-                    </Label>
-                  </div>
-                </TooltipTrigger>
-                {!formState.deleteMode && (
-                  <TooltipContent>
-                    <p>Select a delete mode above to enable this option</p>
-                  </TooltipContent>
+                {formState.deleteUnregistered && !formState.deleteMode && (
+                  <p className="text-xs text-amber-500">
+                    Unregistered cleanup requires a removal action (not "Pause")
+                  </p>
                 )}
-              </Tooltip>
+              </div>
             </div>
           </div>
 
