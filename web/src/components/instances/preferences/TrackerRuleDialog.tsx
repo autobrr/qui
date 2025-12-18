@@ -592,7 +592,12 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
 
                 {/* Auto-removal */}
                 <div className="rounded-lg border p-3 space-y-3">
-                  <h4 className="text-sm font-medium">Auto-removal</h4>
+                  <div>
+                    <h4 className="text-sm font-medium">Auto-removal</h4>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Remove when ratio/seed time reached, or just check Unregistered to only clean dead torrents
+                    </p>
+                  </div>
 
                   {/* Seeding limits inline */}
                   <div className="flex flex-wrap items-end gap-2">
