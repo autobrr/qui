@@ -4,7 +4,9 @@
 package qbittorrent
 
 import (
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -162,6 +164,352 @@ func TestSyncManager_TorrentTrackerIsDown_TrackerUpdating(t *testing.T) {
 
 		assert.False(t, sm.torrentTrackerIsDown(torrent))
 	})
+}
+
+func TestSyncManager_TorrentBelongsToTrackerDomain(t *testing.T) {
+	sm := &SyncManager{}
+
+	tests := []struct {
+		name     string
+		torrent  *qbt.Torrent
+		domain   string
+		expected bool
+	}{
+		{
+			name:     "nil torrent returns false",
+			torrent:  nil,
+			domain:   "example.com",
+			expected: false,
+		},
+		{
+			name:     "empty trackers uses Tracker field - match",
+			torrent:  &qbt.Torrent{Tracker: "http://tracker.example.com/announce"},
+			domain:   "tracker.example.com",
+			expected: true,
+		},
+		{
+			name:     "empty trackers uses Tracker field - no match",
+			torrent:  &qbt.Torrent{Tracker: "http://tracker.example.com/announce"},
+			domain:   "other.com",
+			expected: false,
+		},
+		{
+			name: "trackers slice - first matches",
+			torrent: &qbt.Torrent{
+				Trackers: []qbt.TorrentTracker{
+					{Url: "http://first.com/announce"},
+					{Url: "http://second.com/announce"},
+				},
+			},
+			domain:   "first.com",
+			expected: true,
+		},
+		{
+			name: "trackers slice - second matches",
+			torrent: &qbt.Torrent{
+				Trackers: []qbt.TorrentTracker{
+					{Url: "http://first.com/announce"},
+					{Url: "http://second.com/announce"},
+				},
+			},
+			domain:   "second.com",
+			expected: true,
+		},
+		{
+			name: "trackers slice - none match",
+			torrent: &qbt.Torrent{
+				Trackers: []qbt.TorrentTracker{
+					{Url: "http://first.com/announce"},
+					{Url: "http://second.com/announce"},
+				},
+			},
+			domain:   "third.com",
+			expected: false,
+		},
+		{
+			name: "trackers slice takes precedence over Tracker field",
+			torrent: &qbt.Torrent{
+				Tracker: "http://tracker.example.com/announce",
+				Trackers: []qbt.TorrentTracker{
+					{Url: "http://different.com/announce"},
+				},
+			},
+			domain:   "tracker.example.com",
+			expected: false, // Trackers slice doesn't contain this domain
+		},
+		{
+			name:     "empty domain",
+			torrent:  &qbt.Torrent{Tracker: "http://example.com/announce"},
+			domain:   "",
+			expected: false,
+		},
+		{
+			name:     "empty tracker field and empty slice",
+			torrent:  &qbt.Torrent{},
+			domain:   "example.com",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := sm.torrentBelongsToTrackerDomain(tt.torrent, tt.domain)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestSyncManager_GetTrackerHealthCounts_DeepCopy(t *testing.T) {
+	sm := &SyncManager{
+		trackerHealthCache: make(map[int]*TrackerHealthCounts),
+	}
+
+	// Setup: populate cache with known values
+	originalTime := time.Now()
+	original := &TrackerHealthCounts{
+		Unregistered:    2,
+		TrackerDown:     1,
+		UnregisteredSet: map[string]struct{}{"hash1": {}, "hash2": {}},
+		TrackerDownSet:  map[string]struct{}{"hash3": {}},
+		UpdatedAt:       originalTime,
+	}
+	sm.trackerHealthCache[1] = original
+
+	// Get copy and modify it
+	returned := sm.GetTrackerHealthCounts(1)
+
+	// Verify we got a value
+	assert.NotNil(t, returned)
+	assert.Equal(t, 2, returned.Unregistered)
+	assert.Equal(t, 1, returned.TrackerDown)
+
+	// Modify the returned copy
+	returned.Unregistered = 99
+	returned.TrackerDown = 88
+	returned.UnregisteredSet["modified"] = struct{}{}
+	delete(returned.UnregisteredSet, "hash1")
+	returned.TrackerDownSet["modified2"] = struct{}{}
+
+	// Verify original is unchanged
+	assert.Equal(t, 2, original.Unregistered, "Original Unregistered should be unchanged")
+	assert.Equal(t, 1, original.TrackerDown, "Original TrackerDown should be unchanged")
+	assert.Contains(t, original.UnregisteredSet, "hash1", "Original UnregisteredSet should still contain hash1")
+	assert.NotContains(t, original.UnregisteredSet, "modified", "Original UnregisteredSet should not contain modified")
+	assert.NotContains(t, original.TrackerDownSet, "modified2", "Original TrackerDownSet should not contain modified2")
+	assert.Len(t, original.UnregisteredSet, 2, "Original UnregisteredSet should still have 2 items")
+	assert.Len(t, original.TrackerDownSet, 1, "Original TrackerDownSet should still have 1 item")
+}
+
+func TestSyncManager_GetTrackerHealthCounts_NilWhenNoCache(t *testing.T) {
+	sm := &SyncManager{
+		trackerHealthCache: make(map[int]*TrackerHealthCounts),
+	}
+
+	result := sm.GetTrackerHealthCounts(999)
+	assert.Nil(t, result, "Should return nil for non-existent instanceID")
+}
+
+func TestSyncManager_RemoveHashesFromTrackerHealthCache(t *testing.T) {
+	tests := []struct {
+		name                string
+		initialUnregistered int
+		initialTrackerDown  int
+		unregisteredSet     map[string]struct{}
+		trackerDownSet      map[string]struct{}
+		hashesToRemove      []string
+		expectedUnreg       int
+		expectedDown        int
+		expectedUnregSet    map[string]struct{}
+		expectedDownSet     map[string]struct{}
+	}{
+		{
+			name:                "remove from UnregisteredSet only",
+			initialUnregistered: 2,
+			initialTrackerDown:  1,
+			unregisteredSet:     map[string]struct{}{"h1": {}, "h2": {}},
+			trackerDownSet:      map[string]struct{}{"h3": {}},
+			hashesToRemove:      []string{"h1"},
+			expectedUnreg:       1,
+			expectedDown:        1,
+			expectedUnregSet:    map[string]struct{}{"h2": {}},
+			expectedDownSet:     map[string]struct{}{"h3": {}},
+		},
+		{
+			name:                "remove from TrackerDownSet only",
+			initialUnregistered: 2,
+			initialTrackerDown:  1,
+			unregisteredSet:     map[string]struct{}{"h1": {}, "h2": {}},
+			trackerDownSet:      map[string]struct{}{"h3": {}},
+			hashesToRemove:      []string{"h3"},
+			expectedUnreg:       2,
+			expectedDown:        0,
+			expectedUnregSet:    map[string]struct{}{"h1": {}, "h2": {}},
+			expectedDownSet:     map[string]struct{}{},
+		},
+		{
+			name:                "remove from both sets",
+			initialUnregistered: 2,
+			initialTrackerDown:  2,
+			unregisteredSet:     map[string]struct{}{"h1": {}, "h2": {}},
+			trackerDownSet:      map[string]struct{}{"h1": {}, "h3": {}},
+			hashesToRemove:      []string{"h1"},
+			expectedUnreg:       1,
+			expectedDown:        1,
+			expectedUnregSet:    map[string]struct{}{"h2": {}},
+			expectedDownSet:     map[string]struct{}{"h3": {}},
+		},
+		{
+			name:                "remove non-existent hash - no change",
+			initialUnregistered: 2,
+			initialTrackerDown:  1,
+			unregisteredSet:     map[string]struct{}{"h1": {}, "h2": {}},
+			trackerDownSet:      map[string]struct{}{"h3": {}},
+			hashesToRemove:      []string{"nonexistent"},
+			expectedUnreg:       2,
+			expectedDown:        1,
+			expectedUnregSet:    map[string]struct{}{"h1": {}, "h2": {}},
+			expectedDownSet:     map[string]struct{}{"h3": {}},
+		},
+		{
+			name:                "underflow protection - count stays at 0",
+			initialUnregistered: 0,
+			initialTrackerDown:  0,
+			unregisteredSet:     map[string]struct{}{"h1": {}},
+			trackerDownSet:      map[string]struct{}{"h2": {}},
+			hashesToRemove:      []string{"h1", "h2"},
+			expectedUnreg:       0,
+			expectedDown:        0,
+			expectedUnregSet:    map[string]struct{}{},
+			expectedDownSet:     map[string]struct{}{},
+		},
+		{
+			name:                "empty hashes slice - no-op",
+			initialUnregistered: 2,
+			initialTrackerDown:  1,
+			unregisteredSet:     map[string]struct{}{"h1": {}, "h2": {}},
+			trackerDownSet:      map[string]struct{}{"h3": {}},
+			hashesToRemove:      []string{},
+			expectedUnreg:       2,
+			expectedDown:        1,
+			expectedUnregSet:    map[string]struct{}{"h1": {}, "h2": {}},
+			expectedDownSet:     map[string]struct{}{"h3": {}},
+		},
+		{
+			name:                "remove multiple hashes",
+			initialUnregistered: 3,
+			initialTrackerDown:  2,
+			unregisteredSet:     map[string]struct{}{"h1": {}, "h2": {}, "h3": {}},
+			trackerDownSet:      map[string]struct{}{"h4": {}, "h5": {}},
+			hashesToRemove:      []string{"h1", "h2", "h4"},
+			expectedUnreg:       1,
+			expectedDown:        1,
+			expectedUnregSet:    map[string]struct{}{"h3": {}},
+			expectedDownSet:     map[string]struct{}{"h5": {}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create fresh copies of maps to avoid test pollution
+			unregSet := make(map[string]struct{}, len(tt.unregisteredSet))
+			for k := range tt.unregisteredSet {
+				unregSet[k] = struct{}{}
+			}
+			downSet := make(map[string]struct{}, len(tt.trackerDownSet))
+			for k := range tt.trackerDownSet {
+				downSet[k] = struct{}{}
+			}
+
+			sm := &SyncManager{
+				trackerHealthCache: map[int]*TrackerHealthCounts{
+					1: {
+						Unregistered:    tt.initialUnregistered,
+						TrackerDown:     tt.initialTrackerDown,
+						UnregisteredSet: unregSet,
+						TrackerDownSet:  downSet,
+					},
+				},
+			}
+
+			sm.RemoveHashesFromTrackerHealthCache(1, tt.hashesToRemove)
+
+			counts := sm.trackerHealthCache[1]
+			assert.Equal(t, tt.expectedUnreg, counts.Unregistered, "Unregistered count")
+			assert.Equal(t, tt.expectedDown, counts.TrackerDown, "TrackerDown count")
+			assert.Equal(t, tt.expectedUnregSet, counts.UnregisteredSet, "UnregisteredSet")
+			assert.Equal(t, tt.expectedDownSet, counts.TrackerDownSet, "TrackerDownSet")
+		})
+	}
+}
+
+func TestSyncManager_RemoveHashesFromTrackerHealthCache_NoCache(t *testing.T) {
+	sm := &SyncManager{
+		trackerHealthCache: make(map[int]*TrackerHealthCounts),
+	}
+
+	// Should not panic when no cache exists for the instanceID
+	sm.RemoveHashesFromTrackerHealthCache(999, []string{"hash1", "hash2"})
+	// If we get here without panic, the test passes
+}
+
+func TestSyncManager_TrackerHealthCache_ConcurrentAccess(t *testing.T) {
+	// This test verifies that concurrent reads (GetTrackerHealthCounts) and writes
+	// (RemoveHashesFromTrackerHealthCache) don't cause data races.
+	// Run with: go test -race ./internal/qbittorrent/...
+
+	sm := &SyncManager{
+		trackerHealthCache: map[int]*TrackerHealthCounts{
+			1: {
+				Unregistered:    100,
+				TrackerDown:     50,
+				UnregisteredSet: make(map[string]struct{}),
+				TrackerDownSet:  make(map[string]struct{}),
+			},
+		},
+	}
+
+	// Pre-populate sets with hashes
+	for i := 0; i < 100; i++ {
+		sm.trackerHealthCache[1].UnregisteredSet[fmt.Sprintf("hash%d", i)] = struct{}{}
+	}
+	for i := 0; i < 50; i++ {
+		sm.trackerHealthCache[1].TrackerDownSet[fmt.Sprintf("down%d", i)] = struct{}{}
+	}
+
+	var wg sync.WaitGroup
+
+	// Launch concurrent readers
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				counts := sm.GetTrackerHealthCounts(1)
+				if counts != nil {
+					// Access the returned copy to ensure it's safe
+					_ = counts.Unregistered
+					_ = counts.TrackerDown
+					_ = len(counts.UnregisteredSet)
+					_ = len(counts.TrackerDownSet)
+				}
+			}
+		}()
+	}
+
+	// Launch concurrent writers
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for j := 0; j < 20; j++ {
+				hash := fmt.Sprintf("hash%d", id*20+j)
+				sm.RemoveHashesFromTrackerHealthCache(1, []string{hash})
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	// If we reach here without race detector complaints, the test passes
 }
 
 func TestSyncManager_ApplyManualFilters_Exclusions(t *testing.T) {
@@ -590,4 +938,395 @@ func BenchmarkSyncManager_CacheOperations(b *testing.B) {
 			b.Fatal("Stats calculation failed")
 		}
 	}
+}
+
+// TestSyncManager_GetDomainsForTorrent tests the domain extraction from torrent trackers.
+func TestSyncManager_GetDomainsForTorrent(t *testing.T) {
+	sm := &SyncManager{}
+
+	testCases := []struct {
+		name     string
+		torrent  qbt.Torrent
+		expected map[string]struct{}
+	}{
+		{
+			name: "Multiple trackers returns all domains",
+			torrent: qbt.Torrent{
+				Hash: "hash1",
+				Trackers: []qbt.TorrentTracker{
+					{Url: "https://tracker1.example.com/announce"},
+					{Url: "udp://tracker2.org:6969/announce"},
+					{Url: "http://tracker3.net:8080/announce"},
+				},
+			},
+			expected: map[string]struct{}{
+				"tracker1.example.com": {},
+				"tracker2.org":         {},
+				"tracker3.net":         {},
+			},
+		},
+		{
+			name: "Single Tracker field (legacy) returns domain",
+			torrent: qbt.Torrent{
+				Hash:    "hash2",
+				Tracker: "https://legacy.tracker.com/announce",
+			},
+			expected: map[string]struct{}{
+				"legacy.tracker.com": {},
+			},
+		},
+		{
+			name: "Trackers field takes precedence over Tracker field",
+			torrent: qbt.Torrent{
+				Hash:    "hash3",
+				Tracker: "https://legacy.tracker.com/announce",
+				Trackers: []qbt.TorrentTracker{
+					{Url: "https://primary.tracker.com/announce"},
+				},
+			},
+			expected: map[string]struct{}{
+				"primary.tracker.com": {},
+			},
+		},
+		{
+			name: "Empty URL entries are filtered out",
+			torrent: qbt.Torrent{
+				Hash: "hash4",
+				Trackers: []qbt.TorrentTracker{
+					{Url: "https://valid.tracker.com/announce"},
+					{Url: ""},
+					{Url: "https://another-valid.com/announce"},
+				},
+			},
+			expected: map[string]struct{}{
+				"valid.tracker.com": {},
+				"another-valid.com": {},
+			},
+		},
+		{
+			name: "Empty torrent returns empty map",
+			torrent: qbt.Torrent{
+				Hash: "hash5",
+			},
+			expected: map[string]struct{}{},
+		},
+		{
+			name: "Duplicate domains are deduplicated",
+			torrent: qbt.Torrent{
+				Hash: "hash6",
+				Trackers: []qbt.TorrentTracker{
+					{Url: "https://tracker.example.com/announce"},
+					{Url: "http://tracker.example.com/scrape"},
+					{Url: "udp://tracker.example.com:6969"},
+				},
+			},
+			expected: map[string]struct{}{
+				"tracker.example.com": {},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := sm.getDomainsForTorrent(tc.torrent)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+// TestSyncManager_ValidatedTrackerMapping_Updates tests add/remove/edit operations on the mapping.
+func TestSyncManager_ValidatedTrackerMapping_Updates(t *testing.T) {
+	t.Run("addHashToTrackerMapping adds to both maps", func(t *testing.T) {
+		sm := &SyncManager{
+			validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
+		}
+
+		// Initialize empty mapping
+		sm.validatedTrackerMapping[1] = &ValidatedTrackerMapping{
+			HashToDomains:  make(map[string]map[string]struct{}),
+			DomainToHashes: make(map[string]map[string]struct{}),
+			UpdatedAt:      time.Now(),
+		}
+
+		// Add hash to domain
+		sm.addHashToTrackerMapping(1, "hash1", "tracker.com")
+		sm.addHashToTrackerMapping(1, "hash2", "tracker.com")
+		sm.addHashToTrackerMapping(1, "hash1", "another.com")
+
+		mapping := sm.validatedTrackerMapping[1]
+
+		// Verify HashToDomains
+		assert.Contains(t, mapping.HashToDomains, "hash1")
+		assert.Contains(t, mapping.HashToDomains["hash1"], "tracker.com")
+		assert.Contains(t, mapping.HashToDomains["hash1"], "another.com")
+		assert.Contains(t, mapping.HashToDomains, "hash2")
+		assert.Contains(t, mapping.HashToDomains["hash2"], "tracker.com")
+
+		// Verify DomainToHashes
+		assert.Contains(t, mapping.DomainToHashes, "tracker.com")
+		assert.Contains(t, mapping.DomainToHashes["tracker.com"], "hash1")
+		assert.Contains(t, mapping.DomainToHashes["tracker.com"], "hash2")
+		assert.Contains(t, mapping.DomainToHashes, "another.com")
+		assert.Contains(t, mapping.DomainToHashes["another.com"], "hash1")
+	})
+
+	t.Run("removeHashFromTrackerMapping removes from both maps and cleans up empty", func(t *testing.T) {
+		sm := &SyncManager{
+			validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
+		}
+
+		// Initialize with some data
+		sm.validatedTrackerMapping[1] = &ValidatedTrackerMapping{
+			HashToDomains: map[string]map[string]struct{}{
+				"hash1": {"tracker.com": {}, "another.com": {}},
+				"hash2": {"tracker.com": {}},
+			},
+			DomainToHashes: map[string]map[string]struct{}{
+				"tracker.com": {"hash1": {}, "hash2": {}},
+				"another.com": {"hash1": {}},
+			},
+			UpdatedAt: time.Now(),
+		}
+
+		// Remove hash1 from tracker.com
+		sm.removeHashFromTrackerMapping(1, "hash1", "tracker.com")
+
+		mapping := sm.validatedTrackerMapping[1]
+
+		// hash1 should still have another.com
+		assert.Contains(t, mapping.HashToDomains["hash1"], "another.com")
+		assert.NotContains(t, mapping.HashToDomains["hash1"], "tracker.com")
+
+		// tracker.com should still have hash2
+		assert.Contains(t, mapping.DomainToHashes["tracker.com"], "hash2")
+		assert.NotContains(t, mapping.DomainToHashes["tracker.com"], "hash1")
+
+		// Now remove hash2 from tracker.com (should clean up the empty domain entry)
+		sm.removeHashFromTrackerMapping(1, "hash2", "tracker.com")
+
+		// tracker.com should be completely removed
+		assert.NotContains(t, mapping.DomainToHashes, "tracker.com")
+		// hash2 entry should be removed (empty)
+		assert.NotContains(t, mapping.HashToDomains, "hash2")
+	})
+
+	t.Run("updateTrackerMappingForEdit removes old and adds new", func(t *testing.T) {
+		sm := &SyncManager{
+			validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
+		}
+
+		// Initialize with data
+		sm.validatedTrackerMapping[1] = &ValidatedTrackerMapping{
+			HashToDomains: map[string]map[string]struct{}{
+				"hash1": {"old-tracker.com": {}},
+			},
+			DomainToHashes: map[string]map[string]struct{}{
+				"old-tracker.com": {"hash1": {}},
+			},
+			UpdatedAt: time.Now(),
+		}
+
+		// Edit tracker from old to new
+		sm.updateTrackerMappingForEdit(1, "hash1", "old-tracker.com", "new-tracker.com")
+
+		mapping := sm.validatedTrackerMapping[1]
+
+		// Old domain should be gone
+		assert.NotContains(t, mapping.DomainToHashes, "old-tracker.com")
+		assert.NotContains(t, mapping.HashToDomains["hash1"], "old-tracker.com")
+
+		// New domain should be present
+		assert.Contains(t, mapping.DomainToHashes, "new-tracker.com")
+		assert.Contains(t, mapping.DomainToHashes["new-tracker.com"], "hash1")
+		assert.Contains(t, mapping.HashToDomains["hash1"], "new-tracker.com")
+	})
+
+	t.Run("updateTrackerMappingForEdit skips Unknown domains", func(t *testing.T) {
+		sm := &SyncManager{
+			validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
+		}
+
+		sm.validatedTrackerMapping[1] = &ValidatedTrackerMapping{
+			HashToDomains:  make(map[string]map[string]struct{}),
+			DomainToHashes: make(map[string]map[string]struct{}),
+			UpdatedAt:      time.Now(),
+		}
+
+		// Try to add with Unknown domain - should be skipped
+		sm.updateTrackerMappingForEdit(1, "hash1", "", "Unknown")
+
+		mapping := sm.validatedTrackerMapping[1]
+
+		// Nothing should be added
+		assert.Empty(t, mapping.HashToDomains)
+		assert.Empty(t, mapping.DomainToHashes)
+	})
+
+	t.Run("removeHashFromAllTrackerMappings removes hash from all domains", func(t *testing.T) {
+		sm := &SyncManager{
+			validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
+		}
+
+		// Initialize with hash1 in multiple domains
+		sm.validatedTrackerMapping[1] = &ValidatedTrackerMapping{
+			HashToDomains: map[string]map[string]struct{}{
+				"hash1": {"tracker1.com": {}, "tracker2.com": {}, "tracker3.com": {}},
+				"hash2": {"tracker1.com": {}},
+			},
+			DomainToHashes: map[string]map[string]struct{}{
+				"tracker1.com": {"hash1": {}, "hash2": {}},
+				"tracker2.com": {"hash1": {}},
+				"tracker3.com": {"hash1": {}},
+			},
+			UpdatedAt: time.Now(),
+		}
+
+		// Remove hash1 from all domains
+		sm.removeHashFromAllTrackerMappings(1, []string{"hash1"})
+
+		mapping := sm.validatedTrackerMapping[1]
+
+		// hash1 should be completely gone
+		assert.NotContains(t, mapping.HashToDomains, "hash1")
+		assert.NotContains(t, mapping.DomainToHashes["tracker1.com"], "hash1")
+
+		// Domains that only had hash1 should be cleaned up
+		assert.NotContains(t, mapping.DomainToHashes, "tracker2.com")
+		assert.NotContains(t, mapping.DomainToHashes, "tracker3.com")
+
+		// hash2 and tracker1.com (which still has hash2) should remain
+		assert.Contains(t, mapping.HashToDomains, "hash2")
+		assert.Contains(t, mapping.DomainToHashes, "tracker1.com")
+		assert.Contains(t, mapping.DomainToHashes["tracker1.com"], "hash2")
+	})
+
+	t.Run("operations are no-op when mapping is nil", func(t *testing.T) {
+		sm := &SyncManager{
+			validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
+		}
+
+		// These should not panic when no mapping exists
+		sm.addHashToTrackerMapping(999, "hash1", "tracker.com")
+		sm.removeHashFromTrackerMapping(999, "hash1", "tracker.com")
+		sm.updateTrackerMappingForEdit(999, "hash1", "old.com", "new.com")
+		sm.removeHashFromAllTrackerMappings(999, []string{"hash1"})
+
+		// If we get here without panic, the test passes
+	})
+}
+
+// TestSyncManager_ValidatedTrackerMapping_DeepCopy tests that getValidatedTrackerMapping returns a deep copy.
+func TestSyncManager_ValidatedTrackerMapping_DeepCopy(t *testing.T) {
+	sm := &SyncManager{
+		validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
+	}
+
+	// Initialize with data
+	sm.validatedTrackerMapping[1] = &ValidatedTrackerMapping{
+		HashToDomains: map[string]map[string]struct{}{
+			"hash1": {"tracker.com": {}},
+		},
+		DomainToHashes: map[string]map[string]struct{}{
+			"tracker.com": {"hash1": {}},
+		},
+		UpdatedAt: time.Now(),
+	}
+
+	// Get a copy
+	copy := sm.getValidatedTrackerMapping(1)
+	assert.NotNil(t, copy)
+
+	// Modify the copy
+	copy.HashToDomains["hash1"]["modified.com"] = struct{}{}
+	copy.DomainToHashes["modified.com"] = map[string]struct{}{"hash1": {}}
+
+	// Original should be unchanged
+	original := sm.validatedTrackerMapping[1]
+	assert.NotContains(t, original.HashToDomains["hash1"], "modified.com")
+	assert.NotContains(t, original.DomainToHashes, "modified.com")
+}
+
+// TestSyncManager_ValidatedTrackerMapping_ConcurrentAccess tests concurrent reads/writes.
+func TestSyncManager_ValidatedTrackerMapping_ConcurrentAccess(t *testing.T) {
+	// This test verifies that concurrent reads and writes to ValidatedTrackerMapping
+	// don't cause data races. Run with: go test -race ./internal/qbittorrent/...
+
+	sm := &SyncManager{
+		validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
+	}
+
+	// Initialize with some data
+	sm.validatedTrackerMapping[1] = &ValidatedTrackerMapping{
+		HashToDomains: map[string]map[string]struct{}{
+			"hash1": {"tracker1.com": {}},
+		},
+		DomainToHashes: map[string]map[string]struct{}{
+			"tracker1.com": {"hash1": {}},
+		},
+		UpdatedAt: time.Now(),
+	}
+
+	var wg sync.WaitGroup
+
+	// Launch concurrent readers
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				mapping := sm.getValidatedTrackerMapping(1)
+				if mapping != nil {
+					// Access the returned copy to ensure it's safe
+					_ = len(mapping.HashToDomains)
+					_ = len(mapping.DomainToHashes)
+					for hash := range mapping.HashToDomains {
+						_ = len(mapping.HashToDomains[hash])
+					}
+				}
+			}
+		}()
+	}
+
+	// Launch concurrent writers (add)
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for j := 0; j < 20; j++ {
+				hash := fmt.Sprintf("hash%d_%d", id, j)
+				sm.addHashToTrackerMapping(1, hash, "tracker1.com")
+			}
+		}(i)
+	}
+
+	// Launch concurrent writers (remove)
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for j := 0; j < 10; j++ {
+				hash := fmt.Sprintf("hash%d_%d", id, j)
+				sm.removeHashFromTrackerMapping(1, hash, "tracker1.com")
+			}
+		}(i)
+	}
+
+	// Launch concurrent full updates (setValidatedTrackerMapping)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 5; j++ {
+				newMapping := &ValidatedTrackerMapping{
+					HashToDomains:  make(map[string]map[string]struct{}),
+					DomainToHashes: make(map[string]map[string]struct{}),
+					UpdatedAt:      time.Now(),
+				}
+				sm.setValidatedTrackerMapping(1, newMapping)
+			}
+		}()
+	}
+
+	wg.Wait()
+	// If we reach here without race detector complaints, the test passes
 }
