@@ -517,7 +517,7 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
                                     <span>{formatISOTimestamp(event.createdAt)}</span>
                                   </div>
 
-                                  {event.reason && (
+                                  {event.reason && event.outcome === "failed" && (
                                     <div className="text-xs bg-muted/30 p-2 rounded">
                                       <span>{event.reason}</span>
                                     </div>
