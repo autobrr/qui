@@ -19,6 +19,22 @@ type EvalContext struct {
 	UnregisteredSet map[string]struct{}
 }
 
+// ConditionUsesField checks if a condition tree references a specific field.
+func ConditionUsesField(cond *RuleCondition, field ConditionField) bool {
+	if cond == nil {
+		return false
+	}
+	if cond.Field == field {
+		return true
+	}
+	for _, child := range cond.Conditions {
+		if ConditionUsesField(child, field) {
+			return true
+		}
+	}
+	return false
+}
+
 // EvaluateCondition recursively evaluates a condition against a torrent.
 // Returns true if the torrent matches the condition.
 // For conditions that require additional context (like isUnregistered), use EvaluateConditionWithContext.

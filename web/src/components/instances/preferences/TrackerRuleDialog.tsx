@@ -57,7 +57,7 @@ interface TrackerRuleDialogProps {
   onSuccess?: () => void
 }
 
-type ActionType = "speedLimits" | "pause" | "delete"
+type ActionType = "speedLimits" | "pause" | "delete" | "tag"
 
 type FormState = Omit<TrackerRuleInput, "categories" | "tags" | "tagMatchMode" | "conditions"> & {
   trackerDomains: string[]
@@ -74,6 +74,9 @@ type FormState = Omit<TrackerRuleInput, "categories" | "tags" | "tagMatchMode" |
   exprUploadKiB?: number
   exprDownloadKiB?: number
   exprDeleteMode: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds"
+  // Tag action settings
+  exprTags: string[]
+  exprTagMode: "full" | "add" | "remove"
 }
 
 const emptyFormState: FormState = {
@@ -98,6 +101,8 @@ const emptyFormState: FormState = {
   exprUploadKiB: undefined,
   exprDownloadKiB: undefined,
   exprDeleteMode: "deleteWithFilesPreserveCrossSeeds",
+  exprTags: [],
+  exprTagMode: "full",
 }
 
 export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSuccess }: TrackerRuleDialogProps) {
@@ -248,6 +253,8 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
         let exprUploadKiB: number | undefined
         let exprDownloadKiB: number | undefined
         let exprDeleteMode: FormState["exprDeleteMode"] = "deleteWithFilesPreserveCrossSeeds"
+        let exprTags: string[] = []
+        let exprTagMode: FormState["exprTagMode"] = "full"
 
         if (hasConditions && rule.conditions) {
           if (rule.conditions.speedLimits?.enabled) {
@@ -262,6 +269,11 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
             actionType = "delete"
             actionCondition = rule.conditions.delete.condition ?? null
             exprDeleteMode = rule.conditions.delete.mode ?? "deleteWithFilesPreserveCrossSeeds"
+          } else if (rule.conditions.tag?.enabled) {
+            actionType = "tag"
+            actionCondition = rule.conditions.tag.condition ?? null
+            exprTags = rule.conditions.tag.tags ?? []
+            exprTagMode = rule.conditions.tag.mode ?? "full"
           }
         }
 
@@ -288,6 +300,8 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
           exprUploadKiB,
           exprDownloadKiB,
           exprDeleteMode,
+          exprTags,
+          exprTagMode,
         })
       } else {
         setFormState(emptyFormState)
@@ -327,6 +341,14 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
           conditions.delete = {
             enabled: true,
             mode: input.exprDeleteMode,
+            condition: input.actionCondition ?? undefined,
+          }
+          break
+        case "tag":
+          conditions.tag = {
+            enabled: true,
+            tags: input.exprTags,
+            mode: input.exprTagMode,
             condition: input.actionCondition ?? undefined,
           }
           break
@@ -768,6 +790,7 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
                         <SelectItem value="speedLimits">Speed limits</SelectItem>
                         <SelectItem value="pause">Pause</SelectItem>
                         <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
+                        <SelectItem value="tag">Tag</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -788,6 +811,7 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
                           <SelectItem value="speedLimits">Speed limits</SelectItem>
                           <SelectItem value="pause">Pause</SelectItem>
                           <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
+                          <SelectItem value="tag">Tag</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -829,6 +853,7 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
                           <SelectItem value="speedLimits">Speed limits</SelectItem>
                           <SelectItem value="pause">Pause</SelectItem>
                           <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
+                          <SelectItem value="tag">Tag</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -845,6 +870,56 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
                           <SelectItem value="delete" className="text-destructive focus:text-destructive">Remove (keep files)</SelectItem>
                           <SelectItem value="deleteWithFiles" className="text-destructive focus:text-destructive">Remove with files</SelectItem>
                           <SelectItem value="deleteWithFilesPreserveCrossSeeds" className="text-destructive focus:text-destructive">Remove with files (preserve cross-seeds)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+
+                {formState.actionType === "tag" && (
+                  <div className="grid grid-cols-[auto_1fr_auto] gap-3 items-start">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Action</Label>
+                      <Select
+                        value={formState.actionType}
+                        onValueChange={(value: ActionType) => setFormState(prev => ({ ...prev, actionType: value }))}
+                      >
+                        <SelectTrigger className="w-[140px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="speedLimits">Speed limits</SelectItem>
+                          <SelectItem value="pause">Pause</SelectItem>
+                          <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
+                          <SelectItem value="tag">Tag</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Tags</Label>
+                      <Input
+                        type="text"
+                        value={formState.exprTags.join(", ")}
+                        onChange={(e) => {
+                          const tags = e.target.value.split(",").map(t => t.trim()).filter(Boolean)
+                          setFormState(prev => ({ ...prev, exprTags: tags }))
+                        }}
+                        placeholder="tag1, tag2, ..."
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Mode</Label>
+                      <Select
+                        value={formState.exprTagMode}
+                        onValueChange={(value: FormState["exprTagMode"]) => setFormState(prev => ({ ...prev, exprTagMode: value }))}
+                      >
+                        <SelectTrigger className="w-[120px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="full">Full sync</SelectItem>
+                          <SelectItem value="add">Add only</SelectItem>
+                          <SelectItem value="remove">Remove only</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

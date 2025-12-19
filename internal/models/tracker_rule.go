@@ -23,10 +23,17 @@ const (
 
 // Delete mode constants
 const (
-	DeleteModeNone                         = "none"
-	DeleteModeKeepFiles                    = "delete"
-	DeleteModeWithFiles                    = "deleteWithFiles"
-	DeleteModeWithFilesPreserveCrossSeeds  = "deleteWithFilesPreserveCrossSeeds"
+	DeleteModeNone                        = "none"
+	DeleteModeKeepFiles                   = "delete"
+	DeleteModeWithFiles                   = "deleteWithFiles"
+	DeleteModeWithFilesPreserveCrossSeeds = "deleteWithFilesPreserveCrossSeeds"
+)
+
+// Tag mode constants
+const (
+	TagModeFull   = "full"   // Add to matches, remove from non-matches
+	TagModeAdd    = "add"    // Only add to matches
+	TagModeRemove = "remove" // Only remove from non-matches
 )
 
 type TrackerRule struct {
@@ -592,6 +599,7 @@ type ActionConditions struct {
 	SpeedLimits   *SpeedLimitAction `json:"speedLimits,omitempty"`
 	Pause         *PauseAction      `json:"pause,omitempty"`
 	Delete        *DeleteAction     `json:"delete,omitempty"`
+	Tag           *TagAction        `json:"tag,omitempty"`
 }
 
 // SpeedLimitAction configures speed limit application with optional conditions.
@@ -615,10 +623,18 @@ type DeleteAction struct {
 	Condition *RuleCondition `json:"condition,omitempty"`
 }
 
+// TagAction configures tagging with smart add/remove logic.
+type TagAction struct {
+	Enabled   bool           `json:"enabled"`
+	Tags      []string       `json:"tags"`              // Tags to manage
+	Mode      string         `json:"mode"`              // "full", "add", "remove"
+	Condition *RuleCondition `json:"condition,omitempty"`
+}
+
 // IsEmpty returns true if no actions are configured.
 func (ac *ActionConditions) IsEmpty() bool {
 	if ac == nil {
 		return true
 	}
-	return ac.SpeedLimits == nil && ac.Pause == nil && ac.Delete == nil
+	return ac.SpeedLimits == nil && ac.Pause == nil && ac.Delete == nil && ac.Tag == nil
 }

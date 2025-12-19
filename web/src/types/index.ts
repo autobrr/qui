@@ -192,11 +192,19 @@ export interface DeleteAction {
   condition?: RuleCondition
 }
 
+export interface TagAction {
+  enabled: boolean
+  tags: string[]
+  mode: "full" | "add" | "remove"
+  condition?: RuleCondition
+}
+
 export interface ActionConditions {
   schemaVersion: string
   speedLimits?: SpeedLimitAction
   pause?: PauseAction
   delete?: DeleteAction
+  tag?: TagAction
 }
 
 export interface TrackerRule {
@@ -252,7 +260,7 @@ export interface TrackerRuleActivity {
   hash: string
   torrentName?: string
   trackerDomain?: string
-  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed"
+  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed"
   ruleId?: number
   ruleName?: string
   outcome: "success" | "failed"
@@ -267,6 +275,9 @@ export interface TrackerRuleActivity {
     limitKiB?: number
     count?: number
     type?: string
+    // Tag activity details
+    added?: Record<string, number>   // tag -> count of torrents
+    removed?: Record<string, number> // tag -> count of torrents
   }
   createdAt: string
 }

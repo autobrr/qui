@@ -84,6 +84,8 @@ function formatAction(action: TrackerRuleActivity["action"]): string {
       return "Delete"
     case "limit_failed":
       return "Set limits"
+    case "tags_changed":
+      return "Tags"
     default:
       return action
   }
@@ -171,6 +173,7 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
     deleted_condition: "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",
     delete_failed: "bg-destructive/10 text-destructive border-destructive/30",
     limit_failed: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
+    tags_changed: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
   }
 
   if (!instances || instances.length === 0) {
@@ -444,9 +447,24 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
                                 <div className="flex flex-col gap-2">
                                   <div className="grid grid-cols-[1fr_auto] items-center gap-2">
                                     <div className="min-w-0">
-                                      <TruncatedText className="font-medium text-sm block cursor-default">
-                                        {event.torrentName || event.hash}
-                                      </TruncatedText>
+                                      {event.action === "tags_changed" ? (
+                                        <span className="font-medium text-sm block">
+                                          {(() => {
+                                            const added = event.details?.added ?? {}
+                                            const removed = event.details?.removed ?? {}
+                                            const addedTotal = Object.values(added).reduce((a, b) => a + b, 0)
+                                            const removedTotal = Object.values(removed).reduce((a, b) => a + b, 0)
+                                            const parts: string[] = []
+                                            if (addedTotal > 0) parts.push(`+${addedTotal} tagged`)
+                                            if (removedTotal > 0) parts.push(`-${removedTotal} untagged`)
+                                            return parts.join(", ") || "Tag operation"
+                                          })()}
+                                        </span>
+                                      ) : (
+                                        <TruncatedText className="font-medium text-sm block cursor-default">
+                                          {event.torrentName || event.hash}
+                                        </TruncatedText>
+                                      )}
                                     </div>
                                     <div className="flex items-center gap-1.5">
                                       <Badge
@@ -458,33 +476,37 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
                                       >
                                         {formatAction(event.action)}
                                       </Badge>
-                                      <Badge
-                                        variant="outline"
-                                        className={cn(
-                                          "text-[10px] px-1.5 py-0 h-5 shrink-0",
-                                          outcomeClasses[event.outcome]
-                                        )}
-                                      >
-                                        {event.outcome === "success" ? "Removed" : "Failed"}
-                                      </Badge>
+                                      {event.action !== "tags_changed" && (
+                                        <Badge
+                                          variant="outline"
+                                          className={cn(
+                                            "text-[10px] px-1.5 py-0 h-5 shrink-0",
+                                            outcomeClasses[event.outcome]
+                                          )}
+                                        >
+                                          {event.outcome === "success" ? "Removed" : "Failed"}
+                                        </Badge>
+                                      )}
                                     </div>
                                   </div>
 
                                   <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-                                    <div className="flex items-center gap-1 bg-muted/50 px-1.5 py-0.5 rounded">
-                                      <span className="font-mono">{event.hash.substring(0, 7)}</span>
-                                      <button
-                                        type="button"
-                                        className="hover:text-foreground transition-colors"
-                                        onClick={() => {
-                                          copyTextToClipboard(event.hash)
-                                          toast.success("Hash copied")
-                                        }}
-                                        title="Copy hash"
-                                      >
-                                        <Copy className="h-3 w-3" />
-                                      </button>
-                                    </div>
+                                    {event.hash && (
+                                      <div className="flex items-center gap-1 bg-muted/50 px-1.5 py-0.5 rounded">
+                                        <span className="font-mono">{event.hash.substring(0, 7)}</span>
+                                        <button
+                                          type="button"
+                                          className="hover:text-foreground transition-colors"
+                                          onClick={() => {
+                                            copyTextToClipboard(event.hash)
+                                            toast.success("Hash copied")
+                                          }}
+                                          title="Copy hash"
+                                        >
+                                          <Copy className="h-3 w-3" />
+                                        </button>
+                                      </div>
+                                    )}
                                     {event.trackerDomain && (() => {
                                       const tracker = getTrackerDisplay(event.trackerDomain)
                                       return (
@@ -508,7 +530,9 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
                                         </>
                                       )
                                     })()}
-                                    <span className="text-muted-foreground/40">·</span>
+                                    {(event.hash || event.trackerDomain) && (
+                                      <span className="text-muted-foreground/40">·</span>
+                                    )}
                                     <span>{formatISOTimestamp(event.createdAt)}</span>
                                   </div>
 
@@ -546,6 +570,27 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
                                           <Badge variant="outline" className={className}>
                                             {label}
                                           </Badge>
+                                        )
+                                      })()}
+                                      {event.action === "tags_changed" && event.details && (() => {
+                                        const added = event.details.added ?? {}
+                                        const removed = event.details.removed ?? {}
+                                        const addedTags = Object.entries(added)
+                                        const removedTags = Object.entries(removed)
+
+                                        return (
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {addedTags.map(([tag, count]) => (
+                                              <Badge key={`add-${tag}`} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                                                +{tag} ({count})
+                                              </Badge>
+                                            ))}
+                                            {removedTags.map(([tag, count]) => (
+                                              <Badge key={`rm-${tag}`} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-red-500/10 text-red-500 border-red-500/20">
+                                                -{tag} ({count})
+                                              </Badge>
+                                            ))}
+                                          </div>
                                         )
                                       })()}
                                       {event.ruleName && (

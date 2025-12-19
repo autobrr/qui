@@ -22,7 +22,7 @@ import { api } from "@/lib/api"
 import { cn, parseTrackerDomains } from "@/lib/utils"
 import type { TrackerRule } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Clock, Filter, Loader2, Pause, Pencil, Plus, RefreshCw, Scale, Trash2, XCircle } from "lucide-react"
+import { ArrowDown, ArrowUp, Clock, Filter, Loader2, Pause, Pencil, Plus, RefreshCw, Scale, Tag, Trash2, XCircle } from "lucide-react"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { TrackerRuleDialog } from "./TrackerRuleDialog"
@@ -446,6 +446,24 @@ function RuleSummary({ rule }: { rule: TrackerRule }) {
                 ? "Delete with files"
                 : "Delete (keep files)"}</p>
             <p className="text-muted-foreground">With condition filter</p>
+          </TooltipContent>
+        </Tooltip>
+      )}
+
+      {/* Expression-based Tag */}
+      {conditions?.tag?.enabled && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-blue-600 border-blue-600/50 cursor-help">
+              <Tag className="h-3 w-3" />
+              {conditions.tag.tags.length} tag{conditions.tag.tags.length !== 1 ? "s" : ""}
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Tags: {conditions.tag.tags.join(", ")}</p>
+            <p className="text-muted-foreground">
+              Mode: {conditions.tag.mode === "full" ? "Full sync" : conditions.tag.mode === "add" ? "Add only" : "Remove only"}
+            </p>
           </TooltipContent>
         </Tooltip>
       )}

@@ -10,6 +10,7 @@ import (
 	"path"
 	"regexp"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -48,7 +49,6 @@ type Service struct {
 
 	// keep lightweight memory of recent applications to avoid hammering qBittorrent
 	lastApplied map[int]map[string]time.Time // instanceID -> hash -> timestamp
-	lastDeleted map[int]map[string]time.Time // instanceID -> hash -> timestamp (tracks deleted torrents)
 	mu          sync.RWMutex
 }
 
@@ -71,12 +71,11 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		ruleStore:     ruleStore,
 		activityStore: activityStore,
 		syncManager:   syncManager,
-		lastApplied:   make(map[int]map[string]time.Time),
-		lastDeleted:   make(map[int]map[string]time.Time),
+		lastApplied: make(map[int]map[string]time.Time),
 	}
 }
 
-// cleanupStaleEntries removes entries from lastApplied and lastDeleted maps
+// cleanupStaleEntries removes entries from lastApplied map
 // that are older than 10 minutes to prevent unbounded memory growth.
 func (s *Service) cleanupStaleEntries() {
 	cutoff := time.Now().Add(-10 * time.Minute)
@@ -84,13 +83,6 @@ func (s *Service) cleanupStaleEntries() {
 	defer s.mu.Unlock()
 
 	for _, instMap := range s.lastApplied {
-		for hash, ts := range instMap {
-			if ts.Before(cutoff) {
-				delete(instMap, hash)
-			}
-		}
-	}
-	for _, instMap := range s.lastDeleted {
 		for hash, ts := range instMap {
 			if ts.Before(cutoff) {
 				delete(instMap, hash)
@@ -378,7 +370,8 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 
 	// Get health counts for isUnregistered condition evaluation
 	var evalCtx *EvalContext
-	if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil && len(healthCounts.UnregisteredSet) > 0 {
+	healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID)
+	if healthCounts != nil {
 		evalCtx = &EvalContext{
 			UnregisteredSet: healthCounts.UnregisteredSet,
 		}
@@ -409,6 +402,15 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 
 	// Batches for expression-based pause action
 	pauseHashes := make([]string, 0)
+
+	// Tag changes tracking for smart tagging (tqm-style)
+	type tagChange struct {
+		current  map[string]struct{} // current tags on torrent
+		desired  map[string]struct{} // desired final tag set
+		toAdd    []string            // tags to add
+		toRemove []string            // tags to remove
+	}
+	tagChanges := make(map[string]*tagChange) // hash -> tag change info
 
 	for _, torrent := range torrents {
 		s.mu.RLock()
@@ -455,6 +457,68 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 					// Only pause if not already paused
 					if torrent.State != qbt.TorrentStatePausedUp && torrent.State != qbt.TorrentStatePausedDl {
 						pauseHashes = append(pauseHashes, torrent.Hash)
+					}
+				}
+			}
+
+			// Tag action with smart add/remove logic (tqm-style)
+			if conditions.Tag != nil && conditions.Tag.Enabled && len(conditions.Tag.Tags) > 0 {
+				// Skip if condition uses IS_UNREGISTERED but health data isn't available yet
+				// This prevents incorrectly removing tags on startup before health checks complete
+				if ConditionUsesField(conditions.Tag.Condition, FieldIsUnregistered) &&
+					(evalCtx == nil || evalCtx.UnregisteredSet == nil) {
+					continue
+				}
+
+				tagMode := conditions.Tag.Mode
+				if tagMode == "" {
+					tagMode = models.TagModeFull
+				}
+
+				// Evaluate condition
+				matchesCondition := conditions.Tag.Condition == nil ||
+					EvaluateConditionWithContext(conditions.Tag.Condition, torrent, evalCtx, 0)
+
+				// Get torrent's current tags as map for O(1) lookup
+				currentTags := make(map[string]struct{})
+				for _, t := range strings.Split(torrent.Tags, ", ") {
+					if t = strings.TrimSpace(t); t != "" {
+						currentTags[t] = struct{}{}
+					}
+				}
+
+				var toAdd, toRemove []string
+				for _, managedTag := range conditions.Tag.Tags {
+					_, hasTag := currentTags[managedTag]
+
+					// Smart tagging logic:
+					// - ADD: doesn't have tag + matches + mode allows add
+					// - REMOVE: has tag + doesn't match + mode allows remove
+					if !hasTag && matchesCondition && (tagMode == models.TagModeFull || tagMode == models.TagModeAdd) {
+						toAdd = append(toAdd, managedTag)
+					} else if hasTag && !matchesCondition && (tagMode == models.TagModeFull || tagMode == models.TagModeRemove) {
+						toRemove = append(toRemove, managedTag)
+					}
+				}
+
+				if len(toAdd) > 0 || len(toRemove) > 0 {
+					// Compute desired final tag set
+					desired := make(map[string]struct{})
+					for t := range currentTags {
+						desired[t] = struct{}{}
+					}
+					for _, t := range toAdd {
+						desired[t] = struct{}{}
+					}
+					for _, t := range toRemove {
+						delete(desired, t)
+					}
+
+					tagChanges[torrent.Hash] = &tagChange{
+						current:  currentTags,
+						desired:  desired,
+						toAdd:    toAdd,
+						toRemove: toRemove,
 					}
 				}
 			}
@@ -583,17 +647,121 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 		}
 	}
 
-	// Process deletions for torrents that have reached their limits
-	s.mu.RLock()
-	instDeletedMap, deletedMapOk := s.lastDeleted[instanceID]
-	s.mu.RUnlock()
-	if !deletedMapOk || instDeletedMap == nil {
-		s.mu.Lock()
-		if s.lastDeleted[instanceID] == nil {
-			s.lastDeleted[instanceID] = make(map[string]time.Time)
+	// Execute tag actions for expression-based rules
+	if len(tagChanges) > 0 {
+		// Try SetTags first (more efficient for qBit 5.1+)
+		// Group by desired tag set for batching
+		setTagsBatches := make(map[string][]string) // key = sorted tags, value = hashes
+
+		for hash, change := range tagChanges {
+			// Build sorted tag list for batching key
+			tags := make([]string, 0, len(change.desired))
+			for t := range change.desired {
+				tags = append(tags, t)
+			}
+			sort.Strings(tags)
+			key := strings.Join(tags, ",")
+			setTagsBatches[key] = append(setTagsBatches[key], hash)
 		}
-		instDeletedMap = s.lastDeleted[instanceID]
-		s.mu.Unlock()
+
+		// Try SetTags first (qBit 5.1+)
+		useSetTags := true
+		for tagSet, hashes := range setTagsBatches {
+			var tags []string
+			if tagSet != "" {
+				tags = strings.Split(tagSet, ",")
+			}
+			batches := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
+			for _, batch := range batches {
+				err := s.syncManager.SetTorrentTags(ctx, instanceID, batch, tags)
+				if err != nil {
+					// Check if it's an unsupported version error
+					if strings.Contains(err.Error(), "requires qBittorrent") {
+						useSetTags = false
+						break
+					}
+					log.Warn().Err(err).Int("instanceID", instanceID).Strs("tags", tags).Int("count", len(batch)).Msg("tracker rules: set tags failed")
+				} else {
+					log.Debug().Int("instanceID", instanceID).Strs("tags", tags).Int("count", len(batch)).Msg("tracker rules: set tags on torrents")
+				}
+			}
+			if !useSetTags {
+				break
+			}
+		}
+
+		// Fallback to Add/Remove for older clients
+		if !useSetTags {
+			log.Debug().Int("instanceID", instanceID).Msg("tracker rules: falling back to add/remove tags (older qBittorrent)")
+
+			// Group by tags to add/remove
+			addBatches := make(map[string][]string)    // key = tag, value = hashes
+			removeBatches := make(map[string][]string) // key = tag, value = hashes
+
+			for hash, change := range tagChanges {
+				for _, tag := range change.toAdd {
+					addBatches[tag] = append(addBatches[tag], hash)
+				}
+				for _, tag := range change.toRemove {
+					removeBatches[tag] = append(removeBatches[tag], hash)
+				}
+			}
+
+			for tag, hashes := range addBatches {
+				batches := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
+				for _, batch := range batches {
+					if err := s.syncManager.AddTorrentTags(ctx, instanceID, batch, []string{tag}); err != nil {
+						log.Warn().Err(err).Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("tracker rules: add tags failed")
+					} else {
+						log.Debug().Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("tracker rules: added tag to torrents")
+					}
+				}
+			}
+
+			for tag, hashes := range removeBatches {
+				batches := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
+				for _, batch := range batches {
+					if err := s.syncManager.RemoveTorrentTags(ctx, instanceID, batch, []string{tag}); err != nil {
+						log.Warn().Err(err).Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("tracker rules: remove tags failed")
+					} else {
+						log.Debug().Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("tracker rules: removed tag from torrents")
+					}
+				}
+			}
+		}
+
+		// Record tag activity summary
+		if s.activityStore != nil {
+			// Aggregate counts per tag
+			addCounts := make(map[string]int)    // tag -> count of torrents
+			removeCounts := make(map[string]int) // tag -> count of torrents
+
+			for _, change := range tagChanges {
+				for _, tag := range change.toAdd {
+					addCounts[tag]++
+				}
+				for _, tag := range change.toRemove {
+					removeCounts[tag]++
+				}
+			}
+
+			// Only record if there were actual changes
+			if len(addCounts) > 0 || len(removeCounts) > 0 {
+				detailsJSON, _ := json.Marshal(map[string]any{
+					"added":   addCounts,
+					"removed": removeCounts,
+				})
+				if err := s.activityStore.Create(ctx, &models.TrackerRuleActivity{
+					InstanceID: instanceID,
+					Hash:       "", // No single hash for batch operations
+					Action:     models.ActivityActionTagsChanged,
+					Outcome:    models.ActivityOutcomeSuccess,
+					Details:    detailsJSON,
+				}); err != nil {
+					log.Warn().Err(err).Int("instanceID", instanceID).Msg("tracker rules: failed to record tag activity")
+				}
+			}
+		}
 	}
 
 	// Pending deletion info for activity recording
@@ -614,16 +782,6 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 	queuedForDeletion := make(map[string]struct{})    // track hashes already queued
 
 	for _, torrent := range torrents {
-		// Skip if recently processed for deletion (avoid duplicate attempts)
-		s.mu.RLock()
-		if ts, deleted := instDeletedMap[torrent.Hash]; deleted {
-			if now.Sub(ts) < 5*time.Minute {
-				s.mu.RUnlock()
-				continue
-			}
-		}
-		s.mu.RUnlock()
-
 		rule := selectRule(torrent, rules, s.syncManager)
 		if rule == nil {
 			continue
@@ -796,7 +954,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 	}
 
 	// Process unregistered torrents (separate from ratio/seeding time based deletions)
-	healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID)
+	healthCounts = s.syncManager.GetTrackerHealthCounts(instanceID)
 	if healthCounts != nil && len(healthCounts.UnregisteredSet) > 0 {
 		for _, torrent := range torrents {
 			// Skip if already queued for deletion (e.g., by ratio/seeding limits)
@@ -808,16 +966,6 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 			if _, isUnregistered := healthCounts.UnregisteredSet[torrent.Hash]; !isUnregistered {
 				continue
 			}
-
-			// Skip if recently processed for deletion
-			s.mu.RLock()
-			if ts, deleted := instDeletedMap[torrent.Hash]; deleted {
-				if now.Sub(ts) < 5*time.Minute {
-					s.mu.RUnlock()
-					continue
-				}
-			}
-			s.mu.RUnlock()
 
 			// Find matching rule with DeleteUnregistered enabled
 			rule := selectRule(torrent, rules, s.syncManager)
@@ -932,13 +1080,6 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 					}
 				}
 			} else {
-				// Mark as processed only after successful deletion
-				s.mu.Lock()
-				for _, hash := range batch {
-					instDeletedMap[hash] = now
-				}
-				s.mu.Unlock()
-
 				if mode == DeleteModeKeepFiles {
 					log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("tracker rules: removed torrents (files kept)")
 				} else {
