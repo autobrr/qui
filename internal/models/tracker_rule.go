@@ -21,6 +21,14 @@ const (
 	TagMatchModeAll = "all"
 )
 
+// Delete mode constants
+const (
+	DeleteModeNone                         = "none"
+	DeleteModeKeepFiles                    = "delete"
+	DeleteModeWithFiles                    = "deleteWithFiles"
+	DeleteModeWithFilesPreserveCrossSeeds  = "deleteWithFilesPreserveCrossSeeds"
+)
+
 type TrackerRule struct {
 	ID                      int               `json:"id"`
 	InstanceID              int               `json:"instanceId"`
@@ -34,8 +42,9 @@ type TrackerRule struct {
 	DownloadLimitKiB        *int64            `json:"downloadLimitKiB,omitempty"`
 	RatioLimit              *float64          `json:"ratioLimit,omitempty"`
 	SeedingTimeLimitMinutes *int64            `json:"seedingTimeLimitMinutes,omitempty"`
-	DeleteMode              *string           `json:"deleteMode,omitempty"` // "none", "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds"
-	DeleteUnregistered      bool              `json:"deleteUnregistered"`
+	DeleteMode                 *string           `json:"deleteMode,omitempty"` // "none", "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds"
+	DeleteUnregistered         bool              `json:"deleteUnregistered"`
+	DeleteUnregisteredMinAge   int64             `json:"deleteUnregisteredMinAge,omitempty"` // minimum age in seconds, 0 = no minimum
 	Enabled                 bool              `json:"enabled"`
 	SortOrder               int               `json:"sortOrder"`
 	Conditions              *ActionConditions `json:"conditions,omitempty"` // expression-based conditions for actions
@@ -100,7 +109,7 @@ func normalizeTrackerPattern(pattern string, domains []string) string {
 func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) ([]*TrackerRule, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, instance_id, name, tracker_pattern, category, tag, tag_match_mode, upload_limit_kib, download_limit_kib,
-		       ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, enabled, sort_order, conditions, created_at, updated_at
+		       ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, delete_unregistered_min_age, enabled, sort_order, conditions, created_at, updated_at
 		FROM tracker_rules
 		WHERE instance_id = ?
 		ORDER BY sort_order ASC, id ASC
@@ -118,6 +127,7 @@ func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) (
 		var ratio sql.NullFloat64
 		var seeding sql.NullInt64
 		var deleteUnregistered int
+		var deleteUnregisteredMinAge sql.NullInt64
 
 		if err := rows.Scan(
 			&rule.ID,
@@ -133,6 +143,7 @@ func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) (
 			&seeding,
 			&deleteMode,
 			&deleteUnregistered,
+			&deleteUnregisteredMinAge,
 			&rule.Enabled,
 			&rule.SortOrder,
 			&conditionsJSON,
@@ -165,10 +176,13 @@ func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) (
 		if seeding.Valid {
 			rule.SeedingTimeLimitMinutes = &seeding.Int64
 		}
-		if deleteMode.Valid && deleteMode.String != "none" {
+		if deleteMode.Valid && deleteMode.String != DeleteModeNone {
 			rule.DeleteMode = &deleteMode.String
 		}
 		rule.DeleteUnregistered = deleteUnregistered != 0
+		if deleteUnregisteredMinAge.Valid {
+			rule.DeleteUnregisteredMinAge = deleteUnregisteredMinAge.Int64
+		}
 
 		// Parse conditions JSON if present
 		if conditionsJSON.Valid && conditionsJSON.String != "" {
@@ -193,7 +207,7 @@ func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) (
 func (s *TrackerRuleStore) Get(ctx context.Context, id int) (*TrackerRule, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, name, tracker_pattern, category, tag, tag_match_mode, upload_limit_kib, download_limit_kib,
-		       ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, enabled, sort_order, conditions, created_at, updated_at
+		       ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, delete_unregistered_min_age, enabled, sort_order, conditions, created_at, updated_at
 		FROM tracker_rules
 		WHERE id = ?
 	`, id)
@@ -204,6 +218,7 @@ func (s *TrackerRuleStore) Get(ctx context.Context, id int) (*TrackerRule, error
 	var ratio sql.NullFloat64
 	var seeding sql.NullInt64
 	var deleteUnregistered int
+	var deleteUnregisteredMinAge sql.NullInt64
 
 	if err := row.Scan(
 		&rule.ID,
@@ -219,6 +234,7 @@ func (s *TrackerRuleStore) Get(ctx context.Context, id int) (*TrackerRule, error
 		&seeding,
 		&deleteMode,
 		&deleteUnregistered,
+		&deleteUnregisteredMinAge,
 		&rule.Enabled,
 		&rule.SortOrder,
 		&conditionsJSON,
@@ -251,10 +267,13 @@ func (s *TrackerRuleStore) Get(ctx context.Context, id int) (*TrackerRule, error
 	if seeding.Valid {
 		rule.SeedingTimeLimitMinutes = &seeding.Int64
 	}
-	if deleteMode.Valid && deleteMode.String != "none" {
+	if deleteMode.Valid && deleteMode.String != DeleteModeNone {
 		rule.DeleteMode = &deleteMode.String
 	}
 	rule.DeleteUnregistered = deleteUnregistered != 0
+	if deleteUnregisteredMinAge.Valid {
+		rule.DeleteUnregisteredMinAge = deleteUnregisteredMinAge.Int64
+	}
 
 	// Parse conditions JSON if present
 	if conditionsJSON.Valid && conditionsJSON.String != "" {
@@ -295,7 +314,7 @@ func (s *TrackerRuleStore) Create(ctx context.Context, rule *TrackerRule) (*Trac
 	}
 
 	// Default delete_mode to "none" if not set
-	deleteMode := "none"
+	deleteMode := DeleteModeNone
 	if rule.DeleteMode != nil && *rule.DeleteMode != "" {
 		deleteMode = *rule.DeleteMode
 	}
@@ -320,14 +339,20 @@ func (s *TrackerRuleStore) Create(ctx context.Context, rule *TrackerRule) (*Trac
 		conditionsJSON = string(data)
 	}
 
+	// 0 means no minimum age, store as NULL
+	var deleteUnregMinAge any
+	if rule.DeleteUnregisteredMinAge > 0 {
+		deleteUnregMinAge = rule.DeleteUnregisteredMinAge
+	}
+
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO tracker_rules
-			(instance_id, name, tracker_pattern, category, tag, tag_match_mode, upload_limit_kib, download_limit_kib, ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, enabled, sort_order, conditions)
+			(instance_id, name, tracker_pattern, category, tag, tag_match_mode, upload_limit_kib, download_limit_kib, ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, delete_unregistered_min_age, enabled, sort_order, conditions)
 		VALUES
-			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, rule.InstanceID, rule.Name, rule.TrackerPattern, categoriesStr, tagsStr, tagMatchMode,
 		nullableInt64(rule.UploadLimitKiB), nullableInt64(rule.DownloadLimitKiB), nullableFloat64(rule.RatioLimit),
-		nullableInt64(rule.SeedingTimeLimitMinutes), deleteMode, boolToInt(rule.DeleteUnregistered), boolToInt(rule.Enabled), sortOrder, conditionsJSON)
+		nullableInt64(rule.SeedingTimeLimitMinutes), deleteMode, boolToInt(rule.DeleteUnregistered), deleteUnregMinAge, boolToInt(rule.Enabled), sortOrder, conditionsJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +373,7 @@ func (s *TrackerRuleStore) Update(ctx context.Context, rule *TrackerRule) (*Trac
 	rule.TrackerPattern = normalizeTrackerPattern(rule.TrackerPattern, rule.TrackerDomains)
 
 	// Default delete_mode to "none" if not set
-	deleteMode := "none"
+	deleteMode := DeleteModeNone
 	if rule.DeleteMode != nil && *rule.DeleteMode != "" {
 		deleteMode = *rule.DeleteMode
 	}
@@ -373,14 +398,20 @@ func (s *TrackerRuleStore) Update(ctx context.Context, rule *TrackerRule) (*Trac
 		conditionsJSON = string(data)
 	}
 
+	// 0 means no minimum age, store as NULL
+	var deleteUnregMinAge any
+	if rule.DeleteUnregisteredMinAge > 0 {
+		deleteUnregMinAge = rule.DeleteUnregisteredMinAge
+	}
+
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE tracker_rules
 		SET name = ?, tracker_pattern = ?, category = ?, tag = ?, tag_match_mode = ?, upload_limit_kib = ?, download_limit_kib = ?,
-		    ratio_limit = ?, seeding_time_limit_minutes = ?, delete_mode = ?, delete_unregistered = ?, enabled = ?, sort_order = ?, conditions = ?
+		    ratio_limit = ?, seeding_time_limit_minutes = ?, delete_mode = ?, delete_unregistered = ?, delete_unregistered_min_age = ?, enabled = ?, sort_order = ?, conditions = ?
 		WHERE id = ? AND instance_id = ?
 	`, rule.Name, rule.TrackerPattern, categoriesStr, tagsStr, tagMatchMode,
 		nullableInt64(rule.UploadLimitKiB), nullableInt64(rule.DownloadLimitKiB), nullableFloat64(rule.RatioLimit),
-		nullableInt64(rule.SeedingTimeLimitMinutes), deleteMode, boolToInt(rule.DeleteUnregistered), boolToInt(rule.Enabled), rule.SortOrder, conditionsJSON, rule.ID, rule.InstanceID)
+		nullableInt64(rule.SeedingTimeLimitMinutes), deleteMode, boolToInt(rule.DeleteUnregistered), deleteUnregMinAge, boolToInt(rule.Enabled), rule.SortOrder, conditionsJSON, rule.ID, rule.InstanceID)
 	if err != nil {
 		return nil, err
 	}
@@ -496,7 +527,8 @@ const (
 	FieldTrackersCount ConditionField = "TRACKERS_COUNT"
 
 	// Boolean fields
-	FieldPrivate ConditionField = "PRIVATE"
+	FieldPrivate        ConditionField = "PRIVATE"
+	FieldIsUnregistered ConditionField = "IS_UNREGISTERED"
 )
 
 // ConditionOperator represents operators for comparing field values.

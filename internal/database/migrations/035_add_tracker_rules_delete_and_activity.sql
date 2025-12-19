@@ -4,6 +4,7 @@
 -- Add delete mode and related columns to tracker_rules
 ALTER TABLE tracker_rules ADD COLUMN delete_mode TEXT NOT NULL DEFAULT 'none';
 ALTER TABLE tracker_rules ADD COLUMN delete_unregistered INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tracker_rules ADD COLUMN delete_unregistered_min_age INTEGER;
 ALTER TABLE tracker_rules ADD COLUMN tag_match_mode TEXT DEFAULT 'any';
 ALTER TABLE tracker_rules ADD COLUMN conditions TEXT;
 

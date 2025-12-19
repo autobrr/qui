@@ -214,6 +214,7 @@ export interface TrackerRule {
   seedingTimeLimitMinutes?: number
   deleteMode?: "none" | "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds"
   deleteUnregistered?: boolean
+  deleteUnregisteredMinAge?: number
   enabled: boolean
   sortOrder: number
   conditions?: ActionConditions
@@ -234,6 +235,7 @@ export interface TrackerRuleInput {
   seedingTimeLimitMinutes?: number
   deleteMode?: "none" | "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds"
   deleteUnregistered?: boolean
+  deleteUnregisteredMinAge?: number
   enabled?: boolean
   sortOrder?: number
   conditions?: ActionConditions

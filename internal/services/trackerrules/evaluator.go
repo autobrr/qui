@@ -13,9 +13,22 @@ import (
 
 const maxConditionDepth = 20
 
+// EvalContext provides additional context for condition evaluation.
+type EvalContext struct {
+	// UnregisteredSet contains hashes of unregistered torrents (from SyncManager health counts)
+	UnregisteredSet map[string]struct{}
+}
+
 // EvaluateCondition recursively evaluates a condition against a torrent.
 // Returns true if the torrent matches the condition.
+// For conditions that require additional context (like isUnregistered), use EvaluateConditionWithContext.
 func EvaluateCondition(cond *RuleCondition, torrent qbt.Torrent, depth int) bool {
+	return EvaluateConditionWithContext(cond, torrent, nil, depth)
+}
+
+// EvaluateConditionWithContext recursively evaluates a condition against a torrent with optional context.
+// Returns true if the torrent matches the condition.
+func EvaluateConditionWithContext(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext, depth int) bool {
 	if cond == nil || depth > maxConditionDepth {
 		return false
 	}
@@ -41,7 +54,7 @@ func EvaluateCondition(cond *RuleCondition, torrent qbt.Torrent, depth int) bool
 			// OR: at least one child must match
 			result = false
 			for _, child := range cond.Conditions {
-				if EvaluateCondition(child, torrent, depth+1) {
+				if EvaluateConditionWithContext(child, torrent, ctx, depth+1) {
 					result = true
 					break
 				}
@@ -50,7 +63,7 @@ func EvaluateCondition(cond *RuleCondition, torrent qbt.Torrent, depth int) bool
 			// AND: all children must match
 			result = true
 			for _, child := range cond.Conditions {
-				if !EvaluateCondition(child, torrent, depth+1) {
+				if !EvaluateConditionWithContext(child, torrent, ctx, depth+1) {
 					result = false
 					break
 				}
@@ -58,7 +71,7 @@ func EvaluateCondition(cond *RuleCondition, torrent qbt.Torrent, depth int) bool
 		}
 	} else {
 		// Leaf condition: evaluate against the torrent
-		result = evaluateLeaf(cond, torrent)
+		result = evaluateLeaf(cond, torrent, ctx)
 	}
 
 	// Apply negation if specified
@@ -70,7 +83,7 @@ func EvaluateCondition(cond *RuleCondition, torrent qbt.Torrent, depth int) bool
 }
 
 // evaluateLeaf evaluates a leaf condition (not a group) against a torrent.
-func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent) bool {
+func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bool {
 	switch cond.Field {
 	// String fields
 	case FieldName:
@@ -145,6 +158,12 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent) bool {
 	// Boolean fields
 	case FieldPrivate:
 		return compareBool(torrent.Private, cond)
+	case FieldIsUnregistered:
+		isUnregistered := false
+		if ctx != nil && ctx.UnregisteredSet != nil {
+			_, isUnregistered = ctx.UnregisteredSet[torrent.Hash]
+		}
+		return compareBool(isUnregistered, cond)
 
 	default:
 		return false

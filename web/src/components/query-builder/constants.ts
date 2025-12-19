@@ -45,6 +45,7 @@ export const CONDITION_FIELDS = {
 
   // Boolean fields
   PRIVATE: { label: "Private", type: "boolean" as const, description: "Private tracker torrent" },
+  IS_UNREGISTERED: { label: "Unregistered", type: "boolean" as const, description: "Tracker reports torrent as unregistered" },
 } as const;
 
 export type FieldType = "string" | "state" | "bytes" | "duration" | "timestamp" | "float" | "speed" | "integer" | "boolean";
@@ -185,8 +186,8 @@ export const FIELD_GROUPS = [
     fields: ["NUM_SEEDS", "NUM_LEECHS", "NUM_COMPLETE", "NUM_INCOMPLETE"],
   },
   {
-    label: "Other",
-    fields: ["COMMENT", "PRIVATE"],
+    label: "Tracker",
+    fields: ["TRACKER", "TRACKERS_COUNT", "PRIVATE", "IS_UNREGISTERED", "COMMENT"],
   },
 ];
 

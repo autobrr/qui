@@ -90,6 +90,7 @@ const emptyFormState: FormState = {
   seedingTimeLimitMinutes: undefined,
   deleteMode: undefined,
   deleteUnregistered: false,
+  deleteUnregisteredMinAge: undefined,
   enabled: true,
   useExpressions: false,
   actionType: "delete",
@@ -278,6 +279,7 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
           seedingTimeLimitMinutes: rule.seedingTimeLimitMinutes,
           deleteMode: rule.deleteMode,
           deleteUnregistered: rule.deleteUnregistered ?? false,
+          deleteUnregisteredMinAge: rule.deleteUnregisteredMinAge,
           enabled: rule.enabled,
           sortOrder: rule.sortOrder,
           useExpressions: hasConditions,
@@ -340,6 +342,7 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
       payload.tags = []
       if (input.actionType !== "delete") {
         payload.deleteUnregistered = false
+        payload.deleteUnregisteredMinAge = undefined
       }
     } else {
       payload.conditions = undefined
@@ -665,25 +668,49 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
                         placeholder="e.g. 1440"
                       />
                     </div>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div className="flex items-center gap-2 ml-auto">
-                          <Checkbox
-                            id="delete-unregistered"
-                            checked={formState.deleteUnregistered ?? false}
-                            onCheckedChange={(checked: boolean) => setFormState(prev => ({
-                              ...prev,
-                              deleteUnregistered: checked,
-                              deleteMode: checked && !prev.deleteMode ? "deleteWithFilesPreserveCrossSeeds" : prev.deleteMode,
-                            }))}
-                          />
-                          <Label htmlFor="delete-unregistered" className="text-sm cursor-pointer">Unregistered</Label>
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-xs">
-                        <p>Remove torrents the tracker reports as unregistered (deleted from tracker, trumped, or invalid)</p>
-                      </TooltipContent>
-                    </Tooltip>
+                    <div className="flex items-center gap-3 ml-auto">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              id="delete-unregistered"
+                              checked={formState.deleteUnregistered ?? false}
+                              onCheckedChange={(checked: boolean) => setFormState(prev => ({
+                                ...prev,
+                                deleteUnregistered: checked,
+                                deleteMode: checked && !prev.deleteMode ? "deleteWithFilesPreserveCrossSeeds" : prev.deleteMode,
+                                deleteUnregisteredMinAge: checked ? prev.deleteUnregisteredMinAge : undefined,
+                              }))}
+                            />
+                            <Label htmlFor="delete-unregistered" className="text-sm cursor-pointer">Unregistered</Label>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-xs">
+                          <p>Remove torrents the tracker reports as unregistered (deleted from tracker, trumped, or invalid)</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      {formState.deleteUnregistered && (
+                        <Select
+                          value={formState.deleteUnregisteredMinAge?.toString() ?? "0"}
+                          onValueChange={(value) => setFormState(prev => ({
+                            ...prev,
+                            deleteUnregisteredMinAge: value === "0" ? undefined : parseInt(value, 10),
+                          }))}
+                        >
+                          <SelectTrigger className="w-[120px] h-8 text-xs">
+                            <SelectValue placeholder="Min age" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="0">Any age</SelectItem>
+                            <SelectItem value="86400">1 day</SelectItem>
+                            <SelectItem value="259200">3 days</SelectItem>
+                            <SelectItem value="604800">7 days</SelectItem>
+                            <SelectItem value="1209600">14 days</SelectItem>
+                            <SelectItem value="2592000">30 days</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
                   </div>
 
                   {/* Action */}
@@ -820,26 +847,6 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
                           <SelectItem value="deleteWithFilesPreserveCrossSeeds" className="text-destructive focus:text-destructive">Remove with files (preserve cross-seeds)</SelectItem>
                         </SelectContent>
                       </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs invisible">Unregistered</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-background">
-                            <Checkbox
-                              id="delete-unregistered-expr"
-                              checked={formState.deleteUnregistered ?? false}
-                              onCheckedChange={(checked: boolean) => setFormState(prev => ({ ...prev, deleteUnregistered: checked }))}
-                            />
-                            <Label htmlFor="delete-unregistered-expr" className="text-sm cursor-pointer whitespace-nowrap">
-                              + Unregistered
-                            </Label>
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-xs">
-                          <p>Also remove torrents the tracker reports as unregistered (deleted from tracker, trumped, or invalid)</p>
-                        </TooltipContent>
-                      </Tooltip>
                     </div>
                   </div>
                 )}

@@ -216,11 +216,13 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		Examples: make([]PreviewTorrent, 0, limit),
 	}
 
-	// Get health counts for unregistered torrent preview
+	// Get health counts for unregistered torrent preview and isUnregistered condition evaluation
 	var unregisteredSet map[string]struct{}
-	if rule.DeleteUnregistered {
-		if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil {
-			unregisteredSet = healthCounts.UnregisteredSet
+	var evalCtx *EvalContext
+	if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil && len(healthCounts.UnregisteredSet) > 0 {
+		unregisteredSet = healthCounts.UnregisteredSet
+		evalCtx = &EvalContext{
+			UnregisteredSet: healthCounts.UnregisteredSet,
 		}
 	}
 
@@ -288,7 +290,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 					if rule.Conditions.Delete.Condition == nil {
 						wouldDelete = true
 					} else {
-						wouldDelete = EvaluateCondition(rule.Conditions.Delete.Condition, torrent, 0)
+						wouldDelete = EvaluateConditionWithContext(rule.Conditions.Delete.Condition, torrent, evalCtx, 0)
 					}
 				}
 			}
@@ -301,8 +303,16 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		if !wouldDelete && unregisteredSet != nil {
 			if _, isUnregistered := unregisteredSet[torrent.Hash]; isUnregistered {
 				// Must have delete mode set for unregistered deletion
-				if rule.DeleteMode != nil && *rule.DeleteMode != "" && *rule.DeleteMode != "none" {
-					wouldDelete = true
+				if rule.DeleteMode != nil && *rule.DeleteMode != "" && *rule.DeleteMode != DeleteModeNone {
+					// Check minimum age requirement (if configured)
+					if rule.DeleteUnregisteredMinAge > 0 {
+						age := time.Now().Unix() - torrent.AddedOn
+						if age >= rule.DeleteUnregisteredMinAge {
+							wouldDelete = true
+						}
+					} else {
+						wouldDelete = true
+					}
 				}
 			}
 		}
@@ -318,8 +328,11 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 				if domains := collectTrackerDomains(torrent, s.syncManager); len(domains) > 0 {
 					tracker = domains[0]
 				}
-				// Check if torrent is unregistered
-				_, isUnregistered := unregisteredSet[torrent.Hash]
+				// Check if torrent is unregistered (safe: nil map returns false)
+				var isUnregistered bool
+				if unregisteredSet != nil {
+					_, isUnregistered = unregisteredSet[torrent.Hash]
+				}
 				result.Examples = append(result.Examples, PreviewTorrent{
 					Name:           torrent.Name,
 					Hash:           torrent.Hash,
@@ -361,6 +374,14 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 
 	if len(torrents) == 0 {
 		return nil
+	}
+
+	// Get health counts for isUnregistered condition evaluation
+	var evalCtx *EvalContext
+	if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil && len(healthCounts.UnregisteredSet) > 0 {
+		evalCtx = &EvalContext{
+			UnregisteredSet: healthCounts.UnregisteredSet,
+		}
 	}
 
 	// snapshot lastApplied map for this instance under lock and ensure it's initialized
@@ -410,7 +431,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 			if conditions.SpeedLimits != nil && conditions.SpeedLimits.Enabled {
 				// Evaluate condition (if no condition, always apply)
 				shouldApply := conditions.SpeedLimits.Condition == nil ||
-					EvaluateCondition(conditions.SpeedLimits.Condition, torrent, 0)
+					EvaluateConditionWithContext(conditions.SpeedLimits.Condition, torrent, evalCtx, 0)
 
 				if shouldApply {
 					if conditions.SpeedLimits.UploadKiB != nil {
@@ -430,7 +451,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 
 			// Pause action with condition evaluation
 			if conditions.Pause != nil && conditions.Pause.Enabled && conditions.Pause.Condition != nil {
-				if EvaluateCondition(conditions.Pause.Condition, torrent, 0) {
+				if EvaluateConditionWithContext(conditions.Pause.Condition, torrent, evalCtx, 0) {
 					// Only pause if not already paused
 					if torrent.State != qbt.TorrentStatePausedUp && torrent.State != qbt.TorrentStatePausedDl {
 						pauseHashes = append(pauseHashes, torrent.Hash)
@@ -588,7 +609,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 	}
 
 	// Batch torrents for deletion by delete mode
-	deleteHashesByMode := make(map[string][]string)   // "delete" or "deleteWithFiles" -> hashes
+	deleteHashesByMode := make(map[string][]string)   // DeleteModeKeepFiles or DeleteModeWithFiles -> hashes
 	pendingByHash := make(map[string]pendingDeletion) // hash -> deletion context
 	queuedForDeletion := make(map[string]struct{})    // track hashes already queued
 
@@ -619,12 +640,12 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 
 				// Evaluate condition (if no condition, match all completed torrents)
 				shouldDelete := conditions.Delete.Condition == nil ||
-					EvaluateCondition(conditions.Delete.Condition, torrent, 0)
+					EvaluateConditionWithContext(conditions.Delete.Condition, torrent, evalCtx, 0)
 
 				if shouldDelete {
 					deleteMode := conditions.Delete.Mode
 					if deleteMode == "" {
-						deleteMode = "delete" // default to keeping files
+						deleteMode = DeleteModeKeepFiles // default to keeping files
 					}
 
 					reason := "expression condition matched"
@@ -634,21 +655,22 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 					var logMsg string
 					var keepingFiles bool
 
-					if deleteMode == "deleteWithFilesPreserveCrossSeeds" {
+					switch deleteMode {
+					case DeleteModeWithFilesPreserveCrossSeeds:
 						if detectCrossSeeds(torrent, torrents) {
-							actualMode = "delete"
+							actualMode = DeleteModeKeepFiles
 							logMsg = "tracker rules: removing torrent (cross-seed detected - keeping files)"
 							keepingFiles = true
 						} else {
-							actualMode = "deleteWithFiles"
+							actualMode = DeleteModeWithFiles
 							logMsg = "tracker rules: removing torrent with files"
 							keepingFiles = false
 						}
-					} else if deleteMode == "delete" {
-						actualMode = "delete"
+					case DeleteModeKeepFiles:
+						actualMode = DeleteModeKeepFiles
 						logMsg = "tracker rules: removing torrent (keeping files)"
 						keepingFiles = true
-					} else {
+					default:
 						actualMode = deleteMode
 						logMsg = "tracker rules: removing torrent with files"
 						keepingFiles = false
@@ -702,21 +724,22 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 			var logMsg string
 			var keepingFiles bool
 
-			if deleteMode == "deleteWithFilesPreserveCrossSeeds" {
+			switch deleteMode {
+			case DeleteModeWithFilesPreserveCrossSeeds:
 				if detectCrossSeeds(torrent, torrents) {
-					actualMode = "delete"
+					actualMode = DeleteModeKeepFiles
 					logMsg = "tracker rules: removing torrent (cross-seed detected - keeping files)"
 					keepingFiles = true
 				} else {
-					actualMode = "deleteWithFiles"
+					actualMode = DeleteModeWithFiles
 					logMsg = "tracker rules: removing torrent with files"
 					keepingFiles = false
 				}
-			} else if deleteMode == "delete" {
-				actualMode = "delete"
+			case DeleteModeKeepFiles:
+				actualMode = DeleteModeKeepFiles
 				logMsg = "tracker rules: removing torrent (keeping files)"
 				keepingFiles = true
-			} else {
+			default:
 				actualMode = deleteMode
 				logMsg = "tracker rules: removing torrent with files"
 				keepingFiles = false
@@ -807,6 +830,14 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 				continue
 			}
 
+			// Check minimum age requirement (if configured)
+			if rule.DeleteUnregisteredMinAge > 0 {
+				age := now.Unix() - torrent.AddedOn
+				if age < rule.DeleteUnregisteredMinAge {
+					continue // Too young, skip
+				}
+			}
+
 			deleteMode := *rule.DeleteMode
 
 			// Handle cross-seed aware mode (reuse existing logic)
@@ -814,21 +845,22 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 			var logMsg string
 			var keepingFiles bool
 
-			if deleteMode == "deleteWithFilesPreserveCrossSeeds" {
+			switch deleteMode {
+			case DeleteModeWithFilesPreserveCrossSeeds:
 				if detectCrossSeeds(torrent, torrents) {
-					actualMode = "delete"
+					actualMode = DeleteModeKeepFiles
 					logMsg = "tracker rules: removing unregistered torrent (cross-seed detected - keeping files)"
 					keepingFiles = true
 				} else {
-					actualMode = "deleteWithFiles"
+					actualMode = DeleteModeWithFiles
 					logMsg = "tracker rules: removing unregistered torrent with files"
 					keepingFiles = false
 				}
-			} else if deleteMode == "delete" {
-				actualMode = "delete"
+			case DeleteModeKeepFiles:
+				actualMode = DeleteModeKeepFiles
 				logMsg = "tracker rules: removing unregistered torrent (keeping files)"
 				keepingFiles = true
-			} else {
+			default:
 				actualMode = deleteMode
 				logMsg = "tracker rules: removing unregistered torrent with files"
 				keepingFiles = false
@@ -907,7 +939,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 				}
 				s.mu.Unlock()
 
-				if mode == "delete" {
+				if mode == DeleteModeKeepFiles {
 					log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("tracker rules: removed torrents (files kept)")
 				} else {
 					log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("tracker rules: removed torrents with files")

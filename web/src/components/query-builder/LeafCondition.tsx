@@ -15,9 +15,7 @@ import {
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -28,14 +26,13 @@ import {
 } from "@/components/ui/tooltip";
 import type { RuleCondition, ConditionField, ConditionOperator } from "@/types";
 import {
-  CONDITION_FIELDS,
-  FIELD_GROUPS,
   getFieldType,
   getOperatorsForField,
   TORRENT_STATES,
   BYTE_UNITS,
   SPEED_UNITS,
 } from "./constants";
+import { FieldCombobox } from "./FieldCombobox";
 
 const DURATION_INPUT_UNITS = [
   { value: 60, label: "minutes" },
@@ -190,26 +187,7 @@ export function LeafCondition({
       </Tooltip>
 
       {/* Field selector */}
-      <Select value={condition.field ?? ""} onValueChange={handleFieldChange}>
-        <SelectTrigger className="h-8 w-[140px]">
-          <SelectValue placeholder="Select field" />
-        </SelectTrigger>
-        <SelectContent>
-          {FIELD_GROUPS.map((group) => (
-            <SelectGroup key={group.label}>
-              <SelectLabel>{group.label}</SelectLabel>
-              {group.fields.map((field) => {
-                const fieldDef = CONDITION_FIELDS[field as keyof typeof CONDITION_FIELDS];
-                return (
-                  <SelectItem key={field} value={field}>
-                    {fieldDef?.label ?? field}
-                  </SelectItem>
-                );
-              })}
-            </SelectGroup>
-          ))}
-        </SelectContent>
-      </Select>
+      <FieldCombobox value={condition.field ?? ""} onChange={handleFieldChange} />
 
       {/* Operator selector */}
       <Select

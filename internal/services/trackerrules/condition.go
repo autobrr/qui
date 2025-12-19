@@ -64,7 +64,14 @@ const (
 	FieldTrackersCount = models.FieldTrackersCount
 
 	// Boolean fields
-	FieldPrivate = models.FieldPrivate
+	FieldPrivate        = models.FieldPrivate
+	FieldIsUnregistered = models.FieldIsUnregistered
+
+	// Delete modes
+	DeleteModeNone                        = models.DeleteModeNone
+	DeleteModeKeepFiles                   = models.DeleteModeKeepFiles
+	DeleteModeWithFiles                   = models.DeleteModeWithFiles
+	DeleteModeWithFilesPreserveCrossSeeds = models.DeleteModeWithFilesPreserveCrossSeeds
 
 	// Operators
 	OperatorAnd                = models.OperatorAnd
