@@ -100,6 +100,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("logMaxBackups", 3)
 	c.viper.SetDefault("dataDir", "") // Empty means auto-detect (next to config file)
 	c.viper.SetDefault("checkForUpdates", true)
+	c.viper.SetDefault("trackerIconsFetchEnabled", true)
 	c.viper.SetDefault("pprofEnabled", false)
 	c.viper.SetDefault("metricsEnabled", false)
 	c.viper.SetDefault("metricsHost", "127.0.0.1")
@@ -186,6 +187,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("logMaxBackups", envPrefix+"LOG_MAX_BACKUPS")
 	c.viper.BindEnv("dataDir", envPrefix+"DATA_DIR")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
+	c.viper.BindEnv("trackerIconsFetchEnabled", envPrefix+"TRACKER_ICONS_FETCH_ENABLED")
 	c.viper.BindEnv("pprofEnabled", envPrefix+"PPROF_ENABLED")
 	c.viper.BindEnv("metricsEnabled", envPrefix+"METRICS_ENABLED")
 	c.viper.BindEnv("metricsHost", envPrefix+"METRICS_HOST")
@@ -308,6 +310,11 @@ sessionSecret = "{{ .sessionSecret }}"
 # Check for new releases via api.autobrr.com
 # Default: true
 #checkForUpdates = true
+
+# Tracker icon fetching
+# Disable to prevent qui from requesting tracker favicons from remote trackers.
+# Default: true
+#trackerIconsFetchEnabled = true
 
 # Log level
 # Default: "INFO"
