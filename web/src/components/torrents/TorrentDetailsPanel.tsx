@@ -25,7 +25,7 @@ import { getLinuxCategory, getLinuxComment, getLinuxCreatedBy, getLinuxFileName,
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
-import { getStateLabel } from "@/lib/torrent-state-utils"
+import { getStatusBadgeMeta } from "@/lib/torrent-state-utils"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
 import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
 import type { SortedPeersResponse, Torrent, TorrentFile, TorrentPeer } from "@/types"
@@ -1616,37 +1616,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                           }
 
                           // Get enriched status (tracker-aware)
-                          const trackerHealth = match.tracker_health ?? null
-                          let statusLabel = getStateLabel(match.state)
-                          let statusVariant: "default" | "secondary" | "destructive" | "outline" = "outline"
-                          let statusClass = ""
-
-                          // Check tracker health first (if supported)
-                          if (trackerHealth === "unregistered") {
-                            statusLabel = "Unregistered"
-                            statusVariant = "outline"
-                            statusClass = "text-destructive border-destructive/40 bg-destructive/10"
-                          } else if (trackerHealth === "tracker_down") {
-                            statusLabel = "Tracker Down"
-                            statusVariant = "outline"
-                            statusClass = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
-                          } else {
-                            // Normal state-based styling
-                            if (match.state === "downloading" || match.state === "uploading") {
-                              statusVariant = "default"
-                            } else if (
-                              match.state === "stalledDL" ||
-                              match.state === "stalledUP" ||
-                              match.state === "pausedDL" ||
-                              match.state === "pausedUP" ||
-                              match.state === "queuedDL" ||
-                              match.state === "queuedUP"
-                            ) {
-                              statusVariant = "secondary"
-                            } else if (match.state === "error" || match.state === "missingFiles") {
-                              statusVariant = "destructive"
-                            }
-                          }
+                          const { label: statusLabel, variant: statusVariant, className: statusClass } = getStatusBadgeMeta(match.state, match.tracker_health)
 
                           // Match type display
                           const matchType = match.matchType as 'infohash' | 'content_path' | 'save_path' | 'name'

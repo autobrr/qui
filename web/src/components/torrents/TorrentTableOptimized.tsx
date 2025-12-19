@@ -80,7 +80,7 @@ import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
-import { getStateLabel } from "@/lib/torrent-state-utils"
+import { getStatusBadgeMeta } from "@/lib/torrent-state-utils"
 import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
 import { cn } from "@/lib/utils"
 import type {
@@ -226,53 +226,6 @@ function getRowBackgroundClass(isRowSelected: boolean, isSelected: boolean, rowI
   return ""
 }
 
-function getStatusBadgeVariant(state: string): "default" | "secondary" | "destructive" | "outline" {
-  switch (state) {
-    case "downloading":
-      return "default"
-    case "stalledDL":
-      return "secondary"
-    case "uploading":
-      return "default"
-    case "stalledUP":
-      return "secondary"
-    case "pausedDL":
-    case "pausedUP":
-      return "secondary"
-    case "error":
-    case "missingFiles":
-      return "destructive"
-    default:
-      return "outline"
-  }
-}
-
-function getStatusBadgeProps(torrent: Torrent, supportsTrackerHealth: boolean): {
-  variant: "default" | "secondary" | "destructive" | "outline"
-  label: string
-  className: string
-} {
-  const baseVariant = getStatusBadgeVariant(torrent.state)
-  let variant = baseVariant
-  let label = getStateLabel(torrent.state)
-  let className = ""
-
-  if (supportsTrackerHealth) {
-    const trackerHealth = torrent.tracker_health ?? null
-    if (trackerHealth === "tracker_down") {
-      label = "Tracker Down"
-      variant = "outline"
-      className = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
-    } else if (trackerHealth === "unregistered") {
-      label = "Unregistered"
-      variant = "outline"
-      className = "text-destructive border-destructive/40 bg-destructive/10"
-    }
-  }
-
-  return { variant, label, className }
-}
-
 const trackerIconSizeClasses = {
   xs: "h-3 w-3 text-[8px]",
   sm: "h-[14px] w-[14px] text-[9px]",
@@ -396,8 +349,8 @@ const CompactRow = memo(({
   const displayRatio = incognitoMode ? getLinuxRatio(torrent.hash) : torrent.ratio
 
   const { variant: statusBadgeVariant, label: statusBadgeLabel, className: statusBadgeClass } = useMemo(
-    () => getStatusBadgeProps(torrent, supportsTrackerHealth),
-    [torrent, supportsTrackerHealth]
+    () => getStatusBadgeMeta(torrent.state, torrent.tracker_health, supportsTrackerHealth),
+    [torrent.state, torrent.tracker_health, supportsTrackerHealth]
   )
 
   const trackerValue = incognitoMode ? getLinuxTracker(torrent.hash) : torrent.tracker

@@ -15,7 +15,7 @@ import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import type { CrossSeedTorrent } from "@/lib/cross-seed-utils"
 import { getLinuxFileName, getLinuxTracker } from "@/lib/incognito"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
-import { getStateLabel } from "@/lib/torrent-state-utils"
+import { getStatusBadgeMeta } from "@/lib/torrent-state-utils"
 import { cn, formatBytes } from "@/lib/utils"
 import {
   createColumnHelper,
@@ -43,36 +43,6 @@ interface CrossSeedTableProps {
 }
 
 const columnHelper = createColumnHelper<CrossSeedTorrent>()
-
-function getStatusInfo(match: CrossSeedTorrent): { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className: string } {
-  const trackerHealth = match.tracker_health ?? null
-  let label = getStateLabel(match.state)
-  let variant: "default" | "secondary" | "destructive" | "outline" = "outline"
-  let className = ""
-
-  if (trackerHealth === "unregistered") {
-    return { label: "Unregistered", variant: "outline", className: "text-destructive border-destructive/40 bg-destructive/10" }
-  } else if (trackerHealth === "tracker_down") {
-    return { label: "Tracker Down", variant: "outline", className: "text-yellow-500 border-yellow-500/40 bg-yellow-500/10" }
-  }
-
-  if (match.state === "downloading" || match.state === "uploading") {
-    variant = "default"
-  } else if (
-    match.state === "stalledDL" ||
-    match.state === "stalledUP" ||
-    match.state === "pausedDL" ||
-    match.state === "pausedUP" ||
-    match.state === "queuedDL" ||
-    match.state === "queuedUP"
-  ) {
-    variant = "secondary"
-  } else if (match.state === "error" || match.state === "missingFiles") {
-    variant = "destructive"
-  }
-
-  return { label, variant, className }
-}
 
 function getMatchTypeLabel(matchType: string): { label: string; description: string } {
   switch (matchType) {
@@ -215,7 +185,8 @@ export const CrossSeedTable = memo(function CrossSeedTable({
     columnHelper.accessor("state", {
       header: "Status",
       cell: (info) => {
-        const { label, variant, className } = getStatusInfo(info.row.original)
+        const match = info.row.original
+        const { label, variant, className } = getStatusBadgeMeta(match.state, match.tracker_health)
         return (
           <Badge variant={variant} className={cn("text-[10px] px-1.5 py-0", className)}>
             {label}
