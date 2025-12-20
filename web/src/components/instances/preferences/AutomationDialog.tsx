@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { QueryBuilder } from "@/components/query-builder"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -28,8 +29,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
-import { QueryBuilder } from "@/components/query-builder"
-import { AutomationPreviewDialog } from "./AutomationPreviewDialog"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
@@ -37,16 +36,17 @@ import { api } from "@/lib/api"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { cn, parseTrackerDomains } from "@/lib/utils"
 import type {
+  ActionConditions,
   Automation,
   AutomationInput,
   AutomationPreviewResult,
-  ActionConditions,
   RuleCondition,
 } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Loader2 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
+import { AutomationPreviewDialog } from "./AutomationPreviewDialog"
 
 interface AutomationDialogProps {
   open: boolean
@@ -93,7 +93,6 @@ const emptyFormState: FormState = {
   seedingTimeLimitMinutes: undefined,
   deleteMode: undefined,
   deleteUnregistered: false,
-  deleteUnregisteredMinAge: undefined,
   enabled: true,
   useExpressions: false,
   actionType: "delete",
@@ -291,7 +290,6 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
           seedingTimeLimitMinutes: rule.seedingTimeLimitMinutes,
           deleteMode: rule.deleteMode,
           deleteUnregistered: rule.deleteUnregistered ?? false,
-          deleteUnregisteredMinAge: rule.deleteUnregisteredMinAge,
           enabled: rule.enabled,
           sortOrder: rule.sortOrder,
           useExpressions: hasConditions,
@@ -364,7 +362,6 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
       payload.tags = []
       if (input.actionType !== "delete") {
         payload.deleteUnregistered = false
-        payload.deleteUnregisteredMinAge = undefined
       }
     } else {
       payload.conditions = undefined
@@ -498,387 +495,264 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
 
   return (
     <>
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl lg:max-w-5xl max-h-[90dvh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle>{rule ? "Edit Tracker Rule" : "Add Tracker Rule"}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
-          <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-            {/* Header row: Name + Toggles */}
-            <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-end">
-              <div className="space-y-1.5">
-                <Label htmlFor="rule-name">Name</Label>
-                <Input
-                  id="rule-name"
-                  value={formState.name}
-                  onChange={(e) => setFormState(prev => ({ ...prev, name: e.target.value }))}
-                  required
-                  placeholder="Tracker-specific rule"
-                  autoComplete="off"
-                  data-1p-ignore
-                />
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-4xl lg:max-w-5xl max-h-[90dvh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{rule ? "Edit Tracker Rule" : "Add Tracker Rule"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+              {/* Header row: Name + Toggles */}
+              <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-end">
+                <div className="space-y-1.5">
+                  <Label htmlFor="rule-name">Name</Label>
+                  <Input
+                    id="rule-name"
+                    value={formState.name}
+                    onChange={(e) => setFormState(prev => ({ ...prev, name: e.target.value }))}
+                    required
+                    placeholder="Tracker-specific rule"
+                    autoComplete="off"
+                    data-1p-ignore
+                  />
+                </div>
+                <div className="flex items-center gap-2 rounded-md border px-3 py-2">
+                  <Switch
+                    id="all-trackers"
+                    checked={formState.applyToAllTrackers}
+                    onCheckedChange={(checked) => setFormState(prev => ({
+                      ...prev,
+                      applyToAllTrackers: checked,
+                      trackerDomains: checked ? [] : prev.trackerDomains,
+                    }))}
+                  />
+                  <Label htmlFor="all-trackers" className="text-sm cursor-pointer whitespace-nowrap">All trackers</Label>
+                </div>
+                <div className="flex items-center gap-2 rounded-md border px-3 py-2">
+                  <Switch
+                    id="use-expressions"
+                    checked={formState.useExpressions}
+                    onCheckedChange={(checked) => setFormState(prev => ({
+                      ...prev,
+                      useExpressions: checked,
+                      ...(checked ? { categories: [], tags: [], tagMatchMode: "any" as const } : {}),
+                    }))}
+                  />
+                  <Label htmlFor="use-expressions" className="text-sm cursor-pointer whitespace-nowrap">Advanced</Label>
+                </div>
               </div>
-              <div className="flex items-center gap-2 rounded-md border px-3 py-2">
-                <Switch
-                  id="all-trackers"
-                  checked={formState.applyToAllTrackers}
-                  onCheckedChange={(checked) => setFormState(prev => ({
-                    ...prev,
-                    applyToAllTrackers: checked,
-                    trackerDomains: checked ? [] : prev.trackerDomains,
-                  }))}
-                />
-                <Label htmlFor="all-trackers" className="text-sm cursor-pointer whitespace-nowrap">All trackers</Label>
-              </div>
-              <div className="flex items-center gap-2 rounded-md border px-3 py-2">
-                <Switch
-                  id="use-expressions"
-                  checked={formState.useExpressions}
-                  onCheckedChange={(checked) => setFormState(prev => ({
-                    ...prev,
-                    useExpressions: checked,
-                    ...(checked ? { categories: [], tags: [], tagMatchMode: "any" as const } : {}),
-                  }))}
-                />
-                <Label htmlFor="use-expressions" className="text-sm cursor-pointer whitespace-nowrap">Advanced</Label>
-              </div>
-            </div>
 
-            {/* Trackers, Categories & Tags */}
-            {!formState.useExpressions ? (
-              <div className={cn("grid gap-3", formState.applyToAllTrackers ? "sm:grid-cols-2" : "lg:grid-cols-3 sm:grid-cols-2")}>
-                {!formState.applyToAllTrackers && (
-                  <div className="space-y-1.5 sm:col-span-2 lg:col-span-1">
-                    <Label>Trackers</Label>
+              {/* Trackers, Categories & Tags */}
+              {!formState.useExpressions ? (
+                <div className={cn("grid gap-3", formState.applyToAllTrackers ? "sm:grid-cols-2" : "lg:grid-cols-3 sm:grid-cols-2")}>
+                  {!formState.applyToAllTrackers && (
+                    <div className="space-y-1.5 sm:col-span-2 lg:col-span-1">
+                      <Label>Trackers</Label>
+                      <MultiSelect
+                        options={trackerOptions}
+                        selected={formState.trackerDomains}
+                        onChange={(next) => setFormState(prev => ({ ...prev, trackerDomains: next }))}
+                        placeholder="Select trackers..."
+                        creatable
+                        onCreateOption={(value) => setFormState(prev => ({ ...prev, trackerDomains: [...prev.trackerDomains, value] }))}
+                        disabled={trackersQuery.isLoading}
+                      />
+                    </div>
+                  )}
+                  <div className="space-y-1.5">
+                    <Label>Categories (optional)</Label>
                     <MultiSelect
-                      options={trackerOptions}
-                      selected={formState.trackerDomains}
-                      onChange={(next) => setFormState(prev => ({ ...prev, trackerDomains: next }))}
-                      placeholder="Select trackers..."
+                      options={categoryOptions}
+                      selected={formState.categories}
+                      onChange={(values) => setFormState(prev => ({ ...prev, categories: values }))}
+                      placeholder="Select categories..."
                       creatable
-                      onCreateOption={(value) => setFormState(prev => ({ ...prev, trackerDomains: [...prev.trackerDomains, value] }))}
-                      disabled={trackersQuery.isLoading}
+                      onCreateOption={(value) => setFormState(prev => ({ ...prev, categories: [...prev.categories, value] }))}
                     />
                   </div>
-                )}
-                <div className="space-y-1.5">
-                  <Label>Categories (optional)</Label>
-                  <MultiSelect
-                    options={categoryOptions}
-                    selected={formState.categories}
-                    onChange={(values) => setFormState(prev => ({ ...prev, categories: values }))}
-                    placeholder="Select categories..."
-                    creatable
-                    onCreateOption={(value) => setFormState(prev => ({ ...prev, categories: [...prev.categories, value] }))}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Tags (optional)</Label>
-                  <MultiSelect
-                    options={tagOptions}
-                    selected={formState.tags}
-                    onChange={(values) => setFormState(prev => ({
-                      ...prev,
-                      tags: values,
-                      tagMatchMode: values.length < 2 ? "any" : prev.tagMatchMode,
-                    }))}
-                    placeholder="Select tags..."
-                    creatable
-                    onCreateOption={(value) => setFormState(prev => ({ ...prev, tags: [...prev.tags, value] }))}
-                  />
-                  {formState.tags.length > 1 && (
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs text-muted-foreground">Match</Label>
-                      <Select
-                        value={formState.tagMatchMode}
-                        onValueChange={(value: "any" | "all") => setFormState(prev => ({ ...prev, tagMatchMode: value }))}
-                      >
-                        <SelectTrigger className="h-7 w-24 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="any">Any tag</SelectItem>
-                          <SelectItem value="all">All tags</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : !formState.applyToAllTrackers && (
-              <div className="space-y-1.5">
-                <Label>Trackers</Label>
-                <MultiSelect
-                  options={trackerOptions}
-                  selected={formState.trackerDomains}
-                  onChange={(next) => setFormState(prev => ({ ...prev, trackerDomains: next }))}
-                  placeholder="Select trackers..."
-                  creatable
-                  onCreateOption={(value) => setFormState(prev => ({ ...prev, trackerDomains: [...prev.trackerDomains, value] }))}
-                  disabled={trackersQuery.isLoading}
-                />
-              </div>
-            )}
-
-            {/* Legacy Mode */}
-            {!formState.useExpressions && (
-              <>
-                {/* Speed Limits */}
-                <div className="rounded-lg border p-3 space-y-2">
-                  <h4 className="text-sm font-medium">Speed limits</h4>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-1">
-                      <Label htmlFor="rule-upload" className="text-xs">Upload (KiB/s)</Label>
-                      <Input
-                        id="rule-upload"
-                        type="number"
-                        min={0}
-                        value={formState.uploadLimitKiB ?? ""}
-                        onChange={(e) => setFormState(prev => ({ ...prev, uploadLimitKiB: e.target.value ? Number(e.target.value) : undefined }))}
-                        placeholder="Blank = no limit"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label htmlFor="rule-download" className="text-xs">Download (KiB/s)</Label>
-                      <Input
-                        id="rule-download"
-                        type="number"
-                        min={0}
-                        value={formState.downloadLimitKiB ?? ""}
-                        onChange={(e) => setFormState(prev => ({ ...prev, downloadLimitKiB: e.target.value ? Number(e.target.value) : undefined }))}
-                        placeholder="Blank = no limit"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Auto-removal */}
-                <div className="rounded-lg border p-3 space-y-3">
-                  <div>
-                    <h4 className="text-sm font-medium">Auto-removal</h4>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Remove when ratio/seed time reached, or just check Unregistered to only clean dead torrents
-                    </p>
-                  </div>
-
-                  {/* Seeding limits inline */}
-                  <div className="flex flex-wrap items-end gap-2">
-                    <div className="space-y-1">
-                      <Label htmlFor="rule-ratio" className="text-xs">Ratio</Label>
-                      <Input
-                        id="rule-ratio"
-                        type="number"
-                        step="0.01"
-                        min={0.01}
-                        className="w-24"
-                        value={formState.ratioLimit ?? ""}
-                        onChange={(e) => setFormState(prev => ({ ...prev, ratioLimit: e.target.value ? Number(e.target.value) : undefined }))}
-                        placeholder="e.g. 2.0"
-                      />
-                    </div>
-                    <span className="text-xs text-muted-foreground pb-2">OR</span>
-                    <div className="space-y-1">
-                      <Label htmlFor="rule-seedtime" className="text-xs">Seed time (min)</Label>
-                      <Input
-                        id="rule-seedtime"
-                        type="number"
-                        min={1}
-                        className="w-28"
-                        value={formState.seedingTimeLimitMinutes ?? ""}
-                        onChange={(e) => setFormState(prev => ({ ...prev, seedingTimeLimitMinutes: e.target.value ? Number(e.target.value) : undefined }))}
-                        placeholder="e.g. 1440"
-                      />
-                    </div>
-                    <div className="flex items-center gap-3 ml-auto">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="flex items-center gap-2">
-                            <Checkbox
-                              id="delete-unregistered"
-                              checked={formState.deleteUnregistered ?? false}
-                              onCheckedChange={(checked: boolean) => setFormState(prev => ({
-                                ...prev,
-                                deleteUnregistered: checked,
-                                deleteMode: checked && !prev.deleteMode ? "deleteWithFilesPreserveCrossSeeds" : prev.deleteMode,
-                                deleteUnregisteredMinAge: checked ? prev.deleteUnregisteredMinAge : undefined,
-                              }))}
-                            />
-                            <Label htmlFor="delete-unregistered" className="text-sm cursor-pointer">Unregistered</Label>
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-xs">
-                          <p>Remove torrents the tracker reports as unregistered (deleted from tracker, trumped, or invalid)</p>
-                        </TooltipContent>
-                      </Tooltip>
-                      {formState.deleteUnregistered && (
+                  <div className="space-y-1.5">
+                    <Label>Tags (optional)</Label>
+                    <MultiSelect
+                      options={tagOptions}
+                      selected={formState.tags}
+                      onChange={(values) => setFormState(prev => ({
+                        ...prev,
+                        tags: values,
+                        tagMatchMode: values.length < 2 ? "any" : prev.tagMatchMode,
+                      }))}
+                      placeholder="Select tags..."
+                      creatable
+                      onCreateOption={(value) => setFormState(prev => ({ ...prev, tags: [...prev.tags, value] }))}
+                    />
+                    {formState.tags.length > 1 && (
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs text-muted-foreground">Match</Label>
                         <Select
-                          value={formState.deleteUnregisteredMinAge?.toString() ?? "0"}
-                          onValueChange={(value) => setFormState(prev => ({
-                            ...prev,
-                            deleteUnregisteredMinAge: value === "0" ? undefined : parseInt(value, 10),
-                          }))}
+                          value={formState.tagMatchMode}
+                          onValueChange={(value: "any" | "all") => setFormState(prev => ({ ...prev, tagMatchMode: value }))}
                         >
-                          <SelectTrigger className="w-[120px] h-8 text-xs">
-                            <SelectValue placeholder="Min age" />
+                          <SelectTrigger className="h-7 w-24 text-xs">
+                            <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="0">Any age</SelectItem>
-                            <SelectItem value="86400">1 day</SelectItem>
-                            <SelectItem value="259200">3 days</SelectItem>
-                            <SelectItem value="604800">7 days</SelectItem>
-                            <SelectItem value="1209600">14 days</SelectItem>
-                            <SelectItem value="2592000">30 days</SelectItem>
+                            <SelectItem value="any">Any tag</SelectItem>
+                            <SelectItem value="all">All tags</SelectItem>
                           </SelectContent>
                         </Select>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
-
-                  {/* Action */}
-                  <div className="flex items-center gap-3 pt-2 border-t">
-                    <Label htmlFor="rule-delete-mode" className="text-sm shrink-0">Action:</Label>
-                    <Select
-                      value={formState.deleteMode ?? "none"}
-                      onValueChange={(value) => setFormState(prev => ({
-                        ...prev,
-                        deleteMode: value === "none" ? undefined : value as "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds",
-                      }))}
-                    >
-                      <SelectTrigger id="rule-delete-mode" className={cn("flex-1", formState.deleteMode && "text-destructive")}>
-                        <SelectValue placeholder="Select action" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Pause torrent</SelectItem>
-                        <SelectItem value="delete" className="text-destructive focus:text-destructive">Remove (keep files)</SelectItem>
-                        <SelectItem value="deleteWithFiles" className="text-destructive focus:text-destructive">Remove with files</SelectItem>
-                        <SelectItem value="deleteWithFilesPreserveCrossSeeds" className="text-destructive focus:text-destructive">Remove with files (preserve cross-seeds)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {formState.deleteUnregistered && !formState.deleteMode && (
-                    <p className="text-xs text-amber-500">Unregistered cleanup requires a removal action</p>
-                  )}
                 </div>
-              </>
-            )}
-
-            {/* Expression-based Mode */}
-            {formState.useExpressions && (
-              <div className="space-y-3">
-                {/* Query Builder */}
+              ) : !formState.applyToAllTrackers && (
                 <div className="space-y-1.5">
-                  <Label>When conditions match</Label>
-                  <QueryBuilder
-                    condition={formState.actionCondition}
-                    onChange={(condition) => setFormState(prev => ({ ...prev, actionCondition: condition }))}
+                  <Label>Trackers</Label>
+                  <MultiSelect
+                    options={trackerOptions}
+                    selected={formState.trackerDomains}
+                    onChange={(next) => setFormState(prev => ({ ...prev, trackerDomains: next }))}
+                    placeholder="Select trackers..."
+                    creatable
+                    onCreateOption={(value) => setFormState(prev => ({ ...prev, trackerDomains: [...prev.trackerDomains, value] }))}
+                    disabled={trackersQuery.isLoading}
                   />
                 </div>
+              )}
 
-                {/* Action row */}
-                {formState.actionType === "pause" && (
-                  <div className="space-y-1 w-fit">
-                    <Label className="text-xs">Action</Label>
-                    <Select
-                      value={formState.actionType}
-                      onValueChange={(value: ActionType) => setFormState(prev => ({ ...prev, actionType: value }))}
-                    >
-                      <SelectTrigger className="w-[140px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="speedLimits">Speed limits</SelectItem>
-                        <SelectItem value="pause">Pause</SelectItem>
-                        <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
-                        <SelectItem value="tag">Tag</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                {formState.actionType === "speedLimits" && (
-                  <div className="grid grid-cols-[auto_1fr_1fr] gap-3 items-end">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Action</Label>
-                      <Select
-                        value={formState.actionType}
-                        onValueChange={(value: ActionType) => setFormState(prev => ({ ...prev, actionType: value }))}
-                      >
-                        <SelectTrigger className="w-[140px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="speedLimits">Speed limits</SelectItem>
-                          <SelectItem value="pause">Pause</SelectItem>
-                          <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
-                          <SelectItem value="tag">Tag</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Upload (KiB/s)</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={formState.exprUploadKiB ?? ""}
-                        onChange={(e) => setFormState(prev => ({ ...prev, exprUploadKiB: e.target.value ? Number(e.target.value) : undefined }))}
-                        placeholder="No limit"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Download (KiB/s)</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={formState.exprDownloadKiB ?? ""}
-                        onChange={(e) => setFormState(prev => ({ ...prev, exprDownloadKiB: e.target.value ? Number(e.target.value) : undefined }))}
-                        placeholder="No limit"
-                      />
+              {/* Legacy Mode */}
+              {!formState.useExpressions && (
+                <>
+                  {/* Speed Limits */}
+                  <div className="rounded-lg border p-3 space-y-2">
+                    <h4 className="text-sm font-medium">Speed limits</h4>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label htmlFor="rule-upload" className="text-xs">Upload (KiB/s)</Label>
+                        <Input
+                          id="rule-upload"
+                          type="number"
+                          min={0}
+                          value={formState.uploadLimitKiB ?? ""}
+                          onChange={(e) => setFormState(prev => ({ ...prev, uploadLimitKiB: e.target.value ? Number(e.target.value) : undefined }))}
+                          placeholder="Blank = no limit"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="rule-download" className="text-xs">Download (KiB/s)</Label>
+                        <Input
+                          id="rule-download"
+                          type="number"
+                          min={0}
+                          value={formState.downloadLimitKiB ?? ""}
+                          onChange={(e) => setFormState(prev => ({ ...prev, downloadLimitKiB: e.target.value ? Number(e.target.value) : undefined }))}
+                          placeholder="Blank = no limit"
+                        />
+                      </div>
                     </div>
                   </div>
-                )}
 
-                {formState.actionType === "delete" && (
-                  <div className="grid grid-cols-[auto_1fr_auto] gap-3 items-end">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Action</Label>
-                      <Select
-                        value={formState.actionType}
-                        onValueChange={(value: ActionType) => setFormState(prev => ({ ...prev, actionType: value }))}
-                      >
-                        <SelectTrigger className="w-[140px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="speedLimits">Speed limits</SelectItem>
-                          <SelectItem value="pause">Pause</SelectItem>
-                          <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
-                          <SelectItem value="tag">Tag</SelectItem>
-                        </SelectContent>
-                      </Select>
+                  {/* Auto-removal */}
+                  <div className="rounded-lg border p-3 space-y-3">
+                    <div>
+                      <h4 className="text-sm font-medium">Auto-removal</h4>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Remove when ratio/seed time reached, or just check Unregistered to only clean dead torrents
+                      </p>
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Mode</Label>
+
+                    {/* Seeding limits inline */}
+                    <div className="flex flex-wrap items-end gap-2">
+                      <div className="space-y-1">
+                        <Label htmlFor="rule-ratio" className="text-xs">Ratio</Label>
+                        <Input
+                          id="rule-ratio"
+                          type="number"
+                          step="0.01"
+                          min={0.01}
+                          className="w-24"
+                          value={formState.ratioLimit ?? ""}
+                          onChange={(e) => setFormState(prev => ({ ...prev, ratioLimit: e.target.value ? Number(e.target.value) : undefined }))}
+                          placeholder="e.g. 2.0"
+                        />
+                      </div>
+                      <span className="text-xs text-muted-foreground pb-2">OR</span>
+                      <div className="space-y-1">
+                        <Label htmlFor="rule-seedtime" className="text-xs">Seed time (min)</Label>
+                        <Input
+                          id="rule-seedtime"
+                          type="number"
+                          min={1}
+                          className="w-28"
+                          value={formState.seedingTimeLimitMinutes ?? ""}
+                          onChange={(e) => setFormState(prev => ({ ...prev, seedingTimeLimitMinutes: e.target.value ? Number(e.target.value) : undefined }))}
+                          placeholder="e.g. 1440"
+                        />
+                      </div>
+                      <div className="flex items-center gap-3 ml-auto">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex items-center gap-2">
+                              <Checkbox
+                                id="delete-unregistered"
+                                checked={formState.deleteUnregistered ?? false}
+                                onCheckedChange={(checked: boolean) => setFormState(prev => ({
+                                  ...prev,
+                                  deleteUnregistered: checked,
+                                  deleteMode: checked && !prev.deleteMode ? "deleteWithFilesPreserveCrossSeeds" : prev.deleteMode,
+                                }))}
+                              />
+                              <Label htmlFor="delete-unregistered" className="text-sm cursor-pointer">Unregistered</Label>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-xs">
+                            <p>Remove torrents the tracker reports as unregistered (deleted from tracker, trumped, or invalid)</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                    </div>
+
+                    {/* Action */}
+                    <div className="flex items-center gap-3 pt-2 border-t">
+                      <Label htmlFor="rule-delete-mode" className="text-sm shrink-0">Action:</Label>
                       <Select
-                        value={formState.exprDeleteMode}
-                        onValueChange={(value: FormState["exprDeleteMode"]) => setFormState(prev => ({ ...prev, exprDeleteMode: value }))}
+                        value={formState.deleteMode ?? "none"}
+                        onValueChange={(value) => setFormState(prev => ({
+                          ...prev,
+                          deleteMode: value === "none" ? undefined : value as "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds",
+                        }))}
                       >
-                        <SelectTrigger className="text-destructive">
-                          <SelectValue />
+                        <SelectTrigger id="rule-delete-mode" className={cn("flex-1", formState.deleteMode && "text-destructive")}>
+                          <SelectValue placeholder="Select action" />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="none">Pause torrent</SelectItem>
                           <SelectItem value="delete" className="text-destructive focus:text-destructive">Remove (keep files)</SelectItem>
                           <SelectItem value="deleteWithFiles" className="text-destructive focus:text-destructive">Remove with files</SelectItem>
                           <SelectItem value="deleteWithFilesPreserveCrossSeeds" className="text-destructive focus:text-destructive">Remove with files (preserve cross-seeds)</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
+                    {formState.deleteUnregistered && !formState.deleteMode && (
+                      <p className="text-xs text-amber-500">Unregistered cleanup requires a removal action</p>
+                    )}
                   </div>
-                )}
+                </>
+              )}
 
-                {formState.actionType === "tag" && (
-                  <div className="grid grid-cols-[auto_1fr_auto] gap-3 items-start">
-                    <div className="space-y-1">
+              {/* Expression-based Mode */}
+              {formState.useExpressions && (
+                <div className="space-y-3">
+                  {/* Query Builder */}
+                  <div className="space-y-1.5">
+                    <Label>When conditions match</Label>
+                    <QueryBuilder
+                      condition={formState.actionCondition}
+                      onChange={(condition) => setFormState(prev => ({ ...prev, actionCondition: condition }))}
+                    />
+                  </div>
+
+                  {/* Action row */}
+                  {formState.actionType === "pause" && (
+                    <div className="space-y-1 w-fit">
                       <Label className="text-xs">Action</Label>
                       <Select
                         value={formState.actionType}
@@ -895,100 +769,201 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Tags</Label>
-                      <Input
-                        type="text"
-                        value={formState.exprTags.join(", ")}
-                        onChange={(e) => {
-                          const tags = e.target.value.split(",").map(t => t.trim()).filter(Boolean)
-                          setFormState(prev => ({ ...prev, exprTags: tags }))
-                        }}
-                        placeholder="tag1, tag2, ..."
-                      />
+                  )}
+
+                  {formState.actionType === "speedLimits" && (
+                    <div className="grid grid-cols-[auto_1fr_1fr] gap-3 items-end">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Action</Label>
+                        <Select
+                          value={formState.actionType}
+                          onValueChange={(value: ActionType) => setFormState(prev => ({ ...prev, actionType: value }))}
+                        >
+                          <SelectTrigger className="w-[140px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="speedLimits">Speed limits</SelectItem>
+                            <SelectItem value="pause">Pause</SelectItem>
+                            <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
+                            <SelectItem value="tag">Tag</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Upload (KiB/s)</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={formState.exprUploadKiB ?? ""}
+                          onChange={(e) => setFormState(prev => ({ ...prev, exprUploadKiB: e.target.value ? Number(e.target.value) : undefined }))}
+                          placeholder="No limit"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Download (KiB/s)</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={formState.exprDownloadKiB ?? ""}
+                          onChange={(e) => setFormState(prev => ({ ...prev, exprDownloadKiB: e.target.value ? Number(e.target.value) : undefined }))}
+                          placeholder="No limit"
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Mode</Label>
-                      <Select
-                        value={formState.exprTagMode}
-                        onValueChange={(value: FormState["exprTagMode"]) => setFormState(prev => ({ ...prev, exprTagMode: value }))}
-                      >
-                        <SelectTrigger className="w-[120px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="full">Full sync</SelectItem>
-                          <SelectItem value="add">Add only</SelectItem>
-                          <SelectItem value="remove">Remove only</SelectItem>
-                        </SelectContent>
-                      </Select>
+                  )}
+
+                  {formState.actionType === "delete" && (
+                    <div className="grid grid-cols-[auto_1fr_auto] gap-3 items-end">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Action</Label>
+                        <Select
+                          value={formState.actionType}
+                          onValueChange={(value: ActionType) => setFormState(prev => ({ ...prev, actionType: value }))}
+                        >
+                          <SelectTrigger className="w-[140px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="speedLimits">Speed limits</SelectItem>
+                            <SelectItem value="pause">Pause</SelectItem>
+                            <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
+                            <SelectItem value="tag">Tag</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Mode</Label>
+                        <Select
+                          value={formState.exprDeleteMode}
+                          onValueChange={(value: FormState["exprDeleteMode"]) => setFormState(prev => ({ ...prev, exprDeleteMode: value }))}
+                        >
+                          <SelectTrigger className="text-destructive">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="delete" className="text-destructive focus:text-destructive">Remove (keep files)</SelectItem>
+                            <SelectItem value="deleteWithFiles" className="text-destructive focus:text-destructive">Remove with files</SelectItem>
+                            <SelectItem value="deleteWithFilesPreserveCrossSeeds" className="text-destructive focus:text-destructive">Remove with files (preserve cross-seeds)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+
+                  {formState.actionType === "tag" && (
+                    <div className="grid grid-cols-[auto_1fr_auto] gap-3 items-start">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Action</Label>
+                        <Select
+                          value={formState.actionType}
+                          onValueChange={(value: ActionType) => setFormState(prev => ({ ...prev, actionType: value }))}
+                        >
+                          <SelectTrigger className="w-[140px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="speedLimits">Speed limits</SelectItem>
+                            <SelectItem value="pause">Pause</SelectItem>
+                            <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
+                            <SelectItem value="tag">Tag</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Tags</Label>
+                        <Input
+                          type="text"
+                          value={formState.exprTags.join(", ")}
+                          onChange={(e) => {
+                            const tags = e.target.value.split(",").map(t => t.trim()).filter(Boolean)
+                            setFormState(prev => ({ ...prev, exprTags: tags }))
+                          }}
+                          placeholder="tag1, tag2, ..."
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Mode</Label>
+                        <Select
+                          value={formState.exprTagMode}
+                          onValueChange={(value: FormState["exprTagMode"]) => setFormState(prev => ({ ...prev, exprTagMode: value }))}
+                        >
+                          <SelectTrigger className="w-[120px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="full">Full sync</SelectItem>
+                            <SelectItem value="add">Add only</SelectItem>
+                            <SelectItem value="remove">Remove only</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t mt-3">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="rule-enabled"
+                  checked={formState.enabled ?? true}
+                  onCheckedChange={(checked) => setFormState(prev => ({ ...prev, enabled: checked }))}
+                />
+                <Label htmlFor="rule-enabled" className="text-sm font-normal cursor-pointer">Enabled</Label>
               </div>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between pt-3 border-t mt-3">
-            <div className="flex items-center gap-2">
-              <Switch
-                id="rule-enabled"
-                checked={formState.enabled ?? true}
-                onCheckedChange={(checked) => setFormState(prev => ({ ...prev, enabled: checked }))}
-              />
-              <Label htmlFor="rule-enabled" className="text-sm font-normal cursor-pointer">Enabled</Label>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" disabled={createOrUpdate.isPending || previewMutation.isPending}>
+                  {(createOrUpdate.isPending || previewMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  {rule ? "Save" : "Create"}
+                </Button>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" size="sm" disabled={createOrUpdate.isPending || previewMutation.isPending}>
-                {(createOrUpdate.isPending || previewMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                {rule ? "Save" : "Create"}
-              </Button>
-            </div>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+          </form>
+        </DialogContent>
+      </Dialog>
 
-    <AutomationPreviewDialog
-      open={showConfirmDialog}
-      onOpenChange={(open) => {
-        if (!open) {
-          setPreviewResult(null)
-          setPreviewInput(null)
+      <AutomationPreviewDialog
+        open={showConfirmDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPreviewResult(null)
+            setPreviewInput(null)
+          }
+          setShowConfirmDialog(open)
+        }}
+        title={
+          formState.enabled
+            ? "Confirm Delete Rule"
+            : "Preview Delete Rule"
         }
-        setShowConfirmDialog(open)
-      }}
-      title={
-        formState.enabled
-          ? "Confirm Delete Rule"
-          : "Preview Delete Rule"
-      }
-      description={
-        previewResult && previewResult.totalMatches > 0 ? (
-          formState.enabled ? (
-            <p className="text-destructive font-medium">
-              This rule will affect {previewResult.totalMatches} torrent{previewResult.totalMatches !== 1 ? "s" : ""} that currently match
-            </p>
+        description={
+          previewResult && previewResult.totalMatches > 0 ? (
+            formState.enabled ? (
+              <p className="text-destructive font-medium">
+                This rule will affect {previewResult.totalMatches} torrent{previewResult.totalMatches !== 1 ? "s" : ""} that currently match
+              </p>
+            ) : (
+              <p className="text-muted-foreground">
+                {previewResult.totalMatches} torrent{previewResult.totalMatches !== 1 ? "s" : ""} would match this rule if enabled
+              </p>
+            )
           ) : (
-            <p className="text-muted-foreground">
-              {previewResult.totalMatches} torrent{previewResult.totalMatches !== 1 ? "s" : ""} would match this rule if enabled
-            </p>
+            <p>No torrents currently match this rule.</p>
           )
-        ) : (
-          <p>No torrents currently match this rule.</p>
-        )
-      }
-      preview={previewResult}
-      onConfirm={handleConfirmSave}
-      onLoadMore={handleLoadMore}
-      isLoadingMore={loadMorePreview.isPending}
-      confirmLabel="Save Rule"
-      isConfirming={createOrUpdate.isPending}
-      destructive={formState.enabled}
-    />
+        }
+        preview={previewResult}
+        onConfirm={handleConfirmSave}
+        onLoadMore={handleLoadMore}
+        isLoadingMore={loadMorePreview.isPending}
+        confirmLabel="Save Rule"
+        isConfirming={createOrUpdate.isPending}
+        destructive={formState.enabled}
+      />
     </>
   )
 }

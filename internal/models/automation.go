@@ -37,26 +37,25 @@ const (
 )
 
 type Automation struct {
-	ID                       int               `json:"id"`
-	InstanceID               int               `json:"instanceId"`
-	Name                     string            `json:"name"`
-	TrackerPattern           string            `json:"trackerPattern"`
-	TrackerDomains           []string          `json:"trackerDomains,omitempty"`
-	Categories               []string          `json:"categories,omitempty"`
-	Tags                     []string          `json:"tags,omitempty"`
-	TagMatchMode             string            `json:"tagMatchMode,omitempty"` // "any" (default) or "all"
-	UploadLimitKiB           *int64            `json:"uploadLimitKiB,omitempty"`
-	DownloadLimitKiB         *int64            `json:"downloadLimitKiB,omitempty"`
-	RatioLimit               *float64          `json:"ratioLimit,omitempty"`
-	SeedingTimeLimitMinutes  *int64            `json:"seedingTimeLimitMinutes,omitempty"`
-	DeleteMode               *string           `json:"deleteMode,omitempty"` // "none", "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds"
-	DeleteUnregistered       bool              `json:"deleteUnregistered"`
-	DeleteUnregisteredMinAge int64             `json:"deleteUnregisteredMinAge,omitempty"` // minimum age in seconds, 0 = no minimum
-	Enabled                  bool              `json:"enabled"`
-	SortOrder                int               `json:"sortOrder"`
-	Conditions               *ActionConditions `json:"conditions,omitempty"` // expression-based conditions for actions
-	CreatedAt                time.Time         `json:"createdAt"`
-	UpdatedAt                time.Time         `json:"updatedAt"`
+	ID                      int               `json:"id"`
+	InstanceID              int               `json:"instanceId"`
+	Name                    string            `json:"name"`
+	TrackerPattern          string            `json:"trackerPattern"`
+	TrackerDomains          []string          `json:"trackerDomains,omitempty"`
+	Categories              []string          `json:"categories,omitempty"`
+	Tags                    []string          `json:"tags,omitempty"`
+	TagMatchMode            string            `json:"tagMatchMode,omitempty"` // "any" (default) or "all"
+	UploadLimitKiB          *int64            `json:"uploadLimitKiB,omitempty"`
+	DownloadLimitKiB        *int64            `json:"downloadLimitKiB,omitempty"`
+	RatioLimit              *float64          `json:"ratioLimit,omitempty"`
+	SeedingTimeLimitMinutes *int64            `json:"seedingTimeLimitMinutes,omitempty"`
+	DeleteMode              *string           `json:"deleteMode,omitempty"` // "none", "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds"
+	DeleteUnregistered      bool              `json:"deleteUnregistered"`
+	Enabled                 bool              `json:"enabled"`
+	SortOrder               int               `json:"sortOrder"`
+	Conditions              *ActionConditions `json:"conditions,omitempty"` // expression-based conditions for actions
+	CreatedAt               time.Time         `json:"createdAt"`
+	UpdatedAt               time.Time         `json:"updatedAt"`
 }
 
 // UsesExpressions returns true if this automation uses expression-based conditions
@@ -116,7 +115,7 @@ func normalizeTrackerPattern(pattern string, domains []string) string {
 func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([]*Automation, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, instance_id, name, tracker_pattern, category, tag, tag_match_mode, upload_limit_kib, download_limit_kib,
-		       ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, delete_unregistered_min_age, enabled, sort_order, conditions, created_at, updated_at
+		       ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, enabled, sort_order, conditions, created_at, updated_at
 		FROM automations
 		WHERE instance_id = ?
 		ORDER BY sort_order ASC, id ASC
@@ -134,7 +133,6 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 		var ratio sql.NullFloat64
 		var seeding sql.NullInt64
 		var deleteUnregistered int
-		var deleteUnregisteredMinAge sql.NullInt64
 
 		if err := rows.Scan(
 			&automation.ID,
@@ -150,7 +148,6 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 			&seeding,
 			&deleteMode,
 			&deleteUnregistered,
-			&deleteUnregisteredMinAge,
 			&automation.Enabled,
 			&automation.SortOrder,
 			&conditionsJSON,
@@ -187,9 +184,6 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 			automation.DeleteMode = &deleteMode.String
 		}
 		automation.DeleteUnregistered = deleteUnregistered != 0
-		if deleteUnregisteredMinAge.Valid {
-			automation.DeleteUnregisteredMinAge = deleteUnregisteredMinAge.Int64
-		}
 
 		// Parse conditions JSON if present
 		if conditionsJSON.Valid && conditionsJSON.String != "" {
@@ -214,7 +208,7 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 func (s *AutomationStore) Get(ctx context.Context, id int) (*Automation, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, name, tracker_pattern, category, tag, tag_match_mode, upload_limit_kib, download_limit_kib,
-		       ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, delete_unregistered_min_age, enabled, sort_order, conditions, created_at, updated_at
+		       ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, enabled, sort_order, conditions, created_at, updated_at
 		FROM automations
 		WHERE id = ?
 	`, id)
@@ -225,7 +219,6 @@ func (s *AutomationStore) Get(ctx context.Context, id int) (*Automation, error) 
 	var ratio sql.NullFloat64
 	var seeding sql.NullInt64
 	var deleteUnregistered int
-	var deleteUnregisteredMinAge sql.NullInt64
 
 	if err := row.Scan(
 		&automation.ID,
@@ -241,7 +234,6 @@ func (s *AutomationStore) Get(ctx context.Context, id int) (*Automation, error) 
 		&seeding,
 		&deleteMode,
 		&deleteUnregistered,
-		&deleteUnregisteredMinAge,
 		&automation.Enabled,
 		&automation.SortOrder,
 		&conditionsJSON,
@@ -278,9 +270,6 @@ func (s *AutomationStore) Get(ctx context.Context, id int) (*Automation, error) 
 		automation.DeleteMode = &deleteMode.String
 	}
 	automation.DeleteUnregistered = deleteUnregistered != 0
-	if deleteUnregisteredMinAge.Valid {
-		automation.DeleteUnregisteredMinAge = deleteUnregisteredMinAge.Int64
-	}
 
 	// Parse conditions JSON if present
 	if conditionsJSON.Valid && conditionsJSON.String != "" {
@@ -346,20 +335,14 @@ func (s *AutomationStore) Create(ctx context.Context, automation *Automation) (*
 		conditionsJSON = string(data)
 	}
 
-	// 0 means no minimum age, store as NULL
-	var deleteUnregMinAge any
-	if automation.DeleteUnregisteredMinAge > 0 {
-		deleteUnregMinAge = automation.DeleteUnregisteredMinAge
-	}
-
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO automations
-			(instance_id, name, tracker_pattern, category, tag, tag_match_mode, upload_limit_kib, download_limit_kib, ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, delete_unregistered_min_age, enabled, sort_order, conditions)
+			(instance_id, name, tracker_pattern, category, tag, tag_match_mode, upload_limit_kib, download_limit_kib, ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, enabled, sort_order, conditions)
 		VALUES
-			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, automation.InstanceID, automation.Name, automation.TrackerPattern, categoriesStr, tagsStr, tagMatchMode,
 		nullableInt64(automation.UploadLimitKiB), nullableInt64(automation.DownloadLimitKiB), nullableFloat64(automation.RatioLimit),
-		nullableInt64(automation.SeedingTimeLimitMinutes), deleteMode, boolToInt(automation.DeleteUnregistered), deleteUnregMinAge, boolToInt(automation.Enabled), sortOrder, conditionsJSON)
+		nullableInt64(automation.SeedingTimeLimitMinutes), deleteMode, boolToInt(automation.DeleteUnregistered), boolToInt(automation.Enabled), sortOrder, conditionsJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -405,20 +388,14 @@ func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*
 		conditionsJSON = string(data)
 	}
 
-	// 0 means no minimum age, store as NULL
-	var deleteUnregMinAge any
-	if automation.DeleteUnregisteredMinAge > 0 {
-		deleteUnregMinAge = automation.DeleteUnregisteredMinAge
-	}
-
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE automations
 		SET name = ?, tracker_pattern = ?, category = ?, tag = ?, tag_match_mode = ?, upload_limit_kib = ?, download_limit_kib = ?,
-		    ratio_limit = ?, seeding_time_limit_minutes = ?, delete_mode = ?, delete_unregistered = ?, delete_unregistered_min_age = ?, enabled = ?, sort_order = ?, conditions = ?
+		    ratio_limit = ?, seeding_time_limit_minutes = ?, delete_mode = ?, delete_unregistered = ?, enabled = ?, sort_order = ?, conditions = ?
 		WHERE id = ? AND instance_id = ?
 	`, automation.Name, automation.TrackerPattern, categoriesStr, tagsStr, tagMatchMode,
 		nullableInt64(automation.UploadLimitKiB), nullableInt64(automation.DownloadLimitKiB), nullableFloat64(automation.RatioLimit),
-		nullableInt64(automation.SeedingTimeLimitMinutes), deleteMode, boolToInt(automation.DeleteUnregistered), deleteUnregMinAge, boolToInt(automation.Enabled), automation.SortOrder, conditionsJSON, automation.ID, automation.InstanceID)
+		nullableInt64(automation.SeedingTimeLimitMinutes), deleteMode, boolToInt(automation.DeleteUnregistered), boolToInt(automation.Enabled), automation.SortOrder, conditionsJSON, automation.ID, automation.InstanceID)
 	if err != nil {
 		return nil, err
 	}
@@ -626,8 +603,8 @@ type DeleteAction struct {
 // TagAction configures tagging with smart add/remove logic.
 type TagAction struct {
 	Enabled   bool           `json:"enabled"`
-	Tags      []string       `json:"tags"`              // Tags to manage
-	Mode      string         `json:"mode"`              // "full", "add", "remove"
+	Tags      []string       `json:"tags"` // Tags to manage
+	Mode      string         `json:"mode"` // "full", "add", "remove"
 	Condition *RuleCondition `json:"condition,omitempty"`
 }
 

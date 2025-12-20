@@ -187,10 +187,10 @@ func TestMatchesTracker(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------------
-// shouldDeleteTorrent tests
+// shouldDeleteTorrentLegacy tests
 // -----------------------------------------------------------------------------
 
-func TestShouldDeleteTorrent(t *testing.T) {
+func TestShouldDeleteTorrentLegacy(t *testing.T) {
 	ratioLimit := 2.0
 	seedingLimit := int64(60) // 60 minutes = 3600 seconds
 
@@ -335,7 +335,7 @@ func TestShouldDeleteTorrent(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := shouldDeleteTorrent(tc.torrent, tc.rule)
+			got := shouldDeleteTorrentLegacy(tc.torrent, tc.rule)
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -624,24 +624,27 @@ func TestTorrentHasTag(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------------
-// selectRule tests
+// selectMatchingRules tests
 // -----------------------------------------------------------------------------
 
-func TestSelectRule(t *testing.T) {
+func TestSelectMatchingRules(t *testing.T) {
 	// Create a minimal SyncManager for domain extraction
 	sm := qbittorrent.NewSyncManager(nil)
 
 	tests := []struct {
-		name    string
-		torrent qbt.Torrent
-		rules   []*models.Automation
-		wantID  int // 0 means expect nil
+		name        string
+		torrent     qbt.Torrent
+		rules       []*models.Automation
+		wantFirstID int   // 0 means expect empty slice
+		wantCount   int   // expected number of matching rules
+		wantIDs     []int // all expected matching rule IDs in order
 	}{
 		{
-			name:    "no rules returns nil",
-			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce"},
-			rules:   []*models.Automation{},
-			wantID:  0,
+			name:        "no rules returns empty",
+			torrent:     qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce"},
+			rules:       []*models.Automation{},
+			wantFirstID: 0,
+			wantCount:   0,
 		},
 		{
 			name:    "disabled rule skipped",
@@ -649,7 +652,8 @@ func TestSelectRule(t *testing.T) {
 			rules: []*models.Automation{
 				{ID: 1, Enabled: false, TrackerPattern: "tracker.example.com"},
 			},
-			wantID: 0,
+			wantFirstID: 0,
+			wantCount:   0,
 		},
 		{
 			name:    "enabled rule matches",
@@ -657,16 +661,19 @@ func TestSelectRule(t *testing.T) {
 			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "tracker.example.com"},
 			},
-			wantID: 1,
+			wantFirstID: 1,
+			wantCount:   1,
 		},
 		{
-			name:    "first matching rule wins",
+			name:    "multiple matching rules returned in order",
 			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce"},
 			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "tracker.example.com"},
 				{ID: 2, Enabled: true, TrackerPattern: "*"},
 			},
-			wantID: 1,
+			wantFirstID: 1,
+			wantCount:   2,
+			wantIDs:     []int{1, 2},
 		},
 		{
 			name:    "wildcard matches all",
@@ -674,7 +681,8 @@ func TestSelectRule(t *testing.T) {
 			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*"},
 			},
-			wantID: 1,
+			wantFirstID: 1,
+			wantCount:   1,
 		},
 
 		// Category matching
@@ -684,7 +692,8 @@ func TestSelectRule(t *testing.T) {
 			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Categories: []string{"tv"}},
 			},
-			wantID: 1,
+			wantFirstID: 1,
+			wantCount:   1,
 		},
 		{
 			name:    "category mismatch",
@@ -692,7 +701,8 @@ func TestSelectRule(t *testing.T) {
 			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Categories: []string{"tv"}},
 			},
-			wantID: 0,
+			wantFirstID: 0,
+			wantCount:   0,
 		},
 		{
 			name:    "category case insensitive",
@@ -700,7 +710,8 @@ func TestSelectRule(t *testing.T) {
 			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Categories: []string{"tv"}},
 			},
-			wantID: 1,
+			wantFirstID: 1,
+			wantCount:   1,
 		},
 		{
 			name:    "no category filter matches all",
@@ -708,7 +719,8 @@ func TestSelectRule(t *testing.T) {
 			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Categories: []string{}},
 			},
-			wantID: 1,
+			wantFirstID: 1,
+			wantCount:   1,
 		},
 		{
 			name:    "multiple categories any match",
@@ -716,7 +728,8 @@ func TestSelectRule(t *testing.T) {
 			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Categories: []string{"tv", "movies"}},
 			},
-			wantID: 1,
+			wantFirstID: 1,
+			wantCount:   1,
 		},
 
 		// Tag matching - ANY mode (default)
@@ -726,7 +739,8 @@ func TestSelectRule(t *testing.T) {
 			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Tags: []string{"tagA"}, TagMatchMode: models.TagMatchModeAny},
 			},
-			wantID: 1,
+			wantFirstID: 1,
+			wantCount:   1,
 		},
 		{
 			name:    "tag any mode one of many",
@@ -734,7 +748,8 @@ func TestSelectRule(t *testing.T) {
 			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Tags: []string{"tagA", "tagB", "tagC"}, TagMatchMode: models.TagMatchModeAny},
 			},
-			wantID: 1,
+			wantFirstID: 1,
+			wantCount:   1,
 		},
 		{
 			name:    "tag any mode no match",
@@ -742,7 +757,8 @@ func TestSelectRule(t *testing.T) {
 			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Tags: []string{"tagA", "tagB"}, TagMatchMode: models.TagMatchModeAny},
 			},
-			wantID: 0,
+			wantFirstID: 0,
+			wantCount:   0,
 		},
 
 		// Tag matching - ALL mode
@@ -752,7 +768,8 @@ func TestSelectRule(t *testing.T) {
 			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Tags: []string{"tagA", "tagB"}, TagMatchMode: models.TagMatchModeAll},
 			},
-			wantID: 1,
+			wantFirstID: 1,
+			wantCount:   1,
 		},
 		{
 			name:    "tag all mode missing one",
@@ -760,7 +777,8 @@ func TestSelectRule(t *testing.T) {
 			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Tags: []string{"tagA", "tagB"}, TagMatchMode: models.TagMatchModeAll},
 			},
-			wantID: 0,
+			wantFirstID: 0,
+			wantCount:   0,
 		},
 
 		// No tag filter matches all
@@ -770,7 +788,8 @@ func TestSelectRule(t *testing.T) {
 			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Tags: []string{}},
 			},
-			wantID: 1,
+			wantFirstID: 1,
+			wantCount:   1,
 		},
 
 		// Combined filters
@@ -780,7 +799,8 @@ func TestSelectRule(t *testing.T) {
 			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Categories: []string{"tv"}, Tags: []string{"tagA"}},
 			},
-			wantID: 1,
+			wantFirstID: 1,
+			wantCount:   1,
 		},
 		{
 			name:    "combined category match tag mismatch",
@@ -788,18 +808,27 @@ func TestSelectRule(t *testing.T) {
 			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Categories: []string{"tv"}, Tags: []string{"tagA"}},
 			},
-			wantID: 0,
+			wantFirstID: 0,
+			wantCount:   0,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := selectRule(tc.torrent, tc.rules, sm)
-			if tc.wantID == 0 {
-				assert.Nil(t, got)
+			got := selectMatchingRules(tc.torrent, tc.rules, sm)
+			if tc.wantFirstID == 0 {
+				assert.Empty(t, got)
 			} else {
-				require.NotNil(t, got)
-				assert.Equal(t, tc.wantID, got.ID)
+				require.NotEmpty(t, got)
+				assert.Equal(t, tc.wantFirstID, got[0].ID)
+			}
+			assert.Len(t, got, tc.wantCount)
+			if len(tc.wantIDs) > 0 {
+				gotIDs := make([]int, len(got))
+				for i, r := range got {
+					gotIDs[i] = r.ID
+				}
+				assert.Equal(t, tc.wantIDs, gotIDs)
 			}
 		})
 	}

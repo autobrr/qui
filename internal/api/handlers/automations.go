@@ -34,24 +34,23 @@ func NewAutomationHandler(store *models.AutomationStore, activityStore *models.A
 }
 
 type AutomationPayload struct {
-	Name                     string                   `json:"name"`
-	TrackerPattern           string                   `json:"trackerPattern"`
-	TrackerDomains           []string                 `json:"trackerDomains"`
-	Categories               []string                 `json:"categories"`
-	Tags                     []string                 `json:"tags"`
-	TagMatchMode             *string                  `json:"tagMatchMode"` // "any" or "all"
-	UploadLimitKiB           *int64                   `json:"uploadLimitKiB"`
-	DownloadLimitKiB         *int64                   `json:"downloadLimitKiB"`
-	RatioLimit               *float64                 `json:"ratioLimit"`
-	SeedingTimeLimitMinutes  *int64                   `json:"seedingTimeLimitMinutes"`
-	DeleteMode               *string                  `json:"deleteMode"` // "none", "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds"
-	DeleteUnregistered       *bool                    `json:"deleteUnregistered"`
-	DeleteUnregisteredMinAge *int64                   `json:"deleteUnregisteredMinAge"` // minimum age in seconds, 0 = no minimum
-	Enabled                  *bool                    `json:"enabled"`
-	SortOrder                *int                     `json:"sortOrder"`
-	Conditions               *models.ActionConditions `json:"conditions"`
-	PreviewLimit             *int                     `json:"previewLimit"`
-	PreviewOffset            *int                     `json:"previewOffset"`
+	Name                    string                   `json:"name"`
+	TrackerPattern          string                   `json:"trackerPattern"`
+	TrackerDomains          []string                 `json:"trackerDomains"`
+	Categories              []string                 `json:"categories"`
+	Tags                    []string                 `json:"tags"`
+	TagMatchMode            *string                  `json:"tagMatchMode"` // "any" or "all"
+	UploadLimitKiB          *int64                   `json:"uploadLimitKiB"`
+	DownloadLimitKiB        *int64                   `json:"downloadLimitKiB"`
+	RatioLimit              *float64                 `json:"ratioLimit"`
+	SeedingTimeLimitMinutes *int64                   `json:"seedingTimeLimitMinutes"`
+	DeleteMode              *string                  `json:"deleteMode"` // "none", "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds"
+	DeleteUnregistered      *bool                    `json:"deleteUnregistered"`
+	Enabled                 *bool                    `json:"enabled"`
+	SortOrder               *int                     `json:"sortOrder"`
+	Conditions              *models.ActionConditions `json:"conditions"`
+	PreviewLimit            *int                     `json:"previewLimit"`
+	PreviewOffset           *int                     `json:"previewOffset"`
 }
 
 func (p *AutomationPayload) toModel(instanceID int, id int) *models.Automation {
@@ -85,9 +84,6 @@ func (p *AutomationPayload) toModel(instanceID int, id int) *models.Automation {
 	}
 	if p.DeleteUnregistered != nil {
 		automation.DeleteUnregistered = *p.DeleteUnregistered
-	}
-	if p.DeleteUnregisteredMinAge != nil {
-		automation.DeleteUnregisteredMinAge = *p.DeleteUnregisteredMinAge
 	}
 	if p.Enabled != nil {
 		automation.Enabled = *p.Enabled
