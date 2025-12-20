@@ -54,47 +54,6 @@ func selectMatchingRules(torrent qbt.Torrent, rules []*models.Automation, sm *qb
 			continue
 		}
 
-		// Check category filter (for legacy rules only - expression rules handle this in conditions)
-		if !rule.UsesExpressions() && len(rule.Categories) > 0 {
-			matched := false
-			for _, cat := range rule.Categories {
-				if strings.EqualFold(torrent.Category, cat) {
-					matched = true
-					break
-				}
-			}
-			if !matched {
-				continue
-			}
-		}
-
-		// Check tag filter (for legacy rules only)
-		if !rule.UsesExpressions() && len(rule.Tags) > 0 {
-			if rule.TagMatchMode == models.TagMatchModeAll {
-				allMatched := true
-				for _, tag := range rule.Tags {
-					if !torrentHasTag(torrent.Tags, tag) {
-						allMatched = false
-						break
-					}
-				}
-				if !allMatched {
-					continue
-				}
-			} else {
-				matched := false
-				for _, tag := range rule.Tags {
-					if torrentHasTag(torrent.Tags, tag) {
-						matched = true
-						break
-					}
-				}
-				if !matched {
-					continue
-				}
-			}
-		}
-
 		matching = append(matching, rule)
 	}
 
@@ -155,16 +114,10 @@ func processTorrents(
 
 // processRuleForTorrent applies a single rule to the torrent state.
 func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) {
-	if rule.UsesExpressions() {
-		processExpressionRule(rule, torrent, state, evalCtx)
-	} else {
-		processLegacyRule(rule, torrent, state, evalCtx)
-	}
-}
-
-// processExpressionRule handles expression-based (advanced) rules.
-func processExpressionRule(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) {
 	conditions := rule.Conditions
+	if conditions == nil {
+		return
+	}
 
 	// Speed limits
 	if conditions.SpeedLimits != nil && conditions.SpeedLimits.Enabled {
@@ -177,6 +130,21 @@ func processExpressionRule(rule *models.Automation, torrent qbt.Torrent, state *
 			}
 			if conditions.SpeedLimits.DownloadKiB != nil {
 				state.downloadLimitKiB = conditions.SpeedLimits.DownloadKiB
+			}
+		}
+	}
+
+	// Share limits (ratio/seeding time)
+	if conditions.ShareLimits != nil && conditions.ShareLimits.Enabled {
+		shouldApply := conditions.ShareLimits.Condition == nil ||
+			EvaluateConditionWithContext(conditions.ShareLimits.Condition, torrent, evalCtx, 0)
+
+		if shouldApply {
+			if conditions.ShareLimits.RatioLimit != nil {
+				state.ratioLimit = conditions.ShareLimits.RatioLimit
+			}
+			if conditions.ShareLimits.SeedingTimeMinutes != nil {
+				state.seedingMinutes = conditions.ShareLimits.SeedingTimeMinutes
 			}
 		}
 	}
@@ -220,52 +188,12 @@ func processExpressionRule(rule *models.Automation, torrent qbt.Torrent, state *
 				}
 				state.deleteRuleID = rule.ID
 				state.deleteRuleName = rule.Name
-				state.deleteReason = "expression condition matched"
+				state.deleteReason = "condition matched"
 			}
 		}
 	}
 }
 
-// processLegacyRule handles legacy field-based rules.
-func processLegacyRule(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) {
-	// Speed limits
-	if rule.UploadLimitKiB != nil {
-		state.uploadLimitKiB = rule.UploadLimitKiB
-	}
-	if rule.DownloadLimitKiB != nil {
-		state.downloadLimitKiB = rule.DownloadLimitKiB
-	}
-
-	// Share limits
-	if rule.RatioLimit != nil {
-		state.ratioLimit = rule.RatioLimit
-	}
-	if rule.SeedingTimeLimitMinutes != nil {
-		state.seedingMinutes = rule.SeedingTimeLimitMinutes
-	}
-
-	// Delete based on ratio/seeding time
-	if shouldDeleteTorrentLegacy(torrent, rule) {
-		state.shouldDelete = true
-		state.deleteMode = *rule.DeleteMode
-		state.deleteRuleID = rule.ID
-		state.deleteRuleName = rule.Name
-		state.deleteReason = buildDeleteReason(torrent, rule)
-	}
-
-	// Unregistered deletion (legacy mode)
-	if !state.shouldDelete && rule.DeleteUnregistered && rule.DeleteMode != nil && *rule.DeleteMode != "" && *rule.DeleteMode != DeleteModeNone {
-		if evalCtx != nil && evalCtx.UnregisteredSet != nil {
-			if _, isUnregistered := evalCtx.UnregisteredSet[torrent.Hash]; isUnregistered {
-				state.shouldDelete = true
-				state.deleteMode = *rule.DeleteMode
-				state.deleteRuleID = rule.ID
-				state.deleteRuleName = rule.Name
-				state.deleteReason = "unregistered"
-			}
-		}
-	}
-}
 
 // processTagAction handles tag add/remove logic for a single tag action.
 func processTagAction(tagAction *models.TagAction, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) {
@@ -300,57 +228,6 @@ func processTagAction(tagAction *models.TagAction, torrent qbt.Torrent, state *t
 			state.tagActions[managedTag] = "remove"
 		}
 	}
-}
-
-// shouldDeleteTorrentLegacy checks if a torrent should be deleted based on legacy rule fields.
-func shouldDeleteTorrentLegacy(torrent qbt.Torrent, rule *models.Automation) bool {
-	// Only delete completed torrents
-	if torrent.Progress < 1.0 {
-		return false
-	}
-
-	// Must have delete mode enabled
-	if rule.DeleteMode == nil || *rule.DeleteMode == "" || *rule.DeleteMode == DeleteModeNone {
-		return false
-	}
-
-	// Must have at least one limit configured
-	hasRatioLimit := rule.RatioLimit != nil && *rule.RatioLimit > 0
-	hasSeedingTimeLimit := rule.SeedingTimeLimitMinutes != nil && *rule.SeedingTimeLimitMinutes > 0
-
-	if !hasRatioLimit && !hasSeedingTimeLimit {
-		return false
-	}
-
-	// Check ratio limit
-	if hasRatioLimit && torrent.Ratio >= *rule.RatioLimit {
-		return true
-	}
-
-	// Check seeding time limit (torrent.SeedingTime is in seconds)
-	if hasSeedingTimeLimit {
-		limitSeconds := *rule.SeedingTimeLimitMinutes * 60
-		if torrent.SeedingTime >= limitSeconds {
-			return true
-		}
-	}
-
-	return false
-}
-
-// buildDeleteReason creates a human-readable reason for deletion.
-func buildDeleteReason(torrent qbt.Torrent, rule *models.Automation) string {
-	hasRatioLimit := rule.RatioLimit != nil && *rule.RatioLimit > 0
-	hasSeedingTimeLimit := rule.SeedingTimeLimitMinutes != nil && *rule.SeedingTimeLimitMinutes > 0
-	ratioMet := hasRatioLimit && torrent.Ratio >= *rule.RatioLimit
-	seedingTimeMet := hasSeedingTimeLimit && torrent.SeedingTime >= *rule.SeedingTimeLimitMinutes*60
-
-	if ratioMet && seedingTimeMet {
-		return "ratio and seeding time limits reached"
-	} else if ratioMet {
-		return "ratio limit reached"
-	}
-	return "seeding time limit reached"
 }
 
 // hasActions returns true if the state has any actions to execute.

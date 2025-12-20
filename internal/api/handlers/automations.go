@@ -34,23 +34,14 @@ func NewAutomationHandler(store *models.AutomationStore, activityStore *models.A
 }
 
 type AutomationPayload struct {
-	Name                    string                   `json:"name"`
-	TrackerPattern          string                   `json:"trackerPattern"`
-	TrackerDomains          []string                 `json:"trackerDomains"`
-	Categories              []string                 `json:"categories"`
-	Tags                    []string                 `json:"tags"`
-	TagMatchMode            *string                  `json:"tagMatchMode"` // "any" or "all"
-	UploadLimitKiB          *int64                   `json:"uploadLimitKiB"`
-	DownloadLimitKiB        *int64                   `json:"downloadLimitKiB"`
-	RatioLimit              *float64                 `json:"ratioLimit"`
-	SeedingTimeLimitMinutes *int64                   `json:"seedingTimeLimitMinutes"`
-	DeleteMode              *string                  `json:"deleteMode"` // "none", "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds"
-	DeleteUnregistered      *bool                    `json:"deleteUnregistered"`
-	Enabled                 *bool                    `json:"enabled"`
-	SortOrder               *int                     `json:"sortOrder"`
-	Conditions              *models.ActionConditions `json:"conditions"`
-	PreviewLimit            *int                     `json:"previewLimit"`
-	PreviewOffset           *int                     `json:"previewOffset"`
+	Name           string                   `json:"name"`
+	TrackerPattern string                   `json:"trackerPattern"`
+	TrackerDomains []string                 `json:"trackerDomains"`
+	Enabled        *bool                    `json:"enabled"`
+	SortOrder      *int                     `json:"sortOrder"`
+	Conditions     *models.ActionConditions `json:"conditions"`
+	PreviewLimit   *int                     `json:"previewLimit"`
+	PreviewOffset  *int                     `json:"previewOffset"`
 }
 
 func (p *AutomationPayload) toModel(instanceID int, id int) *models.Automation {
@@ -60,30 +51,14 @@ func (p *AutomationPayload) toModel(instanceID int, id int) *models.Automation {
 		trackerPattern = strings.Join(normalizedDomains, ",")
 	}
 
-	tagMatchMode := models.TagMatchModeAny
-	if p.TagMatchMode != nil && *p.TagMatchMode != "" {
-		tagMatchMode = *p.TagMatchMode
-	}
-
 	automation := &models.Automation{
-		ID:                      id,
-		InstanceID:              instanceID,
-		Name:                    p.Name,
-		TrackerPattern:          trackerPattern,
-		TrackerDomains:          normalizedDomains,
-		Categories:              cleanStringSlice(p.Categories),
-		Tags:                    cleanStringSlice(p.Tags),
-		TagMatchMode:            tagMatchMode,
-		UploadLimitKiB:          p.UploadLimitKiB,
-		DownloadLimitKiB:        p.DownloadLimitKiB,
-		RatioLimit:              p.RatioLimit,
-		SeedingTimeLimitMinutes: p.SeedingTimeLimitMinutes,
-		DeleteMode:              cleanStringPtr(p.DeleteMode),
-		Conditions:              p.Conditions,
-		Enabled:                 true,
-	}
-	if p.DeleteUnregistered != nil {
-		automation.DeleteUnregistered = *p.DeleteUnregistered
+		ID:             id,
+		InstanceID:     instanceID,
+		Name:           p.Name,
+		TrackerPattern: trackerPattern,
+		TrackerDomains: normalizedDomains,
+		Conditions:     p.Conditions,
+		Enabled:        true,
 	}
 	if p.Enabled != nil {
 		automation.Enabled = *p.Enabled
@@ -134,17 +109,9 @@ func (h *AutomationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if payload.TagMatchMode != nil && *payload.TagMatchMode != "" && *payload.TagMatchMode != models.TagMatchModeAny && *payload.TagMatchMode != models.TagMatchModeAll {
-		RespondError(w, http.StatusBadRequest, "tagMatchMode must be 'any' or 'all'")
+	if payload.Conditions == nil || payload.Conditions.IsEmpty() {
+		RespondError(w, http.StatusBadRequest, "At least one action must be configured")
 		return
-	}
-
-	if payload.DeleteMode != nil && *payload.DeleteMode != "" {
-		validModes := map[string]bool{"none": true, "delete": true, "deleteWithFiles": true, "deleteWithFilesPreserveCrossSeeds": true}
-		if !validModes[*payload.DeleteMode] {
-			RespondError(w, http.StatusBadRequest, "Invalid deleteMode")
-			return
-		}
 	}
 
 	automation, err := h.store.Create(r.Context(), payload.toModel(instanceID, 0))
@@ -188,17 +155,9 @@ func (h *AutomationHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if payload.TagMatchMode != nil && *payload.TagMatchMode != "" && *payload.TagMatchMode != models.TagMatchModeAny && *payload.TagMatchMode != models.TagMatchModeAll {
-		RespondError(w, http.StatusBadRequest, "tagMatchMode must be 'any' or 'all'")
+	if payload.Conditions == nil || payload.Conditions.IsEmpty() {
+		RespondError(w, http.StatusBadRequest, "At least one action must be configured")
 		return
-	}
-
-	if payload.DeleteMode != nil && *payload.DeleteMode != "" {
-		validModes := map[string]bool{"none": true, "delete": true, "deleteWithFiles": true, "deleteWithFilesPreserveCrossSeeds": true}
-		if !validModes[*payload.DeleteMode] {
-			RespondError(w, http.StatusBadRequest, "Invalid deleteMode")
-			return
-		}
 	}
 
 	automation, err := h.store.Update(r.Context(), payload.toModel(instanceID, ruleID))
@@ -293,28 +252,6 @@ func parseInstanceID(w http.ResponseWriter, r *http.Request) (int, error) {
 		return 0, fmt.Errorf("invalid instance ID: %s", instanceIDStr)
 	}
 	return instanceID, nil
-}
-
-func cleanStringPtr(value *string) *string {
-	if value == nil {
-		return nil
-	}
-	trimmed := strings.TrimSpace(*value)
-	if trimmed == "" {
-		return nil
-	}
-	return &trimmed
-}
-
-func cleanStringSlice(values []string) []string {
-	var out []string
-	for _, v := range values {
-		trimmed := strings.TrimSpace(v)
-		if trimmed != "" {
-			out = append(out, trimmed)
-		}
-	}
-	return out
 }
 
 func normalizeTrackerDomains(domains []string) []string {

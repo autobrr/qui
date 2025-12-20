@@ -16,10 +16,6 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-const (
-	TagMatchModeAny = "any"
-	TagMatchModeAll = "all"
-)
 
 // Delete mode constants
 const (
@@ -37,31 +33,16 @@ const (
 )
 
 type Automation struct {
-	ID                      int               `json:"id"`
-	InstanceID              int               `json:"instanceId"`
-	Name                    string            `json:"name"`
-	TrackerPattern          string            `json:"trackerPattern"`
-	TrackerDomains          []string          `json:"trackerDomains,omitempty"`
-	Categories              []string          `json:"categories,omitempty"`
-	Tags                    []string          `json:"tags,omitempty"`
-	TagMatchMode            string            `json:"tagMatchMode,omitempty"` // "any" (default) or "all"
-	UploadLimitKiB          *int64            `json:"uploadLimitKiB,omitempty"`
-	DownloadLimitKiB        *int64            `json:"downloadLimitKiB,omitempty"`
-	RatioLimit              *float64          `json:"ratioLimit,omitempty"`
-	SeedingTimeLimitMinutes *int64            `json:"seedingTimeLimitMinutes,omitempty"`
-	DeleteMode              *string           `json:"deleteMode,omitempty"` // "none", "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds"
-	DeleteUnregistered      bool              `json:"deleteUnregistered"`
-	Enabled                 bool              `json:"enabled"`
-	SortOrder               int               `json:"sortOrder"`
-	Conditions              *ActionConditions `json:"conditions,omitempty"` // expression-based conditions for actions
-	CreatedAt               time.Time         `json:"createdAt"`
-	UpdatedAt               time.Time         `json:"updatedAt"`
-}
-
-// UsesExpressions returns true if this automation uses expression-based conditions
-// instead of the legacy static fields.
-func (r *Automation) UsesExpressions() bool {
-	return r.Conditions != nil && r.Conditions.SchemaVersion != ""
+	ID             int               `json:"id"`
+	InstanceID     int               `json:"instanceId"`
+	Name           string            `json:"name"`
+	TrackerPattern string            `json:"trackerPattern"`
+	TrackerDomains []string          `json:"trackerDomains,omitempty"`
+	Conditions     *ActionConditions `json:"conditions"`
+	Enabled        bool              `json:"enabled"`
+	SortOrder      int               `json:"sortOrder"`
+	CreatedAt      time.Time         `json:"createdAt"`
+	UpdatedAt      time.Time         `json:"updatedAt"`
 }
 
 type AutomationStore struct {
@@ -114,8 +95,7 @@ func normalizeTrackerPattern(pattern string, domains []string) string {
 
 func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([]*Automation, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, instance_id, name, tracker_pattern, category, tag, tag_match_mode, upload_limit_kib, download_limit_kib,
-		       ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, enabled, sort_order, conditions, created_at, updated_at
+		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, sort_order, created_at, updated_at
 		FROM automations
 		WHERE instance_id = ?
 		ORDER BY sort_order ASC, id ASC
@@ -128,70 +108,27 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 	var automations []*Automation
 	for rows.Next() {
 		var automation Automation
-		var categories, tags, tagMatchMode, deleteMode, conditionsJSON sql.NullString
-		var upload, download sql.NullInt64
-		var ratio sql.NullFloat64
-		var seeding sql.NullInt64
-		var deleteUnregistered int
+		var conditionsJSON string
 
 		if err := rows.Scan(
 			&automation.ID,
 			&automation.InstanceID,
 			&automation.Name,
 			&automation.TrackerPattern,
-			&categories,
-			&tags,
-			&tagMatchMode,
-			&upload,
-			&download,
-			&ratio,
-			&seeding,
-			&deleteMode,
-			&deleteUnregistered,
+			&conditionsJSON,
 			&automation.Enabled,
 			&automation.SortOrder,
-			&conditionsJSON,
 			&automation.CreatedAt,
 			&automation.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
 
-		if categories.Valid && categories.String != "" {
-			automation.Categories = splitPatterns(categories.String)
+		var conditions ActionConditions
+		if err := json.Unmarshal([]byte(conditionsJSON), &conditions); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal conditions for automation %d: %w", automation.ID, err)
 		}
-		if tags.Valid && tags.String != "" {
-			automation.Tags = splitPatterns(tags.String)
-		}
-		if tagMatchMode.Valid && tagMatchMode.String != "" {
-			automation.TagMatchMode = tagMatchMode.String
-		} else {
-			automation.TagMatchMode = TagMatchModeAny
-		}
-		if upload.Valid {
-			automation.UploadLimitKiB = &upload.Int64
-		}
-		if download.Valid {
-			automation.DownloadLimitKiB = &download.Int64
-		}
-		if ratio.Valid {
-			automation.RatioLimit = &ratio.Float64
-		}
-		if seeding.Valid {
-			automation.SeedingTimeLimitMinutes = &seeding.Int64
-		}
-		if deleteMode.Valid && deleteMode.String != DeleteModeNone {
-			automation.DeleteMode = &deleteMode.String
-		}
-		automation.DeleteUnregistered = deleteUnregistered != 0
-
-		// Parse conditions JSON if present
-		if conditionsJSON.Valid && conditionsJSON.String != "" {
-			var conditions ActionConditions
-			if err := json.Unmarshal([]byte(conditionsJSON.String), &conditions); err == nil {
-				automation.Conditions = &conditions
-			}
-		}
+		automation.Conditions = &conditions
 
 		automation.TrackerDomains = splitPatterns(automation.TrackerPattern)
 
@@ -207,77 +144,33 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 
 func (s *AutomationStore) Get(ctx context.Context, id int) (*Automation, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, instance_id, name, tracker_pattern, category, tag, tag_match_mode, upload_limit_kib, download_limit_kib,
-		       ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, enabled, sort_order, conditions, created_at, updated_at
+		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, sort_order, created_at, updated_at
 		FROM automations
 		WHERE id = ?
 	`, id)
 
 	var automation Automation
-	var categories, tags, tagMatchMode, deleteMode, conditionsJSON sql.NullString
-	var upload, download sql.NullInt64
-	var ratio sql.NullFloat64
-	var seeding sql.NullInt64
-	var deleteUnregistered int
+	var conditionsJSON string
 
 	if err := row.Scan(
 		&automation.ID,
 		&automation.InstanceID,
 		&automation.Name,
 		&automation.TrackerPattern,
-		&categories,
-		&tags,
-		&tagMatchMode,
-		&upload,
-		&download,
-		&ratio,
-		&seeding,
-		&deleteMode,
-		&deleteUnregistered,
+		&conditionsJSON,
 		&automation.Enabled,
 		&automation.SortOrder,
-		&conditionsJSON,
 		&automation.CreatedAt,
 		&automation.UpdatedAt,
 	); err != nil {
 		return nil, err
 	}
 
-	if categories.Valid && categories.String != "" {
-		automation.Categories = splitPatterns(categories.String)
+	var conditions ActionConditions
+	if err := json.Unmarshal([]byte(conditionsJSON), &conditions); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal conditions for automation %d: %w", automation.ID, err)
 	}
-	if tags.Valid && tags.String != "" {
-		automation.Tags = splitPatterns(tags.String)
-	}
-	if tagMatchMode.Valid && tagMatchMode.String != "" {
-		automation.TagMatchMode = tagMatchMode.String
-	} else {
-		automation.TagMatchMode = TagMatchModeAny
-	}
-	if upload.Valid {
-		automation.UploadLimitKiB = &upload.Int64
-	}
-	if download.Valid {
-		automation.DownloadLimitKiB = &download.Int64
-	}
-	if ratio.Valid {
-		automation.RatioLimit = &ratio.Float64
-	}
-	if seeding.Valid {
-		automation.SeedingTimeLimitMinutes = &seeding.Int64
-	}
-	if deleteMode.Valid && deleteMode.String != DeleteModeNone {
-		automation.DeleteMode = &deleteMode.String
-	}
-	automation.DeleteUnregistered = deleteUnregistered != 0
-
-	// Parse conditions JSON if present
-	if conditionsJSON.Valid && conditionsJSON.String != "" {
-		var conditions ActionConditions
-		if err := json.Unmarshal([]byte(conditionsJSON.String), &conditions); err == nil {
-			automation.Conditions = &conditions
-		}
-	}
+	automation.Conditions = &conditions
 
 	automation.TrackerDomains = splitPatterns(automation.TrackerPattern)
 
@@ -297,6 +190,9 @@ func (s *AutomationStore) Create(ctx context.Context, automation *Automation) (*
 	if automation == nil {
 		return nil, errors.New("automation is nil")
 	}
+	if automation.Conditions == nil || automation.Conditions.IsEmpty() {
+		return nil, errors.New("automation must have conditions")
+	}
 
 	automation.TrackerPattern = normalizeTrackerPattern(automation.TrackerPattern, automation.TrackerDomains)
 
@@ -309,40 +205,17 @@ func (s *AutomationStore) Create(ctx context.Context, automation *Automation) (*
 		sortOrder = next
 	}
 
-	// Default delete_mode to "none" if not set
-	deleteMode := DeleteModeNone
-	if automation.DeleteMode != nil && *automation.DeleteMode != "" {
-		deleteMode = *automation.DeleteMode
-	}
-
-	// Default tag_match_mode to "any" if not set
-	tagMatchMode := TagMatchModeAny
-	if automation.TagMatchMode != "" {
-		tagMatchMode = automation.TagMatchMode
-	}
-
-	// Join arrays to comma-separated strings for storage
-	categoriesStr := nullableSlice(automation.Categories)
-	tagsStr := nullableSlice(automation.Tags)
-
-	// Serialize conditions to JSON if present
-	var conditionsJSON any
-	if automation.Conditions != nil && !automation.Conditions.IsEmpty() {
-		data, err := json.Marshal(automation.Conditions)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal conditions: %w", err)
-		}
-		conditionsJSON = string(data)
+	conditionsJSON, err := json.Marshal(automation.Conditions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal conditions: %w", err)
 	}
 
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO automations
-			(instance_id, name, tracker_pattern, category, tag, tag_match_mode, upload_limit_kib, download_limit_kib, ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, enabled, sort_order, conditions)
+			(instance_id, name, tracker_pattern, conditions, enabled, sort_order)
 		VALUES
-			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, automation.InstanceID, automation.Name, automation.TrackerPattern, categoriesStr, tagsStr, tagMatchMode,
-		nullableInt64(automation.UploadLimitKiB), nullableInt64(automation.DownloadLimitKiB), nullableFloat64(automation.RatioLimit),
-		nullableInt64(automation.SeedingTimeLimitMinutes), deleteMode, boolToInt(automation.DeleteUnregistered), boolToInt(automation.Enabled), sortOrder, conditionsJSON)
+			(?, ?, ?, ?, ?, ?)
+	`, automation.InstanceID, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), sortOrder)
 	if err != nil {
 		return nil, err
 	}
@@ -359,43 +232,22 @@ func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*
 	if automation == nil {
 		return nil, errors.New("automation is nil")
 	}
+	if automation.Conditions == nil || automation.Conditions.IsEmpty() {
+		return nil, errors.New("automation must have conditions")
+	}
 
 	automation.TrackerPattern = normalizeTrackerPattern(automation.TrackerPattern, automation.TrackerDomains)
 
-	// Default delete_mode to "none" if not set
-	deleteMode := DeleteModeNone
-	if automation.DeleteMode != nil && *automation.DeleteMode != "" {
-		deleteMode = *automation.DeleteMode
-	}
-
-	// Default tag_match_mode to "any" if not set
-	tagMatchMode := TagMatchModeAny
-	if automation.TagMatchMode != "" {
-		tagMatchMode = automation.TagMatchMode
-	}
-
-	// Join arrays to comma-separated strings for storage
-	categoriesStr := nullableSlice(automation.Categories)
-	tagsStr := nullableSlice(automation.Tags)
-
-	// Serialize conditions to JSON if present
-	var conditionsJSON any
-	if automation.Conditions != nil && !automation.Conditions.IsEmpty() {
-		data, err := json.Marshal(automation.Conditions)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal conditions: %w", err)
-		}
-		conditionsJSON = string(data)
+	conditionsJSON, err := json.Marshal(automation.Conditions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal conditions: %w", err)
 	}
 
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE automations
-		SET name = ?, tracker_pattern = ?, category = ?, tag = ?, tag_match_mode = ?, upload_limit_kib = ?, download_limit_kib = ?,
-		    ratio_limit = ?, seeding_time_limit_minutes = ?, delete_mode = ?, delete_unregistered = ?, enabled = ?, sort_order = ?, conditions = ?
+		SET name = ?, tracker_pattern = ?, conditions = ?, enabled = ?, sort_order = ?
 		WHERE id = ? AND instance_id = ?
-	`, automation.Name, automation.TrackerPattern, categoriesStr, tagsStr, tagMatchMode,
-		nullableInt64(automation.UploadLimitKiB), nullableInt64(automation.DownloadLimitKiB), nullableFloat64(automation.RatioLimit),
-		nullableInt64(automation.SeedingTimeLimitMinutes), deleteMode, boolToInt(automation.DeleteUnregistered), boolToInt(automation.Enabled), automation.SortOrder, conditionsJSON, automation.ID, automation.InstanceID)
+	`, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), automation.SortOrder, automation.ID, automation.InstanceID)
 	if err != nil {
 		return nil, err
 	}
@@ -435,27 +287,6 @@ func (s *AutomationStore) Reorder(ctx context.Context, instanceID int, orderedID
 	}
 
 	return tx.Commit()
-}
-
-func nullableSlice(values []string) any {
-	if len(values) == 0 {
-		return nil
-	}
-	return strings.Join(values, ",")
-}
-
-func nullableInt64(value *int64) any {
-	if value == nil {
-		return nil
-	}
-	return *value
-}
-
-func nullableFloat64(value *float64) any {
-	if value == nil {
-		return nil
-	}
-	return *value
 }
 
 func boolToInt(v bool) int {
@@ -572,11 +403,12 @@ func (c *RuleCondition) CompileRegex() error {
 // ActionConditions holds per-action conditions with action configuration.
 // This is the top-level structure stored in the `conditions` JSON column.
 type ActionConditions struct {
-	SchemaVersion string            `json:"schemaVersion"`
-	SpeedLimits   *SpeedLimitAction `json:"speedLimits,omitempty"`
-	Pause         *PauseAction      `json:"pause,omitempty"`
-	Delete        *DeleteAction     `json:"delete,omitempty"`
-	Tag           *TagAction        `json:"tag,omitempty"`
+	SchemaVersion string             `json:"schemaVersion"`
+	SpeedLimits   *SpeedLimitAction  `json:"speedLimits,omitempty"`
+	ShareLimits   *ShareLimitsAction `json:"shareLimits,omitempty"`
+	Pause         *PauseAction       `json:"pause,omitempty"`
+	Delete        *DeleteAction      `json:"delete,omitempty"`
+	Tag           *TagAction         `json:"tag,omitempty"`
 }
 
 // SpeedLimitAction configures speed limit application with optional conditions.
@@ -585,6 +417,14 @@ type SpeedLimitAction struct {
 	UploadKiB   *int64         `json:"uploadKiB,omitempty"`
 	DownloadKiB *int64         `json:"downloadKiB,omitempty"`
 	Condition   *RuleCondition `json:"condition,omitempty"`
+}
+
+// ShareLimitsAction configures share limit (ratio/seeding time) application with optional conditions.
+type ShareLimitsAction struct {
+	Enabled            bool           `json:"enabled"`
+	RatioLimit         *float64       `json:"ratioLimit,omitempty"`
+	SeedingTimeMinutes *int64         `json:"seedingTimeMinutes,omitempty"`
+	Condition          *RuleCondition `json:"condition,omitempty"`
 }
 
 // PauseAction configures pause action with conditions.
@@ -613,5 +453,5 @@ func (ac *ActionConditions) IsEmpty() bool {
 	if ac == nil {
 		return true
 	}
-	return ac.SpeedLimits == nil && ac.Pause == nil && ac.Delete == nil && ac.Tag == nil
+	return ac.SpeedLimits == nil && ac.ShareLimits == nil && ac.Pause == nil && ac.Delete == nil && ac.Tag == nil
 }

@@ -25,7 +25,7 @@ import { api } from "@/lib/api"
 import { cn, parseTrackerDomains } from "@/lib/utils"
 import type { Automation, AutomationPreviewResult } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Clock, Info, Loader2, Pencil, Plus, Scale, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, Clock, Info, Loader2, Pause, Pencil, Plus, Scale, Tag, Trash2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { AutomationDialog } from "./AutomationDialog"
@@ -98,9 +98,7 @@ export function AutomationsOverview() {
 
   // Check if a rule is a delete rule
   const isDeleteRule = (rule: Automation): boolean => {
-    const hasExpressionDelete = rule.conditions?.delete?.enabled === true
-    const hasLegacyDelete = !!rule.deleteMode || !!rule.deleteUnregistered
-    return hasExpressionDelete || hasLegacyDelete
+    return rule.conditions?.delete?.enabled === true
   }
 
   // Handle toggle - show preview when enabling delete rules
@@ -388,38 +386,50 @@ function RulePreview({ rule, onToggle, isToggling, onEdit, onDelete }: RulePrevi
             </TooltipContent>
           </Tooltip>
         )}
-        {rule.uploadLimitKiB !== undefined && (
+        {rule.conditions?.speedLimits?.enabled && rule.conditions.speedLimits.uploadKiB !== undefined && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <ArrowUp className="h-3 w-3" />
-            {rule.uploadLimitKiB}
+            {rule.conditions.speedLimits.uploadKiB}
           </Badge>
         )}
-        {rule.downloadLimitKiB !== undefined && (
+        {rule.conditions?.speedLimits?.enabled && rule.conditions.speedLimits.downloadKiB !== undefined && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <ArrowDown className="h-3 w-3" />
-            {rule.downloadLimitKiB}
+            {rule.conditions.speedLimits.downloadKiB}
           </Badge>
         )}
-        {rule.ratioLimit !== undefined && (
+        {rule.conditions?.shareLimits?.enabled && rule.conditions.shareLimits.ratioLimit !== undefined && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <Scale className="h-3 w-3" />
-            {rule.ratioLimit}
+            {rule.conditions.shareLimits.ratioLimit}
           </Badge>
         )}
-        {rule.seedingTimeLimitMinutes !== undefined && (
+        {rule.conditions?.shareLimits?.enabled && rule.conditions.shareLimits.seedingTimeMinutes !== undefined && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <Clock className="h-3 w-3" />
-            {rule.seedingTimeLimitMinutes}m
+            {rule.conditions.shareLimits.seedingTimeMinutes}m
           </Badge>
         )}
-        {rule.deleteMode && rule.deleteMode !== "none" && (
+        {rule.conditions?.pause?.enabled && (
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+            <Pause className="h-3 w-3" />
+            Pause
+          </Badge>
+        )}
+        {rule.conditions?.delete?.enabled && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-destructive border-destructive/50">
             <Trash2 className="h-3 w-3" />
-            {rule.deleteMode === "deleteWithFilesPreserveCrossSeeds"
+            {rule.conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"
               ? "XS safe"
-              : rule.deleteMode === "deleteWithFiles"
+              : rule.conditions.delete.mode === "deleteWithFiles"
                 ? "+ files"
                 : ""}
+          </Badge>
+        )}
+        {rule.conditions?.tag?.enabled && (
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+            <Tag className="h-3 w-3" />
+            {rule.conditions.tag.tags?.join(", ")}
           </Badge>
         )}
         <Button

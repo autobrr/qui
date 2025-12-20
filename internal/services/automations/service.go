@@ -226,77 +226,17 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 			continue
 		}
 
-		// For legacy mode, also check category/tag filters
-		if !rule.UsesExpressions() {
-			// Check category filter
-			if len(rule.Categories) > 0 {
-				matched := false
-				for _, cat := range rule.Categories {
-					if strings.EqualFold(torrent.Category, cat) {
-						matched = true
-						break
-					}
-				}
-				if !matched {
-					continue
-				}
-			}
-
-			// Check tag filter
-			if len(rule.Tags) > 0 {
-				if rule.TagMatchMode == models.TagMatchModeAll {
-					allMatched := true
-					for _, tag := range rule.Tags {
-						if !torrentHasTag(torrent.Tags, tag) {
-							allMatched = false
-							break
-						}
-					}
-					if !allMatched {
-						continue
-					}
-				} else {
-					matched := false
-					for _, tag := range rule.Tags {
-						if torrentHasTag(torrent.Tags, tag) {
-							matched = true
-							break
-						}
-					}
-					if !matched {
-						continue
-					}
-				}
-			}
-		}
-
 		// Check if torrent would be deleted
 		wouldDelete := false
 
-		if rule.UsesExpressions() {
-			// Advanced mode: evaluate delete condition
-			if rule.Conditions.Delete != nil && rule.Conditions.Delete.Enabled {
-				// Must be completed to delete
-				if torrent.Progress >= 1.0 {
-					// Evaluate condition (if no condition, match all completed)
-					if rule.Conditions.Delete.Condition == nil {
-						wouldDelete = true
-					} else {
-						wouldDelete = EvaluateConditionWithContext(rule.Conditions.Delete.Condition, torrent, evalCtx, 0)
-					}
-				}
-			}
-		} else {
-			// Legacy mode: use existing shouldDeleteTorrentLegacy logic
-			wouldDelete = shouldDeleteTorrentLegacy(torrent, rule)
-		}
-
-		// Check for unregistered torrent deletion (legacy mode only - expression mode handles via isUnregistered condition)
-		if !wouldDelete && !rule.UsesExpressions() && rule.DeleteUnregistered && unregisteredSet != nil {
-			if _, isUnregistered := unregisteredSet[torrent.Hash]; isUnregistered {
-				// Must have delete mode set for unregistered deletion
-				if rule.DeleteMode != nil && *rule.DeleteMode != "" && *rule.DeleteMode != DeleteModeNone {
+		if rule.Conditions != nil && rule.Conditions.Delete != nil && rule.Conditions.Delete.Enabled {
+			// Must be completed to delete
+			if torrent.Progress >= 1.0 {
+				// Evaluate condition (if no condition, match all completed)
+				if rule.Conditions.Delete.Condition == nil {
 					wouldDelete = true
+				} else {
+					wouldDelete = EvaluateConditionWithContext(rule.Conditions.Delete.Condition, torrent, evalCtx, 0)
 				}
 			}
 		}

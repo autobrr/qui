@@ -181,6 +181,13 @@ export interface SpeedLimitAction {
   condition?: RuleCondition
 }
 
+export interface ShareLimitsAction {
+  enabled: boolean
+  ratioLimit?: number
+  seedingTimeMinutes?: number
+  condition?: RuleCondition
+}
+
 export interface PauseAction {
   enabled: boolean
   condition?: RuleCondition
@@ -202,6 +209,7 @@ export interface TagAction {
 export interface ActionConditions {
   schemaVersion: string
   speedLimits?: SpeedLimitAction
+  shareLimits?: ShareLimitsAction
   pause?: PauseAction
   delete?: DeleteAction
   tag?: TagAction
@@ -213,18 +221,9 @@ export interface Automation {
   name: string
   trackerPattern: string
   trackerDomains?: string[]
-  categories?: string[]
-  tags?: string[]
-  tagMatchMode?: "any" | "all"
-  uploadLimitKiB?: number
-  downloadLimitKiB?: number
-  ratioLimit?: number
-  seedingTimeLimitMinutes?: number
-  deleteMode?: "none" | "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds"
-  deleteUnregistered?: boolean
+  conditions: ActionConditions
   enabled: boolean
   sortOrder: number
-  conditions?: ActionConditions
   createdAt?: string
   updatedAt?: string
 }
@@ -233,18 +232,9 @@ export interface AutomationInput {
   name: string
   trackerPattern?: string
   trackerDomains?: string[]
-  categories?: string[]
-  tags?: string[]
-  tagMatchMode?: "any" | "all"
-  uploadLimitKiB?: number
-  downloadLimitKiB?: number
-  ratioLimit?: number
-  seedingTimeLimitMinutes?: number
-  deleteMode?: "none" | "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds"
-  deleteUnregistered?: boolean
+  conditions: ActionConditions
   enabled?: boolean
   sortOrder?: number
-  conditions?: ActionConditions
 }
 
 export interface AutomationPreviewInput extends AutomationInput {

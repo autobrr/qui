@@ -22,7 +22,7 @@ import { api } from "@/lib/api"
 import { cn, parseTrackerDomains } from "@/lib/utils"
 import type { Automation } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Clock, Filter, Loader2, Pause, Pencil, Plus, RefreshCw, Scale, Tag, Trash2, XCircle } from "lucide-react"
+import { ArrowDown, ArrowUp, Loader2, Pause, Pencil, Plus, RefreshCw, Scale, Tag, Trash2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { AutomationDialog } from "./AutomationDialog"
@@ -293,29 +293,16 @@ export function AutomationsPanel({ instanceId, variant = "card" }: AutomationsPa
 function RuleSummary({ rule }: { rule: Automation }) {
   const trackers = parseTrackerDomains(rule)
   const isAllTrackers = rule.trackerPattern === "*"
-  const categories = rule.categories ?? []
-  const tags = rule.tags ?? []
-
-  // Check if using expression-based conditions
-  const isExpressionBased = rule.conditions?.schemaVersion != null
   const conditions = rule.conditions
 
-  const hasLegacyActions =
-    rule.downloadLimitKiB !== undefined ||
-    rule.uploadLimitKiB !== undefined ||
-    rule.ratioLimit !== undefined ||
-    rule.seedingTimeLimitMinutes !== undefined ||
-    (rule.deleteMode && rule.deleteMode !== "none") ||
-    rule.deleteUnregistered
-
-  const hasExpressionActions =
+  const hasActions =
     conditions?.speedLimits?.enabled ||
+    conditions?.shareLimits?.enabled ||
     conditions?.pause?.enabled ||
-    conditions?.delete?.enabled
+    conditions?.delete?.enabled ||
+    conditions?.tag?.enabled
 
-  const hasActions = hasLegacyActions || hasExpressionActions
-
-  if (!hasActions && !isAllTrackers && trackers.length === 0 && categories.length === 0 && tags.length === 0) {
+  if (!hasActions && !isAllTrackers && trackers.length === 0) {
     return <span className="text-xs text-muted-foreground">No actions set</span>
   }
 
@@ -344,62 +331,7 @@ function RuleSummary({ rule }: { rule: Automation }) {
         </Tooltip>
       )}
 
-      {categories.length > 0 && categories.length <= 2 ? (
-        categories.map((cat) => (
-          <Badge key={cat} variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal cursor-default">
-            Cat: {cat}
-          </Badge>
-        ))
-      ) : categories.length > 2 && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal cursor-help">
-              Cat: {categories[0]} +{categories.length - 1}
-            </Badge>
-          </TooltipTrigger>
-          <TooltipContent className="max-w-[300px] break-all">
-            <p>{categories.join(", ")}</p>
-          </TooltipContent>
-        </Tooltip>
-      )}
-
-      {tags.length === 1 ? (
-        <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal cursor-default">
-          Tag: {tags[0]}
-        </Badge>
-      ) : tags.length === 2 ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal cursor-help">
-              Tags ({rule.tagMatchMode === "all" ? "all" : "any"}): {tags[0]} +1
-            </Badge>
-          </TooltipTrigger>
-          <TooltipContent className="max-w-[300px] break-all">
-            <p>{tags.join(", ")}</p>
-          </TooltipContent>
-        </Tooltip>
-      ) : tags.length > 2 && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal cursor-help">
-              Tags ({rule.tagMatchMode === "all" ? "all" : "any"}): {tags[0]} +{tags.length - 1}
-            </Badge>
-          </TooltipTrigger>
-          <TooltipContent className="max-w-[300px] break-all">
-            <p>{tags.join(", ")}</p>
-          </TooltipContent>
-        </Tooltip>
-      )}
-
-      {/* Expression-based mode indicator and actions */}
-      {isExpressionBased && (
-        <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-blue-600 border-blue-600/50 cursor-default">
-          <Filter className="h-3 w-3" />
-          Advanced
-        </Badge>
-      )}
-
-      {/* Expression-based Speed Limits */}
+      {/* Speed Limits */}
       {conditions?.speedLimits?.enabled && (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -416,13 +348,34 @@ function RuleSummary({ rule }: { rule: Automation }) {
               {conditions.speedLimits.downloadKiB !== undefined && (
                 <p>Download: {conditions.speedLimits.downloadKiB} KiB/s</p>
               )}
-              <p className="text-muted-foreground">With condition filter</p>
             </div>
           </TooltipContent>
         </Tooltip>
       )}
 
-      {/* Expression-based Pause */}
+      {/* Share Limits */}
+      {conditions?.shareLimits?.enabled && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal cursor-help">
+              <Scale className="h-3 w-3 text-muted-foreground/70" />
+              Share limits
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent>
+            <div className="space-y-1">
+              {conditions.shareLimits.ratioLimit !== undefined && (
+                <p>Ratio: {conditions.shareLimits.ratioLimit}</p>
+              )}
+              {conditions.shareLimits.seedingTimeMinutes !== undefined && (
+                <p>Seed time: {conditions.shareLimits.seedingTimeMinutes}m</p>
+              )}
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      )}
+
+      {/* Pause */}
       {conditions?.pause?.enabled && (
         <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-yellow-600 border-yellow-600/50 cursor-default">
           <Pause className="h-3 w-3" />
@@ -430,7 +383,7 @@ function RuleSummary({ rule }: { rule: Automation }) {
         </Badge>
       )}
 
-      {/* Expression-based Delete */}
+      {/* Delete */}
       {conditions?.delete?.enabled && (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -445,12 +398,11 @@ function RuleSummary({ rule }: { rule: Automation }) {
               : conditions.delete.mode === "deleteWithFiles"
                 ? "Delete with files"
                 : "Delete (keep files)"}</p>
-            <p className="text-muted-foreground">With condition filter</p>
           </TooltipContent>
         </Tooltip>
       )}
 
-      {/* Expression-based Tag */}
+      {/* Tag */}
       {conditions?.tag?.enabled && (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -466,57 +418,6 @@ function RuleSummary({ rule }: { rule: Automation }) {
             </p>
           </TooltipContent>
         </Tooltip>
-      )}
-
-      {/* Legacy mode actions (only show when not using expressions) */}
-      {!isExpressionBased && (
-        <>
-          {rule.uploadLimitKiB !== undefined && (
-            <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal cursor-default">
-              <ArrowUp className="h-3 w-3 text-muted-foreground/70" />
-              UL {rule.uploadLimitKiB} KiB/s
-            </Badge>
-          )}
-
-          {rule.downloadLimitKiB !== undefined && (
-            <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal cursor-default">
-              <ArrowDown className="h-3 w-3 text-muted-foreground/70" />
-              DL {rule.downloadLimitKiB} KiB/s
-            </Badge>
-          )}
-
-          {rule.ratioLimit !== undefined && (
-            <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal cursor-default">
-              <Scale className="h-3 w-3 text-muted-foreground/70" />
-              Ratio {rule.ratioLimit}
-            </Badge>
-          )}
-
-          {rule.seedingTimeLimitMinutes !== undefined && (
-            <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal cursor-default">
-              <Clock className="h-3 w-3 text-muted-foreground/70" />
-              {rule.seedingTimeLimitMinutes}m
-            </Badge>
-          )}
-
-          {rule.deleteMode && rule.deleteMode !== "none" && (
-            <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-destructive border-destructive/50 cursor-default">
-              <Trash2 className="h-3 w-3" />
-              {rule.deleteMode === "deleteWithFilesPreserveCrossSeeds"
-                ? "Delete + files (XS safe)"
-                : rule.deleteMode === "deleteWithFiles"
-                  ? "Delete + files"
-                  : "Delete"}
-            </Badge>
-          )}
-        </>
-      )}
-
-      {rule.deleteUnregistered && (
-        <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-orange-600 border-orange-600/50 cursor-default">
-          <XCircle className="h-3 w-3" />
-          Unregistered
-        </Badge>
       )}
     </div>
   )
