@@ -169,4 +169,5 @@ func TestProcessCrossSeedCandidate_RootlessContentDirOverridesSavePath(t *testin
 	require.Equal(t, "false", sync.addedOptions["autoTMM"])
 	require.Equal(t, "/downloads/tv/Show.S01E01", sync.addedOptions["savepath"])
 	require.Equal(t, "Original", sync.addedOptions["contentLayout"])
+	require.Equal(t, "true", sync.addedOptions["skip_checking"])
 }
