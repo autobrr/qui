@@ -28,14 +28,14 @@ import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
 import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
-import type { SortedPeersResponse, Torrent, TorrentFile, TorrentPeer } from "@/types"
+import type { SortedPeersResponse, Torrent, TorrentFile, TorrentPeer, TorrentTracker } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import "flag-icons/css/flag-icons.min.css"
-import { Ban, Copy, Loader2, Trash2, UserPlus, X } from "lucide-react"
+import { Ban, Copy, Edit, Loader2, Trash2, UserPlus, X } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackersTable, WebSeedsTable } from "./details"
-import { RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
+import { EditTrackerDialog, RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
 import { TorrentFileTree } from "./TorrentFileTree"
 
 interface TorrentDetailsPanelProps {
@@ -109,6 +109,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const [deleteCrossSeedFiles, setDeleteCrossSeedFiles] = useState(false)
   const [showDeleteCurrentDialog, setShowDeleteCurrentDialog] = useState(false)
   const [deleteCurrentFiles, setDeleteCurrentFiles] = useState(false)
+  const [showEditTrackerDialog, setShowEditTrackerDialog] = useState(false)
+  const [trackerToEdit, setTrackerToEdit] = useState<TorrentTracker | null>(null)
+  const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? true
   const copyToClipboard = useCallback(async (text: string, type: string) => {
     try {
       await copyTextToClipboard(text)
@@ -392,6 +395,45 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       toast.error(`Failed to ban peer: ${error.message}`)
     },
   })
+
+  // Edit tracker mutation - for single torrent tracker URL editing
+  const editTrackerMutation = useMutation({
+    mutationFn: async ({ oldURL, newURL }: { oldURL: string; newURL: string }) => {
+      if (!torrent) throw new Error("No torrent selected")
+      await api.bulkAction(instanceId, {
+        hashes: [torrent.hash],
+        action: "editTrackers",
+        trackerOldURL: oldURL,
+        trackerNewURL: newURL,
+      })
+    },
+    onSuccess: () => {
+      toast.success("Tracker URL updated successfully")
+      setShowEditTrackerDialog(false)
+      setTrackerToEdit(null)
+      queryClient.invalidateQueries({ queryKey: ["torrent-trackers", instanceId, torrent?.hash] })
+    },
+    onError: (error: Error) => {
+      toast.error("Failed to update tracker", {
+        description: error.message,
+      })
+    },
+  })
+
+  // Handle edit tracker click
+  const handleEditTrackerClick = useCallback((tracker: TorrentTracker) => {
+    setTrackerToEdit(tracker)
+    setShowEditTrackerDialog(true)
+  }, [])
+
+  // Get tracker domain from URL for display
+  const getTrackerDomain = useCallback((url: string): string => {
+    try {
+      return new URL(url).hostname
+    } catch {
+      return url
+    }
+  }, [])
 
   // Rename file state
   const [showRenameFileDialog, setShowRenameFileDialog] = useState(false)
@@ -1065,6 +1107,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 trackers={trackers}
                 loading={loadingTrackers}
                 incognitoMode={incognitoMode}
+                onEditTracker={handleEditTrackerClick}
+                supportsTrackerEditing={supportsTrackerEditing}
               />
             ) : (
               <ScrollArea className="h-full">
@@ -1095,9 +1139,18 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             const shouldRenderMessage = Boolean(tracker.msg)
                             const messageContent = incognitoMode && shouldRenderMessage ? "Tracker message hidden in incognito mode" : tracker.msg
 
-                            return (
+                            // Check if this is a valid URL (not DHT, PeX, LSD)
+                            const isValidUrl = (() => {
+                              try {
+                                new URL(tracker.url)
+                                return true
+                              } catch {
+                                return false
+                              }
+                            })()
+
+                            const cardContent = (
                               <div
-                                key={index}
                                 className={`backdrop-blur-sm border ${tracker.status === 0 ? "bg-card/30 border-border/30 opacity-60" : "bg-card/50 border-border/50"} hover:border-border transition-all rounded-lg p-4 space-y-3`}
                               >
                                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
@@ -1139,6 +1192,28 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                 )}
                               </div>
                             )
+
+                            // Wrap valid URLs with context menu for editing
+                            if (isValidUrl) {
+                              return (
+                                <ContextMenu key={index}>
+                                  <ContextMenuTrigger asChild>
+                                    {cardContent}
+                                  </ContextMenuTrigger>
+                                  <ContextMenuContent>
+                                    <ContextMenuItem
+                                      disabled={!supportsTrackerEditing}
+                                      onClick={() => handleEditTrackerClick(tracker)}
+                                    >
+                                      <Edit className="mr-2 h-4 w-4" />
+                                      Edit Tracker URL
+                                    </ContextMenuItem>
+                                  </ContextMenuContent>
+                                </ContextMenu>
+                              )
+                            }
+
+                            return <div key={index}>{cardContent}</div>
                           })}
                       </div>
                     </div>
@@ -1963,6 +2038,18 @@ tracker.example.com:8080
         onConfirm={handleRenameFolderConfirm}
         isPending={renameFolderMutation.isPending}
         initialPath={renameFolderPath ?? undefined}
+      />
+
+      {/* Edit Tracker Dialog */}
+      <EditTrackerDialog
+        open={showEditTrackerDialog}
+        onOpenChange={setShowEditTrackerDialog}
+        instanceId={instanceId}
+        tracker={trackerToEdit ? getTrackerDomain(trackerToEdit.url) : ""}
+        trackerURLs={trackerToEdit ? [trackerToEdit.url] : []}
+        selectedHashes={torrent ? [torrent.hash] : []}
+        onConfirm={(oldURL, newURL) => editTrackerMutation.mutate({ oldURL, newURL })}
+        isPending={editTrackerMutation.isPending}
       />
     </div>
   )

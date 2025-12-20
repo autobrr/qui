@@ -4,6 +4,7 @@
  */
 
 import { Badge } from "@/components/ui/badge"
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
@@ -20,13 +21,15 @@ import {
   useReactTable,
 } from "@tanstack/react-table"
 import { SortIcon } from "@/components/ui/sort-icon"
-import { Loader2 } from "lucide-react"
+import { Edit, Loader2 } from "lucide-react"
 import { memo, useMemo, useState } from "react"
 
 interface TrackersTableProps {
   trackers: TorrentTracker[] | undefined
   loading: boolean
   incognitoMode: boolean
+  onEditTracker?: (tracker: TorrentTracker) => void
+  supportsTrackerEditing?: boolean
 }
 
 const columnHelper = createColumnHelper<TorrentTracker>()
@@ -52,6 +55,8 @@ export const TrackersTable = memo(function TrackersTable({
   trackers,
   loading,
   incognitoMode,
+  onEditTracker,
+  supportsTrackerEditing = false,
 }: TrackersTableProps) {
   // Default sort by status with disabled at bottom
   const [sorting, setSorting] = useState<SortingState>([{ id: "status", desc: false }])
@@ -214,28 +219,62 @@ export const TrackersTable = memo(function TrackersTable({
             ))}
           </thead>
           <tbody>
-            {table.getRowModel().rows.map((row) => (
-              <tr
-                key={row.id}
-                className="border-b border-border/50 hover:bg-muted/30"
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <td
-                    key={cell.id}
-                    className="px-3 py-2"
-                    style={
-                      (cell.column.columnDef.meta as { fullWidth?: boolean })?.fullWidth
-                        ? { width: "100%" }
-                        : cell.column.columnDef.size
-                          ? { width: cell.column.getSize() }
-                          : undefined
-                    }
-                  >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-              </tr>
-            ))}
+            {table.getRowModel().rows.map((row) => {
+              const tracker = row.original
+              const isValidUrl = (() => {
+                try {
+                  new URL(tracker.url)
+                  return true
+                } catch {
+                  return false
+                }
+              })()
+
+              const rowContent = (
+                <tr
+                  key={row.id}
+                  className="border-b border-border/50 hover:bg-muted/30"
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <td
+                      key={cell.id}
+                      className="px-3 py-2"
+                      style={
+                        (cell.column.columnDef.meta as { fullWidth?: boolean })?.fullWidth
+                          ? { width: "100%" }
+                          : cell.column.columnDef.size
+                            ? { width: cell.column.getSize() }
+                            : undefined
+                      }
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  ))}
+                </tr>
+              )
+
+              // Only show context menu for valid URLs (not DHT, PeX, LSD)
+              if (isValidUrl && onEditTracker) {
+                return (
+                  <ContextMenu key={row.id}>
+                    <ContextMenuTrigger asChild>
+                      {rowContent}
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <ContextMenuItem
+                        disabled={!supportsTrackerEditing}
+                        onClick={() => onEditTracker(tracker)}
+                      >
+                        <Edit className="mr-2 h-4 w-4" />
+                        Edit Tracker URL
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
+                )
+              }
+
+              return rowContent
+            })}
           </tbody>
         </table>
       </div>
