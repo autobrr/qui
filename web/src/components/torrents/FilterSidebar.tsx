@@ -201,8 +201,8 @@ const FilterSidebarComponent = ({
     instanceId,
     { enabled: isInstanceActive }
   )
-  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
-  const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? true
+  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
+  const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? false
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
   const { preferences } = useInstancePreferences(
     instanceId,

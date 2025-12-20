@@ -95,7 +95,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const [deleteCurrentFiles, setDeleteCurrentFiles] = useState(false)
   const [showEditTrackerDialog, setShowEditTrackerDialog] = useState(false)
   const [trackerToEdit, setTrackerToEdit] = useState<TorrentTracker | null>(null)
-  const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? true
+  const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? false
   const copyToClipboard = useCallback(async (text: string, type: string) => {
     try {
       await copyTextToClipboard(text)
