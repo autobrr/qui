@@ -20,52 +20,52 @@ import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { api } from "@/lib/api"
 import { cn, parseTrackerDomains } from "@/lib/utils"
-import type { TrackerRule } from "@/types"
+import type { Automation } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Clock, Filter, Loader2, Pause, Pencil, Plus, RefreshCw, Scale, Tag, Trash2, XCircle } from "lucide-react"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
-import { TrackerRuleDialog } from "./TrackerRuleDialog"
+import { AutomationDialog } from "./AutomationDialog"
 
-interface TrackerRulesPanelProps {
+interface AutomationsPanelProps {
   instanceId: number
   /** Render variant: "card" wraps in Card component, "embedded" renders without card wrapper */
   variant?: "card" | "embedded"
 }
 
-export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRulesPanelProps) {
+export function AutomationsPanel({ instanceId, variant = "card" }: AutomationsPanelProps) {
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingRule, setEditingRule] = useState<TrackerRule | null>(null)
-  const [deleteConfirmRule, setDeleteConfirmRule] = useState<TrackerRule | null>(null)
+  const [editingRule, setEditingRule] = useState<Automation | null>(null)
+  const [deleteConfirmRule, setDeleteConfirmRule] = useState<Automation | null>(null)
 
   const rulesQuery = useQuery({
-    queryKey: ["tracker-rules", instanceId],
-    queryFn: () => api.listTrackerRules(instanceId),
+    queryKey: ["automations", instanceId],
+    queryFn: () => api.listAutomations(instanceId),
   })
 
   const deleteRule = useMutation({
-    mutationFn: (ruleId: number) => api.deleteTrackerRule(instanceId, ruleId),
+    mutationFn: (ruleId: number) => api.deleteAutomation(instanceId, ruleId),
     onSuccess: () => {
-      toast.success("Tracker rule deleted")
-      void queryClient.invalidateQueries({ queryKey: ["tracker-rules", instanceId] })
+      toast.success("Automation deleted")
+      void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to delete tracker rule")
+      toast.error(error instanceof Error ? error.message : "Failed to delete automation")
     },
   })
 
   const reorderRules = useMutation({
-    mutationFn: (orderedIds: number[]) => api.reorderTrackerRules(instanceId, orderedIds),
+    mutationFn: (orderedIds: number[]) => api.reorderAutomations(instanceId, orderedIds),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["tracker-rules", instanceId] })
+      void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
     },
   })
 
   const toggleEnabled = useMutation({
-    mutationFn: (rule: TrackerRule) => api.updateTrackerRule(instanceId, rule.id, { ...rule, enabled: !rule.enabled }),
+    mutationFn: (rule: Automation) => api.updateAutomation(instanceId, rule.id, { ...rule, enabled: !rule.enabled }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["tracker-rules", instanceId] })
+      void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to toggle rule")
@@ -73,12 +73,12 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
   })
 
   const applyRules = useMutation({
-    mutationFn: () => api.applyTrackerRules(instanceId),
+    mutationFn: () => api.applyAutomations(instanceId),
     onSuccess: () => {
-      toast.success("Tracker rules applied")
+      toast.success("Automations applied")
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to apply tracker rules")
+      toast.error(error instanceof Error ? error.message : "Failed to apply automations")
     },
   })
 
@@ -92,7 +92,7 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
     setDialogOpen(true)
   }
 
-  const openForEdit = (rule: TrackerRule) => {
+  const openForEdit = (rule: Automation) => {
     setEditingRule(rule)
     setDialogOpen(true)
   }
@@ -114,7 +114,7 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       {variant === "card" && (
         <div className="space-y-1">
-          <h3 className="text-lg font-semibold">Tracker Rules</h3>
+          <h3 className="text-lg font-semibold">Automations</h3>
           <p className="text-sm text-muted-foreground">Automatic limits and deletion.</p>
         </div>
       )}
@@ -139,7 +139,7 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
           Loading rules...
         </div>
       ) : (sortedRules?.length ?? 0) === 0 ? (
-        <p className="text-muted-foreground text-sm">No tracker rules yet. Add one to start enforcing per-tracker limits.</p>
+        <p className="text-muted-foreground text-sm">No automations yet. Add one to start enforcing per-tracker limits.</p>
       ) : (
         <div className="space-y-2">
           {sortedRules.map((rule) => {
@@ -258,7 +258,7 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
       <div className="space-y-4">
         {headerContent}
         {rulesContent}
-        <TrackerRuleDialog
+        <AutomationDialog
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           instanceId={instanceId}
@@ -279,7 +279,7 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
           {rulesContent}
         </CardContent>
       </Card>
-      <TrackerRuleDialog
+      <AutomationDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         instanceId={instanceId}
@@ -290,7 +290,7 @@ export function TrackerRulesPanel({ instanceId, variant = "card" }: TrackerRules
   )
 }
 
-function RuleSummary({ rule }: { rule: TrackerRule }) {
+function RuleSummary({ rule }: { rule: Automation }) {
   const trackers = parseTrackerDomains(rule)
   const isAllTrackers = rule.trackerPattern === "*"
   const categories = rule.categories ?? []

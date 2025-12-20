@@ -70,11 +70,11 @@ import type {
   TorznabSearchResult,
   TrackerCustomization,
   TrackerCustomizationInput,
-  TrackerRule,
-  TrackerRuleActivity,
-  TrackerRuleInput,
-  TrackerRulePreviewInput,
-  TrackerRulePreviewResult,
+  Automation,
+  AutomationActivity,
+  AutomationInput,
+  AutomationPreviewInput,
+  AutomationPreviewResult,
   User,
   DashboardSettings,
   DashboardSettingsInput
@@ -1279,56 +1279,56 @@ class ApiClient {
     return this.request(`/instances/${instanceId}/trackers`)
   }
 
-  async listTrackerRules(instanceId: number): Promise<TrackerRule[]> {
-    return this.request(`/instances/${instanceId}/tracker-rules`)
+  async listAutomations(instanceId: number): Promise<Automation[]> {
+    return this.request(`/instances/${instanceId}/automations`)
   }
 
-  async createTrackerRule(instanceId: number, payload: TrackerRuleInput): Promise<TrackerRule> {
-    return this.request(`/instances/${instanceId}/tracker-rules`, {
+  async createAutomation(instanceId: number, payload: AutomationInput): Promise<Automation> {
+    return this.request(`/instances/${instanceId}/automations`, {
       method: "POST",
       body: JSON.stringify(payload),
     })
   }
 
-  async updateTrackerRule(instanceId: number, ruleId: number, payload: TrackerRuleInput): Promise<TrackerRule> {
-    return this.request(`/instances/${instanceId}/tracker-rules/${ruleId}`, {
+  async updateAutomation(instanceId: number, ruleId: number, payload: AutomationInput): Promise<Automation> {
+    return this.request(`/instances/${instanceId}/automations/${ruleId}`, {
       method: "PUT",
       body: JSON.stringify(payload),
     })
   }
 
-  async deleteTrackerRule(instanceId: number, ruleId: number): Promise<void> {
-    return this.request(`/instances/${instanceId}/tracker-rules/${ruleId}`, {
+  async deleteAutomation(instanceId: number, ruleId: number): Promise<void> {
+    return this.request(`/instances/${instanceId}/automations/${ruleId}`, {
       method: "DELETE",
     })
   }
 
-  async reorderTrackerRules(instanceId: number, orderedIds: number[]): Promise<void> {
-    return this.request(`/instances/${instanceId}/tracker-rules/order`, {
+  async reorderAutomations(instanceId: number, orderedIds: number[]): Promise<void> {
+    return this.request(`/instances/${instanceId}/automations/order`, {
       method: "PUT",
       body: JSON.stringify({ orderedIds }),
     })
   }
 
-  async applyTrackerRules(instanceId: number): Promise<void> {
-    return this.request(`/instances/${instanceId}/tracker-rules/apply`, {
+  async applyAutomations(instanceId: number): Promise<void> {
+    return this.request(`/instances/${instanceId}/automations/apply`, {
       method: "POST",
     })
   }
 
-  async getTrackerRuleActivity(instanceId: number, limit?: number): Promise<TrackerRuleActivity[]> {
+  async getAutomationActivity(instanceId: number, limit?: number): Promise<AutomationActivity[]> {
     const query = typeof limit === "number" ? `?limit=${limit}` : ""
-    return this.request<TrackerRuleActivity[]>(`/instances/${instanceId}/tracker-rules/activity${query}`)
+    return this.request<AutomationActivity[]>(`/instances/${instanceId}/automations/activity${query}`)
   }
 
-  async deleteTrackerRuleActivity(instanceId: number, olderThanDays: number): Promise<{ deleted: number }> {
-    return this.request<{ deleted: number }>(`/instances/${instanceId}/tracker-rules/activity?older_than=${olderThanDays}`, {
+  async deleteAutomationActivity(instanceId: number, olderThanDays: number): Promise<{ deleted: number }> {
+    return this.request<{ deleted: number }>(`/instances/${instanceId}/automations/activity?older_than=${olderThanDays}`, {
       method: "DELETE",
     })
   }
 
-  async previewTrackerRule(instanceId: number, payload: TrackerRulePreviewInput): Promise<TrackerRulePreviewResult> {
-    return this.request<TrackerRulePreviewResult>(`/instances/${instanceId}/tracker-rules/preview`, {
+  async previewAutomation(instanceId: number, payload: AutomationPreviewInput): Promise<AutomationPreviewResult> {
+    return this.request<AutomationPreviewResult>(`/instances/${instanceId}/automations/preview`, {
       method: "POST",
       body: JSON.stringify(payload),
     })

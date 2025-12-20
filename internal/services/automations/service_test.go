@@ -1,7 +1,7 @@
 // Copyright (c) 2025, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-package trackerrules
+package automations
 
 import (
 	"testing"
@@ -197,20 +197,20 @@ func TestShouldDeleteTorrent(t *testing.T) {
 	tests := []struct {
 		name    string
 		torrent qbt.Torrent
-		rule    *models.TrackerRule
+		rule    *models.Automation
 		want    bool
 	}{
 		// Progress checks
 		{
 			name:    "incomplete torrent not deleted",
 			torrent: qbt.Torrent{Progress: 0.5, Ratio: 3.0, SeedingTime: 7200},
-			rule:    &models.TrackerRule{DeleteMode: ptr("delete"), RatioLimit: &ratioLimit},
+			rule:    &models.Automation{DeleteMode: ptr("delete"), RatioLimit: &ratioLimit},
 			want:    false,
 		},
 		{
 			name:    "completed torrent can be deleted",
 			torrent: qbt.Torrent{Progress: 1.0, Ratio: 3.0, SeedingTime: 7200},
-			rule:    &models.TrackerRule{DeleteMode: ptr("delete"), RatioLimit: &ratioLimit},
+			rule:    &models.Automation{DeleteMode: ptr("delete"), RatioLimit: &ratioLimit},
 			want:    true,
 		},
 
@@ -218,31 +218,31 @@ func TestShouldDeleteTorrent(t *testing.T) {
 		{
 			name:    "nil delete mode not deleted",
 			torrent: qbt.Torrent{Progress: 1.0, Ratio: 3.0},
-			rule:    &models.TrackerRule{DeleteMode: nil, RatioLimit: &ratioLimit},
+			rule:    &models.Automation{DeleteMode: nil, RatioLimit: &ratioLimit},
 			want:    false,
 		},
 		{
 			name:    "empty delete mode not deleted",
 			torrent: qbt.Torrent{Progress: 1.0, Ratio: 3.0},
-			rule:    &models.TrackerRule{DeleteMode: ptr(""), RatioLimit: &ratioLimit},
+			rule:    &models.Automation{DeleteMode: ptr(""), RatioLimit: &ratioLimit},
 			want:    false,
 		},
 		{
 			name:    "none delete mode not deleted",
 			torrent: qbt.Torrent{Progress: 1.0, Ratio: 3.0},
-			rule:    &models.TrackerRule{DeleteMode: ptr("none"), RatioLimit: &ratioLimit},
+			rule:    &models.Automation{DeleteMode: ptr("none"), RatioLimit: &ratioLimit},
 			want:    false,
 		},
 		{
 			name:    "delete mode enabled",
 			torrent: qbt.Torrent{Progress: 1.0, Ratio: 3.0},
-			rule:    &models.TrackerRule{DeleteMode: ptr("delete"), RatioLimit: &ratioLimit},
+			rule:    &models.Automation{DeleteMode: ptr("delete"), RatioLimit: &ratioLimit},
 			want:    true,
 		},
 		{
 			name:    "deleteWithFiles mode enabled",
 			torrent: qbt.Torrent{Progress: 1.0, Ratio: 3.0},
-			rule:    &models.TrackerRule{DeleteMode: ptr("deleteWithFiles"), RatioLimit: &ratioLimit},
+			rule:    &models.Automation{DeleteMode: ptr("deleteWithFiles"), RatioLimit: &ratioLimit},
 			want:    true,
 		},
 
@@ -250,19 +250,19 @@ func TestShouldDeleteTorrent(t *testing.T) {
 		{
 			name:    "no limits configured not deleted",
 			torrent: qbt.Torrent{Progress: 1.0, Ratio: 3.0, SeedingTime: 7200},
-			rule:    &models.TrackerRule{DeleteMode: ptr("delete")},
+			rule:    &models.Automation{DeleteMode: ptr("delete")},
 			want:    false,
 		},
 		{
 			name:    "zero ratio limit not deleted",
 			torrent: qbt.Torrent{Progress: 1.0, Ratio: 3.0},
-			rule:    &models.TrackerRule{DeleteMode: ptr("delete"), RatioLimit: ptr(0.0)},
+			rule:    &models.Automation{DeleteMode: ptr("delete"), RatioLimit: ptr(0.0)},
 			want:    false,
 		},
 		{
 			name:    "zero seeding limit not deleted",
 			torrent: qbt.Torrent{Progress: 1.0, SeedingTime: 7200},
-			rule:    &models.TrackerRule{DeleteMode: ptr("delete"), SeedingTimeLimitMinutes: ptr(int64(0))},
+			rule:    &models.Automation{DeleteMode: ptr("delete"), SeedingTimeLimitMinutes: ptr(int64(0))},
 			want:    false,
 		},
 
@@ -270,19 +270,19 @@ func TestShouldDeleteTorrent(t *testing.T) {
 		{
 			name:    "ratio below limit not deleted",
 			torrent: qbt.Torrent{Progress: 1.0, Ratio: 1.5},
-			rule:    &models.TrackerRule{DeleteMode: ptr("delete"), RatioLimit: &ratioLimit},
+			rule:    &models.Automation{DeleteMode: ptr("delete"), RatioLimit: &ratioLimit},
 			want:    false,
 		},
 		{
 			name:    "ratio at limit deleted",
 			torrent: qbt.Torrent{Progress: 1.0, Ratio: 2.0},
-			rule:    &models.TrackerRule{DeleteMode: ptr("delete"), RatioLimit: &ratioLimit},
+			rule:    &models.Automation{DeleteMode: ptr("delete"), RatioLimit: &ratioLimit},
 			want:    true,
 		},
 		{
 			name:    "ratio above limit deleted",
 			torrent: qbt.Torrent{Progress: 1.0, Ratio: 3.0},
-			rule:    &models.TrackerRule{DeleteMode: ptr("delete"), RatioLimit: &ratioLimit},
+			rule:    &models.Automation{DeleteMode: ptr("delete"), RatioLimit: &ratioLimit},
 			want:    true,
 		},
 
@@ -290,19 +290,19 @@ func TestShouldDeleteTorrent(t *testing.T) {
 		{
 			name:    "seeding time below limit not deleted",
 			torrent: qbt.Torrent{Progress: 1.0, SeedingTime: 3000}, // 50 minutes
-			rule:    &models.TrackerRule{DeleteMode: ptr("delete"), SeedingTimeLimitMinutes: &seedingLimit},
+			rule:    &models.Automation{DeleteMode: ptr("delete"), SeedingTimeLimitMinutes: &seedingLimit},
 			want:    false,
 		},
 		{
 			name:    "seeding time at limit deleted",
 			torrent: qbt.Torrent{Progress: 1.0, SeedingTime: 3600}, // 60 minutes
-			rule:    &models.TrackerRule{DeleteMode: ptr("delete"), SeedingTimeLimitMinutes: &seedingLimit},
+			rule:    &models.Automation{DeleteMode: ptr("delete"), SeedingTimeLimitMinutes: &seedingLimit},
 			want:    true,
 		},
 		{
 			name:    "seeding time above limit deleted",
 			torrent: qbt.Torrent{Progress: 1.0, SeedingTime: 7200}, // 120 minutes
-			rule:    &models.TrackerRule{DeleteMode: ptr("delete"), SeedingTimeLimitMinutes: &seedingLimit},
+			rule:    &models.Automation{DeleteMode: ptr("delete"), SeedingTimeLimitMinutes: &seedingLimit},
 			want:    true,
 		},
 
@@ -310,25 +310,25 @@ func TestShouldDeleteTorrent(t *testing.T) {
 		{
 			name:    "ratio met seeding not met - deleted",
 			torrent: qbt.Torrent{Progress: 1.0, Ratio: 3.0, SeedingTime: 1800}, // ratio met, 30 min seeding
-			rule:    &models.TrackerRule{DeleteMode: ptr("delete"), RatioLimit: &ratioLimit, SeedingTimeLimitMinutes: &seedingLimit},
+			rule:    &models.Automation{DeleteMode: ptr("delete"), RatioLimit: &ratioLimit, SeedingTimeLimitMinutes: &seedingLimit},
 			want:    true,
 		},
 		{
 			name:    "ratio not met seeding met - deleted",
 			torrent: qbt.Torrent{Progress: 1.0, Ratio: 1.0, SeedingTime: 7200}, // ratio not met, seeding met
-			rule:    &models.TrackerRule{DeleteMode: ptr("delete"), RatioLimit: &ratioLimit, SeedingTimeLimitMinutes: &seedingLimit},
+			rule:    &models.Automation{DeleteMode: ptr("delete"), RatioLimit: &ratioLimit, SeedingTimeLimitMinutes: &seedingLimit},
 			want:    true,
 		},
 		{
 			name:    "both conditions met - deleted",
 			torrent: qbt.Torrent{Progress: 1.0, Ratio: 3.0, SeedingTime: 7200},
-			rule:    &models.TrackerRule{DeleteMode: ptr("delete"), RatioLimit: &ratioLimit, SeedingTimeLimitMinutes: &seedingLimit},
+			rule:    &models.Automation{DeleteMode: ptr("delete"), RatioLimit: &ratioLimit, SeedingTimeLimitMinutes: &seedingLimit},
 			want:    true,
 		},
 		{
 			name:    "neither condition met - not deleted",
 			torrent: qbt.Torrent{Progress: 1.0, Ratio: 1.0, SeedingTime: 1800},
-			rule:    &models.TrackerRule{DeleteMode: ptr("delete"), RatioLimit: &ratioLimit, SeedingTimeLimitMinutes: &seedingLimit},
+			rule:    &models.Automation{DeleteMode: ptr("delete"), RatioLimit: &ratioLimit, SeedingTimeLimitMinutes: &seedingLimit},
 			want:    false,
 		},
 	}
@@ -634,19 +634,19 @@ func TestSelectRule(t *testing.T) {
 	tests := []struct {
 		name    string
 		torrent qbt.Torrent
-		rules   []*models.TrackerRule
+		rules   []*models.Automation
 		wantID  int // 0 means expect nil
 	}{
 		{
 			name:    "no rules returns nil",
 			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce"},
-			rules:   []*models.TrackerRule{},
+			rules:   []*models.Automation{},
 			wantID:  0,
 		},
 		{
 			name:    "disabled rule skipped",
 			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce"},
-			rules: []*models.TrackerRule{
+			rules: []*models.Automation{
 				{ID: 1, Enabled: false, TrackerPattern: "tracker.example.com"},
 			},
 			wantID: 0,
@@ -654,7 +654,7 @@ func TestSelectRule(t *testing.T) {
 		{
 			name:    "enabled rule matches",
 			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce"},
-			rules: []*models.TrackerRule{
+			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "tracker.example.com"},
 			},
 			wantID: 1,
@@ -662,7 +662,7 @@ func TestSelectRule(t *testing.T) {
 		{
 			name:    "first matching rule wins",
 			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce"},
-			rules: []*models.TrackerRule{
+			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "tracker.example.com"},
 				{ID: 2, Enabled: true, TrackerPattern: "*"},
 			},
@@ -671,7 +671,7 @@ func TestSelectRule(t *testing.T) {
 		{
 			name:    "wildcard matches all",
 			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce"},
-			rules: []*models.TrackerRule{
+			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*"},
 			},
 			wantID: 1,
@@ -681,7 +681,7 @@ func TestSelectRule(t *testing.T) {
 		{
 			name:    "category match",
 			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce", Category: "tv"},
-			rules: []*models.TrackerRule{
+			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Categories: []string{"tv"}},
 			},
 			wantID: 1,
@@ -689,7 +689,7 @@ func TestSelectRule(t *testing.T) {
 		{
 			name:    "category mismatch",
 			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce", Category: "movies"},
-			rules: []*models.TrackerRule{
+			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Categories: []string{"tv"}},
 			},
 			wantID: 0,
@@ -697,7 +697,7 @@ func TestSelectRule(t *testing.T) {
 		{
 			name:    "category case insensitive",
 			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce", Category: "TV"},
-			rules: []*models.TrackerRule{
+			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Categories: []string{"tv"}},
 			},
 			wantID: 1,
@@ -705,7 +705,7 @@ func TestSelectRule(t *testing.T) {
 		{
 			name:    "no category filter matches all",
 			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce", Category: "anything"},
-			rules: []*models.TrackerRule{
+			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Categories: []string{}},
 			},
 			wantID: 1,
@@ -713,7 +713,7 @@ func TestSelectRule(t *testing.T) {
 		{
 			name:    "multiple categories any match",
 			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce", Category: "movies"},
-			rules: []*models.TrackerRule{
+			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Categories: []string{"tv", "movies"}},
 			},
 			wantID: 1,
@@ -723,7 +723,7 @@ func TestSelectRule(t *testing.T) {
 		{
 			name:    "tag any mode match",
 			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce", Tags: "tagA, tagB"},
-			rules: []*models.TrackerRule{
+			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Tags: []string{"tagA"}, TagMatchMode: models.TagMatchModeAny},
 			},
 			wantID: 1,
@@ -731,7 +731,7 @@ func TestSelectRule(t *testing.T) {
 		{
 			name:    "tag any mode one of many",
 			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce", Tags: "tagA"},
-			rules: []*models.TrackerRule{
+			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Tags: []string{"tagA", "tagB", "tagC"}, TagMatchMode: models.TagMatchModeAny},
 			},
 			wantID: 1,
@@ -739,7 +739,7 @@ func TestSelectRule(t *testing.T) {
 		{
 			name:    "tag any mode no match",
 			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce", Tags: "tagX"},
-			rules: []*models.TrackerRule{
+			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Tags: []string{"tagA", "tagB"}, TagMatchMode: models.TagMatchModeAny},
 			},
 			wantID: 0,
@@ -749,7 +749,7 @@ func TestSelectRule(t *testing.T) {
 		{
 			name:    "tag all mode all present",
 			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce", Tags: "tagA, tagB, tagC"},
-			rules: []*models.TrackerRule{
+			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Tags: []string{"tagA", "tagB"}, TagMatchMode: models.TagMatchModeAll},
 			},
 			wantID: 1,
@@ -757,7 +757,7 @@ func TestSelectRule(t *testing.T) {
 		{
 			name:    "tag all mode missing one",
 			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce", Tags: "tagA"},
-			rules: []*models.TrackerRule{
+			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Tags: []string{"tagA", "tagB"}, TagMatchMode: models.TagMatchModeAll},
 			},
 			wantID: 0,
@@ -767,7 +767,7 @@ func TestSelectRule(t *testing.T) {
 		{
 			name:    "no tag filter matches all",
 			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce", Tags: "anything"},
-			rules: []*models.TrackerRule{
+			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Tags: []string{}},
 			},
 			wantID: 1,
@@ -777,7 +777,7 @@ func TestSelectRule(t *testing.T) {
 		{
 			name:    "combined category and tag match",
 			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce", Category: "tv", Tags: "tagA"},
-			rules: []*models.TrackerRule{
+			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Categories: []string{"tv"}, Tags: []string{"tagA"}},
 			},
 			wantID: 1,
@@ -785,7 +785,7 @@ func TestSelectRule(t *testing.T) {
 		{
 			name:    "combined category match tag mismatch",
 			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce", Category: "tv", Tags: "tagX"},
-			rules: []*models.TrackerRule{
+			rules: []*models.Automation{
 				{ID: 1, Enabled: true, TrackerPattern: "*", Categories: []string{"tv"}, Tags: []string{"tagA"}},
 			},
 			wantID: 0,

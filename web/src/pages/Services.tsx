@@ -5,8 +5,8 @@
 
 import { ReannounceOverview } from "@/components/instances/preferences/ReannounceOverview"
 import { TrackerReannounceForm } from "@/components/instances/preferences/TrackerReannounceForm"
-import { TrackerRulesActivityOverview } from "@/components/instances/preferences/TrackerRulesActivityOverview"
-import { TrackerRulesOverview } from "@/components/instances/preferences/TrackerRulesOverview"
+import { AutomationsActivityOverview } from "@/components/instances/preferences/AutomationActivityOverview"
+import { AutomationsOverview } from "@/components/instances/preferences/AutomationsOverview"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
@@ -43,10 +43,10 @@ export function Services() {
       {/* Reannounce Overview - shows all instances in accordion */}
       <ReannounceOverview onConfigureInstance={handleConfigureReannounce} />
 
-      {/* Tracker Rules: 2-col grid with independent heights */}
+      {/* Automations: 2-col grid with independent heights */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-        <TrackerRulesOverview />
-        <TrackerRulesActivityOverview />
+        <AutomationsOverview />
+        <AutomationsActivityOverview />
       </div>
 
       {instances && instances.length === 0 && (

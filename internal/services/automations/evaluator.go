@@ -1,7 +1,7 @@
 // Copyright (c) 2025, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-package trackerrules
+package automations
 
 import (
 	"strconv"
@@ -56,7 +56,7 @@ func EvaluateConditionWithContext(cond *RuleCondition, torrent qbt.Torrent, ctx 
 				Err(err).
 				Str("field", string(cond.Field)).
 				Str("pattern", cond.Value).
-				Msg("tracker rules: regex compilation failed")
+				Msg("automations: regex compilation failed")
 			return false
 		}
 	}

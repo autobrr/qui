@@ -28,14 +28,14 @@ import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
 import { cn, copyTextToClipboard, formatRelativeTime } from "@/lib/utils"
-import type { TrackerRuleActivity } from "@/types"
+import type { AutomationActivity } from "@/types"
 import { useQueries, useQueryClient } from "@tanstack/react-query"
 import { TruncatedText } from "@/components/ui/truncated-text"
 import { Copy, Info, RefreshCcw, Search, Settings2, Trash2 } from "lucide-react"
 import { useCallback, useMemo, useState } from "react"
 import { toast } from "sonner"
 
-interface TrackerRulesActivityOverviewProps {
+interface AutomationsActivityOverviewProps {
   onConfigureInstance?: (instanceId: number) => void
 }
 
@@ -45,7 +45,7 @@ interface InstanceStats {
   lastActivity?: Date
 }
 
-function computeStats(events: TrackerRuleActivity[]): InstanceStats {
+function computeStats(events: AutomationActivity[]): InstanceStats {
   const now = new Date()
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 
@@ -70,7 +70,7 @@ function computeStats(events: TrackerRuleActivity[]): InstanceStats {
   return { deletionsToday, failedToday, lastActivity }
 }
 
-function formatAction(action: TrackerRuleActivity["action"]): string {
+function formatAction(action: AutomationActivity["action"]): string {
   switch (action) {
     case "deleted_ratio":
       return "Ratio limit"
@@ -91,7 +91,7 @@ function formatAction(action: TrackerRuleActivity["action"]): string {
   }
 }
 
-export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRulesActivityOverviewProps) {
+export function AutomationsActivityOverview({ onConfigureInstance }: AutomationsActivityOverviewProps) {
   const { instances } = useInstances()
   const queryClient = useQueryClient()
   const { formatISOTimestamp } = useDateTimeFormatters()
@@ -143,7 +143,7 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
   const activityQueries = useQueries({
     queries: activeInstances.map((instance) => ({
       queryKey: ["tracker-rule-activity", instance.id],
-      queryFn: () => api.getTrackerRuleActivity(instance.id, 100),
+      queryFn: () => api.getAutomationActivity(instance.id, 100),
       refetchInterval: expandedInstances.includes(String(instance.id)) ? 5000 : 30000,
       staleTime: 5000,
     })),
@@ -151,7 +151,7 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
 
   const handleDeleteOldActivity = async (instanceId: number, days: number) => {
     try {
-      const result = await api.deleteTrackerRuleActivity(instanceId, days)
+      const result = await api.deleteAutomationActivity(instanceId, days)
       toast.success(`Deleted ${result.deleted} activity entries`)
       queryClient.invalidateQueries({ queryKey: ["tracker-rule-activity", instanceId] })
     } catch (error) {
@@ -161,12 +161,12 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
     }
   }
 
-  const outcomeClasses: Record<TrackerRuleActivity["outcome"], string> = {
+  const outcomeClasses: Record<AutomationActivity["outcome"], string> = {
     success: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
     failed: "bg-destructive/10 text-destructive border-destructive/30",
   }
 
-  const actionClasses: Record<TrackerRuleActivity["action"], string> = {
+  const actionClasses: Record<AutomationActivity["action"], string> = {
     deleted_ratio: "bg-blue-500/10 text-blue-500 border-blue-500/20",
     deleted_seeding: "bg-purple-500/10 text-purple-500 border-purple-500/20",
     deleted_unregistered: "bg-orange-500/10 text-orange-500 border-orange-500/20",
@@ -180,7 +180,7 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">Tracker Rules Activity</CardTitle>
+          <CardTitle className="text-lg font-semibold">Automations Activity</CardTitle>
           <CardDescription>
             No instances configured. Add one in Settings to use this service.
           </CardDescription>
@@ -193,21 +193,21 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
     <Card>
       <CardHeader className="space-y-2">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-lg font-semibold">Tracker Rules Activity</CardTitle>
+          <CardTitle className="text-lg font-semibold">Automations Activity</CardTitle>
           <Tooltip>
             <TooltipTrigger asChild>
               <Info className="h-4 w-4 text-muted-foreground cursor-help" />
             </TooltipTrigger>
             <TooltipContent className="max-w-[300px]">
               <p>
-                History of torrents deleted by tracker rules due to ratio limits, seeding time limits,
+                History of torrents deleted by automations due to ratio limits, seeding time limits,
                 or unregistered status. Use the Clear button to manage retention.
               </p>
             </TooltipContent>
           </Tooltip>
         </div>
         <CardDescription>
-          History of torrents removed by tracker rules.
+          History of torrents removed by automations.
         </CardDescription>
       </CardHeader>
 
@@ -433,7 +433,7 @@ export function TrackerRulesActivityOverview({ onConfigureInstance }: TrackerRul
                           <p className="text-xs text-muted-foreground/60 mt-1">
                             {searchTerm
                               ? "Try a different search term or clear the filter."
-                              : "Events will appear here when tracker rules delete torrents."}
+                              : "Events will appear here when automations delete torrents."}
                           </p>
                         </div>
                       ) : (

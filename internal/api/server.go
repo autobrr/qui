@@ -27,13 +27,13 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/proxy"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
-	"github.com/autobrr/qui/internal/services/trackerrules"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
 	"github.com/autobrr/qui/internal/web/swagger"
@@ -64,9 +64,9 @@ type Server struct {
 	crossSeedService                 *crossseed.Service
 	jackettService                   *jackett.Service
 	torznabIndexerStore              *models.TorznabIndexerStore
-	trackerRuleStore                 *models.TrackerRuleStore
-	trackerRuleActivityStore         *models.TrackerRuleActivityStore
-	trackerRuleService               *trackerrules.Service
+	automationStore                  *models.AutomationStore
+	automationActivityStore          *models.AutomationActivityStore
+	automationService                *automations.Service
 	trackerCustomizationStore        *models.TrackerCustomizationStore
 	dashboardSettingsStore           *models.DashboardSettingsStore
 	instanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
@@ -94,9 +94,9 @@ type Dependencies struct {
 	CrossSeedService                 *crossseed.Service
 	JackettService                   *jackett.Service
 	TorznabIndexerStore              *models.TorznabIndexerStore
-	TrackerRuleStore                 *models.TrackerRuleStore
-	TrackerRuleActivityStore         *models.TrackerRuleActivityStore
-	TrackerRuleService               *trackerrules.Service
+	AutomationStore                  *models.AutomationStore
+	AutomationActivityStore          *models.AutomationActivityStore
+	AutomationService                *automations.Service
 	TrackerCustomizationStore        *models.TrackerCustomizationStore
 	DashboardSettingsStore           *models.DashboardSettingsStore
 	InstanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
@@ -131,9 +131,9 @@ func NewServer(deps *Dependencies) *Server {
 		reannounceService:                deps.ReannounceService,
 		jackettService:                   deps.JackettService,
 		torznabIndexerStore:              deps.TorznabIndexerStore,
-		trackerRuleStore:                 deps.TrackerRuleStore,
-		trackerRuleActivityStore:         deps.TrackerRuleActivityStore,
-		trackerRuleService:               deps.TrackerRuleService,
+		automationStore:                  deps.AutomationStore,
+		automationActivityStore:          deps.AutomationActivityStore,
+		automationService:                deps.AutomationService,
 		trackerCustomizationStore:        deps.TrackerCustomizationStore,
 		dashboardSettingsStore:           deps.DashboardSettingsStore,
 		instanceCrossSeedCompletionStore: deps.InstanceCrossSeedCompletionStore,
@@ -272,7 +272,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.reannounceCache, s.reannounceService, s.config.Config.BaseURL)
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
 	crossSeedHandler := handlers.NewCrossSeedHandler(s.crossSeedService, s.instanceCrossSeedCompletionStore, s.instanceStore)
-	trackerRulesHandler := handlers.NewTrackerRuleHandler(s.trackerRuleStore, s.trackerRuleActivityStore, s.trackerRuleService)
+	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.automationService)
 	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
 
@@ -431,19 +431,19 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					// Trackers
 					r.Get("/trackers", torrentsHandler.GetActiveTrackers)
 
-					// Tracker rules
-					r.Route("/tracker-rules", func(r chi.Router) {
-						r.Get("/", trackerRulesHandler.List)
-						r.Post("/", trackerRulesHandler.Create)
-						r.Put("/order", trackerRulesHandler.Reorder)
-						r.Post("/apply", trackerRulesHandler.ApplyNow)
-						r.Post("/preview", trackerRulesHandler.PreviewDeleteRule)
-						r.Get("/activity", trackerRulesHandler.ListActivity)
-						r.Delete("/activity", trackerRulesHandler.DeleteActivity)
+					// Automations
+					r.Route("/automations", func(r chi.Router) {
+						r.Get("/", automationsHandler.List)
+						r.Post("/", automationsHandler.Create)
+						r.Put("/order", automationsHandler.Reorder)
+						r.Post("/apply", automationsHandler.ApplyNow)
+						r.Post("/preview", automationsHandler.PreviewDeleteRule)
+						r.Get("/activity", automationsHandler.ListActivity)
+						r.Delete("/activity", automationsHandler.DeleteActivity)
 
 						r.Route("/{ruleID}", func(r chi.Router) {
-							r.Put("/", trackerRulesHandler.Update)
-							r.Delete("/", trackerRulesHandler.Delete)
+							r.Put("/", automationsHandler.Update)
+							r.Delete("/", automationsHandler.Delete)
 						})
 					})
 

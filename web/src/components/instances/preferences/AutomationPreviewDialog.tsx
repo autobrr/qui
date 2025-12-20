@@ -19,15 +19,15 @@ import { TruncatedText } from "@/components/ui/truncated-text"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { getRatioColor } from "@/lib/utils"
-import type { TrackerRulePreviewResult } from "@/types"
+import type { AutomationPreviewResult } from "@/types"
 import { Loader2 } from "lucide-react"
 
-interface TrackerRulePreviewDialogProps {
+interface AutomationPreviewDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string
   description: React.ReactNode
-  preview: TrackerRulePreviewResult | null
+  preview: AutomationPreviewResult | null
   onConfirm: () => void
   confirmLabel: string
   isConfirming: boolean
@@ -37,7 +37,7 @@ interface TrackerRulePreviewDialogProps {
   destructive?: boolean
 }
 
-export function TrackerRulePreviewDialog({
+export function AutomationPreviewDialog({
   open,
   onOpenChange,
   title,
@@ -49,7 +49,7 @@ export function TrackerRulePreviewDialog({
   onLoadMore,
   isLoadingMore = false,
   destructive = true,
-}: TrackerRulePreviewDialogProps) {
+}: AutomationPreviewDialogProps) {
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
   const hasMore = !!preview && preview.examples.length < preview.totalMatches

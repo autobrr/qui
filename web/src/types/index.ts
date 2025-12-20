@@ -105,7 +105,7 @@ export interface InstanceError {
   occurredAt: string
 }
 
-// Condition field types for expression-based tracker rules
+// Condition field types for expression-based automations
 export type ConditionField =
   // String fields
   | "NAME"
@@ -207,7 +207,7 @@ export interface ActionConditions {
   tag?: TagAction
 }
 
-export interface TrackerRule {
+export interface Automation {
   id: number
   instanceId: number
   name: string
@@ -230,7 +230,7 @@ export interface TrackerRule {
   updatedAt?: string
 }
 
-export interface TrackerRuleInput {
+export interface AutomationInput {
   name: string
   trackerPattern?: string
   trackerDomains?: string[]
@@ -249,12 +249,12 @@ export interface TrackerRuleInput {
   conditions?: ActionConditions
 }
 
-export interface TrackerRulePreviewInput extends TrackerRuleInput {
+export interface AutomationPreviewInput extends AutomationInput {
   previewLimit?: number
   previewOffset?: number
 }
 
-export interface TrackerRuleActivity {
+export interface AutomationActivity {
   id: number
   instanceId: number
   hash: string
@@ -282,7 +282,7 @@ export interface TrackerRuleActivity {
   createdAt: string
 }
 
-export interface TrackerRulePreviewTorrent {
+export interface AutomationPreviewTorrent {
   name: string
   hash: string
   size: number
@@ -298,9 +298,9 @@ export interface TrackerRulePreviewTorrent {
   isUnregistered?: boolean
 }
 
-export interface TrackerRulePreviewResult {
+export interface AutomationPreviewResult {
   totalMatches: number
-  examples: TrackerRulePreviewTorrent[]
+  examples: AutomationPreviewTorrent[]
 }
 
 export interface InstanceResponse extends Instance {

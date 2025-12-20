@@ -29,7 +29,7 @@ const (
 	ActivityOutcomeFailed  = "failed"
 )
 
-type TrackerRuleActivity struct {
+type AutomationActivity struct {
 	ID            int             `json:"id"`
 	InstanceID    int             `json:"instanceId"`
 	Hash          string          `json:"hash"`
@@ -44,15 +44,15 @@ type TrackerRuleActivity struct {
 	CreatedAt     time.Time       `json:"createdAt"`
 }
 
-type TrackerRuleActivityStore struct {
+type AutomationActivityStore struct {
 	db dbinterface.Querier
 }
 
-func NewTrackerRuleActivityStore(db dbinterface.Querier) *TrackerRuleActivityStore {
-	return &TrackerRuleActivityStore{db: db}
+func NewAutomationActivityStore(db dbinterface.Querier) *AutomationActivityStore {
+	return &AutomationActivityStore{db: db}
 }
 
-func (s *TrackerRuleActivityStore) Create(ctx context.Context, activity *TrackerRuleActivity) error {
+func (s *AutomationActivityStore) Create(ctx context.Context, activity *AutomationActivity) error {
 	if activity == nil {
 		return nil
 	}
@@ -68,7 +68,7 @@ func (s *TrackerRuleActivityStore) Create(ctx context.Context, activity *Tracker
 	}
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO tracker_rule_activity
+		INSERT INTO automation_activity
 			(instance_id, hash, torrent_name, tracker_domain, action, rule_id, rule_name, outcome, reason, details)
 		VALUES
 			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -78,14 +78,14 @@ func (s *TrackerRuleActivityStore) Create(ctx context.Context, activity *Tracker
 	return err
 }
 
-func (s *TrackerRuleActivityStore) ListByInstance(ctx context.Context, instanceID int, limit int) ([]*TrackerRuleActivity, error) {
+func (s *AutomationActivityStore) ListByInstance(ctx context.Context, instanceID int, limit int) ([]*AutomationActivity, error) {
 	if limit <= 0 {
 		limit = 100
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, instance_id, hash, torrent_name, tracker_domain, action, rule_id, rule_name, outcome, reason, details, created_at
-		FROM tracker_rule_activity
+		FROM automation_activity
 		WHERE instance_id = ?
 		ORDER BY created_at DESC
 		LIMIT ?
@@ -95,9 +95,9 @@ func (s *TrackerRuleActivityStore) ListByInstance(ctx context.Context, instanceI
 	}
 	defer rows.Close()
 
-	var activities []*TrackerRuleActivity
+	var activities []*AutomationActivity
 	for rows.Next() {
-		var a TrackerRuleActivity
+		var a AutomationActivity
 		var torrentName, trackerDomain, ruleName, reason, details sql.NullString
 		var ruleID sql.NullInt64
 
@@ -148,10 +148,10 @@ func (s *TrackerRuleActivityStore) ListByInstance(ctx context.Context, instanceI
 	return activities, nil
 }
 
-func (s *TrackerRuleActivityStore) DeleteOlderThan(ctx context.Context, instanceID int, days int) (int64, error) {
+func (s *AutomationActivityStore) DeleteOlderThan(ctx context.Context, instanceID int, days int) (int64, error) {
 	// days == 0 means delete ALL activity for this instance
 	if days == 0 {
-		res, err := s.db.ExecContext(ctx, `DELETE FROM tracker_rule_activity WHERE instance_id = ?`, instanceID)
+		res, err := s.db.ExecContext(ctx, `DELETE FROM automation_activity WHERE instance_id = ?`, instanceID)
 		if err != nil {
 			return 0, err
 		}
@@ -163,7 +163,7 @@ func (s *TrackerRuleActivityStore) DeleteOlderThan(ctx context.Context, instance
 	}
 
 	res, err := s.db.ExecContext(ctx, `
-		DELETE FROM tracker_rule_activity
+		DELETE FROM automation_activity
 		WHERE instance_id = ? AND created_at < datetime('now', '-' || ? || ' days')
 	`, instanceID, days)
 	if err != nil {
@@ -173,13 +173,13 @@ func (s *TrackerRuleActivityStore) DeleteOlderThan(ctx context.Context, instance
 	return res.RowsAffected()
 }
 
-func (s *TrackerRuleActivityStore) Prune(ctx context.Context, retentionDays int) (int64, error) {
+func (s *AutomationActivityStore) Prune(ctx context.Context, retentionDays int) (int64, error) {
 	if retentionDays <= 0 {
 		retentionDays = 7
 	}
 
 	res, err := s.db.ExecContext(ctx, `
-		DELETE FROM tracker_rule_activity
+		DELETE FROM automation_activity
 		WHERE created_at < datetime('now', '-' || ? || ' days')
 	`, retentionDays)
 	if err != nil {

@@ -1,8 +1,8 @@
 // Copyright (c) 2025, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package trackerrules enforces tracker-scoped speed/ratio rules per instance.
-package trackerrules
+// Package automations enforces tracker-scoped speed/ratio rules per instance.
+package automations
 
 import (
 	"context"
@@ -39,12 +39,12 @@ func DefaultConfig() Config {
 	}
 }
 
-// Service periodically applies tracker rules to torrents for all active instances.
+// Service periodically applies automation rules to torrents for all active instances.
 type Service struct {
 	cfg           Config
 	instanceStore *models.InstanceStore
-	ruleStore     *models.TrackerRuleStore
-	activityStore *models.TrackerRuleActivityStore
+	ruleStore     *models.AutomationStore
+	activityStore *models.AutomationActivityStore
 	syncManager   *qbittorrent.SyncManager
 
 	// keep lightweight memory of recent applications to avoid hammering qBittorrent
@@ -52,7 +52,7 @@ type Service struct {
 	mu          sync.RWMutex
 }
 
-func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.TrackerRuleStore, activityStore *models.TrackerRuleActivityStore, syncManager *qbittorrent.SyncManager) *Service {
+func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, syncManager *qbittorrent.SyncManager) *Service {
 	if cfg.ScanInterval <= 0 {
 		cfg.ScanInterval = DefaultConfig().ScanInterval
 	}
@@ -71,7 +71,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		ruleStore:     ruleStore,
 		activityStore: activityStore,
 		syncManager:   syncManager,
-		lastApplied: make(map[int]map[string]time.Time),
+		lastApplied:   make(map[int]map[string]time.Time),
 	}
 }
 
@@ -105,9 +105,9 @@ func (s *Service) loop(ctx context.Context) {
 	// Prune old activity on startup
 	if s.activityStore != nil {
 		if pruned, err := s.activityStore.Prune(ctx, s.cfg.ActivityRetentionDays); err != nil {
-			log.Warn().Err(err).Msg("tracker rules: failed to prune old activity")
+			log.Warn().Err(err).Msg("automations: failed to prune old activity")
 		} else if pruned > 0 {
-			log.Info().Int64("count", pruned).Msg("tracker rules: pruned old activity entries")
+			log.Info().Int64("count", pruned).Msg("automations: pruned old activity entries")
 		}
 	}
 
@@ -124,9 +124,9 @@ func (s *Service) loop(ctx context.Context) {
 			if time.Since(lastPrune) > time.Hour {
 				if s.activityStore != nil {
 					if pruned, err := s.activityStore.Prune(ctx, s.cfg.ActivityRetentionDays); err != nil {
-						log.Warn().Err(err).Msg("tracker rules: failed to prune old activity")
+						log.Warn().Err(err).Msg("automations: failed to prune old activity")
 					} else if pruned > 0 {
-						log.Info().Int64("count", pruned).Msg("tracker rules: pruned old activity entries")
+						log.Info().Int64("count", pruned).Msg("automations: pruned old activity entries")
 					}
 				}
 				s.cleanupStaleEntries()
@@ -143,7 +143,7 @@ func (s *Service) applyAll(ctx context.Context) {
 
 	instances, err := s.instanceStore.List(ctx)
 	if err != nil {
-		log.Error().Err(err).Msg("tracker rules: failed to list instances")
+		log.Error().Err(err).Msg("automations: failed to list instances")
 		return
 	}
 
@@ -152,7 +152,7 @@ func (s *Service) applyAll(ctx context.Context) {
 			continue
 		}
 		if err := s.applyForInstance(ctx, instance.ID); err != nil {
-			log.Error().Err(err).Int("instanceID", instance.ID).Msg("tracker rules: apply failed")
+			log.Error().Err(err).Int("instanceID", instance.ID).Msg("automations: apply failed")
 		}
 	}
 }
@@ -187,7 +187,7 @@ type PreviewTorrent struct {
 
 // PreviewDeleteRule returns torrents that would be deleted by the given rule.
 // This is used to show users what a rule would affect before saving.
-func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *models.TrackerRule, limit int, offset int) (*PreviewResult, error) {
+func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *models.Automation, limit int, offset int) (*PreviewResult, error) {
 	if s == nil || s.syncManager == nil {
 		return &PreviewResult{}, nil
 	}
@@ -351,7 +351,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 	rules, err := s.ruleStore.ListByInstance(ctx, instanceID)
 	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("tracker rules: failed to load rules")
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load rules")
 		return err
 	}
 	if len(rules) == 0 {
@@ -360,7 +360,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 
 	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
 	if err != nil {
-		log.Debug().Err(err).Int("instanceID", instanceID).Msg("tracker rules: unable to fetch torrents")
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("automations: unable to fetch torrents")
 		return err
 	}
 
@@ -573,10 +573,10 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
 			if err := s.syncManager.SetTorrentUploadLimit(ctx, instanceID, batch, limit); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Int64("limitKiB", limit).Int("count", len(batch)).Msg("tracker rules: upload limit failed")
+				log.Warn().Err(err).Int("instanceID", instanceID).Int64("limitKiB", limit).Int("count", len(batch)).Msg("automations: upload limit failed")
 				if s.activityStore != nil {
 					detailsJSON, _ := json.Marshal(map[string]any{"limitKiB": limit, "count": len(batch), "type": "upload"})
-					if err := s.activityStore.Create(ctx, &models.TrackerRuleActivity{
+					if err := s.activityStore.Create(ctx, &models.AutomationActivity{
 						InstanceID: instanceID,
 						Hash:       strings.Join(batch, ","),
 						Action:     models.ActivityActionLimitFailed,
@@ -584,7 +584,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 						Reason:     "upload limit failed: " + err.Error(),
 						Details:    detailsJSON,
 					}); err != nil {
-						log.Warn().Err(err).Int("instanceID", instanceID).Msg("tracker rules: failed to record activity")
+						log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record activity")
 					}
 				}
 			}
@@ -595,10 +595,10 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
 			if err := s.syncManager.SetTorrentDownloadLimit(ctx, instanceID, batch, limit); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Int64("limitKiB", limit).Int("count", len(batch)).Msg("tracker rules: download limit failed")
+				log.Warn().Err(err).Int("instanceID", instanceID).Int64("limitKiB", limit).Int("count", len(batch)).Msg("automations: download limit failed")
 				if s.activityStore != nil {
 					detailsJSON, _ := json.Marshal(map[string]any{"limitKiB": limit, "count": len(batch), "type": "download"})
-					if err := s.activityStore.Create(ctx, &models.TrackerRuleActivity{
+					if err := s.activityStore.Create(ctx, &models.AutomationActivity{
 						InstanceID: instanceID,
 						Hash:       strings.Join(batch, ","),
 						Action:     models.ActivityActionLimitFailed,
@@ -606,7 +606,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 						Reason:     "download limit failed: " + err.Error(),
 						Details:    detailsJSON,
 					}); err != nil {
-						log.Warn().Err(err).Int("instanceID", instanceID).Msg("tracker rules: failed to record activity")
+						log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record activity")
 					}
 				}
 			}
@@ -617,10 +617,10 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
 			if err := s.syncManager.SetTorrentShareLimit(ctx, instanceID, batch, key.ratio, key.seed, -1); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Float64("ratio", key.ratio).Int64("seedMinutes", key.seed).Int("count", len(batch)).Msg("tracker rules: share limit failed")
+				log.Warn().Err(err).Int("instanceID", instanceID).Float64("ratio", key.ratio).Int64("seedMinutes", key.seed).Int("count", len(batch)).Msg("automations: share limit failed")
 				if s.activityStore != nil {
 					detailsJSON, _ := json.Marshal(map[string]any{"ratio": key.ratio, "seedMinutes": key.seed, "count": len(batch), "type": "share"})
-					if err := s.activityStore.Create(ctx, &models.TrackerRuleActivity{
+					if err := s.activityStore.Create(ctx, &models.AutomationActivity{
 						InstanceID: instanceID,
 						Hash:       strings.Join(batch, ","),
 						Action:     models.ActivityActionLimitFailed,
@@ -628,7 +628,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 						Reason:     "share limit failed: " + err.Error(),
 						Details:    detailsJSON,
 					}); err != nil {
-						log.Warn().Err(err).Int("instanceID", instanceID).Msg("tracker rules: failed to record activity")
+						log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record activity")
 					}
 				}
 			}
@@ -640,9 +640,9 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 		limited := limitHashBatch(pauseHashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
 			if err := s.syncManager.BulkAction(ctx, instanceID, batch, "pause"); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Msg("tracker rules: pause action failed")
+				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: pause action failed")
 			} else {
-				log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("tracker rules: paused torrents")
+				log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: paused torrents")
 			}
 		}
 	}
@@ -680,9 +680,9 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 						useSetTags = false
 						break
 					}
-					log.Warn().Err(err).Int("instanceID", instanceID).Strs("tags", tags).Int("count", len(batch)).Msg("tracker rules: set tags failed")
+					log.Warn().Err(err).Int("instanceID", instanceID).Strs("tags", tags).Int("count", len(batch)).Msg("automations: set tags failed")
 				} else {
-					log.Debug().Int("instanceID", instanceID).Strs("tags", tags).Int("count", len(batch)).Msg("tracker rules: set tags on torrents")
+					log.Debug().Int("instanceID", instanceID).Strs("tags", tags).Int("count", len(batch)).Msg("automations: set tags on torrents")
 				}
 			}
 			if !useSetTags {
@@ -692,7 +692,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 
 		// Fallback to Add/Remove for older clients
 		if !useSetTags {
-			log.Debug().Int("instanceID", instanceID).Msg("tracker rules: falling back to add/remove tags (older qBittorrent)")
+			log.Debug().Int("instanceID", instanceID).Msg("automations: falling back to add/remove tags (older qBittorrent)")
 
 			// Group by tags to add/remove
 			addBatches := make(map[string][]string)    // key = tag, value = hashes
@@ -711,9 +711,9 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 				batches := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
 				for _, batch := range batches {
 					if err := s.syncManager.AddTorrentTags(ctx, instanceID, batch, []string{tag}); err != nil {
-						log.Warn().Err(err).Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("tracker rules: add tags failed")
+						log.Warn().Err(err).Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("automations: add tags failed")
 					} else {
-						log.Debug().Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("tracker rules: added tag to torrents")
+						log.Debug().Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("automations: added tag to torrents")
 					}
 				}
 			}
@@ -722,9 +722,9 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 				batches := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
 				for _, batch := range batches {
 					if err := s.syncManager.RemoveTorrentTags(ctx, instanceID, batch, []string{tag}); err != nil {
-						log.Warn().Err(err).Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("tracker rules: remove tags failed")
+						log.Warn().Err(err).Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("automations: remove tags failed")
 					} else {
-						log.Debug().Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("tracker rules: removed tag from torrents")
+						log.Debug().Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("automations: removed tag from torrents")
 					}
 				}
 			}
@@ -751,14 +751,14 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 					"added":   addCounts,
 					"removed": removeCounts,
 				})
-				if err := s.activityStore.Create(ctx, &models.TrackerRuleActivity{
+				if err := s.activityStore.Create(ctx, &models.AutomationActivity{
 					InstanceID: instanceID,
 					Hash:       "", // No single hash for batch operations
 					Action:     models.ActivityActionTagsChanged,
 					Outcome:    models.ActivityOutcomeSuccess,
 					Details:    detailsJSON,
 				}); err != nil {
-					log.Warn().Err(err).Int("instanceID", instanceID).Msg("tracker rules: failed to record tag activity")
+					log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record tag activity")
 				}
 			}
 		}
@@ -817,20 +817,20 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 					case DeleteModeWithFilesPreserveCrossSeeds:
 						if detectCrossSeeds(torrent, torrents) {
 							actualMode = DeleteModeKeepFiles
-							logMsg = "tracker rules: removing torrent (cross-seed detected - keeping files)"
+							logMsg = "automations: removing torrent (cross-seed detected - keeping files)"
 							keepingFiles = true
 						} else {
 							actualMode = DeleteModeWithFiles
-							logMsg = "tracker rules: removing torrent with files"
+							logMsg = "automations: removing torrent with files"
 							keepingFiles = false
 						}
 					case DeleteModeKeepFiles:
 						actualMode = DeleteModeKeepFiles
-						logMsg = "tracker rules: removing torrent (keeping files)"
+						logMsg = "automations: removing torrent (keeping files)"
 						keepingFiles = true
 					default:
 						actualMode = deleteMode
-						logMsg = "tracker rules: removing torrent with files"
+						logMsg = "automations: removing torrent with files"
 						keepingFiles = false
 					}
 
@@ -886,20 +886,20 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 			case DeleteModeWithFilesPreserveCrossSeeds:
 				if detectCrossSeeds(torrent, torrents) {
 					actualMode = DeleteModeKeepFiles
-					logMsg = "tracker rules: removing torrent (cross-seed detected - keeping files)"
+					logMsg = "automations: removing torrent (cross-seed detected - keeping files)"
 					keepingFiles = true
 				} else {
 					actualMode = DeleteModeWithFiles
-					logMsg = "tracker rules: removing torrent with files"
+					logMsg = "automations: removing torrent with files"
 					keepingFiles = false
 				}
 			case DeleteModeKeepFiles:
 				actualMode = DeleteModeKeepFiles
-				logMsg = "tracker rules: removing torrent (keeping files)"
+				logMsg = "automations: removing torrent (keeping files)"
 				keepingFiles = true
 			default:
 				actualMode = deleteMode
-				logMsg = "tracker rules: removing torrent with files"
+				logMsg = "automations: removing torrent with files"
 				keepingFiles = false
 			}
 
@@ -997,20 +997,20 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 			case DeleteModeWithFilesPreserveCrossSeeds:
 				if detectCrossSeeds(torrent, torrents) {
 					actualMode = DeleteModeKeepFiles
-					logMsg = "tracker rules: removing unregistered torrent (cross-seed detected - keeping files)"
+					logMsg = "automations: removing unregistered torrent (cross-seed detected - keeping files)"
 					keepingFiles = true
 				} else {
 					actualMode = DeleteModeWithFiles
-					logMsg = "tracker rules: removing unregistered torrent with files"
+					logMsg = "automations: removing unregistered torrent with files"
 					keepingFiles = false
 				}
 			case DeleteModeKeepFiles:
 				actualMode = DeleteModeKeepFiles
-				logMsg = "tracker rules: removing unregistered torrent (keeping files)"
+				logMsg = "automations: removing unregistered torrent (keeping files)"
 				keepingFiles = true
 			default:
 				actualMode = deleteMode
-				logMsg = "tracker rules: removing unregistered torrent with files"
+				logMsg = "automations: removing unregistered torrent with files"
 				keepingFiles = false
 			}
 
@@ -1055,14 +1055,14 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
 			if err := s.syncManager.BulkAction(ctx, instanceID, batch, mode); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Str("action", mode).Int("count", len(batch)).Strs("hashes", batch).Msg("tracker rules: delete failed")
+				log.Warn().Err(err).Int("instanceID", instanceID).Str("action", mode).Int("count", len(batch)).Strs("hashes", batch).Msg("automations: delete failed")
 
 				// Record failed deletion activity
 				if s.activityStore != nil {
 					for _, hash := range batch {
 						if pending, ok := pendingByHash[hash]; ok {
 							detailsJSON, _ := json.Marshal(pending.details)
-							if err := s.activityStore.Create(ctx, &models.TrackerRuleActivity{
+							if err := s.activityStore.Create(ctx, &models.AutomationActivity{
 								InstanceID:    instanceID,
 								Hash:          hash,
 								TorrentName:   pending.torrentName,
@@ -1074,16 +1074,16 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 								Reason:        err.Error(),
 								Details:       detailsJSON,
 							}); err != nil {
-								log.Warn().Err(err).Str("hash", hash).Int("instanceID", instanceID).Msg("tracker rules: failed to record activity")
+								log.Warn().Err(err).Str("hash", hash).Int("instanceID", instanceID).Msg("automations: failed to record activity")
 							}
 						}
 					}
 				}
 			} else {
 				if mode == DeleteModeKeepFiles {
-					log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("tracker rules: removed torrents (files kept)")
+					log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: removed torrents (files kept)")
 				} else {
-					log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("tracker rules: removed torrents with files")
+					log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: removed torrents with files")
 				}
 
 				// Record successful deletion activity
@@ -1091,7 +1091,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 					for _, hash := range batch {
 						if pending, ok := pendingByHash[hash]; ok {
 							detailsJSON, _ := json.Marshal(pending.details)
-							if err := s.activityStore.Create(ctx, &models.TrackerRuleActivity{
+							if err := s.activityStore.Create(ctx, &models.AutomationActivity{
 								InstanceID:    instanceID,
 								Hash:          hash,
 								TorrentName:   pending.torrentName,
@@ -1103,7 +1103,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 								Reason:        pending.reason,
 								Details:       detailsJSON,
 							}); err != nil {
-								log.Warn().Err(err).Str("hash", hash).Int("instanceID", instanceID).Msg("tracker rules: failed to record activity")
+								log.Warn().Err(err).Str("hash", hash).Int("instanceID", instanceID).Msg("automations: failed to record activity")
 							}
 						}
 					}
@@ -1131,7 +1131,7 @@ func limitHashBatch(hashes []string, max int) [][]string {
 	return batches
 }
 
-func selectRule(torrent qbt.Torrent, rules []*models.TrackerRule, sm *qbittorrent.SyncManager) *models.TrackerRule {
+func selectRule(torrent qbt.Torrent, rules []*models.Automation, sm *qbittorrent.SyncManager) *models.Automation {
 	trackerDomains := collectTrackerDomains(torrent, sm)
 
 	for _, rule := range rules {
@@ -1212,7 +1212,7 @@ func matchesTracker(pattern string, domains []string) bool {
 			if isGlob {
 				ok, err := path.Match(normalized, d)
 				if err != nil {
-					log.Error().Err(err).Str("pattern", normalized).Msg("tracker rules: invalid glob pattern")
+					log.Error().Err(err).Str("pattern", normalized).Msg("automations: invalid glob pattern")
 					continue
 				}
 				if ok {
@@ -1322,7 +1322,7 @@ func detectCrossSeeds(target qbt.Torrent, allTorrents []qbt.Torrent) bool {
 	return false
 }
 
-func shouldDeleteTorrent(torrent qbt.Torrent, rule *models.TrackerRule) bool {
+func shouldDeleteTorrent(torrent qbt.Torrent, rule *models.Automation) bool {
 	// Only delete completed torrents
 	if torrent.Progress < 1.0 {
 		return false

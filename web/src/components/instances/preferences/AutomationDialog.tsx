@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { QueryBuilder } from "@/components/query-builder"
-import { TrackerRulePreviewDialog } from "./TrackerRulePreviewDialog"
+import { AutomationPreviewDialog } from "./AutomationPreviewDialog"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
@@ -37,9 +37,9 @@ import { api } from "@/lib/api"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { cn, parseTrackerDomains } from "@/lib/utils"
 import type {
-  TrackerRule,
-  TrackerRuleInput,
-  TrackerRulePreviewResult,
+  Automation,
+  AutomationInput,
+  AutomationPreviewResult,
   ActionConditions,
   RuleCondition,
 } from "@/types"
@@ -48,18 +48,18 @@ import { Loader2 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
-interface TrackerRuleDialogProps {
+interface AutomationDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   instanceId: number
   /** Rule to edit, or null to create a new rule */
-  rule: TrackerRule | null
+  rule: Automation | null
   onSuccess?: () => void
 }
 
 type ActionType = "speedLimits" | "pause" | "delete" | "tag"
 
-type FormState = Omit<TrackerRuleInput, "categories" | "tags" | "tagMatchMode" | "conditions"> & {
+type FormState = Omit<AutomationInput, "categories" | "tags" | "tagMatchMode" | "conditions"> & {
   trackerDomains: string[]
   applyToAllTrackers: boolean
   categories: string[]
@@ -105,10 +105,10 @@ const emptyFormState: FormState = {
   exprTagMode: "full",
 }
 
-export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSuccess }: TrackerRuleDialogProps) {
+export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSuccess }: AutomationDialogProps) {
   const queryClient = useQueryClient()
   const [formState, setFormState] = useState<FormState>(emptyFormState)
-  const [previewResult, setPreviewResult] = useState<TrackerRulePreviewResult | null>(null)
+  const [previewResult, setPreviewResult] = useState<AutomationPreviewResult | null>(null)
   const [previewInput, setPreviewInput] = useState<FormState | null>(null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const previewPageSize = 25
@@ -310,8 +310,8 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
   }, [open, rule, mapDomainsToOptionValues])
 
   // Build payload from form state (shared by preview and save)
-  const buildPayload = (input: FormState): TrackerRuleInput => {
-    const payload: TrackerRuleInput = {
+  const buildPayload = (input: FormState): AutomationInput => {
+    const payload: AutomationInput = {
       ...input,
       trackerDomains: input.applyToAllTrackers ? [] : input.trackerDomains.filter(Boolean),
       trackerPattern: input.applyToAllTrackers ? "*" : input.trackerDomains.filter(Boolean).join(","),
@@ -385,7 +385,7 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
         previewLimit: previewPageSize,
         previewOffset: 0,
       }
-      return api.previewTrackerRule(instanceId, payload)
+      return api.previewAutomation(instanceId, payload)
     },
     onSuccess: (result, input) => {
       if (result.totalMatches === 0) {
@@ -413,7 +413,7 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
         previewLimit: previewPageSize,
         previewOffset: previewResult.examples.length,
       }
-      return api.previewTrackerRule(instanceId, payload)
+      return api.previewAutomation(instanceId, payload)
     },
     onSuccess: (result) => {
       setPreviewResult(prev => prev
@@ -437,21 +437,21 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
     mutationFn: async (input: FormState) => {
       const payload = buildPayload(input)
       if (rule) {
-        return api.updateTrackerRule(instanceId, rule.id, payload)
+        return api.updateAutomation(instanceId, rule.id, payload)
       }
-      return api.createTrackerRule(instanceId, payload)
+      return api.createAutomation(instanceId, payload)
     },
     onSuccess: () => {
-      toast.success(`Tracker rule ${rule ? "updated" : "created"}`)
+      toast.success(`Automation ${rule ? "updated" : "created"}`)
       setShowConfirmDialog(false)
       setPreviewResult(null)
       setPreviewInput(null)
       onOpenChange(false)
-      void queryClient.invalidateQueries({ queryKey: ["tracker-rules", instanceId] })
+      void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
       onSuccess?.()
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to save tracker rule")
+      toast.error(error instanceof Error ? error.message : "Failed to save automation")
     },
   })
 
@@ -952,7 +952,7 @@ export function TrackerRuleDialog({ open, onOpenChange, instanceId, rule, onSucc
       </DialogContent>
     </Dialog>
 
-    <TrackerRulePreviewDialog
+    <AutomationPreviewDialog
       open={showConfirmDialog}
       onOpenChange={(open) => {
         if (!open) {

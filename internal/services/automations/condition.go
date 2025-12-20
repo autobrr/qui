@@ -1,9 +1,9 @@
 // Copyright (c) 2025, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package trackerrules enforces tracker-scoped speed/ratio rules per instance.
+// Package automations enforces tracker-scoped speed/ratio rules per instance.
 // This file re-exports condition types from models for convenience.
-package trackerrules
+package automations
 
 import (
 	"github.com/autobrr/qui/internal/models"

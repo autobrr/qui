@@ -16,45 +16,45 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/services/trackerrules"
+	"github.com/autobrr/qui/internal/services/automations"
 )
 
-type TrackerRuleHandler struct {
-	store         *models.TrackerRuleStore
-	activityStore *models.TrackerRuleActivityStore
-	service       *trackerrules.Service
+type AutomationHandler struct {
+	store         *models.AutomationStore
+	activityStore *models.AutomationActivityStore
+	service       *automations.Service
 }
 
-func NewTrackerRuleHandler(store *models.TrackerRuleStore, activityStore *models.TrackerRuleActivityStore, service *trackerrules.Service) *TrackerRuleHandler {
-	return &TrackerRuleHandler{
+func NewAutomationHandler(store *models.AutomationStore, activityStore *models.AutomationActivityStore, service *automations.Service) *AutomationHandler {
+	return &AutomationHandler{
 		store:         store,
 		activityStore: activityStore,
 		service:       service,
 	}
 }
 
-type TrackerRulePayload struct {
-	Name                       string                   `json:"name"`
-	TrackerPattern             string                   `json:"trackerPattern"`
-	TrackerDomains             []string                 `json:"trackerDomains"`
-	Categories                 []string                 `json:"categories"`
-	Tags                       []string                 `json:"tags"`
-	TagMatchMode               *string                  `json:"tagMatchMode"` // "any" or "all"
-	UploadLimitKiB             *int64                   `json:"uploadLimitKiB"`
-	DownloadLimitKiB           *int64                   `json:"downloadLimitKiB"`
-	RatioLimit                 *float64                 `json:"ratioLimit"`
-	SeedingTimeLimitMinutes    *int64                   `json:"seedingTimeLimitMinutes"`
-	DeleteMode                 *string                  `json:"deleteMode"` // "none", "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds"
-	DeleteUnregistered         *bool                    `json:"deleteUnregistered"`
-	DeleteUnregisteredMinAge   *int64                   `json:"deleteUnregisteredMinAge"` // minimum age in seconds, 0 = no minimum
-	Enabled                    *bool                    `json:"enabled"`
-	SortOrder                  *int                     `json:"sortOrder"`
-	Conditions                 *models.ActionConditions `json:"conditions"`
-	PreviewLimit               *int                     `json:"previewLimit"`
-	PreviewOffset              *int                     `json:"previewOffset"`
+type AutomationPayload struct {
+	Name                     string                   `json:"name"`
+	TrackerPattern           string                   `json:"trackerPattern"`
+	TrackerDomains           []string                 `json:"trackerDomains"`
+	Categories               []string                 `json:"categories"`
+	Tags                     []string                 `json:"tags"`
+	TagMatchMode             *string                  `json:"tagMatchMode"` // "any" or "all"
+	UploadLimitKiB           *int64                   `json:"uploadLimitKiB"`
+	DownloadLimitKiB         *int64                   `json:"downloadLimitKiB"`
+	RatioLimit               *float64                 `json:"ratioLimit"`
+	SeedingTimeLimitMinutes  *int64                   `json:"seedingTimeLimitMinutes"`
+	DeleteMode               *string                  `json:"deleteMode"` // "none", "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds"
+	DeleteUnregistered       *bool                    `json:"deleteUnregistered"`
+	DeleteUnregisteredMinAge *int64                   `json:"deleteUnregisteredMinAge"` // minimum age in seconds, 0 = no minimum
+	Enabled                  *bool                    `json:"enabled"`
+	SortOrder                *int                     `json:"sortOrder"`
+	Conditions               *models.ActionConditions `json:"conditions"`
+	PreviewLimit             *int                     `json:"previewLimit"`
+	PreviewOffset            *int                     `json:"previewOffset"`
 }
 
-func (p *TrackerRulePayload) toModel(instanceID int, id int) *models.TrackerRule {
+func (p *AutomationPayload) toModel(instanceID int, id int) *models.Automation {
 	normalizedDomains := normalizeTrackerDomains(p.TrackerDomains)
 	trackerPattern := p.TrackerPattern
 	if len(normalizedDomains) > 0 {
@@ -66,7 +66,7 @@ func (p *TrackerRulePayload) toModel(instanceID int, id int) *models.TrackerRule
 		tagMatchMode = *p.TagMatchMode
 	}
 
-	rule := &models.TrackerRule{
+	automation := &models.Automation{
 		ID:                      id,
 		InstanceID:              instanceID,
 		Name:                    p.Name,
@@ -84,45 +84,45 @@ func (p *TrackerRulePayload) toModel(instanceID int, id int) *models.TrackerRule
 		Enabled:                 true,
 	}
 	if p.DeleteUnregistered != nil {
-		rule.DeleteUnregistered = *p.DeleteUnregistered
+		automation.DeleteUnregistered = *p.DeleteUnregistered
 	}
 	if p.DeleteUnregisteredMinAge != nil {
-		rule.DeleteUnregisteredMinAge = *p.DeleteUnregisteredMinAge
+		automation.DeleteUnregisteredMinAge = *p.DeleteUnregisteredMinAge
 	}
 	if p.Enabled != nil {
-		rule.Enabled = *p.Enabled
+		automation.Enabled = *p.Enabled
 	}
 	if p.SortOrder != nil {
-		rule.SortOrder = *p.SortOrder
+		automation.SortOrder = *p.SortOrder
 	}
-	return rule
+	return automation
 }
 
-func (h *TrackerRuleHandler) List(w http.ResponseWriter, r *http.Request) {
+func (h *AutomationHandler) List(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
 	}
 
-	rules, err := h.store.ListByInstance(r.Context(), instanceID)
+	automations, err := h.store.ListByInstance(r.Context(), instanceID)
 	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to list tracker rules")
-		RespondError(w, http.StatusInternalServerError, "Failed to load tracker rules")
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to list automations")
+		RespondError(w, http.StatusInternalServerError, "Failed to load automations")
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, rules)
+	RespondJSON(w, http.StatusOK, automations)
 }
 
-func (h *TrackerRuleHandler) Create(w http.ResponseWriter, r *http.Request) {
+func (h *AutomationHandler) Create(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
 	}
 
-	var payload TrackerRulePayload
+	var payload AutomationPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("tracker rules: failed to decode create payload")
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to decode create payload")
 		RespondError(w, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
@@ -151,17 +151,17 @@ func (h *TrackerRuleHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	rule, err := h.store.Create(r.Context(), payload.toModel(instanceID, 0))
+	automation, err := h.store.Create(r.Context(), payload.toModel(instanceID, 0))
 	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to create tracker rule")
-		RespondError(w, http.StatusInternalServerError, "Failed to create tracker rule")
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to create automation")
+		RespondError(w, http.StatusInternalServerError, "Failed to create automation")
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, rule)
+	RespondJSON(w, http.StatusCreated, automation)
 }
 
-func (h *TrackerRuleHandler) Update(w http.ResponseWriter, r *http.Request) {
+func (h *AutomationHandler) Update(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
@@ -170,13 +170,13 @@ func (h *TrackerRuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 	ruleIDStr := chi.URLParam(r, "ruleID")
 	ruleID, err := strconv.Atoi(ruleIDStr)
 	if err != nil || ruleID <= 0 {
-		RespondError(w, http.StatusBadRequest, "Invalid rule ID")
+		RespondError(w, http.StatusBadRequest, "Invalid automation ID")
 		return
 	}
 
-	var payload TrackerRulePayload
+	var payload AutomationPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Int("ruleID", ruleID).Msg("tracker rules: failed to decode update payload")
+		log.Warn().Err(err).Int("instanceID", instanceID).Int("automationID", ruleID).Msg("automations: failed to decode update payload")
 		RespondError(w, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
@@ -205,22 +205,22 @@ func (h *TrackerRuleHandler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	rule, err := h.store.Update(r.Context(), payload.toModel(instanceID, ruleID))
+	automation, err := h.store.Update(r.Context(), payload.toModel(instanceID, ruleID))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			log.Error().Err(err).Int("instanceID", instanceID).Int("ruleID", ruleID).Msg("tracker rule not found for update")
-			RespondError(w, http.StatusNotFound, "Tracker rule not found")
+			log.Error().Err(err).Int("instanceID", instanceID).Int("automationID", ruleID).Msg("automation not found for update")
+			RespondError(w, http.StatusNotFound, "Automation not found")
 			return
 		}
-		log.Error().Err(err).Int("instanceID", instanceID).Int("ruleID", ruleID).Msg("failed to update tracker rule")
-		RespondError(w, http.StatusInternalServerError, "Failed to update tracker rule")
+		log.Error().Err(err).Int("instanceID", instanceID).Int("automationID", ruleID).Msg("failed to update automation")
+		RespondError(w, http.StatusInternalServerError, "Failed to update automation")
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, rule)
+	RespondJSON(w, http.StatusOK, automation)
 }
 
-func (h *TrackerRuleHandler) Delete(w http.ResponseWriter, r *http.Request) {
+func (h *AutomationHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
@@ -229,24 +229,24 @@ func (h *TrackerRuleHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	ruleIDStr := chi.URLParam(r, "ruleID")
 	ruleID, err := strconv.Atoi(ruleIDStr)
 	if err != nil || ruleID <= 0 {
-		RespondError(w, http.StatusBadRequest, "Invalid rule ID")
+		RespondError(w, http.StatusBadRequest, "Invalid automation ID")
 		return
 	}
 
 	if err := h.store.Delete(r.Context(), instanceID, ruleID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			RespondError(w, http.StatusNotFound, "Tracker rule not found")
+			RespondError(w, http.StatusNotFound, "Automation not found")
 			return
 		}
-		log.Error().Err(err).Int("instanceID", instanceID).Int("ruleID", ruleID).Msg("failed to delete tracker rule")
-		RespondError(w, http.StatusInternalServerError, "Failed to delete tracker rule")
+		log.Error().Err(err).Int("instanceID", instanceID).Int("automationID", ruleID).Msg("failed to delete automation")
+		RespondError(w, http.StatusInternalServerError, "Failed to delete automation")
 		return
 	}
 
 	RespondJSON(w, http.StatusNoContent, nil)
 }
 
-func (h *TrackerRuleHandler) Reorder(w http.ResponseWriter, r *http.Request) {
+func (h *AutomationHandler) Reorder(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
@@ -261,28 +261,28 @@ func (h *TrackerRuleHandler) Reorder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.Reorder(r.Context(), instanceID, payload.OrderedIDs); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to reorder tracker rules")
-		RespondError(w, http.StatusInternalServerError, "Failed to reorder tracker rules")
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to reorder automations")
+		RespondError(w, http.StatusInternalServerError, "Failed to reorder automations")
 		return
 	}
 
 	RespondJSON(w, http.StatusNoContent, nil)
 }
 
-func (h *TrackerRuleHandler) ApplyNow(w http.ResponseWriter, r *http.Request) {
+func (h *AutomationHandler) ApplyNow(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
 	}
 
 	if h.service == nil {
-		RespondError(w, http.StatusServiceUnavailable, "Tracker rules service not available")
+		RespondError(w, http.StatusServiceUnavailable, "Automations service not available")
 		return
 	}
 
 	if err := h.service.ApplyOnceForInstance(r.Context(), instanceID); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("tracker rules: manual apply failed")
-		RespondError(w, http.StatusInternalServerError, "Failed to apply tracker rules")
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: manual apply failed")
+		RespondError(w, http.StatusInternalServerError, "Failed to apply automations")
 		return
 	}
 
@@ -338,7 +338,7 @@ func normalizeTrackerDomains(domains []string) []string {
 	return out
 }
 
-func (h *TrackerRuleHandler) ListActivity(w http.ResponseWriter, r *http.Request) {
+func (h *AutomationHandler) ListActivity(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
@@ -352,25 +352,25 @@ func (h *TrackerRuleHandler) ListActivity(w http.ResponseWriter, r *http.Request
 	}
 
 	if h.activityStore == nil {
-		RespondJSON(w, http.StatusOK, []*models.TrackerRuleActivity{})
+		RespondJSON(w, http.StatusOK, []*models.AutomationActivity{})
 		return
 	}
 
 	activities, err := h.activityStore.ListByInstance(r.Context(), instanceID, limit)
 	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to list tracker rule activity")
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to list automation activity")
 		RespondError(w, http.StatusInternalServerError, "Failed to load activity")
 		return
 	}
 
 	if activities == nil {
-		activities = []*models.TrackerRuleActivity{}
+		activities = []*models.AutomationActivity{}
 	}
 
 	RespondJSON(w, http.StatusOK, activities)
 }
 
-func (h *TrackerRuleHandler) DeleteActivity(w http.ResponseWriter, r *http.Request) {
+func (h *AutomationHandler) DeleteActivity(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
@@ -390,7 +390,7 @@ func (h *TrackerRuleHandler) DeleteActivity(w http.ResponseWriter, r *http.Reque
 
 	deleted, err := h.activityStore.DeleteOlderThan(r.Context(), instanceID, olderThanDays)
 	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Int("olderThanDays", olderThanDays).Msg("failed to delete tracker rule activity")
+		log.Error().Err(err).Int("instanceID", instanceID).Int("olderThanDays", olderThanDays).Msg("failed to delete automation activity")
 		RespondError(w, http.StatusInternalServerError, "Failed to delete activity")
 		return
 	}
@@ -398,25 +398,25 @@ func (h *TrackerRuleHandler) DeleteActivity(w http.ResponseWriter, r *http.Reque
 	RespondJSON(w, http.StatusOK, map[string]int64{"deleted": deleted})
 }
 
-func (h *TrackerRuleHandler) PreviewDeleteRule(w http.ResponseWriter, r *http.Request) {
+func (h *AutomationHandler) PreviewDeleteRule(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
 	}
 
-	var payload TrackerRulePayload
+	var payload AutomationPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("tracker rules: failed to decode preview payload")
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to decode preview payload")
 		RespondError(w, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
 
 	if h.service == nil {
-		RespondError(w, http.StatusServiceUnavailable, "Tracker rules service not available")
+		RespondError(w, http.StatusServiceUnavailable, "Automations service not available")
 		return
 	}
 
-	rule := payload.toModel(instanceID, 0)
+	automation := payload.toModel(instanceID, 0)
 
 	previewLimit := 0
 	previewOffset := 0
@@ -427,10 +427,10 @@ func (h *TrackerRuleHandler) PreviewDeleteRule(w http.ResponseWriter, r *http.Re
 		previewOffset = *payload.PreviewOffset
 	}
 
-	result, err := h.service.PreviewDeleteRule(r.Context(), instanceID, rule, previewLimit, previewOffset)
+	result, err := h.service.PreviewDeleteRule(r.Context(), instanceID, automation, previewLimit, previewOffset)
 	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("tracker rules: failed to preview delete rule")
-		RespondError(w, http.StatusInternalServerError, "Failed to preview rule")
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to preview delete rule")
+		RespondError(w, http.StatusInternalServerError, "Failed to preview automation")
 		return
 	}
 

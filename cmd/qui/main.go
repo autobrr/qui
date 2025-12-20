@@ -37,8 +37,8 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/reannounce"
+	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/trackericons"
-	"github.com/autobrr/qui/internal/services/trackerrules"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/pkg/sqlite3store"
 )
@@ -474,7 +474,7 @@ func (app *Application) runServer() {
 		log.Warn().Err(err).Msg("Failed to preload reannounce settings cache")
 	}
 
-	trackerRuleStore := models.NewTrackerRuleStore(db)
+	automationStore := models.NewAutomationStore(db)
 	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
 	dashboardSettingsStore := models.NewDashboardSettingsStore(db)
 
@@ -548,8 +548,8 @@ func (app *Application) runServer() {
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
 	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore, instanceCrossSeedCompletionStore)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
-	trackerRuleActivityStore := models.NewTrackerRuleActivityStore(db)
-	trackerRuleService := trackerrules.NewService(trackerrules.DefaultConfig(), instanceStore, trackerRuleStore, trackerRuleActivityStore, syncManager)
+	automationActivityStore := models.NewAutomationActivityStore(db)
+	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, syncManager)
 
 	syncManager.SetTorrentCompletionHandler(crossSeedService.HandleTorrentCompletion)
 
@@ -563,9 +563,9 @@ func (app *Application) runServer() {
 	defer reannounceCancel()
 	reannounceService.Start(reannounceCtx)
 
-	trackerRulesCtx, trackerRulesCancel := context.WithCancel(context.Background())
-	defer trackerRulesCancel()
-	trackerRuleService.Start(trackerRulesCtx)
+	automationsCtx, automationsCancel := context.WithCancel(context.Background())
+	defer automationsCancel()
+	automationService.Start(automationsCtx)
 
 	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir()})
@@ -650,9 +650,9 @@ func (app *Application) runServer() {
 		CrossSeedService:                 crossSeedService,
 		JackettService:                   jackettService,
 		TorznabIndexerStore:              torznabIndexerStore,
-		TrackerRuleStore:                 trackerRuleStore,
-		TrackerRuleActivityStore:         trackerRuleActivityStore,
-		TrackerRuleService:               trackerRuleService,
+		AutomationStore:                  automationStore,
+		AutomationActivityStore:          automationActivityStore,
+		AutomationService:                automationService,
 		TrackerCustomizationStore:        trackerCustomizationStore,
 		DashboardSettingsStore:           dashboardSettingsStore,
 		InstanceCrossSeedCompletionStore: instanceCrossSeedCompletionStore,

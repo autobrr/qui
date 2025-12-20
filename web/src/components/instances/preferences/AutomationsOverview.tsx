@@ -23,42 +23,42 @@ import { TruncatedText } from "@/components/ui/truncated-text"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { cn, parseTrackerDomains } from "@/lib/utils"
-import type { TrackerRule, TrackerRulePreviewResult } from "@/types"
+import type { Automation, AutomationPreviewResult } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Clock, Info, Loader2, Pencil, Plus, Scale, Trash2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
-import { TrackerRuleDialog } from "./TrackerRuleDialog"
-import { TrackerRulePreviewDialog } from "./TrackerRulePreviewDialog"
+import { AutomationDialog } from "./AutomationDialog"
+import { AutomationPreviewDialog } from "./AutomationPreviewDialog"
 
-export function TrackerRulesOverview() {
+export function AutomationsOverview() {
   const { instances } = useInstances()
   const queryClient = useQueryClient()
   const [expandedInstances, setExpandedInstances] = useState<string[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingRule, setEditingRule] = useState<TrackerRule | null>(null)
+  const [editingRule, setEditingRule] = useState<Automation | null>(null)
   const [editingInstanceId, setEditingInstanceId] = useState<number | null>(null)
-  const [deleteConfirm, setDeleteConfirm] = useState<{ instanceId: number; rule: TrackerRule } | null>(null)
-  const [enableConfirm, setEnableConfirm] = useState<{ instanceId: number; rule: TrackerRule; preview: TrackerRulePreviewResult } | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ instanceId: number; rule: Automation } | null>(null)
+  const [enableConfirm, setEnableConfirm] = useState<{ instanceId: number; rule: Automation; preview: AutomationPreviewResult } | null>(null)
   const previewPageSize = 25
 
   const deleteRule = useMutation({
     mutationFn: ({ instanceId, ruleId }: { instanceId: number; ruleId: number }) =>
-      api.deleteTrackerRule(instanceId, ruleId),
+      api.deleteAutomation(instanceId, ruleId),
     onSuccess: (_, { instanceId }) => {
-      toast.success("Tracker rule deleted")
-      void queryClient.invalidateQueries({ queryKey: ["tracker-rules", instanceId] })
+      toast.success("Automation deleted")
+      void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to delete tracker rule")
+      toast.error(error instanceof Error ? error.message : "Failed to delete automation")
     },
   })
 
   const toggleEnabled = useMutation({
-    mutationFn: ({ instanceId, rule }: { instanceId: number; rule: TrackerRule }) =>
-      api.updateTrackerRule(instanceId, rule.id, { ...rule, enabled: !rule.enabled }),
+    mutationFn: ({ instanceId, rule }: { instanceId: number; rule: Automation }) =>
+      api.updateAutomation(instanceId, rule.id, { ...rule, enabled: !rule.enabled }),
     onSuccess: (_, { instanceId }) => {
-      void queryClient.invalidateQueries({ queryKey: ["tracker-rules", instanceId] })
+      void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to toggle rule")
@@ -66,8 +66,8 @@ export function TrackerRulesOverview() {
   })
 
   const previewRule = useMutation({
-    mutationFn: ({ instanceId, rule }: { instanceId: number; rule: TrackerRule }) =>
-      api.previewTrackerRule(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: 0 }),
+    mutationFn: ({ instanceId, rule }: { instanceId: number; rule: Automation }) =>
+      api.previewAutomation(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: 0 }),
     onSuccess: (preview, { instanceId, rule }) => {
       if (preview.totalMatches === 0) {
         // No matches - just enable without confirmation
@@ -83,8 +83,8 @@ export function TrackerRulesOverview() {
   })
 
   const loadMorePreview = useMutation({
-    mutationFn: ({ instanceId, rule, offset }: { instanceId: number; rule: TrackerRule; offset: number }) =>
-      api.previewTrackerRule(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: offset }),
+    mutationFn: ({ instanceId, rule, offset }: { instanceId: number; rule: Automation; offset: number }) =>
+      api.previewAutomation(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: offset }),
     onSuccess: (preview) => {
       setEnableConfirm(prev => prev
         ? { ...prev, preview: { ...prev.preview, examples: [...prev.preview.examples, ...preview.examples], totalMatches: preview.totalMatches } }
@@ -97,14 +97,14 @@ export function TrackerRulesOverview() {
   })
 
   // Check if a rule is a delete rule
-  const isDeleteRule = (rule: TrackerRule): boolean => {
+  const isDeleteRule = (rule: Automation): boolean => {
     const hasExpressionDelete = rule.conditions?.delete?.enabled === true
     const hasLegacyDelete = !!rule.deleteMode || !!rule.deleteUnregistered
     return hasExpressionDelete || hasLegacyDelete
   }
 
   // Handle toggle - show preview when enabling delete rules
-  const handleToggle = (instanceId: number, rule: TrackerRule) => {
+  const handleToggle = (instanceId: number, rule: Automation) => {
     if (!rule.enabled && isDeleteRule(rule)) {
       // Enabling a delete rule - show preview first
       previewRule.mutate({ instanceId, rule })
@@ -140,8 +140,8 @@ export function TrackerRulesOverview() {
   // Fetch rules for all active instances
   const rulesQueries = useQueries({
     queries: activeInstances.map((instance) => ({
-      queryKey: ["tracker-rules", instance.id],
-      queryFn: () => api.listTrackerRules(instance.id),
+      queryKey: ["automations", instance.id],
+      queryFn: () => api.listAutomations(instance.id),
       staleTime: 30000,
     })),
   })
@@ -152,7 +152,7 @@ export function TrackerRulesOverview() {
     setDialogOpen(true)
   }
 
-  const openEditDialog = (instanceId: number, rule: TrackerRule) => {
+  const openEditDialog = (instanceId: number, rule: Automation) => {
     setEditingInstanceId(instanceId)
     setEditingRule(rule)
     setDialogOpen(true)
@@ -162,7 +162,7 @@ export function TrackerRulesOverview() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">Tracker Rules</CardTitle>
+          <CardTitle className="text-lg font-semibold">Automations</CardTitle>
           <CardDescription>
             No instances configured. Add one in Settings to use this service.
           </CardDescription>
@@ -175,7 +175,7 @@ export function TrackerRulesOverview() {
     <Card>
       <CardHeader className="space-y-2">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-lg font-semibold">Tracker Rules</CardTitle>
+          <CardTitle className="text-lg font-semibold">Automations</CardTitle>
           <Tooltip>
             <TooltipTrigger asChild>
               <Info className="h-4 w-4 text-muted-foreground cursor-help" />
@@ -240,7 +240,7 @@ export function TrackerRulesOverview() {
                     ) : sortedRules.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-6 text-center space-y-2 border border-dashed rounded-lg">
                         <p className="text-sm text-muted-foreground">
-                          No tracker rules configured yet.
+                          No automations configured yet.
                         </p>
                         <Button
                           variant="outline"
@@ -283,7 +283,7 @@ export function TrackerRulesOverview() {
       </CardContent>
 
       {editingInstanceId !== null && (
-        <TrackerRuleDialog
+        <AutomationDialog
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           instanceId={editingInstanceId}
@@ -316,7 +316,7 @@ export function TrackerRulesOverview() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <TrackerRulePreviewDialog
+      <AutomationPreviewDialog
         open={!!enableConfirm}
         onOpenChange={(open) => !open && setEnableConfirm(null)}
         title="Enable Delete Rule"
@@ -341,7 +341,7 @@ export function TrackerRulesOverview() {
 }
 
 interface RulePreviewProps {
-  rule: TrackerRule
+  rule: Automation
   onToggle: () => void
   isToggling: boolean
   onEdit: () => void

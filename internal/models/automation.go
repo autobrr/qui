@@ -36,41 +36,41 @@ const (
 	TagModeRemove = "remove" // Only remove from non-matches
 )
 
-type TrackerRule struct {
-	ID                      int               `json:"id"`
-	InstanceID              int               `json:"instanceId"`
-	Name                    string            `json:"name"`
-	TrackerPattern          string            `json:"trackerPattern"`
-	TrackerDomains          []string          `json:"trackerDomains,omitempty"`
-	Categories              []string          `json:"categories,omitempty"`
-	Tags                    []string          `json:"tags,omitempty"`
-	TagMatchMode            string            `json:"tagMatchMode,omitempty"` // "any" (default) or "all"
-	UploadLimitKiB          *int64            `json:"uploadLimitKiB,omitempty"`
-	DownloadLimitKiB        *int64            `json:"downloadLimitKiB,omitempty"`
-	RatioLimit              *float64          `json:"ratioLimit,omitempty"`
-	SeedingTimeLimitMinutes *int64            `json:"seedingTimeLimitMinutes,omitempty"`
-	DeleteMode                 *string           `json:"deleteMode,omitempty"` // "none", "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds"
-	DeleteUnregistered         bool              `json:"deleteUnregistered"`
-	DeleteUnregisteredMinAge   int64             `json:"deleteUnregisteredMinAge,omitempty"` // minimum age in seconds, 0 = no minimum
-	Enabled                 bool              `json:"enabled"`
-	SortOrder               int               `json:"sortOrder"`
-	Conditions              *ActionConditions `json:"conditions,omitempty"` // expression-based conditions for actions
-	CreatedAt               time.Time         `json:"createdAt"`
-	UpdatedAt               time.Time         `json:"updatedAt"`
+type Automation struct {
+	ID                       int               `json:"id"`
+	InstanceID               int               `json:"instanceId"`
+	Name                     string            `json:"name"`
+	TrackerPattern           string            `json:"trackerPattern"`
+	TrackerDomains           []string          `json:"trackerDomains,omitempty"`
+	Categories               []string          `json:"categories,omitempty"`
+	Tags                     []string          `json:"tags,omitempty"`
+	TagMatchMode             string            `json:"tagMatchMode,omitempty"` // "any" (default) or "all"
+	UploadLimitKiB           *int64            `json:"uploadLimitKiB,omitempty"`
+	DownloadLimitKiB         *int64            `json:"downloadLimitKiB,omitempty"`
+	RatioLimit               *float64          `json:"ratioLimit,omitempty"`
+	SeedingTimeLimitMinutes  *int64            `json:"seedingTimeLimitMinutes,omitempty"`
+	DeleteMode               *string           `json:"deleteMode,omitempty"` // "none", "delete", "deleteWithFiles", "deleteWithFilesPreserveCrossSeeds"
+	DeleteUnregistered       bool              `json:"deleteUnregistered"`
+	DeleteUnregisteredMinAge int64             `json:"deleteUnregisteredMinAge,omitempty"` // minimum age in seconds, 0 = no minimum
+	Enabled                  bool              `json:"enabled"`
+	SortOrder                int               `json:"sortOrder"`
+	Conditions               *ActionConditions `json:"conditions,omitempty"` // expression-based conditions for actions
+	CreatedAt                time.Time         `json:"createdAt"`
+	UpdatedAt                time.Time         `json:"updatedAt"`
 }
 
-// UsesExpressions returns true if this rule uses expression-based conditions
+// UsesExpressions returns true if this automation uses expression-based conditions
 // instead of the legacy static fields.
-func (r *TrackerRule) UsesExpressions() bool {
+func (r *Automation) UsesExpressions() bool {
 	return r.Conditions != nil && r.Conditions.SchemaVersion != ""
 }
 
-type TrackerRuleStore struct {
+type AutomationStore struct {
 	db dbinterface.Querier
 }
 
-func NewTrackerRuleStore(db dbinterface.Querier) *TrackerRuleStore {
-	return &TrackerRuleStore{db: db}
+func NewAutomationStore(db dbinterface.Querier) *AutomationStore {
+	return &AutomationStore{db: db}
 }
 
 func splitPatterns(pattern string) []string {
@@ -113,11 +113,11 @@ func normalizeTrackerPattern(pattern string, domains []string) string {
 	return strings.Join(parts, ",")
 }
 
-func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) ([]*TrackerRule, error) {
+func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([]*Automation, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, instance_id, name, tracker_pattern, category, tag, tag_match_mode, upload_limit_kib, download_limit_kib,
 		       ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, delete_unregistered_min_age, enabled, sort_order, conditions, created_at, updated_at
-		FROM tracker_rules
+		FROM automations
 		WHERE instance_id = ?
 		ORDER BY sort_order ASC, id ASC
 	`, instanceID)
@@ -126,9 +126,9 @@ func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) (
 	}
 	defer rows.Close()
 
-	var rules []*TrackerRule
+	var automations []*Automation
 	for rows.Next() {
-		var rule TrackerRule
+		var automation Automation
 		var categories, tags, tagMatchMode, deleteMode, conditionsJSON sql.NullString
 		var upload, download sql.NullInt64
 		var ratio sql.NullFloat64
@@ -137,10 +137,10 @@ func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) (
 		var deleteUnregisteredMinAge sql.NullInt64
 
 		if err := rows.Scan(
-			&rule.ID,
-			&rule.InstanceID,
-			&rule.Name,
-			&rule.TrackerPattern,
+			&automation.ID,
+			&automation.InstanceID,
+			&automation.Name,
+			&automation.TrackerPattern,
 			&categories,
 			&tags,
 			&tagMatchMode,
@@ -151,75 +151,75 @@ func (s *TrackerRuleStore) ListByInstance(ctx context.Context, instanceID int) (
 			&deleteMode,
 			&deleteUnregistered,
 			&deleteUnregisteredMinAge,
-			&rule.Enabled,
-			&rule.SortOrder,
+			&automation.Enabled,
+			&automation.SortOrder,
 			&conditionsJSON,
-			&rule.CreatedAt,
-			&rule.UpdatedAt,
+			&automation.CreatedAt,
+			&automation.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
 
 		if categories.Valid && categories.String != "" {
-			rule.Categories = splitPatterns(categories.String)
+			automation.Categories = splitPatterns(categories.String)
 		}
 		if tags.Valid && tags.String != "" {
-			rule.Tags = splitPatterns(tags.String)
+			automation.Tags = splitPatterns(tags.String)
 		}
 		if tagMatchMode.Valid && tagMatchMode.String != "" {
-			rule.TagMatchMode = tagMatchMode.String
+			automation.TagMatchMode = tagMatchMode.String
 		} else {
-			rule.TagMatchMode = TagMatchModeAny
+			automation.TagMatchMode = TagMatchModeAny
 		}
 		if upload.Valid {
-			rule.UploadLimitKiB = &upload.Int64
+			automation.UploadLimitKiB = &upload.Int64
 		}
 		if download.Valid {
-			rule.DownloadLimitKiB = &download.Int64
+			automation.DownloadLimitKiB = &download.Int64
 		}
 		if ratio.Valid {
-			rule.RatioLimit = &ratio.Float64
+			automation.RatioLimit = &ratio.Float64
 		}
 		if seeding.Valid {
-			rule.SeedingTimeLimitMinutes = &seeding.Int64
+			automation.SeedingTimeLimitMinutes = &seeding.Int64
 		}
 		if deleteMode.Valid && deleteMode.String != DeleteModeNone {
-			rule.DeleteMode = &deleteMode.String
+			automation.DeleteMode = &deleteMode.String
 		}
-		rule.DeleteUnregistered = deleteUnregistered != 0
+		automation.DeleteUnregistered = deleteUnregistered != 0
 		if deleteUnregisteredMinAge.Valid {
-			rule.DeleteUnregisteredMinAge = deleteUnregisteredMinAge.Int64
+			automation.DeleteUnregisteredMinAge = deleteUnregisteredMinAge.Int64
 		}
 
 		// Parse conditions JSON if present
 		if conditionsJSON.Valid && conditionsJSON.String != "" {
 			var conditions ActionConditions
 			if err := json.Unmarshal([]byte(conditionsJSON.String), &conditions); err == nil {
-				rule.Conditions = &conditions
+				automation.Conditions = &conditions
 			}
 		}
 
-		rule.TrackerDomains = splitPatterns(rule.TrackerPattern)
+		automation.TrackerDomains = splitPatterns(automation.TrackerPattern)
 
-		rules = append(rules, &rule)
+		automations = append(automations, &automation)
 	}
 
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
-	return rules, nil
+	return automations, nil
 }
 
-func (s *TrackerRuleStore) Get(ctx context.Context, id int) (*TrackerRule, error) {
+func (s *AutomationStore) Get(ctx context.Context, id int) (*Automation, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, name, tracker_pattern, category, tag, tag_match_mode, upload_limit_kib, download_limit_kib,
 		       ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, delete_unregistered_min_age, enabled, sort_order, conditions, created_at, updated_at
-		FROM tracker_rules
+		FROM automations
 		WHERE id = ?
 	`, id)
 
-	var rule TrackerRule
+	var automation Automation
 	var categories, tags, tagMatchMode, deleteMode, conditionsJSON sql.NullString
 	var upload, download sql.NullInt64
 	var ratio sql.NullFloat64
@@ -228,10 +228,10 @@ func (s *TrackerRuleStore) Get(ctx context.Context, id int) (*TrackerRule, error
 	var deleteUnregisteredMinAge sql.NullInt64
 
 	if err := row.Scan(
-		&rule.ID,
-		&rule.InstanceID,
-		&rule.Name,
-		&rule.TrackerPattern,
+		&automation.ID,
+		&automation.InstanceID,
+		&automation.Name,
+		&automation.TrackerPattern,
 		&categories,
 		&tags,
 		&tagMatchMode,
@@ -242,61 +242,61 @@ func (s *TrackerRuleStore) Get(ctx context.Context, id int) (*TrackerRule, error
 		&deleteMode,
 		&deleteUnregistered,
 		&deleteUnregisteredMinAge,
-		&rule.Enabled,
-		&rule.SortOrder,
+		&automation.Enabled,
+		&automation.SortOrder,
 		&conditionsJSON,
-		&rule.CreatedAt,
-		&rule.UpdatedAt,
+		&automation.CreatedAt,
+		&automation.UpdatedAt,
 	); err != nil {
 		return nil, err
 	}
 
 	if categories.Valid && categories.String != "" {
-		rule.Categories = splitPatterns(categories.String)
+		automation.Categories = splitPatterns(categories.String)
 	}
 	if tags.Valid && tags.String != "" {
-		rule.Tags = splitPatterns(tags.String)
+		automation.Tags = splitPatterns(tags.String)
 	}
 	if tagMatchMode.Valid && tagMatchMode.String != "" {
-		rule.TagMatchMode = tagMatchMode.String
+		automation.TagMatchMode = tagMatchMode.String
 	} else {
-		rule.TagMatchMode = TagMatchModeAny
+		automation.TagMatchMode = TagMatchModeAny
 	}
 	if upload.Valid {
-		rule.UploadLimitKiB = &upload.Int64
+		automation.UploadLimitKiB = &upload.Int64
 	}
 	if download.Valid {
-		rule.DownloadLimitKiB = &download.Int64
+		automation.DownloadLimitKiB = &download.Int64
 	}
 	if ratio.Valid {
-		rule.RatioLimit = &ratio.Float64
+		automation.RatioLimit = &ratio.Float64
 	}
 	if seeding.Valid {
-		rule.SeedingTimeLimitMinutes = &seeding.Int64
+		automation.SeedingTimeLimitMinutes = &seeding.Int64
 	}
 	if deleteMode.Valid && deleteMode.String != DeleteModeNone {
-		rule.DeleteMode = &deleteMode.String
+		automation.DeleteMode = &deleteMode.String
 	}
-	rule.DeleteUnregistered = deleteUnregistered != 0
+	automation.DeleteUnregistered = deleteUnregistered != 0
 	if deleteUnregisteredMinAge.Valid {
-		rule.DeleteUnregisteredMinAge = deleteUnregisteredMinAge.Int64
+		automation.DeleteUnregisteredMinAge = deleteUnregisteredMinAge.Int64
 	}
 
 	// Parse conditions JSON if present
 	if conditionsJSON.Valid && conditionsJSON.String != "" {
 		var conditions ActionConditions
 		if err := json.Unmarshal([]byte(conditionsJSON.String), &conditions); err == nil {
-			rule.Conditions = &conditions
+			automation.Conditions = &conditions
 		}
 	}
 
-	rule.TrackerDomains = splitPatterns(rule.TrackerPattern)
+	automation.TrackerDomains = splitPatterns(automation.TrackerPattern)
 
-	return &rule, nil
+	return &automation, nil
 }
 
-func (s *TrackerRuleStore) nextSortOrder(ctx context.Context, instanceID int) (int, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(sort_order), 0) FROM tracker_rules WHERE instance_id = ?`, instanceID)
+func (s *AutomationStore) nextSortOrder(ctx context.Context, instanceID int) (int, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(sort_order), 0) FROM automations WHERE instance_id = ?`, instanceID)
 	var maxOrder int
 	if err := row.Scan(&maxOrder); err != nil {
 		return 0, err
@@ -304,16 +304,16 @@ func (s *TrackerRuleStore) nextSortOrder(ctx context.Context, instanceID int) (i
 	return maxOrder + 1, nil
 }
 
-func (s *TrackerRuleStore) Create(ctx context.Context, rule *TrackerRule) (*TrackerRule, error) {
-	if rule == nil {
-		return nil, errors.New("rule is nil")
+func (s *AutomationStore) Create(ctx context.Context, automation *Automation) (*Automation, error) {
+	if automation == nil {
+		return nil, errors.New("automation is nil")
 	}
 
-	rule.TrackerPattern = normalizeTrackerPattern(rule.TrackerPattern, rule.TrackerDomains)
+	automation.TrackerPattern = normalizeTrackerPattern(automation.TrackerPattern, automation.TrackerDomains)
 
-	sortOrder := rule.SortOrder
+	sortOrder := automation.SortOrder
 	if sortOrder == 0 {
-		next, err := s.nextSortOrder(ctx, rule.InstanceID)
+		next, err := s.nextSortOrder(ctx, automation.InstanceID)
 		if err != nil {
 			return nil, err
 		}
@@ -322,24 +322,24 @@ func (s *TrackerRuleStore) Create(ctx context.Context, rule *TrackerRule) (*Trac
 
 	// Default delete_mode to "none" if not set
 	deleteMode := DeleteModeNone
-	if rule.DeleteMode != nil && *rule.DeleteMode != "" {
-		deleteMode = *rule.DeleteMode
+	if automation.DeleteMode != nil && *automation.DeleteMode != "" {
+		deleteMode = *automation.DeleteMode
 	}
 
 	// Default tag_match_mode to "any" if not set
 	tagMatchMode := TagMatchModeAny
-	if rule.TagMatchMode != "" {
-		tagMatchMode = rule.TagMatchMode
+	if automation.TagMatchMode != "" {
+		tagMatchMode = automation.TagMatchMode
 	}
 
 	// Join arrays to comma-separated strings for storage
-	categoriesStr := nullableSlice(rule.Categories)
-	tagsStr := nullableSlice(rule.Tags)
+	categoriesStr := nullableSlice(automation.Categories)
+	tagsStr := nullableSlice(automation.Tags)
 
 	// Serialize conditions to JSON if present
 	var conditionsJSON any
-	if rule.Conditions != nil && !rule.Conditions.IsEmpty() {
-		data, err := json.Marshal(rule.Conditions)
+	if automation.Conditions != nil && !automation.Conditions.IsEmpty() {
+		data, err := json.Marshal(automation.Conditions)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal conditions: %w", err)
 		}
@@ -348,18 +348,18 @@ func (s *TrackerRuleStore) Create(ctx context.Context, rule *TrackerRule) (*Trac
 
 	// 0 means no minimum age, store as NULL
 	var deleteUnregMinAge any
-	if rule.DeleteUnregisteredMinAge > 0 {
-		deleteUnregMinAge = rule.DeleteUnregisteredMinAge
+	if automation.DeleteUnregisteredMinAge > 0 {
+		deleteUnregMinAge = automation.DeleteUnregisteredMinAge
 	}
 
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO tracker_rules
+		INSERT INTO automations
 			(instance_id, name, tracker_pattern, category, tag, tag_match_mode, upload_limit_kib, download_limit_kib, ratio_limit, seeding_time_limit_minutes, delete_mode, delete_unregistered, delete_unregistered_min_age, enabled, sort_order, conditions)
 		VALUES
 			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, rule.InstanceID, rule.Name, rule.TrackerPattern, categoriesStr, tagsStr, tagMatchMode,
-		nullableInt64(rule.UploadLimitKiB), nullableInt64(rule.DownloadLimitKiB), nullableFloat64(rule.RatioLimit),
-		nullableInt64(rule.SeedingTimeLimitMinutes), deleteMode, boolToInt(rule.DeleteUnregistered), deleteUnregMinAge, boolToInt(rule.Enabled), sortOrder, conditionsJSON)
+	`, automation.InstanceID, automation.Name, automation.TrackerPattern, categoriesStr, tagsStr, tagMatchMode,
+		nullableInt64(automation.UploadLimitKiB), nullableInt64(automation.DownloadLimitKiB), nullableFloat64(automation.RatioLimit),
+		nullableInt64(automation.SeedingTimeLimitMinutes), deleteMode, boolToInt(automation.DeleteUnregistered), deleteUnregMinAge, boolToInt(automation.Enabled), sortOrder, conditionsJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -372,33 +372,33 @@ func (s *TrackerRuleStore) Create(ctx context.Context, rule *TrackerRule) (*Trac
 	return s.Get(ctx, int(id))
 }
 
-func (s *TrackerRuleStore) Update(ctx context.Context, rule *TrackerRule) (*TrackerRule, error) {
-	if rule == nil {
-		return nil, errors.New("rule is nil")
+func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*Automation, error) {
+	if automation == nil {
+		return nil, errors.New("automation is nil")
 	}
 
-	rule.TrackerPattern = normalizeTrackerPattern(rule.TrackerPattern, rule.TrackerDomains)
+	automation.TrackerPattern = normalizeTrackerPattern(automation.TrackerPattern, automation.TrackerDomains)
 
 	// Default delete_mode to "none" if not set
 	deleteMode := DeleteModeNone
-	if rule.DeleteMode != nil && *rule.DeleteMode != "" {
-		deleteMode = *rule.DeleteMode
+	if automation.DeleteMode != nil && *automation.DeleteMode != "" {
+		deleteMode = *automation.DeleteMode
 	}
 
 	// Default tag_match_mode to "any" if not set
 	tagMatchMode := TagMatchModeAny
-	if rule.TagMatchMode != "" {
-		tagMatchMode = rule.TagMatchMode
+	if automation.TagMatchMode != "" {
+		tagMatchMode = automation.TagMatchMode
 	}
 
 	// Join arrays to comma-separated strings for storage
-	categoriesStr := nullableSlice(rule.Categories)
-	tagsStr := nullableSlice(rule.Tags)
+	categoriesStr := nullableSlice(automation.Categories)
+	tagsStr := nullableSlice(automation.Tags)
 
 	// Serialize conditions to JSON if present
 	var conditionsJSON any
-	if rule.Conditions != nil && !rule.Conditions.IsEmpty() {
-		data, err := json.Marshal(rule.Conditions)
+	if automation.Conditions != nil && !automation.Conditions.IsEmpty() {
+		data, err := json.Marshal(automation.Conditions)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal conditions: %w", err)
 		}
@@ -407,18 +407,18 @@ func (s *TrackerRuleStore) Update(ctx context.Context, rule *TrackerRule) (*Trac
 
 	// 0 means no minimum age, store as NULL
 	var deleteUnregMinAge any
-	if rule.DeleteUnregisteredMinAge > 0 {
-		deleteUnregMinAge = rule.DeleteUnregisteredMinAge
+	if automation.DeleteUnregisteredMinAge > 0 {
+		deleteUnregMinAge = automation.DeleteUnregisteredMinAge
 	}
 
 	res, err := s.db.ExecContext(ctx, `
-		UPDATE tracker_rules
+		UPDATE automations
 		SET name = ?, tracker_pattern = ?, category = ?, tag = ?, tag_match_mode = ?, upload_limit_kib = ?, download_limit_kib = ?,
 		    ratio_limit = ?, seeding_time_limit_minutes = ?, delete_mode = ?, delete_unregistered = ?, delete_unregistered_min_age = ?, enabled = ?, sort_order = ?, conditions = ?
 		WHERE id = ? AND instance_id = ?
-	`, rule.Name, rule.TrackerPattern, categoriesStr, tagsStr, tagMatchMode,
-		nullableInt64(rule.UploadLimitKiB), nullableInt64(rule.DownloadLimitKiB), nullableFloat64(rule.RatioLimit),
-		nullableInt64(rule.SeedingTimeLimitMinutes), deleteMode, boolToInt(rule.DeleteUnregistered), deleteUnregMinAge, boolToInt(rule.Enabled), rule.SortOrder, conditionsJSON, rule.ID, rule.InstanceID)
+	`, automation.Name, automation.TrackerPattern, categoriesStr, tagsStr, tagMatchMode,
+		nullableInt64(automation.UploadLimitKiB), nullableInt64(automation.DownloadLimitKiB), nullableFloat64(automation.RatioLimit),
+		nullableInt64(automation.SeedingTimeLimitMinutes), deleteMode, boolToInt(automation.DeleteUnregistered), deleteUnregMinAge, boolToInt(automation.Enabled), automation.SortOrder, conditionsJSON, automation.ID, automation.InstanceID)
 	if err != nil {
 		return nil, err
 	}
@@ -430,11 +430,11 @@ func (s *TrackerRuleStore) Update(ctx context.Context, rule *TrackerRule) (*Trac
 		return nil, sql.ErrNoRows
 	}
 
-	return s.Get(ctx, rule.ID)
+	return s.Get(ctx, automation.ID)
 }
 
-func (s *TrackerRuleStore) Delete(ctx context.Context, instanceID int, id int) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM tracker_rules WHERE id = ? AND instance_id = ?`, id, instanceID)
+func (s *AutomationStore) Delete(ctx context.Context, instanceID int, id int) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM automations WHERE id = ? AND instance_id = ?`, id, instanceID)
 	if err != nil {
 		return err
 	}
@@ -444,7 +444,7 @@ func (s *TrackerRuleStore) Delete(ctx context.Context, instanceID int, id int) e
 	return nil
 }
 
-func (s *TrackerRuleStore) Reorder(ctx context.Context, instanceID int, orderedIDs []int) error {
+func (s *AutomationStore) Reorder(ctx context.Context, instanceID int, orderedIDs []int) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -452,7 +452,7 @@ func (s *TrackerRuleStore) Reorder(ctx context.Context, instanceID int, orderedI
 	defer tx.Rollback()
 
 	for idx, id := range orderedIDs {
-		if _, err := tx.ExecContext(ctx, `UPDATE tracker_rules SET sort_order = ? WHERE id = ? AND instance_id = ?`, idx+1, id, instanceID); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE automations SET sort_order = ? WHERE id = ? AND instance_id = ?`, idx+1, id, instanceID); err != nil {
 			return err
 		}
 	}
