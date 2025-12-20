@@ -3,13 +3,12 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Badge } from "@/components/ui/badge"
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { containsLinks, renderTextWithLinks } from "@/lib/linkUtils"
+import { getTrackerStatusBadge } from "@/lib/tracker-utils"
 import { cn } from "@/lib/utils"
 import type { TorrentTracker } from "@/types"
 import {
@@ -21,8 +20,9 @@ import {
   useReactTable,
 } from "@tanstack/react-table"
 import { SortIcon } from "@/components/ui/sort-icon"
-import { Edit, Loader2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { memo, useMemo, useState } from "react"
+import { TrackerContextMenu } from "./TrackerContextMenu"
 
 interface TrackersTableProps {
   trackers: TorrentTracker[] | undefined
@@ -33,23 +33,6 @@ interface TrackersTableProps {
 }
 
 const columnHelper = createColumnHelper<TorrentTracker>()
-
-function getStatusBadge(status: number) {
-  switch (status) {
-    case 0:
-      return <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Disabled</Badge>
-    case 1:
-      return <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Not contacted</Badge>
-    case 2:
-      return <Badge variant="default" className="text-[10px] px-1.5 py-0 bg-green-500">Working</Badge>
-    case 3:
-      return <Badge variant="default" className="text-[10px] px-1.5 py-0">Updating</Badge>
-    case 4:
-      return <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Error</Badge>
-    default:
-      return <Badge variant="outline" className="text-[10px] px-1.5 py-0">Unknown</Badge>
-  }
-}
 
 export const TrackersTable = memo(function TrackersTable({
   trackers,
@@ -65,7 +48,7 @@ export const TrackersTable = memo(function TrackersTable({
   const columns = useMemo(() => [
     columnHelper.accessor("status", {
       header: "Status",
-      cell: (info) => getStatusBadge(info.getValue()),
+      cell: (info) => getTrackerStatusBadge(info.getValue(), true),
       size: 90,
       // Custom sort: disabled (0) always at bottom
       sortingFn: (rowA, rowB) => {
@@ -221,59 +204,33 @@ export const TrackersTable = memo(function TrackersTable({
           <tbody>
             {table.getRowModel().rows.map((row) => {
               const tracker = row.original
-              const isValidUrl = (() => {
-                try {
-                  new URL(tracker.url)
-                  return true
-                } catch {
-                  return false
-                }
-              })()
 
-              const rowContent = (
-                <tr
+              return (
+                <TrackerContextMenu
                   key={row.id}
-                  className="border-b border-border/50 hover:bg-muted/30"
+                  tracker={tracker}
+                  onEditTracker={onEditTracker}
+                  supportsTrackerEditing={supportsTrackerEditing}
                 >
-                  {row.getVisibleCells().map((cell) => (
-                    <td
-                      key={cell.id}
-                      className="px-3 py-2"
-                      style={
-                        (cell.column.columnDef.meta as { fullWidth?: boolean })?.fullWidth
-                          ? { width: "100%" }
-                          : cell.column.columnDef.size
-                            ? { width: cell.column.getSize() }
-                            : undefined
-                      }
-                    >
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
-                </tr>
-              )
-
-              // Only show context menu for valid URLs (not DHT, PeX, LSD)
-              if (isValidUrl && onEditTracker) {
-                return (
-                  <ContextMenu key={row.id}>
-                    <ContextMenuTrigger asChild>
-                      {rowContent}
-                    </ContextMenuTrigger>
-                    <ContextMenuContent>
-                      <ContextMenuItem
-                        disabled={!supportsTrackerEditing}
-                        onClick={() => onEditTracker(tracker)}
+                  <tr className="border-b border-border/50 hover:bg-muted/30">
+                    {row.getVisibleCells().map((cell) => (
+                      <td
+                        key={cell.id}
+                        className="px-3 py-2"
+                        style={
+                          (cell.column.columnDef.meta as { fullWidth?: boolean })?.fullWidth
+                            ? { width: "100%" }
+                            : cell.column.columnDef.size
+                              ? { width: cell.column.getSize() }
+                              : undefined
+                        }
                       >
-                        <Edit className="mr-2 h-4 w-4" />
-                        Edit Tracker URL
-                      </ContextMenuItem>
-                    </ContextMenuContent>
-                  </ContextMenu>
-                )
-              }
-
-              return rowContent
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
+                </TrackerContextMenu>
+              )
             })}
           </tbody>
         </table>

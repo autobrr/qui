@@ -24,6 +24,7 @@ import { useCrossSeedMatches } from "@/lib/cross-seed-utils"
 import { getLinuxCategory, getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxSavePath, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import { getTrackerStatusBadge } from "@/lib/tracker-utils"
 import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
@@ -31,10 +32,10 @@ import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/util
 import type { SortedPeersResponse, Torrent, TorrentFile, TorrentPeer, TorrentTracker } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import "flag-icons/css/flag-icons.min.css"
-import { Ban, Copy, Edit, Loader2, Trash2, UserPlus, X } from "lucide-react"
+import { Ban, Copy, Loader2, Trash2, UserPlus, X } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
-import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackersTable, WebSeedsTable } from "./details"
+import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackerContextMenu, TrackersTable, WebSeedsTable } from "./details"
 import { EditTrackerDialog, RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
 import { TorrentFileTree } from "./TorrentFileTree"
 
@@ -57,23 +58,6 @@ function isTabValue(value: string): value is TabValue {
 }
 
 
-
-function getTrackerStatusBadge(status: number) {
-  switch (status) {
-    case 0:
-      return <Badge variant="secondary">Disabled</Badge>
-    case 1:
-      return <Badge variant="secondary">Not contacted</Badge>
-    case 2:
-      return <Badge variant="default">Working</Badge>
-    case 3:
-      return <Badge variant="default">Updating</Badge>
-    case 4:
-      return <Badge variant="destructive">Error</Badge>
-    default:
-      return <Badge variant="outline">Unknown</Badge>
-  }
-}
 
 export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent, initialTab, onInitialTabConsumed, layout = "vertical", onClose }: TorrentDetailsPanelProps) {
   const [activeTab, setActiveTab] = usePersistedTabState<TabValue>(TAB_STORAGE_KEY, DEFAULT_TAB, isTabValue)
@@ -1139,81 +1123,56 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             const shouldRenderMessage = Boolean(tracker.msg)
                             const messageContent = incognitoMode && shouldRenderMessage ? "Tracker message hidden in incognito mode" : tracker.msg
 
-                            // Check if this is a valid URL (not DHT, PeX, LSD)
-                            const isValidUrl = (() => {
-                              try {
-                                new URL(tracker.url)
-                                return true
-                              } catch {
-                                return false
-                              }
-                            })()
-
-                            const cardContent = (
-                              <div
-                                className={`backdrop-blur-sm border ${tracker.status === 0 ? "bg-card/30 border-border/30 opacity-60" : "bg-card/50 border-border/50"} hover:border-border transition-all rounded-lg p-4 space-y-3`}
+                            return (
+                              <TrackerContextMenu
+                                key={index}
+                                tracker={tracker}
+                                onEditTracker={handleEditTrackerClick}
+                                supportsTrackerEditing={supportsTrackerEditing}
                               >
-                                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
-                                  <div className="flex-1 space-y-1">
-                                    <div className="flex items-center gap-2">
-                                      {getTrackerStatusBadge(tracker.status)}
-                                    </div>
-                                    <p className="text-xs font-mono text-muted-foreground break-all">{displayUrl}</p>
-                                  </div>
-                                </div>
-                                <Separator className="opacity-50" />
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                  <div className="space-y-1">
-                                    <p className="text-xs text-muted-foreground">Seeds</p>
-                                    <p className="text-sm font-medium">{tracker.num_seeds}</p>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <p className="text-xs text-muted-foreground">Peers</p>
-                                    <p className="text-sm font-medium">{tracker.num_peers}</p>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <p className="text-xs text-muted-foreground">Leechers</p>
-                                    <p className="text-sm font-medium">{tracker.num_leeches}</p>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <p className="text-xs text-muted-foreground">Downloaded</p>
-                                    <p className="text-sm font-medium">{tracker.num_downloaded}</p>
-                                  </div>
-                                </div>
-                                {shouldRenderMessage && messageContent && (
-                                  <>
-                                    <Separator className="opacity-50" />
-                                    <div className="bg-background/50 p-2 rounded">
-                                      <div className="text-xs text-muted-foreground break-words">
-                                        {renderTextWithLinks(messageContent)}
+                                <div
+                                  className={`backdrop-blur-sm border ${tracker.status === 0 ? "bg-card/30 border-border/30 opacity-60" : "bg-card/50 border-border/50"} hover:border-border transition-all rounded-lg p-4 space-y-3`}
+                                >
+                                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                                    <div className="flex-1 space-y-1">
+                                      <div className="flex items-center gap-2">
+                                        {getTrackerStatusBadge(tracker.status)}
                                       </div>
+                                      <p className="text-xs font-mono text-muted-foreground break-all">{displayUrl}</p>
                                     </div>
-                                  </>
-                                )}
-                              </div>
+                                  </div>
+                                  <Separator className="opacity-50" />
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                    <div className="space-y-1">
+                                      <p className="text-xs text-muted-foreground">Seeds</p>
+                                      <p className="text-sm font-medium">{tracker.num_seeds}</p>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <p className="text-xs text-muted-foreground">Peers</p>
+                                      <p className="text-sm font-medium">{tracker.num_peers}</p>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <p className="text-xs text-muted-foreground">Leechers</p>
+                                      <p className="text-sm font-medium">{tracker.num_leeches}</p>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <p className="text-xs text-muted-foreground">Downloaded</p>
+                                      <p className="text-sm font-medium">{tracker.num_downloaded}</p>
+                                    </div>
+                                  </div>
+                                  {shouldRenderMessage && messageContent && (
+                                    <>
+                                      <Separator className="opacity-50" />
+                                      <div className="bg-background/50 p-2 rounded">
+                                        <div className="text-xs text-muted-foreground break-words">
+                                          {renderTextWithLinks(messageContent)}
+                                        </div>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              </TrackerContextMenu>
                             )
-
-                            // Wrap valid URLs with context menu for editing
-                            if (isValidUrl) {
-                              return (
-                                <ContextMenu key={index}>
-                                  <ContextMenuTrigger asChild>
-                                    {cardContent}
-                                  </ContextMenuTrigger>
-                                  <ContextMenuContent>
-                                    <ContextMenuItem
-                                      disabled={!supportsTrackerEditing}
-                                      onClick={() => handleEditTrackerClick(tracker)}
-                                    >
-                                      <Edit className="mr-2 h-4 w-4" />
-                                      Edit Tracker URL
-                                    </ContextMenuItem>
-                                  </ContextMenuContent>
-                                </ContextMenu>
-                              )
-                            }
-
-                            return <div key={index}>{cardContent}</div>
                           })}
                       </div>
                     </div>
