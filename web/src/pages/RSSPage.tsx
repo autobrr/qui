@@ -361,7 +361,7 @@ export function RSSPage({
 
           {activeTab === "feeds" && (
             <div className="flex items-center gap-2">
-              {sseStatus !== "disabled" && (
+              {sseStatus !== "disabled" && isRSSProcessingEnabled && (
                 <Badge
                   variant="outline"
                   className={`gap-2 ${sseStatus === "live"
@@ -377,9 +377,9 @@ export function RSSPage({
                   {sseStatus === "disconnected" && <span className="h-2 w-2 rounded-full bg-red-500" />}
                   <span className="text-xs">
                     {sseStatus === "live"
-                      ? "Live"
+                      ? "SSE Live"
                       : sseStatus === "connecting"
-                        ? "Connecting"
+                        ? "SSE Connecting"
                         : sseStatus === "reconnecting"
                           ? `Reconnecting${sseReconnectAttempt > 0 ? ` (${sseReconnectAttempt}/5)` : ""}`
                           : "Disconnected"}
