@@ -11,7 +11,6 @@ import {
   ExternalLink,
   FileText,
   Folder,
-  FolderInput,
   HardDrive,
   Link,
   Loader2,
@@ -25,8 +24,6 @@ import {
   Settings,
   Tag,
   Trash2,
-  Tv,
-  X,
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
@@ -1234,7 +1231,7 @@ function RulesTab({
 
   return (
     <>
-      <div className="grid gap-4">
+      <div className="space-y-1">
         {rules.map(([name, rule]) => (
           <RuleCard
             key={name}
@@ -1288,142 +1285,92 @@ interface RuleCardProps {
 
 function RuleCard({ name, rule, isSelected, onSelect, onToggle, onEdit, onRemove }: RuleCardProps) {
   const category = rule.torrentParams?.category || rule.assignedCategory
-  const savePath = rule.torrentParams?.save_path || rule.savePath
 
-  // Parse filter patterns into individual terms
-  const mustContainTerms = rule.mustContain ? rule.mustContain.split("|").map(t => t.trim()).filter(Boolean) : []
-  const mustNotContainTerms = rule.mustNotContain ? rule.mustNotContain.split("|").map(t => t.trim()).filter(Boolean) : []
+  // Build compact filter summary
+  const filterParts: string[] = []
+  if (rule.mustContain) {
+    const count = rule.mustContain.split("|").filter(Boolean).length
+    filterParts.push(`+${count} match`)
+  }
+  if (rule.mustNotContain) {
+    const count = rule.mustNotContain.split("|").filter(Boolean).length
+    filterParts.push(`-${count} exclude`)
+  }
+  if (rule.episodeFilter) {
+    filterParts.push(`ep: ${rule.episodeFilter}`)
+  }
+  const filterSummary = filterParts.join(" · ") || "No filters"
 
   return (
-    <Card className={`transition-all duration-200 ${isSelected ? "ring-2 ring-primary shadow-md" : "hover:shadow-md hover:border-muted-foreground/30"}`}>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <Switch checked={rule.enabled} onCheckedChange={onToggle} />
-            <div className="flex-1 min-w-0">
-              <CardTitle className="text-base truncate">{name}</CardTitle>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Status badges */}
-            <div className="flex items-center gap-1.5">
-              {rule.useRegex && (
-                <Tooltip>
-                  <TooltipTrigger>
-                    <Badge variant="outline" className="h-6 px-1.5">
-                      <Regex className="h-3 w-3" />
-                    </Badge>
-                  </TooltipTrigger>
-                  <TooltipContent>Uses regex patterns</TooltipContent>
-                </Tooltip>
-              )}
-              {rule.smartFilter && (
-                <Badge variant="secondary" className="h-6">Smart</Badge>
-              )}
-              <Badge variant={rule.enabled ? "default" : "outline"} className="h-6">
-                {rule.enabled ? "Active" : "Disabled"}
-              </Badge>
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={onSelect}>
-                  <FileText className="h-4 w-4 mr-2" />
-                  Preview Matches
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={onEdit}>
-                  Edit Rule
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-destructive" onClick={onRemove}>
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Remove
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+    <div
+      className={`flex items-center gap-3 px-3 py-2 rounded-md border transition-colors ${
+        isSelected
+          ? "border-primary bg-accent"
+          : "border-border hover:bg-accent"
+      }`}
+    >
+      <Switch checked={rule.enabled} onCheckedChange={onToggle} />
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className={`text-sm truncate ${rule.enabled ? "font-medium" : "text-muted-foreground"}`}>
+            {name}
+          </span>
+          {rule.useRegex && (
+            <Badge variant="outline" className="h-5 px-1 text-[10px]">
+              <Regex className="h-3 w-3" />
+            </Badge>
+          )}
+          {rule.smartFilter && (
+            <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">Smart</Badge>
+          )}
         </div>
-      </CardHeader>
-      <CardContent className="pb-4 pt-0">
-        {/* Filters section - using colored pills */}
-        {(mustContainTerms.length > 0 || mustNotContainTerms.length > 0 || rule.episodeFilter) && (
-          <div className="space-y-2.5 mb-4">
-            {mustContainTerms.length > 0 && (
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs text-green-600 dark:text-green-500 flex items-center gap-1 shrink-0">
-                  <Check className="h-3 w-3" /> Match
-                </span>
-                {mustContainTerms.map((term, i) => (
-                  <Badge key={i} variant="outline" className="bg-green-500/10 border-green-500/30 text-green-700 dark:text-green-400 text-xs font-mono">
-                    {term}
-                  </Badge>
-                ))}
-              </div>
-            )}
-            {mustNotContainTerms.length > 0 && (
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs text-red-600 dark:text-red-500 flex items-center gap-1 shrink-0">
-                  <X className="h-3 w-3" /> Exclude
-                </span>
-                {mustNotContainTerms.map((term, i) => (
-                  <Badge key={i} variant="outline" className="bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-400 text-xs font-mono">
-                    {term}
-                  </Badge>
-                ))}
-              </div>
-            )}
-            {rule.episodeFilter && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-blue-600 dark:text-blue-500 flex items-center gap-1 shrink-0">
-                  <Tv className="h-3 w-3" /> Episodes
-                </span>
-                <Badge variant="outline" className="bg-blue-500/10 border-blue-500/30 text-blue-700 dark:text-blue-400 text-xs font-mono">
-                  {rule.episodeFilter}
-                </Badge>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Metadata row */}
-        <div className="flex items-center gap-4 text-sm flex-wrap">
-          {/* Feeds */}
-          <div className="flex items-center gap-1.5">
-            <Rss className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">
-              {rule.affectedFeeds.length > 0 ? `${rule.affectedFeeds.length} feed(s)` : "All feeds"}
-            </span>
-          </div>
-
-          {/* Category */}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="truncate">{filterSummary}</span>
           {category && (
-            <div className="flex items-center gap-1.5">
-              <Tag className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground truncate max-w-32">{category}</span>
-            </div>
+            <>
+              <span>·</span>
+              <Tag className="h-3 w-3 shrink-0" />
+              <span className="truncate">{category}</span>
+            </>
           )}
-
-          {/* Save path */}
-          {savePath && (
-            <div className="flex items-center gap-1.5">
-              <FolderInput className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-              <span className="text-xs text-muted-foreground truncate max-w-48">{savePath}</span>
-            </div>
+          {rule.affectedFeeds.length > 0 && (
+            <>
+              <span>·</span>
+              <Rss className="h-3 w-3 shrink-0" />
+              <span>{rule.affectedFeeds.length}</span>
+            </>
           )}
         </div>
+      </div>
 
-        {/* Last match */}
-        {rule.lastMatch && (
-          <div className="mt-3 pt-3 border-t text-xs text-muted-foreground">
-            Last match: {new Date(rule.lastMatch).toLocaleDateString()}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      <div className="flex items-center gap-0.5 shrink-0">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onSelect}>
+              <Search className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Preview matches</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onEdit}>
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Edit rule</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={onRemove}>
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Remove rule</TooltipContent>
+        </Tooltip>
+      </div>
+    </div>
   )
 }
 
