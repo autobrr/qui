@@ -1035,7 +1035,7 @@ function ArticlesPanel({ instanceId, feed, feedPath, onDownload }: ArticlesPanel
             <p className="text-sm">No matching articles</p>
           </div>
         ) : (
-          <div className="space-y-0.5 pr-1">
+          <div className="space-y-1 pr-1">
             {filteredArticles.map((article) => (
               <ArticleRow
                 key={article.id}
@@ -1078,7 +1078,9 @@ function stripHtml(html: string): string {
 function ArticleRow({ article, formatDate, onMarkAsRead, onDownload }: ArticleRowProps) {
   const formattedDate = article.date ? formatDate(new Date(article.date)) : ""
   const hasDetails = article.description || article.author
-  const rowClass = `group grid grid-cols-[1fr_auto] items-center gap-2 py-1.5 transition-colors ${article.isRead ? "opacity-50 hover:opacity-100" : ""}`
+  const rowClass = `group grid grid-cols-[1fr_auto] items-center gap-2 px-3 py-2 rounded-md border border-border transition-colors hover:bg-accent hover:text-accent-foreground ${
+    article.isRead ? "text-muted-foreground border-transparent" : ""
+  }`
   const titleClass = `text-sm leading-snug truncate ${article.isRead ? "" : "font-medium"}`
 
   const titleContent = (
@@ -1137,7 +1139,7 @@ function ArticleRow({ article, formatDate, onMarkAsRead, onDownload }: ArticleRo
         </div>
       </div>
       <CollapsibleContent>
-        <div className="pb-4 text-sm text-muted-foreground">
+        <div className="px-3 pb-3 pt-1 text-sm text-muted-foreground">
           {article.description && <p className="whitespace-pre-wrap">{renderTextWithLinks(stripHtml(article.description))}</p>}
           {article.author && <p className="text-xs mt-1">By {article.author}</p>}
         </div>
