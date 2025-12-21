@@ -46,6 +46,7 @@ export const CONDITION_FIELDS = {
   // Boolean fields
   PRIVATE: { label: "Private", type: "boolean" as const, description: "Private tracker torrent" },
   IS_UNREGISTERED: { label: "Unregistered", type: "boolean" as const, description: "Tracker reports torrent as unregistered" },
+  IS_HARDLINKED: { label: "Hardlinked", type: "boolean" as const, description: "At least one file has hardlinks" },
 } as const;
 
 export type FieldType = "string" | "state" | "bytes" | "duration" | "timestamp" | "float" | "speed" | "integer" | "boolean";
@@ -188,6 +189,10 @@ export const FIELD_GROUPS = [
   {
     label: "Tracker",
     fields: ["TRACKER", "TRACKERS_COUNT", "PRIVATE", "IS_UNREGISTERED", "COMMENT"],
+  },
+  {
+    label: "Files",
+    fields: ["IS_HARDLINKED"],
   },
 ];
 

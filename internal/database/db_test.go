@@ -181,6 +181,7 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "tls_skip_verify", Type: "BOOLEAN"},
 		{Name: "sort_order", Type: "INTEGER"},
 		{Name: "is_active", Type: "BOOLEAN"},
+		{Name: "has_local_filesystem_access", Type: "BOOLEAN"},
 	},
 	"licenses": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},

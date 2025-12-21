@@ -22,13 +22,15 @@ import (
 type AutomationHandler struct {
 	store         *models.AutomationStore
 	activityStore *models.AutomationActivityStore
+	instanceStore *models.InstanceStore
 	service       *automations.Service
 }
 
-func NewAutomationHandler(store *models.AutomationStore, activityStore *models.AutomationActivityStore, service *automations.Service) *AutomationHandler {
+func NewAutomationHandler(store *models.AutomationStore, activityStore *models.AutomationActivityStore, instanceStore *models.InstanceStore, service *automations.Service) *AutomationHandler {
 	return &AutomationHandler{
 		store:         store,
 		activityStore: activityStore,
+		instanceStore: instanceStore,
 		service:       service,
 	}
 }
@@ -114,6 +116,20 @@ func (h *AutomationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate IS_HARDLINKED usage requires local filesystem access
+	if conditionsUseHardlink(payload.Conditions) {
+		instance, err := h.instanceStore.Get(r.Context(), instanceID)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for validation")
+			RespondError(w, http.StatusInternalServerError, "Failed to validate automation")
+			return
+		}
+		if !instance.HasLocalFilesystemAccess {
+			RespondError(w, http.StatusBadRequest, "IS_HARDLINKED condition requires local filesystem access. Enable 'Local Filesystem Access' in instance settings first.")
+			return
+		}
+	}
+
 	automation, err := h.store.Create(r.Context(), payload.toModel(instanceID, 0))
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to create automation")
@@ -158,6 +174,20 @@ func (h *AutomationHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if payload.Conditions == nil || payload.Conditions.IsEmpty() {
 		RespondError(w, http.StatusBadRequest, "At least one action must be configured")
 		return
+	}
+
+	// Validate IS_HARDLINKED usage requires local filesystem access
+	if conditionsUseHardlink(payload.Conditions) {
+		instance, err := h.instanceStore.Get(r.Context(), instanceID)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for validation")
+			RespondError(w, http.StatusInternalServerError, "Failed to validate automation")
+			return
+		}
+		if !instance.HasLocalFilesystemAccess {
+			RespondError(w, http.StatusBadRequest, "IS_HARDLINKED condition requires local filesystem access. Enable 'Local Filesystem Access' in instance settings first.")
+			return
+		}
 	}
 
 	automation, err := h.store.Update(r.Context(), payload.toModel(instanceID, ruleID))
@@ -269,6 +299,29 @@ func normalizeTrackerDomains(domains []string) []string {
 		out = append(out, trimmed)
 	}
 	return out
+}
+
+// conditionsUseHardlink checks if any action condition uses IS_HARDLINKED field.
+func conditionsUseHardlink(conditions *models.ActionConditions) bool {
+	if conditions == nil {
+		return false
+	}
+	if conditions.SpeedLimits != nil && automations.ConditionUsesField(conditions.SpeedLimits.Condition, automations.FieldIsHardlinked) {
+		return true
+	}
+	if conditions.ShareLimits != nil && automations.ConditionUsesField(conditions.ShareLimits.Condition, automations.FieldIsHardlinked) {
+		return true
+	}
+	if conditions.Pause != nil && automations.ConditionUsesField(conditions.Pause.Condition, automations.FieldIsHardlinked) {
+		return true
+	}
+	if conditions.Delete != nil && automations.ConditionUsesField(conditions.Delete.Condition, automations.FieldIsHardlinked) {
+		return true
+	}
+	if conditions.Tag != nil && automations.ConditionUsesField(conditions.Tag.Condition, automations.FieldIsHardlinked) {
+		return true
+	}
+	return false
 }
 
 func (h *AutomationHandler) ListActivity(w http.ResponseWriter, r *http.Request) {

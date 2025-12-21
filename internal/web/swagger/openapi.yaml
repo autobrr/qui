@@ -575,6 +575,9 @@ paths:
                 tlsSkipVerify:
                   type: boolean
                   description: Set to true to disable TLS certificate verification (for trusted self-signed certificates).
+                hasLocalFilesystemAccess:
+                  type: boolean
+                  description: Set to true if qui can access this instance's download paths locally (required for hardlink detection in automations).
       responses:
         '201':
           description: Instance created
@@ -655,6 +658,9 @@ paths:
                 tlsSkipVerify:
                   type: boolean
                   description: Set to true to disable TLS certificate verification (for trusted self-signed certificates).
+                hasLocalFilesystemAccess:
+                  type: boolean
+                  description: Set to true if qui can access this instance's download paths locally (required for hardlink detection in automations).
       responses:
         '200':
           description: Instance updated
@@ -3483,6 +3489,9 @@ components:
         tlsSkipVerify:
           type: boolean
           description: When true, TLS certificate errors from the upstream qBittorrent instance are ignored.
+        hasLocalFilesystemAccess:
+          type: boolean
+          description: When true, qui can access this instance's download paths locally (required for hardlink detection in automations).
         sortOrder:
           type: integer
           description: Display order preference for the instance.

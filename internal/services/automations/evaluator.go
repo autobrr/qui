@@ -17,6 +17,10 @@ const maxConditionDepth = 20
 type EvalContext struct {
 	// UnregisteredSet contains hashes of unregistered torrents (from SyncManager health counts)
 	UnregisteredSet map[string]struct{}
+	// HardlinkedSet contains hashes of torrents that have at least one hardlinked file
+	HardlinkedSet map[string]struct{}
+	// InstanceHasLocalAccess indicates whether the instance has local filesystem access
+	InstanceHasLocalAccess bool
 }
 
 // ConditionUsesField checks if a condition tree references a specific field.
@@ -180,6 +184,18 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 			_, isUnregistered = ctx.UnregisteredSet[torrent.Hash]
 		}
 		return compareBool(isUnregistered, cond)
+	case FieldIsHardlinked:
+		// Instances without local filesystem access cannot detect hardlinks.
+		// Return false so the condition doesn't match and rules won't trigger unintended actions.
+		// Note: Automations using IS_HARDLINKED are validated at creation time to require local access.
+		if ctx == nil || !ctx.InstanceHasLocalAccess {
+			return false
+		}
+		isHardlinked := false
+		if ctx.HardlinkedSet != nil {
+			_, isHardlinked = ctx.HardlinkedSet[torrent.Hash]
+		}
+		return compareBool(isHardlinked, cond)
 
 	default:
 		return false

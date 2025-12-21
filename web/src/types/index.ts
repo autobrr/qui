@@ -23,6 +23,7 @@ export interface Instance {
   username: string
   basicUsername?: string
   tlsSkipVerify: boolean
+  hasLocalFilesystemAccess: boolean
   sortOrder: number
   isActive: boolean
   reannounceSettings: InstanceReannounceSettings
@@ -36,6 +37,7 @@ export interface InstanceFormData {
   basicUsername?: string
   basicPassword?: string
   tlsSkipVerify: boolean
+  hasLocalFilesystemAccess: boolean
   reannounceSettings: InstanceReannounceSettings
 }
 
@@ -144,6 +146,8 @@ export type ConditionField =
   | "TRACKERS_COUNT"
   // Boolean fields
   | "PRIVATE"
+  | "IS_UNREGISTERED"
+  | "IS_HARDLINKED"
 
 export type ConditionOperator =
   // Logical operators (for groups)

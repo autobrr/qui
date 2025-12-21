@@ -66,6 +66,7 @@ const (
 	// Boolean fields
 	FieldPrivate        = models.FieldPrivate
 	FieldIsUnregistered = models.FieldIsUnregistered
+	FieldIsHardlinked   = models.FieldIsHardlinked
 
 	// Delete modes
 	DeleteModeNone                        = models.DeleteModeNone

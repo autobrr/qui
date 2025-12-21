@@ -344,6 +344,7 @@ const (
 	// Boolean fields
 	FieldPrivate        ConditionField = "PRIVATE"
 	FieldIsUnregistered ConditionField = "IS_UNREGISTERED"
+	FieldIsHardlinked   ConditionField = "IS_HARDLINKED"
 )
 
 // ConditionOperator represents operators for comparing field values.

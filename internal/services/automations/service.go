@@ -20,6 +20,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 // Config controls how often rules are re-applied and how long to debounce repeats.
@@ -208,13 +209,30 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		Examples: make([]PreviewTorrent, 0, limit),
 	}
 
+	// Get instance for hardlink context
+	instance, err := s.instanceStore.Get(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for preview, proceeding without hardlink context")
+	}
+
+	// Initialize evaluation context
+	evalCtx := &EvalContext{}
+	if instance != nil {
+		evalCtx.InstanceHasLocalAccess = instance.HasLocalFilesystemAccess
+	}
+
 	// Get health counts for unregistered torrent preview and isUnregistered condition evaluation
 	var unregisteredSet map[string]struct{}
-	var evalCtx *EvalContext
 	if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil && len(healthCounts.UnregisteredSet) > 0 {
 		unregisteredSet = healthCounts.UnregisteredSet
-		evalCtx = &EvalContext{
-			UnregisteredSet: healthCounts.UnregisteredSet,
+		evalCtx.UnregisteredSet = healthCounts.UnregisteredSet
+	}
+
+	// Check if rule uses hardlink condition and populate context
+	if instance != nil && instance.HasLocalFilesystemAccess {
+		if rule.Conditions != nil && rule.Conditions.Delete != nil &&
+			ConditionUsesField(rule.Conditions.Delete.Condition, FieldIsHardlinked) {
+			evalCtx.HardlinkedSet = s.detectHardlinks(ctx, instanceID, torrents)
 		}
 	}
 
@@ -300,13 +318,26 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 		return nil
 	}
 
+	// Get instance for local filesystem access check
+	instance, err := s.instanceStore.Get(ctx, instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance")
+		return err
+	}
+
+	// Initialize evaluation context
+	evalCtx := &EvalContext{
+		InstanceHasLocalAccess: instance.HasLocalFilesystemAccess,
+	}
+
 	// Get health counts for isUnregistered condition evaluation
-	var evalCtx *EvalContext
-	healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID)
-	if healthCounts != nil {
-		evalCtx = &EvalContext{
-			UnregisteredSet: healthCounts.UnregisteredSet,
-		}
+	if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil {
+		evalCtx.UnregisteredSet = healthCounts.UnregisteredSet
+	}
+
+	// On-demand hardlink detection (only if rules use IS_HARDLINKED and instance has local access)
+	if instance.HasLocalFilesystemAccess && rulesUseHardlinkCondition(rules) {
+		evalCtx.HardlinkedSet = s.detectHardlinks(ctx, instanceID, torrents)
 	}
 
 	// Ensure lastApplied map is initialized for this instance
@@ -929,4 +960,68 @@ func detectCrossSeeds(target qbt.Torrent, allTorrents []qbt.Torrent) bool {
 		}
 	}
 	return false
+}
+
+// rulesUseHardlinkCondition checks if any enabled rule uses the IS_HARDLINKED field.
+func rulesUseHardlinkCondition(rules []*models.Automation) bool {
+	for _, rule := range rules {
+		if rule.Conditions == nil || !rule.Enabled {
+			continue
+		}
+		ac := rule.Conditions
+		if ac.SpeedLimits != nil && ConditionUsesField(ac.SpeedLimits.Condition, FieldIsHardlinked) {
+			return true
+		}
+		if ac.ShareLimits != nil && ConditionUsesField(ac.ShareLimits.Condition, FieldIsHardlinked) {
+			return true
+		}
+		if ac.Pause != nil && ConditionUsesField(ac.Pause.Condition, FieldIsHardlinked) {
+			return true
+		}
+		if ac.Delete != nil && ConditionUsesField(ac.Delete.Condition, FieldIsHardlinked) {
+			return true
+		}
+		if ac.Tag != nil && ConditionUsesField(ac.Tag.Condition, FieldIsHardlinked) {
+			return true
+		}
+	}
+	return false
+}
+
+// detectHardlinks checks which torrents have hardlinked files and returns a set of hashes.
+func (s *Service) detectHardlinks(ctx context.Context, instanceID int, torrents []qbt.Torrent) map[string]struct{} {
+	result := make(map[string]struct{})
+
+	hashes := make([]string, 0, len(torrents))
+	torrentByHash := make(map[string]qbt.Torrent)
+	for _, t := range torrents {
+		hashes = append(hashes, t.Hash)
+		torrentByHash[t.Hash] = t
+	}
+
+	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).
+			Msg("automations: failed to fetch files for hardlink detection")
+		return result
+	}
+
+	for hash, files := range filesByHash {
+		torrent := torrentByHash[hash]
+		filePaths := make([]string, len(files))
+		for i, f := range files {
+			filePaths[i] = f.Name
+		}
+		if hardlink.IsAnyHardlinked(torrent.SavePath, filePaths) {
+			result[hash] = struct{}{}
+		}
+	}
+
+	log.Debug().
+		Int("instanceID", instanceID).
+		Int("totalTorrents", len(torrents)).
+		Int("hardlinked", len(result)).
+		Msg("automations: hardlink detection completed")
+
+	return result
 }
