@@ -2680,6 +2680,10 @@ func (s *Service) processCrossSeedCandidate(
 	isEpisodeInPack := matchType == "partial-in-pack" &&
 		sourceRelease.Series > 0 && sourceRelease.Episode > 0 &&
 		matchedRelease.Series > 0 && matchedRelease.Episode == 0
+	rootlessContentDir := ""
+	if !isEpisodeInPack && candidateRoot == "" {
+		rootlessContentDir = resolveRootlessContentDir(matchedTorrent, candidateFiles)
+	}
 
 	// Determine final category to apply (with optional .cross suffix for isolation)
 	baseCategory, crossCategory := s.determineCrossSeedCategory(ctx, req, matchedTorrent, nil)
@@ -2816,8 +2820,21 @@ func (s *Service) processCrossSeedCandidate(
 			savePath = categorySavePath
 		}
 
+		forceManualSavePath := false
+		if rootlessContentDir != "" {
+			normalizedSavePath := normalizePath(savePath)
+			normalizedRootlessDir := normalizePath(rootlessContentDir)
+			if normalizedRootlessDir != "" && normalizedRootlessDir != normalizedSavePath {
+				savePath = rootlessContentDir
+				forceManualSavePath = true
+			}
+		}
+
 		// Evaluate whether autoTMM should be enabled
 		tmmDecision := shouldEnableAutoTMM(crossCategory, matchedTorrent.AutoManaged, useCategoryFromIndexer, actualCategorySavePath, props.SavePath)
+		if forceManualSavePath {
+			tmmDecision.Enabled = false
+		}
 
 		log.Debug().
 			Bool("enabled", tmmDecision.Enabled).
@@ -2827,6 +2844,8 @@ func (s *Service) processCrossSeedCandidate(
 			Str("categorySavePath", tmmDecision.CategorySavePath).
 			Str("matchedSavePath", tmmDecision.MatchedSavePath).
 			Bool("pathsMatch", tmmDecision.PathsMatch).
+			Bool("forceManualSavePath", forceManualSavePath).
+			Str("rootlessContentDir", rootlessContentDir).
 			Msg("[CROSSSEED] autoTMM decision factors")
 
 		if tmmDecision.Enabled {
@@ -6909,6 +6928,29 @@ func normalizePath(p string) string {
 	p = filepath.Clean(p)
 	p = strings.TrimSuffix(p, "/")
 	return p
+}
+
+func resolveRootlessContentDir(matchedTorrent *qbt.Torrent, candidateFiles qbt.TorrentFiles) string {
+	if matchedTorrent == nil || matchedTorrent.ContentPath == "" || len(candidateFiles) == 0 {
+		return ""
+	}
+
+	contentPath := normalizePath(matchedTorrent.ContentPath)
+	if contentPath == "" || contentPath == "." {
+		return ""
+	}
+
+	// qBittorrent returns the full file path for single-file torrents.
+	if len(candidateFiles) == 1 {
+		dir := normalizePath(filepath.Dir(contentPath))
+		if dir == "." {
+			return ""
+		}
+		return dir
+	}
+
+	// Multi-file torrents use the storage directory as content path.
+	return contentPath
 }
 
 // appendCrossSuffix adds the .cross suffix to a category name.
