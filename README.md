@@ -199,6 +199,9 @@ QUI__LOG_MAX_BACKUPS=3   # Optional: retain N rotated files (default: 3, 0 keeps
 # Storage
 QUI__DATA_DIR=...        # Optional: custom data directory (default: next to config)
 
+# Tracker Icons
+QUI__TRACKER_ICONS_FETCH_ENABLED=false  # Optional: set to false to disable remote tracker icon fetching (default: true)
+
 # Metrics
 QUI__METRICS_ENABLED=true   # Optional: enable Prometheus metrics (default: false)
 QUI__METRICS_HOST=127.0.0.1  # Optional: metrics server bind address (default: 127.0.0.1)
@@ -719,7 +722,7 @@ Leave the list empty to keep the previous behaviour (any path accepted). The all
 
 ## Tracker Icons
 
-Cached icons live in your data directory under `tracker-icons/` (next to `qui.db`). Icons are stored as normalised 16×16 PNGs; anything larger than 1 024×1 024 is rejected, so resize first if you are supplying files manually. qui automatically attempts to download a favicon the first time it encounters a tracker host, caching the result for future sessions. After a failed download it waits 30 minutes before retrying the same host, and the next retry is triggered automatically the next time that host appears in your tracker list.
+Cached icons live in your data directory under `tracker-icons/` (next to `qui.db`). Icons are stored as normalised 16×16 PNGs; anything larger than 1 024×1 024 is rejected, so resize first if you are supplying files manually. qui automatically attempts to download a favicon the first time it encounters a tracker host, caching the result for future sessions. After a failed download it waits 30 minutes before retrying the same host, and the next retry is triggered automatically the next time that host appears in your tracker list. Set `trackerIconsFetchEnabled = false` in `config.toml` (or `QUI__TRACKER_ICONS_FETCH_ENABLED=false`) to disable these network fetches.
 
 ### Add icons manually
 

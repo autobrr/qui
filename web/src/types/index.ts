@@ -1447,6 +1447,7 @@ export interface CrossSeedAutomationSettings {
   skipAutoResumeSeededSearch: boolean
   skipAutoResumeCompletion: boolean
   skipAutoResumeWebhook: boolean
+  skipRecheck: boolean
   createdAt?: string
   updatedAt?: string
 }
@@ -1485,6 +1486,7 @@ export interface CrossSeedAutomationSettingsPatch {
   skipAutoResumeSeededSearch?: boolean
   skipAutoResumeCompletion?: boolean
   skipAutoResumeWebhook?: boolean
+  skipRecheck?: boolean
 }
 
 export interface CrossSeedAutomationStatus {
@@ -1685,4 +1687,3 @@ export interface SetRSSRuleRequest {
 export interface RenameRSSRuleRequest {
   newName: string
 }
-
