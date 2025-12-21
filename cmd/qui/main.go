@@ -444,8 +444,16 @@ func (app *Application) runServer() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to prepare tracker icon cache")
 	}
+	trackericons.SetFetchEnabled(cfg.Config.TrackerIconsFetchEnabled)
+	if !cfg.Config.TrackerIconsFetchEnabled {
+		log.Info().Msg("Tracker icon remote fetching disabled by configuration")
+	}
 	// Make tracker icon service globally accessible for background fetching
 	trackericons.SetGlobal(trackerIconService)
+	cfg.RegisterReloadListener(func(conf *domain.Config) {
+		trackericons.SetFetchEnabled(conf.TrackerIconsFetchEnabled)
+		log.Debug().Bool("enabled", conf.TrackerIconsFetchEnabled).Msg("Tracker icon fetch setting updated")
+	})
 
 	// init polar client
 	polarClient := polar.NewClient(polar.WithOrganizationID(app.polarOrgID), polar.WithEnvironment(os.Getenv("QUI__POLAR_ENVIRONMENT")), polar.WithUserAgent(buildinfo.UserAgent))
