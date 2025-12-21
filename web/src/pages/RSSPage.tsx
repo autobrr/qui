@@ -1130,7 +1130,7 @@ function ArticleRow({ article, formatDate, onMarkAsRead, onDownload }: ArticleRo
         <CollapsibleTrigger className="min-w-0 text-left">{titleContent}</CollapsibleTrigger>
         <div className="flex items-center gap-0.5 shrink-0">
           <CollapsibleTrigger className="h-7 w-7 inline-flex items-center justify-center text-muted-foreground hover:text-foreground" title="Toggle details">
-            <ChevronRight className="h-4 w-4 transition-transform [[data-state=open]_&]:rotate-90" />
+            <ChevronRight className="h-4 w-4 transition-transform [data-state=open]:rotate-90" />
           </CollapsibleTrigger>
           {actionButtons}
         </div>
@@ -1969,9 +1969,15 @@ function EditRuleDialog({
   tags: availableTags,
 }: EditRuleDialogProps) {
   const [formState, setFormState] = useState<RuleFormState>(DEFAULT_RULE_FORM_STATE)
+  const { formatDate } = useDateTimeFormatters()
 
   const setRuleMutation = useSetRSSRule(instanceId)
   const feedUrls = useMemo(() => getFeedUrls(feedsData), [feedsData])
+  const lastMatchDate = useMemo(() => {
+    if (!rule?.lastMatch) return null
+    const parsed = new Date(rule.lastMatch)
+    return Number.isNaN(parsed.getTime()) ? null : parsed
+  }, [rule?.lastMatch])
 
   // Initialize form when rule changes
   useEffect(() => {
@@ -2047,11 +2053,11 @@ function EditRuleDialog({
             idPrefix="edit"
           />
 
-          {rule?.lastMatch && (
+          {lastMatchDate && (
             <div className="space-y-2">
               <Label>Last Match</Label>
               <p className="text-sm text-muted-foreground">
-                {new Date(rule.lastMatch).toLocaleString()}
+                {formatDate(lastMatchDate)}
               </p>
             </div>
           )}
