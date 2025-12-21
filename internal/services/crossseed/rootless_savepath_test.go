@@ -171,3 +171,138 @@ func TestProcessCrossSeedCandidate_RootlessContentDirOverridesSavePath(t *testin
 	require.Equal(t, "Original", sync.addedOptions["contentLayout"])
 	require.Equal(t, "true", sync.addedOptions["skip_checking"])
 }
+
+func TestProcessCrossSeedCandidate_RootlessContentDirOverridesSavePath_MultiFileUsesContentPath(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	instanceID := 1
+	matchedHash := "matchedhash"
+	newHash := "newhash"
+	matchedName := "Show.S01E01.1080p.WEB-DL-GROUP"
+
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "Show.S01E01.mkv", Size: 1024},
+		{Name: "Show.S01E01.srt", Size: 128},
+	}
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "Show.S01E01.mkv", Size: 1024},
+		{Name: "Show.S01E01.srt", Size: 128},
+	}
+
+	matchedTorrent := qbt.Torrent{
+		Hash:        matchedHash,
+		Name:        matchedName,
+		Progress:    1.0,
+		Category:    "tv",
+		AutoManaged: true,
+		ContentPath: "/downloads/tv/Show.S01E01",
+	}
+
+	sync := &rootlessSavePathSyncManager{
+		files: map[string]qbt.TorrentFiles{
+			matchedHash: candidateFiles,
+			newHash:     sourceFiles,
+		},
+		props: map[string]*qbt.TorrentProperties{
+			matchedHash: {SavePath: "/downloads/tv"},
+		},
+	}
+
+	service := &Service{
+		syncManager:      sync,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return models.DefaultCrossSeedAutomationSettings(), nil
+		},
+	}
+
+	startPaused := true
+	req := &CrossSeedRequest{
+		StartPaused: &startPaused,
+	}
+
+	candidate := CrossSeedCandidate{
+		InstanceID:   instanceID,
+		InstanceName: "Test",
+		Torrents:     []qbt.Torrent{matchedTorrent},
+	}
+
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles)
+	require.True(t, result.Success)
+	require.Equal(t, "added", result.Status)
+
+	require.NotNil(t, sync.addedOptions)
+	require.Equal(t, "false", sync.addedOptions["autoTMM"])
+	require.Equal(t, "/downloads/tv/Show.S01E01", sync.addedOptions["savepath"])
+	require.Equal(t, "Original", sync.addedOptions["contentLayout"])
+	require.Equal(t, "true", sync.addedOptions["skip_checking"])
+}
+
+func TestProcessCrossSeedCandidate_RootlessContentDirNoopWhenSavePathMatches(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	instanceID := 1
+	matchedHash := "matchedhash"
+	newHash := "newhash"
+	matchedName := "Show.S01E01.1080p.WEB-DL-GROUP"
+
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "Show.S01E01.mkv", Size: 1024},
+	}
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "Show.S01E01.mkv", Size: 1024},
+	}
+
+	matchedTorrent := qbt.Torrent{
+		Hash:        matchedHash,
+		Name:        matchedName,
+		Progress:    1.0,
+		Category:    "tv",
+		AutoManaged: true,
+		ContentPath: "/downloads/tv/Show.S01E01/Show.S01E01.mkv",
+	}
+
+	sync := &rootlessSavePathSyncManager{
+		files: map[string]qbt.TorrentFiles{
+			matchedHash: candidateFiles,
+			newHash:     sourceFiles,
+		},
+		props: map[string]*qbt.TorrentProperties{
+			matchedHash: {SavePath: "/downloads/tv/Show.S01E01"},
+		},
+	}
+
+	service := &Service{
+		syncManager:      sync,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return models.DefaultCrossSeedAutomationSettings(), nil
+		},
+	}
+
+	startPaused := true
+	req := &CrossSeedRequest{
+		StartPaused: &startPaused,
+	}
+
+	candidate := CrossSeedCandidate{
+		InstanceID:   instanceID,
+		InstanceName: "Test",
+		Torrents:     []qbt.Torrent{matchedTorrent},
+	}
+
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles)
+	require.True(t, result.Success)
+	require.Equal(t, "added", result.Status)
+
+	require.NotNil(t, sync.addedOptions)
+	require.Equal(t, "true", sync.addedOptions["autoTMM"])
+	_, hasSavePath := sync.addedOptions["savepath"]
+	require.False(t, hasSavePath)
+	require.Equal(t, "Original", sync.addedOptions["contentLayout"])
+	require.Equal(t, "true", sync.addedOptions["skip_checking"])
+}
