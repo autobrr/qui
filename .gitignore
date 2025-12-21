@@ -16,6 +16,7 @@ logs/
 .Trashes
 ehthumbs.db
 Thumbs.db
+*.nix
 
 # IDE
 .idea
