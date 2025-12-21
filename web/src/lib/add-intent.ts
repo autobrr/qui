@@ -10,6 +10,7 @@ const ADD_INTENT_KEY = "qui-add-intent"
 export interface AddIntent {
   magnet?: string
   hasFiles?: boolean
+  openAdd?: boolean
 }
 
 export function storeAddIntent(intent: AddIntent): void {
@@ -49,6 +50,8 @@ export function navigateAfterAuth(navigate: NavigateFn, defaultRoute: string = "
   } else if (addIntent?.hasFiles) {
     // Pass expectingFiles flag so /add can show appropriate error if launchQueue doesn't fire
     navigate({ to: "/add", search: { expectingFiles: true } })
+  } else if (addIntent?.openAdd) {
+    navigate({ to: "/add" })
   } else {
     navigate({ to: defaultRoute })
   }

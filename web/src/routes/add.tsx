@@ -111,7 +111,6 @@ function AddTorrentHandler() {
     setDropPayload(null)
   }, [])
 
-  // Auth check - store intent and redirect to login if needed
   if (authLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
@@ -121,8 +120,7 @@ function AddTorrentHandler() {
   }
 
   if (!isAuthenticated) {
-    const hasFiles = !magnet && !!window.launchQueue
-    storeAddIntent({ magnet, hasFiles })
+    storeAddIntent({ magnet, openAdd: true })
     return <Navigate to="/login" />
   }
 
