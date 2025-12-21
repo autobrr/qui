@@ -446,6 +446,7 @@ type SearchRunOptions struct {
 	SpecificHashes               []string
 	SizeMismatchTolerancePercent float64
 	SkipAutoResume               bool
+	SkipRecheck                  bool
 }
 
 // SearchSettingsPatch captures optional updates to seeded search defaults.
@@ -1134,6 +1135,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 			FindIndividualEpisodes: settings.FindIndividualEpisodes,
 			StartPaused:            settings.StartPaused,
 			SkipAutoResume:         settings.SkipAutoResumeCompletion,
+			SkipRecheck:            settings.SkipRecheck,
 			CategoryOverride:       settings.Category,
 			TagsOverride:           append([]string(nil), settings.CompletionSearchTags...),
 			InheritSourceTags:      settings.InheritSourceTags,
@@ -1215,6 +1217,7 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		}
 		opts.StartPaused = settings.StartPaused
 		opts.SkipAutoResume = settings.SkipAutoResumeSeededSearch
+		opts.SkipRecheck = settings.SkipRecheck
 		if !settings.FindIndividualEpisodes {
 			opts.FindIndividualEpisodes = false
 		} else if !opts.FindIndividualEpisodes {
@@ -1824,6 +1827,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		FindIndividualEpisodes:       settings.FindIndividualEpisodes,
 		SizeMismatchTolerancePercent: settings.SizeMismatchTolerancePercent,
 		SkipAutoResume:               settings.SkipAutoResumeRSS,
+		SkipRecheck:                  settings.SkipRecheck,
 		// Pass RSS source filters so CrossSeed respects them when finding candidates
 		SourceFilterCategories:        append([]string(nil), settings.RSSSourceCategories...),
 		SourceFilterTags:              append([]string(nil), settings.RSSSourceTags...),
@@ -2486,6 +2490,11 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		skipAutoResume = settings.SkipAutoResumeWebhook
 	}
 
+	skipRecheck := false
+	if settings != nil {
+		skipRecheck = settings.SkipRecheck
+	}
+
 	crossReq := &CrossSeedRequest{
 		TorrentData:                  req.TorrentData,
 		TargetInstanceIDs:            targetInstanceIDs,
@@ -2498,6 +2507,7 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		FindIndividualEpisodes:       findIndividualEpisodes,
 		SizeMismatchTolerancePercent: sizeTolerance,
 		SkipAutoResume:               skipAutoResume,
+		SkipRecheck:                  skipRecheck,
 	}
 	// Pass webhook source filters so CrossSeed respects them when finding candidates
 	if settings != nil {
@@ -2643,6 +2653,18 @@ func (s *Service) processCrossSeedCandidate(
 
 	// Check if source has extra files that won't exist on disk (e.g., NFO files not filtered by ignorePatterns)
 	hasExtraFiles := hasExtraSourceFiles(sourceFiles, candidateFiles)
+
+	if req.SkipRecheck && (requiresAlignment || hasExtraFiles) {
+		result.Status = "skipped_recheck"
+		result.Message = "Skipped cross-seed: requires recheck and skip recheck is enabled"
+		log.Info().
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentHash", torrentHash).
+			Bool("requiresAlignment", requiresAlignment).
+			Bool("hasExtraFiles", hasExtraFiles).
+			Msg("Cross-seed skipped because recheck is required and skip recheck is enabled")
+		return result
+	}
 
 	// Skip checking for cross-seed adds - the data is already verified by the matched torrent.
 	// We MUST use skip_checking when alignment (renames) is required, because qBittorrent blocks
@@ -2894,6 +2916,16 @@ func (s *Service) processCrossSeedCandidate(
 	// Add the torrent
 	err = s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options)
 	if err != nil {
+		if req.SkipRecheck {
+			result.Status = "error"
+			result.Message = fmt.Sprintf("Failed to add torrent (recheck fallback disabled): %v", err)
+			log.Error().
+				Err(err).
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentHash", torrentHash).
+				Msg("Failed to add cross-seed torrent and skip recheck is enabled")
+			return result
+		}
 		// If adding fails, try with recheck enabled (skip_checking=false)
 		log.Warn().
 			Err(err).
@@ -4757,6 +4789,11 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				skipAutoResume = settings.SkipAutoResumeSeededSearch
 			}
 
+			skipRecheck := false
+			if settings != nil {
+				skipRecheck = settings.SkipRecheck
+			}
+
 			payload := &CrossSeedRequest{
 				TorrentData:                  base64.StdEncoding.EncodeToString(torrentBytes),
 				TargetInstanceIDs:            []int{instanceID},
@@ -4767,6 +4804,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				FindIndividualEpisodes:       req.FindIndividualEpisodes,
 				SizeMismatchTolerancePercent: sizeTolerance,
 				SkipAutoResume:               skipAutoResume,
+				SkipRecheck:                  skipRecheck,
 			}
 			if settings != nil && len(settings.IgnorePatterns) > 0 {
 				payload.IgnorePatterns = append([]string(nil), settings.IgnorePatterns...)
@@ -5854,6 +5892,7 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		SkipIfExists:                 &skipIfExists,
 		SizeMismatchTolerancePercent: sizeTolerance,
 		SkipAutoResume:               state.opts.SkipAutoResume,
+		SkipRecheck:                  state.opts.SkipRecheck,
 		// Pass seeded search filters so CrossSeed respects them when finding candidates
 		SourceFilterCategories:        append([]string(nil), state.opts.Categories...),
 		SourceFilterTags:              append([]string(nil), state.opts.Tags...),

@@ -65,6 +65,7 @@ type CrossSeedAutomationSettings struct {
 	SkipAutoResumeSeededSearch bool `json:"skipAutoResumeSeededSearch"` // Skip auto-resume for seeded torrent search results
 	SkipAutoResumeCompletion   bool `json:"skipAutoResumeCompletion"`   // Skip auto-resume for completion-triggered search results
 	SkipAutoResumeWebhook      bool `json:"skipAutoResumeWebhook"`      // Skip auto-resume for /apply webhook results
+	SkipRecheck                bool `json:"skipRecheck"`                // Skip cross-seed matches that require a recheck
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -118,6 +119,7 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		SkipAutoResumeSeededSearch: false,
 		SkipAutoResumeCompletion:   false,
 		SkipAutoResumeWebhook:      false,
+		SkipRecheck:                false,
 		CreatedAt:                  time.Now().UTC(),
 		UpdatedAt:                  time.Now().UTC(),
 	}
@@ -297,6 +299,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		       webhook_tags, inherit_source_tags, use_cross_category_suffix,
 		       skip_auto_resume_rss, skip_auto_resume_seeded_search,
 		       skip_auto_resume_completion, skip_auto_resume_webhook,
+		       skip_recheck,
 		       created_at, updated_at
 		FROM cross_seed_settings
 		WHERE id = 1
@@ -344,6 +347,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&settings.SkipAutoResumeSeededSearch,
 		&settings.SkipAutoResumeCompletion,
 		&settings.SkipAutoResumeWebhook,
+		&settings.SkipRecheck,
 		&createdAt,
 		&updatedAt,
 	)
@@ -513,9 +517,10 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			rss_automation_tags, seeded_search_tags, completion_search_tags,
 			webhook_tags, inherit_source_tags, use_cross_category_suffix,
 			skip_auto_resume_rss, skip_auto_resume_seeded_search,
-			skip_auto_resume_completion, skip_auto_resume_webhook
+			skip_auto_resume_completion, skip_auto_resume_webhook,
+			skip_recheck
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -547,7 +552,8 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			skip_auto_resume_rss = excluded.skip_auto_resume_rss,
 			skip_auto_resume_seeded_search = excluded.skip_auto_resume_seeded_search,
 			skip_auto_resume_completion = excluded.skip_auto_resume_completion,
-			skip_auto_resume_webhook = excluded.skip_auto_resume_webhook
+			skip_auto_resume_webhook = excluded.skip_auto_resume_webhook,
+			skip_recheck = excluded.skip_recheck
 	`
 
 	// Convert *int to any for proper SQL handling
@@ -593,6 +599,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		settings.SkipAutoResumeSeededSearch,
 		settings.SkipAutoResumeCompletion,
 		settings.SkipAutoResumeWebhook,
+		settings.SkipRecheck,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("upsert settings: %w", err)
