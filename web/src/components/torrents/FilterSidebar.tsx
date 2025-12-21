@@ -719,6 +719,9 @@ const FilterSidebarComponent = ({
       }
     }
 
+    // Sort by display name (case-insensitive) for consistent alphabetical ordering
+    processed.sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' }))
+
     return processed
   }, [trackers, trackerCustomizationMaps])
 
@@ -1669,8 +1672,9 @@ const FilterSidebarComponent = ({
     prevAllowSubcategories.current = allowSubcategories
   }, [allowSubcategories, setCollapsedCategories])
 
-  // Clean up stale collapsed categories
+  // Clean up stale collapsed categories ( if not incognito )
   useEffect(() => {
+    if (incognitoMode) return
     if (!subcategoriesEnabled || collapsedCategories.size === 0) return
     if (Object.keys(categories).length === 0) return
 
@@ -1690,7 +1694,7 @@ const FilterSidebarComponent = ({
         return filtered
       })
     }
-  }, [categories, collapsedCategories, subcategoriesEnabled, setCollapsedCategories])
+  }, [categories, collapsedCategories, incognitoMode, subcategoriesEnabled, setCollapsedCategories])
 
   const hasActiveFilters =
     selectedFilters.status.length > 0 ||

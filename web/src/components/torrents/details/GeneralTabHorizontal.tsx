@@ -23,6 +23,7 @@ interface GeneralTabHorizontalProps {
   speedUnit: SpeedUnit
   downloadLimit: number
   uploadLimit: number
+  displayName?: string
   displaySavePath: string
   displayTempPath?: string
   tempPathEnabled: boolean
@@ -43,6 +44,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
   speedUnit,
   downloadLimit,
   uploadLimit,
+  displayName,
   displaySavePath,
   displayTempPath,
   tempPathEnabled,
@@ -91,11 +93,29 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
 
   return (
     <ScrollArea className="h-full">
-      <div className="p-3 space-y-3">
-        {/* Row 1: Save Path + Hash (most used) */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 w-16">
+      <div className="p-3">
+        {/* Row 1: Name + Save Path */}
+        <div className="flex gap-6 h-5">
+          {displayName && (
+            <div className="flex items-center gap-2 flex-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 w-20">
+                Name:
+              </span>
+              <code className="text-xs font-mono text-muted-foreground truncate" title={displayName}>
+                {displayName}
+              </code>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 shrink-0"
+                onClick={() => copyToClipboard(displayName, "Torrent name")}
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+          <div className="flex items-center gap-2 flex-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 w-20">
               Save Path:
             </span>
             <code className="text-xs font-mono text-muted-foreground truncate">
@@ -105,17 +125,21 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 shrink-0"
+                className="h-5 w-5 shrink-0"
                 onClick={() => copyToClipboard(displaySavePath, "Save path")}
               >
-                <Copy className="h-3 w-3" />
+                <Copy className="h-4 w-4" />
               </Button>
             )}
           </div>
+        </div>
 
-          {tempPathEnabled && displayTempPath && (
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 w-16">
+        {/* Row 2: Temp Path (if enabled) */}
+        {tempPathEnabled && displayTempPath && (
+          <div className="flex gap-6 h-5">
+            {displayName && <div className="flex-1" />}
+            <div className="flex items-center gap-2 flex-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 w-20">
                 Temp Path:
               </span>
               <code className="text-xs font-mono text-muted-foreground truncate">
@@ -124,16 +148,19 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 shrink-0"
+                className="h-5 w-5 shrink-0"
                 onClick={() => copyToClipboard(displayTempPath, "Temp path")}
               >
-                <Copy className="h-3 w-3" />
+                <Copy className="h-4 w-4" />
               </Button>
             </div>
-          )}
+          </div>
+        )}
 
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 w-16">
+        {/* Row 3: Hashes */}
+        <div className="flex gap-6 h-5">
+          <div className="flex items-center gap-2 flex-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 w-20">
               Hash v1:
             </span>
             <code className="text-xs font-mono text-muted-foreground truncate">
@@ -143,17 +170,16 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 shrink-0"
+                className="h-5 w-5 shrink-0"
                 onClick={() => copyToClipboard(displayInfohashV1, "Info Hash v1")}
               >
-                <Copy className="h-3 w-3" />
+                <Copy className="h-4 w-4" />
               </Button>
             )}
           </div>
-
           {displayInfohashV2 && (
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 w-16">
+            <div className="flex items-center gap-2 flex-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 w-20">
                 Hash v2:
               </span>
               <code className="text-xs font-mono text-muted-foreground truncate">
@@ -162,19 +188,46 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 shrink-0"
+                className="h-5 w-5 shrink-0"
                 onClick={() => copyToClipboard(displayInfohashV2, "Info Hash v2")}
               >
-                <Copy className="h-3 w-3" />
+                <Copy className="h-4 w-4" />
               </Button>
             </div>
           )}
         </div>
 
-        <Separator className="opacity-30" />
 
-        {/* Row 2: Transfer Stats + Speed + Network + Time */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-2">
+        {/* Row 4: Additional Info (if present) */}
+        {(displayComment || displayCreatedBy) && (
+          <div className="flex gap-6 h-5">
+            {displayCreatedBy && (
+              <div className="flex items-center gap-2 flex-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 w-20 whitespace-nowrap">
+                  Created By:
+                </span>
+                <span className="text-xs text-muted-foreground truncate" title={displayCreatedBy}>
+                  {renderTextWithLinks(displayCreatedBy)}
+                </span>
+              </div>
+            )}
+            {displayComment && (
+              <div className="flex items-center gap-2 flex-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 w-20">
+                  Comment:
+                </span>
+                <span className="text-xs text-muted-foreground truncate" title={displayComment}>
+                  {renderTextWithLinks(displayComment)}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        <Separator className="opacity-30 mt-2" />
+
+        {/* Row 5: Transfer Stats + Speed + Network + Time */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 m-0 mt-2">
           {/* Transfer Stats */}
           <div className="space-y-1">
             <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Transfer</h4>
@@ -228,8 +281,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
             />
             <StatRow
               label="Pieces"
-              value={`${properties.pieces_have || 0} / ${properties.pieces_num || 0}`}
-              tooltip={`${formatBytes(properties.piece_size || 0)} each`}
+              value={`${properties.pieces_have || 0} / ${properties.pieces_num || 0} (${formatBytes(properties.piece_size || 0)} each)`}
             />
             {queueingEnabled && (
               <StatRow
@@ -249,33 +301,6 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
             <StatRow label="Created" value={formatTimestamp(properties.creation_date)} />
           </div>
         </div>
-
-        {/* Row 3: Additional Info (if present) */}
-        {(displayComment || displayCreatedBy) && (
-          <>
-            <Separator className="opacity-30" />
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 text-xs">
-              {displayCreatedBy && (
-                <div className="flex items-start gap-2">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0">
-                    Created By:
-                  </span>
-                  <span className="text-muted-foreground truncate">{renderTextWithLinks(displayCreatedBy)}</span>
-                </div>
-              )}
-              {displayComment && (
-                <div className="flex items-start gap-2">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0">
-                    Comment:
-                  </span>
-                  <span className="text-muted-foreground truncate" title={displayComment}>
-                    {renderTextWithLinks(displayComment)}
-                  </span>
-                </div>
-              )}
-            </div>
-          </>
-        )}
 
         {/* Queue Management (if enabled) */}
         {queueingEnabled && (maxActiveDownloads || maxActiveUploads || maxActiveTorrents) && (

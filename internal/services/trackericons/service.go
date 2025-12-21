@@ -20,9 +20,11 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	_ "github.com/mat/besticon/v3/ico"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/image/draw"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/charset"
@@ -46,10 +48,17 @@ var (
 	ErrIconNotFound = errors.New("tracker icon not found")
 	// ErrInvalidTrackerHost is returned when the requested tracker host is invalid.
 	ErrInvalidTrackerHost = errors.New("invalid tracker host")
+	// ErrFetchingDisabled is returned when tracker icon fetching is disabled by configuration.
+	ErrFetchingDisabled = errors.New("tracker icon fetching is disabled")
 
 	globalService *Service
 	globalMu      sync.RWMutex
+	fetchEnabled  atomic.Bool
 )
+
+func init() {
+	fetchEnabled.Store(true)
+}
 
 // Service handles fetching and caching tracker icons on disk.
 type Service struct {
@@ -116,12 +125,20 @@ func SetGlobal(svc *Service) {
 	globalMu.Unlock()
 }
 
+func SetFetchEnabled(enabled bool) {
+	fetchEnabled.Store(enabled)
+}
+
 func QueueFetch(host, trackerURL string) {
 	globalMu.RLock()
 	svc := globalService
 	globalMu.RUnlock()
 
 	if svc == nil {
+		return
+	}
+
+	if !fetchEnabled.Load() {
 		return
 	}
 
@@ -198,6 +215,11 @@ func (s *Service) GetIcon(ctx context.Context, host, trackerURL string) (string,
 	iconPath := s.iconPath(sanitized)
 	if _, err := os.Stat(iconPath); err == nil {
 		return iconPath, nil
+	}
+
+	if !fetchEnabled.Load() {
+		log.Trace().Str("host", host).Msg("Icon fetch skipped: remote fetching disabled")
+		return "", ErrFetchingDisabled
 	}
 
 	ch := s.group.DoChan(sanitized, func() (any, error) {

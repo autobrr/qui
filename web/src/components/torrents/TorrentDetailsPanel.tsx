@@ -34,7 +34,7 @@ import "flag-icons/css/flag-icons.min.css"
 import { Ban, Copy, Loader2, Trash2, UserPlus, X } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
-import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackersTable } from "./details"
+import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackersTable, WebSeedsTable } from "./details"
 import { RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
 import { TorrentFileTree } from "./TorrentFileTree"
 
@@ -47,7 +47,7 @@ interface TorrentDetailsPanelProps {
   onClose?: () => void;
 }
 
-const TAB_VALUES = ["general", "trackers", "peers", "content", "crossseed"] as const
+const TAB_VALUES = ["general", "trackers", "peers", "webseeds", "content", "crossseed"] as const
 type TabValue = typeof TAB_VALUES[number]
 const DEFAULT_TAB: TabValue = "general"
 const TAB_STORAGE_KEY = "torrent-details-last-tab"
@@ -137,7 +137,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   const isContentTabActive = activeTab === "content"
   const isCrossSeedTabActive = activeTab === "crossseed"
-  
+
   // Fetch torrent properties
   const { data: properties, isLoading: loadingProperties } = useQuery({
     queryKey: ["torrent-properties", instanceId, torrent?.hash],
@@ -162,22 +162,22 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   // Prune stale selections when matching torrents change
   useEffect(() => {
     const validKeysArray = matchingTorrentsKeys.split(',').filter(k => k)
-    
+
     setSelectedCrossSeedTorrents(prev => {
       if (validKeysArray.length === 0 && prev.size === 0) {
         // Already empty, no change needed
         return prev
       }
-      
+
       if (validKeysArray.length === 0) {
         // No matches, clear all selections
         return new Set()
       }
-      
+
       // Remove selections for torrents that no longer exist in matches
       const validKeys = new Set(validKeysArray)
       const updated = new Set(Array.from(prev).filter(key => validKeys.has(key)))
-      
+
       // Only update if something changed to avoid infinite loops
       return updated.size !== prev.size ? updated : prev
     })
@@ -343,6 +343,23 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     gcTime: 5 * 60 * 1000,
   })
 
+  // Fetch web seeds (HTTP sources) - always fetch to determine if tab should be shown
+  const { data: webseedsData, isLoading: loadingWebseeds } = useQuery({
+    queryKey: ["torrent-webseeds", instanceId, torrent?.hash],
+    queryFn: () => api.getTorrentWebSeeds(instanceId, torrent!.hash),
+    enabled: !!torrent && isReady,
+    staleTime: 30000,
+    gcTime: 5 * 60 * 1000,
+  })
+  const hasWebseeds = (webseedsData?.length ?? 0) > 0
+
+  // Redirect away from webseeds tab if it becomes hidden (e.g., switching to a torrent without web seeds)
+  useEffect(() => {
+    if (activeTab === "webseeds" && !hasWebseeds && !loadingWebseeds) {
+      setActiveTab("general")
+    }
+  }, [activeTab, hasWebseeds, loadingWebseeds, setActiveTab])
+
   // Add peers mutation
   const addPeersMutation = useMutation({
     mutationFn: async (peers: string[]) => {
@@ -504,7 +521,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   // Handle cross-seed deletion
   const handleDeleteCrossSeed = useCallback(async () => {
-    const torrentsToDelete = matchingTorrents.filter(m => 
+    const torrentsToDelete = matchingTorrents.filter(m =>
       selectedCrossSeedTorrents.has(`${m.instanceId}-${m.hash}`)
     )
 
@@ -531,7 +548,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       )
 
       toast.success(`Deleted ${torrentsToDelete.length} torrent${torrentsToDelete.length > 1 ? 's' : ''}`)
-      
+
       // Refresh all instances
       for (const instId of byInstance.keys()) {
         queryClient.invalidateQueries({ queryKey: ["torrents", instId] })
@@ -557,7 +574,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       toast.success(`Deleted torrent: ${torrent.name}`)
       queryClient.invalidateQueries({ queryKey: ["torrents", instanceId] })
       setShowDeleteCurrentDialog(false)
-      
+
       // Close the details panel by clearing selection (parent component should handle this)
       // The user will be returned to the torrent list
     } catch (error) {
@@ -652,37 +669,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   return (
     <div className="h-full flex flex-col">
-      <div className="relative flex items-center px-4 py-1.5 sm:px-6 border-b bg-muted/30 gap-2">
-        <div className="flex flex-1 items-center gap-1.5 min-w-0 pr-10">
-          <h3 className="text-sm font-semibold truncate flex-1 min-w-0" title={displayName}>
-            {displayName}
-          </h3>
-          {displayName && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 shrink-0"
-              onClick={() => copyToClipboard(displayName, "Torrent name")}
-            >
-              <Copy className="h-3 w-3" />
-            </Button>
-          )}
-        </div>
-        {onClose && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6"
-            onClick={onClose}
-            aria-label="Close details panel"
-          >
-            <X className="h-3.5 w-3.5" />
-          </Button>
-        )}
-      </div>
-
       <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
-        <TabsList className="w-full justify-start rounded-none border-b h-10 bg-background px-4 sm:px-6 py-0">
+        <TabsList className="w-full justify-start rounded-none border-b h-8 bg-background px-4 sm:px-6 py-0">
           <TabsTrigger
             value="general"
             className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
@@ -701,6 +689,14 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
           >
             Peers
           </TabsTrigger>
+          {hasWebseeds && (
+            <TabsTrigger
+              value="webseeds"
+              className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
+            >
+              HTTP Sources
+            </TabsTrigger>
+          )}
           <TabsTrigger
             value="content"
             className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
@@ -713,7 +709,19 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
           >
             Cross-Seed
           </TabsTrigger>
+          {onClose && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-10 shrink-0"
+              onClick={onClose}
+              aria-label="Close details panel"
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          )}
         </TabsList>
+
 
         <div className="flex-1 min-h-0 overflow-hidden">
           <TabsContent value="general" className="m-0 h-full">
@@ -725,6 +733,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 speedUnit={speedUnit}
                 downloadLimit={properties?.dl_limit ?? torrent.dl_limit ?? 0}
                 uploadLimit={properties?.up_limit ?? torrent.up_limit ?? 0}
+                displayName={displayName}
                 displaySavePath={displaySavePath || ""}
                 displayTempPath={displayTempPath}
                 tempPathEnabled={tempPathEnabled}
@@ -738,194 +747,171 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 maxActiveTorrents={metadata?.preferences?.max_active_torrents}
               />
             ) : (
-            <ScrollArea className="h-full">
-              <div className="p-4 sm:p-6">
-                {loadingProperties && !properties ? (
-                  <div className="flex items-center justify-center p-8">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div>
-                ) : properties ? (
-                  <div className="space-y-6">
-                    {/* Transfer Statistics Section */}
-                    <div className="space-y-3">
-                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Transfer Statistics</h3>
-                      <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 space-y-4 border border-border/50">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground">Total Size</p>
-                            <p className="text-lg font-semibold">{formatBytes(properties.total_size || torrent.size)}</p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground">Share Ratio</p>
-                            <p className="text-lg font-semibold">{(properties.share_ratio || 0).toFixed(2)}</p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground">Downloaded</p>
-                            <p className="text-base font-medium">{formatBytes(properties.total_downloaded || 0)}</p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground">Uploaded</p>
-                            <p className="text-base font-medium">{formatBytes(properties.total_uploaded || 0)}</p>
-                          </div>
-                        </div>
-
-                        <Separator className="opacity-50" />
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground">Pieces</p>
-                            <p className="text-sm font-medium">{properties.pieces_have || 0} / {properties.pieces_num || 0}</p>
-                            <p className="text-xs text-muted-foreground">({formatBytes(properties.piece_size || 0)} each)</p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground">Wasted</p>
-                            <p className="text-sm font-medium">{formatBytes(properties.total_wasted || 0)}</p>
-                          </div>
-                        </div>
-                      </div>
+              <ScrollArea className="h-full">
+                <div className="p-4 sm:p-6">
+                  {loadingProperties && !properties ? (
+                    <div className="flex items-center justify-center p-8">
+                      <Loader2 className="h-6 w-6 animate-spin" />
                     </div>
-
-                    {/* Speed Section */}
-                    <div className="space-y-3">
-                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Speed</h3>
-                      <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground">Download Speed</p>
-                            <p className="text-base font-semibold text-green-500">{formatSpeedWithUnit(properties.dl_speed || 0, speedUnit)}</p>
-                            <p className="text-xs text-muted-foreground">avg: {formatSpeedWithUnit(properties.dl_speed_avg || 0, speedUnit)}</p>
-                            <p className="text-xs text-muted-foreground">Limit: {downloadLimitLabel}</p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground">Upload Speed</p>
-                            <p className="text-base font-semibold text-blue-500">{formatSpeedWithUnit(properties.up_speed || 0, speedUnit)}</p>
-                            <p className="text-xs text-muted-foreground">avg: {formatSpeedWithUnit(properties.up_speed_avg || 0, speedUnit)}</p>
-                            <p className="text-xs text-muted-foreground">Limit: {uploadLimitLabel}</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Peers Section */}
-                    <div className="space-y-3">
-                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Network</h3>
-                      <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground">Seeds</p>
-                            <p className="text-base font-semibold">{properties.seeds || 0} <span className="text-sm font-normal text-muted-foreground">/ {properties.seeds_total || 0}</span></p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground">Peers</p>
-                            <p className="text-base font-semibold">{properties.peers || 0} <span className="text-sm font-normal text-muted-foreground">/ {properties.peers_total || 0}</span></p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Queue Information */}
-                    {metadata?.preferences?.queueing_enabled && (
+                  ) : properties ? (
+                    <div className="space-y-6">
+                      {/* Transfer Statistics Section */}
                       <div className="space-y-3">
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Queue Management</h3>
-                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm text-muted-foreground">Priority</span>
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-semibold">
-                                {torrent?.priority > 0 ? torrent.priority : "Normal"}
-                              </span>
-                              {(torrent?.state === "queuedDL" || torrent?.state === "queuedUP") && (
-                                <Badge variant="secondary" className="text-xs">
-                                  Queued {torrent.state === "queuedDL" ? "DL" : "UP"}
-                                </Badge>
-                              )}
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Transfer Statistics</h3>
+                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 space-y-4 border border-border/50">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Total Size</p>
+                              <p className="text-lg font-semibold">{formatBytes(properties.total_size || torrent.size)}</p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Share Ratio</p>
+                              <p className="text-lg font-semibold">{(properties.share_ratio || 0).toFixed(2)}</p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Downloaded</p>
+                              <p className="text-base font-medium">{formatBytes(properties.total_downloaded || 0)}</p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Uploaded</p>
+                              <p className="text-base font-medium">{formatBytes(properties.total_uploaded || 0)}</p>
                             </div>
                           </div>
-                          {(metadata.preferences.max_active_downloads > 0 ||
-                            metadata.preferences.max_active_uploads > 0 ||
-                            metadata.preferences.max_active_torrents > 0) && (
-                            <>
-                              <Separator className="opacity-50" />
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                                {metadata.preferences.max_active_downloads > 0 && (
-                                  <div className="space-y-1">
-                                    <p className="text-muted-foreground">Max Downloads</p>
-                                    <p className="font-medium">{metadata.preferences.max_active_downloads}</p>
-                                  </div>
-                                )}
-                                {metadata.preferences.max_active_uploads > 0 && (
-                                  <div className="space-y-1">
-                                    <p className="text-muted-foreground">Max Uploads</p>
-                                    <p className="font-medium">{metadata.preferences.max_active_uploads}</p>
-                                  </div>
-                                )}
-                                {metadata.preferences.max_active_torrents > 0 && (
-                                  <div className="space-y-1">
-                                    <p className="text-muted-foreground">Max Active</p>
-                                    <p className="font-medium">{metadata.preferences.max_active_torrents}</p>
-                                  </div>
+
+                          <Separator className="opacity-50" />
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Pieces</p>
+                              <p className="text-sm font-medium">{properties.pieces_have || 0} / {properties.pieces_num || 0}</p>
+                              <p className="text-xs text-muted-foreground">({formatBytes(properties.piece_size || 0)} each)</p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Wasted</p>
+                              <p className="text-sm font-medium">{formatBytes(properties.total_wasted || 0)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Speed Section */}
+                      <div className="space-y-3">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Speed</h3>
+                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Download Speed</p>
+                              <p className="text-base font-semibold text-green-500">{formatSpeedWithUnit(properties.dl_speed || 0, speedUnit)}</p>
+                              <p className="text-xs text-muted-foreground">avg: {formatSpeedWithUnit(properties.dl_speed_avg || 0, speedUnit)}</p>
+                              <p className="text-xs text-muted-foreground">Limit: {downloadLimitLabel}</p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Upload Speed</p>
+                              <p className="text-base font-semibold text-blue-500">{formatSpeedWithUnit(properties.up_speed || 0, speedUnit)}</p>
+                              <p className="text-xs text-muted-foreground">avg: {formatSpeedWithUnit(properties.up_speed_avg || 0, speedUnit)}</p>
+                              <p className="text-xs text-muted-foreground">Limit: {uploadLimitLabel}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Peers Section */}
+                      <div className="space-y-3">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Network</h3>
+                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Seeds</p>
+                              <p className="text-base font-semibold">{properties.seeds || 0} <span className="text-sm font-normal text-muted-foreground">/ {properties.seeds_total || 0}</span></p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Peers</p>
+                              <p className="text-base font-semibold">{properties.peers || 0} <span className="text-sm font-normal text-muted-foreground">/ {properties.peers_total || 0}</span></p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Queue Information */}
+                      {metadata?.preferences?.queueing_enabled && (
+                        <div className="space-y-3">
+                          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Queue Management</h3>
+                          <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-muted-foreground">Priority</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-semibold">
+                                  {torrent?.priority > 0 ? torrent.priority : "Normal"}
+                                </span>
+                                {(torrent?.state === "queuedDL" || torrent?.state === "queuedUP") && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    Queued {torrent.state === "queuedDL" ? "DL" : "UP"}
+                                  </Badge>
                                 )}
                               </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Time Information */}
-                    <div className="space-y-3">
-                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Time Information</h3>
-                      <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground">Time Active</p>
-                            <p className="text-sm font-medium">{formatDuration(properties.time_elapsed || 0)}</p>
+                            </div>
+                            {(metadata.preferences.max_active_downloads > 0 ||
+                              metadata.preferences.max_active_uploads > 0 ||
+                              metadata.preferences.max_active_torrents > 0) && (
+                                <>
+                                  <Separator className="opacity-50" />
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                                    {metadata.preferences.max_active_downloads > 0 && (
+                                      <div className="space-y-1">
+                                        <p className="text-muted-foreground">Max Downloads</p>
+                                        <p className="font-medium">{metadata.preferences.max_active_downloads}</p>
+                                      </div>
+                                    )}
+                                    {metadata.preferences.max_active_uploads > 0 && (
+                                      <div className="space-y-1">
+                                        <p className="text-muted-foreground">Max Uploads</p>
+                                        <p className="font-medium">{metadata.preferences.max_active_uploads}</p>
+                                      </div>
+                                    )}
+                                    {metadata.preferences.max_active_torrents > 0 && (
+                                      <div className="space-y-1">
+                                        <p className="text-muted-foreground">Max Active</p>
+                                        <p className="font-medium">{metadata.preferences.max_active_torrents}</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </>
+                              )}
                           </div>
-                          <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground">Seeding Time</p>
-                            <p className="text-sm font-medium">{formatDuration(properties.seeding_time || 0)}</p>
-                          </div>
                         </div>
-                      </div>
-                    </div>
+                      )}
 
-                    {/* Save Path */}
-                    <div className="space-y-3">
-                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Save Path</h3>
-                      <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
-                        <div className="flex items-center gap-2">
-                          <div className="font-mono text-xs sm:text-sm break-all text-muted-foreground bg-background/50 rounded px-2.5 py-2 select-text flex-1">
-                            {displaySavePath || "N/A"}
-                          </div>
-                          {displaySavePath && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 shrink-0"
-                              onClick={() => copyToClipboard(displaySavePath, "File location")}
-                            >
-                              <Copy className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Temporary Download Path - shown if temp_path_enabled */}
-                    {tempPathEnabled && (
+                      {/* Time Information */}
                       <div className="space-y-3">
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Download Path</h3>
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Time Information</h3>
+                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Time Active</p>
+                              <p className="text-sm font-medium">{formatDuration(properties.time_elapsed || 0)}</p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Seeding Time</p>
+                              <p className="text-sm font-medium">{formatDuration(properties.seeding_time || 0)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Save Path */}
+                      <div className="space-y-3">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Save Path</h3>
                         <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
                           <div className="flex items-center gap-2">
                             <div className="font-mono text-xs sm:text-sm break-all text-muted-foreground bg-background/50 rounded px-2.5 py-2 select-text flex-1">
-                              {displayTempPath || "N/A"}
+                              {displaySavePath || "N/A"}
                             </div>
-                            {displayTempPath && (
+                            {displaySavePath && (
                               <Button
                                 variant="ghost"
                                 size="icon"
                                 className="h-8 w-8 shrink-0"
-                                onClick={() => copyToClipboard(displayTempPath, "Temporary path")}
+                                onClick={() => copyToClipboard(displaySavePath, "File location")}
                               >
                                 <Copy className="h-3.5 w-3.5" />
                               </Button>
@@ -933,104 +919,127 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                           </div>
                         </div>
                       </div>
-                    )}
 
-                    {/* Info Hash Display */}
-                    <div className="space-y-3">
-                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Torrent Identifiers</h3>
-                      <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50 space-y-4">
-                        <div className="space-y-2">
-                          <p className="text-xs text-muted-foreground">Info Hash v1</p>
-                          <div className="flex items-center gap-2">
-                            <div className="text-xs font-mono bg-background/50 p-2.5 rounded flex-1 break-all select-text">
-                              {displayInfohashV1 || "N/A"}
-                            </div>
-                            {displayInfohashV1 && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 shrink-0"
-                                onClick={() => copyToClipboard(displayInfohashV1, "Info Hash v1")}
-                              >
-                                <Copy className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                        {displayInfohashV2 && (
-                          <>
-                            <Separator className="opacity-50" />
-                            <div className="space-y-2">
-                              <p className="text-xs text-muted-foreground">Info Hash v2</p>
-                              <div className="flex items-center gap-2">
-                                <div className="text-xs font-mono bg-background/50 p-2.5 rounded flex-1 break-all select-text">
-                                  {displayInfohashV2}
-                                </div>
+                      {/* Temporary Download Path - shown if temp_path_enabled */}
+                      {tempPathEnabled && (
+                        <div className="space-y-3">
+                          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Download Path</h3>
+                          <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
+                            <div className="flex items-center gap-2">
+                              <div className="font-mono text-xs sm:text-sm break-all text-muted-foreground bg-background/50 rounded px-2.5 py-2 select-text flex-1">
+                                {displayTempPath || "N/A"}
+                              </div>
+                              {displayTempPath && (
                                 <Button
                                   variant="ghost"
                                   size="icon"
                                   className="h-8 w-8 shrink-0"
-                                  onClick={() => copyToClipboard(displayInfohashV2, "Info Hash v2")}
+                                  onClick={() => copyToClipboard(displayTempPath, "Temporary path")}
                                 >
                                   <Copy className="h-3.5 w-3.5" />
                                 </Button>
-                              </div>
+                              )}
                             </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Timestamps */}
-                    <div className="space-y-3">
-                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Timestamps</h3>
-                      <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                          <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground">Added</p>
-                            <p className="text-sm">{formatTimestamp(properties.addition_date)}</p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground">Completed</p>
-                            <p className="text-sm">{formatTimestamp(properties.completion_date)}</p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground">Created</p>
-                            <p className="text-sm">{formatTimestamp(properties.creation_date)}</p>
                           </div>
                         </div>
-                      </div>
-                    </div>
+                      )}
 
-                    {/* Additional Information */}
-                    {(displayComment || displayCreatedBy) && (
+                      {/* Info Hash Display */}
                       <div className="space-y-3">
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Additional Information</h3>
-                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50 space-y-3">
-                          {displayCreatedBy && (
-                            <div>
-                              <p className="text-xs text-muted-foreground mb-1">Created By</p>
-                              <div className="text-sm">{renderTextWithLinks(displayCreatedBy)}</div>
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Torrent Identifiers</h3>
+                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50 space-y-4">
+                          <div className="space-y-2">
+                            <p className="text-xs text-muted-foreground">Info Hash v1</p>
+                            <div className="flex items-center gap-2">
+                              <div className="text-xs font-mono bg-background/50 p-2.5 rounded flex-1 break-all select-text">
+                                {displayInfohashV1 || "N/A"}
+                              </div>
+                              {displayInfohashV1 && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 shrink-0"
+                                  onClick={() => copyToClipboard(displayInfohashV1, "Info Hash v1")}
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
                             </div>
-                          )}
-                          {displayComment && (
+                          </div>
+                          {displayInfohashV2 && (
                             <>
-                              {displayCreatedBy && <Separator className="opacity-50" />}
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-2">Comment</p>
-                                <div className="text-sm bg-background/50 p-3 rounded break-words">
-                                  {renderTextWithLinks(displayComment)}
+                              <Separator className="opacity-50" />
+                              <div className="space-y-2">
+                                <p className="text-xs text-muted-foreground">Info Hash v2</p>
+                                <div className="flex items-center gap-2">
+                                  <div className="text-xs font-mono bg-background/50 p-2.5 rounded flex-1 break-all select-text">
+                                    {displayInfohashV2}
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 shrink-0"
+                                    onClick={() => copyToClipboard(displayInfohashV2, "Info Hash v2")}
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
                                 </div>
                               </div>
                             </>
                           )}
                         </div>
                       </div>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-            </ScrollArea>
+
+                      {/* Timestamps */}
+                      <div className="space-y-3">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Timestamps</h3>
+                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Added</p>
+                              <p className="text-sm">{formatTimestamp(properties.addition_date)}</p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Completed</p>
+                              <p className="text-sm">{formatTimestamp(properties.completion_date)}</p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Created</p>
+                              <p className="text-sm">{formatTimestamp(properties.creation_date)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Additional Information */}
+                      {(displayComment || displayCreatedBy) && (
+                        <div className="space-y-3">
+                          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Additional Information</h3>
+                          <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50 space-y-3">
+                            {displayCreatedBy && (
+                              <div>
+                                <p className="text-xs text-muted-foreground mb-1">Created By</p>
+                                <div className="text-sm">{renderTextWithLinks(displayCreatedBy)}</div>
+                              </div>
+                            )}
+                            {displayComment && (
+                              <>
+                                {displayCreatedBy && <Separator className="opacity-50" />}
+                                <div>
+                                  <p className="text-xs text-muted-foreground mb-2">Comment</p>
+                                  <div className="text-sm bg-background/50 p-3 rounded break-words">
+                                    {renderTextWithLinks(displayComment)}
+                                  </div>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              </ScrollArea>
             )}
           </TabsContent>
 
@@ -1042,88 +1051,88 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 incognitoMode={incognitoMode}
               />
             ) : (
-            <ScrollArea className="h-full">
-              <div className="p-4 sm:p-6">
-                {activeTab === "trackers" && loadingTrackers && !trackers ? (
-                  <div className="flex items-center justify-center p-8">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div>
-                ) : trackers && trackers.length > 0 ? (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Active Trackers</h3>
-                      <span className="text-xs text-muted-foreground">{trackers.length} tracker{trackers.length !== 1 ? "s" : ""}</span>
+              <ScrollArea className="h-full">
+                <div className="p-4 sm:p-6">
+                  {activeTab === "trackers" && loadingTrackers && !trackers ? (
+                    <div className="flex items-center justify-center p-8">
+                      <Loader2 className="h-6 w-6 animate-spin" />
                     </div>
-                    <div className="space-y-2">
-                      {trackers
-                        .sort((a, b) => {
-                          // Sort disabled trackers (status 0) to the end
-                          if (a.status === 0 && b.status !== 0) return 1
-                          if (a.status !== 0 && b.status === 0) return -1
-                          // Then sort by status (working trackers first)
-                          if (a.status === 2 && b.status !== 2) return -1
-                          if (a.status !== 2 && b.status === 2) return 1
-                          return 0
-                        })
-                        .map((tracker, index) => {
-                          const displayUrl = incognitoMode ? getLinuxTracker(`${torrent.hash}-${index}`) : tracker.url
-                          const shouldRenderMessage = Boolean(tracker.msg)
-                          const messageContent = incognitoMode && shouldRenderMessage? "Tracker message hidden in incognito mode": tracker.msg
+                  ) : trackers && trackers.length > 0 ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Active Trackers</h3>
+                        <span className="text-xs text-muted-foreground">{trackers.length} tracker{trackers.length !== 1 ? "s" : ""}</span>
+                      </div>
+                      <div className="space-y-2">
+                        {trackers
+                          .sort((a, b) => {
+                            // Sort disabled trackers (status 0) to the end
+                            if (a.status === 0 && b.status !== 0) return 1
+                            if (a.status !== 0 && b.status === 0) return -1
+                            // Then sort by status (working trackers first)
+                            if (a.status === 2 && b.status !== 2) return -1
+                            if (a.status !== 2 && b.status === 2) return 1
+                            return 0
+                          })
+                          .map((tracker, index) => {
+                            const displayUrl = incognitoMode ? getLinuxTracker(`${torrent.hash}-${index}`) : tracker.url
+                            const shouldRenderMessage = Boolean(tracker.msg)
+                            const messageContent = incognitoMode && shouldRenderMessage ? "Tracker message hidden in incognito mode" : tracker.msg
 
-                          return (
-                            <div
-                              key={index}
-                              className={`backdrop-blur-sm border ${tracker.status === 0 ? "bg-card/30 border-border/30 opacity-60" : "bg-card/50 border-border/50"} hover:border-border transition-all rounded-lg p-4 space-y-3`}
-                            >
-                              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
-                                <div className="flex-1 space-y-1">
-                                  <div className="flex items-center gap-2">
-                                    {getTrackerStatusBadge(tracker.status)}
-                                  </div>
-                                  <p className="text-xs font-mono text-muted-foreground break-all">{displayUrl}</p>
-                                </div>
-                              </div>
-                              <Separator className="opacity-50" />
-                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                <div className="space-y-1">
-                                  <p className="text-xs text-muted-foreground">Seeds</p>
-                                  <p className="text-sm font-medium">{tracker.num_seeds}</p>
-                                </div>
-                                <div className="space-y-1">
-                                  <p className="text-xs text-muted-foreground">Peers</p>
-                                  <p className="text-sm font-medium">{tracker.num_peers}</p>
-                                </div>
-                                <div className="space-y-1">
-                                  <p className="text-xs text-muted-foreground">Leechers</p>
-                                  <p className="text-sm font-medium">{tracker.num_leeches}</p>
-                                </div>
-                                <div className="space-y-1">
-                                  <p className="text-xs text-muted-foreground">Downloaded</p>
-                                  <p className="text-sm font-medium">{tracker.num_downloaded}</p>
-                                </div>
-                              </div>
-                              {shouldRenderMessage && messageContent && (
-                                <>
-                                  <Separator className="opacity-50" />
-                                  <div className="bg-background/50 p-2 rounded">
-                                    <div className="text-xs text-muted-foreground break-words">
-                                      {renderTextWithLinks(messageContent)}
+                            return (
+                              <div
+                                key={index}
+                                className={`backdrop-blur-sm border ${tracker.status === 0 ? "bg-card/30 border-border/30 opacity-60" : "bg-card/50 border-border/50"} hover:border-border transition-all rounded-lg p-4 space-y-3`}
+                              >
+                                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                                  <div className="flex-1 space-y-1">
+                                    <div className="flex items-center gap-2">
+                                      {getTrackerStatusBadge(tracker.status)}
                                     </div>
+                                    <p className="text-xs font-mono text-muted-foreground break-all">{displayUrl}</p>
                                   </div>
-                                </>
-                              )}
-                            </div>
-                          )
-                        })}
+                                </div>
+                                <Separator className="opacity-50" />
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                  <div className="space-y-1">
+                                    <p className="text-xs text-muted-foreground">Seeds</p>
+                                    <p className="text-sm font-medium">{tracker.num_seeds}</p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <p className="text-xs text-muted-foreground">Peers</p>
+                                    <p className="text-sm font-medium">{tracker.num_peers}</p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <p className="text-xs text-muted-foreground">Leechers</p>
+                                    <p className="text-sm font-medium">{tracker.num_leeches}</p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <p className="text-xs text-muted-foreground">Downloaded</p>
+                                    <p className="text-sm font-medium">{tracker.num_downloaded}</p>
+                                  </div>
+                                </div>
+                                {shouldRenderMessage && messageContent && (
+                                  <>
+                                    <Separator className="opacity-50" />
+                                    <div className="bg-background/50 p-2 rounded">
+                                      <div className="text-xs text-muted-foreground break-words">
+                                        {renderTextWithLinks(messageContent)}
+                                      </div>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            )
+                          })}
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-                    No trackers found
-                  </div>
-                )}
-              </div>
-            </ScrollArea>
+                  ) : (
+                    <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
+                      No trackers found
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
             )}
           </TabsContent>
 
@@ -1156,19 +1165,194 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 </div>
               </div>
             ) : (
-            <ScrollArea className="h-full">
-              <div className="p-4 sm:p-6">
-                {activeTab === "peers" && loadingPeers && !peersData ? (
-                  <div className="flex items-center justify-center p-8">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div>
-                ) : peersData && peersData.peers && typeof peersData.peers === "object" && Object.keys(peersData.peers).length > 0 ? (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <div>
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Connected Peers</h3>
-                        <p className="text-xs text-muted-foreground mt-1">{Object.keys(peersData.peers).length} peer{Object.keys(peersData.peers).length !== 1 ? "s" : ""} connected</p>
+              <ScrollArea className="h-full">
+                <div className="p-4 sm:p-6">
+                  {activeTab === "peers" && loadingPeers && !peersData ? (
+                    <div className="flex items-center justify-center p-8">
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                    </div>
+                  ) : peersData && peersData.peers && typeof peersData.peers === "object" && Object.keys(peersData.peers).length > 0 ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <div>
+                          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Connected Peers</h3>
+                          <p className="text-xs text-muted-foreground mt-1">{Object.keys(peersData.peers).length} peer{Object.keys(peersData.peers).length !== 1 ? "s" : ""} connected</p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowAddPeersDialog(true)}
+                        >
+                          <UserPlus className="h-4 w-4 mr-2" />
+                          Add Peers
+                        </Button>
                       </div>
+                      <div className="space-y-4 mt-4">
+                        {(peersData.sorted_peers ||
+                          Object.entries(peersData.peers).map(([key, peer]) => ({ key, ...peer }))
+                        ).map((peerWithKey) => {
+                          const peerKey = peerWithKey.key
+                          const peer = peerWithKey
+                          const isActive = (peer.dl_speed || 0) > 0 || (peer.up_speed || 0) > 0
+                          // Progress is a float between 0 and 1, where 1 = 100%
+                          // Note: qBittorrent API doesn't expose the actual seed status, so we rely on progress
+                          const progressValue = peer.progress || 0
+
+                          // Match qBittorrent's own WebUI logic for displaying progress
+                          let progressPercent = Math.round(progressValue * 100 * 10) / 10 // Round to 1 decimal
+                          // If progress rounds to 100% but isn't exactly 1.0, show as 99.9%
+                          if (progressPercent === 100.0 && progressValue !== 1.0) {
+                            progressPercent = 99.9
+                          }
+
+                          // A seeder has exactly 1.0 progress
+                          const isSeeder = progressValue === 1.0
+                          const flagDetails = getPeerFlagDetails(peer.flags, peer.flags_desc)
+                          const hasFlagDetails = flagDetails.length > 0
+
+                          return (
+                            <ContextMenu key={peerKey}>
+                              <ContextMenuTrigger asChild>
+                                <div className={`bg-card/50 backdrop-blur-sm border ${isActive ? "border-border/70" : "border-border/30"} hover:border-border transition-all rounded-lg p-4 space-y-3`}>
+                                  {/* Peer Header */}
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="flex-1 space-y-1">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-mono text-sm cursor-context-menu">{peer.ip}:{peer.port}</span>
+                                        {peer.country_code && (
+                                          <span
+                                            className={`fi fi-${peer.country_code.toLowerCase()} rounded text-sm`}
+                                            title={peer.country || peer.country_code}
+                                          />
+                                        )}
+                                        {isSeeder && (
+                                          <Badge variant="secondary" className="text-xs">Seeder</Badge>
+                                        )}
+                                      </div>
+                                      <p className="text-xs text-muted-foreground">{peer.client || "Unknown client"}</p>
+                                    </div>
+                                  </div>
+
+                                  <Separator className="opacity-50" />
+
+                                  {/* Progress Bar */}
+                                  <div className="space-y-1">
+                                    <p className="text-xs text-muted-foreground">Peer Progress</p>
+                                    <div className="flex items-center gap-2">
+                                      <Progress value={progressPercent} className="flex-1 h-1.5" />
+                                      <span className={`text-xs font-medium ${isSeeder ? "text-green-500" : ""}`}>
+                                        {progressPercent}%
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* Transfer Speeds */}
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1">
+                                      <p className="text-xs text-muted-foreground">Download Speed</p>
+                                      <p className={`text-sm font-medium ${peer.dl_speed && peer.dl_speed > 0 ? "text-green-500" : ""}`}>
+                                        {formatSpeedWithUnit(peer.dl_speed || 0, speedUnit)}
+                                      </p>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <p className="text-xs text-muted-foreground">Upload Speed</p>
+                                      <p className={`text-sm font-medium ${peer.up_speed && peer.up_speed > 0 ? "text-blue-500" : ""}`}>
+                                        {formatSpeedWithUnit(peer.up_speed || 0, speedUnit)}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  {/* Data Transfer Info */}
+                                  <div className="grid grid-cols-2 gap-3 text-xs">
+                                    <div className="space-y-1">
+                                      <p className="text-muted-foreground">Downloaded</p>
+                                      <p className="font-medium">{formatBytes(peer.downloaded || 0)}</p>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <p className="text-muted-foreground">Uploaded</p>
+                                      <p className="font-medium">{formatBytes(peer.uploaded || 0)}</p>
+                                    </div>
+                                  </div>
+
+                                  {/* Connection Info */}
+                                  {(peer.connection || hasFlagDetails) && (
+                                    <>
+                                      <Separator className="opacity-50" />
+                                      <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                                        {peer.connection && (
+                                          <div>
+                                            <span className="opacity-70">Connection:</span> {peer.connection}
+                                          </div>
+                                        )}
+                                        {hasFlagDetails && (
+                                          <div className="flex items-center gap-2">
+                                            <span className="opacity-70">Flags:</span>
+                                            <span className="inline-flex flex-wrap gap-1">
+                                              {flagDetails.map(({ flag, description }, index) => {
+                                                const flagKey = `${flag}-${index}`
+                                                const badgeClass =
+                                                  "inline-flex items-center justify-center rounded border border-border/60 bg-muted/20 px-1 text-[12px] font-semibold leading-none text-foreground cursor-pointer"
+
+                                                if (!description) {
+                                                  return (
+                                                    <span
+                                                      key={flagKey}
+                                                      className={badgeClass}
+                                                      aria-label={`Flag ${flag}`}
+                                                    >
+                                                      {flag}
+                                                    </span>
+                                                  )
+                                                }
+
+                                                return (
+                                                  <Tooltip key={flagKey}>
+                                                    <TooltipTrigger asChild>
+                                                      <span
+                                                        className={badgeClass}
+                                                        aria-label={description}
+                                                      >
+                                                        {flag}
+                                                      </span>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="top">
+                                                      {description}
+                                                    </TooltipContent>
+                                                  </Tooltip>
+                                                )
+                                              })}
+                                            </span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              </ContextMenuTrigger>
+                              <ContextMenuContent>
+                                <ContextMenuItem
+                                  onClick={() => handleCopyPeer(peer)}
+                                >
+                                  <Copy className="h-4 w-4 mr-2" />
+                                  Copy IP:port
+                                </ContextMenuItem>
+                                <ContextMenuSeparator />
+                                <ContextMenuItem
+                                  onClick={() => handleBanPeerClick(peer)}
+                                  className="text-destructive focus:text-destructive"
+                                >
+                                  <Ban className="h-4 w-4 mr-2" />
+                                  Ban peer permanently
+                                </ContextMenuItem>
+                              </ContextMenuContent>
+                            </ContextMenu>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-32 text-sm text-muted-foreground gap-3">
+                      <p>No peers connected</p>
                       <Button
                         variant="outline"
                         size="sm"
@@ -1178,184 +1362,67 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                         Add Peers
                       </Button>
                     </div>
-                    <div className="space-y-4 mt-4">
-                      {(peersData.sorted_peers ||
-                        Object.entries(peersData.peers).map(([key, peer]) => ({ key, ...peer }))
-                      ).map((peerWithKey) => {
-                        const peerKey = peerWithKey.key
-                        const peer = peerWithKey
-                        const isActive = (peer.dl_speed || 0) > 0 || (peer.up_speed || 0) > 0
-                        // Progress is a float between 0 and 1, where 1 = 100%
-                        // Note: qBittorrent API doesn't expose the actual seed status, so we rely on progress
-                        const progressValue = peer.progress || 0
+                  )}
+                </div>
+              </ScrollArea>
+            )}
+          </TabsContent>
 
-                        // Match qBittorrent's own WebUI logic for displaying progress
-                        let progressPercent = Math.round(progressValue * 100 * 10) / 10 // Round to 1 decimal
-                        // If progress rounds to 100% but isn't exactly 1.0, show as 99.9%
-                        if (progressPercent === 100.0 && progressValue !== 1.0) {
-                          progressPercent = 99.9
-                        }
-
-                        // A seeder has exactly 1.0 progress
-                        const isSeeder = progressValue === 1.0
-                        const flagDetails = getPeerFlagDetails(peer.flags, peer.flags_desc)
-                        const hasFlagDetails = flagDetails.length > 0
-
-                        return (
-                          <ContextMenu key={peerKey}>
+          <TabsContent value="webseeds" className="m-0 h-full">
+            {isHorizontal ? (
+              <WebSeedsTable
+                webseeds={webseedsData}
+                loading={loadingWebseeds}
+                incognitoMode={incognitoMode}
+              />
+            ) : (
+              <ScrollArea className="h-full">
+                <div className="p-4 sm:p-6">
+                  {activeTab === "webseeds" && loadingWebseeds && !webseedsData ? (
+                    <div className="flex items-center justify-center p-8">
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                    </div>
+                  ) : webseedsData && webseedsData.length > 0 ? (
+                    <div className="space-y-3">
+                      <div>
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">HTTP Sources</h3>
+                        <p className="text-xs text-muted-foreground mt-1">{webseedsData.length} source{webseedsData.length !== 1 ? "s" : ""}</p>
+                      </div>
+                      <div className="space-y-2 mt-4">
+                        {webseedsData.map((webseed, index) => (
+                          <ContextMenu key={index}>
                             <ContextMenuTrigger asChild>
-                              <div className={`bg-card/50 backdrop-blur-sm border ${isActive ? "border-border/70" : "border-border/30"} hover:border-border transition-all rounded-lg p-4 space-y-3`}>
-                                {/* Peer Header */}
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="flex-1 space-y-1">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="font-mono text-sm cursor-context-menu">{peer.ip}:{peer.port}</span>
-                                      {peer.country_code && (
-                                        <span
-                                          className={`fi fi-${peer.country_code.toLowerCase()} rounded text-sm`}
-                                          title={peer.country || peer.country_code}
-                                        />
-                                      )}
-                                      {isSeeder && (
-                                        <Badge variant="secondary" className="text-xs">Seeder</Badge>
-                                      )}
-                                    </div>
-                                    <p className="text-xs text-muted-foreground">{peer.client || "Unknown client"}</p>
-                                  </div>
-                                </div>
-
-                                <Separator className="opacity-50" />
-
-                                {/* Progress Bar */}
-                                <div className="space-y-1">
-                                  <p className="text-xs text-muted-foreground">Peer Progress</p>
-                                  <div className="flex items-center gap-2">
-                                    <Progress value={progressPercent} className="flex-1 h-1.5" />
-                                    <span className={`text-xs font-medium ${isSeeder ? "text-green-500" : ""}`}>
-                                      {progressPercent}%
-                                    </span>
-                                  </div>
-                                </div>
-
-                                {/* Transfer Speeds */}
-                                <div className="grid grid-cols-2 gap-3">
-                                  <div className="space-y-1">
-                                    <p className="text-xs text-muted-foreground">Download Speed</p>
-                                    <p className={`text-sm font-medium ${peer.dl_speed && peer.dl_speed > 0 ? "text-green-500" : ""}`}>
-                                      {formatSpeedWithUnit(peer.dl_speed || 0, speedUnit)}
-                                    </p>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <p className="text-xs text-muted-foreground">Upload Speed</p>
-                                    <p className={`text-sm font-medium ${peer.up_speed && peer.up_speed > 0 ? "text-blue-500" : ""}`}>
-                                      {formatSpeedWithUnit(peer.up_speed || 0, speedUnit)}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                {/* Data Transfer Info */}
-                                <div className="grid grid-cols-2 gap-3 text-xs">
-                                  <div className="space-y-1">
-                                    <p className="text-muted-foreground">Downloaded</p>
-                                    <p className="font-medium">{formatBytes(peer.downloaded || 0)}</p>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <p className="text-muted-foreground">Uploaded</p>
-                                    <p className="font-medium">{formatBytes(peer.uploaded || 0)}</p>
-                                  </div>
-                                </div>
-
-                                {/* Connection Info */}
-                                {(peer.connection || hasFlagDetails) && (
-                                  <>
-                                    <Separator className="opacity-50" />
-                                    <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                                      {peer.connection && (
-                                        <div>
-                                          <span className="opacity-70">Connection:</span> {peer.connection}
-                                        </div>
-                                      )}
-                                      {hasFlagDetails && (
-                                        <div className="flex items-center gap-2">
-                                          <span className="opacity-70">Flags:</span>
-                                          <span className="inline-flex flex-wrap gap-1">
-                                            {flagDetails.map(({ flag, description }, index) => {
-                                              const flagKey = `${flag}-${index}`
-                                              const badgeClass =
-                                                "inline-flex items-center justify-center rounded border border-border/60 bg-muted/20 px-1 text-[12px] font-semibold leading-none text-foreground cursor-pointer"
-
-                                              if (!description) {
-                                                return (
-                                                  <span
-                                                    key={flagKey}
-                                                    className={badgeClass}
-                                                    aria-label={`Flag ${flag}`}
-                                                  >
-                                                    {flag}
-                                                  </span>
-                                                )
-                                              }
-
-                                              return (
-                                                <Tooltip key={flagKey}>
-                                                  <TooltipTrigger asChild>
-                                                    <span
-                                                      className={badgeClass}
-                                                      aria-label={description}
-                                                    >
-                                                      {flag}
-                                                    </span>
-                                                  </TooltipTrigger>
-                                                  <TooltipContent side="top">
-                                                    {description}
-                                                  </TooltipContent>
-                                                </Tooltip>
-                                              )
-                                            })}
-                                          </span>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </>
-                                )}
+                              <div className="p-3 rounded-lg border bg-card hover:bg-muted/30 transition-colors cursor-default">
+                                <p className="font-mono text-xs break-all">
+                                  {incognitoMode ? "***masked***" : renderTextWithLinks(webseed.url)}
+                                </p>
                               </div>
                             </ContextMenuTrigger>
                             <ContextMenuContent>
                               <ContextMenuItem
-                                onClick={() => handleCopyPeer(peer)}
+                                onClick={() => {
+                                  if (!incognitoMode) {
+                                    copyTextToClipboard(webseed.url)
+                                    toast.success("URL copied to clipboard")
+                                  }
+                                }}
+                                disabled={incognitoMode}
                               >
-                                <Copy className="h-4 w-4 mr-2" />
-                                Copy IP:port
-                              </ContextMenuItem>
-                              <ContextMenuSeparator />
-                              <ContextMenuItem
-                                onClick={() => handleBanPeerClick(peer)}
-                                className="text-destructive focus:text-destructive"
-                              >
-                                <Ban className="h-4 w-4 mr-2" />
-                                Ban peer permanently
+                                <Copy className="h-3.5 w-3.5 mr-2" />
+                                Copy URL
                               </ContextMenuItem>
                             </ContextMenuContent>
                           </ContextMenu>
-                        )
-                      })}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-32 text-sm text-muted-foreground gap-3">
-                    <p>No peers connected</p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowAddPeersDialog(true)}
-                    >
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      Add Peers
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </ScrollArea>
+                  ) : (
+                    <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
+                      No HTTP sources
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
             )}
           </TabsContent>
 
@@ -1452,221 +1519,221 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 onDeleteCurrent={() => setShowDeleteCurrentDialog(true)}
               />
             ) : (
-            <ScrollArea className="h-full">
-              <div className="p-4 sm:p-6">
-                {isLoadingMatches ? (
-                  <div className="flex items-center justify-center p-8">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div>
-                ) : matchingTorrents.length > 0 ? (
-                  <div className="space-y-4">
-                    <div className="flex flex-col gap-3">
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cross-Seed Matches</h3>
-                          {isLoadingMatches && (
-                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                          )}
-                        </div>
-                        <span className="text-xs text-muted-foreground">
-                          {selectedCrossSeedTorrents.size > 0
-                            ? `${selectedCrossSeedTorrents.size} of ${matchingTorrents.length} selected`
-                            : isLoadingMatches
-                            ? `${matchingTorrents.length} matching torrent${matchingTorrents.length !== 1 ? 's' : ''} found, checking more instances...`
-                            : `${matchingTorrents.length} matching torrent${matchingTorrents.length !== 1 ? 's' : ''} found across all instances`}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        {selectedCrossSeedTorrents.size > 0 ? (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={handleDeselectAllCrossSeed}
-                            >
-                              Deselect All
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => setShowDeleteCrossSeedDialog(true)}
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete Matches ({selectedCrossSeedTorrents.size})
-                            </Button>
-                          </>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleSelectAllCrossSeed}
-                          >
-                            Select All
-                          </Button>
-                        )}
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => setShowDeleteCurrentDialog(true)}
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete This Torrent
-                        </Button>
-                      </div>
+              <ScrollArea className="h-full">
+                <div className="p-4 sm:p-6">
+                  {isLoadingMatches ? (
+                    <div className="flex items-center justify-center p-8">
+                      <Loader2 className="h-6 w-6 animate-spin" />
                     </div>
-                    <div className="space-y-2">
-                      {matchingTorrents.map((match) => {
-                        const displayName = incognitoMode ? getLinuxFileName(match.hash, 0) : match.name
-                        const progressPercent = match.progress * 100
-                        const isComplete = progressPercent === 100
-                        const torrentKey = `${match.instanceId}-${match.hash}`
-                        const isSelected = selectedCrossSeedTorrents.has(torrentKey)
-                        
-                        // Extract tracker hostname
-                        let trackerHostname = match.tracker
-                        if (match.tracker) {
-                          try {
-                            trackerHostname = new URL(match.tracker).hostname
-                          } catch {
-                            // Keep original if parsing fails
+                  ) : matchingTorrents.length > 0 ? (
+                    <div className="space-y-4">
+                      <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cross-Seed Matches</h3>
+                            {isLoadingMatches && (
+                              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {selectedCrossSeedTorrents.size > 0
+                              ? `${selectedCrossSeedTorrents.size} of ${matchingTorrents.length} selected`
+                              : isLoadingMatches
+                                ? `${matchingTorrents.length} matching torrent${matchingTorrents.length !== 1 ? 's' : ''} found, checking more instances...`
+                                : `${matchingTorrents.length} matching torrent${matchingTorrents.length !== 1 ? 's' : ''} found across all instances`}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {selectedCrossSeedTorrents.size > 0 ? (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={handleDeselectAllCrossSeed}
+                              >
+                                Deselect All
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => setShowDeleteCrossSeedDialog(true)}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete Matches ({selectedCrossSeedTorrents.size})
+                              </Button>
+                            </>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handleSelectAllCrossSeed}
+                            >
+                              Select All
+                            </Button>
+                          )}
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => setShowDeleteCurrentDialog(true)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete This Torrent
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        {matchingTorrents.map((match) => {
+                          const displayName = incognitoMode ? getLinuxFileName(match.hash, 0) : match.name
+                          const progressPercent = match.progress * 100
+                          const isComplete = progressPercent === 100
+                          const torrentKey = `${match.instanceId}-${match.hash}`
+                          const isSelected = selectedCrossSeedTorrents.has(torrentKey)
+
+                          // Extract tracker hostname
+                          let trackerHostname = match.tracker
+                          if (match.tracker) {
+                            try {
+                              trackerHostname = new URL(match.tracker).hostname
+                            } catch {
+                              // Keep original if parsing fails
+                            }
                           }
-                        }
-                        
-                        // Get enriched status (tracker-aware)
-                        const trackerHealth = match.tracker_health ?? null
-                        let statusLabel = getStateLabel(match.state)
-                        let statusVariant: "default" | "secondary" | "destructive" | "outline" = "outline"
-                        let statusClass = ""
-                        
-                        // Check tracker health first (if supported)
-                        if (trackerHealth === "unregistered") {
-                          statusLabel = "Unregistered"
-                          statusVariant = "outline"
-                          statusClass = "text-destructive border-destructive/40 bg-destructive/10"
-                        } else if (trackerHealth === "tracker_down") {
-                          statusLabel = "Tracker Down"
-                          statusVariant = "outline"
-                          statusClass = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
-                        } else {
-                          // Normal state-based styling
-                          if (match.state === "downloading" || match.state === "uploading") {
-                            statusVariant = "default"
-                          } else if (
-                            match.state === "stalledDL" ||
-                            match.state === "stalledUP" ||
-                            match.state === "pausedDL" ||
-                            match.state === "pausedUP" ||
-                            match.state === "queuedDL" ||
-                            match.state === "queuedUP"
-                          ) {
-                            statusVariant = "secondary"
-                          } else if (match.state === "error" || match.state === "missingFiles") {
-                            statusVariant = "destructive"
+
+                          // Get enriched status (tracker-aware)
+                          const trackerHealth = match.tracker_health ?? null
+                          let statusLabel = getStateLabel(match.state)
+                          let statusVariant: "default" | "secondary" | "destructive" | "outline" = "outline"
+                          let statusClass = ""
+
+                          // Check tracker health first (if supported)
+                          if (trackerHealth === "unregistered") {
+                            statusLabel = "Unregistered"
+                            statusVariant = "outline"
+                            statusClass = "text-destructive border-destructive/40 bg-destructive/10"
+                          } else if (trackerHealth === "tracker_down") {
+                            statusLabel = "Tracker Down"
+                            statusVariant = "outline"
+                            statusClass = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
+                          } else {
+                            // Normal state-based styling
+                            if (match.state === "downloading" || match.state === "uploading") {
+                              statusVariant = "default"
+                            } else if (
+                              match.state === "stalledDL" ||
+                              match.state === "stalledUP" ||
+                              match.state === "pausedDL" ||
+                              match.state === "pausedUP" ||
+                              match.state === "queuedDL" ||
+                              match.state === "queuedUP"
+                            ) {
+                              statusVariant = "secondary"
+                            } else if (match.state === "error" || match.state === "missingFiles") {
+                              statusVariant = "destructive"
+                            }
                           }
-                        }
-                        
-                        // Match type display
-                        const matchType = match.matchType as 'infohash' | 'content_path' | 'save_path' | 'name'
-                        const matchLabel = matchType === 'infohash' ? 'Info Hash' 
-                          : matchType === 'content_path' ? 'Content Path'
-                          : matchType === 'save_path' ? 'Save Path'
-                          : 'Name'
-                        const matchDescription = matchType === 'infohash' ? 'Exact same torrent (same info hash)'
-                          : matchType === 'content_path' ? 'Same content location on disk'
-                          : matchType === 'save_path' ? 'Same save directory and filename'
-                          : 'Same torrent name'
-                        
-                        return (
-                          <div key={torrentKey} className="rounded-lg border bg-card p-4 space-y-3">
-                            <div className="space-y-2">
-                              <div className="flex items-start gap-3">
-                                <Checkbox
-                                  checked={isSelected}
-                                  onCheckedChange={() => handleToggleCrossSeedSelection(torrentKey)}
-                                  className="mt-0.5 shrink-0"
-                                  aria-label={`Select ${displayName}`}
-                                />
-                                <div className="flex-1 min-w-0 space-y-1">
-                                  <p className="text-sm font-medium break-words" title={displayName}>{displayName}</p>
-                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                                    <span className="shrink-0">Instance: {match.instanceName}</span>
-                                    <span className="shrink-0">•</span>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <span className="cursor-help underline decoration-dotted shrink-0">
-                                          Match: {matchLabel}
-                                        </span>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        <p>{matchDescription}</p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                    {trackerHostname && (
-                                      <>
-                                        <span className="shrink-0">•</span>
-                                        <span className="break-all">Tracker: {incognitoMode ? getLinuxTracker(`${match.hash}-0`) : trackerHostname}</span>
-                                      </>
-                                    )}
-                                    {match.category && (
-                                      <>
-                                        <span className="shrink-0">•</span>
-                                        <span className="break-all">Category: {incognitoMode ? getLinuxCategory(match.hash) : match.category}</span>
-                                      </>
-                                    )}
-                                    {match.tags && (
-                                      <>
-                                        <span className="shrink-0">•</span>
-                                        <span className="break-all">Tags: {incognitoMode ? getLinuxTags(match.hash) : match.tags}</span>
-                                      </>
-                                    )}
+
+                          // Match type display
+                          const matchType = match.matchType as 'infohash' | 'content_path' | 'save_path' | 'name'
+                          const matchLabel = matchType === 'infohash' ? 'Info Hash'
+                            : matchType === 'content_path' ? 'Content Path'
+                              : matchType === 'save_path' ? 'Save Path'
+                                : 'Name'
+                          const matchDescription = matchType === 'infohash' ? 'Exact same torrent (same info hash)'
+                            : matchType === 'content_path' ? 'Same content location on disk'
+                              : matchType === 'save_path' ? 'Same save directory and filename'
+                                : 'Same torrent name'
+
+                          return (
+                            <div key={torrentKey} className="rounded-lg border bg-card p-4 space-y-3">
+                              <div className="space-y-2">
+                                <div className="flex items-start gap-3">
+                                  <Checkbox
+                                    checked={isSelected}
+                                    onCheckedChange={() => handleToggleCrossSeedSelection(torrentKey)}
+                                    className="mt-0.5 shrink-0"
+                                    aria-label={`Select ${displayName}`}
+                                  />
+                                  <div className="flex-1 min-w-0 space-y-1">
+                                    <p className="text-sm font-medium break-words" title={displayName}>{displayName}</p>
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                                      <span className="shrink-0">Instance: {match.instanceName}</span>
+                                      <span className="shrink-0">•</span>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="cursor-help underline decoration-dotted shrink-0">
+                                            Match: {matchLabel}
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p>{matchDescription}</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                      {trackerHostname && (
+                                        <>
+                                          <span className="shrink-0">•</span>
+                                          <span className="break-all">Tracker: {incognitoMode ? getLinuxTracker(`${match.hash}-0`) : trackerHostname}</span>
+                                        </>
+                                      )}
+                                      {match.category && (
+                                        <>
+                                          <span className="shrink-0">•</span>
+                                          <span className="break-all">Category: {incognitoMode ? getLinuxCategory(match.hash) : match.category}</span>
+                                        </>
+                                      )}
+                                      {match.tags && (
+                                        <>
+                                          <span className="shrink-0">•</span>
+                                          <span className="break-all">Tags: {incognitoMode ? getLinuxTags(match.hash) : match.tags}</span>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-col gap-1.5 shrink-0">
+                                    <Badge variant={statusVariant} className={cn("text-xs whitespace-nowrap", statusClass)}>
+                                      {statusLabel}
+                                    </Badge>
+                                    <Badge variant="outline" className="text-xs whitespace-nowrap">
+                                      {formatBytes(match.size)}
+                                    </Badge>
                                   </div>
                                 </div>
-                                <div className="flex flex-col gap-1.5 shrink-0">
-                                  <Badge variant={statusVariant} className={cn("text-xs whitespace-nowrap", statusClass)}>
-                                    {statusLabel}
-                                  </Badge>
-                                  <Badge variant="outline" className="text-xs whitespace-nowrap">
-                                    {formatBytes(match.size)}
-                                  </Badge>
+                                <div className="flex items-center gap-3">
+                                  <Progress value={progressPercent} className="flex-1 h-1.5" />
+                                  <span className={cn("text-xs font-medium", isComplete ? "text-green-500" : "text-muted-foreground")}>
+                                    {Math.round(progressPercent)}%
+                                  </span>
                                 </div>
+                                {(match.upspeed > 0 || match.dlspeed > 0) && (
+                                  <div className="flex gap-4 text-xs text-muted-foreground">
+                                    {match.dlspeed > 0 && (
+                                      <span>↓ {formatSpeedWithUnit(match.dlspeed, speedUnit)}</span>
+                                    )}
+                                    {match.upspeed > 0 && (
+                                      <span>↑ {formatSpeedWithUnit(match.upspeed, speedUnit)}</span>
+                                    )}
+                                  </div>
+                                )}
                               </div>
-                              <div className="flex items-center gap-3">
-                                <Progress value={progressPercent} className="flex-1 h-1.5" />
-                                <span className={cn("text-xs font-medium", isComplete ? "text-green-500" : "text-muted-foreground")}>
-                                  {Math.round(progressPercent)}%
-                                </span>
-                              </div>
-                              {(match.upspeed > 0 || match.dlspeed > 0) && (
-                                <div className="flex gap-4 text-xs text-muted-foreground">
-                                  {match.dlspeed > 0 && (
-                                    <span>↓ {formatSpeedWithUnit(match.dlspeed, speedUnit)}</span>
-                                  )}
-                                  {match.upspeed > 0 && (
-                                    <span>↑ {formatSpeedWithUnit(match.upspeed, speedUnit)}</span>
-                                  )}
-                                </div>
-                              )}
                             </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                    {isLoadingMatches && (
-                      <div className="flex items-center justify-center gap-2 p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground">
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        <span>
-                          Checking more instances...
-                        </span>
+                          )
+                        })}
                       </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-                    No matching torrents found on other instances
-                  </div>
-                )}
-              </div>
-            </ScrollArea>
+                      {isLoadingMatches && (
+                        <div className="flex items-center justify-center gap-2 p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          <span>
+                            Checking more instances...
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
+                      No matching torrents found on other instances
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
             )}
           </TabsContent>
         </div>

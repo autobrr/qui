@@ -42,6 +42,22 @@ type CrossSeedRequest struct {
 	// SkipAutoResume prevents automatic resume after hash check when true.
 	// Default behavior (false) resumes torrents after verification completes.
 	SkipAutoResume bool `json:"skip_auto_resume,omitempty"`
+	// SkipRecheck skips matches that would require a manual recheck (rename alignment or extra files).
+	SkipRecheck bool `json:"skip_recheck,omitempty"`
+
+	// SourceFilterCategories filters candidate torrents to only those in these categories.
+	// Used by RSS automation to respect RSSSourceCategories setting.
+	// Internal-only, not exposed via JSON API.
+	SourceFilterCategories []string `json:"-"`
+	// SourceFilterTags filters candidate torrents to only those with at least one of these tags.
+	// Internal-only, not exposed via JSON API.
+	SourceFilterTags []string `json:"-"`
+	// SourceFilterExcludeCategories excludes candidate torrents in these categories.
+	// Internal-only, not exposed via JSON API.
+	SourceFilterExcludeCategories []string `json:"-"`
+	// SourceFilterExcludeTags excludes candidate torrents with any of these tags.
+	// Internal-only, not exposed via JSON API.
+	SourceFilterExcludeTags []string `json:"-"`
 }
 
 // CrossSeedResponse represents the result of a cross-seed operation
@@ -122,6 +138,19 @@ type FindCandidatesRequest struct {
 	// FindIndividualEpisodes controls whether to find individual episodes when searching with season packs
 	// If false (default), season packs will only match with other season packs
 	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
+
+	// Source filters - used to restrict which existing torrents are considered as candidates.
+	// These are applied when fetching torrents (if no pre-built snapshot is provided).
+	// Internal-only, not exposed via JSON API.
+
+	// SourceFilterCategories filters candidate torrents to only those in these categories.
+	SourceFilterCategories []string `json:"-"`
+	// SourceFilterTags filters candidate torrents to only those with at least one of these tags.
+	SourceFilterTags []string `json:"-"`
+	// SourceFilterExcludeCategories excludes candidate torrents in these categories.
+	SourceFilterExcludeCategories []string `json:"-"`
+	// SourceFilterExcludeTags excludes candidate torrents with any of these tags.
+	SourceFilterExcludeTags []string `json:"-"`
 }
 
 // FindCandidatesResponse represents potential cross-seed candidates

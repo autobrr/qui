@@ -42,6 +42,7 @@ type automationSettingsRequest struct {
 	UseCategoryFromIndexer       bool     `json:"useCategoryFromIndexer"`
 	UseCrossCategorySuffix       bool     `json:"useCrossCategorySuffix"`
 	RunExternalProgramID         *int     `json:"runExternalProgramId"`
+	SkipRecheck                  bool     `json:"skipRecheck"`
 }
 
 type automationSettingsPatchRequest struct {
@@ -59,15 +60,15 @@ type automationSettingsPatchRequest struct {
 	RSSSourceExcludeCategories *[]string `json:"rssSourceExcludeCategories,omitempty"`
 	RSSSourceExcludeTags       *[]string `json:"rssSourceExcludeTags,omitempty"`
 	// Webhook source filtering: filter which local torrents to search when checking webhook requests
-	WebhookSourceCategories        *[]string `json:"webhookSourceCategories,omitempty"`
-	WebhookSourceTags              *[]string `json:"webhookSourceTags,omitempty"`
-	WebhookSourceExcludeCategories *[]string `json:"webhookSourceExcludeCategories,omitempty"`
-	WebhookSourceExcludeTags       *[]string `json:"webhookSourceExcludeTags,omitempty"`
-	FindIndividualEpisodes         *bool     `json:"findIndividualEpisodes,omitempty"`
-	SizeMismatchTolerancePercent *float64    `json:"sizeMismatchTolerancePercent,omitempty"`
-	UseCategoryFromIndexer       *bool       `json:"useCategoryFromIndexer,omitempty"`
-	UseCrossCategorySuffix       *bool       `json:"useCrossCategorySuffix,omitempty"`
-	RunExternalProgramID         optionalInt `json:"runExternalProgramId"`
+	WebhookSourceCategories        *[]string   `json:"webhookSourceCategories,omitempty"`
+	WebhookSourceTags              *[]string   `json:"webhookSourceTags,omitempty"`
+	WebhookSourceExcludeCategories *[]string   `json:"webhookSourceExcludeCategories,omitempty"`
+	WebhookSourceExcludeTags       *[]string   `json:"webhookSourceExcludeTags,omitempty"`
+	FindIndividualEpisodes         *bool       `json:"findIndividualEpisodes,omitempty"`
+	SizeMismatchTolerancePercent   *float64    `json:"sizeMismatchTolerancePercent,omitempty"`
+	UseCategoryFromIndexer         *bool       `json:"useCategoryFromIndexer,omitempty"`
+	UseCrossCategorySuffix         *bool       `json:"useCrossCategorySuffix,omitempty"`
+	RunExternalProgramID           optionalInt `json:"runExternalProgramId"`
 	// Source-specific tagging
 	RSSAutomationTags    *[]string `json:"rssAutomationTags,omitempty"`
 	SeededSearchTags     *[]string `json:"seededSearchTags,omitempty"`
@@ -79,6 +80,7 @@ type automationSettingsPatchRequest struct {
 	SkipAutoResumeSeededSearch *bool `json:"skipAutoResumeSeededSearch,omitempty"`
 	SkipAutoResumeCompletion   *bool `json:"skipAutoResumeCompletion,omitempty"`
 	SkipAutoResumeWebhook      *bool `json:"skipAutoResumeWebhook,omitempty"`
+	SkipRecheck                *bool `json:"skipRecheck,omitempty"`
 }
 
 type optionalString struct {
@@ -167,7 +169,8 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.SkipAutoResumeRSS == nil &&
 		r.SkipAutoResumeSeededSearch == nil &&
 		r.SkipAutoResumeCompletion == nil &&
-		r.SkipAutoResumeWebhook == nil
+		r.SkipAutoResumeWebhook == nil &&
+		r.SkipRecheck == nil
 }
 
 func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, patch automationSettingsPatchRequest) {
@@ -273,6 +276,9 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	}
 	if patch.SkipAutoResumeWebhook != nil {
 		settings.SkipAutoResumeWebhook = *patch.SkipAutoResumeWebhook
+	}
+	if patch.SkipRecheck != nil {
+		settings.SkipRecheck = *patch.SkipRecheck
 	}
 }
 
@@ -652,6 +658,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		UseCategoryFromIndexer:       req.UseCategoryFromIndexer,
 		UseCrossCategorySuffix:       req.UseCrossCategorySuffix,
 		RunExternalProgramID:         req.RunExternalProgramID,
+		SkipRecheck:                  req.SkipRecheck,
 	}
 
 	updated, err := h.service.UpdateAutomationSettings(r.Context(), settings)
@@ -691,6 +698,19 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 	if req.isEmpty() {
 		RespondError(w, http.StatusBadRequest, "No fields provided to update")
 		return
+	}
+
+	// Log what the API received for debugging source filter issues
+	if req.RSSSourceCategories != nil || req.RSSSourceExcludeCategories != nil ||
+		req.WebhookSourceCategories != nil || req.WebhookSourceExcludeCategories != nil {
+		log.Debug().
+			Interface("rssSourceCategories", req.RSSSourceCategories).
+			Interface("rssSourceExcludeCategories", req.RSSSourceExcludeCategories).
+			Interface("rssSourceTags", req.RSSSourceTags).
+			Interface("rssSourceExcludeTags", req.RSSSourceExcludeTags).
+			Interface("webhookSourceCategories", req.WebhookSourceCategories).
+			Interface("webhookSourceExcludeCategories", req.WebhookSourceExcludeCategories).
+			Msg("[API] Received source filter patch request")
 	}
 
 	current, err := h.service.GetAutomationSettings(r.Context())

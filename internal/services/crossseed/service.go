@@ -431,6 +431,8 @@ type SearchRunOptions struct {
 	InstanceID                   int
 	Categories                   []string
 	Tags                         []string
+	ExcludeCategories            []string // Categories to exclude from source filtering
+	ExcludeTags                  []string // Tags to exclude from source filtering
 	IntervalSeconds              int
 	IndexerIDs                   []int
 	CooldownMinutes              int
@@ -444,6 +446,7 @@ type SearchRunOptions struct {
 	SpecificHashes               []string
 	SizeMismatchTolerancePercent float64
 	SkipAutoResume               bool
+	SkipRecheck                  bool
 }
 
 // SearchSettingsPatch captures optional updates to seeded search defaults.
@@ -915,7 +918,7 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 	}
 
 	// Execute cross-seed search immediately
-	err = s.executeCompletionSearch(ctx, instanceID, &torrent, settings)
+	err = s.executeCompletionSearch(ctx, instanceID, &torrent, settings, completionSettings)
 	if err != nil {
 		log.Warn().
 			Err(err).
@@ -1046,7 +1049,7 @@ func (s *Service) ListAutomationRuns(ctx context.Context, limit, offset int) ([]
 	return runs, nil
 }
 
-func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, torrent *qbt.Torrent, settings *models.CrossSeedAutomationSettings) error {
+func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, torrent *qbt.Torrent, settings *models.CrossSeedAutomationSettings, completionSettings *models.InstanceCrossSeedCompletionSettings) error {
 	if torrent == nil {
 		return nil
 	}
@@ -1132,11 +1135,19 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 			FindIndividualEpisodes: settings.FindIndividualEpisodes,
 			StartPaused:            settings.StartPaused,
 			SkipAutoResume:         settings.SkipAutoResumeCompletion,
+			SkipRecheck:            settings.SkipRecheck,
 			CategoryOverride:       settings.Category,
 			TagsOverride:           append([]string(nil), settings.CompletionSearchTags...),
 			InheritSourceTags:      settings.InheritSourceTags,
 			IgnorePatterns:         append([]string(nil), settings.IgnorePatterns...),
 		},
+	}
+	// Pass completion source filters to ensure CrossSeed respects them when finding candidates
+	if completionSettings != nil {
+		searchState.opts.Categories = append([]string(nil), completionSettings.Categories...)
+		searchState.opts.Tags = append([]string(nil), completionSettings.Tags...)
+		searchState.opts.ExcludeCategories = append([]string(nil), completionSettings.ExcludeCategories...)
+		searchState.opts.ExcludeTags = append([]string(nil), completionSettings.ExcludeTags...)
 	}
 
 	successCount := 0
@@ -1206,6 +1217,7 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		}
 		opts.StartPaused = settings.StartPaused
 		opts.SkipAutoResume = settings.SkipAutoResumeSeededSearch
+		opts.SkipRecheck = settings.SkipRecheck
 		if !settings.FindIndividualEpisodes {
 			opts.FindIndividualEpisodes = false
 		} else if !opts.FindIndividualEpisodes {
@@ -1815,6 +1827,12 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		FindIndividualEpisodes:       settings.FindIndividualEpisodes,
 		SizeMismatchTolerancePercent: settings.SizeMismatchTolerancePercent,
 		SkipAutoResume:               settings.SkipAutoResumeRSS,
+		SkipRecheck:                  settings.SkipRecheck,
+		// Pass RSS source filters so CrossSeed respects them when finding candidates
+		SourceFilterCategories:        append([]string(nil), settings.RSSSourceCategories...),
+		SourceFilterTags:              append([]string(nil), settings.RSSSourceTags...),
+		SourceFilterExcludeCategories: append([]string(nil), settings.RSSSourceExcludeCategories...),
+		SourceFilterExcludeTags:       append([]string(nil), settings.RSSSourceExcludeTags...),
 	}
 	if settings.Category != nil {
 		req.Category = *settings.Category
@@ -1957,6 +1975,16 @@ func (s *Service) buildAutomationSnapshots(ctx context.Context, targetInstanceID
 		len(settings.RSSSourceExcludeCategories) > 0 ||
 		len(settings.RSSSourceExcludeTags) > 0)
 
+	if settings != nil {
+		log.Debug().
+			Strs("includeCategories", settings.RSSSourceCategories).
+			Strs("excludeCategories", settings.RSSSourceExcludeCategories).
+			Strs("includeTags", settings.RSSSourceTags).
+			Strs("excludeTags", settings.RSSSourceExcludeTags).
+			Bool("hasFilters", hasRSSSourceFilters).
+			Msg("[RSS] Source filter settings loaded for automation snapshot")
+	}
+
 	for _, instanceID := range instanceIDs {
 		snap := snapshots.instances[instanceID]
 		if snap == nil {
@@ -1983,20 +2011,36 @@ func (s *Service) buildAutomationSnapshots(ctx context.Context, targetInstanceID
 		if hasRSSSourceFilters {
 			originalCount := len(torrents)
 			filtered := make([]qbt.Torrent, 0, len(torrents))
+			excludedCategories := make(map[string]int)
+			includedCategories := make(map[string]int)
 			for i := range torrents {
 				if matchesRSSSourceFilters(&torrents[i], settings) {
 					filtered = append(filtered, torrents[i])
+					includedCategories[torrents[i].Category]++
+				} else {
+					excludedCategories[torrents[i].Category]++
 				}
 			}
 			torrents = filtered
-			if len(torrents) != originalCount {
-				log.Debug().
-					Int("instanceID", instanceID).
-					Str("instanceName", snap.instance.Name).
-					Int("original", originalCount).
-					Int("filtered", len(torrents)).
-					Msg("RSS source filters reduced torrent candidates")
+
+			// Build summary of excluded categories
+			excludedSummary := make([]string, 0, len(excludedCategories))
+			for cat, count := range excludedCategories {
+				excludedSummary = append(excludedSummary, fmt.Sprintf("%s(%d)", cat, count))
 			}
+			includedSummary := make([]string, 0, len(includedCategories))
+			for cat, count := range includedCategories {
+				includedSummary = append(includedSummary, fmt.Sprintf("%s(%d)", cat, count))
+			}
+
+			log.Debug().
+				Int("instanceID", instanceID).
+				Str("instanceName", snap.instance.Name).
+				Int("original", originalCount).
+				Int("filtered", len(torrents)).
+				Strs("excludedCategories", excludedSummary).
+				Strs("includedCategories", includedSummary).
+				Msg("[RSS] Source filter results")
 		}
 
 		snap.torrents = torrents
@@ -2174,6 +2218,11 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 				continue
 			}
 
+			// Apply source filters if provided (from RSS automation source filter settings)
+			if !matchesSourceFilters(&torrent, req) {
+				continue
+			}
+
 			candidateRelease := s.releaseCache.Parse(torrent.Name)
 
 			// Check if releases are related (quick filter)
@@ -2304,6 +2353,19 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	if len(req.IgnorePatterns) > 0 {
 		findReq.IgnorePatterns = append([]string(nil), req.IgnorePatterns...)
 	}
+	// Pass through source filters for RSS automation
+	if len(req.SourceFilterCategories) > 0 {
+		findReq.SourceFilterCategories = append([]string(nil), req.SourceFilterCategories...)
+	}
+	if len(req.SourceFilterTags) > 0 {
+		findReq.SourceFilterTags = append([]string(nil), req.SourceFilterTags...)
+	}
+	if len(req.SourceFilterExcludeCategories) > 0 {
+		findReq.SourceFilterExcludeCategories = append([]string(nil), req.SourceFilterExcludeCategories...)
+	}
+	if len(req.SourceFilterExcludeTags) > 0 {
+		findReq.SourceFilterExcludeTags = append([]string(nil), req.SourceFilterExcludeTags...)
+	}
 
 	candidatesResp, err := s.FindCandidates(ctx, findReq)
 	if err != nil {
@@ -2428,6 +2490,11 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		skipAutoResume = settings.SkipAutoResumeWebhook
 	}
 
+	skipRecheck := false
+	if settings != nil {
+		skipRecheck = settings.SkipRecheck
+	}
+
 	crossReq := &CrossSeedRequest{
 		TorrentData:                  req.TorrentData,
 		TargetInstanceIDs:            targetInstanceIDs,
@@ -2440,6 +2507,14 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		FindIndividualEpisodes:       findIndividualEpisodes,
 		SizeMismatchTolerancePercent: sizeTolerance,
 		SkipAutoResume:               skipAutoResume,
+		SkipRecheck:                  skipRecheck,
+	}
+	// Pass webhook source filters so CrossSeed respects them when finding candidates
+	if settings != nil {
+		crossReq.SourceFilterCategories = append([]string(nil), settings.WebhookSourceCategories...)
+		crossReq.SourceFilterTags = append([]string(nil), settings.WebhookSourceTags...)
+		crossReq.SourceFilterExcludeCategories = append([]string(nil), settings.WebhookSourceExcludeCategories...)
+		crossReq.SourceFilterExcludeTags = append([]string(nil), settings.WebhookSourceExcludeTags...)
 	}
 
 	resp, err := s.invokeCrossSeed(ctx, crossReq)
@@ -2579,6 +2654,18 @@ func (s *Service) processCrossSeedCandidate(
 	// Check if source has extra files that won't exist on disk (e.g., NFO files not filtered by ignorePatterns)
 	hasExtraFiles := hasExtraSourceFiles(sourceFiles, candidateFiles)
 
+	if req.SkipRecheck && (requiresAlignment || hasExtraFiles) {
+		result.Status = "skipped_recheck"
+		result.Message = "Skipped cross-seed: requires recheck and skip recheck is enabled"
+		log.Info().
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentHash", torrentHash).
+			Bool("requiresAlignment", requiresAlignment).
+			Bool("hasExtraFiles", hasExtraFiles).
+			Msg("Cross-seed skipped because recheck is required and skip recheck is enabled")
+		return result
+	}
+
 	// Skip checking for cross-seed adds - the data is already verified by the matched torrent.
 	// We MUST use skip_checking when alignment (renames) is required, because qBittorrent blocks
 	// file rename operations while a torrent is being verified. The manual recheck triggered
@@ -2615,6 +2702,10 @@ func (s *Service) processCrossSeedCandidate(
 	isEpisodeInPack := matchType == "partial-in-pack" &&
 		sourceRelease.Series > 0 && sourceRelease.Episode > 0 &&
 		matchedRelease.Series > 0 && matchedRelease.Episode == 0
+	rootlessContentDir := ""
+	if !isEpisodeInPack && candidateRoot == "" {
+		rootlessContentDir = resolveRootlessContentDir(matchedTorrent, candidateFiles)
+	}
 
 	// Determine final category to apply (with optional .cross suffix for isolation)
 	baseCategory, crossCategory := s.determineCrossSeedCategory(ctx, req, matchedTorrent, nil)
@@ -2751,8 +2842,21 @@ func (s *Service) processCrossSeedCandidate(
 			savePath = categorySavePath
 		}
 
+		forceManualSavePath := false
+		if rootlessContentDir != "" {
+			normalizedSavePath := normalizePath(savePath)
+			normalizedRootlessDir := normalizePath(rootlessContentDir)
+			if normalizedRootlessDir != "" && normalizedRootlessDir != normalizedSavePath {
+				savePath = rootlessContentDir
+				forceManualSavePath = true
+			}
+		}
+
 		// Evaluate whether autoTMM should be enabled
 		tmmDecision := shouldEnableAutoTMM(crossCategory, matchedTorrent.AutoManaged, useCategoryFromIndexer, actualCategorySavePath, props.SavePath)
+		if forceManualSavePath {
+			tmmDecision.Enabled = false
+		}
 
 		log.Debug().
 			Bool("enabled", tmmDecision.Enabled).
@@ -2762,6 +2866,8 @@ func (s *Service) processCrossSeedCandidate(
 			Str("categorySavePath", tmmDecision.CategorySavePath).
 			Str("matchedSavePath", tmmDecision.MatchedSavePath).
 			Bool("pathsMatch", tmmDecision.PathsMatch).
+			Bool("forceManualSavePath", forceManualSavePath).
+			Str("rootlessContentDir", rootlessContentDir).
 			Msg("[CROSSSEED] autoTMM decision factors")
 
 		if tmmDecision.Enabled {
@@ -2810,6 +2916,16 @@ func (s *Service) processCrossSeedCandidate(
 	// Add the torrent
 	err = s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options)
 	if err != nil {
+		if req.SkipRecheck {
+			result.Status = "error"
+			result.Message = fmt.Sprintf("Failed to add torrent (recheck fallback disabled): %v", err)
+			log.Error().
+				Err(err).
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentHash", torrentHash).
+				Msg("Failed to add cross-seed torrent and skip recheck is enabled")
+			return result
+		}
 		// If adding fails, try with recheck enabled (skip_checking=false)
 		log.Warn().
 			Err(err).
@@ -4673,6 +4789,11 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				skipAutoResume = settings.SkipAutoResumeSeededSearch
 			}
 
+			skipRecheck := false
+			if settings != nil {
+				skipRecheck = settings.SkipRecheck
+			}
+
 			payload := &CrossSeedRequest{
 				TorrentData:                  base64.StdEncoding.EncodeToString(torrentBytes),
 				TargetInstanceIDs:            []int{instanceID},
@@ -4683,6 +4804,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				FindIndividualEpisodes:       req.FindIndividualEpisodes,
 				SizeMismatchTolerancePercent: sizeTolerance,
 				SkipAutoResume:               skipAutoResume,
+				SkipRecheck:                  skipRecheck,
 			}
 			if settings != nil && len(settings.IgnorePatterns) > 0 {
 				payload.IgnorePatterns = append([]string(nil), settings.IgnorePatterns...)
@@ -5770,6 +5892,12 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		SkipIfExists:                 &skipIfExists,
 		SizeMismatchTolerancePercent: sizeTolerance,
 		SkipAutoResume:               state.opts.SkipAutoResume,
+		SkipRecheck:                  state.opts.SkipRecheck,
+		// Pass seeded search filters so CrossSeed respects them when finding candidates
+		SourceFilterCategories:        append([]string(nil), state.opts.Categories...),
+		SourceFilterTags:              append([]string(nil), state.opts.Tags...),
+		SourceFilterExcludeCategories: append([]string(nil), state.opts.ExcludeCategories...),
+		SourceFilterExcludeTags:       append([]string(nil), state.opts.ExcludeTags...),
 	}
 	if len(state.opts.IgnorePatterns) > 0 {
 		request.IgnorePatterns = append([]string(nil), state.opts.IgnorePatterns...)
@@ -6443,30 +6571,40 @@ func matchesSearchFilters(torrent *qbt.Torrent, opts SearchRunOptions) bool {
 	if torrent == nil {
 		return false
 	}
-	if len(opts.Categories) > 0 {
-		matched := slices.Contains(opts.Categories, torrent.Category)
-		if !matched {
-			return false
-		}
+
+	// TODO: ExcludeCategories and ExcludeTags are not yet exposed in the Seeded Search UI.
+
+	// Check exclude categories first (if configured)
+	if len(opts.ExcludeCategories) > 0 && slices.Contains(opts.ExcludeCategories, torrent.Category) {
+		return false
 	}
-	if len(opts.Tags) > 0 {
-		torrentTags := splitTags(torrent.Tags)
-		matched := false
+
+	// Check include categories (if configured)
+	if len(opts.Categories) > 0 && !slices.Contains(opts.Categories, torrent.Category) {
+		return false
+	}
+
+	torrentTags := splitTags(torrent.Tags)
+
+	// Check exclude tags (if configured)
+	if len(opts.ExcludeTags) > 0 {
 		for _, tag := range torrentTags {
-			for _, desired := range opts.Tags {
-				if tag == desired {
-					matched = true
-					break
-				}
+			if slices.Contains(opts.ExcludeTags, tag) {
+				return false
 			}
-			if matched {
-				break
-			}
-		}
-		if !matched {
-			return false
 		}
 	}
+
+	// Check include tags (if configured)
+	if len(opts.Tags) > 0 {
+		for _, tag := range torrentTags {
+			if slices.Contains(opts.Tags, tag) {
+				return true
+			}
+		}
+		return false
+	}
+
 	return true
 }
 
@@ -6584,6 +6722,58 @@ func matchesWebhookSourceFilters(torrent *qbt.Torrent, settings *models.CrossSee
 	if len(settings.WebhookSourceTags) > 0 {
 		for _, tag := range torrentTags {
 			if slices.Contains(settings.WebhookSourceTags, tag) {
+				return true
+			}
+		}
+		return false
+	}
+
+	return true
+}
+
+// matchesSourceFilters checks if a torrent matches source filters from FindCandidatesRequest.
+// This is used when FindCandidates is called without pre-built snapshots (e.g., from CrossSeed).
+// Empty filter arrays mean "all" (no filtering).
+func matchesSourceFilters(torrent *qbt.Torrent, req *FindCandidatesRequest) bool {
+	if torrent == nil || req == nil {
+		return true // No filters to apply
+	}
+
+	// Check if any source filters are configured
+	hasFilters := len(req.SourceFilterCategories) > 0 ||
+		len(req.SourceFilterTags) > 0 ||
+		len(req.SourceFilterExcludeCategories) > 0 ||
+		len(req.SourceFilterExcludeTags) > 0
+
+	if !hasFilters {
+		return true
+	}
+
+	// Check exclude categories first (if configured)
+	if len(req.SourceFilterExcludeCategories) > 0 && slices.Contains(req.SourceFilterExcludeCategories, torrent.Category) {
+		return false
+	}
+
+	// Check include categories (if configured)
+	if len(req.SourceFilterCategories) > 0 && !slices.Contains(req.SourceFilterCategories, torrent.Category) {
+		return false
+	}
+
+	torrentTags := splitTags(torrent.Tags)
+
+	// Check exclude tags (if configured) - case-sensitive to match qBittorrent behavior
+	if len(req.SourceFilterExcludeTags) > 0 {
+		for _, tag := range torrentTags {
+			if slices.Contains(req.SourceFilterExcludeTags, tag) {
+				return false
+			}
+		}
+	}
+
+	// Check include tags (if configured) - at least one must match, case-sensitive
+	if len(req.SourceFilterTags) > 0 {
+		for _, tag := range torrentTags {
+			if slices.Contains(req.SourceFilterTags, tag) {
 				return true
 			}
 		}
@@ -6777,6 +6967,29 @@ func normalizePath(p string) string {
 	p = filepath.Clean(p)
 	p = strings.TrimSuffix(p, "/")
 	return p
+}
+
+func resolveRootlessContentDir(matchedTorrent *qbt.Torrent, candidateFiles qbt.TorrentFiles) string {
+	if matchedTorrent == nil || matchedTorrent.ContentPath == "" || len(candidateFiles) == 0 {
+		return ""
+	}
+
+	contentPath := normalizePath(matchedTorrent.ContentPath)
+	if contentPath == "" || contentPath == "." {
+		return ""
+	}
+
+	// qBittorrent returns the full file path for single-file torrents.
+	if len(candidateFiles) == 1 {
+		dir := normalizePath(filepath.Dir(contentPath))
+		if dir == "." {
+			return ""
+		}
+		return dir
+	}
+
+	// Multi-file torrents use the storage directory as content path.
+	return contentPath
 }
 
 // appendCrossSuffix adds the .cross suffix to a category name.
@@ -7093,32 +7306,51 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 			len(settings.WebhookSourceExcludeCategories) > 0 ||
 			len(settings.WebhookSourceExcludeTags) > 0
 
+		// Log webhook filter settings once per instance
+		log.Debug().
+			Str("source", "cross-seed.webhook").
+			Int("instanceID", instance.ID).
+			Strs("includeCategories", settings.WebhookSourceCategories).
+			Strs("excludeCategories", settings.WebhookSourceExcludeCategories).
+			Strs("includeTags", settings.WebhookSourceTags).
+			Strs("excludeTags", settings.WebhookSourceExcludeTags).
+			Bool("hasFilters", hasWebhookSourceFilters).
+			Msg("[Webhook] Source filter settings for instance")
+
 		if hasWebhookSourceFilters {
 			originalCount := len(torrents)
 			filtered := make([]qbt.Torrent, 0, len(torrents))
+			excludedCategories := make(map[string]int)
+			includedCategories := make(map[string]int)
 			for i := range torrents {
 				if matchesWebhookSourceFilters(&torrents[i], settings) {
 					filtered = append(filtered, torrents[i])
+					includedCategories[torrents[i].Category]++
+				} else {
+					excludedCategories[torrents[i].Category]++
 				}
 			}
 			torrents = filtered
-			if len(torrents) != originalCount {
-				log.Debug().
-					Str("source", "cross-seed.webhook").
-					Int("instanceID", instance.ID).
-					Str("instanceName", instance.Name).
-					Int("original", originalCount).
-					Int("filtered", len(torrents)).
-					Msg("Webhook source filters reduced torrent candidates")
+
+			// Build summary of excluded categories
+			excludedSummary := make([]string, 0, len(excludedCategories))
+			for cat, count := range excludedCategories {
+				excludedSummary = append(excludedSummary, fmt.Sprintf("%s(%d)", cat, count))
 			}
-			if len(torrents) == 0 && originalCount > 0 {
-				log.Debug().
-					Str("source", "cross-seed.webhook").
-					Int("instanceID", instance.ID).
-					Str("instanceName", instance.Name).
-					Int("original", originalCount).
-					Msg("Webhook source filters excluded all torrents")
+			includedSummary := make([]string, 0, len(includedCategories))
+			for cat, count := range includedCategories {
+				includedSummary = append(includedSummary, fmt.Sprintf("%s(%d)", cat, count))
 			}
+
+			log.Debug().
+				Str("source", "cross-seed.webhook").
+				Int("instanceID", instance.ID).
+				Str("instanceName", instance.Name).
+				Int("original", originalCount).
+				Int("filtered", len(torrents)).
+				Strs("excludedCategories", excludedSummary).
+				Strs("includedCategories", includedSummary).
+				Msg("[Webhook] Source filter results")
 		}
 
 		log.Debug().

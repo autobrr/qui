@@ -15,7 +15,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/creativeprojects/go-selfupdate v1.5.1
-	github.com/expr-lang/expr v1.17.6
+	github.com/expr-lang/expr v1.17.7
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/hashicorp/go-version v1.8.0
@@ -44,7 +44,7 @@ require (
 	modernc.org/sqlite v1.40.1
 )
 
-replace github.com/moistari/rls => github.com/autobrr/rls v0.7.0
+replace github.com/moistari/rls => github.com/autobrr/rls v0.7.1-0.20251216090501-a93fa08d24d2
 
 require (
 	code.gitea.io/sdk/gitea v0.22.0 // indirect

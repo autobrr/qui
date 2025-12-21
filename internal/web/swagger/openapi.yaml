@@ -1351,6 +1351,29 @@ paths:
         '500':
           description: Failed to remove trackers
 
+  /api/instances/{instanceID}/torrents/{hash}/webseeds:
+    get:
+      tags:
+        - Torrent Details
+      summary: Get torrent web seeds
+      description: Get list of web seeds (HTTP sources) for a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - $ref: '#/components/parameters/hash'
+      responses:
+        '200':
+          description: List of web seeds
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WebSeed'
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to get web seeds
+
   /api/instances/{instanceID}/torrents/{hash}/files:
     get:
       tags:
@@ -3598,6 +3621,15 @@ components:
         msg:
           type: string
 
+    WebSeed:
+      type: object
+      required:
+        - url
+      properties:
+        url:
+          type: string
+          description: HTTP source URL for the torrent
+
     TorrentFile:
       type: object
       properties:
@@ -3924,6 +3956,9 @@ components:
           items:
             type: string
           description: Skip torrents with any of these tags when processing webhook requests
+        skipRecheck:
+          type: boolean
+          description: Skip cross-seed matches that would require a manual recheck
 
     CrossSeedAutomationSettings:
       type: object
@@ -3987,6 +4022,9 @@ components:
           items:
             type: string
           description: Skip torrents with any of these tags when processing webhook requests
+        skipRecheck:
+          type: boolean
+          description: Skip cross-seed matches that would require a manual recheck
         createdAt:
           type: string
           format: date-time
