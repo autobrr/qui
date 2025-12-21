@@ -537,6 +537,8 @@ function getInstanceStatusDisplay(status: string, success: boolean): { text: str
       return { text: "No save path", variant: "destructive" }
     case "invalid_content_path":
       return { text: "Invalid path", variant: "destructive" }
+    case "skipped_recheck":
+      return { text: "Skipped - recheck required", variant: "destructive" }
     case "error":
       return { text: "Error", variant: "destructive" }
     default:
