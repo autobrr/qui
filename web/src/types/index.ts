@@ -214,6 +214,7 @@ export interface CategoryAction {
   enabled: boolean
   category: string
   includeCrossSeeds?: boolean
+  blockIfCrossSeedInCategories?: string[]
   condition?: RuleCondition
 }
 

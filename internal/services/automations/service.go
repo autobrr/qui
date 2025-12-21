@@ -311,6 +311,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	if err != nil {
 		return nil, err
 	}
+	crossSeedIndex := buildCrossSeedIndex(torrents)
 
 	if limit <= 0 {
 		limit = 25
@@ -376,6 +377,9 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 			shouldApply := rule.Conditions.Category.Condition == nil ||
 				EvaluateConditionWithContext(rule.Conditions.Category.Condition, torrent, evalCtx, 0)
 			if shouldApply {
+				if shouldBlockCategoryChangeForCrossSeeds(torrent, rule.Conditions.Category.BlockIfCrossSeedInCategories, crossSeedIndex) {
+					continue
+				}
 				directMatchSet[torrent.Hash] = struct{}{}
 				if includeCrossSeeds {
 					if key, ok := makeCrossSeedKey(torrent); ok {

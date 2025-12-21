@@ -22,6 +22,12 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
@@ -38,7 +44,7 @@ import type {
   RuleCondition,
 } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { Folder, Loader2 } from "lucide-react"
+import { Folder, Info, Loader2 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { AutomationPreviewDialog } from "./AutomationPreviewDialog"
@@ -78,6 +84,7 @@ type FormState = {
   // Category action settings
   exprCategory: string
   exprIncludeCrossSeeds: boolean
+  exprBlockIfCrossSeedInCategories: string[]
 }
 
 const emptyFormState: FormState = {
@@ -97,6 +104,7 @@ const emptyFormState: FormState = {
   exprTagMode: "full",
   exprCategory: "",
   exprIncludeCrossSeeds: false,
+  exprBlockIfCrossSeedInCategories: [],
 }
 
 export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSuccess }: AutomationDialogProps) {
@@ -116,8 +124,9 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
   // Build category options for the category action dropdown
   const categoryOptions = useMemo(() => {
     if (!metadata?.categories) return []
-    return buildCategorySelectOptions(metadata.categories, [formState.exprCategory].filter(Boolean))
-  }, [metadata?.categories, formState.exprCategory])
+    const selected = [formState.exprCategory, ...formState.exprBlockIfCrossSeedInCategories].filter(Boolean)
+    return buildCategorySelectOptions(metadata.categories, selected)
+  }, [metadata?.categories, formState.exprCategory, formState.exprBlockIfCrossSeedInCategories])
 
   // Build lookup maps from tracker customizations for merging and nicknames
   const trackerCustomizationMaps = useMemo(() => {
@@ -240,6 +249,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
         let exprTagMode: FormState["exprTagMode"] = "full"
         let exprCategory = ""
         let exprIncludeCrossSeeds = false
+        let exprBlockIfCrossSeedInCategories: string[] = []
 
         const conditions = rule.conditions
         if (conditions) {
@@ -270,6 +280,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
             actionCondition = conditions.category.condition ?? null
             exprCategory = conditions.category.category ?? ""
             exprIncludeCrossSeeds = conditions.category.includeCrossSeeds ?? false
+            exprBlockIfCrossSeedInCategories = conditions.category.blockIfCrossSeedInCategories ?? []
           }
         }
 
@@ -291,6 +302,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
           exprTagMode,
           exprCategory,
           exprIncludeCrossSeeds,
+          exprBlockIfCrossSeedInCategories,
         })
       } else {
         setFormState(emptyFormState)
@@ -345,6 +357,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
           enabled: true,
           category: input.exprCategory,
           includeCrossSeeds: input.exprIncludeCrossSeeds,
+          blockIfCrossSeedInCategories: input.exprBlockIfCrossSeedInCategories,
           condition: input.actionCondition ?? undefined,
         }
         break
@@ -820,6 +833,46 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
                         </Label>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {formState.actionType === "category" && (formState.exprIncludeCrossSeeds || formState.exprBlockIfCrossSeedInCategories.length > 0) && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <Label className="text-xs">Skip if cross-seed exists in categories</Label>
+                      <TooltipProvider delayDuration={150}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                              aria-label="About skipping when cross-seeds exist"
+                            >
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-[320px]">
+                            <p>
+                              Useful with *arr import queues: prevents automation from moving the torrents if at least one of them are in the *arr import queue.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    <MultiSelect
+                      options={categoryOptions}
+                      selected={formState.exprBlockIfCrossSeedInCategories}
+                      onChange={(next) => setFormState(prev => ({ ...prev, exprBlockIfCrossSeedInCategories: next }))}
+                      placeholder="Select categories..."
+                      creatable
+                      onCreateOption={(value) => setFormState(prev => ({
+                        ...prev,
+                        exprBlockIfCrossSeedInCategories: [...prev.exprBlockIfCrossSeedInCategories, value],
+                      }))}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Skips the category change if another torrent pointing at the same on-disk content is already in one of these categories.
+                    </p>
                   </div>
                 )}
               </div>

@@ -333,6 +333,9 @@ func conditionsUseHardlink(conditions *models.ActionConditions) bool {
 	if conditions.Tag != nil && automations.ConditionUsesField(conditions.Tag.Condition, automations.FieldIsHardlinked) {
 		return true
 	}
+	if conditions.Category != nil && automations.ConditionUsesField(conditions.Category.Condition, automations.FieldIsHardlinked) {
+		return true
+	}
 	return false
 }
 

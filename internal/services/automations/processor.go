@@ -34,7 +34,7 @@ type torrentDesiredState struct {
 	tagActions  map[string]string // tag -> "add" | "remove"
 
 	// Category (last rule wins)
-	category               *string
+	category                  *string
 	categoryIncludeCrossSeeds bool // Whether winning category rule wants cross-seeds moved
 
 	// Delete (first rule to trigger wins)
@@ -73,6 +73,7 @@ func processTorrents(
 	skipCheck func(hash string) bool,
 ) map[string]*torrentDesiredState {
 	states := make(map[string]*torrentDesiredState)
+	crossSeedIndex := buildCrossSeedIndex(torrents)
 
 	for _, torrent := range torrents {
 		// Skip if recently processed
@@ -104,7 +105,7 @@ func processTorrents(
 				// Once delete is triggered, stop processing further rules
 				break
 			}
-			processRuleForTorrent(rule, torrent, state, evalCtx)
+			processRuleForTorrent(rule, torrent, state, evalCtx, crossSeedIndex)
 		}
 
 		// Only store if there are actions to take
@@ -117,7 +118,7 @@ func processTorrents(
 }
 
 // processRuleForTorrent applies a single rule to the torrent state.
-func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) {
+func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, crossSeedIndex map[crossSeedKey][]qbt.Torrent) {
 	conditions := rule.Conditions
 	if conditions == nil {
 		return
@@ -183,6 +184,9 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			EvaluateConditionWithContext(conditions.Category.Condition, torrent, evalCtx, 0)
 
 		if shouldApply {
+			if shouldBlockCategoryChangeForCrossSeeds(torrent, conditions.Category.BlockIfCrossSeedInCategories, crossSeedIndex) {
+				return
+			}
 			state.category = &conditions.Category.Category
 			state.categoryIncludeCrossSeeds = conditions.Category.IncludeCrossSeeds
 		}
@@ -209,6 +213,55 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 	}
 }
 
+func shouldBlockCategoryChangeForCrossSeeds(torrent qbt.Torrent, protectedCategories []string, crossSeedIndex map[crossSeedKey][]qbt.Torrent) bool {
+	if len(protectedCategories) == 0 || crossSeedIndex == nil {
+		return false
+	}
+	key, ok := makeCrossSeedKey(torrent)
+	if !ok {
+		return false
+	}
+	group, ok := crossSeedIndex[key]
+	if !ok || len(group) == 0 {
+		return false
+	}
+	for _, other := range group {
+		if other.Hash == torrent.Hash {
+			continue
+		}
+		if containsStringFold(protectedCategories, other.Category) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsStringFold(list []string, candidate string) bool {
+	if candidate == "" {
+		return false
+	}
+	for _, item := range list {
+		if strings.EqualFold(strings.TrimSpace(item), candidate) {
+			return true
+		}
+	}
+	return false
+}
+
+func buildCrossSeedIndex(torrents []qbt.Torrent) map[crossSeedKey][]qbt.Torrent {
+	if len(torrents) == 0 {
+		return nil
+	}
+	index := make(map[crossSeedKey][]qbt.Torrent)
+	for _, t := range torrents {
+		key, ok := makeCrossSeedKey(t)
+		if !ok {
+			continue
+		}
+		index[key] = append(index[key], t)
+	}
+	return index
+}
 
 // processTagAction handles tag add/remove logic for a single tag action.
 func processTagAction(tagAction *models.TagAction, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) {
