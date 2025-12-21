@@ -30,6 +30,8 @@ export interface RSSEventHandlers {
   onFeedsUpdate?: (data: FeedsUpdatePayload) => void
   onError?: (error: Event) => void
   onDisconnected?: () => void
+  onReconnecting?: (info: { attempt: number; delayMs: number }) => void
+  onMaxReconnectAttempts?: () => void
 }
 
 export class RSSEventSource {
@@ -111,6 +113,7 @@ export class RSSEventSource {
   private scheduleReconnect(): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error("RSS SSE max reconnection attempts reached")
+      this.handlers.onMaxReconnectAttempts?.()
       return
     }
 
@@ -121,8 +124,11 @@ export class RSSEventSource {
     }
 
     // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+    const attempt = this.reconnectAttempts + 1
     const delay = this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts)
-    this.reconnectAttempts++
+    this.reconnectAttempts = attempt
+
+    this.handlers.onReconnecting?.({ attempt, delayMs: delay })
 
     console.debug(`RSS SSE reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`)
 

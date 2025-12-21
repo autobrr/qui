@@ -1587,7 +1587,6 @@ export interface RSSFeed {
   lastBuildDate?: string
   hasError: boolean
   isLoading: boolean
-  refreshInterval?: number
   articles?: RSSArticle[]
 }
 

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useCallback, useEffect, useRef } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { api } from "@/lib/api"
@@ -38,6 +38,10 @@ export function useRSSFeeds(instanceId: number, options?: { enabled?: boolean; w
   const withData = options?.withData ?? true
   const queryClient = useQueryClient()
   const eventSourceRef = useRef<RSSEventSource | null>(null)
+  const [sseStatus, setSseStatus] = useState<"disabled" | "connecting" | "live" | "reconnecting" | "disconnected">(
+    "disabled"
+  )
+  const [sseReconnectAttempt, setSseReconnectAttempt] = useState(0)
 
   // Handle SSE updates - update query cache directly
   const handleFeedsUpdate = useCallback(
@@ -53,38 +57,62 @@ export function useRSSFeeds(instanceId: number, options?: { enabled?: boolean; w
 
   // Setup SSE connection
   useEffect(() => {
-    if (!shouldEnable) return
+    if (!shouldEnable) {
+      setSseStatus("disabled")
+      setSseReconnectAttempt(0)
+      return
+    }
 
     const eventSource = new RSSEventSource(instanceId, {
       onFeedsUpdate: handleFeedsUpdate,
       onConnected: () => {
         console.debug(`RSS SSE connected for instance ${instanceId}`)
+        setSseStatus("live")
+        setSseReconnectAttempt(0)
       },
       onDisconnected: () => {
         console.debug(`RSS SSE disconnected for instance ${instanceId}`)
+        setSseStatus("disconnected")
       },
       onError: () => {
         console.warn(`RSS SSE error for instance ${instanceId}`)
+        setSseStatus("reconnecting")
+      },
+      onReconnecting: ({ attempt }) => {
+        setSseStatus("reconnecting")
+        setSseReconnectAttempt(attempt)
+      },
+      onMaxReconnectAttempts: () => {
+        setSseStatus("disconnected")
       },
     })
 
+    setSseStatus("connecting")
     eventSource.connect()
     eventSourceRef.current = eventSource
 
     return () => {
       eventSource.disconnect()
       eventSourceRef.current = null
+      setSseStatus("disabled")
+      setSseReconnectAttempt(0)
     }
   }, [instanceId, shouldEnable, handleFeedsUpdate])
 
   // Initial data fetch - SSE handles subsequent updates
-  return useQuery({
+  const query = useQuery({
     queryKey: rssKeys.feeds(instanceId),
     queryFn: () => api.getRSSItems(instanceId, withData),
     enabled: shouldEnable,
     staleTime: Infinity, // SSE handles freshness, no automatic refetching
     // No refetchInterval - SSE replaces polling
   })
+
+  return {
+    ...query,
+    sseStatus,
+    sseReconnectAttempt,
+  }
 }
 
 export function useRSSRules(instanceId: number, options?: { enabled?: boolean }) {

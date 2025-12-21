@@ -163,17 +163,23 @@ func (c *rssSSEClient) closeDone() {
 }
 
 func (h *RSSSSEHandler) removeClient(instanceID int, client *rssSSEClient) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
 	client.closeDone()
+
+	shouldStopPoller := false
+
+	h.mu.Lock()
 	if h.clients[instanceID] != nil {
 		delete(h.clients[instanceID], client)
 		if len(h.clients[instanceID]) == 0 {
 			delete(h.clients, instanceID)
-			// Stop poller if no more clients
-			h.stopPoller(instanceID)
+			shouldStopPoller = true
 		}
+	}
+	h.mu.Unlock()
+
+	// Stop poller outside of h.mu to avoid lock-order inversions with h.pollerMu.
+	if shouldStopPoller {
+		h.stopPoller(instanceID)
 	}
 
 	log.Debug().Int("instanceID", instanceID).Msg("RSS SSE client disconnected")

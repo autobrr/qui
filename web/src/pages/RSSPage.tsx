@@ -28,7 +28,7 @@ import {
   Tv,
   X,
 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -158,7 +158,12 @@ export function RSSPage({
   const hasInstances = (instances?.length ?? 0) > 0
 
   // Queries
-  const { data: feedsData, isLoading: feedsLoading } = useRSSFeeds(instanceId, {
+  const {
+    data: feedsData,
+    isLoading: feedsLoading,
+    sseStatus,
+    sseReconnectAttempt,
+  } = useRSSFeeds(instanceId, {
     enabled: instanceId > 0,
   })
   const { data: rulesData, isLoading: rulesLoading } = useRSSRules(instanceId, {
@@ -172,6 +177,19 @@ export function RSSPage({
   // Derived state
   const isRSSProcessingEnabled = preferences?.rss_processing_enabled ?? true
   const isRSSAutoDownloadingEnabled = preferences?.rss_auto_downloading_enabled ?? true
+
+  // SSE status notifications (only on permanent disconnect)
+  const sseDisconnectToastShownRef = useRef(false)
+  useEffect(() => {
+    if (sseStatus === "live") {
+      sseDisconnectToastShownRef.current = false
+      return
+    }
+    if (sseStatus === "disconnected" && sseReconnectAttempt > 0 && !sseDisconnectToastShownRef.current) {
+      toast.error("Live RSS updates disconnected")
+      sseDisconnectToastShownRef.current = true
+    }
+  }, [sseStatus, sseReconnectAttempt])
 
   // Mutations
   const reprocessRules = useReprocessRSSRules(instanceId)
@@ -341,6 +359,31 @@ export function RSSPage({
 
           {activeTab === "feeds" && (
             <div className="flex items-center gap-2">
+              {sseStatus !== "disabled" && (
+                <Badge
+                  variant="outline"
+                  className={`gap-2 ${sseStatus === "live"
+                    ? "border-green-500/50 bg-green-500/10 text-green-600 dark:text-green-400"
+                    : sseStatus === "reconnecting" || sseStatus === "connecting"
+                      ? "border-yellow-500/50 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400"
+                      : "border-red-500/50 bg-red-500/10 text-red-600 dark:text-red-400"
+                    }`}
+                >
+                  {sseStatus === "connecting" && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {sseStatus === "reconnecting" && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {sseStatus === "live" && <span className="h-2 w-2 rounded-full bg-green-500" />}
+                  {sseStatus === "disconnected" && <span className="h-2 w-2 rounded-full bg-red-500" />}
+                  <span className="text-xs">
+                    {sseStatus === "live"
+                      ? "Live"
+                      : sseStatus === "connecting"
+                        ? "Connecting"
+                        : sseStatus === "reconnecting"
+                          ? `Reconnecting${sseReconnectAttempt > 0 ? ` (${sseReconnectAttempt}/5)` : ""}`
+                          : "Disconnected"}
+                  </span>
+                </Badge>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -2156,7 +2199,7 @@ function RssSettingsPopover({
   isUpdating,
 }: {
   preferences: AppPreferences | undefined
-  updatePreferences: (prefs: Partial<AppPreferences>) => void
+  updatePreferences: ReturnType<typeof useInstancePreferences>["updatePreferences"]
   isUpdating: boolean
 }) {
   const [refreshInterval, setRefreshInterval] = useState(preferences?.rss_refresh_interval ?? 30)
@@ -2175,6 +2218,9 @@ function RssSettingsPopover({
       rss_refresh_interval: refreshInterval,
       rss_max_articles_per_feed: maxArticles,
       rss_download_repack_proper_episodes: downloadRepack,
+    }, {
+      onSuccess: () => toast.success("RSS settings saved"),
+      onError: () => toast.error("Failed to save RSS settings"),
     })
   }
 
