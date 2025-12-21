@@ -615,8 +615,8 @@ function SwipeableCard({
       {isSelected && (
         <div className="absolute inset-0 rounded-lg ring-2 ring-primary ring-inset pointer-events-none" />
       )}
-      {/* Selection checkbox - visible in selection mode */}
-      {selectionMode && (
+      {/* Selection checkbox - visible in normal view selection mode */}
+      {selectionMode && viewMode === "normal" && (
         <div className="absolute top-2 right-2 z-10">
           <Checkbox
             checked={isSelected}
