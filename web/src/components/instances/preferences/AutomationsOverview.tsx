@@ -91,18 +91,22 @@ export function AutomationsOverview() {
     },
   })
 
-  // Check if a rule is a delete rule
+  // Check if a rule is a delete or category rule (both need previews)
   const isDeleteRule = (rule: Automation): boolean => {
     return rule.conditions?.delete?.enabled === true
   }
 
-  // Handle toggle - show preview when enabling delete rules
+  const isCategoryRule = (rule: Automation): boolean => {
+    return rule.conditions?.category?.enabled === true
+  }
+
+  // Handle toggle - show preview when enabling delete or category rules
   const handleToggle = (instanceId: number, rule: Automation) => {
-    if (!rule.enabled && isDeleteRule(rule)) {
-      // Enabling a delete rule - show preview first
+    if (!rule.enabled && (isDeleteRule(rule) || isCategoryRule(rule))) {
+      // Enabling a delete or category rule - show preview first
       previewRule.mutate({ instanceId, rule })
     } else {
-      // Disabling or non-delete rule - just toggle
+      // Disabling or non-destructive rule - just toggle
       toggleEnabled.mutate({ instanceId, rule })
     }
   }
@@ -312,14 +316,38 @@ export function AutomationsOverview() {
       <AutomationPreviewDialog
         open={!!enableConfirm}
         onOpenChange={(open) => !open && setEnableConfirm(null)}
-        title="Enable Delete Rule"
+        title={
+          enableConfirm && isCategoryRule(enableConfirm.rule)
+            ? `Enable Category Rule → ${enableConfirm.rule.conditions?.category?.category}`
+            : "Enable Delete Rule"
+        }
         description={
           enableConfirm?.preview && enableConfirm.preview.totalMatches > 0 ? (
-            <p className="text-destructive font-medium">
-              Enabling "{enableConfirm.rule.name}" will affect {enableConfirm.preview.totalMatches} torrent{enableConfirm.preview.totalMatches !== 1 ? "s" : ""} that currently match
-            </p>
+            enableConfirm && isCategoryRule(enableConfirm.rule) ? (
+              <>
+                <p>
+                  Enabling "{enableConfirm.rule.name}" will move{" "}
+                  <strong>{(enableConfirm.preview.totalMatches) - (enableConfirm.preview.crossSeedCount ?? 0)}</strong> torrent{((enableConfirm.preview.totalMatches) - (enableConfirm.preview.crossSeedCount ?? 0)) !== 1 ? "s" : ""}
+                  {enableConfirm.preview.crossSeedCount ? (
+                    <> and <strong>{enableConfirm.preview.crossSeedCount}</strong> cross-seed{enableConfirm.preview.crossSeedCount !== 1 ? "s" : ""}</>
+                  ) : null}
+                  {" "}to category <strong>"{enableConfirm.rule.conditions?.category?.category}"</strong>.
+                </p>
+                <p className="text-muted-foreground text-sm">Confirming will enable this rule immediately.</p>
+              </>
+            ) : (
+              <>
+                <p className="text-destructive font-medium">
+                  Enabling "{enableConfirm.rule.name}" will affect {enableConfirm.preview.totalMatches} torrent{enableConfirm.preview.totalMatches !== 1 ? "s" : ""} that currently match.
+                </p>
+                <p className="text-muted-foreground text-sm">Confirming will enable this rule immediately.</p>
+              </>
+            )
           ) : (
-            <p>No torrents currently match "{enableConfirm?.rule.name}".</p>
+            <>
+              <p>No torrents currently match "{enableConfirm?.rule.name}".</p>
+              <p className="text-muted-foreground text-sm">Confirming will enable this rule immediately.</p>
+            </>
           )
         }
         preview={enableConfirm?.preview ?? null}
@@ -328,6 +356,8 @@ export function AutomationsOverview() {
         isLoadingMore={loadMorePreview.isPending}
         confirmLabel="Enable Rule"
         isConfirming={toggleEnabled.isPending}
+        destructive={enableConfirm ? isDeleteRule(enableConfirm.rule) : false}
+        warning={enableConfirm ? isCategoryRule(enableConfirm.rule) : false}
       />
     </Card>
   )

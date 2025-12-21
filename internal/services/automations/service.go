@@ -165,8 +165,9 @@ func (s *Service) ApplyOnceForInstance(ctx context.Context, instanceID int) erro
 
 // PreviewResult contains torrents that would match a rule.
 type PreviewResult struct {
-	TotalMatches int              `json:"totalMatches"`
-	Examples     []PreviewTorrent `json:"examples"`
+	TotalMatches   int              `json:"totalMatches"`
+	CrossSeedCount int              `json:"crossSeedCount,omitempty"` // Count of cross-seeds included (for category preview)
+	Examples       []PreviewTorrent `json:"examples"`
 }
 
 // PreviewTorrent is a simplified torrent for preview display.
@@ -184,6 +185,7 @@ type PreviewTorrent struct {
 	Uploaded       int64   `json:"uploaded"`
 	Downloaded     int64   `json:"downloaded"`
 	IsUnregistered bool    `json:"isUnregistered,omitempty"`
+	IsCrossSeed    bool    `json:"isCrossSeed,omitempty"` // For category preview
 }
 
 // PreviewDeleteRule returns torrents that would be deleted by the given rule.
@@ -295,6 +297,163 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	}
 
 	result.TotalMatches = matchIndex
+	return result, nil
+}
+
+// PreviewCategoryRule returns torrents that would have their category changed by the given rule.
+// If IncludeCrossSeeds is enabled, also includes cross-seeds that share files with matched torrents.
+func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule *models.Automation, limit int, offset int) (*PreviewResult, error) {
+	if s == nil || s.syncManager == nil {
+		return &PreviewResult{}, nil
+	}
+
+	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+
+	if limit <= 0 {
+		limit = 25
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	result := &PreviewResult{
+		Examples: make([]PreviewTorrent, 0, limit),
+	}
+
+	// Get instance for local access context
+	instance, err := s.instanceStore.Get(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for preview")
+	}
+
+	// Initialize evaluation context
+	evalCtx := &EvalContext{}
+	if instance != nil {
+		evalCtx.InstanceHasLocalAccess = instance.HasLocalFilesystemAccess
+	}
+
+	// Get health counts for unregistered condition evaluation
+	if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil {
+		evalCtx.UnregisteredSet = healthCounts.UnregisteredSet
+	}
+
+	// Check if rule uses hardlink condition
+	if instance != nil && instance.HasLocalFilesystemAccess {
+		if rule.Conditions != nil && rule.Conditions.Category != nil &&
+			ConditionUsesField(rule.Conditions.Category.Condition, FieldIsHardlinked) {
+			evalCtx.HardlinkedSet = s.detectHardlinks(ctx, instanceID, torrents)
+		}
+	}
+
+	targetCategory := ""
+	includeCrossSeeds := false
+	if rule.Conditions != nil && rule.Conditions.Category != nil {
+		targetCategory = rule.Conditions.Category.Category
+		includeCrossSeeds = rule.Conditions.Category.IncludeCrossSeeds
+	}
+
+	// Phase 1: Find direct matches - use SET for membership, iterate slice for stable order
+	directMatchSet := make(map[string]struct{})
+	matchedKeys := make(map[crossSeedKey]struct{}) // for cross-seed lookup
+
+	for _, torrent := range torrents {
+		// Check tracker match
+		trackerDomains := collectTrackerDomains(torrent, s.syncManager)
+		if !matchesTracker(rule.TrackerPattern, trackerDomains) {
+			continue
+		}
+
+		// Skip if already in target category (no-op - won't "pull" cross-seeds)
+		if torrent.Category == targetCategory {
+			continue
+		}
+
+		// Check if category action applies
+		if rule.Conditions != nil && rule.Conditions.Category != nil && rule.Conditions.Category.Enabled {
+			shouldApply := rule.Conditions.Category.Condition == nil ||
+				EvaluateConditionWithContext(rule.Conditions.Category.Condition, torrent, evalCtx, 0)
+			if shouldApply {
+				directMatchSet[torrent.Hash] = struct{}{}
+				if includeCrossSeeds {
+					if key, ok := makeCrossSeedKey(torrent); ok {
+						matchedKeys[key] = struct{}{}
+					}
+				}
+			}
+		}
+	}
+
+	// Phase 2: Find cross-seeds (if enabled) - require BOTH ContentPath AND SavePath match
+	crossSeedSet := make(map[string]struct{})
+	if includeCrossSeeds && len(matchedKeys) > 0 {
+		for _, torrent := range torrents {
+			if _, isDirectMatch := directMatchSet[torrent.Hash]; isDirectMatch {
+				continue // Skip direct matches
+			}
+			if torrent.Category == targetCategory {
+				continue // Already in target category
+			}
+			if key, ok := makeCrossSeedKey(torrent); ok {
+				if _, matched := matchedKeys[key]; matched {
+					crossSeedSet[torrent.Hash] = struct{}{}
+				}
+			}
+		}
+	}
+
+	// Build result - iterate torrents slice for STABLE pagination order
+	result.TotalMatches = len(directMatchSet) + len(crossSeedSet)
+	result.CrossSeedCount = len(crossSeedSet)
+
+	matchIndex := 0
+	for _, torrent := range torrents {
+		_, isDirectMatch := directMatchSet[torrent.Hash]
+		_, isCrossSeed := crossSeedSet[torrent.Hash]
+
+		if !isDirectMatch && !isCrossSeed {
+			continue
+		}
+
+		matchIndex++
+		if matchIndex <= offset {
+			continue
+		}
+		if len(result.Examples) >= limit {
+			break
+		}
+
+		tracker := ""
+		if domains := collectTrackerDomains(torrent, s.syncManager); len(domains) > 0 {
+			tracker = domains[0]
+		}
+
+		// Check unregistered status for display
+		var isUnregistered bool
+		if evalCtx.UnregisteredSet != nil {
+			_, isUnregistered = evalCtx.UnregisteredSet[torrent.Hash]
+		}
+
+		result.Examples = append(result.Examples, PreviewTorrent{
+			Name:           torrent.Name,
+			Hash:           torrent.Hash,
+			Size:           torrent.Size,
+			Ratio:          torrent.Ratio,
+			SeedingTime:    torrent.SeedingTime,
+			Tracker:        tracker,
+			Category:       torrent.Category,
+			Tags:           torrent.Tags,
+			State:          string(torrent.State),
+			AddedOn:        torrent.AddedOn,
+			Uploaded:       torrent.Uploaded,
+			Downloaded:     torrent.Downloaded,
+			IsUnregistered: isUnregistered,
+			IsCrossSeed:    isCrossSeed,
+		})
+	}
+
 	return result, nil
 }
 
@@ -740,33 +899,109 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 		}
 	}
 
-	// Execute category changes
-	categorySuccess := make(map[string]int) // category -> count of successful changes
-	for category, hashes := range categoryBatches {
-		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
+	// Execute category changes - expand with cross-seeds where winning rule requested it
+	// Sort keys for deterministic execution order
+	type categoryMove struct {
+		hash          string
+		name          string
+		trackerDomain string
+		category      string
+	}
+	var successfulMoves []categoryMove
+
+	sortedCategories := make([]string, 0, len(categoryBatches))
+	for cat := range categoryBatches {
+		sortedCategories = append(sortedCategories, cat)
+	}
+	sort.Strings(sortedCategories)
+
+	for _, category := range sortedCategories {
+		hashes := categoryBatches[category]
+		expandedHashes := hashes
+
+		// Find torrents whose winning category rule had IncludeCrossSeeds=true
+		// and expand with their cross-seeds (require BOTH ContentPath AND SavePath match)
+		keysToExpand := make(map[crossSeedKey]struct{})
+		for _, hash := range hashes {
+			if state, exists := states[hash]; exists && state.categoryIncludeCrossSeeds {
+				if t, exists := torrentByHash[hash]; exists {
+					if key, ok := makeCrossSeedKey(t); ok {
+						keysToExpand[key] = struct{}{}
+					}
+				}
+			}
+		}
+
+		if len(keysToExpand) > 0 {
+			expandedSet := make(map[string]struct{})
+			for _, h := range expandedHashes {
+				expandedSet[h] = struct{}{}
+			}
+
+			for _, t := range torrents {
+				if t.Category == category {
+					continue // Already in target category
+				}
+				if _, exists := expandedSet[t.Hash]; exists {
+					continue // Already in batch
+				}
+				// CRITICAL: Don't override torrent's own computed desired category
+				// If this torrent has its own category set by rules, respect "last rule wins"
+				if state, hasState := states[t.Hash]; hasState && state.category != nil {
+					if *state.category != category {
+						continue // Torrent's winning rule chose a different category
+					}
+				}
+				if key, ok := makeCrossSeedKey(t); ok {
+					if _, shouldExpand := keysToExpand[key]; shouldExpand {
+						expandedHashes = append(expandedHashes, t.Hash)
+						expandedSet[t.Hash] = struct{}{}
+					}
+				}
+			}
+		}
+
+		limited := limitHashBatch(expandedHashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
 			if err := s.syncManager.SetCategory(ctx, instanceID, batch, category); err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Str("category", category).Int("count", len(batch)).Msg("automations: set category failed")
 			} else {
 				log.Debug().Int("instanceID", instanceID).Str("category", category).Int("count", len(batch)).Msg("automations: set category on torrents")
-				categorySuccess[category] += len(batch)
+				// Track individual successes for activity logging
+				for _, hash := range batch {
+					move := categoryMove{
+						hash:     hash,
+						category: category,
+					}
+					if t, exists := torrentByHash[hash]; exists {
+						move.name = t.Name
+						if domains := collectTrackerDomains(t, s.syncManager); len(domains) > 0 {
+							move.trackerDomain = domains[0]
+						}
+					}
+					successfulMoves = append(successfulMoves, move)
+				}
 			}
 		}
 	}
 
-	// Record category activity summary
-	if s.activityStore != nil && len(categorySuccess) > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{
-			"categories": categorySuccess,
-		})
-		if err := s.activityStore.Create(ctx, &models.AutomationActivity{
-			InstanceID: instanceID,
-			Hash:       "", // No single hash for batch operations
-			Action:     models.ActivityActionCategoryChanged,
-			Outcome:    models.ActivityOutcomeSuccess,
-			Details:    detailsJSON,
-		}); err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record category activity")
+	// Record category activity per torrent (like deletions)
+	if s.activityStore != nil {
+		for _, move := range successfulMoves {
+			detailsJSON, _ := json.Marshal(map[string]any{
+				"category": move.category,
+			})
+			if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+				InstanceID:    instanceID,
+				Hash:          move.hash,
+				TorrentName:   move.name,
+				TrackerDomain: move.trackerDomain,
+				Action:        models.ActivityActionCategoryChanged,
+				Outcome:       models.ActivityOutcomeSuccess,
+				Details:       detailsJSON,
+			}); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", move.hash).Msg("automations: failed to record category activity")
+			}
 		}
 	}
 
@@ -980,6 +1215,23 @@ func normalizePath(p string) string {
 	// Remove trailing slash
 	p = strings.TrimSuffix(p, "/")
 	return p
+}
+
+// crossSeedKey identifies torrents at the same on-disk location.
+// Both ContentPath and SavePath must match for category cross-seed detection.
+type crossSeedKey struct {
+	contentPath string
+	savePath    string
+}
+
+// makeCrossSeedKey returns the key for a torrent, and ok=false if paths are empty.
+func makeCrossSeedKey(t qbt.Torrent) (crossSeedKey, bool) {
+	contentPath := normalizePath(t.ContentPath)
+	savePath := normalizePath(t.SavePath)
+	if contentPath == "" || savePath == "" {
+		return crossSeedKey{}, false
+	}
+	return crossSeedKey{contentPath, savePath}, true
 }
 
 // detectCrossSeeds checks if any other torrent shares the same ContentPath,

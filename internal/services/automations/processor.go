@@ -34,7 +34,8 @@ type torrentDesiredState struct {
 	tagActions  map[string]string // tag -> "add" | "remove"
 
 	// Category (last rule wins)
-	category *string
+	category               *string
+	categoryIncludeCrossSeeds bool // Whether winning category rule wants cross-seeds moved
 
 	// Delete (first rule to trigger wins)
 	shouldDelete   bool
@@ -183,6 +184,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 
 		if shouldApply {
 			state.category = &conditions.Category.Category
+			state.categoryIncludeCrossSeeds = conditions.Category.IncludeCrossSeeds
 		}
 	}
 

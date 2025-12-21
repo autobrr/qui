@@ -77,6 +77,7 @@ type FormState = {
   exprTagMode: "full" | "add" | "remove"
   // Category action settings
   exprCategory: string
+  exprIncludeCrossSeeds: boolean
 }
 
 const emptyFormState: FormState = {
@@ -95,6 +96,7 @@ const emptyFormState: FormState = {
   exprTags: [],
   exprTagMode: "full",
   exprCategory: "",
+  exprIncludeCrossSeeds: false,
 }
 
 export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSuccess }: AutomationDialogProps) {
@@ -103,12 +105,13 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
   const [previewResult, setPreviewResult] = useState<AutomationPreviewResult | null>(null)
   const [previewInput, setPreviewInput] = useState<FormState | null>(null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [enabledBeforePreview, setEnabledBeforePreview] = useState<boolean | null>(null)
   const previewPageSize = 25
 
   const trackersQuery = useInstanceTrackers(instanceId, { enabled: open })
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
-  const { data: metadata } = useInstanceMetadata(instanceId, { enabled: open })
+  const { data: metadata } = useInstanceMetadata(instanceId)
 
   // Build category options for the category action dropdown
   const categoryOptions = useMemo(() => {
@@ -236,6 +239,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
         let exprTags: string[] = []
         let exprTagMode: FormState["exprTagMode"] = "full"
         let exprCategory = ""
+        let exprIncludeCrossSeeds = false
 
         const conditions = rule.conditions
         if (conditions) {
@@ -265,6 +269,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
             actionType = "category"
             actionCondition = conditions.category.condition ?? null
             exprCategory = conditions.category.category ?? ""
+            exprIncludeCrossSeeds = conditions.category.includeCrossSeeds ?? false
           }
         }
 
@@ -285,6 +290,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
           exprTags,
           exprTagMode,
           exprCategory,
+          exprIncludeCrossSeeds,
         })
       } else {
         setFormState(emptyFormState)
@@ -338,6 +344,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
         conditions.category = {
           enabled: true,
           category: input.exprCategory,
+          includeCrossSeeds: input.exprIncludeCrossSeeds,
           condition: input.actionCondition ?? undefined,
         }
         break
@@ -353,8 +360,9 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
     }
   }
 
-  // Check if current form state represents a delete rule
+  // Check if current form state represents a delete or category rule (both need previews)
   const isDeleteRule = formState.actionType === "delete"
+  const isCategoryRule = formState.actionType === "category"
 
   const handleActionTypeChange = (value: ActionType) => {
     setFormState(prev => {
@@ -479,8 +487,9 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
       }
     }
 
-    // For delete rules, show preview as a last warning before enabling.
-    if (isDeleteRule && formState.enabled) {
+    // For delete and category rules, show preview as a last warning before enabling.
+    const needsPreview = (isDeleteRule || isCategoryRule) && formState.enabled
+    if (needsPreview) {
       previewMutation.mutate(formState)
     } else {
       createOrUpdate.mutate(formState)
@@ -488,6 +497,8 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
   }
 
   const handleConfirmSave = () => {
+    // Clear the stored value so onOpenChange won't restore it after successful save
+    setEnabledBeforePreview(null)
     createOrUpdate.mutate(formState)
   }
 
@@ -582,10 +593,10 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
                   <div className="grid grid-cols-[auto_1fr_1fr] gap-3 items-end">
                     <div className="space-y-1">
                       <Label className="text-xs">Action</Label>
-                    <Select
-                      value={formState.actionType}
-                      onValueChange={handleActionTypeChange}
-                    >
+                      <Select
+                        value={formState.actionType}
+                        onValueChange={handleActionTypeChange}
+                      >
                         <SelectTrigger className="w-[140px]">
                           <SelectValue />
                         </SelectTrigger>
@@ -626,10 +637,10 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
                   <div className="grid grid-cols-[auto_1fr_1fr] gap-3 items-end">
                     <div className="space-y-1">
                       <Label className="text-xs">Action</Label>
-                    <Select
-                      value={formState.actionType}
-                      onValueChange={handleActionTypeChange}
-                    >
+                      <Select
+                        value={formState.actionType}
+                        onValueChange={handleActionTypeChange}
+                      >
                         <SelectTrigger className="w-[140px]">
                           <SelectValue />
                         </SelectTrigger>
@@ -671,10 +682,10 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
                   <div className="grid grid-cols-[auto_1fr_auto] gap-3 items-end">
                     <div className="space-y-1">
                       <Label className="text-xs">Action</Label>
-                    <Select
-                      value={formState.actionType}
-                      onValueChange={handleActionTypeChange}
-                    >
+                      <Select
+                        value={formState.actionType}
+                        onValueChange={handleActionTypeChange}
+                      >
                         <SelectTrigger className="w-[140px]">
                           <SelectValue />
                         </SelectTrigger>
@@ -711,10 +722,10 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
                   <div className="grid grid-cols-[auto_1fr_auto] gap-3 items-start">
                     <div className="space-y-1">
                       <Label className="text-xs">Action</Label>
-                    <Select
-                      value={formState.actionType}
-                      onValueChange={handleActionTypeChange}
-                    >
+                      <Select
+                        value={formState.actionType}
+                        onValueChange={handleActionTypeChange}
+                      >
                         <SelectTrigger className="w-[140px]">
                           <SelectValue />
                         </SelectTrigger>
@@ -760,7 +771,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
                 )}
 
                 {formState.actionType === "category" && (
-                  <div className="grid grid-cols-[auto_1fr] gap-3 items-end">
+                  <div className="flex items-center gap-3">
                     <div className="space-y-1">
                       <Label className="text-xs">Action</Label>
                       <Select
@@ -797,6 +808,18 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
                         </SelectContent>
                       </Select>
                     </div>
+                    {formState.exprCategory && (
+                      <div className="flex items-center gap-2 mt-5">
+                        <Switch
+                          id="include-crossseeds"
+                          checked={formState.exprIncludeCrossSeeds}
+                          onCheckedChange={(checked) => setFormState(prev => ({ ...prev, exprIncludeCrossSeeds: checked }))}
+                        />
+                        <Label htmlFor="include-crossseeds" className="text-sm cursor-pointer whitespace-nowrap">
+                          Include affected cross-seeds
+                        </Label>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -807,7 +830,17 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
                 <Switch
                   id="rule-enabled"
                   checked={formState.enabled ?? true}
-                  onCheckedChange={(checked) => setFormState(prev => ({ ...prev, enabled: checked }))}
+                  onCheckedChange={(checked) => {
+                    // When enabling a delete or category rule, show preview first
+                    if (checked && (isDeleteRule || isCategoryRule)) {
+                      setEnabledBeforePreview(formState.enabled)
+                      const nextState = { ...formState, enabled: true }
+                      setFormState(nextState)
+                      previewMutation.mutate(nextState)
+                    } else {
+                      setFormState(prev => ({ ...prev, enabled: checked }))
+                    }
+                  }}
                 />
                 <Label htmlFor="rule-enabled" className="text-sm font-normal cursor-pointer">Enabled</Label>
               </div>
@@ -829,29 +862,57 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
         open={showConfirmDialog}
         onOpenChange={(open) => {
           if (!open) {
+            // Restore enabled state if user cancels the preview
+            if (enabledBeforePreview !== null) {
+              setFormState(prev => ({ ...prev, enabled: enabledBeforePreview }))
+              setEnabledBeforePreview(null)
+            }
             setPreviewResult(null)
             setPreviewInput(null)
           }
           setShowConfirmDialog(open)
         }}
         title={
-          formState.enabled
-            ? "Confirm Delete Rule"
-            : "Preview Delete Rule"
+          isDeleteRule
+            ? (formState.enabled ? "Confirm Delete Rule" : "Preview Delete Rule")
+            : `Confirm Category Change → ${previewInput?.exprCategory ?? formState.exprCategory}`
         }
         description={
           previewResult && previewResult.totalMatches > 0 ? (
-            formState.enabled ? (
-              <p className="text-destructive font-medium">
-                This rule will affect {previewResult.totalMatches} torrent{previewResult.totalMatches !== 1 ? "s" : ""} that currently match
-              </p>
+            isDeleteRule ? (
+              formState.enabled ? (
+                <>
+                  <p className="text-destructive font-medium">
+                    This rule will affect {previewResult.totalMatches} torrent{previewResult.totalMatches !== 1 ? "s" : ""} that currently match.
+                  </p>
+                  <p className="text-muted-foreground text-sm">Confirming will save and enable this rule.</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-muted-foreground">
+                    {previewResult.totalMatches} torrent{previewResult.totalMatches !== 1 ? "s" : ""} would match this rule if enabled.
+                  </p>
+                  <p className="text-muted-foreground text-sm">Confirming will save this rule.</p>
+                </>
+              )
             ) : (
-              <p className="text-muted-foreground">
-                {previewResult.totalMatches} torrent{previewResult.totalMatches !== 1 ? "s" : ""} would match this rule if enabled
-              </p>
+              <>
+                <p>
+                  This rule will move{" "}
+                  <strong>{(previewResult.totalMatches) - (previewResult.crossSeedCount ?? 0)}</strong> torrent{((previewResult.totalMatches) - (previewResult.crossSeedCount ?? 0)) !== 1 ? "s" : ""}
+                  {previewResult.crossSeedCount ? (
+                    <> and <strong>{previewResult.crossSeedCount}</strong> cross-seed{previewResult.crossSeedCount !== 1 ? "s" : ""}</>
+                  ) : null}
+                  {" "}to category <strong>"{previewInput?.exprCategory ?? formState.exprCategory}"</strong>.
+                </p>
+                <p className="text-muted-foreground text-sm">Confirming will save and enable this rule.</p>
+              </>
             )
           ) : (
-            <p>No torrents currently match this rule.</p>
+            <>
+              <p>No torrents currently match this rule.</p>
+              <p className="text-muted-foreground text-sm">Confirming will save this rule.</p>
+            </>
           )
         }
         preview={previewResult}
@@ -860,7 +921,8 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
         isLoadingMore={loadMorePreview.isPending}
         confirmLabel="Save Rule"
         isConfirming={createOrUpdate.isPending}
-        destructive={formState.enabled}
+        destructive={isDeleteRule && formState.enabled}
+        warning={isCategoryRule}
       />
     </>
   )

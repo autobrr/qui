@@ -35,6 +35,8 @@ interface AutomationPreviewDialogProps {
   isLoadingMore?: boolean
   /** Use destructive styling (red button) */
   destructive?: boolean
+  /** Use warning styling (amber button) for category changes */
+  warning?: boolean
 }
 
 export function AutomationPreviewDialog({
@@ -49,6 +51,7 @@ export function AutomationPreviewDialog({
   onLoadMore,
   isLoadingMore = false,
   destructive = true,
+  warning = false,
 }: AutomationPreviewDialogProps) {
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
@@ -122,11 +125,18 @@ export function AutomationPreviewDialog({
                           </TruncatedText>
                         </td>
                         <td className="p-2 text-center">
-                          {t.isUnregistered && (
-                            <span className="text-xs px-1.5 py-0.5 rounded bg-destructive/10 text-destructive">
-                              Unregistered
-                            </span>
-                          )}
+                          <div className="flex items-center justify-center gap-1">
+                            {t.isCrossSeed && (
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500">
+                                Cross-seed
+                              </span>
+                            )}
+                            {t.isUnregistered && (
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-destructive/10 text-destructive">
+                                Unregistered
+                              </span>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     )
@@ -158,7 +168,13 @@ export function AutomationPreviewDialog({
           <AlertDialogAction
             onClick={onConfirm}
             disabled={isConfirming}
-            className={destructive ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
+            className={
+              destructive
+                ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                : warning
+                  ? "bg-amber-600 text-white hover:bg-amber-700"
+                  : ""
+            }
           >
             {isConfirming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             {confirmLabel}

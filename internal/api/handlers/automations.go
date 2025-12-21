@@ -414,6 +414,20 @@ func (h *AutomationHandler) PreviewDeleteRule(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// Determine action type for preview
+	hasDelete := payload.Conditions != nil && payload.Conditions.Delete != nil && payload.Conditions.Delete.Enabled
+	hasCategory := payload.Conditions != nil && payload.Conditions.Category != nil && payload.Conditions.Category.Enabled
+
+	// Validate: exactly one previewable action must be enabled
+	if hasDelete && hasCategory {
+		RespondError(w, http.StatusBadRequest, "Cannot preview rule with both delete and category actions enabled")
+		return
+	}
+	if !hasDelete && !hasCategory {
+		RespondError(w, http.StatusBadRequest, "Preview requires either delete or category action to be enabled")
+		return
+	}
+
 	automation := payload.toModel(instanceID, 0)
 
 	previewLimit := 0
@@ -425,6 +439,19 @@ func (h *AutomationHandler) PreviewDeleteRule(w http.ResponseWriter, r *http.Req
 		previewOffset = *payload.PreviewOffset
 	}
 
+	// Dispatch to appropriate preview
+	if hasCategory {
+		result, err := h.service.PreviewCategoryRule(r.Context(), instanceID, automation, previewLimit, previewOffset)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to preview category rule")
+			RespondError(w, http.StatusInternalServerError, "Failed to preview automation")
+			return
+		}
+		RespondJSON(w, http.StatusOK, result)
+		return
+	}
+
+	// Delete preview (existing logic)
 	result, err := h.service.PreviewDeleteRule(r.Context(), instanceID, automation, previewLimit, previewOffset)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to preview delete rule")

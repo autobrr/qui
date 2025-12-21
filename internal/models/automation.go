@@ -452,9 +452,10 @@ type TagAction struct {
 
 // CategoryAction configures category assignment with optional conditions.
 type CategoryAction struct {
-	Enabled   bool           `json:"enabled"`
-	Category  string         `json:"category"` // Target category name
-	Condition *RuleCondition `json:"condition,omitempty"`
+	Enabled           bool           `json:"enabled"`
+	Category          string         `json:"category"`                    // Target category name
+	IncludeCrossSeeds bool           `json:"includeCrossSeeds,omitempty"` // Also move cross-seeds to same category
+	Condition         *RuleCondition `json:"condition,omitempty"`
 }
 
 // IsEmpty returns true if no actions are configured.

@@ -213,6 +213,7 @@ export interface TagAction {
 export interface CategoryAction {
   enabled: boolean
   category: string
+  includeCrossSeeds?: boolean
   condition?: RuleCondition
 }
 
@@ -297,10 +298,12 @@ export interface AutomationPreviewTorrent {
   uploaded: number
   downloaded: number
   isUnregistered?: boolean
+  isCrossSeed?: boolean
 }
 
 export interface AutomationPreviewResult {
   totalMatches: number
+  crossSeedCount?: number
   examples: AutomationPreviewTorrent[]
 }
 
