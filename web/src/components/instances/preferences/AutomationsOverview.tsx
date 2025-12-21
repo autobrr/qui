@@ -69,13 +69,8 @@ export function AutomationsOverview() {
     mutationFn: ({ instanceId, rule }: { instanceId: number; rule: Automation }) =>
       api.previewAutomation(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: 0 }),
     onSuccess: (preview, { instanceId, rule }) => {
-      if (preview.totalMatches === 0) {
-        // No matches - just enable without confirmation
-        toggleEnabled.mutate({ instanceId, rule })
-      } else {
-        // Has matches - show confirmation dialog
-        setEnableConfirm({ instanceId, rule, preview })
-      }
+      // Last warning before enabling a delete rule (even if 0 matches right now).
+      setEnableConfirm({ instanceId, rule, preview })
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to preview rule")

@@ -80,14 +80,14 @@ const emptyFormState: FormState = {
   trackerPattern: "",
   trackerDomains: [],
   applyToAllTrackers: false,
-  enabled: true,
-  actionType: "delete",
+  enabled: false,
+  actionType: "pause",
   actionCondition: null,
   exprUploadKiB: undefined,
   exprDownloadKiB: undefined,
   exprRatioLimit: undefined,
   exprSeedingTimeMinutes: undefined,
-  exprDeleteMode: "deleteWithFilesPreserveCrossSeeds",
+  exprDeleteMode: "delete",
   exprTags: [],
   exprTagMode: "full",
 }
@@ -331,6 +331,19 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
   // Check if current form state represents a delete rule
   const isDeleteRule = formState.actionType === "delete"
 
+  const handleActionTypeChange = (value: ActionType) => {
+    setFormState(prev => {
+      const next: FormState = { ...prev, actionType: value }
+
+      // Safety: when switching to delete in "create new" mode, start disabled.
+      if (!rule && value === "delete") {
+        next.enabled = false
+      }
+
+      return next
+    })
+  }
+
   const previewMutation = useMutation({
     mutationFn: async (input: FormState) => {
       const payload = {
@@ -341,15 +354,10 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
       return api.previewAutomation(instanceId, payload)
     },
     onSuccess: (result, input) => {
-      if (result.totalMatches === 0) {
-        // No matches - just save without confirmation
-        createOrUpdate.mutate(input)
-      } else {
-        // Has matches - show confirmation dialog
-        setPreviewInput(input)
-        setPreviewResult(result)
-        setShowConfirmDialog(true)
-      }
+      // Last warning before enabling a delete rule (even if 0 matches right now).
+      setPreviewInput(input)
+      setPreviewResult(result)
+      setShowConfirmDialog(true)
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to preview rule")
@@ -440,8 +448,8 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
       }
     }
 
-    // For delete rules, show preview before saving (even when disabled, for testing)
-    if (isDeleteRule) {
+    // For delete rules, show preview as a last warning before enabling.
+    if (isDeleteRule && formState.enabled) {
       previewMutation.mutate(formState)
     } else {
       createOrUpdate.mutate(formState)
@@ -522,7 +530,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
                     <Label className="text-xs">Action</Label>
                     <Select
                       value={formState.actionType}
-                      onValueChange={(value: ActionType) => setFormState(prev => ({ ...prev, actionType: value }))}
+                      onValueChange={handleActionTypeChange}
                     >
                       <SelectTrigger className="w-[140px]">
                         <SelectValue />
@@ -542,10 +550,10 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
                   <div className="grid grid-cols-[auto_1fr_1fr] gap-3 items-end">
                     <div className="space-y-1">
                       <Label className="text-xs">Action</Label>
-                      <Select
-                        value={formState.actionType}
-                        onValueChange={(value: ActionType) => setFormState(prev => ({ ...prev, actionType: value }))}
-                      >
+                    <Select
+                      value={formState.actionType}
+                      onValueChange={handleActionTypeChange}
+                    >
                         <SelectTrigger className="w-[140px]">
                           <SelectValue />
                         </SelectTrigger>
@@ -585,10 +593,10 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
                   <div className="grid grid-cols-[auto_1fr_1fr] gap-3 items-end">
                     <div className="space-y-1">
                       <Label className="text-xs">Action</Label>
-                      <Select
-                        value={formState.actionType}
-                        onValueChange={(value: ActionType) => setFormState(prev => ({ ...prev, actionType: value }))}
-                      >
+                    <Select
+                      value={formState.actionType}
+                      onValueChange={handleActionTypeChange}
+                    >
                         <SelectTrigger className="w-[140px]">
                           <SelectValue />
                         </SelectTrigger>
@@ -629,10 +637,10 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
                   <div className="grid grid-cols-[auto_1fr_auto] gap-3 items-end">
                     <div className="space-y-1">
                       <Label className="text-xs">Action</Label>
-                      <Select
-                        value={formState.actionType}
-                        onValueChange={(value: ActionType) => setFormState(prev => ({ ...prev, actionType: value }))}
-                      >
+                    <Select
+                      value={formState.actionType}
+                      onValueChange={handleActionTypeChange}
+                    >
                         <SelectTrigger className="w-[140px]">
                           <SelectValue />
                         </SelectTrigger>
@@ -668,10 +676,10 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
                   <div className="grid grid-cols-[auto_1fr_auto] gap-3 items-start">
                     <div className="space-y-1">
                       <Label className="text-xs">Action</Label>
-                      <Select
-                        value={formState.actionType}
-                        onValueChange={(value: ActionType) => setFormState(prev => ({ ...prev, actionType: value }))}
-                      >
+                    <Select
+                      value={formState.actionType}
+                      onValueChange={handleActionTypeChange}
+                    >
                         <SelectTrigger className="w-[140px]">
                           <SelectValue />
                         </SelectTrigger>
