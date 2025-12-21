@@ -358,7 +358,7 @@ export function RSSPage({
 
           {activeTab === "feeds" && (
             <div className="flex items-center gap-2">
-              {sseStatus !== "disabled" && isRSSProcessingEnabled && (
+              {sseStatus !== "disabled" && isRSSProcessingEnabled && feedsData && Object.keys(feedsData).length > 0 && (
                 <Badge
                   variant="outline"
                   className={`gap-2 ${sseStatus === "live"
