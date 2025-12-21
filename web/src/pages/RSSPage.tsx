@@ -8,7 +8,6 @@ import {
   Check,
   ChevronRight,
   Download,
-  Search,
   ExternalLink,
   FileText,
   Folder,
@@ -22,6 +21,7 @@ import {
   RefreshCw,
   Regex,
   Rss,
+  Search,
   Settings,
   Tag,
   Trash2,
@@ -31,10 +31,11 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import {
   Dialog,
   DialogContent,
@@ -50,7 +51,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -294,52 +294,54 @@ export function RSSPage({
 
       {/* Warning Banners */}
       {!isRSSProcessingEnabled && (
-        <Alert variant="destructive" className="mb-4">
+        <Alert variant="destructive" className="mb-4 flex items-center gap-3 [&>svg]:static [&>svg]:shrink-0 [&>svg~*]:pl-0">
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription className="flex items-center justify-between">
-            <span>RSS feed fetching is disabled. Feeds will not be refreshed automatically.</span>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                updatePreferences(
-                  { rss_processing_enabled: true },
-                  {
-                    onSuccess: () => toast.success("RSS processing enabled"),
-                    onError: () => toast.error("Failed to enable RSS processing"),
-                  }
-                )
-              }}
-              disabled={isUpdatingPreferences}
-            >
-              {isUpdatingPreferences ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enable RSS"}
-            </Button>
-          </AlertDescription>
+          <span className="flex-1 text-sm">
+            RSS feed fetching is disabled. Feeds will not be refreshed automatically.
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="shrink-0 !px-3"
+            onClick={() => {
+              updatePreferences(
+                { rss_processing_enabled: true },
+                {
+                  onSuccess: () => toast.success("RSS processing enabled"),
+                  onError: () => toast.error("Failed to enable RSS processing"),
+                }
+              )
+            }}
+            disabled={isUpdatingPreferences}
+          >
+            {isUpdatingPreferences ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enable RSS"}
+          </Button>
         </Alert>
       )}
 
       {isRSSProcessingEnabled && !isRSSAutoDownloadingEnabled && (
-        <Alert className="mb-4 border-yellow-500/50 bg-yellow-500/10">
-          <AlertCircle className="h-4 w-4 text-yellow-500" />
-          <AlertDescription className="flex items-center justify-between">
-            <span>RSS auto-downloading is disabled. Rules will not automatically download torrents.</span>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                updatePreferences(
-                  { rss_auto_downloading_enabled: true },
-                  {
-                    onSuccess: () => toast.success("RSS auto-downloading enabled"),
-                    onError: () => toast.error("Failed to enable RSS auto-downloading"),
-                  }
-                )
-              }}
-              disabled={isUpdatingPreferences}
-            >
-              {isUpdatingPreferences ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enable Auto-Download"}
-            </Button>
-          </AlertDescription>
+        <Alert variant="warning" className="mb-4 flex items-center gap-3 [&>svg]:static [&>svg]:shrink-0 [&>svg~*]:pl-0">
+          <AlertCircle className="h-4 w-4" />
+          <span className="flex-1 text-sm">
+            RSS auto-downloading is disabled. Rules will not automatically download torrents.
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="shrink-0 !px-3"
+            onClick={() => {
+              updatePreferences(
+                { rss_auto_downloading_enabled: true },
+                {
+                  onSuccess: () => toast.success("RSS auto-downloading enabled"),
+                  onError: () => toast.error("Failed to enable RSS auto-downloading"),
+                }
+              )
+            }}
+            disabled={isUpdatingPreferences}
+          >
+            {isUpdatingPreferences ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enable Auto-Download"}
+          </Button>
         </Alert>
       )}
 
