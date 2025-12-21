@@ -25,7 +25,7 @@ import { api } from "@/lib/api"
 import { cn, parseTrackerDomains } from "@/lib/utils"
 import type { Automation, AutomationPreviewResult } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Clock, Info, Loader2, Pause, Pencil, Plus, Scale, Tag, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, Clock, Folder, Info, Loader2, Pause, Pencil, Plus, Scale, Tag, Trash2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { AutomationDialog } from "./AutomationDialog"
@@ -425,6 +425,12 @@ function RulePreview({ rule, onToggle, isToggling, onEdit, onDelete }: RulePrevi
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <Tag className="h-3 w-3" />
             {rule.conditions.tag.tags?.join(", ")}
+          </Badge>
+        )}
+        {rule.conditions?.category?.enabled && (
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-emerald-600 border-emerald-600/50">
+            <Folder className="h-3 w-3" />
+            {rule.conditions.category.category}
           </Badge>
         )}
         <Button

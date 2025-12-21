@@ -20,7 +20,8 @@ const (
 	ActivityActionDeletedCondition    = "deleted_condition" // Expression-based deletion
 	ActivityActionDeleteFailed        = "delete_failed"
 	ActivityActionLimitFailed         = "limit_failed"
-	ActivityActionTagsChanged         = "tags_changed" // Batch tag operation
+	ActivityActionTagsChanged         = "tags_changed"     // Batch tag operation
+	ActivityActionCategoryChanged     = "category_changed" // Batch category operation
 )
 
 // Activity outcome types

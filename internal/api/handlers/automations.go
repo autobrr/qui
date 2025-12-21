@@ -116,6 +116,12 @@ func (h *AutomationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate category action has a category name
+	if payload.Conditions.Category != nil && payload.Conditions.Category.Enabled && payload.Conditions.Category.Category == "" {
+		RespondError(w, http.StatusBadRequest, "Category action requires a category name")
+		return
+	}
+
 	// Validate IS_HARDLINKED usage requires local filesystem access
 	if conditionsUseHardlink(payload.Conditions) {
 		instance, err := h.instanceStore.Get(r.Context(), instanceID)
@@ -173,6 +179,12 @@ func (h *AutomationHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	if payload.Conditions == nil || payload.Conditions.IsEmpty() {
 		RespondError(w, http.StatusBadRequest, "At least one action must be configured")
+		return
+	}
+
+	// Validate category action has a category name
+	if payload.Conditions.Category != nil && payload.Conditions.Category.Enabled && payload.Conditions.Category.Category == "" {
+		RespondError(w, http.StatusBadRequest, "Category action requires a category name")
 		return
 	}
 

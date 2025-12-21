@@ -33,6 +33,9 @@ type torrentDesiredState struct {
 	currentTags map[string]struct{}
 	tagActions  map[string]string // tag -> "add" | "remove"
 
+	// Category (last rule wins)
+	category *string
+
 	// Delete (first rule to trigger wins)
 	shouldDelete   bool
 	deleteMode     string
@@ -173,6 +176,16 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 		}
 	}
 
+	// Category (last rule wins - just set desired, service will filter no-ops)
+	if conditions.Category != nil && conditions.Category.Enabled && conditions.Category.Category != "" {
+		shouldApply := conditions.Category.Condition == nil ||
+			EvaluateConditionWithContext(conditions.Category.Condition, torrent, evalCtx, 0)
+
+		if shouldApply {
+			state.category = &conditions.Category.Category
+		}
+	}
+
 	// Delete
 	if conditions.Delete != nil && conditions.Delete.Enabled {
 		// Only delete completed torrents
@@ -238,6 +251,7 @@ func hasActions(state *torrentDesiredState) bool {
 		state.seedingMinutes != nil ||
 		state.shouldPause ||
 		len(state.tagActions) > 0 ||
+		state.category != nil ||
 		state.shouldDelete
 }
 

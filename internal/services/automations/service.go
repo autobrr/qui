@@ -389,6 +389,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 		toRemove []string
 	}
 	tagChanges := make(map[string]*tagChange)
+	categoryBatches := make(map[string][]string) // category name -> hashes
 
 	type pendingDeletion struct {
 		hash          string
@@ -525,6 +526,13 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 					toAdd:    toAdd,
 					toRemove: toRemove,
 				}
+			}
+		}
+
+		// Category - filter no-ops by comparing desired vs current
+		if state.category != nil {
+			if torrent.Category != *state.category {
+				categoryBatches[*state.category] = append(categoryBatches[*state.category], hash)
 			}
 		}
 
@@ -729,6 +737,36 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 					log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record tag activity")
 				}
 			}
+		}
+	}
+
+	// Execute category changes
+	categorySuccess := make(map[string]int) // category -> count of successful changes
+	for category, hashes := range categoryBatches {
+		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
+		for _, batch := range limited {
+			if err := s.syncManager.SetCategory(ctx, instanceID, batch, category); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Str("category", category).Int("count", len(batch)).Msg("automations: set category failed")
+			} else {
+				log.Debug().Int("instanceID", instanceID).Str("category", category).Int("count", len(batch)).Msg("automations: set category on torrents")
+				categorySuccess[category] += len(batch)
+			}
+		}
+	}
+
+	// Record category activity summary
+	if s.activityStore != nil && len(categorySuccess) > 0 {
+		detailsJSON, _ := json.Marshal(map[string]any{
+			"categories": categorySuccess,
+		})
+		if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "", // No single hash for batch operations
+			Action:     models.ActivityActionCategoryChanged,
+			Outcome:    models.ActivityOutcomeSuccess,
+			Details:    detailsJSON,
+		}); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record category activity")
 		}
 	}
 

@@ -210,6 +210,12 @@ export interface TagAction {
   condition?: RuleCondition
 }
 
+export interface CategoryAction {
+  enabled: boolean
+  category: string
+  condition?: RuleCondition
+}
+
 export interface ActionConditions {
   schemaVersion: string
   speedLimits?: SpeedLimitAction
@@ -217,6 +223,7 @@ export interface ActionConditions {
   pause?: PauseAction
   delete?: DeleteAction
   tag?: TagAction
+  category?: CategoryAction
 }
 
 export interface Automation {
@@ -252,7 +259,7 @@ export interface AutomationActivity {
   hash: string
   torrentName?: string
   trackerDomain?: string
-  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed"
+  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed"
   ruleId?: number
   ruleName?: string
   outcome: "success" | "failed"
@@ -270,6 +277,8 @@ export interface AutomationActivity {
     // Tag activity details
     added?: Record<string, number>   // tag -> count of torrents
     removed?: Record<string, number> // tag -> count of torrents
+    // Category activity details
+    categories?: Record<string, number> // category -> count of torrents
   }
   createdAt: string
 }

@@ -554,6 +554,181 @@ func TestSelectMatchingRules(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------------
+// Category action tests
+// -----------------------------------------------------------------------------
+
+func TestCategoryLastRuleWins(t *testing.T) {
+	// Test that when multiple rules set a category, the last rule's category wins.
+	torrent := qbt.Torrent{
+		Hash:     "abc123",
+		Name:     "Test Torrent",
+		Category: "movies", // Current category
+	}
+
+	// Rule 1 sets category to "archive"
+	rule1 := &models.Automation{
+		ID:      1,
+		Enabled: true,
+		Name:    "Archive Rule",
+		Conditions: &models.ActionConditions{
+			Category: &models.CategoryAction{Enabled: true, Category: "archive"},
+		},
+	}
+
+	// Rule 2 sets category to "completed" (should win as last rule)
+	rule2 := &models.Automation{
+		ID:      2,
+		Enabled: true,
+		Name:    "Completed Rule",
+		Conditions: &models.ActionConditions{
+			Category: &models.CategoryAction{Enabled: true, Category: "completed"},
+		},
+	}
+
+	state := &torrentDesiredState{
+		hash:        torrent.Hash,
+		name:        torrent.Name,
+		currentTags: make(map[string]struct{}),
+		tagActions:  make(map[string]string),
+	}
+
+	// Process rules in order
+	processRuleForTorrent(rule1, torrent, state, nil)
+	processRuleForTorrent(rule2, torrent, state, nil)
+
+	// Last rule wins - category should be "completed"
+	require.NotNil(t, state.category)
+	assert.Equal(t, "completed", *state.category)
+}
+
+func TestCategoryLastRuleWinsEvenWhenMatchesCurrent(t *testing.T) {
+	// Test that last rule wins even when the last rule's category matches the current category.
+	// The processor should still set the desired state; the service filters no-ops.
+	torrent := qbt.Torrent{
+		Hash:     "abc123",
+		Name:     "Test Torrent",
+		Category: "movies", // Current category
+	}
+
+	// Rule 1 sets category to "archive"
+	rule1 := &models.Automation{
+		ID:      1,
+		Enabled: true,
+		Name:    "Archive Rule",
+		Conditions: &models.ActionConditions{
+			Category: &models.CategoryAction{Enabled: true, Category: "archive"},
+		},
+	}
+
+	// Rule 2 sets category to "movies" (same as current)
+	rule2 := &models.Automation{
+		ID:      2,
+		Enabled: true,
+		Name:    "Movies Rule",
+		Conditions: &models.ActionConditions{
+			Category: &models.CategoryAction{Enabled: true, Category: "movies"},
+		},
+	}
+
+	state := &torrentDesiredState{
+		hash:        torrent.Hash,
+		name:        torrent.Name,
+		currentTags: make(map[string]struct{}),
+		tagActions:  make(map[string]string),
+	}
+
+	// Process rules in order
+	processRuleForTorrent(rule1, torrent, state, nil)
+	processRuleForTorrent(rule2, torrent, state, nil)
+
+	// Last rule wins - category should be "movies"
+	// Even though it matches current, the processor should set it (service filters no-op)
+	require.NotNil(t, state.category)
+	assert.Equal(t, "movies", *state.category)
+}
+
+func TestCategoryWithCondition(t *testing.T) {
+	// Test that category action respects conditions
+	torrent := qbt.Torrent{
+		Hash:     "abc123",
+		Name:     "Test Torrent",
+		Category: "default",
+		Ratio:    2.5, // Above condition threshold
+	}
+
+	// Rule with condition: only if ratio > 2.0
+	rule := &models.Automation{
+		ID:      1,
+		Enabled: true,
+		Name:    "High Ratio Rule",
+		Conditions: &models.ActionConditions{
+			Category: &models.CategoryAction{
+				Enabled:  true,
+				Category: "archive",
+				Condition: &models.RuleCondition{
+					Field:    models.FieldRatio,
+					Operator: models.OperatorGreaterThan,
+					Value:    "2.0",
+				},
+			},
+		},
+	}
+
+	state := &torrentDesiredState{
+		hash:        torrent.Hash,
+		name:        torrent.Name,
+		currentTags: make(map[string]struct{}),
+		tagActions:  make(map[string]string),
+	}
+
+	processRuleForTorrent(rule, torrent, state, nil)
+
+	// Condition matched, category should be set
+	require.NotNil(t, state.category)
+	assert.Equal(t, "archive", *state.category)
+}
+
+func TestCategoryConditionNotMet(t *testing.T) {
+	// Test that category action is not applied when condition is not met
+	torrent := qbt.Torrent{
+		Hash:     "abc123",
+		Name:     "Test Torrent",
+		Category: "default",
+		Ratio:    1.0, // Below condition threshold
+	}
+
+	// Rule with condition: only if ratio > 2.0
+	rule := &models.Automation{
+		ID:      1,
+		Enabled: true,
+		Name:    "High Ratio Rule",
+		Conditions: &models.ActionConditions{
+			Category: &models.CategoryAction{
+				Enabled:  true,
+				Category: "archive",
+				Condition: &models.RuleCondition{
+					Field:    models.FieldRatio,
+					Operator: models.OperatorGreaterThan,
+					Value:    "2.0",
+				},
+			},
+		},
+	}
+
+	state := &torrentDesiredState{
+		hash:        torrent.Hash,
+		name:        torrent.Name,
+		currentTags: make(map[string]struct{}),
+		tagActions:  make(map[string]string),
+	}
+
+	processRuleForTorrent(rule, torrent, state, nil)
+
+	// Condition not met, category should not be set
+	assert.Nil(t, state.category)
+}
+
+// -----------------------------------------------------------------------------
 // Helper functions
 // -----------------------------------------------------------------------------
 

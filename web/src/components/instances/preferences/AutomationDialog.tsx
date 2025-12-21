@@ -23,10 +23,12 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
+import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
+import { buildCategorySelectOptions } from "@/lib/category-utils"
 import { parseTrackerDomains } from "@/lib/utils"
 import type {
   ActionConditions,
@@ -36,7 +38,7 @@ import type {
   RuleCondition,
 } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { Loader2 } from "lucide-react"
+import { Folder, Loader2 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { AutomationPreviewDialog } from "./AutomationPreviewDialog"
@@ -50,7 +52,7 @@ interface AutomationDialogProps {
   onSuccess?: () => void
 }
 
-type ActionType = "speedLimits" | "shareLimits" | "pause" | "delete" | "tag"
+type ActionType = "speedLimits" | "shareLimits" | "pause" | "delete" | "tag" | "category"
 
 type FormState = {
   name: string
@@ -73,6 +75,8 @@ type FormState = {
   // Tag action settings
   exprTags: string[]
   exprTagMode: "full" | "add" | "remove"
+  // Category action settings
+  exprCategory: string
 }
 
 const emptyFormState: FormState = {
@@ -90,6 +94,7 @@ const emptyFormState: FormState = {
   exprDeleteMode: "delete",
   exprTags: [],
   exprTagMode: "full",
+  exprCategory: "",
 }
 
 export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSuccess }: AutomationDialogProps) {
@@ -103,6 +108,13 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
   const trackersQuery = useInstanceTrackers(instanceId, { enabled: open })
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
+  const { data: metadata } = useInstanceMetadata(instanceId, { enabled: open })
+
+  // Build category options for the category action dropdown
+  const categoryOptions = useMemo(() => {
+    if (!metadata?.categories) return []
+    return buildCategorySelectOptions(metadata.categories, [formState.exprCategory].filter(Boolean))
+  }, [metadata?.categories, formState.exprCategory])
 
   // Build lookup maps from tracker customizations for merging and nicknames
   const trackerCustomizationMaps = useMemo(() => {
@@ -223,6 +235,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
         let exprDeleteMode: FormState["exprDeleteMode"] = "deleteWithFilesPreserveCrossSeeds"
         let exprTags: string[] = []
         let exprTagMode: FormState["exprTagMode"] = "full"
+        let exprCategory = ""
 
         const conditions = rule.conditions
         if (conditions) {
@@ -248,6 +261,10 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
             actionCondition = conditions.tag.condition ?? null
             exprTags = conditions.tag.tags ?? []
             exprTagMode = conditions.tag.mode ?? "full"
+          } else if (conditions.category?.enabled) {
+            actionType = "category"
+            actionCondition = conditions.category.condition ?? null
+            exprCategory = conditions.category.category ?? ""
           }
         }
 
@@ -267,6 +284,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
           exprDeleteMode,
           exprTags,
           exprTagMode,
+          exprCategory,
         })
       } else {
         setFormState(emptyFormState)
@@ -313,6 +331,13 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
           enabled: true,
           tags: input.exprTags,
           mode: input.exprTagMode,
+          condition: input.actionCondition ?? undefined,
+        }
+        break
+      case "category":
+        conditions.category = {
+          enabled: true,
+          category: input.exprCategory,
           condition: input.actionCondition ?? undefined,
         }
         break
@@ -447,6 +472,12 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
         return
       }
     }
+    if (formState.actionType === "category") {
+      if (!formState.exprCategory) {
+        toast.error("Select a category")
+        return
+      }
+    }
 
     // For delete rules, show preview as a last warning before enabling.
     if (isDeleteRule && formState.enabled) {
@@ -541,6 +572,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
                         <SelectItem value="pause">Pause</SelectItem>
                         <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
                         <SelectItem value="tag">Tag</SelectItem>
+                        <SelectItem value="category">Category</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -563,6 +595,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
                           <SelectItem value="pause">Pause</SelectItem>
                           <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
                           <SelectItem value="tag">Tag</SelectItem>
+                          <SelectItem value="category">Category</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -606,6 +639,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
                           <SelectItem value="pause">Pause</SelectItem>
                           <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
                           <SelectItem value="tag">Tag</SelectItem>
+                          <SelectItem value="category">Category</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -650,6 +684,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
                           <SelectItem value="pause">Pause</SelectItem>
                           <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
                           <SelectItem value="tag">Tag</SelectItem>
+                          <SelectItem value="category">Category</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -689,6 +724,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
                           <SelectItem value="pause">Pause</SelectItem>
                           <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
                           <SelectItem value="tag">Tag</SelectItem>
+                          <SelectItem value="category">Category</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -717,6 +753,47 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
                           <SelectItem value="full">Full sync</SelectItem>
                           <SelectItem value="add">Add only</SelectItem>
                           <SelectItem value="remove">Remove only</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+
+                {formState.actionType === "category" && (
+                  <div className="grid grid-cols-[auto_1fr] gap-3 items-end">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Action</Label>
+                      <Select
+                        value={formState.actionType}
+                        onValueChange={handleActionTypeChange}
+                      >
+                        <SelectTrigger className="w-[140px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="speedLimits">Speed limits</SelectItem>
+                          <SelectItem value="shareLimits">Share limits</SelectItem>
+                          <SelectItem value="pause">Pause</SelectItem>
+                          <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
+                          <SelectItem value="tag">Tag</SelectItem>
+                          <SelectItem value="category">Category</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Move to category</Label>
+                      <Select
+                        value={formState.exprCategory}
+                        onValueChange={(value) => setFormState(prev => ({ ...prev, exprCategory: value }))}
+                      >
+                        <SelectTrigger>
+                          <Folder className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
+                          <SelectValue placeholder="Select category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {categoryOptions.map(opt => (
+                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>

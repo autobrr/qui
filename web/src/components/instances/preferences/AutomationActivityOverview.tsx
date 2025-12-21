@@ -86,6 +86,8 @@ function formatAction(action: AutomationActivity["action"]): string {
       return "Set limits"
     case "tags_changed":
       return "Tags"
+    case "category_changed":
+      return "Category"
     default:
       return action
   }
@@ -174,6 +176,7 @@ export function AutomationsActivityOverview({ onConfigureInstance }: Automations
     delete_failed: "bg-destructive/10 text-destructive border-destructive/30",
     limit_failed: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
     tags_changed: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
+    category_changed: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
   }
 
   if (!instances || instances.length === 0) {
@@ -460,6 +463,14 @@ export function AutomationsActivityOverview({ onConfigureInstance }: Automations
                                             return parts.join(", ") || "Tag operation"
                                           })()}
                                         </span>
+                                      ) : event.action === "category_changed" ? (
+                                        <span className="font-medium text-sm block">
+                                          {(() => {
+                                            const categories = event.details?.categories ?? {}
+                                            const total = Object.values(categories).reduce((a: number, b: unknown) => a + (b as number), 0)
+                                            return `${total} torrent${total !== 1 ? "s" : ""} moved`
+                                          })()}
+                                        </span>
                                       ) : (
                                         <TruncatedText className="font-medium text-sm block cursor-default">
                                           {event.torrentName || event.hash}
@@ -476,7 +487,7 @@ export function AutomationsActivityOverview({ onConfigureInstance }: Automations
                                       >
                                         {formatAction(event.action)}
                                       </Badge>
-                                      {event.action !== "tags_changed" && (
+                                      {event.action !== "tags_changed" && event.action !== "category_changed" && (
                                         <Badge
                                           variant="outline"
                                           className={cn(
@@ -588,6 +599,19 @@ export function AutomationsActivityOverview({ onConfigureInstance }: Automations
                                             {removedTags.map(([tag, count]) => (
                                               <Badge key={`rm-${tag}`} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-red-500/10 text-red-500 border-red-500/20">
                                                 -{tag} ({count})
+                                              </Badge>
+                                            ))}
+                                          </div>
+                                        )
+                                      })()}
+                                      {event.action === "category_changed" && event.details?.categories && (() => {
+                                        const categories = Object.entries(event.details.categories as Record<string, number>)
+
+                                        return (
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {categories.map(([category, count]) => (
+                                              <Badge key={category} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                                                {category} ({count})
                                               </Badge>
                                             ))}
                                           </div>

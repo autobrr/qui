@@ -410,6 +410,7 @@ type ActionConditions struct {
 	Pause         *PauseAction       `json:"pause,omitempty"`
 	Delete        *DeleteAction      `json:"delete,omitempty"`
 	Tag           *TagAction         `json:"tag,omitempty"`
+	Category      *CategoryAction    `json:"category,omitempty"`
 }
 
 // SpeedLimitAction configures speed limit application with optional conditions.
@@ -449,10 +450,17 @@ type TagAction struct {
 	Condition *RuleCondition `json:"condition,omitempty"`
 }
 
+// CategoryAction configures category assignment with optional conditions.
+type CategoryAction struct {
+	Enabled   bool           `json:"enabled"`
+	Category  string         `json:"category"` // Target category name
+	Condition *RuleCondition `json:"condition,omitempty"`
+}
+
 // IsEmpty returns true if no actions are configured.
 func (ac *ActionConditions) IsEmpty() bool {
 	if ac == nil {
 		return true
 	}
-	return ac.SpeedLimits == nil && ac.ShareLimits == nil && ac.Pause == nil && ac.Delete == nil && ac.Tag == nil
+	return ac.SpeedLimits == nil && ac.ShareLimits == nil && ac.Pause == nil && ac.Delete == nil && ac.Tag == nil && ac.Category == nil
 }

@@ -22,7 +22,7 @@ import { api } from "@/lib/api"
 import { cn, parseTrackerDomains } from "@/lib/utils"
 import type { Automation } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Loader2, Pause, Pencil, Plus, RefreshCw, Scale, Tag, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, Folder, Loader2, Pause, Pencil, Plus, RefreshCw, Scale, Tag, Trash2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { AutomationDialog } from "./AutomationDialog"
@@ -300,7 +300,8 @@ function RuleSummary({ rule }: { rule: Automation }) {
     conditions?.shareLimits?.enabled ||
     conditions?.pause?.enabled ||
     conditions?.delete?.enabled ||
-    conditions?.tag?.enabled
+    conditions?.tag?.enabled ||
+    conditions?.category?.enabled
 
   if (!hasActions && !isAllTrackers && trackers.length === 0) {
     return <span className="text-xs text-muted-foreground">No actions set</span>
@@ -416,6 +417,21 @@ function RuleSummary({ rule }: { rule: Automation }) {
             <p className="text-muted-foreground">
               Mode: {conditions.tag.mode === "full" ? "Full sync" : conditions.tag.mode === "add" ? "Add only" : "Remove only"}
             </p>
+          </TooltipContent>
+        </Tooltip>
+      )}
+
+      {/* Category */}
+      {conditions?.category?.enabled && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-emerald-600 border-emerald-600/50 cursor-help">
+              <Folder className="h-3 w-3" />
+              {conditions.category.category}
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Move to category: {conditions.category.category}</p>
           </TooltipContent>
         </Tooltip>
       )}
