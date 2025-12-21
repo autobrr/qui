@@ -207,7 +207,7 @@ export function AutomationsActivityOverview({ onConfigureInstance }: Automations
           </Tooltip>
         </div>
         <CardDescription>
-          History of torrents removed by automations.
+          Recent automation activity.
         </CardDescription>
       </CardHeader>
 
