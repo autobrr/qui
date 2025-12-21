@@ -21,9 +21,15 @@ export function storeAddIntent(intent: AddIntent): void {
 }
 
 export function getAndClearAddIntent(): AddIntent | null {
-  const stored = sessionStorage.getItem(ADD_INTENT_KEY)
-  if (!stored) return null
-  sessionStorage.removeItem(ADD_INTENT_KEY)
+  let stored: string | null = null
+  try {
+    stored = sessionStorage.getItem(ADD_INTENT_KEY)
+    if (!stored) return null
+    sessionStorage.removeItem(ADD_INTENT_KEY)
+  } catch (err) {
+    console.error("[add-intent] Failed to read intent:", err)
+    return null
+  }
   try {
     return JSON.parse(stored)
   } catch (err) {

@@ -64,8 +64,8 @@ export default defineConfig(() => ({
         theme_color: "#000000", // Will be updated dynamically by PWA theme manager
         background_color: "#000000",
         display: "standalone",
-        scope: "/",
-        start_url: "/",
+        scope: "./",
+        start_url: "./",
         categories: ["utilities", "productivity"],
         icons: [
           {
@@ -90,12 +90,12 @@ export default defineConfig(() => ({
         protocol_handlers: [
           {
             protocol: "magnet",
-            url: "/add?magnet=%s",
+            url: "./add?magnet=%s",
           },
         ],
         file_handlers: [
           {
-            action: "/add",
+            action: "./add",
             accept: {
               "application/x-bittorrent": [".torrent"],
             },
