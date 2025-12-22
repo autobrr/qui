@@ -67,6 +67,7 @@ type FormState = {
   applyToAllTrackers: boolean
   enabled: boolean
   sortOrder?: number
+  intervalSeconds: number | null // null = use global default (20s)
   // Single action with condition
   actionType: ActionType
   actionCondition: RuleCondition | null
@@ -93,6 +94,7 @@ const emptyFormState: FormState = {
   trackerDomains: [],
   applyToAllTrackers: false,
   enabled: false,
+  intervalSeconds: null,
   actionType: "pause",
   actionCondition: null,
   exprUploadKiB: undefined,
@@ -291,6 +293,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
           applyToAllTrackers: isAllTrackers,
           enabled: rule.enabled,
           sortOrder: rule.sortOrder,
+          intervalSeconds: rule.intervalSeconds ?? null,
           actionType,
           actionCondition,
           exprUploadKiB,
@@ -369,6 +372,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
       trackerPattern: input.applyToAllTrackers ? "*" : input.trackerDomains.filter(Boolean).join(","),
       enabled: input.enabled,
       sortOrder: input.sortOrder,
+      intervalSeconds: input.intervalSeconds,
       conditions,
     }
   }
@@ -880,23 +884,54 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
             </div>
 
             <div className="flex items-center justify-between pt-3 border-t mt-3">
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="rule-enabled"
-                  checked={formState.enabled ?? true}
-                  onCheckedChange={(checked) => {
-                    // When enabling a delete or category rule, show preview first
-                    if (checked && (isDeleteRule || isCategoryRule)) {
-                      setEnabledBeforePreview(formState.enabled)
-                      const nextState = { ...formState, enabled: true }
-                      setFormState(nextState)
-                      previewMutation.mutate(nextState)
-                    } else {
-                      setFormState(prev => ({ ...prev, enabled: checked }))
-                    }
-                  }}
-                />
-                <Label htmlFor="rule-enabled" className="text-sm font-normal cursor-pointer">Enabled</Label>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="rule-enabled"
+                    checked={formState.enabled ?? true}
+                    onCheckedChange={(checked) => {
+                      // When enabling a delete or category rule, show preview first
+                      if (checked && (isDeleteRule || isCategoryRule)) {
+                        setEnabledBeforePreview(formState.enabled)
+                        const nextState = { ...formState, enabled: true }
+                        setFormState(nextState)
+                        previewMutation.mutate(nextState)
+                      } else {
+                        setFormState(prev => ({ ...prev, enabled: checked }))
+                      }
+                    }}
+                  />
+                  <Label htmlFor="rule-enabled" className="text-sm font-normal cursor-pointer">Enabled</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="rule-interval" className="text-sm font-normal text-muted-foreground whitespace-nowrap">Run every</Label>
+                  <Select
+                    value={formState.intervalSeconds === null ? "default" : String(formState.intervalSeconds)}
+                    onValueChange={(value) => {
+                      const intervalSeconds = value === "default" ? null : Number(value)
+                      setFormState(prev => ({ ...prev, intervalSeconds }))
+                    }}
+                  >
+                    <SelectTrigger id="rule-interval" className="w-[120px] h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">Default (20s)</SelectItem>
+                      <SelectItem value="60">1 minute</SelectItem>
+                      <SelectItem value="300">5 minutes</SelectItem>
+                      <SelectItem value="900">15 minutes</SelectItem>
+                      <SelectItem value="1800">30 minutes</SelectItem>
+                      <SelectItem value="3600">1 hour</SelectItem>
+                      {/* Show custom option if current value is non-preset */}
+                      {formState.intervalSeconds !== null &&
+                        ![60, 300, 900, 1800, 3600].includes(formState.intervalSeconds) && (
+                        <SelectItem value={String(formState.intervalSeconds)}>
+                          Custom ({formState.intervalSeconds}s)
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="flex gap-2">
                 <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>

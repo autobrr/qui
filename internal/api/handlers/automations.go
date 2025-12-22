@@ -36,14 +36,15 @@ func NewAutomationHandler(store *models.AutomationStore, activityStore *models.A
 }
 
 type AutomationPayload struct {
-	Name           string                   `json:"name"`
-	TrackerPattern string                   `json:"trackerPattern"`
-	TrackerDomains []string                 `json:"trackerDomains"`
-	Enabled        *bool                    `json:"enabled"`
-	SortOrder      *int                     `json:"sortOrder"`
-	Conditions     *models.ActionConditions `json:"conditions"`
-	PreviewLimit   *int                     `json:"previewLimit"`
-	PreviewOffset  *int                     `json:"previewOffset"`
+	Name            string                   `json:"name"`
+	TrackerPattern  string                   `json:"trackerPattern"`
+	TrackerDomains  []string                 `json:"trackerDomains"`
+	Enabled         *bool                    `json:"enabled"`
+	SortOrder       *int                     `json:"sortOrder"`
+	IntervalSeconds *int                     `json:"intervalSeconds,omitempty"` // nil = use global default (20s)
+	Conditions      *models.ActionConditions `json:"conditions"`
+	PreviewLimit    *int                     `json:"previewLimit"`
+	PreviewOffset   *int                     `json:"previewOffset"`
 }
 
 func (p *AutomationPayload) toModel(instanceID int, id int) *models.Automation {
@@ -54,13 +55,14 @@ func (p *AutomationPayload) toModel(instanceID int, id int) *models.Automation {
 	}
 
 	automation := &models.Automation{
-		ID:             id,
-		InstanceID:     instanceID,
-		Name:           p.Name,
-		TrackerPattern: trackerPattern,
-		TrackerDomains: normalizedDomains,
-		Conditions:     p.Conditions,
-		Enabled:        true,
+		ID:              id,
+		InstanceID:      instanceID,
+		Name:            p.Name,
+		TrackerPattern:  trackerPattern,
+		TrackerDomains:  normalizedDomains,
+		Conditions:      p.Conditions,
+		Enabled:         true,
+		IntervalSeconds: p.IntervalSeconds,
 	}
 	if p.Enabled != nil {
 		automation.Enabled = *p.Enabled
@@ -119,6 +121,12 @@ func (h *AutomationHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// Validate category action has a category name
 	if payload.Conditions.Category != nil && payload.Conditions.Category.Enabled && payload.Conditions.Category.Category == "" {
 		RespondError(w, http.StatusBadRequest, "Category action requires a category name")
+		return
+	}
+
+	// Validate intervalSeconds minimum
+	if payload.IntervalSeconds != nil && *payload.IntervalSeconds < 60 {
+		RespondError(w, http.StatusBadRequest, "intervalSeconds must be at least 60")
 		return
 	}
 
@@ -185,6 +193,12 @@ func (h *AutomationHandler) Update(w http.ResponseWriter, r *http.Request) {
 	// Validate category action has a category name
 	if payload.Conditions.Category != nil && payload.Conditions.Category.Enabled && payload.Conditions.Category.Category == "" {
 		RespondError(w, http.StatusBadRequest, "Category action requires a category name")
+		return
+	}
+
+	// Validate intervalSeconds minimum
+	if payload.IntervalSeconds != nil && *payload.IntervalSeconds < 60 {
+		RespondError(w, http.StatusBadRequest, "intervalSeconds must be at least 60")
 		return
 	}
 

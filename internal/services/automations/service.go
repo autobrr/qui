@@ -31,6 +31,12 @@ type Config struct {
 	ActivityRetentionDays int
 }
 
+// ruleKey identifies a rule within an instance for per-rule cadence tracking.
+type ruleKey struct {
+	instanceID int
+	ruleID     int
+}
+
 func DefaultConfig() Config {
 	return Config{
 		ScanInterval:          20 * time.Second,
@@ -50,6 +56,7 @@ type Service struct {
 
 	// keep lightweight memory of recent applications to avoid hammering qBittorrent
 	lastApplied map[int]map[string]time.Time // instanceID -> hash -> timestamp
+	lastRuleRun map[ruleKey]time.Time        // per-rule cadence tracking
 	mu          sync.RWMutex
 }
 
@@ -73,13 +80,15 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		activityStore: activityStore,
 		syncManager:   syncManager,
 		lastApplied:   make(map[int]map[string]time.Time),
+		lastRuleRun:   make(map[ruleKey]time.Time),
 	}
 }
 
-// cleanupStaleEntries removes entries from lastApplied map
-// that are older than 10 minutes to prevent unbounded memory growth.
+// cleanupStaleEntries removes entries from lastApplied and lastRuleRun maps
+// that are older than the cutoff to prevent unbounded memory growth.
 func (s *Service) cleanupStaleEntries() {
 	cutoff := time.Now().Add(-10 * time.Minute)
+	ruleCutoff := time.Now().Add(-24 * time.Hour) // 1 day for rule tracking
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -88,6 +97,12 @@ func (s *Service) cleanupStaleEntries() {
 			if ts.Before(cutoff) {
 				delete(instMap, hash)
 			}
+		}
+	}
+
+	for key, ts := range s.lastRuleRun {
+		if ts.Before(ruleCutoff) {
+			delete(s.lastRuleRun, key)
 		}
 	}
 }
@@ -152,15 +167,16 @@ func (s *Service) applyAll(ctx context.Context) {
 		if !instance.IsActive {
 			continue
 		}
-		if err := s.applyForInstance(ctx, instance.ID); err != nil {
+		if err := s.applyForInstance(ctx, instance.ID, false); err != nil {
 			log.Error().Err(err).Int("instanceID", instance.ID).Msg("automations: apply failed")
 		}
 	}
 }
 
 // ApplyOnceForInstance allows manual triggering (API hook).
+// It bypasses per-rule interval checks (force=true).
 func (s *Service) ApplyOnceForInstance(ctx context.Context, instanceID int) error {
-	return s.applyForInstance(ctx, instanceID)
+	return s.applyForInstance(ctx, instanceID, true)
 }
 
 // PreviewResult contains torrents that would match a rule.
@@ -467,13 +483,32 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	return result, nil
 }
 
-func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
+func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bool) error {
 	rules, err := s.ruleStore.ListByInstance(ctx, instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load rules")
 		return err
 	}
 	if len(rules) == 0 {
+		return nil
+	}
+
+	// Pre-filter rules by interval eligibility
+	now := time.Now()
+	eligibleRules := make([]*models.Automation, 0, len(rules))
+	for _, rule := range rules {
+		if !force && rule.IntervalSeconds != nil {
+			key := ruleKey{instanceID, rule.ID}
+			s.mu.RLock()
+			lastRun := s.lastRuleRun[key]
+			s.mu.RUnlock()
+			if now.Sub(lastRun) < time.Duration(*rule.IntervalSeconds)*time.Second {
+				continue // skip, interval not elapsed
+			}
+		}
+		eligibleRules = append(eligibleRules, rule)
+	}
+	if len(eligibleRules) == 0 {
 		return nil
 	}
 
@@ -508,7 +543,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 	}
 
 	// On-demand hardlink detection (only if rules use IS_HARDLINKED and instance has local access)
-	if instance.HasLocalFilesystemAccess && rulesUseHardlinkCondition(rules) {
+	if instance.HasLocalFilesystemAccess && rulesUseHardlinkCondition(eligibleRules) {
 		evalCtx.HardlinkedSet = s.detectHardlinks(ctx, instanceID, torrents)
 	}
 
@@ -525,8 +560,6 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 		s.mu.Unlock()
 	}
 
-	now := time.Now()
-
 	// Skip checker for recently processed torrents
 	skipCheck := func(hash string) bool {
 		s.mu.RLock()
@@ -535,8 +568,29 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 		return exists && now.Sub(ts) < s.cfg.SkipWithin
 	}
 
-	// Process all torrents through all matching rules
-	states := processTorrents(torrents, rules, evalCtx, s.syncManager, skipCheck)
+	// Compute which rules actually have matching torrents that won't be skipped.
+	// This must happen after skipCheck is defined so we only stamp lastRuleRun
+	// for rules that will actually process at least one torrent.
+	rulesUsed := make(map[int]struct{})
+	for _, torrent := range torrents {
+		if skipCheck(torrent.Hash) {
+			continue
+		}
+		for _, rule := range selectMatchingRules(torrent, eligibleRules, s.syncManager) {
+			rulesUsed[rule.ID] = struct{}{}
+		}
+	}
+
+	// Process all torrents through all eligible rules
+	states := processTorrents(torrents, eligibleRules, evalCtx, s.syncManager, skipCheck)
+
+	// Update lastRuleRun only for rules that matched at least one non-skipped torrent
+	s.mu.Lock()
+	for ruleID := range rulesUsed {
+		key := ruleKey{instanceID, ruleID}
+		s.lastRuleRun[key] = now
+	}
+	s.mu.Unlock()
 
 	// Build torrent lookup for cross-seed detection
 	torrentByHash := make(map[string]qbt.Torrent, len(torrents))

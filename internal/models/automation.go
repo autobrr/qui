@@ -32,16 +32,17 @@ const (
 )
 
 type Automation struct {
-	ID             int               `json:"id"`
-	InstanceID     int               `json:"instanceId"`
-	Name           string            `json:"name"`
-	TrackerPattern string            `json:"trackerPattern"`
-	TrackerDomains []string          `json:"trackerDomains,omitempty"`
-	Conditions     *ActionConditions `json:"conditions"`
-	Enabled        bool              `json:"enabled"`
-	SortOrder      int               `json:"sortOrder"`
-	CreatedAt      time.Time         `json:"createdAt"`
-	UpdatedAt      time.Time         `json:"updatedAt"`
+	ID              int               `json:"id"`
+	InstanceID      int               `json:"instanceId"`
+	Name            string            `json:"name"`
+	TrackerPattern  string            `json:"trackerPattern"`
+	TrackerDomains  []string          `json:"trackerDomains,omitempty"`
+	Conditions      *ActionConditions `json:"conditions"`
+	Enabled         bool              `json:"enabled"`
+	SortOrder       int               `json:"sortOrder"`
+	IntervalSeconds *int              `json:"intervalSeconds,omitempty"` // nil = use global default (20s)
+	CreatedAt       time.Time         `json:"createdAt"`
+	UpdatedAt       time.Time         `json:"updatedAt"`
 }
 
 type AutomationStore struct {
@@ -94,7 +95,7 @@ func normalizeTrackerPattern(pattern string, domains []string) string {
 
 func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([]*Automation, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, sort_order, created_at, updated_at
+		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, sort_order, interval_seconds, created_at, updated_at
 		FROM automations
 		WHERE instance_id = ?
 		ORDER BY sort_order ASC, id ASC
@@ -108,6 +109,7 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 	for rows.Next() {
 		var automation Automation
 		var conditionsJSON string
+		var intervalSeconds sql.NullInt64
 
 		if err := rows.Scan(
 			&automation.ID,
@@ -117,6 +119,7 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 			&conditionsJSON,
 			&automation.Enabled,
 			&automation.SortOrder,
+			&intervalSeconds,
 			&automation.CreatedAt,
 			&automation.UpdatedAt,
 		); err != nil {
@@ -131,6 +134,11 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 
 		automation.TrackerDomains = splitPatterns(automation.TrackerPattern)
 
+		if intervalSeconds.Valid {
+			v := int(intervalSeconds.Int64)
+			automation.IntervalSeconds = &v
+		}
+
 		automations = append(automations, &automation)
 	}
 
@@ -143,13 +151,14 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 
 func (s *AutomationStore) Get(ctx context.Context, id int) (*Automation, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, sort_order, created_at, updated_at
+		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, sort_order, interval_seconds, created_at, updated_at
 		FROM automations
 		WHERE id = ?
 	`, id)
 
 	var automation Automation
 	var conditionsJSON string
+	var intervalSeconds sql.NullInt64
 
 	if err := row.Scan(
 		&automation.ID,
@@ -159,6 +168,7 @@ func (s *AutomationStore) Get(ctx context.Context, id int) (*Automation, error) 
 		&conditionsJSON,
 		&automation.Enabled,
 		&automation.SortOrder,
+		&intervalSeconds,
 		&automation.CreatedAt,
 		&automation.UpdatedAt,
 	); err != nil {
@@ -172,6 +182,11 @@ func (s *AutomationStore) Get(ctx context.Context, id int) (*Automation, error) 
 	automation.Conditions = &conditions
 
 	automation.TrackerDomains = splitPatterns(automation.TrackerPattern)
+
+	if intervalSeconds.Valid {
+		v := int(intervalSeconds.Int64)
+		automation.IntervalSeconds = &v
+	}
 
 	return &automation, nil
 }
@@ -209,12 +224,17 @@ func (s *AutomationStore) Create(ctx context.Context, automation *Automation) (*
 		return nil, fmt.Errorf("failed to marshal conditions: %w", err)
 	}
 
+	var intervalSeconds sql.NullInt64
+	if automation.IntervalSeconds != nil {
+		intervalSeconds = sql.NullInt64{Int64: int64(*automation.IntervalSeconds), Valid: true}
+	}
+
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO automations
-			(instance_id, name, tracker_pattern, conditions, enabled, sort_order)
+			(instance_id, name, tracker_pattern, conditions, enabled, sort_order, interval_seconds)
 		VALUES
-			(?, ?, ?, ?, ?, ?)
-	`, automation.InstanceID, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), sortOrder)
+			(?, ?, ?, ?, ?, ?, ?)
+	`, automation.InstanceID, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), sortOrder, intervalSeconds)
 	if err != nil {
 		return nil, err
 	}
@@ -242,11 +262,16 @@ func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*
 		return nil, fmt.Errorf("failed to marshal conditions: %w", err)
 	}
 
+	var intervalSeconds sql.NullInt64
+	if automation.IntervalSeconds != nil {
+		intervalSeconds = sql.NullInt64{Int64: int64(*automation.IntervalSeconds), Valid: true}
+	}
+
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE automations
-		SET name = ?, tracker_pattern = ?, conditions = ?, enabled = ?, sort_order = ?
+		SET name = ?, tracker_pattern = ?, conditions = ?, enabled = ?, sort_order = ?, interval_seconds = ?
 		WHERE id = ? AND instance_id = ?
-	`, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), automation.SortOrder, automation.ID, automation.InstanceID)
+	`, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), automation.SortOrder, intervalSeconds, automation.ID, automation.InstanceID)
 	if err != nil {
 		return nil, err
 	}

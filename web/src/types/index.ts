@@ -240,6 +240,7 @@ export interface Automation {
   conditions: ActionConditions
   enabled: boolean
   sortOrder: number
+  intervalSeconds?: number | null // null = use global default (20s)
   createdAt?: string
   updatedAt?: string
 }
@@ -251,6 +252,7 @@ export interface AutomationInput {
   conditions: ActionConditions
   enabled?: boolean
   sortOrder?: number
+  intervalSeconds?: number | null // null = use global default (20s)
 }
 
 export interface AutomationPreviewInput extends AutomationInput {
