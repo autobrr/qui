@@ -8,6 +8,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useInstances } from "@/hooks/useInstances"
@@ -20,7 +21,7 @@ import {
 } from "@/hooks/useOrphanScan"
 import { cn, formatBytes, formatRelativeTime } from "@/lib/utils"
 import type { Instance, OrphanScanRunStatus } from "@/types"
-import { AlertTriangle, Eye, Files, Info, Loader2, Play, Settings2, X } from "lucide-react"
+import { AlertTriangle, ChevronDown, Eye, Files, Info, Loader2, Play, Settings2, X } from "lucide-react"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 
@@ -282,8 +283,10 @@ function InstanceOrphanScanItem({
               <div className="rounded-md border divide-y">
                 {runs.map((run) => {
                   const statusBadge = getStatusBadge(run.status)
-                  return (
-                    <div key={run.id} className="p-3 flex items-center justify-between">
+                  const hasError = !!run.errorMessage
+
+                  const rowContent = (
+                    <div className="p-3 flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <Badge {...statusBadge} className={cn("text-xs", statusBadge.className)}>
                           {statusBadge.label}
@@ -296,26 +299,40 @@ function InstanceOrphanScanItem({
                             {run.filesDeleted} deleted · {formatBytes(run.bytesReclaimed)}
                           </span>
                         )}
-                        {run.errorMessage && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className={cn(
-                                "cursor-help truncate max-w-[200px]",
-                                run.status === "failed" ? "text-destructive" : "text-yellow-500"
-                              )}>
-                                {run.errorMessage}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p className="max-w-xs">{run.errorMessage}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
                         {run.startedAt && (
                           <span>{formatRelativeTime(new Date(run.startedAt))}</span>
                         )}
+                        {hasError && (
+                          <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                        )}
                       </div>
                     </div>
+                  )
+
+                  if (!hasError) {
+                    return <div key={run.id}>{rowContent}</div>
+                  }
+
+                  return (
+                    <Collapsible key={run.id} className="group">
+                      <CollapsibleTrigger className="w-full text-left cursor-pointer hover:bg-muted/50 transition-colors">
+                        {rowContent}
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className={cn(
+                          "px-3 pb-3 pt-0",
+                        )}>
+                          <div className={cn(
+                            "p-3 rounded-md text-sm font-mono whitespace-pre-wrap break-all",
+                            run.status === "failed"
+                              ? "bg-destructive/10 text-destructive border border-destructive/20"
+                              : "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20"
+                          )}>
+                            {run.errorMessage}
+                          </div>
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
                   )
                 })}
               </div>
