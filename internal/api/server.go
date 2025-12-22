@@ -32,6 +32,7 @@ import (
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/update"
@@ -70,6 +71,8 @@ type Server struct {
 	trackerCustomizationStore        *models.TrackerCustomizationStore
 	dashboardSettingsStore           *models.DashboardSettingsStore
 	instanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
+	orphanScanStore                  *models.OrphanScanStore
+	orphanScanService                *orphanscan.Service
 }
 
 type Dependencies struct {
@@ -100,6 +103,8 @@ type Dependencies struct {
 	TrackerCustomizationStore        *models.TrackerCustomizationStore
 	DashboardSettingsStore           *models.DashboardSettingsStore
 	InstanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
+	OrphanScanStore                  *models.OrphanScanStore
+	OrphanScanService                *orphanscan.Service
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -137,6 +142,8 @@ func NewServer(deps *Dependencies) *Server {
 		trackerCustomizationStore:        deps.TrackerCustomizationStore,
 		dashboardSettingsStore:           deps.DashboardSettingsStore,
 		instanceCrossSeedCompletionStore: deps.InstanceCrossSeedCompletionStore,
+		orphanScanStore:                  deps.OrphanScanStore,
+		orphanScanService:                deps.OrphanScanService,
 	}
 
 	return &s
@@ -273,6 +280,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
 	crossSeedHandler := handlers.NewCrossSeedHandler(s.crossSeedService, s.instanceCrossSeedCompletionStore, s.instanceStore)
 	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.automationService)
+	orphanScanHandler := handlers.NewOrphanScanHandler(s.orphanScanStore, s.instanceStore, s.orphanScanService)
 	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
 
@@ -474,6 +482,19 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						r.Post("/runs/{runID}/restore", backupsHandler.ExecuteRestore)
 						r.Get("/runs/{runID}/items/{torrentHash}/download", backupsHandler.DownloadTorrentBlob)
 						r.Delete("/runs/{runID}", backupsHandler.DeleteRun)
+					})
+
+					// Orphan file scanning
+					r.Route("/orphan-scan", func(r chi.Router) {
+						r.Get("/settings", orphanScanHandler.GetSettings)
+						r.Put("/settings", orphanScanHandler.UpdateSettings)
+						r.Post("/scan", orphanScanHandler.TriggerScan)
+						r.Get("/runs", orphanScanHandler.ListRuns)
+						r.Route("/runs/{runID}", func(r chi.Router) {
+							r.Get("/", orphanScanHandler.GetRun)
+							r.Post("/confirm", orphanScanHandler.ConfirmDeletion)
+							r.Delete("/", orphanScanHandler.CancelRun)
+						})
 					})
 				})
 			})

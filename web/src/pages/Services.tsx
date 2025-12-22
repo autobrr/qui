@@ -5,6 +5,7 @@
 
 import { ReannounceOverview } from "@/components/instances/preferences/ReannounceOverview"
 import { TrackerReannounceForm } from "@/components/instances/preferences/TrackerReannounceForm"
+import { OrphanScanOverview } from "@/components/instances/preferences/OrphanScanOverview"
 import { AutomationsActivityOverview } from "@/components/instances/preferences/AutomationActivityOverview"
 import { AutomationsOverview } from "@/components/instances/preferences/AutomationsOverview"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -42,6 +43,9 @@ export function Services() {
 
       {/* Reannounce Overview - shows all instances in accordion */}
       <ReannounceOverview onConfigureInstance={handleConfigureReannounce} />
+
+      {/* Orphan File Scanner - shows all instances with local access */}
+      <OrphanScanOverview />
 
       {/* Automations: 2-col grid with independent heights */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">

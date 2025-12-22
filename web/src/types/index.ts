@@ -1732,3 +1732,67 @@ export interface CrossSeedSearchStatus {
   recentResults: CrossSeedSearchResult[]
   nextRunAt?: string
 }
+
+// Orphan Scan types
+export type OrphanScanRunStatus =
+  | "pending"
+  | "scanning"
+  | "preview_ready"
+  | "deleting"
+  | "completed"
+  | "failed"
+  | "canceled"
+
+export type OrphanScanTriggerType = "manual" | "scheduled"
+
+export type OrphanScanFileStatus = "pending" | "deleted" | "skipped" | "failed"
+
+export interface OrphanScanSettings {
+  id?: number
+  instanceId: number
+  enabled: boolean
+  gracePeriodMinutes: number
+  ignorePaths: string[]
+  scanIntervalHours: number
+  maxFilesPerRun: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface OrphanScanSettingsUpdate {
+  enabled?: boolean
+  gracePeriodMinutes?: number
+  ignorePaths?: string[]
+  scanIntervalHours?: number
+  maxFilesPerRun?: number
+}
+
+export interface OrphanScanRun {
+  id: number
+  instanceId: number
+  status: OrphanScanRunStatus
+  triggeredBy: OrphanScanTriggerType
+  scanPaths: string[]
+  filesFound: number
+  filesDeleted: number
+  foldersDeleted: number
+  bytesReclaimed: number
+  truncated: boolean
+  errorMessage?: string | null
+  startedAt: string
+  completedAt?: string | null
+}
+
+export interface OrphanScanFile {
+  id: number
+  runId: number
+  filePath: string
+  fileSize: number
+  modifiedAt?: string | null
+  status: OrphanScanFileStatus
+  errorMessage?: string | null
+}
+
+export interface OrphanScanRunWithFiles extends OrphanScanRun {
+  files: OrphanScanFile[]
+}

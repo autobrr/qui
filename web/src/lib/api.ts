@@ -41,6 +41,10 @@ import type {
   InstanceReannounceActivity,
   InstanceReannounceCandidate,
   InstanceResponse,
+  OrphanScanRun,
+  OrphanScanRunWithFiles,
+  OrphanScanSettings,
+  OrphanScanSettingsUpdate,
   QBittorrentAppInfo,
   RestoreMode,
   RestorePlan,
@@ -1731,6 +1735,75 @@ class ApiClient {
 
   async getIndexerStats(id: number): Promise<TorznabIndexerLatencyStats[]> {
     return this.request<TorznabIndexerLatencyStats[]>(`/torznab/indexers/${id}/stats`)
+  }
+
+  // Orphan Scan endpoints
+  async getOrphanScanSettings(instanceId: number): Promise<OrphanScanSettings> {
+    return this.request<OrphanScanSettings>(`/instances/${instanceId}/orphan-scan/settings`)
+  }
+
+  async updateOrphanScanSettings(
+    instanceId: number,
+    payload: OrphanScanSettingsUpdate
+  ): Promise<OrphanScanSettings> {
+    return this.request<OrphanScanSettings>(`/instances/${instanceId}/orphan-scan/settings`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async triggerOrphanScan(instanceId: number): Promise<{ runId: number }> {
+    return this.request<{ runId: number }>(`/instances/${instanceId}/orphan-scan/scan`, {
+      method: "POST",
+    })
+  }
+
+  async listOrphanScanRuns(
+    instanceId: number,
+    params?: { limit?: number }
+  ): Promise<OrphanScanRun[]> {
+    const search = new URLSearchParams()
+    if (params?.limit !== undefined) search.set("limit", params.limit.toString())
+
+    const query = search.toString()
+    const suffix = query ? `?${query}` : ""
+    return this.request<OrphanScanRun[]>(`/instances/${instanceId}/orphan-scan/runs${suffix}`)
+  }
+
+  async getOrphanScanRun(
+    instanceId: number,
+    runId: number,
+    params?: { limit?: number; offset?: number }
+  ): Promise<OrphanScanRunWithFiles> {
+    const search = new URLSearchParams()
+    if (params?.limit !== undefined) search.set("limit", params.limit.toString())
+    if (params?.offset !== undefined) search.set("offset", params.offset.toString())
+
+    const query = search.toString()
+    const suffix = query ? `?${query}` : ""
+    return this.request<OrphanScanRunWithFiles>(
+      `/instances/${instanceId}/orphan-scan/runs/${runId}${suffix}`
+    )
+  }
+
+  async confirmOrphanScanDeletion(
+    instanceId: number,
+    runId: number
+  ): Promise<{ status: string }> {
+    return this.request<{ status: string }>(
+      `/instances/${instanceId}/orphan-scan/runs/${runId}/confirm`,
+      { method: "POST" }
+    )
+  }
+
+  async cancelOrphanScanRun(
+    instanceId: number,
+    runId: number
+  ): Promise<{ status: string }> {
+    return this.request<{ status: string }>(
+      `/instances/${instanceId}/orphan-scan/runs/${runId}`,
+      { method: "DELETE" }
+    )
   }
 }
 

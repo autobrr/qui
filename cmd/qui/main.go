@@ -32,12 +32,13 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
-	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/pkg/sqlite3store"
@@ -551,6 +552,9 @@ func (app *Application) runServer() {
 	automationActivityStore := models.NewAutomationActivityStore(db)
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, syncManager)
 
+	orphanScanStore := models.NewOrphanScanStore(db)
+	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager)
+
 	syncManager.SetTorrentCompletionHandler(crossSeedService.HandleTorrentCompletion)
 
 	automationCtx, automationCancel := context.WithCancel(context.Background())
@@ -566,6 +570,10 @@ func (app *Application) runServer() {
 	automationsCtx, automationsCancel := context.WithCancel(context.Background())
 	defer automationsCancel()
 	automationService.Start(automationsCtx)
+
+	orphanScanCtx, orphanScanCancel := context.WithCancel(context.Background())
+	defer orphanScanCancel()
+	orphanScanService.Start(orphanScanCtx)
 
 	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir()})
@@ -656,6 +664,8 @@ func (app *Application) runServer() {
 		TrackerCustomizationStore:        trackerCustomizationStore,
 		DashboardSettingsStore:           dashboardSettingsStore,
 		InstanceCrossSeedCompletionStore: instanceCrossSeedCompletionStore,
+		OrphanScanStore:                  orphanScanStore,
+		OrphanScanService:                orphanScanService,
 	})
 
 	errorChannel := make(chan error)
