@@ -3,7 +3,6 @@
 
 // Package automations provides an expression-based automation system for managing torrents.
 // This file re-exports condition types from models for convenience.
-// This file re-exports condition types from models for convenience.
 package automations
 
 import (

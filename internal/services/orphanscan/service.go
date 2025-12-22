@@ -531,7 +531,8 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	if settings != nil {
 		ignorePaths, err = NormalizeIgnorePaths(settings.IgnorePaths)
 		if err != nil {
-			log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: invalid ignore paths during directory cleanup")
+			log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: invalid ignore paths during directory cleanup, using unnormalized paths")
+			ignorePaths = settings.IgnorePaths // Fall back to unnormalized to preserve protection
 		}
 	}
 
