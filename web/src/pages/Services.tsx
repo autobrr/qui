@@ -3,20 +3,19 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { OrphanScanOverview } from "@/components/instances/preferences/OrphanScanOverview"
-import { OrphanScanSettingsForm } from "@/components/instances/preferences/OrphanScanSettingsForm"
-import { ReannounceOverview } from "@/components/instances/preferences/ReannounceOverview"
-import { TrackerReannounceForm } from "@/components/instances/preferences/TrackerReannounceForm"
 import { AutomationsActivityOverview } from "@/components/instances/preferences/AutomationActivityOverview"
 import { AutomationsOverview } from "@/components/instances/preferences/AutomationsOverview"
+import { OrphanScanOverview } from "@/components/instances/preferences/OrphanScanOverview"
+import { OrphanScanSettingsDialog } from "@/components/instances/preferences/OrphanScanSettingsDialog"
+import { ReannounceOverview } from "@/components/instances/preferences/ReannounceOverview"
+import { TrackerReannounceForm } from "@/components/instances/preferences/TrackerReannounceForm"
+import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { Button } from "@/components/ui/button"
 import { useInstances } from "@/hooks/useInstances"
 import { useState } from "react"
 
 const REANNOUNCE_FORM_ID = "reannounce-settings-form"
-const ORPHAN_SCAN_FORM_ID = "orphan-scan-settings-form"
 
 export function Services() {
   const { instances, isUpdating } = useInstances()
@@ -92,33 +91,12 @@ export function Services() {
         </SheetContent>
       </Sheet>
 
-      {/* Orphan Scan Configuration Sheet */}
-      <Sheet open={configureOrphanScanId !== null} onOpenChange={(open) => !open && setConfigureOrphanScanId(null)}>
-        <SheetContent side="right" className="flex h-full max-h-[100dvh] w-full flex-col overflow-hidden p-0 sm:max-w-2xl">
-          <SheetHeader className="shrink-0 px-6 pt-6">
-            <SheetTitle>Configure Orphan Scan</SheetTitle>
-            <SheetDescription>
-              {configureOrphanScanInstance?.name ?? "Instance"}
-            </SheetDescription>
-          </SheetHeader>
-
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <ScrollArea className="h-full px-6 py-4">
-              <OrphanScanSettingsForm
-                instanceId={configureOrphanScanId!}
-                formId={ORPHAN_SCAN_FORM_ID}
-                onSuccess={() => setConfigureOrphanScanId(null)}
-              />
-            </ScrollArea>
-          </div>
-
-          <SheetFooter className="shrink-0 border-t bg-muted/30 px-6 py-4">
-            <Button type="submit" form={ORPHAN_SCAN_FORM_ID}>
-              Save Changes
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+      <OrphanScanSettingsDialog
+        open={configureOrphanScanId !== null}
+        onOpenChange={(open) => !open && setConfigureOrphanScanId(null)}
+        instanceId={configureOrphanScanId!}
+        instanceName={configureOrphanScanInstance?.name}
+      />
     </div>
   )
 }
