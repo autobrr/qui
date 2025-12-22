@@ -248,6 +248,7 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "conditions", Type: "TEXT"},
 		{Name: "enabled", Type: "INTEGER"},
 		{Name: "sort_order", Type: "INTEGER"},
+		{Name: "interval_seconds", Type: "INTEGER"},
 		{Name: "created_at", Type: "DATETIME"},
 		{Name: "updated_at", Type: "DATETIME"},
 	},
