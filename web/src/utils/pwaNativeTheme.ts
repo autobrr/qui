@@ -102,9 +102,24 @@ export function initializePWANativeTheme(): void {
       // Determine if we're in dark mode
       const isDark = document.documentElement.classList.contains("dark")
 
-      // Get computed CSS variables from the root element
-      const rootStyles = getComputedStyle(document.documentElement)
-      const backgroundColor = rootStyles.getPropertyValue("--background").trim()
+      // Prefer stored critical vars to avoid forcing a style/layout recalculation.
+      // `theme.ts` writes `theme-critical-vars` on theme application.
+      let backgroundColor = ""
+      try {
+        const criticalVarsRaw = localStorage.getItem("theme-critical-vars")
+        if (criticalVarsRaw) {
+          const criticalVars = JSON.parse(criticalVarsRaw) as { background?: string }
+          backgroundColor = (criticalVars.background || "").trim()
+        }
+      } catch {
+        // ignore localStorage/JSON errors
+      }
+
+      // Fallback to computed CSS variables from the root element
+      if (!backgroundColor) {
+        const rootStyles = getComputedStyle(document.documentElement)
+        backgroundColor = rootStyles.getPropertyValue("--background").trim()
+      }
 
       // Use background color for seamless status bar
       let themeColor = backgroundColor

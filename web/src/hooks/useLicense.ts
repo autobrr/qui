@@ -5,26 +5,30 @@
 
 import { api } from "@/lib/api"
 import { getLicenseErrorMessage } from "@/lib/license-errors.ts"
-import { setLicenseEntitlement, clearLicenseEntitlement } from "@/lib/license-entitlement"
+import { clearLicenseEntitlement, setLicenseEntitlement } from "@/lib/license-entitlement"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useEffect } from "react"
 import { toast } from "sonner"
 
 // Hook to check premium access status
 export const usePremiumAccess = () => {
-  return useQuery({
+  const query = useQuery({
     queryKey: ["licenses"],
-    queryFn: async () => {
-      const result = await api.getLicensedThemes()
-      // Persist entitlement on successful response for grace period handling
-      setLicenseEntitlement(result.hasPremiumAccess)
-      return result
-    },
+    queryFn: () => api.getLicensedThemes(),
     staleTime: 60 * 60 * 1000, // 1 hour
     refetchInterval: 60 * 60 * 1000, // Poll every 1 hour
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
-    retry: 2, // Retry twice with default backoff
+    retry: 2,
   })
+
+  useEffect(() => {
+    if (query.data) {
+      setLicenseEntitlement(query.data.hasPremiumAccess)
+    }
+  }, [query.data])
+
+  return query
 }
 
 // Hook to activate a license
@@ -75,7 +79,6 @@ export const useDeleteLicense = () => {
     mutationFn: (licenseKey: string) => api.deleteLicense(licenseKey),
     onSuccess: () => {
       toast.success("License released successfully")
-      // Clear cached entitlement since license is being removed
       clearLicenseEntitlement()
       // Invalidate license queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ["licenses"] })

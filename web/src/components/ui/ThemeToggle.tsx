@@ -3,14 +3,13 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   getCurrentThemeMode,
   getCurrentTheme,
   setTheme,
   setThemeMode,
   setThemeVariation,
-  getThemeColors,
   getThemeVariation,
   type ThemeMode
 } from "@/utils/theme";
@@ -59,9 +58,9 @@ const useThemeChange = () => {
 
 export const ThemeToggle: React.FC = () => {
   const { currentMode, currentTheme } = useThemeChange();
-  const [isTransitioning, setIsTransitioning] = useState(false);
   const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess();
   const [open, setOpen] = useState(false);
+  const [activeThemeId, setActiveThemeId] = useState<string | null>(null);
 
   const canSwitchPremium = canSwitchToPremiumTheme({
     hasPremiumAccess,
@@ -69,10 +68,60 @@ export const ThemeToggle: React.FC = () => {
     isLoading,
   });
 
+  const sortedThemes = useMemo(() => {
+    return [...themes].sort((a, b) => {
+      const aIsPremium = isThemePremium(a.id);
+      const bIsPremium = isThemePremium(b.id);
+      if (aIsPremium === bIsPremium) return 0;
+      return aIsPremium ? 1 : -1;
+    });
+  }, []);
+
+  const previewColorsCache = useMemo(() => new Map<string, {
+    primary: string;
+    secondary: string;
+    accent: string;
+    variations?: Array<{ id: string; color: string }>;
+  }>(), []);
+
+  const modeKey = document.documentElement.classList.contains("dark") ? "dark" : "light";
+  const getPreviewColors = useCallback((theme: (typeof themes)[number]) => {
+    const cacheKey = `${modeKey}:${theme.id}`;
+    const cached = previewColorsCache.get(cacheKey);
+    if (cached) return cached;
+
+    const cssVars = modeKey === "dark" ? theme.cssVars.dark : theme.cssVars.light;
+    const firstVariation = theme.variations?.[0];
+    const resolveColor = (varName: "--primary" | "--secondary" | "--accent") => {
+      const value = cssVars[varName];
+      if (value === "var(--variation-color)" && firstVariation) {
+        return cssVars[`--variation-${firstVariation}`] || "";
+      }
+      return value || "";
+    };
+
+    const colors = {
+      primary: resolveColor("--primary"),
+      secondary: resolveColor("--secondary"),
+      accent: resolveColor("--accent"),
+      variations: theme.variations?.map((id) => ({
+        id,
+        color: cssVars[`--variation-${id}`],
+      })).filter((v) => v.color !== undefined),
+    };
+
+    previewColorsCache.set(cacheKey, colors);
+    return colors;
+  }, [modeKey, previewColorsCache]);
+
+  useEffect(() => {
+    if (open) {
+      setActiveThemeId(currentTheme.id);
+    }
+  }, [open, currentTheme.id]);
+
   const handleModeSelect = useCallback(async (mode: ThemeMode) => {
-    setIsTransitioning(true);
     await setThemeMode(mode);
-    setTimeout(() => setIsTransitioning(false), 400);
 
     const modeNames = { light: "Light", dark: "Dark", auto: "System" };
     toast.success(`Switched to ${modeNames[mode]} mode`);
@@ -91,9 +140,8 @@ export const ThemeToggle: React.FC = () => {
       return;
     }
 
-    setIsTransitioning(true);
+    setOpen(false);
     await setTheme(themeId);
-    setTimeout(() => setIsTransitioning(false), 400);
 
     const theme = themes.find(t => t.id === themeId);
     toast.success(`Switched to ${theme?.name || themeId} theme`);
@@ -112,10 +160,8 @@ export const ThemeToggle: React.FC = () => {
       return;
     }
 
-    setIsTransitioning(true);
     await setTheme(themeId);
     await setThemeVariation(variationId);
-    setTimeout(() => setIsTransitioning(false), 400);
 
     const theme = themes.find(t => t.id === themeId);
     toast.success(`Switched to ${theme?.name || themeId} theme (${variationId})`);
@@ -129,15 +175,9 @@ export const ThemeToggle: React.FC = () => {
         <Button
           variant="ghost"
           size="icon"
-          className={cn(
-            "transition-transform duration-300",
-            isTransitioning && "animate-spin-slow"
-          )}
+          className={cn("transition-transform duration-300")}
         >
-          <Palette className={cn(
-            "h-5 w-5 transition-transform duration-200",
-            isTransitioning && "scale-110"
-          )} />
+          <Palette className={cn("h-5 w-5 transition-transform duration-200")} />
           <span className="sr-only">Change theme</span>
         </Button>
       </DropdownMenuTrigger>
@@ -176,25 +216,27 @@ export const ThemeToggle: React.FC = () => {
 
         {/* Theme Selection */}
         <div className="px-2 py-1.5 text-sm font-medium">Theme</div>
-        {themes
-          .sort((a, b) => {
-            const aIsPremium = isThemePremium(a.id);
-            const bIsPremium = isThemePremium(b.id);
-            // If both are premium or both are free, maintain existing order
-            if (aIsPremium === bIsPremium) return 0;
-            // Premium themes go last
-            return aIsPremium ? 1 : -1;
-          })
-          .map((theme) => {
+        {sortedThemes.map((theme) => {
             const isPremium = isThemePremium(theme.id);
-            const isLocked = isPremium && !hasPremiumAccess;
-            const colors = getThemeColors(theme);
-            const currentVariation = getThemeVariation(theme.id);
+            const isLocked = isPremium && !canSwitchPremium;
+            const colors = getPreviewColors(theme);
+            const showVariations = activeThemeId === theme.id;
+            const currentVariation = showVariations ? getThemeVariation(theme.id) : null;
 
             return (
               <DropdownMenuItem
                 key={theme.id}
                 onClick={() => handleThemeSelect(theme.id)}
+                onMouseEnter={() => {
+                  if (theme.variations && theme.variations.length > 0) {
+                    setActiveThemeId(theme.id);
+                  }
+                }}
+                onFocus={() => {
+                  if (theme.variations && theme.variations.length > 0) {
+                    setActiveThemeId(theme.id);
+                  }
+                }}
                 className={cn(
                   "flex items-center gap-2",
                   isLocked && "opacity-60"
@@ -222,7 +264,7 @@ export const ThemeToggle: React.FC = () => {
                   </div>
 
                   {/* Variation pills */}
-                  {colors.variations && colors.variations.length > 0 && (
+                  {showVariations && colors.variations && colors.variations.length > 0 && (
                     <div className="flex items-center gap-1.5 pl-1.5">
                       <CornerDownRight className="h-3 w-3 text-muted-foreground" />
                       <div className="flex gap-1 mt-1.5">

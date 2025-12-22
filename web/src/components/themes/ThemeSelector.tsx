@@ -143,7 +143,6 @@ export function ThemeSelector() {
   const { theme: currentTheme, setTheme, setVariation } = useTheme()
   const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess()
 
-  // Use entitlement-aware check for premium switching
   const canSwitchPremium = canSwitchToPremiumTheme({
     hasPremiumAccess,
     isError,
@@ -152,7 +151,7 @@ export function ThemeSelector() {
 
   const isThemeLicensed = (themeId: string) => {
     if (!isThemePremium(themeId)) return true // Free themes are always available
-    return canSwitchPremium // Premium themes require confirmed premium access or valid grace period
+    return canSwitchPremium
   }
 
   const freeThemes = themes.filter(theme => !theme.isPremium)
@@ -162,7 +161,6 @@ export function ThemeSelector() {
     if (isThemeLicensed(themeId)) {
       setTheme(themeId)
     } else {
-      // Provide context-aware error message
       if (isError) {
         toast.error("Unable to verify license", {
           description: "License check failed. Premium theme switching is temporarily unavailable.",
@@ -227,7 +225,6 @@ export function ThemeSelector() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* License check warning banner */}
         {isError && !canSwitchPremium && (
           <div className="flex items-center gap-2 p-3 rounded-md bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200">
             <WifiOff className="h-4 w-4 flex-shrink-0" />

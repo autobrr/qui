@@ -16,6 +16,7 @@ const THEME_AUTO = "auto";
 const THEME_TRANSITION_CLASS = "theme-transition";
 const THEME_TRANSITION_DURATION = 150;
 const THEME_STYLES_ID = "theme-transitions";
+const ENABLE_THEME_TRANSITIONS = false;
 
 // CSS for theme transitions - lightweight version for performance
 // Only transitions the root background; child elements inherit instantly via CSS variables
@@ -81,7 +82,7 @@ const applyTheme = async (theme: Theme, variation: string | null, isDark: boolea
   // Fonts will render when ready; no need to wait
   loadThemeFonts(theme);
 
-  if (withTransition) {
+  if (ENABLE_THEME_TRANSITIONS && withTransition) {
     root.classList.add(THEME_TRANSITION_CLASS);
   }
 
@@ -147,7 +148,7 @@ const applyTheme = async (theme: Theme, variation: string | null, isDark: boolea
     }
   }
 
-  if (withTransition) {
+  if (ENABLE_THEME_TRANSITIONS && withTransition) {
     setTimeout(() => {
       root.classList.remove(THEME_TRANSITION_CLASS);
     }, THEME_TRANSITION_DURATION);
@@ -271,7 +272,7 @@ export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: st
     const isDark = currentMode === THEME_DARK ||
       (currentMode === THEME_AUTO && getSystemPreference().matches);
 
-    await applyTheme(defaultTheme, currentVariation, isDark, true);
+    await applyTheme(defaultTheme, currentVariation, isDark, false);
     dispatchThemeChange(currentMode, defaultTheme, false, currentVariation);
     return;
   }
@@ -295,7 +296,7 @@ export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: st
   const isDark = currentMode === THEME_DARK ||
     (currentMode === THEME_AUTO && getSystemPreference().matches);
 
-  await applyTheme(theme, currentVariation, isDark, true);
+  await applyTheme(theme, currentVariation, isDark, false);
   dispatchThemeChange(currentMode, theme, false, currentVariation);
 };
 
@@ -307,7 +308,7 @@ export const setThemeMode = async (mode: ThemeMode): Promise<void> => {
   const isDark = mode === THEME_DARK ||
     (mode === THEME_AUTO && getSystemPreference().matches);
 
-  await applyTheme(theme, variation, isDark, true);
+  await applyTheme(theme, variation, isDark, false);
   dispatchThemeChange(mode, theme, false, variation);
 };
 
@@ -342,7 +343,7 @@ export const resetToSystemTheme = async (): Promise<void> => {
   setStoredMode(THEME_AUTO);
   const theme = getCurrentTheme();
   const variation = getThemeVariation(theme.id);
-  await applyTheme(theme, variation, getSystemPreference().matches, true);
+  await applyTheme(theme, variation, getSystemPreference().matches, false);
   dispatchThemeChange(THEME_AUTO, theme, false, variation);
 };
 
@@ -365,7 +366,7 @@ export const setThemeVariation = async (variation: string): Promise<void> => {
   const isDark = currentMode === THEME_DARK ||
     (currentMode === THEME_AUTO && getSystemPreference().matches);
 
-  await applyTheme(theme, variation, isDark, true);
+  await applyTheme(theme, variation, isDark, false);
   dispatchThemeChange(currentMode, theme, false, variation);
 };
 
