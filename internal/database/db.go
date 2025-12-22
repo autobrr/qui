@@ -76,6 +76,7 @@ type DB struct {
 	readerPool  *sql.DB                            // Read-only connection pool for concurrent reads
 	writerStmts *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for writer connection
 	readerStmts *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for reader pool
+	stmtMu      sync.RWMutex                       // Protects stmt caches during Close and cache ops
 
 	// Write transaction serialization
 	// Even though writerConn has SetMaxOpenConns=1, BeginTx doesn't queue properly
@@ -91,6 +92,8 @@ type DB struct {
 
 	// Cleanup cancellation
 	cleanupCancel context.CancelFunc
+
+	closing atomic.Bool
 
 	closeOnce sync.Once
 	closeErr  error
@@ -183,11 +186,7 @@ func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sq
 	}
 
 	// Statement was evicted and closed between prepare and exec; drop from cache and retry
-	if t.isWriteTx {
-		t.db.writerStmts.Delete(query)
-	} else {
-		t.db.readerStmts.Delete(query)
-	}
+	t.db.deleteStmt(query, t.isWriteTx)
 
 	stmt, err = t.db.getStmt(ctx, query, t)
 	if err != nil {
@@ -238,37 +237,52 @@ func (t *Tx) promoteStatementsToCache() {
 		return
 	}
 
-	// Determine which cache and connection to use based on transaction type
-	var stmts *ttlcache.Cache[string, *sql.Stmt]
-	var conn *sql.DB
-	if t.isWriteTx {
-		stmts = t.db.writerStmts
-		conn = t.db.writerConn
-	} else {
-		stmts = t.db.readerStmts
-		conn = t.db.readerPool
-	}
-
 	// Prepare statements on the appropriate connection and add to cache
 	// Use a background context since transaction is already committed
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	for query := range queries {
+		// Skip promotion during shutdown
+		if t.db.closing.Load() {
+			return
+		}
+
+		t.db.stmtMu.RLock()
+
+		// Determine which cache and connection to use based on transaction type
+		var stmts *ttlcache.Cache[string, *sql.Stmt]
+		var conn *sql.DB
+		if t.isWriteTx {
+			stmts = t.db.writerStmts
+			conn = t.db.writerConn
+		} else {
+			stmts = t.db.readerStmts
+			conn = t.db.readerPool
+		}
+
+		if stmts == nil || conn == nil {
+			t.db.stmtMu.RUnlock()
+			return
+		}
+
 		// Double-check it's not already cached (race condition protection)
 		if _, found := stmts.Get(query); found {
+			t.db.stmtMu.RUnlock()
 			continue
 		}
 
 		// Prepare and cache the statement
 		stmt, err := conn.PrepareContext(ctx, query)
 		if err != nil {
+			t.db.stmtMu.RUnlock()
 			// Log but don't fail - caching is an optimization
 			log.Debug().Err(err).Str("query", query).Msg("failed to promote transaction statement to cache")
 			continue
 		}
 
 		stmts.Set(query, stmt, ttlcache.DefaultTTL)
+		t.db.stmtMu.RUnlock()
 	}
 }
 
@@ -467,6 +481,13 @@ func New(databasePath string) (*DB, error) {
 // When tx is provided, only cached statements are returned - no preparation
 // is done to avoid conflicts with active transactions.
 func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, error) {
+	if db.closing.Load() {
+		return nil, sql.ErrConnDone
+	}
+
+	db.stmtMu.RLock()
+	defer db.stmtMu.RUnlock()
+
 	// Determine which cache to use
 	var stmts *ttlcache.Cache[string, *sql.Stmt]
 	var conn *sql.DB
@@ -526,6 +547,22 @@ func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, err
 	}
 
 	return s, nil
+}
+
+func (db *DB) deleteStmt(query string, isWrite bool) {
+	db.stmtMu.RLock()
+	defer db.stmtMu.RUnlock()
+
+	var stmts *ttlcache.Cache[string, *sql.Stmt]
+	if isWrite {
+		stmts = db.writerStmts
+	} else {
+		stmts = db.readerStmts
+	}
+	if stmts == nil {
+		return
+	}
+	stmts.Delete(query)
 }
 
 // isWriteQuery efficiently determines if a query is a write operation.
@@ -613,9 +650,9 @@ func execWithRetry[T any, E stmtExecutor[T]](db *DB, ctx context.Context, query 
 
 	// Statement was evicted and closed between prepare and exec; drop from cache and retry
 	if isWriteQuery(query) {
-		db.writerStmts.Delete(query)
+		db.deleteStmt(query, true)
 	} else {
-		db.readerStmts.Delete(query)
+		db.deleteStmt(query, false)
 	}
 
 	stmt, err = db.getStmt(ctx, query, executor.getTx())
@@ -661,9 +698,9 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 
 	// Statement was evicted and closed between prepare and exec; drop from cache and retry
 	if isWriteQuery(query) {
-		db.writerStmts.Delete(query)
+		db.deleteStmt(query, true)
 	} else {
-		db.readerStmts.Delete(query)
+		db.deleteStmt(query, false)
 	}
 
 	stmt, err = db.getStmt(ctx, query, nil)
@@ -817,6 +854,8 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 
 func (db *DB) Close() error {
 	db.closeOnce.Do(func() {
+		db.closing.Store(true)
+
 		// Cancel cleanup goroutine
 		if db.cleanupCancel != nil {
 			db.cleanupCancel()
@@ -828,6 +867,8 @@ func (db *DB) Close() error {
 		if _, err := db.writerConn.ExecContext(ctx, "PRAGMA optimize"); err != nil {
 			log.Warn().Err(err).Msg("failed to run PRAGMA optimize during close")
 		}
+
+		db.stmtMu.Lock()
 
 		// Close statement caches (will close all prepared statements)
 		// Track closed caches to avoid double-closing the same cache instance
@@ -843,6 +884,8 @@ func (db *DB) Close() error {
 			closedCaches[db.readerStmts] = true
 			db.readerStmts = nil
 		}
+
+		db.stmtMu.Unlock()
 
 		// Close both connections
 		if err := db.writerConn.Close(); err != nil {
