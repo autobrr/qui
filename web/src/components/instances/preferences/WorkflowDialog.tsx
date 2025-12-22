@@ -101,7 +101,7 @@ const emptyFormState: FormState = {
   exprDownloadKiB: undefined,
   exprRatioLimit: undefined,
   exprSeedingTimeMinutes: undefined,
-  exprDeleteMode: "delete",
+  exprDeleteMode: "deleteWithFilesPreserveCrossSeeds",
   exprTags: [],
   exprTagMode: "full",
   exprCategory: "",
