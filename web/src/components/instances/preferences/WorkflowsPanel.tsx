@@ -25,15 +25,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Folder, Loader2, Pause, Pencil, Plus, RefreshCw, Scale, Tag, Trash2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
-import { AutomationDialog } from "./AutomationDialog"
+import { WorkflowDialog } from "./WorkflowDialog"
 
-interface AutomationsPanelProps {
+interface WorkflowsPanelProps {
   instanceId: number
   /** Render variant: "card" wraps in Card component, "embedded" renders without card wrapper */
   variant?: "card" | "embedded"
 }
 
-export function AutomationsPanel({ instanceId, variant = "card" }: AutomationsPanelProps) {
+export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelProps) {
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<Automation | null>(null)
@@ -47,7 +47,7 @@ export function AutomationsPanel({ instanceId, variant = "card" }: AutomationsPa
   const deleteRule = useMutation({
     mutationFn: (ruleId: number) => api.deleteAutomation(instanceId, ruleId),
     onSuccess: () => {
-      toast.success("Automation deleted")
+      toast.success("Workflow deleted")
       void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
     },
     onError: (error) => {
@@ -75,7 +75,7 @@ export function AutomationsPanel({ instanceId, variant = "card" }: AutomationsPa
   const applyRules = useMutation({
     mutationFn: () => api.applyAutomations(instanceId),
     onSuccess: () => {
-      toast.success("Automations applied")
+      toast.success("Workflows applied")
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to apply automations")
@@ -114,7 +114,7 @@ export function AutomationsPanel({ instanceId, variant = "card" }: AutomationsPa
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       {variant === "card" && (
         <div className="space-y-1">
-          <h3 className="text-lg font-semibold">Automations</h3>
+          <h3 className="text-lg font-semibold">Workflows</h3>
           <p className="text-sm text-muted-foreground">Automatic limits and deletion.</p>
         </div>
       )}
@@ -258,7 +258,7 @@ export function AutomationsPanel({ instanceId, variant = "card" }: AutomationsPa
       <div className="space-y-4">
         {headerContent}
         {rulesContent}
-        <AutomationDialog
+        <WorkflowDialog
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           instanceId={instanceId}
@@ -279,7 +279,7 @@ export function AutomationsPanel({ instanceId, variant = "card" }: AutomationsPa
           {rulesContent}
         </CardContent>
       </Card>
-      <AutomationDialog
+      <WorkflowDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         instanceId={instanceId}

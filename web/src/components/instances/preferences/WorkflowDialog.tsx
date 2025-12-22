@@ -47,9 +47,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Folder, Info, Loader2 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
-import { AutomationPreviewDialog } from "./AutomationPreviewDialog"
+import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
 
-interface AutomationDialogProps {
+interface WorkflowDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   instanceId: number
@@ -109,7 +109,7 @@ const emptyFormState: FormState = {
   exprBlockIfCrossSeedInCategories: [],
 }
 
-export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSuccess }: AutomationDialogProps) {
+export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess }: WorkflowDialogProps) {
   const queryClient = useQueryClient()
   const [formState, setFormState] = useState<FormState>(emptyFormState)
   const [previewResult, setPreviewResult] = useState<AutomationPreviewResult | null>(null)
@@ -453,7 +453,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
       return api.createAutomation(instanceId, payload)
     },
     onSuccess: () => {
-      toast.success(`Automation ${rule ? "updated" : "created"}`)
+      toast.success(`Workflow ${rule ? "updated" : "created"}`)
       setShowConfirmDialog(false)
       setPreviewResult(null)
       setPreviewInput(null)
@@ -524,7 +524,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-4xl lg:max-w-5xl max-h-[90dvh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>{rule ? "Edit Automation Rule" : "Add Automation Rule"}</DialogTitle>
+            <DialogTitle>{rule ? "Edit Workflow" : "Add Workflow"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
             <div className="flex-1 overflow-y-auto space-y-3 pr-1">
@@ -537,7 +537,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
                     value={formState.name}
                     onChange={(e) => setFormState(prev => ({ ...prev, name: e.target.value }))}
                     required
-                    placeholder="Automation rule"
+                    placeholder="Workflow name"
                     autoComplete="off"
                     data-1p-ignore
                   />
@@ -947,7 +947,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
         </DialogContent>
       </Dialog>
 
-      <AutomationPreviewDialog
+      <WorkflowPreviewDialog
         open={showConfirmDialog}
         onOpenChange={(open) => {
           if (!open) {

@@ -3,8 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { AutomationsActivityOverview } from "@/components/instances/preferences/AutomationActivityOverview"
-import { AutomationsOverview } from "@/components/instances/preferences/AutomationsOverview"
+import { WorkflowsOverview } from "@/components/instances/preferences/WorkflowsOverview"
 import { OrphanScanOverview } from "@/components/instances/preferences/OrphanScanOverview"
 import { OrphanScanSettingsDialog } from "@/components/instances/preferences/OrphanScanSettingsDialog"
 import { ReannounceOverview } from "@/components/instances/preferences/ReannounceOverview"
@@ -17,10 +16,28 @@ import { useState } from "react"
 
 const REANNOUNCE_FORM_ID = "reannounce-settings-form"
 
-export function Services() {
+export function Automations() {
   const { instances, isUpdating } = useInstances()
   const [configureInstanceId, setConfigureInstanceId] = useState<number | null>(null)
   const [configureOrphanScanId, setConfigureOrphanScanId] = useState<number | null>(null)
+  const [expandedAccordion, setExpandedAccordion] = useState<string | null>(null)
+
+  // Handler for coordinated accordion state across all cards
+  const handleAccordionChange = (cardPrefix: string) => (values: string[]) => {
+    if (values.length === 0) {
+      setExpandedAccordion(null)
+    } else {
+      // Take the last item - Radix appends new items to the array
+      setExpandedAccordion(`${cardPrefix}:${values[values.length - 1]}`)
+    }
+  }
+
+  // Extract expanded instances for a specific card
+  const getExpandedForCard = (cardPrefix: string): string[] => {
+    if (!expandedAccordion) return []
+    const [prefix, instanceId] = expandedAccordion.split(':')
+    return prefix === cardPrefix ? [instanceId] : []
+  }
 
   const configureInstance = instances?.find((inst) => inst.id === configureInstanceId)
   const configureOrphanScanInstance = instances?.find((inst) => inst.id === configureOrphanScanId)
@@ -37,23 +54,31 @@ export function Services() {
     <div className="container mx-auto px-6 space-y-6 py-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex-1 space-y-2">
-          <h1 className="text-2xl font-semibold">Services</h1>
+          <h1 className="text-2xl font-semibold">Automations</h1>
           <p className="text-sm text-muted-foreground">
-            Instance-level automation and helper services managed by qui.
+            Instance-level automation services managed by qui.
           </p>
         </div>
       </div>
 
-      {/* Reannounce Overview - shows all instances in accordion */}
-      <ReannounceOverview onConfigureInstance={handleConfigureReannounce} />
-
-      {/* Orphan File Scanner - shows all instances with local access */}
-      <OrphanScanOverview onConfigureInstance={setConfigureOrphanScanId} />
-
-      {/* Automations: 2-col grid with independent heights */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-        <AutomationsOverview />
-        <AutomationsActivityOverview />
+      {/* Workflows full width, then Reannounce + Orphan Scan side by side */}
+      <div className="space-y-6">
+        <WorkflowsOverview
+          expandedInstances={getExpandedForCard('workflows')}
+          onExpandedInstancesChange={handleAccordionChange('workflows')}
+        />
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+          <ReannounceOverview
+            expandedInstances={getExpandedForCard('reannounce')}
+            onExpandedInstancesChange={handleAccordionChange('reannounce')}
+            onConfigureInstance={handleConfigureReannounce}
+          />
+          <OrphanScanOverview
+            expandedInstances={getExpandedForCard('orphan')}
+            onExpandedInstancesChange={handleAccordionChange('orphan')}
+            onConfigureInstance={setConfigureOrphanScanId}
+          />
+        </div>
       </div>
 
       {instances && instances.length === 0 && (

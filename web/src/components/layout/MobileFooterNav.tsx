@@ -59,7 +59,7 @@ import {
   Search as SearchIcon,
   Server,
   Settings,
-  Wrench,
+  Zap,
   Sun
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
@@ -391,11 +391,11 @@ export function MobileFooterNav() {
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link
-                to="/services"
+                to="/automations"
                 className="flex items-center gap-2"
               >
-                <Wrench className="h-4 w-4" />
-                Services
+                <Zap className="h-4 w-4" />
+                Automations
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>

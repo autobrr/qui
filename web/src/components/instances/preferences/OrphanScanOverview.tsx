@@ -27,6 +27,8 @@ import { toast } from "sonner"
 
 interface OrphanScanOverviewProps {
   onConfigureInstance?: (instanceId: number) => void
+  expandedInstances?: string[]
+  onExpandedInstancesChange?: (values: string[]) => void
 }
 
 function getStatusBadge(status: OrphanScanRunStatus) {
@@ -364,9 +366,19 @@ function InstanceOrphanScanItem({
   )
 }
 
-export function OrphanScanOverview({ onConfigureInstance }: OrphanScanOverviewProps) {
+export function OrphanScanOverview({
+  onConfigureInstance,
+  expandedInstances: controlledExpanded,
+  onExpandedInstancesChange,
+}: OrphanScanOverviewProps) {
   const { instances } = useInstances()
-  const [expandedInstances, setExpandedInstances] = useState<string[]>([])
+
+  // Internal state for standalone usage
+  const [internalExpanded, setInternalExpanded] = useState<string[]>([])
+
+  // Use controlled props if provided, otherwise internal state
+  const expandedInstances = controlledExpanded ?? internalExpanded
+  const setExpandedInstances = onExpandedInstancesChange ?? setInternalExpanded
 
   const activeInstances = useMemo(
     () => (instances ?? []).filter((inst) => inst.isActive),
@@ -377,7 +389,7 @@ export function OrphanScanOverview({ onConfigureInstance }: OrphanScanOverviewPr
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">Orphan File Scanner</CardTitle>
+          <CardTitle className="text-lg font-semibold">Orphan Scan</CardTitle>
           <CardDescription>
             No instances configured. Add one in Settings to use this service.
           </CardDescription>
@@ -390,7 +402,7 @@ export function OrphanScanOverview({ onConfigureInstance }: OrphanScanOverviewPr
     <Card>
       <CardHeader className="space-y-2">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-lg font-semibold">Orphan File Scanner</CardTitle>
+          <CardTitle className="text-lg font-semibold">Orphan Scan</CardTitle>
           <Tooltip>
             <TooltipTrigger asChild>
               <Info className="h-4 w-4 text-muted-foreground cursor-help" />

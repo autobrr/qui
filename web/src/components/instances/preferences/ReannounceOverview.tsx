@@ -22,6 +22,8 @@ import { toast } from "sonner"
 
 interface ReannounceOverviewProps {
   onConfigureInstance?: (instanceId: number) => void
+  expandedInstances?: string[]
+  onExpandedInstancesChange?: (values: string[]) => void
 }
 
 interface InstanceStats {
@@ -55,11 +57,21 @@ function computeStats(events: InstanceReannounceActivity[]): InstanceStats {
   return { successToday, failedToday, lastActivity }
 }
 
-export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewProps) {
+export function ReannounceOverview({
+  onConfigureInstance,
+  expandedInstances: controlledExpanded,
+  onExpandedInstancesChange,
+}: ReannounceOverviewProps) {
   const { instances, updateInstance, isUpdating } = useInstances()
   const queryClient = useQueryClient()
   const { formatISOTimestamp } = useDateTimeFormatters()
-  const [expandedInstances, setExpandedInstances] = useState<string[]>([])
+
+  // Internal state for standalone usage
+  const [internalExpanded, setInternalExpanded] = useState<string[]>([])
+
+  // Use controlled props if provided, otherwise internal state
+  const expandedInstances = controlledExpanded ?? internalExpanded
+  const setExpandedInstances = onExpandedInstancesChange ?? setInternalExpanded
   const [hideSkippedMap, setHideSkippedMap] = useState<Record<number, boolean>>({})
   const [searchMap, setSearchMap] = useState<Record<number, string>>({})
 
@@ -132,7 +144,7 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">Automatic Tracker Reannounce</CardTitle>
+          <CardTitle className="text-lg font-semibold">Reannounce</CardTitle>
           <CardDescription>
             No instances configured. Add one in Settings to use this service.
           </CardDescription>
@@ -145,7 +157,7 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
     <Card>
       <CardHeader className="space-y-2">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-lg font-semibold">Automatic Tracker Reannounce</CardTitle>
+          <CardTitle className="text-lg font-semibold">Reannounce</CardTitle>
           <Tooltip>
             <TooltipTrigger asChild>
               <Info className="h-4 w-4 text-muted-foreground cursor-help" />

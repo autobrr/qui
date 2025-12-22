@@ -22,7 +22,7 @@ import { getRatioColor } from "@/lib/utils"
 import type { AutomationPreviewResult } from "@/types"
 import { Loader2 } from "lucide-react"
 
-interface AutomationPreviewDialogProps {
+interface WorkflowPreviewDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string
@@ -39,7 +39,7 @@ interface AutomationPreviewDialogProps {
   warning?: boolean
 }
 
-export function AutomationPreviewDialog({
+export function WorkflowPreviewDialog({
   open,
   onOpenChange,
   title,
@@ -52,7 +52,7 @@ export function AutomationPreviewDialog({
   isLoadingMore = false,
   destructive = true,
   warning = false,
-}: AutomationPreviewDialogProps) {
+}: WorkflowPreviewDialogProps) {
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
   const hasMore = !!preview && preview.examples.length < preview.totalMatches
