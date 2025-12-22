@@ -695,6 +695,21 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 			expectedFiles:    nil,
 		},
 		{
+			name: "source has extra sidecars with ignore patterns - no mismatch",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie.2024.1080p.BluRay.x264-GRP/Movie.2024.1080p.BluRay.x264-GRP.mkv", Size: 8000000000},
+				{Name: "Movie.2024.1080p.BluRay.x264-GRP/Movie.2024.1080p.BluRay.x264-GRP.nfo", Size: 1024},
+				{Name: "Movie.2024.1080p.BluRay.x264-GRP/Movie.2024.1080p.BluRay.x264-GRP.srt", Size: 50000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				// Existing torrent only has the mkv
+				{Name: "Movie.2024.1080p.BluRay.x264-GRP/Movie.2024.1080p.BluRay.x264-GRP.mkv", Size: 8000000000},
+			},
+			ignorePatterns:   []string{".nfo", ".srt"},
+			expectedMismatch: false,
+			expectedFiles:    nil,
+		},
+		{
 			name: "folder path with ignore pattern for screens directory",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "Movie/movie.mkv", Size: 4000000000},
@@ -746,6 +761,43 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 			ignorePatterns:   nil,
 			expectedMismatch: true,
 			expectedFiles:    []string{"Show.S01E01.mkv", "Show.S01E02.mkv"},
+		},
+		{
+			name: "season pack source vs single episode candidate - mismatch",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E01.1080p.WEB-DL.H.264-GRP.mkv", Size: 1400000000},
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E02.1080p.WEB-DL.H.264-GRP.mkv", Size: 1350000000},
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E03.1080p.WEB-DL.H.264-GRP.mkv", Size: 1380000000},
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E04.1080p.WEB-DL.H.264-GRP.mkv", Size: 1420000000},
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E05.1080p.WEB-DL.H.264-GRP.mkv", Size: 1390000000},
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E06.1080p.WEB-DL.H.264-GRP.mkv", Size: 1360000000},
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E07.1080p.WEB-DL.H.264-GRP.mkv", Size: 1410000000},
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E08.1080p.WEB-DL.H.264-GRP.mkv", Size: 1370000000},
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E09.1080p.WEB-DL.H.264-GRP.mkv", Size: 1340000000},
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E10.1080p.WEB-DL.H.264-GRP.mkv", Size: 1430000000},
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E11.1080p.WEB-DL.H.264-GRP.mkv", Size: 1385000000},
+				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E12.1080p.WEB-DL.H.264-GRP.mkv", Size: 1450000000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				// Only one episode exists - matched via partial-in-pack
+				{Name: "Fake.Show.S01E09.Episode.Title.1080p.WEB-DL.H.264-GRP.mkv", Size: 1340000000},
+			},
+			ignorePatterns:   nil,
+			expectedMismatch: true,
+			// 11 of 12 source files have no matching size in candidate
+			expectedFiles: []string{
+				"Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E01.1080p.WEB-DL.H.264-GRP.mkv",
+				"Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E02.1080p.WEB-DL.H.264-GRP.mkv",
+				"Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E03.1080p.WEB-DL.H.264-GRP.mkv",
+				"Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E04.1080p.WEB-DL.H.264-GRP.mkv",
+				"Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E05.1080p.WEB-DL.H.264-GRP.mkv",
+				"Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E06.1080p.WEB-DL.H.264-GRP.mkv",
+				"Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E07.1080p.WEB-DL.H.264-GRP.mkv",
+				"Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E08.1080p.WEB-DL.H.264-GRP.mkv",
+				"Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E10.1080p.WEB-DL.H.264-GRP.mkv",
+				"Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E11.1080p.WEB-DL.H.264-GRP.mkv",
+				"Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E12.1080p.WEB-DL.H.264-GRP.mkv",
+			},
 		},
 	}
 
