@@ -8,13 +8,16 @@ import { getLicenseErrorMessage } from "@/lib/license-errors.ts"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
+const thirtySecondsInMilliseconds: number = 30 * 1000;
+const thirtyMinutesInMilliseconds: number = 30 * 1000 * 60;
+
 // Hook to check premium access status
 export const usePremiumAccess = () => {
   return useQuery({
     queryKey: ["licenses"],
     queryFn: () => api.getLicensedThemes(),
-    staleTime: 30 * 1000, // 30 seconds
-    refetchInterval: 30 * 1000, // Poll every 30 seconds
+    staleTime: thirtySecondsInMilliseconds,
+    refetchInterval: thirtySecondsInMilliseconds,
     refetchOnWindowFocus: false,
   })
 }
@@ -108,7 +111,7 @@ export const useLicenseDetails = () => {
   return useQuery({
     queryKey: ["licenses", "all"],
     queryFn: () => api.getAllLicenses(),
-    staleTime: 30 * 60 * 1000, // 30 minutes
+    staleTime: thirtyMinutesInMilliseconds,
     refetchOnWindowFocus: false,
   })
 }

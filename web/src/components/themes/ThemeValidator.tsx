@@ -7,49 +7,28 @@ import { useEffect } from "react"
 import { usePremiumAccess } from "@/hooks/useLicense.ts"
 import { themes, isThemePremium, getDefaultTheme } from "@/config/themes"
 import { setValidatedThemes, setTheme } from "@/utils/theme"
-import { router } from "@/router"
 
 /**
  * ThemeValidator component validates theme access on mount and periodically
  * to prevent unauthorized access to premium themes via localStorage tampering
  */
-export function ThemeValidator() {
+export function ThemeValidator(): null {
   const { data, isLoading, isError } = usePremiumAccess()
 
   useEffect(() => {
     // Don't do anything while loading - let the stored theme persist
     if (isLoading) return
 
-    // Check if we're on the login page using TanStack Router
-    const currentPath = router.state.location.pathname
-    const isLoginPage = currentPath === "/login"
-
     // If there's an error fetching license data
     if (isError) {
       console.warn("Failed to fetch license data")
 
-      // Don't reset theme on login page to avoid disruption
-      if (isLoginPage) {
-        console.log("On login page, keeping current theme")
-        // Still set some validated themes to prevent lockout
-        const fallbackThemes: string[] = []
-        themes.forEach(theme => {
-          fallbackThemes.push(theme.id)
-        })
-        setValidatedThemes(fallbackThemes)
-        return
-      }
-
-      // Reset to minimal theme when not on login page
-      console.log("Resetting to minimal theme due to license fetch error")
-      const minimalThemes = themes.filter(theme => !isThemePremium(theme.id)).map(theme => theme.id)
-      setValidatedThemes(minimalThemes)
-
-      // Force reset to minimal theme
-      const currentTheme = localStorage.getItem("color-theme")
-      if (currentTheme && isThemePremium(currentTheme)) {
-        setTheme("minimal")
-      }
+      // Still set some validated themes to prevent any potential issues.
+      const fallbackThemes: string[] = []
+      themes.forEach(theme => {
+        fallbackThemes.push(theme.id)
+      })
+      setValidatedThemes(fallbackThemes)
       return
     }
 
@@ -96,7 +75,8 @@ export function ThemeValidator() {
       }
     }
 
-    const interval = setInterval(validateStoredTheme, 30000)
+    const threeSeconds: number = 30000;
+    const interval = setInterval(validateStoredTheme, threeSeconds)
 
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === "color-theme" && e.newValue) {

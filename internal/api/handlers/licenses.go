@@ -69,7 +69,7 @@ type LicenseInfo struct {
 }
 
 func (h *LicenseHandler) Routes(r chi.Router) {
-	r.Get("/licensed", h.GetLicensedThemes)
+	r.Get("/licensed", h.CheckPremiumAccess)
 	r.Get("/licenses", h.GetAllLicenses)
 	r.Post("/activate", h.ActivateLicense)
 	r.Post("/validate", h.ValidateLicense)
@@ -199,8 +199,8 @@ func (h *LicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-// GetLicensedThemes returns premium access status
-func (h *LicenseHandler) GetLicensedThemes(w http.ResponseWriter, r *http.Request) {
+// CheckPremiumAccess returns premium access status
+func (h *LicenseHandler) CheckPremiumAccess(w http.ResponseWriter, r *http.Request) {
 	hasPremium, err := h.licenseService.HasPremiumAccess(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to check premium access")
