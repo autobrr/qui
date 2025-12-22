@@ -1287,6 +1287,9 @@ func rulesUseHardlinkCondition(rules []*models.Automation) bool {
 		if ac.Tag != nil && ConditionUsesField(ac.Tag.Condition, FieldIsHardlinked) {
 			return true
 		}
+		if ac.Category != nil && ConditionUsesField(ac.Category.Condition, FieldIsHardlinked) {
+			return true
+		}
 	}
 	return false
 }
