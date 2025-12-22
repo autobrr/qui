@@ -803,7 +803,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                 <div className="flex items-center gap-2">
                   <Switch
                     id="rule-enabled"
-                    checked={formState.enabled ?? true}
+                    checked={formState.enabled}
                     onCheckedChange={(checked) => {
                       // When enabling a delete or category rule, show preview first
                       if (checked && (isDeleteRule || isCategoryRule)) {

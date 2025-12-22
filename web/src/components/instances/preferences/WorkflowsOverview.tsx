@@ -94,6 +94,23 @@ function formatAction(action: AutomationActivity["action"]): string {
   }
 }
 
+function formatTagsChangedSummary(details: AutomationActivity["details"]): string {
+  const added = details?.added ?? {}
+  const removed = details?.removed ?? {}
+  const addedTotal = Object.values(added).reduce((a, b) => a + b, 0)
+  const removedTotal = Object.values(removed).reduce((a, b) => a + b, 0)
+  const parts: string[] = []
+  if (addedTotal > 0) parts.push(`+${addedTotal} tagged`)
+  if (removedTotal > 0) parts.push(`-${removedTotal} untagged`)
+  return parts.join(", ") || "Tag operation"
+}
+
+function formatCategoryChangedSummary(details: AutomationActivity["details"]): string {
+  const categories = details?.categories ?? {}
+  const total = Object.values(categories).reduce((a: number, b: unknown) => a + (b as number), 0)
+  return `${total} torrent${total !== 1 ? "s" : ""} moved`
+}
+
 interface WorkflowsOverviewProps {
   expandedInstances?: string[]
   onExpandedInstancesChange?: (values: string[]) => void
@@ -263,7 +280,7 @@ export function WorkflowsOverview({
   // Fetch activity for all active instances
   const activityQueries = useQueries({
     queries: activeInstances.map((instance) => ({
-      queryKey: ["tracker-rule-activity", instance.id],
+      queryKey: ["automation-activity", instance.id],
       queryFn: () => api.getAutomationActivity(instance.id, 100),
       refetchInterval: expandedInstances.includes(String(instance.id)) ? 5000 : 30000,
       staleTime: 5000,
@@ -274,7 +291,7 @@ export function WorkflowsOverview({
     try {
       const result = await api.deleteAutomationActivity(instanceId, days)
       toast.success(`Deleted ${result.deleted} activity entries`)
-      queryClient.invalidateQueries({ queryKey: ["tracker-rule-activity", instanceId] })
+      queryClient.invalidateQueries({ queryKey: ["automation-activity", instanceId] })
     } catch (error) {
       toast.error("Failed to delete activity", {
         description: error instanceof Error ? error.message : "Unknown error",
@@ -502,7 +519,7 @@ export function WorkflowsOverview({
                               variant="ghost"
                               disabled={activityQuery?.isFetching}
                               onClick={() => queryClient.invalidateQueries({
-                                queryKey: ["tracker-rule-activity", instance.id],
+                                queryKey: ["automation-activity", instance.id],
                               })}
                               className="h-7 px-2"
                             >
@@ -620,24 +637,11 @@ export function WorkflowsOverview({
                                       <div className="min-w-0">
                                         {event.action === "tags_changed" ? (
                                           <span className="font-medium text-sm block">
-                                            {(() => {
-                                              const added = event.details?.added ?? {}
-                                              const removed = event.details?.removed ?? {}
-                                              const addedTotal = Object.values(added).reduce((a, b) => a + b, 0)
-                                              const removedTotal = Object.values(removed).reduce((a, b) => a + b, 0)
-                                              const parts: string[] = []
-                                              if (addedTotal > 0) parts.push(`+${addedTotal} tagged`)
-                                              if (removedTotal > 0) parts.push(`-${removedTotal} untagged`)
-                                              return parts.join(", ") || "Tag operation"
-                                            })()}
+                                            {formatTagsChangedSummary(event.details)}
                                           </span>
                                         ) : event.action === "category_changed" ? (
                                           <span className="font-medium text-sm block">
-                                            {(() => {
-                                              const categories = event.details?.categories ?? {}
-                                              const total = Object.values(categories).reduce((a: number, b: unknown) => a + (b as number), 0)
-                                              return `${total} torrent${total !== 1 ? "s" : ""} moved`
-                                            })()}
+                                            {formatCategoryChangedSummary(event.details)}
                                           </span>
                                         ) : (
                                           <TruncatedText className="font-medium text-sm block cursor-default">
