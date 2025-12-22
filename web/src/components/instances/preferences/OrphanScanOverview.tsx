@@ -296,10 +296,13 @@ function InstanceOrphanScanItem({
                             {run.filesDeleted} deleted · {formatBytes(run.bytesReclaimed)}
                           </span>
                         )}
-                        {run.status === "failed" && run.errorMessage && (
+                        {run.errorMessage && (
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <span className="text-destructive cursor-help truncate max-w-[200px]">
+                              <span className={cn(
+                                "cursor-help truncate max-w-[200px]",
+                                run.status === "failed" ? "text-destructive" : "text-yellow-500"
+                              )}>
                                 {run.errorMessage}
                               </span>
                             </TooltipTrigger>

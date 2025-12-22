@@ -418,6 +418,12 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		return
 	}
 
+	// Surface partial failures as warning (but continue with found orphans)
+	if len(walkErrors) > 0 {
+		warnMsg := fmt.Sprintf("Partial scan: %d path(s) inaccessible. %s", len(walkErrors), walkErrors[0])
+		s.warnRun(ctx, runID, warnMsg)
+	}
+
 	log.Info().Int("orphans", len(allOrphans)).Bool("truncated", truncated).Msg("orphanscan: scan complete")
 
 	// Convert to model files
@@ -592,6 +598,15 @@ func (s *Service) failRun(ctx context.Context, runID int64, message string) {
 	}
 	if err := s.store.UpdateRunFailed(ctx, runID, message); err != nil {
 		log.Error().Err(err).Int64("run", runID).Msg("orphanscan: failed to mark run failed")
+	}
+}
+
+func (s *Service) warnRun(ctx context.Context, runID int64, message string) {
+	if ctx.Err() != nil {
+		return
+	}
+	if err := s.store.UpdateRunWarning(ctx, runID, message); err != nil {
+		log.Error().Err(err).Int64("run", runID).Msg("orphanscan: failed to update warning")
 	}
 }
 

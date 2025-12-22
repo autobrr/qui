@@ -372,6 +372,14 @@ func (s *OrphanScanStore) UpdateRunFailed(ctx context.Context, runID int64, erro
 	return err
 }
 
+// UpdateRunWarning sets a warning message on a run without changing its status.
+func (s *OrphanScanStore) UpdateRunWarning(ctx context.Context, runID int64, warningMessage string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE orphan_scan_runs SET error_message = ? WHERE id = ?
+	`, warningMessage, runID)
+	return err
+}
+
 // MarkStuckRunsFailed marks old pending/scanning runs as failed.
 func (s *OrphanScanStore) MarkStuckRunsFailed(ctx context.Context, threshold time.Duration, statuses []string) error {
 	cutoff := time.Now().Add(-threshold)
