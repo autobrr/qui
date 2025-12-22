@@ -10,6 +10,7 @@ import { toast } from "sonner"
 
 const thirtySecondsInMilliseconds: number = 30 * 1000;
 const thirtyMinutesInMilliseconds: number = 30 * 1000 * 60;
+const oneHourInMilliseconds: number = 60 * 1000 * 60;
 
 // Hook to check premium access status
 export const usePremiumAccess = () => {
@@ -17,7 +18,7 @@ export const usePremiumAccess = () => {
     queryKey: ["licenses"],
     queryFn: () => api.getLicensedThemes(),
     staleTime: thirtySecondsInMilliseconds,
-    refetchInterval: thirtySecondsInMilliseconds,
+    refetchInterval: oneHourInMilliseconds,
     refetchOnWindowFocus: false,
   })
 }
