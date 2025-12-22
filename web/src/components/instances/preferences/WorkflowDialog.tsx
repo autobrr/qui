@@ -109,6 +109,27 @@ const emptyFormState: FormState = {
   exprBlockIfCrossSeedInCategories: [],
 }
 
+function ActionTypeSelector({ value, onChange }: { value: ActionType; onChange: (value: ActionType) => void }) {
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs">Action</Label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="w-[140px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="speedLimits">Speed limits</SelectItem>
+          <SelectItem value="shareLimits">Share limits</SelectItem>
+          <SelectItem value="pause">Pause</SelectItem>
+          <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
+          <SelectItem value="tag">Tag</SelectItem>
+          <SelectItem value="category">Category</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
 export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess }: WorkflowDialogProps) {
   const queryClient = useQueryClient()
   const [formState, setFormState] = useState<FormState>(emptyFormState)
@@ -586,48 +607,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
                 {/* Action row */}
                 {formState.actionType === "pause" && (
-                  <div className="space-y-1 w-fit">
-                    <Label className="text-xs">Action</Label>
-                    <Select
-                      value={formState.actionType}
-                      onValueChange={handleActionTypeChange}
-                    >
-                      <SelectTrigger className="w-[140px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="speedLimits">Speed limits</SelectItem>
-                        <SelectItem value="shareLimits">Share limits</SelectItem>
-                        <SelectItem value="pause">Pause</SelectItem>
-                        <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
-                        <SelectItem value="tag">Tag</SelectItem>
-                        <SelectItem value="category">Category</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="w-fit">
+                    <ActionTypeSelector value={formState.actionType} onChange={handleActionTypeChange} />
                   </div>
                 )}
 
                 {formState.actionType === "speedLimits" && (
                   <div className="grid grid-cols-[auto_1fr_1fr] gap-3 items-end">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Action</Label>
-                      <Select
-                        value={formState.actionType}
-                        onValueChange={handleActionTypeChange}
-                      >
-                        <SelectTrigger className="w-[140px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="speedLimits">Speed limits</SelectItem>
-                          <SelectItem value="shareLimits">Share limits</SelectItem>
-                          <SelectItem value="pause">Pause</SelectItem>
-                          <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
-                          <SelectItem value="tag">Tag</SelectItem>
-                          <SelectItem value="category">Category</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    <ActionTypeSelector value={formState.actionType} onChange={handleActionTypeChange} />
                     <div className="space-y-1">
                       <Label className="text-xs">Upload (KiB/s)</Label>
                       <Input
@@ -653,25 +640,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
                 {formState.actionType === "shareLimits" && (
                   <div className="grid grid-cols-[auto_1fr_1fr] gap-3 items-end">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Action</Label>
-                      <Select
-                        value={formState.actionType}
-                        onValueChange={handleActionTypeChange}
-                      >
-                        <SelectTrigger className="w-[140px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="speedLimits">Speed limits</SelectItem>
-                          <SelectItem value="shareLimits">Share limits</SelectItem>
-                          <SelectItem value="pause">Pause</SelectItem>
-                          <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
-                          <SelectItem value="tag">Tag</SelectItem>
-                          <SelectItem value="category">Category</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    <ActionTypeSelector value={formState.actionType} onChange={handleActionTypeChange} />
                     <div className="space-y-1">
                       <Label className="text-xs">Ratio limit</Label>
                       <Input
@@ -698,25 +667,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
                 {formState.actionType === "delete" && (
                   <div className="flex items-end gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Action</Label>
-                      <Select
-                        value={formState.actionType}
-                        onValueChange={handleActionTypeChange}
-                      >
-                        <SelectTrigger className="w-[140px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="speedLimits">Speed limits</SelectItem>
-                          <SelectItem value="shareLimits">Share limits</SelectItem>
-                          <SelectItem value="pause">Pause</SelectItem>
-                          <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
-                          <SelectItem value="tag">Tag</SelectItem>
-                          <SelectItem value="category">Category</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    <ActionTypeSelector value={formState.actionType} onChange={handleActionTypeChange} />
                     <div className="space-y-1">
                       <Label className="text-xs">Mode</Label>
                       <Select
@@ -738,25 +689,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
                 {formState.actionType === "tag" && (
                   <div className="grid grid-cols-[auto_1fr_auto] gap-3 items-start">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Action</Label>
-                      <Select
-                        value={formState.actionType}
-                        onValueChange={handleActionTypeChange}
-                      >
-                        <SelectTrigger className="w-[140px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="speedLimits">Speed limits</SelectItem>
-                          <SelectItem value="shareLimits">Share limits</SelectItem>
-                          <SelectItem value="pause">Pause</SelectItem>
-                          <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
-                          <SelectItem value="tag">Tag</SelectItem>
-                          <SelectItem value="category">Category</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    <ActionTypeSelector value={formState.actionType} onChange={handleActionTypeChange} />
                     <div className="space-y-1">
                       <Label className="text-xs">Tags</Label>
                       <Input
@@ -790,25 +723,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
                 {formState.actionType === "category" && (
                   <div className="flex items-center gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Action</Label>
-                      <Select
-                        value={formState.actionType}
-                        onValueChange={handleActionTypeChange}
-                      >
-                        <SelectTrigger className="w-[140px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="speedLimits">Speed limits</SelectItem>
-                          <SelectItem value="shareLimits">Share limits</SelectItem>
-                          <SelectItem value="pause">Pause</SelectItem>
-                          <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete</SelectItem>
-                          <SelectItem value="tag">Tag</SelectItem>
-                          <SelectItem value="category">Category</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    <ActionTypeSelector value={formState.actionType} onChange={handleActionTypeChange} />
                     <div className="space-y-1">
                       <Label className="text-xs">Move to category</Label>
                       <Select
