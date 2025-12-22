@@ -2654,6 +2654,24 @@ func (s *Service) processCrossSeedCandidate(
 	// Check if source has extra files that won't exist on disk (e.g., NFO files not filtered by ignorePatterns)
 	hasExtraFiles := hasExtraSourceFiles(sourceFiles, candidateFiles)
 
+	// SAFETY: Reject cross-seeds where main content file sizes don't match.
+	// This prevents corrupting existing good data with potentially different or corrupted files.
+	// Scene releases should be byte-for-byte identical across trackers - if sizes differ,
+	// it indicates either corruption or a different release that shouldn't be cross-seeded.
+	if hasMismatch, mismatchedFiles := hasContentFileSizeMismatch(sourceFiles, candidateFiles, req.IgnorePatterns, s.stringNormalizer); hasMismatch {
+		result.Status = "rejected"
+		result.Message = "Content file sizes do not match - possible corruption or different release"
+		log.Warn().
+			Int("instanceID", candidate.InstanceID).
+			Str("instanceName", candidate.InstanceName).
+			Str("torrentHash", torrentHash).
+			Str("matchedHash", matchedTorrent.Hash).
+			Str("matchType", string(matchType)).
+			Strs("mismatchedFiles", mismatchedFiles).
+			Msg("Cross-seed rejected: content file size mismatch - refusing to proceed to avoid potential data corruption")
+		return result
+	}
+
 	if req.SkipRecheck && (requiresAlignment || hasExtraFiles) {
 		result.Status = "skipped_recheck"
 		result.Message = "Skipped cross-seed: requires recheck and skip recheck is enabled"
