@@ -3,13 +3,13 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { OrphanScanPreviewDialog } from "@/components/instances/preferences/OrphanScanPreviewDialog"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { OrphanScanPreviewDialog } from "@/components/instances/preferences/OrphanScanPreviewDialog"
 import { useInstances } from "@/hooks/useInstances"
 import {
   useCancelOrphanScanRun,
@@ -295,6 +295,18 @@ function InstanceOrphanScanItem({
                           <span>
                             {run.filesDeleted} deleted · {formatBytes(run.bytesReclaimed)}
                           </span>
+                        )}
+                        {run.status === "failed" && run.errorMessage && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="text-destructive cursor-help truncate max-w-[200px]">
+                                {run.errorMessage}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="max-w-xs">{run.errorMessage}</p>
+                            </TooltipContent>
+                          </Tooltip>
                         )}
                         {run.startedAt && (
                           <span>{formatRelativeTime(new Date(run.startedAt))}</span>

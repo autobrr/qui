@@ -377,6 +377,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 
 	// Walk each scan root and collect orphans
 	var allOrphans []OrphanFile
+	var walkErrors []string
 	truncated := false
 	remaining := settings.MaxFilesPerRun
 	var bytesFound int64
@@ -394,6 +395,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 				return
 			}
 			log.Error().Err(err).Str("root", root).Msg("orphanscan: walk error")
+			walkErrors = append(walkErrors, fmt.Sprintf("%s: %v", root, err))
 			continue
 		}
 
@@ -407,6 +409,13 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			truncated = true
 			break
 		}
+	}
+
+	// If no orphans found but we had walk errors, all roots likely failed
+	if len(allOrphans) == 0 && len(walkErrors) > 0 {
+		errMsg := fmt.Sprintf("Failed to access %d scan path(s). %s", len(walkErrors), walkErrors[0])
+		s.failRun(ctx, runID, errMsg)
+		return
 	}
 
 	log.Info().Int("orphans", len(allOrphans)).Bool("truncated", truncated).Msg("orphanscan: scan complete")
