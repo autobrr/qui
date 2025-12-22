@@ -253,7 +253,7 @@ export function ReannounceOverview({
                 <AccordionContent className="px-6 pb-4">
                   <div className="space-y-4">
                     {/* Settings summary */}
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border/40">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40 border">
                       <div className="space-y-0.5">
                         <p className="text-sm text-muted-foreground">
                           {getSettingsSummary(settings)}
@@ -357,11 +357,11 @@ export function ReannounceOverview({
                             </p>
                           </div>
                         ) : activityQuery?.isLoading ? (
-                          <div className="h-[150px] flex items-center justify-center border rounded-lg bg-muted/10">
+                          <div className="h-[150px] flex items-center justify-center border rounded-lg bg-muted/30">
                             <p className="text-sm text-muted-foreground">Loading activity...</p>
                           </div>
                         ) : filteredEvents.length === 0 ? (
-                          <div className="h-[100px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/10 text-center p-4">
+                          <div className="h-[100px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/30 text-center p-4">
                             <p className="text-sm text-muted-foreground">
                               {searchTerm ? "No matching events found." : "No activity recorded yet."}
                             </p>
@@ -372,12 +372,12 @@ export function ReannounceOverview({
                             </p>
                           </div>
                         ) : (
-                          <div className="max-h-[350px] overflow-auto rounded-md border">
-                            <div className="divide-y divide-border/40">
+                          <div className="max-h-[350px] overflow-auto rounded-md border bg-muted/20">
+                            <div className="divide-y divide-border">
                               {filteredEvents.map((event, eventIndex) => (
                                 <div
                                   key={`${event.hash}-${eventIndex}-${event.timestamp}`}
-                                  className="p-3 hover:bg-muted/20 transition-colors"
+                                  className="p-3 hover:bg-muted/30 transition-colors"
                                 >
                                   <div className="flex flex-col gap-2">
                                     <div className="flex items-center gap-2 flex-wrap">
@@ -403,7 +403,7 @@ export function ReannounceOverview({
                                     </div>
 
                                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                      <div className="flex items-center gap-1 bg-muted/50 px-1.5 py-0.5 rounded">
+                                      <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
                                         <span className="font-mono">{event.hash.substring(0, 7)}</span>
                                         <button
                                           type="button"
@@ -422,7 +422,7 @@ export function ReannounceOverview({
                                     </div>
 
                                     {event.reason && (
-                                      <div className="text-xs bg-muted/30 p-2 rounded">
+                                      <div className="text-xs bg-muted/40 p-2 rounded">
                                         {formatErrorReason(event.reason) !== event.reason ? (
                                           <Tooltip>
                                             <TooltipTrigger asChild>

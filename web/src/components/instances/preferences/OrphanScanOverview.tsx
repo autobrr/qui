@@ -186,7 +186,7 @@ function InstanceOrphanScanItem({
       <AccordionContent className="px-6 pb-4">
         <div className="space-y-4">
           {/* Settings summary */}
-          <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border/40">
+          <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40 border">
             <div className="space-y-0.5">
               <p className="text-sm text-muted-foreground">
                 {settings
@@ -232,7 +232,7 @@ function InstanceOrphanScanItem({
 
           {/* Preview ready actions */}
           {latestRun?.status === "preview_ready" && latestRun.filesFound > 0 && (
-            <div className="p-4 rounded-lg border border-yellow-500/30 bg-yellow-500/5 space-y-3">
+            <div className="p-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 space-y-3">
               <div className="flex items-start gap-3">
                 <Files className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">

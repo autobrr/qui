@@ -613,11 +613,11 @@ export function WorkflowsOverview({
                             </p>
                           </div>
                         ) : activityQuery?.isLoading ? (
-                          <div className="h-[150px] flex items-center justify-center border rounded-lg bg-muted/10">
+                          <div className="h-[150px] flex items-center justify-center border rounded-lg bg-muted/30">
                             <p className="text-sm text-muted-foreground">Loading activity...</p>
                           </div>
                         ) : filteredEvents.length === 0 ? (
-                          <div className="h-[100px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/10 text-center p-4">
+                          <div className="h-[100px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/30 text-center p-4">
                             <p className="text-sm text-muted-foreground">
                               {activitySearchTerm ? "No matching events found." : "No activity recorded yet."}
                             </p>
@@ -628,12 +628,12 @@ export function WorkflowsOverview({
                             </p>
                           </div>
                         ) : (
-                          <div className="max-h-[350px] overflow-auto rounded-md border">
-                            <div className="divide-y divide-border/40">
+                          <div className="max-h-[350px] overflow-auto rounded-md border bg-muted/20">
+                            <div className="divide-y divide-border">
                               {filteredEvents.map((event) => (
                                 <div
                                   key={event.id}
-                                  className="p-3 hover:bg-muted/20 transition-colors"
+                                  className="p-3 hover:bg-muted/30 transition-colors"
                                 >
                                   <div className="flex flex-col gap-2">
                                     <div className="grid grid-cols-[1fr_auto] items-center gap-2">
@@ -678,7 +678,7 @@ export function WorkflowsOverview({
 
                                     <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                                       {event.hash && (
-                                        <div className="flex items-center gap-1 bg-muted/50 px-1.5 py-0.5 rounded">
+                                        <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
                                           <span className="font-mono">{event.hash.substring(0, 7)}</span>
                                           <button
                                             type="button"
@@ -723,7 +723,7 @@ export function WorkflowsOverview({
                                     </div>
 
                                     {event.reason && event.outcome === "failed" && (
-                                      <div className="text-xs bg-muted/30 p-2 rounded">
+                                      <div className="text-xs bg-muted/40 p-2 rounded">
                                         <span>{event.reason}</span>
                                       </div>
                                     )}
@@ -948,7 +948,7 @@ function RulePreview({ rule, onToggle, isToggling, onEdit, onDelete }: RulePrevi
 
   return (
     <div className={cn(
-      "rounded-lg border bg-muted/20 p-3 grid grid-cols-[auto_1fr_auto] items-center gap-3",
+      "rounded-lg border bg-muted/40 p-3 grid grid-cols-[auto_1fr_auto] items-center gap-3",
       !rule.enabled && "opacity-60"
     )}>
       <Switch

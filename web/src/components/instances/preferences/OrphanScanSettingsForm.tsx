@@ -121,7 +121,7 @@ export function OrphanScanSettingsForm({
           <h3 className="text-base font-medium">Settings</h3>
         </div>
       </div>
-      <div className="flex items-center gap-2 bg-muted/40 p-2 rounded-lg border border-border/40 shrink-0">
+      <div className="flex items-center gap-2 bg-muted/50 p-2 rounded-lg border shrink-0">
         <Label htmlFor="orphan-scan-enabled" className="font-medium text-sm cursor-pointer">
           {settings.enabled ? "Enabled" : "Disabled"}
         </Label>
