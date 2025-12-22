@@ -60,7 +60,9 @@ function computeStats(events: AutomationActivity[]): InstanceStats {
     }
     if (eventDate >= startOfToday) {
       if (event.outcome === "success") {
-        deletionsToday++
+        if (event.action.startsWith("deleted_")) {
+          deletionsToday++
+        }
       } else if (event.outcome === "failed") {
         failedToday++
       }
