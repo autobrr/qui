@@ -107,7 +107,10 @@ function formatTagsChangedSummary(details: AutomationActivity["details"]): strin
 
 function formatCategoryChangedSummary(details: AutomationActivity["details"]): string {
   const categories = details?.categories ?? {}
-  const total = Object.values(categories).reduce((a: number, b: unknown) => a + (b as number), 0)
+  const total = Object.values(categories).reduce((sum, value) => {
+    const asNumber = typeof value === "number" ? value : Number(value)
+    return sum + (Number.isFinite(asNumber) ? asNumber : 0)
+  }, 0)
   return `${total} torrent${total !== 1 ? "s" : ""} moved`
 }
 
@@ -727,12 +730,36 @@ export function WorkflowsOverview({
 
                                     {(event.details || event.ruleName) && (
                                       <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                                        {event.details?.ratio !== undefined && (
-                                          <span>Ratio: {event.details.ratio.toFixed(2)}/{event.details.ratioLimit?.toFixed(2)}</span>
-                                        )}
-                                        {event.details?.seedingMinutes !== undefined && (
-                                          <span>Seeding: {event.details.seedingMinutes}m/{event.details.seedingLimitMinutes}m</span>
-                                        )}
+                                        {(() => {
+                                          const ratio = event.details?.ratio
+                                          const ratioLimit = event.details?.ratioLimit
+                                          const hasRatio = typeof ratio === "number" && Number.isFinite(ratio)
+                                          const hasRatioLimit = typeof ratioLimit === "number" && Number.isFinite(ratioLimit)
+
+                                          if (!hasRatio) return null
+
+                                          return (
+                                            <span>
+                                              Ratio: {ratio.toFixed(2)}
+                                              {hasRatioLimit ? `/${ratioLimit.toFixed(2)}` : ""}
+                                            </span>
+                                          )
+                                        })()}
+                                        {(() => {
+                                          const seedingMinutes = event.details?.seedingMinutes
+                                          const seedingLimitMinutes = event.details?.seedingLimitMinutes
+                                          const hasSeedingMinutes = typeof seedingMinutes === "number" && Number.isFinite(seedingMinutes)
+                                          const hasSeedingLimitMinutes = typeof seedingLimitMinutes === "number" && Number.isFinite(seedingLimitMinutes)
+
+                                          if (!hasSeedingMinutes) return null
+
+                                          return (
+                                            <span>
+                                              Seeding: {seedingMinutes}m
+                                              {hasSeedingLimitMinutes ? `/${seedingLimitMinutes}m` : ""}
+                                            </span>
+                                          )
+                                        })()}
                                         {event.details?.filesKept !== undefined && (() => {
                                           const { filesKept, deleteMode } = event.details
                                           let label: string

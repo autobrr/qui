@@ -18,8 +18,7 @@ import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { TruncatedText } from "@/components/ui/truncated-text"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
-import { formatBytes } from "@/lib/utils"
-import { getRatioColor } from "@/lib/utils"
+import { formatBytes, formatDurationCompact, getRatioColor } from "@/lib/utils"
 import type { AutomationPreviewResult } from "@/types"
 import { Loader2 } from "lucide-react"
 
@@ -184,12 +183,4 @@ export function WorkflowPreviewDialog({
       </AlertDialogContent>
     </AlertDialog>
   )
-}
-
-// Compact duration format - shows only the largest unit (e.g., "5d" not "5d 3h 2m")
-function formatDurationCompact(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`
-  return `${Math.floor(seconds / 86400)}d`
 }
