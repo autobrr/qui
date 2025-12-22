@@ -31,6 +31,9 @@ type Config struct {
 	ActivityRetentionDays int
 }
 
+// DefaultRuleInterval is the cadence for rules that don't specify their own interval.
+const DefaultRuleInterval = 15 * time.Minute
+
 // ruleKey identifies a rule within an instance for per-rule cadence tracking.
 type ruleKey struct {
 	instanceID int
@@ -497,12 +500,16 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	now := time.Now()
 	eligibleRules := make([]*models.Automation, 0, len(rules))
 	for _, rule := range rules {
-		if !force && rule.IntervalSeconds != nil {
+		if !force {
+			interval := DefaultRuleInterval
+			if rule.IntervalSeconds != nil {
+				interval = time.Duration(*rule.IntervalSeconds) * time.Second
+			}
 			key := ruleKey{instanceID, rule.ID}
 			s.mu.RLock()
 			lastRun := s.lastRuleRun[key]
 			s.mu.RUnlock()
-			if now.Sub(lastRun) < time.Duration(*rule.IntervalSeconds)*time.Second {
+			if now.Sub(lastRun) < interval {
 				continue // skip, interval not elapsed
 			}
 		}

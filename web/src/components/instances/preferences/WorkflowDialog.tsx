@@ -67,7 +67,7 @@ type FormState = {
   applyToAllTrackers: boolean
   enabled: boolean
   sortOrder?: number
-  intervalSeconds: number | null // null = use global default (20s)
+  intervalSeconds: number | null // null = use global default (15m)
   // Single action with condition
   actionType: ActionType
   actionCondition: RuleCondition | null
@@ -697,7 +697,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                 )}
 
                 {formState.actionType === "delete" && (
-                  <div className="grid grid-cols-[auto_1fr_auto] gap-3 items-end">
+                  <div className="flex items-end gap-3">
                     <div className="space-y-1">
                       <Label className="text-xs">Action</Label>
                       <Select
@@ -723,7 +723,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         value={formState.exprDeleteMode}
                         onValueChange={(value: FormState["exprDeleteMode"]) => setFormState(prev => ({ ...prev, exprDeleteMode: value }))}
                       >
-                        <SelectTrigger className="text-destructive">
+                        <SelectTrigger className="w-fit text-destructive">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -815,7 +815,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         value={formState.exprCategory}
                         onValueChange={(value) => setFormState(prev => ({ ...prev, exprCategory: value }))}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger className="w-fit min-w-[160px]">
                           <Folder className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
                           <SelectValue placeholder="Select category" />
                         </SelectTrigger>
@@ -912,19 +912,24 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       setFormState(prev => ({ ...prev, intervalSeconds }))
                     }}
                   >
-                    <SelectTrigger id="rule-interval" className="w-[120px] h-8">
+                    <SelectTrigger id="rule-interval" className="w-fit h-8">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="default">Default (20s)</SelectItem>
+                      <SelectItem value="default">Default (15m)</SelectItem>
                       <SelectItem value="60">1 minute</SelectItem>
                       <SelectItem value="300">5 minutes</SelectItem>
                       <SelectItem value="900">15 minutes</SelectItem>
                       <SelectItem value="1800">30 minutes</SelectItem>
                       <SelectItem value="3600">1 hour</SelectItem>
+                      <SelectItem value="7200">2 hours</SelectItem>
+                      <SelectItem value="14400">4 hours</SelectItem>
+                      <SelectItem value="21600">6 hours</SelectItem>
+                      <SelectItem value="43200">12 hours</SelectItem>
+                      <SelectItem value="86400">24 hours</SelectItem>
                       {/* Show custom option if current value is non-preset */}
                       {formState.intervalSeconds !== null &&
-                        ![60, 300, 900, 1800, 3600].includes(formState.intervalSeconds) && (
+                        ![60, 300, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400].includes(formState.intervalSeconds) && (
                         <SelectItem value={String(formState.intervalSeconds)}>
                           Custom ({formState.intervalSeconds}s)
                         </SelectItem>
