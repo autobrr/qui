@@ -46,6 +46,8 @@ interface LeafConditionProps {
   onChange: (condition: RuleCondition) => void;
   onRemove: () => void;
   isOnly?: boolean;
+  /** Optional category options for EXISTS_IN/CONTAINS_IN operators */
+  categoryOptions?: Array<{ label: string; value: string }>;
 }
 
 export function LeafCondition({
@@ -54,6 +56,7 @@ export function LeafCondition({
   onChange,
   onRemove,
   isOnly,
+  categoryOptions,
 }: LeafConditionProps) {
   const {
     attributes,
@@ -358,6 +361,20 @@ export function LeafCondition({
             />
           </PopoverContent>
         </Popover>
+      ) : (condition.operator === "EXISTS_IN" || condition.operator === "CONTAINS_IN" || (condition.field === "CATEGORY" && (condition.operator === "EQUAL" || condition.operator === "NOT_EQUAL"))) && categoryOptions && categoryOptions.length > 0 ? (
+        // Category selector for category-related conditions when categories available
+        <Select value={condition.value ?? ""} onValueChange={handleValueChange}>
+          <SelectTrigger className="h-8 w-[160px]">
+            <SelectValue placeholder="Select category" />
+          </SelectTrigger>
+          <SelectContent>
+            {categoryOptions.map((cat) => (
+              <SelectItem key={cat.value} value={cat.value}>
+                {cat.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       ) : (
         <div className="flex items-center gap-1">
           <Input
@@ -368,8 +385,11 @@ export function LeafCondition({
             placeholder={getPlaceholder(fieldType)}
           />
           {renderUnitHint(fieldType)}
-          {/* Regex toggle for string fields */}
-          {fieldType === "string" && condition.operator !== "MATCHES" && (
+          {/* Regex toggle for string fields - hide for EXISTS_IN/CONTAINS_IN */}
+          {fieldType === "string" &&
+            condition.operator !== "MATCHES" &&
+            condition.operator !== "EXISTS_IN" &&
+            condition.operator !== "CONTAINS_IN" && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

@@ -4,6 +4,7 @@
 package automations
 
 import (
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -13,6 +14,17 @@ import (
 
 const maxConditionDepth = 20
 
+// minContainsNameLength is the minimum name length for CONTAINS_IN matching
+// to avoid surprising matches on short names.
+const minContainsNameLength = 10
+
+// categoryEntry stores torrent info for category-based lookups.
+type categoryEntry struct {
+	Hash           string // torrent hash for self-exclusion
+	Name           string // lowercased name (for EXISTS_IN exact match)
+	NormalizedName string // normalized name for CONTAINS_IN (separators → space)
+}
+
 // EvalContext provides additional context for condition evaluation.
 type EvalContext struct {
 	// UnregisteredSet contains hashes of unregistered torrents (from SyncManager health counts)
@@ -21,6 +33,140 @@ type EvalContext struct {
 	HardlinkedSet map[string]struct{}
 	// InstanceHasLocalAccess indicates whether the instance has local filesystem access
 	InstanceHasLocalAccess bool
+
+	// CategoryIndex maps lowercased category → lowercased name → set of hashes.
+	// Enables O(1) EXISTS_IN lookups while supporting self-exclusion.
+	CategoryIndex map[string]map[string]map[string]struct{}
+
+	// CategoryNames maps lowercased category → slice of categoryEntry.
+	// Used for CONTAINS_IN iteration (stores pre-normalized names).
+	CategoryNames map[string][]categoryEntry
+}
+
+// separatorReplacer replaces common torrent name separators with spaces.
+var separatorReplacer = strings.NewReplacer(".", " ", "_", " ", "-", " ")
+
+// whitespaceCollapser collapses multiple spaces into one.
+var whitespaceCollapser = regexp.MustCompile(`\s+`)
+
+// normalizeName normalizes a torrent name for CONTAINS_IN comparison:
+// lowercase + replace . _ - with space + collapse whitespace.
+func normalizeName(s string) string {
+	s = strings.ToLower(s)
+	s = separatorReplacer.Replace(s)
+	s = whitespaceCollapser.ReplaceAllString(s, " ")
+	return strings.TrimSpace(s)
+}
+
+// BuildCategoryIndex builds the category lookup structures from a list of torrents.
+// Returns both the CategoryIndex (for O(1) EXISTS_IN) and CategoryNames (for CONTAINS_IN iteration).
+func BuildCategoryIndex(torrents []qbt.Torrent) (map[string]map[string]map[string]struct{}, map[string][]categoryEntry) {
+	categoryIndex := make(map[string]map[string]map[string]struct{})
+	categoryNames := make(map[string][]categoryEntry)
+
+	for _, t := range torrents {
+		// Use lowercased + trimmed category as key (empty string is valid for uncategorized)
+		catKey := strings.ToLower(strings.TrimSpace(t.Category))
+		nameLower := strings.ToLower(t.Name)
+
+		// Build CategoryIndex for O(1) EXISTS_IN lookup
+		if categoryIndex[catKey] == nil {
+			categoryIndex[catKey] = make(map[string]map[string]struct{})
+		}
+		if categoryIndex[catKey][nameLower] == nil {
+			categoryIndex[catKey][nameLower] = make(map[string]struct{})
+		}
+		categoryIndex[catKey][nameLower][t.Hash] = struct{}{}
+
+		// Build CategoryNames for CONTAINS_IN iteration
+		categoryNames[catKey] = append(categoryNames[catKey], categoryEntry{
+			Hash:           t.Hash,
+			Name:           nameLower,
+			NormalizedName: normalizeName(t.Name),
+		})
+	}
+
+	return categoryIndex, categoryNames
+}
+
+// existsInCategory checks if a different torrent with the exact same name exists in the target category.
+func existsInCategory(torrentHash, torrentName, targetCategory string, ctx *EvalContext) bool {
+	if ctx == nil || ctx.CategoryIndex == nil {
+		return false
+	}
+
+	// Normalize inputs
+	catKey := strings.ToLower(strings.TrimSpace(targetCategory))
+	// Treat all-whitespace as "no match" (but empty string is valid for uncategorized)
+	if targetCategory != "" && catKey == "" {
+		return false
+	}
+	nameLower := strings.ToLower(torrentName)
+
+	// Lookup category
+	nameMap, ok := ctx.CategoryIndex[catKey]
+	if !ok {
+		return false
+	}
+
+	// Lookup name
+	hashSet, ok := nameMap[nameLower]
+	if !ok {
+		return false
+	}
+
+	// Check if any hash in the set is different from the current torrent
+	for hash := range hashSet {
+		if hash != torrentHash {
+			return true
+		}
+	}
+	return false
+}
+
+// containsInCategory checks if a different torrent with a similar name exists in the target category.
+// Uses bidirectional contains matching with normalization.
+func containsInCategory(torrentHash, torrentName, targetCategory string, ctx *EvalContext) bool {
+	if ctx == nil || ctx.CategoryNames == nil {
+		return false
+	}
+
+	// Normalize inputs
+	catKey := strings.ToLower(strings.TrimSpace(targetCategory))
+	// Treat all-whitespace as "no match" (but empty string is valid for uncategorized)
+	if targetCategory != "" && catKey == "" {
+		return false
+	}
+
+	// Skip if current torrent name is too short
+	normalizedCurrent := normalizeName(torrentName)
+	if len(normalizedCurrent) < minContainsNameLength {
+		return false
+	}
+
+	// Lookup category entries
+	entries, ok := ctx.CategoryNames[catKey]
+	if !ok {
+		return false
+	}
+
+	// Check each entry for bidirectional contains match
+	for _, entry := range entries {
+		// Skip self
+		if entry.Hash == torrentHash {
+			continue
+		}
+		// Skip entries with short normalized names
+		if len(entry.NormalizedName) < minContainsNameLength {
+			continue
+		}
+		// Bidirectional contains: either contains the other
+		if strings.Contains(normalizedCurrent, entry.NormalizedName) ||
+			strings.Contains(entry.NormalizedName, normalizedCurrent) {
+			return true
+		}
+	}
+	return false
 }
 
 // ConditionUsesField checks if a condition tree references a specific field.
@@ -53,15 +199,18 @@ func EvaluateConditionWithContext(cond *RuleCondition, torrent qbt.Torrent, ctx 
 		return false
 	}
 
-	// Compile regex if needed
-	if cond.Regex || cond.Operator == OperatorMatches {
-		if err := cond.CompileRegex(); err != nil {
-			log.Debug().
-				Err(err).
-				Str("field", string(cond.Field)).
-				Str("pattern", cond.Value).
-				Msg("automations: regex compilation failed")
-			return false
+	// Compile regex if needed, but skip for EXISTS_IN/CONTAINS_IN operators
+	// (cond.Value is a category name, not a pattern)
+	if cond.Operator != OperatorExistsIn && cond.Operator != OperatorContainsIn {
+		if cond.Regex || cond.Operator == OperatorMatches {
+			if err := cond.CompileRegex(); err != nil {
+				log.Debug().
+					Err(err).
+					Str("field", string(cond.Field)).
+					Str("pattern", cond.Value).
+					Msg("automations: regex compilation failed")
+				return false
+			}
 		}
 	}
 
@@ -107,6 +256,13 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	switch cond.Field {
 	// String fields
 	case FieldName:
+		// EXISTS_IN/CONTAINS_IN are special operators for cross-category lookups
+		if cond.Operator == OperatorExistsIn {
+			return existsInCategory(torrent.Hash, torrent.Name, cond.Value, ctx)
+		}
+		if cond.Operator == OperatorContainsIn {
+			return containsInCategory(torrent.Hash, torrent.Name, cond.Value, ctx)
+		}
 		return compareString(torrent.Name, cond)
 	case FieldHash:
 		return compareString(torrent.Hash, cond)

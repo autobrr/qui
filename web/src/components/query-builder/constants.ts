@@ -202,10 +202,23 @@ export function getFieldType(field: string): FieldType {
   return fieldDef?.type ?? "string";
 }
 
+// Special operators only available for NAME field (cross-category lookups)
+export const NAME_SPECIAL_OPERATORS = [
+  { value: "EXISTS_IN", label: "exists in" },
+  { value: "CONTAINS_IN", label: "similar exists in" },
+];
+
 // Helper to get operators for a field
 export function getOperatorsForField(field: string) {
   const type = getFieldType(field);
-  return OPERATORS_BY_TYPE[type];
+  const baseOperators = OPERATORS_BY_TYPE[type];
+
+  // Add special cross-category operators for NAME field only
+  if (field === "NAME") {
+    return [...baseOperators, ...NAME_SPECIAL_OPERATORS];
+  }
+
+  return baseOperators;
 }
 
 // Unit conversion helpers for display

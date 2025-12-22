@@ -367,6 +367,10 @@ const (
 	OperatorLessThanOrEqual    ConditionOperator = "LESS_THAN_OR_EQUAL"
 	OperatorBetween            ConditionOperator = "BETWEEN"
 	OperatorMatches            ConditionOperator = "MATCHES" // regex
+
+	// Cross-category lookup operators (NAME field only)
+	OperatorExistsIn   ConditionOperator = "EXISTS_IN"   // exact name match in target category
+	OperatorContainsIn ConditionOperator = "CONTAINS_IN" // partial name match in target category
 )
 
 // RuleCondition represents a condition or group of conditions for filtering torrents.

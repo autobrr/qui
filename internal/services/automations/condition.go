@@ -89,4 +89,8 @@ const (
 	OperatorLessThanOrEqual    = models.OperatorLessThanOrEqual
 	OperatorBetween            = models.OperatorBetween
 	OperatorMatches            = models.OperatorMatches
+
+	// Cross-category lookup operators (NAME field only)
+	OperatorExistsIn   = models.OperatorExistsIn
+	OperatorContainsIn = models.OperatorContainsIn
 )

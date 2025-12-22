@@ -223,6 +223,9 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		evalCtx.InstanceHasLocalAccess = instance.HasLocalFilesystemAccess
 	}
 
+	// Build category index for EXISTS_IN/CONTAINS_IN operators
+	evalCtx.CategoryIndex, evalCtx.CategoryNames = BuildCategoryIndex(torrents)
+
 	// Get health counts for unregistered torrent preview and isUnregistered condition evaluation
 	var unregisteredSet map[string]struct{}
 	if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil && len(healthCounts.UnregisteredSet) > 0 {
@@ -335,6 +338,9 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	if instance != nil {
 		evalCtx.InstanceHasLocalAccess = instance.HasLocalFilesystemAccess
 	}
+
+	// Build category index for EXISTS_IN/CONTAINS_IN operators
+	evalCtx.CategoryIndex, evalCtx.CategoryNames = BuildCategoryIndex(torrents)
 
 	// Get health counts for unregistered condition evaluation
 	if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil {
@@ -492,6 +498,9 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int) error {
 	evalCtx := &EvalContext{
 		InstanceHasLocalAccess: instance.HasLocalFilesystemAccess,
 	}
+
+	// Build category index for EXISTS_IN/CONTAINS_IN operators
+	evalCtx.CategoryIndex, evalCtx.CategoryNames = BuildCategoryIndex(torrents)
 
 	// Get health counts for isUnregistered condition evaluation
 	if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil {

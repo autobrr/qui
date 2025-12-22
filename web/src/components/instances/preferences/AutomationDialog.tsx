@@ -576,6 +576,7 @@ export function AutomationDialog({ open, onOpenChange, instanceId, rule, onSucce
                   <QueryBuilder
                     condition={formState.actionCondition}
                     onChange={(condition) => setFormState(prev => ({ ...prev, actionCondition: condition }))}
+                    categoryOptions={categoryOptions}
                   />
                 </div>
 

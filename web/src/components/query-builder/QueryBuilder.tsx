@@ -19,12 +19,15 @@ interface QueryBuilderProps {
   condition: RuleCondition | null;
   onChange: (condition: RuleCondition | null) => void;
   className?: string;
+  /** Optional category options for EXISTS_IN/CONTAINS_IN operators */
+  categoryOptions?: Array<{ label: string; value: string }>;
 }
 
 export function QueryBuilder({
   condition,
   onChange,
   className,
+  categoryOptions,
 }: QueryBuilderProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -122,6 +125,7 @@ export function QueryBuilder({
           condition={effectiveCondition}
           onChange={handleChange}
           isRoot
+          categoryOptions={categoryOptions}
         />
       </div>
     </DndContext>

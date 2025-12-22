@@ -16,6 +16,8 @@ interface ConditionGroupProps {
   onRemove?: () => void;
   depth?: number;
   isRoot?: boolean;
+  /** Optional category options for EXISTS_IN/CONTAINS_IN operators */
+  categoryOptions?: Array<{ label: string; value: string }>;
 }
 
 const MAX_DEPTH = 5;
@@ -27,6 +29,7 @@ export function ConditionGroup({
   onRemove,
   depth = 0,
   isRoot = false,
+  categoryOptions,
 }: ConditionGroupProps) {
   const isGroup = condition.operator === "AND" || condition.operator === "OR";
   const children = condition.conditions ?? [];
@@ -108,6 +111,7 @@ export function ConditionGroup({
         condition={condition}
         onChange={onChange}
         onRemove={onRemove ?? (() => {})}
+        categoryOptions={categoryOptions}
       />
     );
   }
@@ -174,6 +178,7 @@ export function ConditionGroup({
                   onChange={(updated) => updateChild(index, updated)}
                   onRemove={() => removeChild(index)}
                   depth={depth + 1}
+                  categoryOptions={categoryOptions}
                 />
               );
             }
@@ -186,6 +191,7 @@ export function ConditionGroup({
                 onChange={(updated) => updateChild(index, updated)}
                 onRemove={() => removeChild(index)}
                 isOnly={children.length === 1 && isRoot}
+                categoryOptions={categoryOptions}
               />
             );
           })}

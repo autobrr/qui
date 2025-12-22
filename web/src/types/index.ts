@@ -166,6 +166,9 @@ export type ConditionOperator =
   | "LESS_THAN_OR_EQUAL"
   | "BETWEEN"
   | "MATCHES"
+  // Cross-category lookup operators (NAME field only)
+  | "EXISTS_IN"
+  | "CONTAINS_IN"
 
 export interface RuleCondition {
   field?: ConditionField
