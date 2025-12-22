@@ -198,7 +198,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("oidcEnabled", envPrefix+"OIDC_ENABLED")
 	c.viper.BindEnv("oidcIssuer", envPrefix+"OIDC_ISSUER")
 	c.viper.BindEnv("oidcClientId", envPrefix+"OIDC_CLIENT_ID")
-	c.viper.BindEnv("oidcClientSecret", envPrefix+"OIDC_CLIENT_SECRET")
+	c.bindOrReadFromFile("oidcClientSecret", envPrefix+"OIDC_CLIENT_SECRET")
 	c.viper.BindEnv("oidcRedirectUrl", envPrefix+"OIDC_REDIRECT_URL")
 	c.viper.BindEnv("oidcDisableBuiltInLogin", envPrefix+"OIDC_DISABLE_BUILT_IN_LOGIN")
 
