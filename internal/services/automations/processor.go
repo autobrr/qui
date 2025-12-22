@@ -183,10 +183,8 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 		shouldApply := conditions.Category.Condition == nil ||
 			EvaluateConditionWithContext(conditions.Category.Condition, torrent, evalCtx, 0)
 
-		if shouldApply {
-			if shouldBlockCategoryChangeForCrossSeeds(torrent, conditions.Category.BlockIfCrossSeedInCategories, crossSeedIndex) {
-				return
-			}
+		// Apply category change only if condition matches AND not blocked by cross-seed protection
+		if shouldApply && !shouldBlockCategoryChangeForCrossSeeds(torrent, conditions.Category.BlockIfCrossSeedInCategories, crossSeedIndex) {
 			state.category = &conditions.Category.Category
 			state.categoryIncludeCrossSeeds = conditions.Category.IncludeCrossSeeds
 		}
