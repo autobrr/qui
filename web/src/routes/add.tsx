@@ -120,8 +120,17 @@ function AddTorrentHandler() {
   }
 
   if (!isAuthenticated) {
-    storeAddIntent({ magnet, openAdd: true })
+    // Only store intent if there's actually a payload to process
+    // Otherwise the user manually typed /add with nothing to add
+    if (magnet || expectingFiles) {
+      storeAddIntent({ magnet, openAdd: true })
+    }
     return <Navigate to="/login" />
+  }
+
+  // If authenticated but no payload exists (manual navigation to /add), redirect home
+  if (!magnet && !expectingFiles) {
+    return <Navigate to="/" />
   }
 
   // Wait for instances to load
@@ -210,9 +219,8 @@ function InstanceSelector({ instances, onSelect, onCancel }: InstanceSelectorPro
               onClick={() => onSelect(instance.id)}
             >
               <div className="flex items-center gap-2">
-                <div className={`h-2 w-2 rounded-full ${
-                  instance.connected ? "bg-green-500" : "bg-red-500"
-                }`} />
+                <div className={`h-2 w-2 rounded-full ${instance.connected ? "bg-green-500" : "bg-red-500"
+                  }`} />
                 <span>{instance.name || `Instance ${instance.id}`}</span>
               </div>
             </Button>
