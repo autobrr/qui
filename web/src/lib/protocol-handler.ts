@@ -7,6 +7,20 @@ import { withBasePath } from "./base-url"
 
 const DISMISSED_KEY = "qui-protocol-handler-dismissed"
 
+function isStandaloneDisplayMode(): boolean {
+  return window.matchMedia("(display-mode: standalone)").matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+}
+
+function isFirefox(): boolean {
+  return /firefox/i.test(navigator.userAgent)
+}
+
+function isChromium(): boolean {
+  const ua = navigator.userAgent
+  return /(chrome|chromium|crios)/i.test(ua) && !/(edg|opr|opera)/i.test(ua)
+}
+
 /**
  * Check if the browser supports registerProtocolHandler and we're in a secure context.
  * Secure contexts include HTTPS and localhost (even over HTTP).
@@ -17,6 +31,22 @@ export function canRegisterProtocolHandler(): boolean {
     && window.isSecureContext
 }
 
+export function getMagnetHandlerRegistrationGuidance(): string {
+  if (isStandaloneDisplayMode()) {
+    return "Open qui in a regular browser tab to register (the prompt may appear in the address bar, which PWAs don’t show)."
+  }
+
+  if (isFirefox()) {
+    return "If prompted by your browser, please accept to complete registration."
+  }
+
+  if (isChromium()) {
+    return "Chrome often shows this as a small protocol-handler icon in the address bar; if nothing appears, enable protocol handlers at chrome://settings/handlers."
+  }
+
+  return "If prompted by your browser, please accept to complete registration."
+}
+
 /**
  * Register qui as the handler for magnet: links.
  * Returns true if registration was requested, false if it failed.
@@ -24,8 +54,11 @@ export function canRegisterProtocolHandler(): boolean {
  */
 export function registerMagnetHandler(): boolean {
   try {
-    const handlerUrl = `${window.location.origin}${withBasePath("/add")}?magnet=%s`
-    navigator.registerProtocolHandler("magnet", handlerUrl)
+    const handlerUrl = `${window.location.origin}${withBasePath("/add")}?url=%s`
+    // Some browsers support a third title argument but TypeScript only knows about the first two.
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-expect-error registerProtocolHandler accepts an optional title argument in practice
+    navigator.registerProtocolHandler("magnet", handlerUrl, "qui")
     return true
   } catch (error) {
     console.error("Failed to register magnet handler:", error)

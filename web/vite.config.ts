@@ -90,7 +90,7 @@ export default defineConfig(() => ({
         protocol_handlers: [
           {
             protocol: "magnet",
-            url: "./add?magnet=%s",
+            url: "./add?url=%s",
           },
         ],
         file_handlers: [

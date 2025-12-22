@@ -46,7 +46,7 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
-import { canRegisterProtocolHandler, registerMagnetHandler } from "@/lib/protocol-handler"
+import { canRegisterProtocolHandler, getMagnetHandlerRegistrationGuidance, registerMagnetHandler } from "@/lib/protocol-handler"
 import { copyTextToClipboard, formatBytes } from "@/lib/utils"
 import type { Instance, TorznabSearchCacheStats } from "@/types"
 import { useForm } from "@tanstack/react-form"
@@ -1016,7 +1016,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                           const success = registerMagnetHandler()
                           if (success) {
                             toast.success("Magnet handler registration requested", {
-                              description: "If prompted by your browser, please accept to complete registration.",
+                              description: getMagnetHandlerRegistrationGuidance(),
                             })
                           } else {
                             toast.error("Failed to register magnet handler")

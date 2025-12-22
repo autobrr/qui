@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useAuth } from "@/hooks/useAuth"
 import { useInstances } from "@/hooks/useInstances"
 import { storeAddIntent } from "@/lib/add-intent"
+import { extractMagnetFromTargetURL, normalizeMagnetLink } from "@/lib/magnet"
 import type { InstanceResponse } from "@/types"
 import { createFileRoute, Navigate, useNavigate } from "@tanstack/react-router"
 import { Loader2 } from "lucide-react"
@@ -17,7 +18,8 @@ import { toast } from "sonner"
 import { z } from "zod"
 
 const addSearchSchema = z.object({
-  magnet: z.string().regex(/^magnet:\?/i).optional(),
+  magnet: z.string().optional(),
+  url: z.string().optional(),
   instance: z.coerce.number().optional(),
   expectingFiles: z.boolean().optional(),
 })
@@ -29,9 +31,11 @@ export const Route = createFileRoute("/add")({
 
 function AddTorrentHandler() {
   const { isAuthenticated, isLoading: authLoading } = useAuth()
-  const { magnet, instance, expectingFiles } = Route.useSearch()
+  const { magnet: magnetParam, url, instance, expectingFiles } = Route.useSearch()
   const navigate = useNavigate()
   const { instances, isLoading: instancesLoading } = useInstances()
+
+  const magnet = normalizeMagnetLink(magnetParam) ?? normalizeMagnetLink(url) ?? undefined
 
   const [selectedInstanceId, setSelectedInstanceId] = useState<number | null>(instance ?? null)
   const [dialogOpen, setDialogOpen] = useState(true)
@@ -53,6 +57,13 @@ function AddTorrentHandler() {
     if (!window.launchQueue) return
 
     window.launchQueue.setConsumer(async (launchParams) => {
+      const launchedMagnet = extractMagnetFromTargetURL(launchParams.targetURL)
+      if (launchedMagnet) {
+        hasReceivedPayload.current = true
+        setDropPayload({ type: "url", urls: [launchedMagnet] })
+        return
+      }
+
       if (!launchParams.files?.length) return
 
       const files: File[] = []

@@ -10,6 +10,7 @@ import { toast } from "sonner"
 import {
   canRegisterProtocolHandler,
   dismissProtocolHandlerBanner,
+  getMagnetHandlerRegistrationGuidance,
   isProtocolHandlerBannerDismissed,
   registerMagnetHandler,
 } from "@/lib/protocol-handler"
@@ -31,8 +32,10 @@ export function MagnetHandlerBanner() {
     const success = registerMagnetHandler()
     if (success) {
       toast.success("Magnet handler registration requested", {
-        description: "If prompted by your browser, please accept to complete registration.",
+        description: getMagnetHandlerRegistrationGuidance(),
       })
+      dismissProtocolHandlerBanner()
+      setDismissed(true)
     } else {
       toast.error("Failed to register magnet handler")
     }
