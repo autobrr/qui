@@ -313,7 +313,7 @@ func hasActions(state *torrentDesiredState) bool {
 // parseTorrentTags parses the comma-separated tag string into a set.
 func parseTorrentTags(tags string) map[string]struct{} {
 	result := make(map[string]struct{})
-	for _, t := range strings.Split(tags, ", ") {
+	for _, t := range strings.Split(tags, ",") {
 		if t = strings.TrimSpace(t); t != "" {
 			result[t] = struct{}{}
 		}
