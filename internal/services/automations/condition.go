@@ -1,7 +1,8 @@
 // Copyright (c) 2025, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package automations enforces tracker-scoped speed/ratio rules per instance.
+// Package automations provides an expression-based automation system for managing torrents.
+// This file re-exports condition types from models for convenience.
 // This file re-exports condition types from models for convenience.
 package automations
 
