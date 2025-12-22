@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -88,4 +89,43 @@ func safeDeleteEmptyDir(scanRoot, target string) error {
 		return nil // Already gone
 	}
 	return err
+}
+
+func collectCandidateDirsForCleanup(files []string, scanRoots []string, ignorePaths []string) []string {
+	candidates := make(map[string]struct{})
+	for _, filePath := range files {
+		scanRoot := findScanRoot(filePath, scanRoots)
+		if scanRoot == "" {
+			continue
+		}
+		scanRoot = filepath.Clean(scanRoot)
+
+		dir := filepath.Clean(filepath.Dir(filePath))
+		for dir != scanRoot {
+			if dir == "." || dir == string(filepath.Separator) {
+				break
+			}
+			if isIgnoredPath(dir, ignorePaths) {
+				break
+			}
+			candidates[dir] = struct{}{}
+
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+	}
+
+	ordered := make([]string, 0, len(candidates))
+	for dir := range candidates {
+		ordered = append(ordered, dir)
+	}
+
+	sort.Slice(ordered, func(i, j int) bool {
+		return len(ordered[i]) > len(ordered[j])
+	})
+
+	return ordered
 }

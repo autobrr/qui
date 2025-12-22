@@ -485,6 +485,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 
 	var filesDeleted int
 	var bytesReclaimed int64
+	var deletedOrMissingPaths []string
 
 	// Delete files
 	for _, f := range files {
@@ -513,10 +514,12 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			s.updateFileStatus(ctx, f.ID, "skipped", "file is now in use by a torrent")
 		case deleteDispositionSkippedMissing:
 			s.updateFileStatus(ctx, f.ID, "skipped", "file no longer exists")
+			deletedOrMissingPaths = append(deletedOrMissingPaths, f.FilePath)
 		case deleteDispositionDeleted:
 			s.updateFileStatus(ctx, f.ID, "deleted", "")
 			filesDeleted++
 			bytesReclaimed += f.FileSize
+			deletedOrMissingPaths = append(deletedOrMissingPaths, f.FilePath)
 		default:
 			s.updateFileStatus(ctx, f.ID, "failed", "unknown delete result")
 		}
@@ -536,13 +539,9 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		}
 	}
 
-	emptyDirs, err := collectEmptyDirs(ctx, run.ScanPaths, ignorePaths)
-	if err != nil {
-		log.Warn().Err(err).Msg("orphanscan: failed to collect empty dirs")
-	}
-
 	var foldersDeleted int
-	for _, dir := range emptyDirs {
+	candidateDirs := collectCandidateDirsForCleanup(deletedOrMissingPaths, run.ScanPaths, ignorePaths)
+	for _, dir := range candidateDirs {
 		if ctx.Err() != nil {
 			break
 		}
@@ -646,13 +645,18 @@ func (s *Service) buildFileMap(ctx context.Context, instanceID int) (*TorrentFil
 
 // findScanRoot finds the scan root that contains the given path.
 func findScanRoot(path string, scanRoots []string) string {
+	longest := ""
 	for _, root := range scanRoots {
-		if len(path) >= len(root) && path[:len(root)] == root {
-			// Ensure it's at a path boundary
-			if len(path) == len(root) || path[len(root)] == filepath.Separator {
-				return root
-			}
+		if len(path) < len(root) || path[:len(root)] != root {
+			continue
+		}
+		// Ensure it's at a path boundary.
+		if len(path) > len(root) && path[len(root)] != filepath.Separator {
+			continue
+		}
+		if len(root) > len(longest) {
+			longest = root
 		}
 	}
-	return ""
+	return longest
 }

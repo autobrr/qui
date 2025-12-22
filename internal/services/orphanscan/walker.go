@@ -5,13 +5,10 @@ package orphanscan
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 )
@@ -123,72 +120,4 @@ func NormalizeIgnorePaths(paths []string) ([]string, error) {
 		result = append(result, cleaned)
 	}
 	return result, nil
-}
-
-// collectEmptyDirs walks the scan roots and returns empty directories (deepest first).
-// This should be called after orphan files have been deleted.
-func collectEmptyDirs(ctx context.Context, roots []string, ignorePaths []string) ([]string, error) {
-	var emptyDirs []string
-
-	for _, root := range roots {
-		if err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
-			}
-
-			if err != nil {
-				return nil // Skip errors
-			}
-
-			if !d.IsDir() {
-				return nil
-			}
-
-			if isIgnoredPath(path, ignorePaths) {
-				return fs.SkipDir
-			}
-
-			// Check if directory is empty
-			empty, err := isDirEmpty(path)
-			if err != nil || !empty {
-				return nil
-			}
-
-			emptyDirs = append(emptyDirs, path)
-			return nil
-		}); err != nil {
-			return nil, err
-		}
-	}
-
-	// Sort by path length descending (deepest first)
-	sortByLengthDesc(emptyDirs)
-
-	return emptyDirs, nil
-}
-
-// isDirEmpty checks if a directory is empty.
-func isDirEmpty(path string) (bool, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return false, err
-	}
-	defer f.Close()
-
-	_, err = f.Readdirnames(1)
-	if err == nil {
-		return false, nil // Has at least one entry
-	}
-	if errors.Is(err, io.EOF) {
-		return true, nil
-	}
-	return false, err
-}
-
-func sortByLengthDesc(paths []string) {
-	sort.Slice(paths, func(i, j int) bool {
-		return len(paths[i]) > len(paths[j])
-	})
 }
