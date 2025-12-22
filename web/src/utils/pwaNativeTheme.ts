@@ -125,8 +125,19 @@ export function initializePWANativeTheme(): void {
     }
   }
 
+  // Coalesce multiple rapid updates (theme application can trigger several mutations)
+  let scheduled = false
+  const scheduleUpdate = () => {
+    if (scheduled) return
+    scheduled = true
+    requestAnimationFrame(() => {
+      scheduled = false
+      updatePWATheme()
+    })
+  }
+
   // Store the listener reference for cleanup
-  themeChangeListener = updatePWATheme
+  themeChangeListener = scheduleUpdate
 
   // Listen for theme change events
   window.addEventListener("themechange", themeChangeListener)
@@ -136,7 +147,7 @@ export function initializePWANativeTheme(): void {
     mutations.forEach((mutation) => {
       if (mutation.type === "attributes" &&
           (mutation.attributeName === "class" || mutation.attributeName === "data-theme")) {
-        updatePWATheme()
+        scheduleUpdate()
       }
     })
   })
@@ -147,10 +158,9 @@ export function initializePWANativeTheme(): void {
   })
 
   // Apply initial theme after a short delay to ensure CSS variables are loaded
-  setTimeout(updatePWATheme, 100)
+  setTimeout(scheduleUpdate, 100)
 }
 
 // Store references for cleanup
 let themeChangeListener: (() => void) | null = null
 let themeObserver: MutationObserver | null = null
-

@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useHasPremiumAccess } from "@/hooks/useLicense.ts";
+import { canSwitchToPremiumTheme } from "@/lib/license-entitlement";
 
 // Constants
 const THEME_CHANGE_EVENT = "themechange";
@@ -59,8 +60,14 @@ const useThemeChange = () => {
 export const ThemeToggle: React.FC = () => {
   const { currentMode, currentTheme } = useThemeChange();
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const { hasPremiumAccess } = useHasPremiumAccess();
+  const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess();
   const [open, setOpen] = useState(false);
+
+  const canSwitchPremium = canSwitchToPremiumTheme({
+    hasPremiumAccess,
+    isError,
+    isLoading,
+  });
 
   const handleModeSelect = useCallback(async (mode: ThemeMode) => {
     setIsTransitioning(true);
@@ -73,8 +80,14 @@ export const ThemeToggle: React.FC = () => {
 
   const handleThemeSelect = useCallback(async (themeId: string) => {
     const isPremium = isThemePremium(themeId);
-    if (isPremium && !hasPremiumAccess) {
-      toast.error("This is a premium theme. Please purchase a license to use it.");
+    if (isPremium && !canSwitchPremium) {
+      if (isError) {
+        toast.error("Unable to verify license", {
+          description: "License check failed. Premium theme switching is temporarily unavailable.",
+        });
+      } else {
+        toast.error("This is a premium theme. Please purchase a license to use it.");
+      }
       return;
     }
 
@@ -84,12 +97,18 @@ export const ThemeToggle: React.FC = () => {
 
     const theme = themes.find(t => t.id === themeId);
     toast.success(`Switched to ${theme?.name || themeId} theme`);
-  }, [hasPremiumAccess]);
+  }, [canSwitchPremium, isError]);
 
   const handleVariationSelect = useCallback(async (themeId: string, variationId: string) => {
     const isPremium = isThemePremium(themeId);
-    if (isPremium && !hasPremiumAccess) {
-      toast.error("This is a premium theme. Please purchase a license to use it.");
+    if (isPremium && !canSwitchPremium) {
+      if (isError) {
+        toast.error("Unable to verify license", {
+          description: "License check failed. Premium theme switching is temporarily unavailable.",
+        });
+      } else {
+        toast.error("This is a premium theme. Please purchase a license to use it.");
+      }
       return;
     }
 
@@ -102,7 +121,7 @@ export const ThemeToggle: React.FC = () => {
     toast.success(`Switched to ${theme?.name || themeId} theme (${variationId})`);
 
     setOpen(false);
-  }, [hasPremiumAccess]);
+  }, [canSwitchPremium, isError]);
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>

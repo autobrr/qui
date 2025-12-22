@@ -14,117 +14,15 @@ const THEME_DARK = "dark";
 const THEME_LIGHT = "light";
 const THEME_AUTO = "auto";
 const THEME_TRANSITION_CLASS = "theme-transition";
-const THEME_TRANSITION_DURATION = 400;
+const THEME_TRANSITION_DURATION = 150;
 const THEME_STYLES_ID = "theme-transitions";
 
-// CSS for theme transitions
+// CSS for theme transitions - lightweight version for performance
+// Only transitions the root background; child elements inherit instantly via CSS variables
 const THEME_TRANSITION_CSS = `
-  /* CSS Variables for transition control */
-  :root {
-    --theme-transition-duration: 400ms;
-    --theme-transition-easing: cubic-bezier(0.4, 0.0, 0.2, 1);
-    --theme-transition-stagger: 50ms;
-  }
-
-  /* Main transition for theme switching */
   .theme-transition {
-    position: relative;
+    transition: background-color 150ms ease-out;
   }
-  
-  /* Core element transitions */
-  .theme-transition * {
-    transition-property: background-color, border-color, color, fill, stroke, box-shadow;
-    transition-duration: var(--theme-transition-duration);
-    transition-timing-function: var(--theme-transition-easing);
-  }
-  
-  /* Font transitions for smooth font family changes */
-  .theme-transition body,
-  .theme-transition .font-sans,
-  .theme-transition .font-serif,
-  .theme-transition .font-mono {
-    transition-property: font-family, letter-spacing, line-height;
-    transition-duration: calc(var(--theme-transition-duration) * 0.8);
-    transition-timing-function: var(--theme-transition-easing);
-  }
-  
-  /* Subtle fade effect without any transforms */
-  .theme-transition {
-    animation: theme-transition-fade var(--theme-transition-duration) var(--theme-transition-easing);
-  }
-  
-  @keyframes theme-transition-fade {
-    0% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.96;
-    }
-    100% {
-      opacity: 1;
-    }
-  }
-  
-  /* Staggered transitions for different UI sections */
-  .theme-transition header,
-  .theme-transition nav {
-    transition-delay: calc(var(--theme-transition-stagger) * 0);
-  }
-  
-  .theme-transition main {
-    transition-delay: calc(var(--theme-transition-stagger) * 1);
-  }
-  
-  .theme-transition aside {
-    transition-delay: calc(var(--theme-transition-stagger) * 2);
-  }
-  
-  .theme-transition footer {
-    transition-delay: calc(var(--theme-transition-stagger) * 3);
-  }
-  
-  /* Cards and panels get a subtle lift effect */
-  .theme-transition [class*="card"],
-  .theme-transition [class*="panel"] {
-    transition-property: background-color, border-color, color, box-shadow, transform;
-    transition-duration: var(--theme-transition-duration);
-    transition-timing-function: var(--theme-transition-easing);
-  }
-  
-  /* Buttons get special treatment */
-  .theme-transition button,
-  .theme-transition [role="button"] {
-    transition-property: background-color, border-color, color, box-shadow, transform, filter;
-    transition-duration: calc(var(--theme-transition-duration) * 0.8);
-    transition-timing-function: var(--theme-transition-easing);
-  }
-  
-  /* Prevent scrollbar transitions */
-  .theme-transition ::-webkit-scrollbar,
-  .theme-transition ::-webkit-scrollbar-track,
-  .theme-transition ::-webkit-scrollbar-thumb,
-  ::-webkit-scrollbar,
-  ::-webkit-scrollbar-track,
-  ::-webkit-scrollbar-thumb {
-    transition: none !important;
-  }
-  
-  /* Prevent scrollbar color from animating */
-  html.theme-transition {
-    scrollbar-color: initial !important;
-  }
-  
-  /* Disable transitions for performance-sensitive elements */
-  .theme-transition svg *,
-  .theme-transition path,
-  .theme-transition circle,
-  .theme-transition rect,
-  .theme-transition line,
-  .theme-transition polyline,
-  .theme-transition polygon {
-    transition: none !important;
-  }
-  
 `;
 
 // Type definitions
@@ -179,8 +77,9 @@ const dispatchThemeChange = (mode: ThemeMode, theme: Theme, isSystemChange: bool
 const applyTheme = async (theme: Theme, variation: string | null, isDark: boolean, withTransition = false): Promise<void> => {
   const root = document.documentElement;
 
-  // Load fonts for this theme
-  await loadThemeFonts(theme);
+  // Kick off font loading in the background (non-blocking)
+  // Fonts will render when ready; no need to wait
+  loadThemeFonts(theme);
 
   if (withTransition) {
     root.classList.add(THEME_TRANSITION_CLASS);

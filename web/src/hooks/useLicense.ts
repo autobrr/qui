@@ -5,6 +5,7 @@
 
 import { api } from "@/lib/api"
 import { getLicenseErrorMessage } from "@/lib/license-errors.ts"
+import { setLicenseEntitlement, clearLicenseEntitlement } from "@/lib/license-entitlement"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
@@ -12,10 +13,17 @@ import { toast } from "sonner"
 export const usePremiumAccess = () => {
   return useQuery({
     queryKey: ["licenses"],
-    queryFn: () => api.getLicensedThemes(),
-    staleTime: 30 * 1000, // 30 seconds
-    refetchInterval: 30 * 1000, // Poll every 30 seconds
+    queryFn: async () => {
+      const result = await api.getLicensedThemes()
+      // Persist entitlement on successful response for grace period handling
+      setLicenseEntitlement(result.hasPremiumAccess)
+      return result
+    },
+    staleTime: 60 * 60 * 1000, // 1 hour
+    refetchInterval: 60 * 60 * 1000, // Poll every 1 hour
     refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
+    retry: 2, // Retry twice with default backoff
   })
 }
 
@@ -67,6 +75,8 @@ export const useDeleteLicense = () => {
     mutationFn: (licenseKey: string) => api.deleteLicense(licenseKey),
     onSuccess: () => {
       toast.success("License released successfully")
+      // Clear cached entitlement since license is being removed
+      clearLicenseEntitlement()
       // Invalidate license queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ["licenses"] })
     },
@@ -95,11 +105,12 @@ export const useRefreshLicenses = () => {
 
 // Helper hook to check if user has premium access
 export const useHasPremiumAccess = () => {
-  const { data, isLoading } = usePremiumAccess()
+  const { data, isLoading, isError } = usePremiumAccess()
 
   return {
     hasPremiumAccess: data?.hasPremiumAccess ?? false,
     isLoading,
+    isError,
   }
 }
 
