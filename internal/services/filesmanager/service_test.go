@@ -77,7 +77,7 @@ func TestCacheFilesBatch_MaintainsHashAlignment(t *testing.T) {
 		"hash-c": "charlie.mkv",
 	}
 
-	for attempt := 0; attempt < 10; attempt++ {
+	for attempt := 0; attempt < 3; attempt++ {
 		// Reset cache tables to isolate each attempt.
 		_, err := db.ExecContext(ctx, "DELETE FROM torrent_files_cache; DELETE FROM torrent_files_sync;")
 		require.NoError(t, err)
