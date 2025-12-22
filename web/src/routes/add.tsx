@@ -78,19 +78,30 @@ function AddTorrentHandler() {
     })
   }, [navigate])
 
-  // Show error if we're expecting files from auth redirect but launchQueue doesn't fire
+  // Check if running as installed PWA (file-handler launches only happen in standalone mode)
+  const isStandalone = window.matchMedia("(display-mode: standalone)").matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+
+  // Handle timeout when expecting files (from auth redirect or standalone mode file-handler)
   useEffect(() => {
-    if (!expectingFiles || hasReceivedPayload.current) return
+    // Skip if we already have a payload or aren't expecting one
+    if (hasReceivedPayload.current) return
+    if (!expectingFiles && !isStandalone) return
+    // If we have a magnet, no need to wait for files
+    if (magnet) return
 
     const timeout = setTimeout(() => {
       if (!hasReceivedPayload.current) {
-        toast.error("Unable to open torrent file. Please try again.")
+        // Only show error if we explicitly expected files (came from auth redirect)
+        if (expectingFiles) {
+          toast.error("Unable to open torrent file. Please try again.")
+        }
         navigate({ to: "/" })
       }
     }, 2000)
 
     return () => clearTimeout(timeout)
-  }, [expectingFiles, navigate])
+  }, [expectingFiles, isStandalone, magnet, navigate])
 
   const handleOpenChange = useCallback((open: boolean) => {
     if (!open) {
@@ -120,16 +131,19 @@ function AddTorrentHandler() {
   }
 
   if (!isAuthenticated) {
-    // Only store intent if there's actually a payload to process
-    // Otherwise the user manually typed /add with nothing to add
-    if (magnet || expectingFiles) {
+    // Store intent if there's a payload OR if we're in PWA mode (potential file-handler launch)
+    if (magnet) {
       storeAddIntent({ magnet, openAdd: true })
+    } else if (expectingFiles || isStandalone) {
+      // In standalone mode without magnet, files may be coming via launchQueue
+      storeAddIntent({ hasFiles: true, openAdd: true })
     }
     return <Navigate to="/login" />
   }
 
-  // If authenticated but no payload exists (manual navigation to /add), redirect home
-  if (!magnet && !expectingFiles) {
+  // If authenticated but no payload and not expecting files via launchQueue, redirect home
+  // In standalone mode, wait for potential file-handler payload
+  if (!magnet && !expectingFiles && !isStandalone) {
     return <Navigate to="/" />
   }
 
