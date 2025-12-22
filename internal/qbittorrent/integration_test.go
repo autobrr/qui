@@ -15,14 +15,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestSyncManager_CacheIntegration tests the cache integration with SyncManager methods
-func TestSyncManager_CacheIntegration(t *testing.T) {
-	// Skip cache-related tests since caching was removed
-	t.Run("Cache functionality removed", func(t *testing.T) {
-		t.Skip("Caching has been removed from the sync manager")
-	})
-}
-
 // TestSyncManager_FilteringAndSorting tests the filtering and sorting logic
 func TestSyncManager_FilteringAndSorting(t *testing.T) {
 	sm := &SyncManager{}
