@@ -36,10 +36,12 @@ const THEME_CHANGE_EVENT = "themechange";
 const useThemeChange = () => {
   const [currentMode, setCurrentMode] = useState<ThemeMode>(getCurrentThemeMode());
   const [currentTheme, setCurrentTheme] = useState(getCurrentTheme());
+  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains("dark"));
 
   const checkTheme = useCallback(() => {
     setCurrentMode(getCurrentThemeMode());
     setCurrentTheme(getCurrentTheme());
+    setIsDark(document.documentElement.classList.contains("dark"));
   }, []);
 
   useEffect(() => {
@@ -53,11 +55,11 @@ const useThemeChange = () => {
     };
   }, [checkTheme]);
 
-  return { currentMode, currentTheme };
+  return { currentMode, currentTheme, isDark };
 };
 
 export const ThemeToggle: React.FC = () => {
-  const { currentMode, currentTheme } = useThemeChange();
+  const { currentMode, currentTheme, isDark } = useThemeChange();
   const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess();
   const [open, setOpen] = useState(false);
   const [activeThemeId, setActiveThemeId] = useState<string | null>(null);
@@ -84,7 +86,7 @@ export const ThemeToggle: React.FC = () => {
     variations?: Array<{ id: string; color: string }>;
   }>(), []);
 
-  const modeKey = document.documentElement.classList.contains("dark") ? "dark" : "light";
+  const modeKey = isDark ? "dark" : "light";
   const getPreviewColors = useCallback((theme: (typeof themes)[number]) => {
     const cacheKey = `${modeKey}:${theme.id}`;
     const cached = previewColorsCache.get(cacheKey);

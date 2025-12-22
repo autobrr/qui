@@ -157,19 +157,24 @@ export function ThemeSelector() {
   const freeThemes = themes.filter(theme => !theme.isPremium)
   const premiumThemes = themes.filter(theme => theme.isPremium)
 
+  const showThemeLockedToast = () => {
+    if (isError) {
+      toast.error("Unable to verify license", {
+        description: "License check failed. Premium theme switching is temporarily unavailable.",
+      })
+      return
+    }
+
+    toast.error("This theme requires a premium license", {
+      description: "Please purchase a license to access premium themes",
+    })
+  }
+
   const handleThemeSelect = (themeId: string) => {
     if (isThemeLicensed(themeId)) {
       setTheme(themeId)
     } else {
-      if (isError) {
-        toast.error("Unable to verify license", {
-          description: "License check failed. Premium theme switching is temporarily unavailable.",
-        })
-      } else {
-        toast.error("This theme requires a premium license", {
-          description: "Please purchase a license to access premium themes",
-        })
-      }
+      showThemeLockedToast()
     }
   }
 
@@ -178,15 +183,7 @@ export function ThemeSelector() {
       setTheme(themeId)
       setVariation(variationId)
     } else {
-      if (isError) {
-        toast.error("Unable to verify license", {
-          description: "License check failed. Premium theme switching is temporarily unavailable.",
-        })
-      } else {
-        toast.error("This theme requires a premium license", {
-          description: "Please purchase a license to access premium themes",
-        })
-      }
+      showThemeLockedToast()
     }
   }
 
