@@ -42,6 +42,8 @@ type CrossSeedRequest struct {
 	// SkipAutoResume prevents automatic resume after hash check when true.
 	// Default behavior (false) resumes torrents after verification completes.
 	SkipAutoResume bool `json:"skip_auto_resume,omitempty"`
+	// SkipRecheck skips matches that would require a manual recheck (rename alignment or extra files).
+	SkipRecheck bool `json:"skip_recheck,omitempty"`
 
 	// SourceFilterCategories filters candidate torrents to only those in these categories.
 	// Used by RSS automation to respect RSSSourceCategories setting.

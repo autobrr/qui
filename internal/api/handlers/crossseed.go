@@ -42,6 +42,7 @@ type automationSettingsRequest struct {
 	UseCategoryFromIndexer       bool     `json:"useCategoryFromIndexer"`
 	UseCrossCategorySuffix       bool     `json:"useCrossCategorySuffix"`
 	RunExternalProgramID         *int     `json:"runExternalProgramId"`
+	SkipRecheck                  bool     `json:"skipRecheck"`
 }
 
 type automationSettingsPatchRequest struct {
@@ -79,6 +80,7 @@ type automationSettingsPatchRequest struct {
 	SkipAutoResumeSeededSearch *bool `json:"skipAutoResumeSeededSearch,omitempty"`
 	SkipAutoResumeCompletion   *bool `json:"skipAutoResumeCompletion,omitempty"`
 	SkipAutoResumeWebhook      *bool `json:"skipAutoResumeWebhook,omitempty"`
+	SkipRecheck                *bool `json:"skipRecheck,omitempty"`
 }
 
 type optionalString struct {
@@ -167,7 +169,8 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.SkipAutoResumeRSS == nil &&
 		r.SkipAutoResumeSeededSearch == nil &&
 		r.SkipAutoResumeCompletion == nil &&
-		r.SkipAutoResumeWebhook == nil
+		r.SkipAutoResumeWebhook == nil &&
+		r.SkipRecheck == nil
 }
 
 func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, patch automationSettingsPatchRequest) {
@@ -273,6 +276,9 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	}
 	if patch.SkipAutoResumeWebhook != nil {
 		settings.SkipAutoResumeWebhook = *patch.SkipAutoResumeWebhook
+	}
+	if patch.SkipRecheck != nil {
+		settings.SkipRecheck = *patch.SkipRecheck
 	}
 }
 
@@ -652,6 +658,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		UseCategoryFromIndexer:       req.UseCategoryFromIndexer,
 		UseCrossCategorySuffix:       req.UseCrossCategorySuffix,
 		RunExternalProgramID:         req.RunExternalProgramID,
+		SkipRecheck:                  req.SkipRecheck,
 	}
 
 	updated, err := h.service.UpdateAutomationSettings(r.Context(), settings)

@@ -4179,6 +4179,9 @@ components:
           items:
             type: string
           description: Skip torrents with any of these tags when processing webhook requests
+        skipRecheck:
+          type: boolean
+          description: Skip cross-seed matches that would require a manual recheck
 
     CrossSeedAutomationSettings:
       type: object
@@ -4242,6 +4245,9 @@ components:
           items:
             type: string
           description: Skip torrents with any of these tags when processing webhook requests
+        skipRecheck:
+          type: boolean
+          description: Skip cross-seed matches that would require a manual recheck
         createdAt:
           type: string
           format: date-time
