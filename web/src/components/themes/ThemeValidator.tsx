@@ -75,8 +75,8 @@ export function ThemeValidator(): null {
       }
     }
 
-    const threeSeconds: number = 30000;
-    const interval = setInterval(validateStoredTheme, threeSeconds)
+    const thirtySeconds: number = 30000;
+    const interval = setInterval(validateStoredTheme, thirtySeconds)
 
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === "color-theme" && e.newValue) {
