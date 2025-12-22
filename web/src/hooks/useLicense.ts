@@ -8,7 +8,6 @@ import { getLicenseErrorMessage } from "@/lib/license-errors.ts"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
-const thirtySecondsInMilliseconds: number = 30 * 1000;
 const thirtyMinutesInMilliseconds: number = 30 * 1000 * 60;
 const oneHourInMilliseconds: number = 60 * 1000 * 60;
 
@@ -17,7 +16,7 @@ export const usePremiumAccess = () => {
   return useQuery({
     queryKey: ["licenses"],
     queryFn: () => api.getLicensedThemes(),
-    staleTime: thirtySecondsInMilliseconds,
+    staleTime: oneHourInMilliseconds,
     refetchInterval: oneHourInMilliseconds,
     refetchOnWindowFocus: false,
   })
