@@ -19,9 +19,9 @@ import {
   useTriggerOrphanScan,
   useUpdateOrphanScanSettings,
 } from "@/hooks/useOrphanScan"
-import { cn, formatBytes, formatRelativeTime } from "@/lib/utils"
+import { cn, copyTextToClipboard, formatBytes, formatRelativeTime } from "@/lib/utils"
 import type { Instance, OrphanScanRunStatus } from "@/types"
-import { AlertTriangle, ChevronDown, Eye, Files, Info, Loader2, Play, Settings2, X } from "lucide-react"
+import { AlertTriangle, ChevronDown, Copy, Eye, Files, Info, Loader2, Play, Settings2, X } from "lucide-react"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 
@@ -319,15 +319,24 @@ function InstanceOrphanScanItem({
                         {rowContent}
                       </CollapsibleTrigger>
                       <CollapsibleContent>
-                        <div className={cn(
-                          "px-3 pb-3 pt-0",
-                        )}>
+                        <div className="px-3 pb-3 pt-0">
                           <div className={cn(
-                            "p-3 rounded-md text-sm font-mono whitespace-pre-wrap break-all",
+                            "relative p-3 rounded-md text-sm font-mono whitespace-pre-wrap break-all",
                             run.status === "failed"
                               ? "bg-destructive/10 text-destructive border border-destructive/20"
                               : "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20"
                           )}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="absolute top-1 right-1 h-7 w-7 opacity-60 hover:opacity-100"
+                              onClick={() => {
+                                copyTextToClipboard(run.errorMessage ?? "")
+                                toast.success("Copied to clipboard")
+                              }}
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
                             {run.errorMessage}
                           </div>
                         </div>

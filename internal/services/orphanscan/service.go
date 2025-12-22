@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/rand"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -413,14 +414,14 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 
 	// If no orphans found but we had walk errors, all roots likely failed
 	if len(allOrphans) == 0 && len(walkErrors) > 0 {
-		errMsg := fmt.Sprintf("Failed to access %d scan path(s). %s", len(walkErrors), walkErrors[0])
+		errMsg := fmt.Sprintf("Failed to access %d scan path(s):\n%s", len(walkErrors), strings.Join(walkErrors, "\n"))
 		s.failRun(ctx, runID, errMsg)
 		return
 	}
 
 	// Surface partial failures as warning (but continue with found orphans)
 	if len(walkErrors) > 0 {
-		warnMsg := fmt.Sprintf("Partial scan: %d path(s) inaccessible. %s", len(walkErrors), walkErrors[0])
+		warnMsg := fmt.Sprintf("Partial scan: %d path(s) inaccessible:\n%s", len(walkErrors), strings.Join(walkErrors, "\n"))
 		s.warnRun(ctx, runID, warnMsg)
 	}
 
