@@ -9,9 +9,11 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -455,7 +457,21 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		log.Error().Err(err).Msg("orphanscan: failed to update files found")
 	}
 
-	// Mark as preview ready
+	// If no orphans found, mark as completed (clean) instead of preview_ready
+	if len(allOrphans) == 0 {
+		if err := s.store.UpdateRunCompleted(ctx, runID, 0, 0, 0); err != nil {
+			if ctx.Err() != nil {
+				log.Info().Int64("run", runID).Msg("orphanscan: scan canceled before marking completed")
+				return
+			}
+			log.Error().Err(err).Msg("orphanscan: failed to update run status to completed")
+			return
+		}
+		log.Info().Int64("run", runID).Msg("orphanscan: clean (no orphan files found)")
+		return
+	}
+
+	// Mark as preview ready (orphans found)
 	if err := s.store.UpdateRunStatus(ctx, runID, "preview_ready"); err != nil {
 		if ctx.Err() != nil {
 			log.Info().Int64("run", runID).Msg("orphanscan: scan canceled before marking preview_ready")
@@ -503,6 +519,11 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	var bytesReclaimed int64
 	var deletedOrMissingPaths []string
 
+	// Track deletion failures for user-facing error reporting
+	var failedDeletes int
+	var sawReadOnly bool
+	var sawPermissionDenied bool
+
 	// Delete files
 	for _, f := range files {
 		if ctx.Err() != nil {
@@ -515,6 +536,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		scanRoot := findScanRoot(f.FilePath, run.ScanPaths)
 		if scanRoot == "" {
 			s.updateFileStatus(ctx, f.ID, "failed", "no matching scan root")
+			failedDeletes++
 			continue
 		}
 
@@ -522,6 +544,14 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		if err != nil {
 			s.updateFileStatus(ctx, f.ID, "failed", err.Error())
 			log.Warn().Err(err).Str("path", f.FilePath).Msg("orphanscan: failed to delete file")
+			failedDeletes++
+
+			// Detect error type for user-facing message
+			if errors.Is(err, syscall.EROFS) || strings.Contains(err.Error(), "read-only file system") {
+				sawReadOnly = true
+			} else if os.IsPermission(err) || strings.Contains(err.Error(), "permission denied") || strings.Contains(err.Error(), "operation not permitted") {
+				sawPermissionDenied = true
+			}
 			continue
 		}
 
@@ -538,6 +568,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			deletedOrMissingPaths = append(deletedOrMissingPaths, f.FilePath)
 		default:
 			s.updateFileStatus(ctx, f.ID, "failed", "unknown delete result")
+			failedDeletes++
 		}
 	}
 
@@ -572,16 +603,50 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		}
 	}
 
-	// Mark as completed
+	// Build user-facing error message if deletion failures occurred
+	var failureMessage string
+	if failedDeletes > 0 {
+		if sawReadOnly {
+			failureMessage = fmt.Sprintf("Deletion failed for %d file(s): filesystem is read-only. If running via Docker, remove ':ro' from the volume mapping for your downloads path.", failedDeletes)
+		} else if sawPermissionDenied {
+			failureMessage = fmt.Sprintf("Deletion failed for %d file(s): permission denied. Check that the qui process has write access to the download directories.", failedDeletes)
+		} else {
+			failureMessage = fmt.Sprintf("Deletion failed for %d file(s). Check the file details for specific errors.", failedDeletes)
+		}
+	}
+
+	// Determine final status based on deletion results
+	if failedDeletes > 0 && filesDeleted == 0 {
+		// All deletions failed - mark as failed
+		if err := s.store.UpdateRunFailed(ctx, runID, failureMessage); err != nil {
+			log.Error().Err(err).Msg("orphanscan: failed to mark run as failed")
+			return
+		}
+		log.Warn().
+			Int64("run", runID).
+			Int("failedDeletes", failedDeletes).
+			Msg("orphanscan: deletion failed (no files deleted)")
+		return
+	}
+
+	// Mark as completed (possibly with partial failure warning)
 	if err := s.store.UpdateRunCompleted(ctx, runID, filesDeleted, foldersDeleted, bytesReclaimed); err != nil {
 		log.Error().Err(err).Msg("orphanscan: failed to update run completed")
 		return
+	}
+
+	// Add warning for partial failures
+	if failedDeletes > 0 {
+		if err := s.store.UpdateRunWarning(ctx, runID, failureMessage); err != nil {
+			log.Error().Err(err).Msg("orphanscan: failed to update run warning")
+		}
 	}
 
 	log.Info().
 		Int64("run", runID).
 		Int("filesDeleted", filesDeleted).
 		Int("foldersDeleted", foldersDeleted).
+		Int("failedDeletes", failedDeletes).
 		Int64("bytesReclaimed", bytesReclaimed).
 		Msg("orphanscan: deletion complete")
 }

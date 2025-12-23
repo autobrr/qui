@@ -31,7 +31,13 @@ interface OrphanScanOverviewProps {
   onExpandedInstancesChange?: (values: string[]) => void
 }
 
-function getStatusBadge(status: OrphanScanRunStatus) {
+function getStatusBadge(status: OrphanScanRunStatus, filesFound?: number) {
+  // Special case: "Clean" state for zero-file scans
+  // Handles both new (completed) and old DB rows (preview_ready) with no files
+  if ((status === "completed" || status === "preview_ready") && filesFound === 0) {
+    return { variant: "outline" as const, className: "bg-muted text-muted-foreground border-border/60", label: "Clean" }
+  }
+
   switch (status) {
     case "pending":
     case "scanning":
@@ -117,6 +123,9 @@ function InstanceOrphanScanItem({
     })
   }
 
+  // Compute status badge once for reuse in header
+  const latestRunBadge = latestRun ? getStatusBadge(latestRun.status, latestRun.filesFound) : null
+
   if (!hasLocalAccess) {
     return (
       <AccordionItem value={String(instance.id)} disabled>
@@ -144,15 +153,25 @@ function InstanceOrphanScanItem({
         <div className="flex items-center justify-between w-full pr-4">
           <div className="flex items-center gap-3 min-w-0">
             <span className="font-medium truncate">{instance.name}</span>
-            {latestRun && (
-              <Badge {...getStatusBadge(latestRun.status)} className={cn("text-xs", getStatusBadge(latestRun.status).className)}>
-                {getStatusBadge(latestRun.status).label}
+            {latestRunBadge && (
+              <Badge {...latestRunBadge} className={cn("text-xs", latestRunBadge.className)}>
+                {latestRunBadge.label}
               </Badge>
             )}
             {latestRun?.status === "preview_ready" && latestRun.filesFound > 0 && (
               <Badge variant="outline" className="text-xs">
                 {latestRun.filesFound} files ({formatBytes(latestRun.bytesReclaimed || 0)})
               </Badge>
+            )}
+            {latestRun?.status === "completed" && latestRun.errorMessage && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Partial failure - check recent scans</p>
+                </TooltipContent>
+              </Tooltip>
             )}
           </div>
 
@@ -284,8 +303,11 @@ function InstanceOrphanScanItem({
               <h4 className="text-sm font-medium">Recent Scans</h4>
               <div className="rounded-md border divide-y">
                 {runs.map((run) => {
-                  const statusBadge = getStatusBadge(run.status)
+                  const statusBadge = getStatusBadge(run.status, run.filesFound)
                   const hasError = !!run.errorMessage
+
+                  // Show warning indicator for completed runs with errors (partial failures)
+                  const hasWarning = run.status === "completed" && hasError
 
                   const rowContent = (
                     <div className="p-3 flex items-center justify-between">
@@ -293,10 +315,23 @@ function InstanceOrphanScanItem({
                         <Badge {...statusBadge} className={cn("text-xs", statusBadge.className)}>
                           {statusBadge.label}
                         </Badge>
+                        {hasWarning && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Partial failure - expand for details</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
                         <span className="text-xs text-muted-foreground capitalize">{run.triggeredBy}</span>
                       </div>
                       <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                        {run.status === "completed" && (
+                        {statusBadge.label === "Clean" && (
+                          <span>0 orphans</span>
+                        )}
+                        {run.status === "completed" && run.filesFound > 0 && (
                           <span>
                             {run.filesDeleted} deleted · {formatBytes(run.bytesReclaimed)}
                           </span>

@@ -299,11 +299,14 @@ func (s *OrphanScanStore) GetLastCompletedRun(ctx context.Context, instanceID in
 }
 
 // HasActiveRun checks if there's an active run for an instance.
+// Note: preview_ready with files_found=0 is excluded (legacy "clean" scans that should have been marked completed).
 func (s *OrphanScanStore) HasActiveRun(ctx context.Context, instanceID int) (bool, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*)
 		FROM orphan_scan_runs
-		WHERE instance_id = ? AND status IN ('pending', 'scanning', 'preview_ready', 'deleting')
+		WHERE instance_id = ?
+		  AND (status IN ('pending', 'scanning', 'deleting')
+		       OR (status = 'preview_ready' AND files_found > 0))
 	`, instanceID)
 
 	var count int
