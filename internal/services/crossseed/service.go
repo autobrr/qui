@@ -1896,7 +1896,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		case "exists":
 			itemHadExisting = true
 			run.TorrentsSkipped++
-		case "no_match", "skipped":
+		case "no_match", "skipped", "rejected":
 			run.TorrentsSkipped++
 		default:
 			itemHasFailure = true
