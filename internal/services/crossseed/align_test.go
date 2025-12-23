@@ -763,6 +763,38 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 			expectedFiles:    []string{"Show.S01E01.mkv", "Show.S01E02.mkv"},
 		},
 		{
+			// This test proves that even when release matching allows DDP vs DDPA through
+			// (due to relaxed audio checks), the file size mismatch is caught here.
+			// If audio truly differs, the file sizes will differ and we reject.
+			name: "audio mismatch caught by size difference - DDP vs DDPA different files",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-Btn.mkv", Size: 1500000000}, // DDP 5.1 file
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Show.S01E01.1080p.NF.WEB-DL.DDPA5.1.H.264-Btn.mkv", Size: 1600000000}, // DDPA (Atmos) file - larger
+			},
+			ignorePatterns:   nil,
+			expectedMismatch: true,
+			expectedFiles: []string{
+				"Show.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-Btn.mkv",
+			},
+		},
+		{
+			// This test proves that when indexer metadata is wrong (says DDPA but file is DDP),
+			// and the files are actually identical, we correctly allow the match.
+			name: "audio metadata mismatch but same file - allowed",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-Btn.mkv", Size: 1500000000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				// Indexer says DDPA but actual file is same size as source (it's DDP really)
+				{Name: "Show.S01E01.1080p.NF.WEB-DL.DDPA5.1.H.264-Btn.mkv", Size: 1500000000},
+			},
+			ignorePatterns:   nil,
+			expectedMismatch: false,
+			expectedFiles:    nil,
+		},
+		{
 			name: "season pack source vs single episode candidate - mismatch",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "Fake.Show.S01.1080p.WEB-DL.H.264-GRP/Fake.Show.S01E01.1080p.WEB-DL.H.264-GRP.mkv", Size: 1400000000},
