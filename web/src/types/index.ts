@@ -171,6 +171,8 @@ export type ConditionOperator =
   | "CONTAINS_IN"
 
 export interface RuleCondition {
+  /** UI-only stable identifier (not persisted server-side) */
+  clientId?: string
   field?: ConditionField
   operator: ConditionOperator
   value?: string

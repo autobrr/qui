@@ -48,7 +48,7 @@ func TestProcessTorrents_CategoryBlockedByCrossSeedCategory(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
 	_, ok := states["a"]
 	require.False(t, ok, "expected category action to be blocked when protected cross-seed exists")
 }
@@ -89,7 +89,7 @@ func TestProcessTorrents_CategoryAllowedWhenNoProtectedCrossSeed(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
 	state, ok := states["a"]
 	require.True(t, ok, "expected category action to apply when no protected cross-seed exists")
 	require.NotNil(t, state.category)
@@ -132,7 +132,7 @@ func TestProcessTorrents_CategoryAllowedWhenProtectedCrossSeedDifferentSavePath(
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil)
 	_, ok := states["a"]
 	require.True(t, ok, "expected category action to apply when protected torrent is not in the same cross-seed group")
 }

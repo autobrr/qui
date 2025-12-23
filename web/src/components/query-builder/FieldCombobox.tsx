@@ -20,14 +20,22 @@ import { CONDITION_FIELDS, FIELD_GROUPS } from "./constants";
 interface FieldComboboxProps {
   value: string;
   onChange: (value: string) => void;
+  hiddenFields?: string[];
 }
 
-export function FieldCombobox({ value, onChange }: FieldComboboxProps) {
+export function FieldCombobox({ value, onChange, hiddenFields }: FieldComboboxProps) {
   const [open, setOpen] = useState(false);
 
   const selectedField = value
     ? CONDITION_FIELDS[value as keyof typeof CONDITION_FIELDS]
     : null;
+
+  const visibleGroups = FIELD_GROUPS
+    .map(group => ({
+      ...group,
+      fields: group.fields.filter(field => !hiddenFields?.includes(field)),
+    }))
+    .filter(group => group.fields.length > 0);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -49,7 +57,7 @@ export function FieldCombobox({ value, onChange }: FieldComboboxProps) {
           <CommandInput placeholder="Search fields..." className="h-9" />
           <CommandList>
             <CommandEmpty>No field found.</CommandEmpty>
-            {FIELD_GROUPS.map((group) => (
+            {visibleGroups.map((group) => (
               <CommandGroup key={group.label} heading={group.label}>
                 {group.fields.map((field) => {
                   const fieldDef = CONDITION_FIELDS[field as keyof typeof CONDITION_FIELDS];

@@ -18,6 +18,10 @@ interface ConditionGroupProps {
   isRoot?: boolean;
   /** Optional category options for EXISTS_IN/CONTAINS_IN operators */
   categoryOptions?: Array<{ label: string; value: string }>;
+  /** Optional list of fields to hide from the selector */
+  hiddenFields?: string[];
+  /** Optional list of "state" option values to hide */
+  hiddenStateValues?: string[];
 }
 
 const MAX_DEPTH = 5;
@@ -30,6 +34,8 @@ export function ConditionGroup({
   depth = 0,
   isRoot = false,
   categoryOptions,
+  hiddenFields,
+  hiddenStateValues,
 }: ConditionGroupProps) {
   const isGroup = condition.operator === "AND" || condition.operator === "OR";
   const children = condition.conditions ?? [];
@@ -43,6 +49,7 @@ export function ConditionGroup({
 
   const addCondition = useCallback(() => {
     const newCondition: RuleCondition = {
+      clientId: `c_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`,
       field: "NAME",
       operator: "CONTAINS",
       value: "",
@@ -57,9 +64,11 @@ export function ConditionGroup({
     if (depth >= MAX_DEPTH) return;
 
     const newGroup: RuleCondition = {
+      clientId: `c_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`,
       operator: "AND",
       conditions: [
         {
+          clientId: `c_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`,
           field: "NAME",
           operator: "CONTAINS",
           value: "",
@@ -112,12 +121,14 @@ export function ConditionGroup({
         onChange={onChange}
         onRemove={onRemove ?? (() => {})}
         categoryOptions={categoryOptions}
+        hiddenFields={hiddenFields}
+        hiddenStateValues={hiddenStateValues}
       />
     );
   }
 
   // Generate unique IDs for children
-  const childIds = children.map((_, index) => `${id}-${index}`);
+  const childIds = children.map((child, index) => child.clientId ?? `${id}-${index}`);
 
   return (
     <div
@@ -179,6 +190,8 @@ export function ConditionGroup({
                   onRemove={() => removeChild(index)}
                   depth={depth + 1}
                   categoryOptions={categoryOptions}
+                  hiddenFields={hiddenFields}
+                  hiddenStateValues={hiddenStateValues}
                 />
               );
             }
@@ -192,6 +205,8 @@ export function ConditionGroup({
                 onRemove={() => removeChild(index)}
                 isOnly={children.length === 1 && isRoot}
                 categoryOptions={categoryOptions}
+                hiddenFields={hiddenFields}
+                hiddenStateValues={hiddenStateValues}
               />
             );
           })}

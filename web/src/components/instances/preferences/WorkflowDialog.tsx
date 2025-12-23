@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
+import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
@@ -143,6 +144,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
   const { data: metadata } = useInstanceMetadata(instanceId)
+  const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: open })
+  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
 
   // Build category options for the category action dropdown
   const categoryOptions = useMemo(() => {
@@ -602,6 +605,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     condition={formState.actionCondition}
                     onChange={(condition) => setFormState(prev => ({ ...prev, actionCondition: condition }))}
                     categoryOptions={categoryOptions}
+                    hiddenFields={supportsTrackerHealth ? [] : ["IS_UNREGISTERED"]}
+                    hiddenStateValues={supportsTrackerHealth ? [] : ["tracker_down"]}
                   />
                 </div>
 

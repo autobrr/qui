@@ -107,6 +107,16 @@ func TestEvaluateCondition_StringFields(t *testing.T) {
 			expected: true,
 		},
 		{
+			name: "state equals uploading matches queuedUP bucket",
+			cond: &RuleCondition{
+				Field:    FieldState,
+				Operator: OperatorEqual,
+				Value:    "uploading",
+			},
+			torrent:  qbt.Torrent{State: qbt.TorrentStateQueuedUp},
+			expected: true,
+		},
+		{
 			name: "state equals stalledUP",
 			cond: &RuleCondition{
 				Field:    FieldState,
@@ -114,6 +124,36 @@ func TestEvaluateCondition_StringFields(t *testing.T) {
 				Value:    "stalledUP",
 			},
 			torrent:  qbt.Torrent{State: qbt.TorrentStateStalledUp},
+			expected: true,
+		},
+		{
+			name: "state equals errored matches error",
+			cond: &RuleCondition{
+				Field:    FieldState,
+				Operator: OperatorEqual,
+				Value:    "errored",
+			},
+			torrent:  qbt.Torrent{State: qbt.TorrentStateError},
+			expected: true,
+		},
+		{
+			name: "state equals errored matches missingFiles",
+			cond: &RuleCondition{
+				Field:    FieldState,
+				Operator: OperatorEqual,
+				Value:    "errored",
+			},
+			torrent:  qbt.Torrent{State: qbt.TorrentStateMissingFiles},
+			expected: true,
+		},
+		{
+			name: "state equals stopped matches pausedUP",
+			cond: &RuleCondition{
+				Field:    FieldState,
+				Operator: OperatorEqual,
+				Value:    "stopped",
+			},
+			torrent:  qbt.Torrent{State: qbt.TorrentStatePausedUp},
 			expected: true,
 		},
 		{
@@ -603,6 +643,36 @@ func TestEvaluateCondition_EmptyGroup(t *testing.T) {
 	if result {
 		t.Error("empty AND group should return false (not a valid group)")
 	}
+}
+
+func TestEvaluateCondition_StateTrackerDown_WithContext(t *testing.T) {
+	cond := &RuleCondition{
+		Field:    FieldState,
+		Operator: OperatorEqual,
+		Value:    "tracker_down",
+	}
+
+	torrent := qbt.Torrent{
+		Hash:  "hash1",
+		State: qbt.TorrentStateUploading,
+	}
+
+	t.Run("matches when in TrackerDownSet", func(t *testing.T) {
+		ctx := &EvalContext{
+			TrackerDownSet: map[string]struct{}{"hash1": {}},
+		}
+		got := EvaluateConditionWithContext(cond, torrent, ctx, 0)
+		if !got {
+			t.Fatalf("expected true, got false")
+		}
+	})
+
+	t.Run("does not match without TrackerDownSet", func(t *testing.T) {
+		got := EvaluateConditionWithContext(cond, torrent, &EvalContext{}, 0)
+		if got {
+			t.Fatalf("expected false, got true")
+		}
+	})
 }
 
 func float64Ptr(v float64) *float64 {

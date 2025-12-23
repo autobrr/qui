@@ -48,6 +48,10 @@ interface LeafConditionProps {
   isOnly?: boolean;
   /** Optional category options for EXISTS_IN/CONTAINS_IN operators */
   categoryOptions?: Array<{ label: string; value: string }>;
+  /** Optional list of fields to hide from the selector */
+  hiddenFields?: string[];
+  /** Optional list of "state" option values to hide */
+  hiddenStateValues?: string[];
 }
 
 export function LeafCondition({
@@ -57,6 +61,8 @@ export function LeafCondition({
   onRemove,
   isOnly,
   categoryOptions,
+  hiddenFields,
+  hiddenStateValues,
 }: LeafConditionProps) {
   const {
     attributes,
@@ -190,7 +196,7 @@ export function LeafCondition({
       </Tooltip>
 
       {/* Field selector */}
-      <FieldCombobox value={condition.field ?? ""} onChange={handleFieldChange} />
+      <FieldCombobox value={condition.field ?? ""} onChange={handleFieldChange} hiddenFields={hiddenFields} />
 
       {/* Operator selector */}
       <Select
@@ -292,7 +298,7 @@ export function LeafCondition({
             <SelectValue placeholder="Select state" />
           </SelectTrigger>
           <SelectContent>
-            {TORRENT_STATES.map((state) => (
+            {TORRENT_STATES.filter(state => !hiddenStateValues?.includes(state.value)).map((state) => (
               <SelectItem key={state.value} value={state.value}>
                 {state.label}
               </SelectItem>

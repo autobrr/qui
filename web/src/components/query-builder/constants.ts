@@ -7,7 +7,7 @@ export const CONDITION_FIELDS = {
   TAGS: { label: "Tags", type: "string" as const, description: "Comma-separated tags" },
   SAVE_PATH: { label: "Save Path", type: "string" as const, description: "Download location" },
   CONTENT_PATH: { label: "Content Path", type: "string" as const, description: "Content location" },
-  STATE: { label: "State", type: "state" as const, description: "Torrent state" },
+  STATE: { label: "State", type: "state" as const, description: "Torrent status (matches sidebar filters)" },
   TRACKER: { label: "Tracker", type: "string" as const, description: "Primary tracker URL" },
   COMMENT: { label: "Comment", type: "string" as const, description: "Torrent comment" },
 
@@ -128,25 +128,24 @@ export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string
 
 // qBittorrent torrent states
 export const TORRENT_STATES = [
-  { value: "error", label: "Error" },
-  { value: "missingFiles", label: "Missing Files" },
-  { value: "uploading", label: "Uploading" },
-  { value: "pausedUP", label: "Paused (Seeding)" },
-  { value: "queuedUP", label: "Queued (Seeding)" },
-  { value: "stalledUP", label: "Stalled (Seeding)" },
-  { value: "checkingUP", label: "Checking (Seeding)" },
-  { value: "forcedUP", label: "Forced Upload" },
-  { value: "allocating", label: "Allocating" },
+  // Status buckets (same as sidebar)
   { value: "downloading", label: "Downloading" },
-  { value: "metaDL", label: "Downloading Metadata" },
-  { value: "pausedDL", label: "Paused (Downloading)" },
-  { value: "queuedDL", label: "Queued (Downloading)" },
-  { value: "stalledDL", label: "Stalled (Downloading)" },
-  { value: "checkingDL", label: "Checking (Downloading)" },
-  { value: "forcedDL", label: "Forced Download" },
-  { value: "checkingResumeData", label: "Checking Resume Data" },
+  { value: "uploading", label: "Seeding" },
+  { value: "completed", label: "Completed" },
+  { value: "stopped", label: "Stopped" },
+  { value: "active", label: "Active" },
+  { value: "inactive", label: "Inactive" },
+  { value: "running", label: "Running" },
+  { value: "stalled", label: "Stalled" },
+  { value: "stalled_uploading", label: "Stalled Up" },
+  { value: "stalled_downloading", label: "Stalled Down" },
+  { value: "errored", label: "Error" },
+  { value: "tracker_down", label: "Tracker Down" },
+  { value: "checking", label: "Checking" },
   { value: "moving", label: "Moving" },
-  { value: "unknown", label: "Unknown" },
+
+  // Specific qBittorrent state (kept for targeting missing-file issues)
+  { value: "missingFiles", label: "Missing Files" },
 ];
 
 // Delete mode options
