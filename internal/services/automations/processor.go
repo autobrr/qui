@@ -215,8 +215,9 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			if stats != nil {
 				stats.PauseApplied++
 			}
-			// Only pause if not already paused
-			if torrent.State != qbt.TorrentStatePausedUp && torrent.State != qbt.TorrentStatePausedDl {
+			// Only pause if not already paused/stopped
+			if torrent.State != qbt.TorrentStatePausedUp && torrent.State != qbt.TorrentStatePausedDl &&
+				torrent.State != qbt.TorrentStateStoppedUp && torrent.State != qbt.TorrentStateStoppedDl {
 				state.shouldPause = true
 			}
 		} else if stats != nil {
