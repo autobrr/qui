@@ -67,6 +67,12 @@ type CrossSeedAutomationSettings struct {
 	SkipAutoResumeWebhook      bool `json:"skipAutoResumeWebhook"`      // Skip auto-resume for /apply webhook results
 	SkipRecheck                bool `json:"skipRecheck"`                // Skip cross-seed matches that require a recheck
 
+	// Hardlink mode: create hardlinked file trees instead of reuse+rename alignment.
+	// Requires instance HasLocalFilesystemAccess and same filesystem as download paths.
+	UseHardlinks      bool   `json:"useHardlinks"`      // Enable hardlink mode for cross-seeding
+	HardlinkBaseDir   string `json:"hardlinkBaseDir"`   // Base directory for hardlink trees (on qui host)
+	HardlinkDirPreset string `json:"hardlinkDirPreset"` // Directory preset: "flat", "by-tracker", "by-instance"
+
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
@@ -120,8 +126,12 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		SkipAutoResumeCompletion:   false,
 		SkipAutoResumeWebhook:      false,
 		SkipRecheck:                false,
-		CreatedAt:                  time.Now().UTC(),
-		UpdatedAt:                  time.Now().UTC(),
+		// Hardlink mode - disabled by default
+		UseHardlinks:      false,
+		HardlinkBaseDir:   "",
+		HardlinkDirPreset: "flat",
+		CreatedAt:         time.Now().UTC(),
+		UpdatedAt:         time.Now().UTC(),
 	}
 }
 
@@ -300,6 +310,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		       skip_auto_resume_rss, skip_auto_resume_seeded_search,
 		       skip_auto_resume_completion, skip_auto_resume_webhook,
 		       skip_recheck,
+		       use_hardlinks, hardlink_base_dir, hardlink_dir_preset,
 		       created_at, updated_at
 		FROM cross_seed_settings
 		WHERE id = 1
@@ -348,6 +359,9 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&settings.SkipAutoResumeCompletion,
 		&settings.SkipAutoResumeWebhook,
 		&settings.SkipRecheck,
+		&settings.UseHardlinks,
+		&settings.HardlinkBaseDir,
+		&settings.HardlinkDirPreset,
 		&createdAt,
 		&updatedAt,
 	)
@@ -518,9 +532,10 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			webhook_tags, inherit_source_tags, use_cross_category_suffix,
 			skip_auto_resume_rss, skip_auto_resume_seeded_search,
 			skip_auto_resume_completion, skip_auto_resume_webhook,
-			skip_recheck
+			skip_recheck,
+			use_hardlinks, hardlink_base_dir, hardlink_dir_preset
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -553,7 +568,10 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			skip_auto_resume_seeded_search = excluded.skip_auto_resume_seeded_search,
 			skip_auto_resume_completion = excluded.skip_auto_resume_completion,
 			skip_auto_resume_webhook = excluded.skip_auto_resume_webhook,
-			skip_recheck = excluded.skip_recheck
+			skip_recheck = excluded.skip_recheck,
+			use_hardlinks = excluded.use_hardlinks,
+			hardlink_base_dir = excluded.hardlink_base_dir,
+			hardlink_dir_preset = excluded.hardlink_dir_preset
 	`
 
 	// Convert *int to any for proper SQL handling
@@ -600,6 +618,9 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		settings.SkipAutoResumeCompletion,
 		settings.SkipAutoResumeWebhook,
 		settings.SkipRecheck,
+		settings.UseHardlinks,
+		settings.HardlinkBaseDir,
+		settings.HardlinkDirPreset,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("upsert settings: %w", err)

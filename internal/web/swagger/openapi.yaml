@@ -4182,6 +4182,16 @@ components:
         skipRecheck:
           type: boolean
           description: Skip cross-seed matches that would require a manual recheck
+        useHardlinks:
+          type: boolean
+          description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
+        hardlinkBaseDir:
+          type: string
+          description: Base directory for hardlink trees (must be on same filesystem as downloads)
+        hardlinkDirPreset:
+          type: string
+          enum: [flat, by-tracker, by-instance]
+          description: Directory organization preset for hardlink trees
 
     CrossSeedAutomationSettings:
       type: object
@@ -4248,6 +4258,16 @@ components:
         skipRecheck:
           type: boolean
           description: Skip cross-seed matches that would require a manual recheck
+        useHardlinks:
+          type: boolean
+          description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
+        hardlinkBaseDir:
+          type: string
+          description: Base directory for hardlink trees (must be on same filesystem as downloads)
+        hardlinkDirPreset:
+          type: string
+          enum: [flat, by-tracker, by-instance]
+          description: Directory organization preset for hardlink trees
         createdAt:
           type: string
           format: date-time

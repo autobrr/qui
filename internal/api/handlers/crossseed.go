@@ -43,6 +43,10 @@ type automationSettingsRequest struct {
 	UseCrossCategorySuffix       bool     `json:"useCrossCategorySuffix"`
 	RunExternalProgramID         *int     `json:"runExternalProgramId"`
 	SkipRecheck                  bool     `json:"skipRecheck"`
+	// Hardlink mode settings
+	UseHardlinks      bool   `json:"useHardlinks"`
+	HardlinkBaseDir   string `json:"hardlinkBaseDir"`
+	HardlinkDirPreset string `json:"hardlinkDirPreset"`
 }
 
 type automationSettingsPatchRequest struct {
@@ -81,6 +85,10 @@ type automationSettingsPatchRequest struct {
 	SkipAutoResumeCompletion   *bool `json:"skipAutoResumeCompletion,omitempty"`
 	SkipAutoResumeWebhook      *bool `json:"skipAutoResumeWebhook,omitempty"`
 	SkipRecheck                *bool `json:"skipRecheck,omitempty"`
+	// Hardlink mode settings
+	UseHardlinks      *bool   `json:"useHardlinks,omitempty"`
+	HardlinkBaseDir   *string `json:"hardlinkBaseDir,omitempty"`
+	HardlinkDirPreset *string `json:"hardlinkDirPreset,omitempty"`
 }
 
 type optionalString struct {
@@ -170,7 +178,10 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.SkipAutoResumeSeededSearch == nil &&
 		r.SkipAutoResumeCompletion == nil &&
 		r.SkipAutoResumeWebhook == nil &&
-		r.SkipRecheck == nil
+		r.SkipRecheck == nil &&
+		r.UseHardlinks == nil &&
+		r.HardlinkBaseDir == nil &&
+		r.HardlinkDirPreset == nil
 }
 
 func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, patch automationSettingsPatchRequest) {
@@ -279,6 +290,16 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	}
 	if patch.SkipRecheck != nil {
 		settings.SkipRecheck = *patch.SkipRecheck
+	}
+	// Hardlink mode settings
+	if patch.UseHardlinks != nil {
+		settings.UseHardlinks = *patch.UseHardlinks
+	}
+	if patch.HardlinkBaseDir != nil {
+		settings.HardlinkBaseDir = *patch.HardlinkBaseDir
+	}
+	if patch.HardlinkDirPreset != nil {
+		settings.HardlinkDirPreset = *patch.HardlinkDirPreset
 	}
 }
 
@@ -644,6 +665,15 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		return
 	}
 
+	// Normalize hardlink preset to valid values
+	hardlinkPreset := strings.TrimSpace(req.HardlinkDirPreset)
+	switch hardlinkPreset {
+	case "flat", "by-tracker", "by-instance":
+		// valid
+	default:
+		hardlinkPreset = "flat"
+	}
+
 	settings := &models.CrossSeedAutomationSettings{
 		Enabled:                      req.Enabled,
 		RunIntervalMinutes:           req.RunIntervalMinutes,
@@ -659,6 +689,9 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		UseCrossCategorySuffix:       req.UseCrossCategorySuffix,
 		RunExternalProgramID:         req.RunExternalProgramID,
 		SkipRecheck:                  req.SkipRecheck,
+		UseHardlinks:                 req.UseHardlinks,
+		HardlinkBaseDir:              strings.TrimSpace(req.HardlinkBaseDir),
+		HardlinkDirPreset:            hardlinkPreset,
 	}
 
 	updated, err := h.service.UpdateAutomationSettings(r.Context(), settings)

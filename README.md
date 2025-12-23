@@ -366,9 +366,9 @@ Downloaded backups can be imported into any qui instance. Useful for migrating t
 qui includes intelligent cross-seeding capabilities that help you automatically find and add matching torrents across different trackers. This allows you to seed the same content on multiple trackers.
 
 > [!NOTE]
-> qui adds cross-seeded torrents by inheriting the **Automatic Torrent Management (AutoTMM)** state from the matched torrent. If the matched torrent uses AutoTMM, the cross-seed will too; if the matched torrent has a custom save path (AutoTMM disabled), the cross-seed will use the same explicit path. This reuses existing files directly without creating hardlinks.
+> qui adds cross-seeded torrents by inheriting the **Automatic Torrent Management (AutoTMM)** state from the matched torrent. If the matched torrent uses AutoTMM, the cross-seed will too; if the matched torrent has a custom save path (AutoTMM disabled), the cross-seed will use the same explicit path. This reuses existing files directly without creating hardlinks (unless [hardlink mode](#hardlink-mode-optional) is enabled).
 >
-> For detailed information about category behavior, save paths, and best practices, see the [Cross-Seeding Guide](docs/CROSS_SEEDING.md).
+> For detailed information about category behavior, save paths, hardlink mode, and best practices, see the [Cross-Seeding Guide](docs/CROSS_SEEDING.md).
 
 ### Prerequisites
 
@@ -476,6 +476,51 @@ When the source torrent contains files not on disk (NFO, SRT, samples not filter
 - Default tolerance 5% → auto-resumes at ≥95% completion
 - Torrents below threshold stay paused for manual investigation
 - Configure via **Size mismatch tolerance** in Global rules
+
+### Hardlink Mode (optional)
+
+Hardlink mode is an opt-in cross-seeding strategy that creates a hardlinked copy of the matched files laid out exactly as the incoming torrent expects, then adds the torrent pointing at that hardlink tree. This can make cross-seed alignment simpler and faster, because qBittorrent can start seeding immediately without file rename alignment.
+
+#### When to use
+
+- You want cross-seeds to have their own on-disk directory structure (per tracker / per instance / flat), while still sharing data blocks with the original download.
+- You want to avoid qBittorrent rename-alignment and hash rechecks for layout differences.
+
+#### Requirements
+
+- Requires **Local filesystem access** on the target qBittorrent instance.
+- Hardlink base directory must be on the **same filesystem/volume** as the instance's download paths (hardlinks can't cross filesystems).
+- qui must be able to read the instance's content paths and write to the hardlink base directory.
+
+#### Behavior
+
+- Hardlink mode is a **global cross-seed setting** (not per request).
+- If hardlink mode is enabled and a hardlink cannot be created (no local access, filesystem mismatch, invalid base dir, etc.), the cross-seed **fails** (no fallback to the default mode).
+- Hardlinked torrents are still categorized using your existing cross-seed category rules (`.cross` suffix / "use indexer name as category"); the hardlink preset only affects on-disk folder layout.
+
+#### Hardlink directory layout
+
+Configure in Cross-Seed → Global rules:
+
+- `Hardlink base directory`: path on the qui host where hardlink trees are created.
+- `Directory preset`:
+  - `flat`: `base/<torrentKey>/...`
+  - `by-tracker`: `base/<incoming-tracker-display-name>/<torrentKey>/...`
+  - `by-instance`: `base/<instance-name>/<torrentKey>/...`
+
+"Incoming tracker display name" uses your Tracker Customizations (Dashboard → Tracker Breakdown) when available; otherwise it falls back to the tracker domain or indexer name.
+
+#### How to enable
+
+1. Enable "Local filesystem access" on the qBittorrent instance in Instance Settings.
+2. In Cross-Seed → Global rules, enable "Hardlink mode".
+3. Set "Hardlink base directory" to a path on the same filesystem as your downloads.
+4. Choose a directory preset (`flat`, `by-tracker`, `by-instance`).
+
+#### Notes
+
+- Hardlinks share disk blocks with the original file but increase the link count. Deleting one link does not necessarily free space until all links are removed.
+- Windows support: folder names are sanitized to remove characters Windows forbids. Torrent file paths themselves still need to be valid for your qBittorrent setup.
 
 ### autobrr Integration
 

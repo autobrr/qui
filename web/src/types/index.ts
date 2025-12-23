@@ -1618,6 +1618,10 @@ export interface CrossSeedAutomationSettings {
   skipAutoResumeCompletion: boolean
   skipAutoResumeWebhook: boolean
   skipRecheck: boolean
+  // Hardlink mode settings
+  useHardlinks: boolean
+  hardlinkBaseDir: string
+  hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
   createdAt?: string
   updatedAt?: string
 }
@@ -1657,6 +1661,10 @@ export interface CrossSeedAutomationSettingsPatch {
   skipAutoResumeCompletion?: boolean
   skipAutoResumeWebhook?: boolean
   skipRecheck?: boolean
+  // Hardlink mode settings
+  useHardlinks?: boolean
+  hardlinkBaseDir?: string
+  hardlinkDirPreset?: "flat" | "by-tracker" | "by-instance"
 }
 
 export interface CrossSeedAutomationStatus {

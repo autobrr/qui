@@ -90,6 +90,10 @@ interface GlobalCrossSeedSettings {
   webhookSourceTags: string[]
   webhookSourceExcludeCategories: string[]
   webhookSourceExcludeTags: string[]
+  // Hardlink mode settings
+  useHardlinks: boolean
+  hardlinkBaseDir: string
+  hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
 }
 
 // RSS Automation constants
@@ -134,6 +138,10 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   webhookSourceTags: [],
   webhookSourceExcludeCategories: [],
   webhookSourceExcludeTags: [],
+  // Hardlink mode defaults
+  useHardlinks: false,
+  hardlinkBaseDir: "",
+  hardlinkDirPreset: "flat",
 }
 
 function parseList(value: string): string[] {
@@ -440,6 +448,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         webhookSourceTags: settings.webhookSourceTags ?? [],
         webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
         webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
+        // Hardlink mode settings
+        useHardlinks: settings.useHardlinks ?? false,
+        hardlinkBaseDir: settings.hardlinkBaseDir ?? "",
+        hardlinkDirPreset: settings.hardlinkDirPreset ?? "flat",
       })
       setGlobalSettingsInitialized(true)
     }
@@ -535,6 +547,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         webhookSourceTags: settings.webhookSourceTags ?? [],
         webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
         webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
+        useHardlinks: settings.useHardlinks ?? false,
+        hardlinkBaseDir: settings.hardlinkBaseDir ?? "",
+        hardlinkDirPreset: settings.hardlinkDirPreset ?? "flat",
       }
 
     return {
@@ -561,6 +576,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       webhookSourceTags: globalSource.webhookSourceTags,
       webhookSourceExcludeCategories: globalSource.webhookSourceExcludeCategories,
       webhookSourceExcludeTags: globalSource.webhookSourceExcludeTags,
+      // Hardlink mode settings
+      useHardlinks: globalSource.useHardlinks,
+      hardlinkBaseDir: globalSource.hardlinkBaseDir,
+      hardlinkDirPreset: globalSource.hardlinkDirPreset,
     }
   }, [
     settings,
@@ -2134,6 +2153,81 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   />
                 </div>
               </div>
+
+              <Collapsible className="rounded-lg border border-border/70 bg-muted/40">
+                <CollapsibleTrigger className="flex w-full items-center justify-between p-4 font-medium [&[data-state=open]>svg]:rotate-180">
+                  <span>Hardlink Mode (advanced)</span>
+                  <ChevronDown className="h-4 w-4 transition-transform duration-200" />
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="border-t border-border/70 p-4 pt-4 space-y-4">
+                    <p className="text-xs text-muted-foreground">
+                      Create hardlinked file trees instead of using reuse+rename alignment. This requires qui to have
+                      local filesystem access to your download directories, and the hardlink base directory must be
+                      on the same filesystem as the download paths.
+                    </p>
+
+                    <Alert className="border-amber-500/20 bg-amber-500/10">
+                      <AlertTriangle className="h-4 w-4 !text-amber-500" />
+                      <AlertDescription className="text-sm">
+                        Instances must have "Local filesystem access" enabled in Instance Settings for hardlink mode
+                        to work. Hardlink failures will abort the cross-seed (no fallback to regular mode).
+                      </AlertDescription>
+                    </Alert>
+
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="use-hardlinks" className="font-medium">Enable hardlink mode</Label>
+                        <p className="text-xs text-muted-foreground">Create hardlinked file trees for cross-seeds</p>
+                      </div>
+                      <Switch
+                        id="use-hardlinks"
+                        checked={globalSettings.useHardlinks}
+                        onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, useHardlinks: !!value }))}
+                      />
+                    </div>
+
+                    {globalSettings.useHardlinks && (
+                      <div className="space-y-4 pt-2">
+                        <div className="space-y-3">
+                          <Label htmlFor="hardlink-base-dir">Hardlink base directory</Label>
+                          <Input
+                            id="hardlink-base-dir"
+                            placeholder="/path/to/crossseed-data"
+                            value={globalSettings.hardlinkBaseDir}
+                            onChange={event => setGlobalSettings(prev => ({ ...prev, hardlinkBaseDir: event.target.value }))}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Directory where hardlink trees will be created. Must be on the same filesystem as your downloads.
+                          </p>
+                        </div>
+
+                        <div className="space-y-3">
+                          <Label htmlFor="hardlink-dir-preset">Directory organization</Label>
+                          <Select
+                            value={globalSettings.hardlinkDirPreset}
+                            onValueChange={(value: "flat" | "by-tracker" | "by-instance") =>
+                              setGlobalSettings(prev => ({ ...prev, hardlinkDirPreset: value }))
+                            }
+                          >
+                            <SelectTrigger id="hardlink-dir-preset">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="flat">Flat (all in base directory)</SelectItem>
+                              <SelectItem value="by-tracker">By Tracker (organize by tracker name)</SelectItem>
+                              <SelectItem value="by-instance">By Instance (organize by qBittorrent instance)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            How to organize hardlink trees within the base directory.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
 
               <Collapsible className="rounded-lg border border-border/70 bg-muted/40">
                 <CollapsibleTrigger className="flex w-full items-center justify-between p-4 font-medium [&[data-state=open]>svg]:rotate-180">

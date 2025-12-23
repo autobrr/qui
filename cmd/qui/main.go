@@ -555,7 +555,7 @@ func (app *Application) runServer() {
 	// Initialize cross-seed automation store and service
 	crossSeedStore := models.NewCrossSeedStore(db)
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
-	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore, instanceCrossSeedCompletionStore)
+	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore, instanceCrossSeedCompletionStore, trackerCustomizationStore)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 	automationActivityStore := models.NewAutomationActivityStore(db)
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, syncManager)
