@@ -85,3 +85,37 @@ func TorrentKey(infohash, name string) string {
 
 	return "_unknown"
 }
+
+// IsolationFolderName generates a human-readable isolation folder name for
+// hardlink cross-seeding. Format: <sanitized-name>--<shortHash>
+//
+// This is used when torrents need isolation (e.g., rootless torrents with
+// Original layout, or NoSubfolder layout) to prevent file conflicts while
+// keeping the folder name readable and unique.
+//
+// Example: "My.Movie.2024.1080p.BluRay--abcdef12"
+func IsolationFolderName(infohash, name string) string {
+	sanitizedName := SanitizePathSegment(name)
+
+	// Truncate very long names to keep folder name reasonable
+	const maxNameLen = 80
+	if len(sanitizedName) > maxNameLen {
+		sanitizedName = sanitizedName[:maxNameLen]
+		// Remove trailing dots/spaces after truncation
+		sanitizedName = strings.TrimRight(sanitizedName, ". ")
+	}
+
+	// Use first 8 chars of infohash as short hash
+	shortHash := ""
+	if len(infohash) >= 8 {
+		shortHash = strings.ToLower(infohash[:8])
+	} else if infohash != "" {
+		shortHash = strings.ToLower(infohash)
+	}
+
+	if shortHash == "" {
+		return sanitizedName
+	}
+
+	return sanitizedName + "--" + shortHash
+}

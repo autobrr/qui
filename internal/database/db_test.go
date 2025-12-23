@@ -182,6 +182,9 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "sort_order", Type: "INTEGER"},
 		{Name: "is_active", Type: "BOOLEAN"},
 		{Name: "has_local_filesystem_access", Type: "BOOLEAN"},
+		{Name: "use_hardlinks", Type: "BOOLEAN"},
+		{Name: "hardlink_base_dir", Type: "TEXT"},
+		{Name: "hardlink_dir_preset", Type: "TEXT"},
 	},
 	"licenses": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},

@@ -36,6 +36,10 @@ type Instance struct {
 	SortOrder                int     `json:"sortOrder"`
 	IsActive                 bool    `json:"isActive"`
 	HasLocalFilesystemAccess bool    `json:"hasLocalFilesystemAccess"`
+	// Hardlink mode settings (per-instance)
+	UseHardlinks      bool   `json:"useHardlinks"`
+	HardlinkBaseDir   string `json:"hardlinkBaseDir"`
+	HardlinkDirPreset string `json:"hardlinkDirPreset"` // "flat", "by-tracker", "by-instance"
 }
 
 func (i Instance) MarshalJSON() ([]byte, error) {
@@ -51,6 +55,9 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 		TLSSkipVerify            bool       `json:"tlsSkipVerify"`
 		IsActive                 bool       `json:"isActive"`
 		HasLocalFilesystemAccess bool       `json:"hasLocalFilesystemAccess"`
+		UseHardlinks             bool       `json:"useHardlinks"`
+		HardlinkBaseDir          string     `json:"hardlinkBaseDir"`
+		HardlinkDirPreset        string     `json:"hardlinkDirPreset"`
 		LastConnectedAt          *time.Time `json:"last_connected_at,omitempty"`
 		CreatedAt                time.Time  `json:"created_at"`
 		UpdatedAt                time.Time  `json:"updated_at"`
@@ -72,6 +79,9 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 		SortOrder:                i.SortOrder,
 		IsActive:                 i.IsActive,
 		HasLocalFilesystemAccess: i.HasLocalFilesystemAccess,
+		UseHardlinks:             i.UseHardlinks,
+		HardlinkBaseDir:          i.HardlinkBaseDir,
+		HardlinkDirPreset:        i.HardlinkDirPreset,
 	})
 }
 
@@ -88,6 +98,9 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 		TLSSkipVerify            *bool      `json:"tlsSkipVerify,omitempty"`
 		IsActive                 bool       `json:"isActive"`
 		HasLocalFilesystemAccess *bool      `json:"hasLocalFilesystemAccess,omitempty"`
+		UseHardlinks             *bool      `json:"useHardlinks,omitempty"`
+		HardlinkBaseDir          *string    `json:"hardlinkBaseDir,omitempty"`
+		HardlinkDirPreset        *string    `json:"hardlinkDirPreset,omitempty"`
 		LastConnectedAt          *time.Time `json:"last_connected_at,omitempty"`
 		CreatedAt                time.Time  `json:"created_at"`
 		UpdatedAt                time.Time  `json:"updated_at"`
@@ -118,6 +131,17 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 	// HasLocalFilesystemAccess defaults to false if not provided (opt-in feature)
 	if temp.HasLocalFilesystemAccess != nil {
 		i.HasLocalFilesystemAccess = *temp.HasLocalFilesystemAccess
+	}
+
+	// Hardlink settings (all default to false/empty if not provided)
+	if temp.UseHardlinks != nil {
+		i.UseHardlinks = *temp.UseHardlinks
+	}
+	if temp.HardlinkBaseDir != nil {
+		i.HardlinkBaseDir = *temp.HardlinkBaseDir
+	}
+	if temp.HardlinkDirPreset != nil {
+		i.HardlinkDirPreset = *temp.HardlinkDirPreset
 	}
 
 	// Handle password - don't overwrite if redacted
@@ -369,7 +393,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 
 func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	query := `
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset
 		FROM instances_view
 		WHERE id = ?
 	`
@@ -381,6 +405,8 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	var sortOrder int
 	var isActive bool
 	var hasLocalFilesystemAccess bool
+	var useHardlinks bool
+	var hardlinkBaseDir, hardlinkDirPreset string
 
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&instanceID,
@@ -394,6 +420,9 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		&sortOrder,
 		&isActive,
 		&hasLocalFilesystemAccess,
+		&useHardlinks,
+		&hardlinkBaseDir,
+		&hardlinkDirPreset,
 	)
 
 	if err != nil {
@@ -413,6 +442,9 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		SortOrder:                sortOrder,
 		IsActive:                 isActive,
 		HasLocalFilesystemAccess: hasLocalFilesystemAccess,
+		UseHardlinks:             useHardlinks,
+		HardlinkBaseDir:          hardlinkBaseDir,
+		HardlinkDirPreset:        hardlinkDirPreset,
 	}
 
 	if basicUsername.Valid {
@@ -427,7 +459,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 
 func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	query := `
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset
 		FROM instances_view
 		ORDER BY sort_order ASC, name COLLATE NOCASE ASC, id ASC
 	`
@@ -447,6 +479,8 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 		var sortOrder int
 		var isActive bool
 		var hasLocalFilesystemAccess bool
+		var useHardlinks bool
+		var hardlinkBaseDir, hardlinkDirPreset string
 
 		err := rows.Scan(
 			&id,
@@ -460,6 +494,9 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 			&sortOrder,
 			&isActive,
 			&hasLocalFilesystemAccess,
+			&useHardlinks,
+			&hardlinkBaseDir,
+			&hardlinkDirPreset,
 		)
 		if err != nil {
 			return nil, err
@@ -475,6 +512,9 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 			SortOrder:                sortOrder,
 			IsActive:                 isActive,
 			HasLocalFilesystemAccess: hasLocalFilesystemAccess,
+			UseHardlinks:             useHardlinks,
+			HardlinkBaseDir:          hardlinkBaseDir,
+			HardlinkDirPreset:        hardlinkDirPreset,
 		}
 
 		if basicUsername.Valid {
@@ -494,7 +534,16 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	return instances, nil
 }
 
-func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify, hasLocalFilesystemAccess *bool) (*Instance, error) {
+// InstanceUpdateParams contains optional fields for updating an instance.
+type InstanceUpdateParams struct {
+	TLSSkipVerify            *bool
+	HasLocalFilesystemAccess *bool
+	UseHardlinks             *bool
+	HardlinkBaseDir          *string
+	HardlinkDirPreset        *string
+}
+
+func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, username, password string, basicUsername, basicPassword *string, params *InstanceUpdateParams) (*Instance, error) {
 	// Validate and normalize the host
 	normalizedHost, err := validateAndNormalizeHost(rawHost)
 	if err != nil {
@@ -579,14 +628,31 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		}
 	}
 
-	if tlsSkipVerify != nil {
-		query += ", tls_skip_verify = ?"
-		args = append(args, *tlsSkipVerify)
-	}
+	if params != nil {
+		if params.TLSSkipVerify != nil {
+			query += ", tls_skip_verify = ?"
+			args = append(args, *params.TLSSkipVerify)
+		}
 
-	if hasLocalFilesystemAccess != nil {
-		query += ", has_local_filesystem_access = ?"
-		args = append(args, *hasLocalFilesystemAccess)
+		if params.HasLocalFilesystemAccess != nil {
+			query += ", has_local_filesystem_access = ?"
+			args = append(args, *params.HasLocalFilesystemAccess)
+		}
+
+		if params.UseHardlinks != nil {
+			query += ", use_hardlinks = ?"
+			args = append(args, *params.UseHardlinks)
+		}
+
+		if params.HardlinkBaseDir != nil {
+			query += ", hardlink_base_dir = ?"
+			args = append(args, *params.HardlinkBaseDir)
+		}
+
+		if params.HardlinkDirPreset != nil {
+			query += ", hardlink_dir_preset = ?"
+			args = append(args, *params.HardlinkDirPreset)
+		}
 	}
 
 	query += " WHERE id = ?"

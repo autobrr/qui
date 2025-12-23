@@ -16,6 +16,8 @@ qui supports two modes for handling files:
 
 Hardlink mode is an opt-in strategy that creates a hardlinked file tree matching the incoming torrent's expected layout. The torrent is then added with `savepath` pointing to that tree and `skip_checking=true`, so qBittorrent can start seeding immediately without a hash recheck.
 
+Hardlink mode is configured **per-instance**, allowing you to enable it only for instances where qui has local filesystem access.
+
 ### When to use
 
 - You want cross-seeds to have their own on-disk directory structure (per tracker / per instance / flat), while still sharing data blocks with the original download.
@@ -28,26 +30,45 @@ Hardlink mode is an opt-in strategy that creates a hardlinked file tree matching
 
 ### Failure behavior
 
-If hardlink mode is enabled and a hardlink cannot be created (no local access, filesystem mismatch, invalid base directory, permissions issue, etc.), the cross-seed **fails**. There is no fallback to default mode.
+If hardlink mode is enabled for an instance and a hardlink cannot be created (no local access, filesystem mismatch, invalid base directory, permissions issue, etc.), the cross-seed **fails**. There is no fallback to default mode.
 
 ### Directory presets
 
-Configure in Cross-Seed > Global rules:
+Configure in Cross-Seed > Hardlink Mode for each instance:
 
 - **Hardlink base directory**: Path on the qui host where hardlink trees are created.
 - **Directory preset**:
-  - `flat`: `<base>/<torrentKey>/...`
-  - `by-tracker`: `<base>/<incoming-tracker-display-name>/<torrentKey>/...`
-  - `by-instance`: `<base>/<instance-name>/<torrentKey>/...`
+  - `flat`: Always creates an isolation folder: `<base>/<TorrentName--shortHash>/...`
+  - `by-tracker`: `<base>/<incoming-tracker-display-name>/...` (isolation folder added when needed)
+  - `by-instance`: `<base>/<instance-name>/...` (isolation folder added when needed)
 
 For `by-tracker`, the "incoming tracker display name" is resolved using your Tracker Customizations (Dashboard > Tracker Breakdown) when available; otherwise it falls back to the tracker domain or indexer name.
+
+#### Isolation folders
+
+For `by-tracker` and `by-instance` presets, qui determines whether an isolation folder is needed based on the torrent's structure and qBittorrent's `torrent_content_layout` preference:
+
+- **Subfolder layout**: qBittorrent always creates a root folder → no isolation folder needed
+- **Original layout**: Root folder exists only if the torrent has a common top-level directory
+  - Torrents with a root folder (e.g., `Movie/video.mkv`) → no isolation folder
+  - Rootless torrents (e.g., `video.mkv`, `subs.srt`) → isolation folder added
+- **NoSubfolder layout**: Root folder is stripped → isolation folder needed
+
+When an isolation folder is needed, it uses a human-readable format: `<TorrentName--shortHash>` (e.g., `My.Movie.2024.1080p.BluRay--abcdef12`).
+
+For the `flat` preset, an isolation folder is always used to keep each torrent's files separated.
 
 ### How to enable
 
 1. Enable "Local filesystem access" on the qBittorrent instance in Instance Settings.
-2. In Cross-Seed > Global rules, enable "Hardlink mode".
-3. Set "Hardlink base directory" to a path on the same filesystem as your downloads.
-4. Choose a directory preset (`flat`, `by-tracker`, `by-instance`).
+2. In Cross-Seed > Hardlink Mode, expand the instance you want to configure.
+3. Enable "Hardlink mode" for that instance.
+4. Set "Hardlink base directory" to a path on the same filesystem as your downloads.
+5. Choose a directory preset (`flat`, `by-tracker`, `by-instance`).
+
+### Pause behavior
+
+By default, hardlink-added torrents start seeding immediately (since `skip_checking=true` means they're at 100% instantly). If you want hardlink-added torrents to remain paused, enable the "Skip auto-resume" option for your cross-seed source (Completion, RSS, Webhook, etc.).
 
 ### Notes
 

@@ -4,6 +4,7 @@
 package pathutil
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -188,5 +189,85 @@ func TestTorrentKeyUniqueness(t *testing.T) {
 
 	if key1 == key2 {
 		t.Errorf("TorrentKey should be unique for different infohashes, both got %q", key1)
+	}
+}
+
+func TestIsolationFolderName(t *testing.T) {
+	tests := []struct {
+		name     string
+		infohash string
+		torrent  string
+		expected string
+	}{
+		{
+			name:     "normal torrent name",
+			infohash: "abcdef1234567890abcdef1234567890abcdef12",
+			torrent:  "My.Movie.2024.1080p.BluRay",
+			expected: "My.Movie.2024.1080p.BluRay--abcdef12",
+		},
+		{
+			name:     "short infohash",
+			infohash: "abcd",
+			torrent:  "Movie",
+			expected: "Movie--abcd",
+		},
+		{
+			name:     "empty infohash",
+			infohash: "",
+			torrent:  "Movie",
+			expected: "Movie",
+		},
+		{
+			name:     "name with illegal characters",
+			infohash: "abcdef1234567890",
+			torrent:  "Movie: The <Sequel>",
+			expected: "Movie The Sequel--abcdef12",
+		},
+		{
+			name:     "lowercase hash",
+			infohash: "ABCDEF1234567890",
+			torrent:  "Movie",
+			expected: "Movie--abcdef12",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := IsolationFolderName(tt.infohash, tt.torrent)
+			if result != tt.expected {
+				t.Errorf("IsolationFolderName(%q, %q) = %q, want %q",
+					tt.infohash, tt.torrent, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestIsolationFolderName_Truncation(t *testing.T) {
+	// Test that very long names are truncated
+	longName := "This.Is.A.Very.Long.Torrent.Name.That.Should.Be.Truncated.Because.It.Exceeds.The.Maximum.Length.Allowed.For.Folder.Names"
+	infohash := "abcdef1234567890"
+
+	result := IsolationFolderName(infohash, longName)
+
+	// Should be truncated to ~80 chars + "--" + 8 char hash
+	if len(result) > 100 {
+		t.Errorf("IsolationFolderName result too long: %d chars", len(result))
+	}
+
+	// Should still end with short hash
+	if !strings.HasSuffix(result, "--abcdef12") {
+		t.Errorf("IsolationFolderName should end with --abcdef12, got %q", result)
+	}
+}
+
+func TestIsolationFolderName_Uniqueness(t *testing.T) {
+	// Same name but different hashes should produce different results
+	name := "Same.Movie.Name"
+
+	result1 := IsolationFolderName("abcdef1234567890", name)
+	result2 := IsolationFolderName("1234567890abcdef", name)
+
+	if result1 == result2 {
+		t.Errorf("IsolationFolderName should be unique for different hashes, both got %q", result1)
 	}
 }

@@ -388,3 +388,89 @@ func TestNormalizeFileKey(t *testing.T) {
 		})
 	}
 }
+
+func TestHasCommonRootFolder(t *testing.T) {
+	tests := []struct {
+		name     string
+		files    []TorrentFile
+		expected bool
+	}{
+		{
+			name:     "empty files",
+			files:    []TorrentFile{},
+			expected: false,
+		},
+		{
+			name: "single file at root",
+			files: []TorrentFile{
+				{Path: "movie.mkv", Size: 1000},
+			},
+			expected: false,
+		},
+		{
+			name: "single file in folder",
+			files: []TorrentFile{
+				{Path: "Movie/movie.mkv", Size: 1000},
+			},
+			expected: true,
+		},
+		{
+			name: "multiple files at root",
+			files: []TorrentFile{
+				{Path: "video.mkv", Size: 1000},
+				{Path: "subs.srt", Size: 100},
+			},
+			expected: false,
+		},
+		{
+			name: "multiple files in same folder",
+			files: []TorrentFile{
+				{Path: "Movie/video.mkv", Size: 1000},
+				{Path: "Movie/subs.srt", Size: 100},
+			},
+			expected: true,
+		},
+		{
+			name: "multiple files in different folders",
+			files: []TorrentFile{
+				{Path: "Movie/video.mkv", Size: 1000},
+				{Path: "Extras/trailer.mkv", Size: 500},
+			},
+			expected: false,
+		},
+		{
+			name: "nested folders with common root",
+			files: []TorrentFile{
+				{Path: "Show/Season 1/S01E01.mkv", Size: 1000},
+				{Path: "Show/Season 1/S01E02.mkv", Size: 1000},
+				{Path: "Show/Season 2/S02E01.mkv", Size: 1000},
+			},
+			expected: true,
+		},
+		{
+			name: "mixed root and folder",
+			files: []TorrentFile{
+				{Path: "readme.txt", Size: 100},
+				{Path: "Movie/video.mkv", Size: 1000},
+			},
+			expected: false,
+		},
+		{
+			name: "forward slash path separator",
+			files: []TorrentFile{
+				{Path: "Folder/file1.mkv", Size: 1000},
+				{Path: "Folder/file2.mkv", Size: 1000},
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := HasCommonRootFolder(tt.files)
+			if result != tt.expected {
+				t.Errorf("HasCommonRootFolder() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}

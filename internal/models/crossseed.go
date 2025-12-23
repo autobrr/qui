@@ -65,13 +65,7 @@ type CrossSeedAutomationSettings struct {
 	SkipAutoResumeSeededSearch bool `json:"skipAutoResumeSeededSearch"` // Skip auto-resume for seeded torrent search results
 	SkipAutoResumeCompletion   bool `json:"skipAutoResumeCompletion"`   // Skip auto-resume for completion-triggered search results
 	SkipAutoResumeWebhook      bool `json:"skipAutoResumeWebhook"`      // Skip auto-resume for /apply webhook results
-	SkipRecheck                bool `json:"skipRecheck"`                // Skip cross-seed matches that require a recheck
-
-	// Hardlink mode: create hardlinked file trees instead of reuse+rename alignment.
-	// Requires instance HasLocalFilesystemAccess and same filesystem as download paths.
-	UseHardlinks      bool   `json:"useHardlinks"`      // Enable hardlink mode for cross-seeding
-	HardlinkBaseDir   string `json:"hardlinkBaseDir"`   // Base directory for hardlink trees (on qui host)
-	HardlinkDirPreset string `json:"hardlinkDirPreset"` // Directory preset: "flat", "by-tracker", "by-instance"
+	SkipRecheck                bool `json:"skipRecheck"` // Skip cross-seed matches that require a recheck
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -126,11 +120,7 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		SkipAutoResumeCompletion:   false,
 		SkipAutoResumeWebhook:      false,
 		SkipRecheck:                false,
-		// Hardlink mode - disabled by default
-		UseHardlinks:      false,
-		HardlinkBaseDir:   "",
-		HardlinkDirPreset: "flat",
-		CreatedAt:         time.Now().UTC(),
+		CreatedAt:                  time.Now().UTC(),
 		UpdatedAt:         time.Now().UTC(),
 	}
 }
@@ -326,6 +316,9 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	var rssAutomationTags, seededSearchTags, completionSearchTags, webhookTags sql.NullString
 	var runExternalProgramID sql.NullInt64
 	var createdAt, updatedAt sql.NullTime
+	// Hardlink settings are now per-instance; absorb DB values into dummy vars for backwards compatibility
+	var unusedUseHardlinks bool
+	var unusedHardlinkBaseDir, unusedHardlinkDirPreset string
 
 	err := row.Scan(
 		&settings.Enabled,
@@ -359,9 +352,9 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&settings.SkipAutoResumeCompletion,
 		&settings.SkipAutoResumeWebhook,
 		&settings.SkipRecheck,
-		&settings.UseHardlinks,
-		&settings.HardlinkBaseDir,
-		&settings.HardlinkDirPreset,
+		&unusedUseHardlinks,      // Hardlink settings moved to per-instance
+		&unusedHardlinkBaseDir,   // Hardlink settings moved to per-instance
+		&unusedHardlinkDirPreset, // Hardlink settings moved to per-instance
 		&createdAt,
 		&updatedAt,
 	)
@@ -585,6 +578,11 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		category = *settings.Category
 	}
 
+	// Hardlink settings are now per-instance; write defaults to maintain DB schema compatibility
+	const unusedHardlinkUse = false
+	const unusedHardlinkBaseDir = ""
+	const unusedHardlinkDirPreset = "flat"
+
 	_, err = s.db.ExecContext(ctx, query,
 		1,
 		settings.Enabled,
@@ -618,9 +616,9 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		settings.SkipAutoResumeCompletion,
 		settings.SkipAutoResumeWebhook,
 		settings.SkipRecheck,
-		settings.UseHardlinks,
-		settings.HardlinkBaseDir,
-		settings.HardlinkDirPreset,
+		unusedHardlinkUse,       // Hardlink settings moved to per-instance
+		unusedHardlinkBaseDir,   // Hardlink settings moved to per-instance
+		unusedHardlinkDirPreset, // Hardlink settings moved to per-instance
 	)
 	if err != nil {
 		return nil, fmt.Errorf("upsert settings: %w", err)

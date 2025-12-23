@@ -346,3 +346,39 @@ func normalizeFileKey(path string) string {
 
 	return sb.String()
 }
+
+// HasCommonRootFolder checks if all files in the torrent share a common
+// top-level directory. Returns true if a single root folder exists.
+//
+// Examples:
+//   - ["Movie/video.mkv", "Movie/subs.srt"] → true (common root "Movie")
+//   - ["video.mkv", "subs.srt"] → false (files at root, no folder)
+//   - ["Movie/video.mkv", "Other/subs.srt"] → false (different root folders)
+//   - ["video.mkv"] → false (single file at root)
+func HasCommonRootFolder(files []TorrentFile) bool {
+	if len(files) == 0 {
+		return false
+	}
+
+	var commonRoot string
+	for i, f := range files {
+		path := filepath.FromSlash(f.Path)
+		parts := strings.SplitN(path, string(filepath.Separator), 2)
+
+		// Check if file has a directory component
+		if len(parts) < 2 {
+			// File at root level, no folder structure
+			return false
+		}
+
+		root := parts[0]
+		if i == 0 {
+			commonRoot = root
+		} else if root != commonRoot {
+			// Different root folders
+			return false
+		}
+	}
+
+	return commonRoot != ""
+}

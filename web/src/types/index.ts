@@ -24,6 +24,10 @@ export interface Instance {
   basicUsername?: string
   tlsSkipVerify: boolean
   hasLocalFilesystemAccess: boolean
+  // Hardlink mode settings (per-instance)
+  useHardlinks: boolean
+  hardlinkBaseDir: string
+  hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
   sortOrder: number
   isActive: boolean
   reannounceSettings: InstanceReannounceSettings
@@ -38,6 +42,10 @@ export interface InstanceFormData {
   basicPassword?: string
   tlsSkipVerify: boolean
   hasLocalFilesystemAccess: boolean
+  // Hardlink mode settings (per-instance)
+  useHardlinks?: boolean
+  hardlinkBaseDir?: string
+  hardlinkDirPreset?: "flat" | "by-tracker" | "by-instance"
   reannounceSettings: InstanceReannounceSettings
 }
 

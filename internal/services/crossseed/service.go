@@ -601,17 +601,6 @@ func (s *Service) validateAndNormalizeSettings(settings *models.CrossSeedAutomat
 	if settings.SizeMismatchTolerancePercent > 100.0 {
 		settings.SizeMismatchTolerancePercent = 100.0
 	}
-
-	// Normalize hardlink settings
-	settings.HardlinkBaseDir = strings.TrimSpace(settings.HardlinkBaseDir)
-
-	// Normalize preset to valid values
-	switch settings.HardlinkDirPreset {
-	case "flat", "by-tracker", "by-instance":
-		// valid
-	default:
-		settings.HardlinkDirPreset = "flat"
-	}
 }
 
 func normalizeSearchTiming(intervalSeconds, cooldownMinutes int) (int, int) {
@@ -8074,37 +8063,30 @@ func (s *Service) processHardlinkMode(
 		}
 	}
 
-	// Get automation settings
-	settings, err := s.GetAutomationSettings(ctx)
-	if err != nil || settings == nil {
+	// Get instance to check hardlink settings (now per-instance)
+	instance, err := s.instanceStore.Get(ctx, candidate.InstanceID)
+	if err != nil || instance == nil {
+		// If we can't get the instance, we can't check if hardlinks are enabled
+		// This is not a hardlink error, just return notUsed
 		return notUsed
 	}
 
-	// Check if hardlink mode is disabled - only case where we return notUsed
-	if !settings.UseHardlinks {
+	// Check if hardlink mode is disabled for this instance - only case where we return notUsed
+	if !instance.UseHardlinks {
 		return notUsed
 	}
 
 	// From here on, hardlink mode is ENABLED - failures must return errors (no fallback)
 
 	// Validate base directory is configured
-	if settings.HardlinkBaseDir == "" {
+	if instance.HardlinkBaseDir == "" {
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
 			Msg("[CROSSSEED] Hardlink mode enabled but base directory is empty")
 		return hardlinkError("Hardlink mode enabled but base directory is not configured")
 	}
 
-	// Get instance to check HasLocalFilesystemAccess
-	instance, err := s.instanceStore.Get(ctx, candidate.InstanceID)
-	if err != nil || instance == nil {
-		log.Warn().
-			Err(err).
-			Int("instanceID", candidate.InstanceID).
-			Msg("[CROSSSEED] Hardlink mode: failed to get instance")
-		return hardlinkError(fmt.Sprintf("Failed to get instance: %v", err))
-	}
-
+	// Verify instance has local filesystem access (required for hardlinks)
 	if !instance.HasLocalFilesystemAccess {
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
@@ -8133,21 +8115,21 @@ func (s *Service) processHardlinkMode(
 	}
 
 	// Ensure hardlink base directory exists before checking filesystem
-	if err := os.MkdirAll(settings.HardlinkBaseDir, 0755); err != nil {
+	if err := os.MkdirAll(instance.HardlinkBaseDir, 0755); err != nil {
 		log.Warn().
 			Err(err).
-			Str("hardlinkBaseDir", settings.HardlinkBaseDir).
+			Str("hardlinkBaseDir", instance.HardlinkBaseDir).
 			Msg("[CROSSSEED] Hardlink mode: failed to create base directory")
 		return hardlinkError(fmt.Sprintf("Failed to create hardlink base directory: %v", err))
 	}
 
 	// Validate same filesystem
-	sameFS, err := fsutil.SameFilesystem(existingFilePath, settings.HardlinkBaseDir)
+	sameFS, err := fsutil.SameFilesystem(existingFilePath, instance.HardlinkBaseDir)
 	if err != nil {
 		log.Warn().
 			Err(err).
 			Str("existingPath", existingFilePath).
-			Str("hardlinkBaseDir", settings.HardlinkBaseDir).
+			Str("hardlinkBaseDir", instance.HardlinkBaseDir).
 			Msg("[CROSSSEED] Hardlink mode: failed to check filesystem, aborting")
 		return hardlinkModeResult{
 			Used:    true,
@@ -8164,7 +8146,7 @@ func (s *Service) processHardlinkMode(
 	if !sameFS {
 		log.Warn().
 			Str("existingPath", existingFilePath).
-			Str("hardlinkBaseDir", settings.HardlinkBaseDir).
+			Str("hardlinkBaseDir", instance.HardlinkBaseDir).
 			Msg("[CROSSSEED] Hardlink mode: different filesystems, aborting")
 		return hardlinkModeResult{
 			Used:    true,
@@ -8179,13 +8161,7 @@ func (s *Service) processHardlinkMode(
 		}
 	}
 
-	// Extract incoming tracker domain from torrent bytes (for "by-tracker" preset)
-	incomingTrackerDomain := ParseTorrentAnnounceDomain(torrentBytes)
-
-	// Build destination directory based on preset
-	destDir := s.buildHardlinkDestDir(ctx, settings, torrentHash, torrentName, candidate, incomingTrackerDomain, req)
-
-	// Get instance's default content layout from preferences
+	// Get instance's default content layout from preferences (needed for destDir calculation)
 	prefs, err := s.syncManager.GetAppPreferences(ctx, candidate.InstanceID)
 	if err != nil {
 		log.Warn().
@@ -8208,7 +8184,7 @@ func (s *Service) processHardlinkMode(
 	// Convert qBittorrent's torrent_content_layout preference to our ContentLayout type
 	layout := s.qbtLayoutToHardlinkLayout(prefs.TorrentContentLayout)
 
-	// Build lists for hardlink tree plan
+	// Build lists for hardlink tree plan (needed for destDir calculation)
 	candidateTorrentFiles := make([]hardlinktree.TorrentFile, 0, len(sourceFiles))
 	for _, f := range sourceFiles {
 		candidateTorrentFiles = append(candidateTorrentFiles, hardlinktree.TorrentFile{
@@ -8216,6 +8192,12 @@ func (s *Service) processHardlinkMode(
 			Size: f.Size,
 		})
 	}
+
+	// Extract incoming tracker domain from torrent bytes (for "by-tracker" preset)
+	incomingTrackerDomain := ParseTorrentAnnounceDomain(torrentBytes)
+
+	// Build destination directory based on preset and layout
+	destDir := s.buildHardlinkDestDir(ctx, instance, torrentHash, torrentName, candidate, incomingTrackerDomain, req, layout, candidateTorrentFiles)
 
 	existingFiles := make([]hardlinktree.ExistingFile, 0, len(candidateFiles))
 	for _, f := range candidateFiles {
@@ -8281,9 +8263,12 @@ func (s *Service) processHardlinkMode(
 	// Build options for adding torrent
 	options := make(map[string]string)
 
-	// Set pause state
-	startPaused := true
+	// Set pause state - hardlink mode uses skip_checking=true so torrent is instant 100%.
+	// Default to starting immediately (not paused) unless SkipAutoResume is set,
+	// which allows users to keep hardlink-added torrents paused when desired.
+	startPaused := req.SkipAutoResume
 	if req.StartPaused != nil {
+		// Explicit override takes precedence
 		startPaused = *req.StartPaused
 	}
 	if startPaused {
@@ -8366,29 +8351,67 @@ func (s *Service) processHardlinkMode(
 }
 
 // buildHardlinkDestDir constructs the destination directory for hardlink tree
-// based on the configured preset.
+// based on the configured preset and content layout.
+//
+// The destination directory structure depends on whether isolation is needed:
+//   - Subfolder layout: qBittorrent always creates a root folder → no isolation needed
+//   - Original layout + torrent has root folder → no isolation needed
+//   - Original layout + rootless torrent → isolation folder needed
+//   - NoSubfolder layout: root folder is stripped → isolation folder needed
+//
+// When isolation is needed, a human-readable folder name is used: <torrent-name>--<shortHash>
+// For "flat" preset, isolation is always used to keep torrents separated.
 func (s *Service) buildHardlinkDestDir(
 	ctx context.Context,
-	settings *models.CrossSeedAutomationSettings,
+	instance *models.Instance,
 	torrentHash, torrentName string,
 	candidate CrossSeedCandidate,
 	incomingTrackerDomain string,
 	req *CrossSeedRequest,
+	layout hardlinktree.ContentLayout,
+	candidateFiles []hardlinktree.TorrentFile,
 ) string {
-	baseDir := settings.HardlinkBaseDir
-	torrentKey := pathutil.TorrentKey(torrentHash, torrentName)
+	baseDir := instance.HardlinkBaseDir
 
-	switch settings.HardlinkDirPreset {
+	// Determine if isolation folder is needed based on layout and torrent structure
+	needsIsolation := func() bool {
+		switch layout {
+		case hardlinktree.LayoutSubfolder:
+			// qBittorrent always creates a root folder
+			return false
+		case hardlinktree.LayoutNoSubfolder:
+			// Root folder is stripped, isolation needed
+			return true
+		default: // LayoutOriginal
+			// Isolation needed only if torrent doesn't have a common root folder
+			return !hardlinktree.HasCommonRootFolder(candidateFiles)
+		}
+	}()
+
+	// Build isolation folder name if needed
+	isolationFolder := ""
+	if needsIsolation {
+		isolationFolder = pathutil.IsolationFolderName(torrentHash, torrentName)
+	}
+
+	switch instance.HardlinkDirPreset {
 	case "by-tracker":
 		// Get tracker display name using incoming torrent's tracker domain
 		trackerDisplayName := s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, req)
-		return filepath.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName), torrentKey)
+		if isolationFolder != "" {
+			return filepath.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName), isolationFolder)
+		}
+		return filepath.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName))
 
 	case "by-instance":
-		return filepath.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName), torrentKey)
+		if isolationFolder != "" {
+			return filepath.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName), isolationFolder)
+		}
+		return filepath.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName))
 
 	default: // "flat" or unknown
-		return filepath.Join(baseDir, torrentKey)
+		// For flat layout, always use isolation folder to keep torrents separated
+		return filepath.Join(baseDir, pathutil.IsolationFolderName(torrentHash, torrentName))
 	}
 }
 

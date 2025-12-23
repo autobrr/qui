@@ -159,6 +159,17 @@ func TestResolveTrackerDisplayName(t *testing.T) {
 }
 
 func TestBuildHardlinkDestDir(t *testing.T) {
+	// Standard test files with a common root folder (no isolation needed for Original/Subfolder)
+	filesWithRoot := []hardlinktree.TorrentFile{
+		{Path: "Movie/video.mkv", Size: 1000},
+		{Path: "Movie/subs.srt", Size: 100},
+	}
+	// Rootless files (isolation needed for Original layout)
+	filesRootless := []hardlinktree.TorrentFile{
+		{Path: "video.mkv", Size: 1000},
+		{Path: "subs.srt", Size: 100},
+	}
+
 	tests := []struct {
 		name                  string
 		preset                string
@@ -168,19 +179,24 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 		instanceName          string
 		incomingTrackerDomain string
 		trackerDisplay        string
+		layout                hardlinktree.ContentLayout
+		candidateFiles        []hardlinktree.TorrentFile
 		wantContains          []string // substrings that should be in the result
+		wantNotContains       []string // substrings that should NOT be in the result
 	}{
 		{
-			name:         "flat preset",
-			preset:       "flat",
-			baseDir:      "/hardlinks",
-			torrentHash:  "abcdef1234567890",
-			torrentName:  "My.Movie.2024",
-			instanceName: "qbt1",
-			wantContains: []string{"/hardlinks/", "abcdef12"}, // base + hash prefix
+			name:           "flat preset always uses isolation folder",
+			preset:         "flat",
+			baseDir:        "/hardlinks",
+			torrentHash:    "abcdef1234567890",
+			torrentName:    "My.Movie.2024",
+			instanceName:   "qbt1",
+			layout:         hardlinktree.LayoutOriginal,
+			candidateFiles: filesWithRoot,
+			wantContains:   []string{"/hardlinks/", "My.Movie.2024--abcdef12"}, // human-readable name + short hash
 		},
 		{
-			name:                  "by-tracker preset",
+			name:                  "by-tracker with Subfolder layout - no isolation",
 			preset:                "by-tracker",
 			baseDir:               "/hardlinks",
 			torrentHash:           "abcdef1234567890",
@@ -188,25 +204,84 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 			instanceName:          "qbt1",
 			incomingTrackerDomain: "tracker.example.com",
 			trackerDisplay:        "MyTracker",
-			wantContains:          []string{"/hardlinks/", "MyTracker", "abcdef12"},
+			layout:                hardlinktree.LayoutSubfolder,
+			candidateFiles:        filesWithRoot,
+			wantContains:          []string{"/hardlinks/", "MyTracker"},
+			wantNotContains:       []string{"abcdef12", "My.Movie.2024--"}, // no isolation folder
 		},
 		{
-			name:         "by-instance preset",
-			preset:       "by-instance",
-			baseDir:      "/hardlinks",
-			torrentHash:  "abcdef1234567890",
-			torrentName:  "My.Movie.2024",
-			instanceName: "qbt-main",
-			wantContains: []string{"/hardlinks/", "qbt-main", "abcdef12"},
+			name:                  "by-tracker with Original layout + root folder - no isolation",
+			preset:                "by-tracker",
+			baseDir:               "/hardlinks",
+			torrentHash:           "abcdef1234567890",
+			torrentName:           "My.Movie.2024",
+			instanceName:          "qbt1",
+			incomingTrackerDomain: "tracker.example.com",
+			trackerDisplay:        "MyTracker",
+			layout:                hardlinktree.LayoutOriginal,
+			candidateFiles:        filesWithRoot,
+			wantContains:          []string{"/hardlinks/", "MyTracker"},
+			wantNotContains:       []string{"abcdef12", "My.Movie.2024--"}, // no isolation folder
 		},
 		{
-			name:         "unknown preset defaults to flat",
-			preset:       "unknown",
-			baseDir:      "/hardlinks",
-			torrentHash:  "abcdef1234567890",
-			torrentName:  "My.Movie.2024",
-			instanceName: "qbt1",
-			wantContains: []string{"/hardlinks/", "abcdef12"},
+			name:                  "by-tracker with Original layout + rootless - needs isolation",
+			preset:                "by-tracker",
+			baseDir:               "/hardlinks",
+			torrentHash:           "abcdef1234567890",
+			torrentName:           "My.Movie.2024",
+			instanceName:          "qbt1",
+			incomingTrackerDomain: "tracker.example.com",
+			trackerDisplay:        "MyTracker",
+			layout:                hardlinktree.LayoutOriginal,
+			candidateFiles:        filesRootless,
+			wantContains:          []string{"/hardlinks/", "MyTracker", "My.Movie.2024--abcdef12"},
+		},
+		{
+			name:                  "by-tracker with NoSubfolder layout - needs isolation",
+			preset:                "by-tracker",
+			baseDir:               "/hardlinks",
+			torrentHash:           "abcdef1234567890",
+			torrentName:           "My.Movie.2024",
+			instanceName:          "qbt1",
+			incomingTrackerDomain: "tracker.example.com",
+			trackerDisplay:        "MyTracker",
+			layout:                hardlinktree.LayoutNoSubfolder,
+			candidateFiles:        filesWithRoot,
+			wantContains:          []string{"/hardlinks/", "MyTracker", "My.Movie.2024--abcdef12"},
+		},
+		{
+			name:           "by-instance with Subfolder layout - no isolation",
+			preset:         "by-instance",
+			baseDir:        "/hardlinks",
+			torrentHash:    "abcdef1234567890",
+			torrentName:    "My.Movie.2024",
+			instanceName:   "qbt-main",
+			layout:         hardlinktree.LayoutSubfolder,
+			candidateFiles: filesWithRoot,
+			wantContains:   []string{"/hardlinks/", "qbt-main"},
+			wantNotContains: []string{"abcdef12", "My.Movie.2024--"},
+		},
+		{
+			name:           "by-instance with Original + rootless - needs isolation",
+			preset:         "by-instance",
+			baseDir:        "/hardlinks",
+			torrentHash:    "abcdef1234567890",
+			torrentName:    "My.Movie.2024",
+			instanceName:   "qbt-main",
+			layout:         hardlinktree.LayoutOriginal,
+			candidateFiles: filesRootless,
+			wantContains:   []string{"/hardlinks/", "qbt-main", "My.Movie.2024--abcdef12"},
+		},
+		{
+			name:           "unknown preset defaults to flat with isolation",
+			preset:         "unknown",
+			baseDir:        "/hardlinks",
+			torrentHash:    "abcdef1234567890",
+			torrentName:    "My.Movie.2024",
+			instanceName:   "qbt1",
+			layout:         hardlinktree.LayoutOriginal,
+			candidateFiles: filesWithRoot,
+			wantContains:   []string{"/hardlinks/", "My.Movie.2024--abcdef12"},
 		},
 	}
 
@@ -224,7 +299,9 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 				trackerCustomizationStore: mockStore,
 			}
 
-			settings := &models.CrossSeedAutomationSettings{
+			instance := &models.Instance{
+				ID:                1,
+				Name:              tt.instanceName,
 				HardlinkBaseDir:   tt.baseDir,
 				HardlinkDirPreset: tt.preset,
 			}
@@ -238,16 +315,21 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 
 			result := s.buildHardlinkDestDir(
 				context.Background(),
-				settings,
+				instance,
 				tt.torrentHash,
 				tt.torrentName,
 				candidate,
 				tt.incomingTrackerDomain,
 				req,
+				tt.layout,
+				tt.candidateFiles,
 			)
 
 			for _, substr := range tt.wantContains {
 				assert.Contains(t, result, substr, "result should contain %q", substr)
+			}
+			for _, substr := range tt.wantNotContains {
+				assert.NotContains(t, result, substr, "result should NOT contain %q", substr)
 			}
 		})
 	}
@@ -264,7 +346,9 @@ func TestBuildHardlinkDestDir_SanitizesNames(t *testing.T) {
 		trackerCustomizationStore: mockStore,
 	}
 
-	settings := &models.CrossSeedAutomationSettings{
+	instance := &models.Instance{
+		ID:                1,
+		Name:              "qbt1",
 		HardlinkBaseDir:   "/hardlinks",
 		HardlinkDirPreset: "by-tracker",
 	}
@@ -272,14 +356,21 @@ func TestBuildHardlinkDestDir_SanitizesNames(t *testing.T) {
 	candidate := CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"}
 	req := &CrossSeedRequest{}
 
+	// Use rootless files to force isolation folder creation (so we can verify sanitization)
+	candidateFiles := []hardlinktree.TorrentFile{
+		{Path: "movie.mkv", Size: 1000},
+	}
+
 	result := s.buildHardlinkDestDir(
 		context.Background(),
-		settings,
+		instance,
 		"abcdef1234567890",
 		"Movie",
 		candidate,
 		"tracker.example.com", // incoming tracker domain
 		req,
+		hardlinktree.LayoutOriginal,
+		candidateFiles,
 	)
 
 	// Should not contain illegal path characters
@@ -292,13 +383,20 @@ func TestBuildHardlinkDestDir_SanitizesNames(t *testing.T) {
 }
 
 func TestProcessHardlinkMode_NotUsedWhenDisabled(t *testing.T) {
-	s := &Service{
-		automationSettingsLoader: func(ctx context.Context) (*models.CrossSeedAutomationSettings, error) {
-			return &models.CrossSeedAutomationSettings{
-				UseHardlinks:    false,
-				HardlinkBaseDir: "/hardlinks",
-			}, nil
+	mockInstances := &mockInstanceStore{
+		instances: map[int]*models.Instance{
+			1: {
+				ID:                       1,
+				Name:                     "qbt1",
+				HasLocalFilesystemAccess: true,
+				UseHardlinks:             false, // Disabled
+				HardlinkBaseDir:          "/hardlinks",
+			},
 		},
+	}
+
+	s := &Service{
+		instanceStore: mockInstances,
 	}
 
 	result := s.processHardlinkMode(
@@ -321,13 +419,20 @@ func TestProcessHardlinkMode_NotUsedWhenDisabled(t *testing.T) {
 }
 
 func TestProcessHardlinkMode_FailsWhenBaseDirEmpty(t *testing.T) {
-	s := &Service{
-		automationSettingsLoader: func(ctx context.Context) (*models.CrossSeedAutomationSettings, error) {
-			return &models.CrossSeedAutomationSettings{
-				UseHardlinks:    true,
-				HardlinkBaseDir: "", // Empty
-			}, nil
+	mockInstances := &mockInstanceStore{
+		instances: map[int]*models.Instance{
+			1: {
+				ID:                       1,
+				Name:                     "qbt1",
+				HasLocalFilesystemAccess: true,
+				UseHardlinks:             true,
+				HardlinkBaseDir:          "", // Empty
+			},
 		},
+	}
+
+	s := &Service{
+		instanceStore: mockInstances,
 	}
 
 	result := s.processHardlinkMode(
@@ -376,18 +481,18 @@ func (m *mockInstanceStore) List(ctx context.Context) ([]*models.Instance, error
 func TestProcessHardlinkMode_FailsWhenNoLocalAccess(t *testing.T) {
 	mockInstances := &mockInstanceStore{
 		instances: map[int]*models.Instance{
-			1: {ID: 1, Name: "qbt1", HasLocalFilesystemAccess: false},
+			1: {
+				ID:                       1,
+				Name:                     "qbt1",
+				HasLocalFilesystemAccess: false, // No local access
+				UseHardlinks:             true,
+				HardlinkBaseDir:          "/hardlinks",
+			},
 		},
 	}
 
 	s := &Service{
 		instanceStore: mockInstances,
-		automationSettingsLoader: func(ctx context.Context) (*models.CrossSeedAutomationSettings, error) {
-			return &models.CrossSeedAutomationSettings{
-				UseHardlinks:    true,
-				HardlinkBaseDir: "/hardlinks",
-			}, nil
-		},
 	}
 
 	result := s.processHardlinkMode(
@@ -420,18 +525,18 @@ func TestProcessHardlinkMode_FailsOnInfrastructureError(t *testing.T) {
 
 	mockInstances := &mockInstanceStore{
 		instances: map[int]*models.Instance{
-			1: {ID: 1, Name: "qbt1", HasLocalFilesystemAccess: true},
+			1: {
+				ID:                       1,
+				Name:                     "qbt1",
+				HasLocalFilesystemAccess: true,
+				UseHardlinks:             true,
+				HardlinkBaseDir:          "/nonexistent/hardlinks/path",
+			},
 		},
 	}
 
 	s := &Service{
 		instanceStore: mockInstances,
-		automationSettingsLoader: func(ctx context.Context) (*models.CrossSeedAutomationSettings, error) {
-			return &models.CrossSeedAutomationSettings{
-				UseHardlinks:    true,
-				HardlinkBaseDir: "/nonexistent/hardlinks/path",
-			}, nil
-		},
 	}
 
 	result := s.processHardlinkMode(

@@ -173,6 +173,9 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 				BasicUsername:            instances[i].BasicUsername,
 				TLSSkipVerify:            instances[i].TLSSkipVerify,
 				HasLocalFilesystemAccess: instances[i].HasLocalFilesystemAccess,
+				UseHardlinks:             instances[i].UseHardlinks,
+				HardlinkBaseDir:          instances[i].HardlinkBaseDir,
+				HardlinkDirPreset:        instances[i].HardlinkDirPreset,
 				Connected:                false,
 				HasDecryptionError:       false,
 				SortOrder:                instances[i].SortOrder,
@@ -217,6 +220,9 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		BasicUsername:            instance.BasicUsername,
 		TLSSkipVerify:            instance.TLSSkipVerify,
 		HasLocalFilesystemAccess: instance.HasLocalFilesystemAccess,
+		UseHardlinks:             instance.UseHardlinks,
+		HardlinkBaseDir:          instance.HardlinkBaseDir,
+		HardlinkDirPreset:        instance.HardlinkDirPreset,
 		Connected:                healthy,
 		HasDecryptionError:       hasDecryptionError,
 		ConnectionStatus:         connectionStatus,
@@ -254,6 +260,9 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 		BasicUsername:            instance.BasicUsername,
 		TLSSkipVerify:            instance.TLSSkipVerify,
 		HasLocalFilesystemAccess: instance.HasLocalFilesystemAccess,
+		UseHardlinks:             instance.UseHardlinks,
+		HardlinkBaseDir:          instance.HardlinkBaseDir,
+		HardlinkDirPreset:        instance.HardlinkDirPreset,
 		Connected:                false, // Will be updated asynchronously
 		HasDecryptionError:       false,
 		SortOrder:                instance.SortOrder,
@@ -346,6 +355,9 @@ type UpdateInstanceRequest struct {
 	BasicPassword            *string                            `json:"basicPassword,omitempty"`
 	TLSSkipVerify            *bool                              `json:"tlsSkipVerify,omitempty"`
 	HasLocalFilesystemAccess *bool                              `json:"hasLocalFilesystemAccess,omitempty"`
+	UseHardlinks             *bool                              `json:"useHardlinks,omitempty"`
+	HardlinkBaseDir          *string                            `json:"hardlinkBaseDir,omitempty"`
+	HardlinkDirPreset        *string                            `json:"hardlinkDirPreset,omitempty"`
 	ReannounceSettings       *InstanceReannounceSettingsPayload `json:"reannounceSettings,omitempty"`
 }
 
@@ -362,6 +374,9 @@ type InstanceResponse struct {
 	BasicUsername            *string                           `json:"basicUsername,omitempty"`
 	TLSSkipVerify            bool                              `json:"tlsSkipVerify"`
 	HasLocalFilesystemAccess bool                              `json:"hasLocalFilesystemAccess"`
+	UseHardlinks             bool                              `json:"useHardlinks"`
+	HardlinkBaseDir          string                            `json:"hardlinkBaseDir"`
+	HardlinkDirPreset        string                            `json:"hardlinkDirPreset"`
 	Connected                bool                              `json:"connected"`
 	HasDecryptionError       bool                              `json:"hasDecryptionError"`
 	RecentErrors             []models.InstanceError            `json:"recentErrors,omitempty"`
@@ -608,8 +623,39 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		req.BasicPassword = existingInstance.BasicPasswordEncrypted
 	}
 
+	// Validate hardlink settings
+	effectiveLocalAccess := existingInstance.HasLocalFilesystemAccess
+	if req.HasLocalFilesystemAccess != nil {
+		effectiveLocalAccess = *req.HasLocalFilesystemAccess
+	}
+	effectiveUseHardlinks := existingInstance.UseHardlinks
+	if req.UseHardlinks != nil {
+		effectiveUseHardlinks = *req.UseHardlinks
+	}
+	effectiveHardlinkBaseDir := existingInstance.HardlinkBaseDir
+	if req.HardlinkBaseDir != nil {
+		effectiveHardlinkBaseDir = *req.HardlinkBaseDir
+	}
+	if effectiveUseHardlinks {
+		if !effectiveLocalAccess {
+			RespondError(w, http.StatusBadRequest, "Cannot enable hardlink mode without local filesystem access")
+			return
+		}
+		if effectiveHardlinkBaseDir == "" {
+			RespondError(w, http.StatusBadRequest, "Cannot enable hardlink mode without a base directory")
+			return
+		}
+	}
+
 	// Update instance
-	instance, err := h.instanceStore.Update(r.Context(), instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify, req.HasLocalFilesystemAccess)
+	updateParams := &models.InstanceUpdateParams{
+		TLSSkipVerify:            req.TLSSkipVerify,
+		HasLocalFilesystemAccess: req.HasLocalFilesystemAccess,
+		UseHardlinks:             req.UseHardlinks,
+		HardlinkBaseDir:          req.HardlinkBaseDir,
+		HardlinkDirPreset:        req.HardlinkDirPreset,
+	}
+	instance, err := h.instanceStore.Update(r.Context(), instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, updateParams)
 	if err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusNotFound, "Instance not found")
