@@ -16,63 +16,9 @@ import (
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
-func TestQbtLayoutToHardlinkLayout(t *testing.T) {
-	s := &Service{}
-
-	tests := []struct {
-		name     string
-		input    string
-		expected hardlinktree.ContentLayout
-	}{
-		{
-			name:     "Original layout",
-			input:    "Original",
-			expected: hardlinktree.LayoutOriginal,
-		},
-		{
-			name:     "original lowercase",
-			input:    "original",
-			expected: hardlinktree.LayoutOriginal,
-		},
-		{
-			name:     "Subfolder layout",
-			input:    "Subfolder",
-			expected: hardlinktree.LayoutSubfolder,
-		},
-		{
-			name:     "subfolder lowercase",
-			input:    "subfolder",
-			expected: hardlinktree.LayoutSubfolder,
-		},
-		{
-			name:     "NoSubfolder layout",
-			input:    "NoSubfolder",
-			expected: hardlinktree.LayoutNoSubfolder,
-		},
-		{
-			name:     "nosubfolder lowercase",
-			input:    "nosubfolder",
-			expected: hardlinktree.LayoutNoSubfolder,
-		},
-		{
-			name:     "empty string defaults to Original",
-			input:    "",
-			expected: hardlinktree.LayoutOriginal,
-		},
-		{
-			name:     "unknown value defaults to Original",
-			input:    "SomethingElse",
-			expected: hardlinktree.LayoutOriginal,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := s.qbtLayoutToHardlinkLayout(tt.input)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
+// Note: qbtLayoutToHardlinkLayout is no longer used in hardlink mode.
+// Hardlink mode always forces contentLayout=Original to match the incoming
+// torrent's structure exactly and avoid double-folder nesting.
 
 // mockTrackerCustomizationStore implements trackerCustomizationProvider for tests.
 type mockTrackerCustomizationStore struct {
@@ -159,17 +105,19 @@ func TestResolveTrackerDisplayName(t *testing.T) {
 }
 
 func TestBuildHardlinkDestDir(t *testing.T) {
-	// Standard test files with a common root folder (no isolation needed for Original/Subfolder)
+	// Standard test files with a common root folder (no isolation needed)
 	filesWithRoot := []hardlinktree.TorrentFile{
 		{Path: "Movie/video.mkv", Size: 1000},
 		{Path: "Movie/subs.srt", Size: 100},
 	}
-	// Rootless files (isolation needed for Original layout)
+	// Rootless files (isolation needed)
 	filesRootless := []hardlinktree.TorrentFile{
 		{Path: "video.mkv", Size: 1000},
 		{Path: "subs.srt", Size: 100},
 	}
 
+	// Note: Hardlink mode always uses contentLayout=Original, so isolation
+	// decisions are based purely on whether the torrent has a common root folder.
 	tests := []struct {
 		name                  string
 		preset                string
@@ -179,7 +127,6 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 		instanceName          string
 		incomingTrackerDomain string
 		trackerDisplay        string
-		layout                hardlinktree.ContentLayout
 		candidateFiles        []hardlinktree.TorrentFile
 		wantContains          []string // substrings that should be in the result
 		wantNotContains       []string // substrings that should NOT be in the result
@@ -191,12 +138,11 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 			torrentHash:    "abcdef1234567890",
 			torrentName:    "My.Movie.2024",
 			instanceName:   "qbt1",
-			layout:         hardlinktree.LayoutOriginal,
 			candidateFiles: filesWithRoot,
 			wantContains:   []string{"/hardlinks/", "My.Movie.2024--abcdef12"}, // human-readable name + short hash
 		},
 		{
-			name:                  "by-tracker with Subfolder layout - no isolation",
+			name:                  "by-tracker with root folder - no isolation",
 			preset:                "by-tracker",
 			baseDir:               "/hardlinks",
 			torrentHash:           "abcdef1234567890",
@@ -204,13 +150,12 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 			instanceName:          "qbt1",
 			incomingTrackerDomain: "tracker.example.com",
 			trackerDisplay:        "MyTracker",
-			layout:                hardlinktree.LayoutSubfolder,
 			candidateFiles:        filesWithRoot,
 			wantContains:          []string{"/hardlinks/", "MyTracker"},
 			wantNotContains:       []string{"abcdef12", "My.Movie.2024--"}, // no isolation folder
 		},
 		{
-			name:                  "by-tracker with Original layout + root folder - no isolation",
+			name:                  "by-tracker with rootless - needs isolation",
 			preset:                "by-tracker",
 			baseDir:               "/hardlinks",
 			torrentHash:           "abcdef1234567890",
@@ -218,57 +163,27 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 			instanceName:          "qbt1",
 			incomingTrackerDomain: "tracker.example.com",
 			trackerDisplay:        "MyTracker",
-			layout:                hardlinktree.LayoutOriginal,
-			candidateFiles:        filesWithRoot,
-			wantContains:          []string{"/hardlinks/", "MyTracker"},
-			wantNotContains:       []string{"abcdef12", "My.Movie.2024--"}, // no isolation folder
-		},
-		{
-			name:                  "by-tracker with Original layout + rootless - needs isolation",
-			preset:                "by-tracker",
-			baseDir:               "/hardlinks",
-			torrentHash:           "abcdef1234567890",
-			torrentName:           "My.Movie.2024",
-			instanceName:          "qbt1",
-			incomingTrackerDomain: "tracker.example.com",
-			trackerDisplay:        "MyTracker",
-			layout:                hardlinktree.LayoutOriginal,
 			candidateFiles:        filesRootless,
 			wantContains:          []string{"/hardlinks/", "MyTracker", "My.Movie.2024--abcdef12"},
 		},
 		{
-			name:                  "by-tracker with NoSubfolder layout - needs isolation",
-			preset:                "by-tracker",
-			baseDir:               "/hardlinks",
-			torrentHash:           "abcdef1234567890",
-			torrentName:           "My.Movie.2024",
-			instanceName:          "qbt1",
-			incomingTrackerDomain: "tracker.example.com",
-			trackerDisplay:        "MyTracker",
-			layout:                hardlinktree.LayoutNoSubfolder,
-			candidateFiles:        filesWithRoot,
-			wantContains:          []string{"/hardlinks/", "MyTracker", "My.Movie.2024--abcdef12"},
-		},
-		{
-			name:           "by-instance with Subfolder layout - no isolation",
+			name:           "by-instance with root folder - no isolation",
 			preset:         "by-instance",
 			baseDir:        "/hardlinks",
 			torrentHash:    "abcdef1234567890",
 			torrentName:    "My.Movie.2024",
 			instanceName:   "qbt-main",
-			layout:         hardlinktree.LayoutSubfolder,
 			candidateFiles: filesWithRoot,
 			wantContains:   []string{"/hardlinks/", "qbt-main"},
 			wantNotContains: []string{"abcdef12", "My.Movie.2024--"},
 		},
 		{
-			name:           "by-instance with Original + rootless - needs isolation",
+			name:           "by-instance with rootless - needs isolation",
 			preset:         "by-instance",
 			baseDir:        "/hardlinks",
 			torrentHash:    "abcdef1234567890",
 			torrentName:    "My.Movie.2024",
 			instanceName:   "qbt-main",
-			layout:         hardlinktree.LayoutOriginal,
 			candidateFiles: filesRootless,
 			wantContains:   []string{"/hardlinks/", "qbt-main", "My.Movie.2024--abcdef12"},
 		},
@@ -279,7 +194,6 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 			torrentHash:    "abcdef1234567890",
 			torrentName:    "My.Movie.2024",
 			instanceName:   "qbt1",
-			layout:         hardlinktree.LayoutOriginal,
 			candidateFiles: filesWithRoot,
 			wantContains:   []string{"/hardlinks/", "My.Movie.2024--abcdef12"},
 		},
@@ -321,7 +235,6 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 				candidate,
 				tt.incomingTrackerDomain,
 				req,
-				tt.layout,
 				tt.candidateFiles,
 			)
 
@@ -369,7 +282,6 @@ func TestBuildHardlinkDestDir_SanitizesNames(t *testing.T) {
 		candidate,
 		"tracker.example.com", // incoming tracker domain
 		req,
-		hardlinktree.LayoutOriginal,
 		candidateFiles,
 	)
 

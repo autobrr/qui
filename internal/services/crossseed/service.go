@@ -8161,28 +8161,10 @@ func (s *Service) processHardlinkMode(
 		}
 	}
 
-	// Get instance's default content layout from preferences (needed for destDir calculation)
-	prefs, err := s.syncManager.GetAppPreferences(ctx, candidate.InstanceID)
-	if err != nil {
-		log.Warn().
-			Err(err).
-			Int("instanceID", candidate.InstanceID).
-			Msg("[CROSSSEED] Hardlink mode: failed to get app preferences, aborting")
-		return hardlinkModeResult{
-			Used:    true,
-			Success: false,
-			Result: InstanceCrossSeedResult{
-				InstanceID:   candidate.InstanceID,
-				InstanceName: candidate.InstanceName,
-				Success:      false,
-				Status:       "hardlink_error",
-				Message:      fmt.Sprintf("Failed to get qBittorrent preferences: %v", err),
-			},
-		}
-	}
-
-	// Convert qBittorrent's torrent_content_layout preference to our ContentLayout type
-	layout := s.qbtLayoutToHardlinkLayout(prefs.TorrentContentLayout)
+	// Hardlink mode always uses Original layout to match the incoming torrent's structure exactly.
+	// We'll also set contentLayout=Original when adding the torrent to qBittorrent to avoid
+	// double-folder nesting issues when the instance default is Subfolder.
+	layout := hardlinktree.LayoutOriginal
 
 	// Build lists for hardlink tree plan (needed for destDir calculation)
 	candidateTorrentFiles := make([]hardlinktree.TorrentFile, 0, len(sourceFiles))
@@ -8196,8 +8178,8 @@ func (s *Service) processHardlinkMode(
 	// Extract incoming tracker domain from torrent bytes (for "by-tracker" preset)
 	incomingTrackerDomain := ParseTorrentAnnounceDomain(torrentBytes)
 
-	// Build destination directory based on preset and layout
-	destDir := s.buildHardlinkDestDir(ctx, instance, torrentHash, torrentName, candidate, incomingTrackerDomain, req, layout, candidateTorrentFiles)
+	// Build destination directory based on preset and torrent structure
+	destDir := s.buildHardlinkDestDir(ctx, instance, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFiles)
 
 	existingFiles := make([]hardlinktree.ExistingFile, 0, len(candidateFiles))
 	for _, f := range candidateFiles {
@@ -8291,9 +8273,11 @@ func (s *Service) processHardlinkMode(
 	}
 
 	// Hardlink mode: files are pre-created, so use savepath pointing to tree root
-	// Don't override contentLayout - let qBittorrent use instance default
+	// Force contentLayout=Original to match the hardlink tree layout exactly
+	// and avoid double-folder nesting when instance default is Subfolder
 	options["autoTMM"] = "false"
 	options["savepath"] = plan.RootDir
+	options["contentLayout"] = "Original"
 	// Skip checking - hardlink mode pre-creates exact file layout, hash verification is redundant
 	options["skip_checking"] = "true"
 
@@ -8351,13 +8335,12 @@ func (s *Service) processHardlinkMode(
 }
 
 // buildHardlinkDestDir constructs the destination directory for hardlink tree
-// based on the configured preset and content layout.
+// based on the configured preset and torrent structure.
 //
-// The destination directory structure depends on whether isolation is needed:
-//   - Subfolder layout: qBittorrent always creates a root folder → no isolation needed
-//   - Original layout + torrent has root folder → no isolation needed
-//   - Original layout + rootless torrent → isolation folder needed
-//   - NoSubfolder layout: root folder is stripped → isolation folder needed
+// Hardlink mode always uses contentLayout=Original, so the isolation decision
+// is based purely on whether the torrent has a common root folder:
+//   - Torrents with a root folder (e.g., "Movie/video.mkv") → no isolation needed
+//   - Rootless torrents (e.g., "video.mkv") → isolation folder needed
 //
 // When isolation is needed, a human-readable folder name is used: <torrent-name>--<shortHash>
 // For "flat" preset, isolation is always used to keep torrents separated.
@@ -8368,25 +8351,14 @@ func (s *Service) buildHardlinkDestDir(
 	candidate CrossSeedCandidate,
 	incomingTrackerDomain string,
 	req *CrossSeedRequest,
-	layout hardlinktree.ContentLayout,
 	candidateFiles []hardlinktree.TorrentFile,
 ) string {
 	baseDir := instance.HardlinkBaseDir
 
-	// Determine if isolation folder is needed based on layout and torrent structure
-	needsIsolation := func() bool {
-		switch layout {
-		case hardlinktree.LayoutSubfolder:
-			// qBittorrent always creates a root folder
-			return false
-		case hardlinktree.LayoutNoSubfolder:
-			// Root folder is stripped, isolation needed
-			return true
-		default: // LayoutOriginal
-			// Isolation needed only if torrent doesn't have a common root folder
-			return !hardlinktree.HasCommonRootFolder(candidateFiles)
-		}
-	}()
+	// Determine if isolation folder is needed based on torrent structure.
+	// Since hardlink mode always uses contentLayout=Original, we only need
+	// an isolation folder when the torrent doesn't have a common root folder.
+	needsIsolation := !hardlinktree.HasCommonRootFolder(candidateFiles)
 
 	// Build isolation folder name if needed
 	isolationFolder := ""
@@ -8434,17 +8406,4 @@ func (s *Service) resolveTrackerDisplayName(ctx context.Context, incomingTracker
 	}
 
 	return models.ResolveTrackerDisplayName(incomingTrackerDomain, indexerName, customizations)
-}
-
-// qbtLayoutToHardlinkLayout converts qBittorrent's torrent_content_layout preference
-// to our hardlinktree.ContentLayout type.
-func (s *Service) qbtLayoutToHardlinkLayout(qbtLayout string) hardlinktree.ContentLayout {
-	switch strings.ToLower(qbtLayout) {
-	case "subfolder":
-		return hardlinktree.LayoutSubfolder
-	case "nosubfolder":
-		return hardlinktree.LayoutNoSubfolder
-	default:
-		return hardlinktree.LayoutOriginal
-	}
 }

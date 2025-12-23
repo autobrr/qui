@@ -14,7 +14,7 @@ qui supports two modes for handling files:
 
 ## Hardlink Mode (optional)
 
-Hardlink mode is an opt-in strategy that creates a hardlinked file tree matching the incoming torrent's expected layout. The torrent is then added with `savepath` pointing to that tree and `skip_checking=true`, so qBittorrent can start seeding immediately without a hash recheck.
+Hardlink mode is an opt-in strategy that creates a hardlinked file tree matching the incoming torrent's expected layout. The torrent is then added with `savepath` pointing to that tree, `contentLayout=Original`, and `skip_checking=true`, so qBittorrent can start seeding immediately without a hash recheck. By forcing `contentLayout=Original`, hardlink mode ensures the on-disk layout matches the incoming torrent exactly, regardless of the instance's default content layout preference.
 
 Hardlink mode is configured **per-instance**, allowing you to enable it only for instances where qui has local filesystem access.
 
@@ -46,13 +46,10 @@ For `by-tracker`, the "incoming tracker display name" is resolved using your Tra
 
 #### Isolation folders
 
-For `by-tracker` and `by-instance` presets, qui determines whether an isolation folder is needed based on the torrent's structure and qBittorrent's `torrent_content_layout` preference:
+For `by-tracker` and `by-instance` presets, qui determines whether an isolation folder is needed based on the torrent's file structure:
 
-- **Subfolder layout**: qBittorrent always creates a root folder → no isolation folder needed
-- **Original layout**: Root folder exists only if the torrent has a common top-level directory
-  - Torrents with a root folder (e.g., `Movie/video.mkv`) → no isolation folder
-  - Rootless torrents (e.g., `video.mkv`, `subs.srt`) → isolation folder added
-- **NoSubfolder layout**: Root folder is stripped → isolation folder needed
+- **Torrents with a root folder** (e.g., `Movie/video.mkv`, `Movie/subs.srt`) → files already have a common top-level directory, no isolation folder needed
+- **Rootless torrents** (e.g., `video.mkv`, `subs.srt` at top level) → isolation folder added to prevent file conflicts
 
 When an isolation folder is needed, it uses a human-readable format: `<TorrentName--shortHash>` (e.g., `My.Movie.2024.1080p.BluRay--abcdef12`).
 
