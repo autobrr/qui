@@ -294,6 +294,67 @@ func TestNeedsRenameAlignment(t *testing.T) {
 			candidateFiles: qbt.TorrentFiles{{Name: "Show.S01E01.mkv", Size: 1000000000}},
 			expectedResult: true, // main file name differs (spaces vs periods)
 		},
+		{
+			name:           "bare file to folder - folder name differs (apostrophe)",
+			torrentName:    "Someones.Movie.2014.mkv",
+			matchedName:    "Someone's.Movie.2014",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Someones.Movie.2014.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Someone's.Movie.2014/Someones.Movie.2014.mkv", Size: 1000}},
+			expectedResult: true, // "Someones.Movie.2014" != "Someone's.Movie.2014"
+		},
+		{
+			name:           "bare file to folder - folder name differs (service name)",
+			torrentName:    "Movie.2024.Amazon.mkv",
+			matchedName:    "Movie.2024.AMZN",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie.2024.Amazon.mkv", Size: 1000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2024.AMZN/Movie.2024.Amazon.mkv", Size: 1000}},
+			expectedResult: true, // "Movie.2024.Amazon" != "Movie.2024.AMZN"
+		},
+		{
+			name:           "bare file to folder - folder differs, filename equal (bug chain test)",
+			torrentName:    "Someones.Movie.2014.1080p.Amazon.WEB-DL.DD+5.1.x264-GRP.mkv",
+			matchedName:    "Someone's.Movie.2014.1080p.AMZN.WEB-DL.DD+5.1.x264-GRP",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Someones.Movie.2014.1080p.Amazon.WEB-DL.DD+5.1.x264-GRP.mkv", Size: 1500000000}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Someone's.Movie.2014.1080p.AMZN.WEB-DL.DD+5.1.x264-GRP/Someones.Movie.2014.1080p.Amazon.WEB-DL.DD+5.1.x264-GRP.mkv", Size: 1500000000}},
+			expectedResult: true, // Folder differs even though filenames match - must trigger recheck
+		},
+		// Tests for internal path differences (same root/name but different paths inside)
+		{
+			name:        "same root and name, different filename - alignment needed",
+			torrentName: "Show.S01",
+			matchedName: "Show.S01",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show.S01/ep1.mkv", Size: 1000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Show.S01/Episode.1.mkv", Size: 1000},
+			},
+			expectedResult: true, // filenames differ inside matching root
+		},
+		{
+			name:        "same root and name and filename, different subfolder path - alignment needed",
+			torrentName: "Show.S01",
+			matchedName: "Show.S01",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show.S01/Season 01/E01.mkv", Size: 1000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Show.S01/E01.mkv", Size: 1000},
+			},
+			expectedResult: true, // subfolder structure differs
+		},
+		{
+			name:        "identical paths - no alignment needed",
+			torrentName: "Show.S01",
+			matchedName: "Show.S01",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Show.S01/E01.mkv", Size: 1000},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Show.S01/E01.mkv", Size: 1000},
+			},
+			expectedResult: false, // paths are identical
+		},
 	}
 
 	for _, tt := range tests {
