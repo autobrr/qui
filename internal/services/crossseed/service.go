@@ -8245,19 +8245,14 @@ func (s *Service) processHardlinkMode(
 	// Build options for adding torrent
 	options := make(map[string]string)
 
-	// Set pause state - hardlink mode uses skip_checking=true so torrent is instant 100%.
-	// Default to starting immediately (not paused) unless SkipAutoResume is set,
-	// which allows users to keep hardlink-added torrents paused when desired.
-	startPaused := req.SkipAutoResume
-	if req.StartPaused != nil {
-		// Explicit override takes precedence
-		startPaused = *req.StartPaused
-	}
-	if startPaused {
-		options["paused"] = "true"
+	// Hardlink mode uses skip_checking=true so torrent is instant 100% - no recheck phase.
+	// Default to starting immediately. Only pause if SkipAutoResume is explicitly set,
+	// which is the per-source "keep paused" toggle. Ignore req.StartPaused here since
+	// it's often inherited from unrelated settings (e.g., RSS defaults to paused for
+	// non-hardlink mode where recheck is needed).
+	if req.SkipAutoResume {
 		options["stopped"] = "true"
 	} else {
-		options["paused"] = "false"
 		options["stopped"] = "false"
 	}
 
