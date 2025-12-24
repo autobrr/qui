@@ -179,6 +179,8 @@ export type ConditionOperator =
   | "CONTAINS_IN"
 
 export interface RuleCondition {
+  /** UI-only stable identifier (not persisted server-side) */
+  clientId?: string
   field?: ConditionField
   operator: ConditionOperator
   value?: string
@@ -248,7 +250,7 @@ export interface Automation {
   conditions: ActionConditions
   enabled: boolean
   sortOrder: number
-  intervalSeconds?: number | null // null = use global default (20s)
+  intervalSeconds?: number | null // null = use global default (15 minutes)
   createdAt?: string
   updatedAt?: string
 }
@@ -260,7 +262,7 @@ export interface AutomationInput {
   conditions: ActionConditions
   enabled?: boolean
   sortOrder?: number
-  intervalSeconds?: number | null // null = use global default (20s)
+  intervalSeconds?: number | null // null = use global default (15 minutes)
 }
 
 export interface AutomationPreviewInput extends AutomationInput {

@@ -21,6 +21,10 @@ interface QueryBuilderProps {
   className?: string;
   /** Optional category options for EXISTS_IN/CONTAINS_IN operators */
   categoryOptions?: Array<{ label: string; value: string }>;
+  /** Optional list of fields to hide from the selector */
+  hiddenFields?: string[];
+  /** Optional list of "state" option values to hide */
+  hiddenStateValues?: string[];
 }
 
 export function QueryBuilder({
@@ -28,6 +32,8 @@ export function QueryBuilder({
   onChange,
   className,
   categoryOptions,
+  hiddenFields,
+  hiddenStateValues,
 }: QueryBuilderProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -43,25 +49,28 @@ export function QueryBuilder({
   // Initialize with a default AND group if empty
   const effectiveCondition = useMemo<RuleCondition>(() => {
     if (!condition) {
-      return {
+      return ensureClientIdsDeep({
+        clientId: generateClientId(),
         operator: "AND",
         conditions: [
           {
+            clientId: generateClientId(),
             field: "NAME",
             operator: "CONTAINS",
             value: "",
           },
         ],
-      };
+      });
     }
     // Wrap non-group conditions in a group
     if (condition.operator !== "AND" && condition.operator !== "OR") {
-      return {
+      return ensureClientIdsDeep({
+        clientId: generateClientId(),
         operator: "AND",
-        conditions: [condition],
-      };
+        conditions: [ensureClientIdsDeep(condition)],
+      });
     }
-    return condition;
+    return ensureClientIdsDeep(condition);
   }, [condition]);
 
   const handleChange = useCallback(
@@ -87,9 +96,9 @@ export function QueryBuilder({
       const activeIdStr = active.id as string;
       const overIdStr = over.id as string;
 
-      // Parse paths from IDs (format: "root-0-1-2")
-      const activePath = parseIdPath(activeIdStr);
-      const overPath = parseIdPath(overIdStr);
+      const activePath = findPathByClientId(effectiveCondition, activeIdStr);
+      const overPath = findPathByClientId(effectiveCondition, overIdStr);
+      if (!activePath || !overPath) return;
 
       // Only handle reordering within the same parent
       if (!pathsHaveSameParent(activePath, overPath)) return;
@@ -121,21 +130,72 @@ export function QueryBuilder({
     >
       <div className={className}>
         <ConditionGroup
-          id="root"
+          id={effectiveCondition.clientId ?? "root"}
           condition={effectiveCondition}
           onChange={handleChange}
           isRoot
           categoryOptions={categoryOptions}
+          hiddenFields={hiddenFields}
+          hiddenStateValues={hiddenStateValues}
         />
       </div>
     </DndContext>
   );
 }
 
-// Helper: Parse ID path like "root-0-1" to [0, 1]
-function parseIdPath(id: string): number[] {
-  const parts = id.split("-");
-  return parts.slice(1).map((p) => parseInt(p, 10));
+function generateClientId(): string {
+  const cryptoObj = globalThis.crypto as Crypto | undefined;
+  if (cryptoObj?.randomUUID) {
+    return cryptoObj.randomUUID();
+  }
+  return `c_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
+}
+
+function ensureClientIdsDeep(condition: RuleCondition): RuleCondition {
+  const desiredClientId = condition.clientId ?? generateClientId();
+
+  let nextChildren: RuleCondition[] | undefined = condition.conditions;
+  if (condition.conditions) {
+    let changed = false;
+    const mapped = condition.conditions.map((child) => {
+      const ensured = ensureClientIdsDeep(child);
+      if (ensured !== child) {
+        changed = true;
+      }
+      return ensured;
+    });
+    if (changed) {
+      nextChildren = mapped;
+    }
+  }
+
+  if (desiredClientId === condition.clientId && nextChildren === condition.conditions) {
+    return condition;
+  }
+
+  return {
+    ...condition,
+    clientId: desiredClientId,
+    conditions: nextChildren,
+  };
+}
+
+// Helper: Find a node by clientId and return its index path.
+function findPathByClientId(root: RuleCondition, clientId: string): number[] | null {
+  if (!root.conditions) return null;
+
+  for (let i = 0; i < root.conditions.length; i++) {
+    const child = root.conditions[i];
+    if (child.clientId === clientId) {
+      return [i];
+    }
+    const sub = findPathByClientId(child, clientId);
+    if (sub) {
+      return [i, ...sub];
+    }
+  }
+
+  return null;
 }
 
 // Helper: Check if two paths have the same parent
@@ -153,37 +213,28 @@ function reorderAtPath(
   fromIndex: number,
   toIndex: number
 ): RuleCondition | null {
+  if (!root.conditions) return null;
+
+  // Reorder at root level
   if (parentPath.length === 0) {
-    // Reorder at root level
-    if (!root.conditions) return null;
-    const newConditions = arrayMove(root.conditions, fromIndex, toIndex);
-    return { ...root, conditions: newConditions };
+    return { ...root, conditions: arrayMove(root.conditions, fromIndex, toIndex) };
   }
 
-  // Navigate to parent
-  const newRoot = { ...root };
-  let current = newRoot;
+  const newRoot: RuleCondition = { ...root, conditions: [...root.conditions] };
+  let current: RuleCondition = newRoot;
 
-  for (let i = 0; i < parentPath.length - 1; i++) {
-    const index = parentPath[i];
+  for (const index of parentPath) {
     if (!current.conditions?.[index]) return null;
-    current.conditions = [...current.conditions];
-    current.conditions[index] = { ...current.conditions[index] };
-    current = current.conditions[index];
+    const next = current.conditions[index];
+    const clonedNext: RuleCondition = {
+      ...next,
+      conditions: next.conditions ? [...next.conditions] : next.conditions,
+    };
+    current.conditions[index] = clonedNext;
+    current = clonedNext;
   }
 
-  const lastIndex = parentPath[parentPath.length - 1];
-  if (!current.conditions?.[lastIndex]?.conditions) return null;
-
-  current.conditions = [...current.conditions];
-  current.conditions[lastIndex] = {
-    ...current.conditions[lastIndex],
-    conditions: arrayMove(
-      current.conditions[lastIndex].conditions!,
-      fromIndex,
-      toIndex
-    ),
-  };
-
+  if (!current.conditions) return null;
+  current.conditions = arrayMove(current.conditions, fromIndex, toIndex);
   return newRoot;
 }

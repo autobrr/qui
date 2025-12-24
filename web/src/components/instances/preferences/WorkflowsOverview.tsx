@@ -97,8 +97,14 @@ function formatAction(action: AutomationActivity["action"]): string {
 function formatTagsChangedSummary(details: AutomationActivity["details"]): string {
   const added = details?.added ?? {}
   const removed = details?.removed ?? {}
-  const addedTotal = Object.values(added).reduce((a, b) => a + b, 0)
-  const removedTotal = Object.values(removed).reduce((a, b) => a + b, 0)
+  const addedTotal = Object.values(added).reduce((sum, value) => {
+    const asNumber = typeof value === "number" ? value : Number(value)
+    return sum + (Number.isFinite(asNumber) ? asNumber : 0)
+  }, 0)
+  const removedTotal = Object.values(removed).reduce((sum, value) => {
+    const asNumber = typeof value === "number" ? value : Number(value)
+    return sum + (Number.isFinite(asNumber) ? asNumber : 0)
+  }, 0)
   const parts: string[] = []
   if (addedTotal > 0) parts.push(`+${addedTotal} tagged`)
   if (removedTotal > 0) parts.push(`-${removedTotal} untagged`)

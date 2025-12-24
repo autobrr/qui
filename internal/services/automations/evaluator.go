@@ -5,6 +5,7 @@ package automations
 
 import (
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -29,6 +30,8 @@ type categoryEntry struct {
 type EvalContext struct {
 	// UnregisteredSet contains hashes of unregistered torrents (from SyncManager health counts)
 	UnregisteredSet map[string]struct{}
+	// TrackerDownSet contains hashes of torrents whose trackers are down (from SyncManager health counts)
+	TrackerDownSet map[string]struct{}
 	// HardlinkedSet contains hashes of torrents that have at least one hardlinked file
 	HardlinkedSet map[string]struct{}
 	// InstanceHasLocalAccess indicates whether the instance has local filesystem access
@@ -275,7 +278,7 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldContentPath:
 		return compareString(torrent.ContentPath, cond)
 	case FieldState:
-		return compareString(string(torrent.State), cond)
+		return compareState(torrent, cond, ctx)
 	case FieldTracker:
 		return compareString(torrent.Tracker, cond)
 	case FieldComment:
@@ -356,6 +359,120 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	default:
 		return false
 	}
+}
+
+func compareState(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bool {
+	if cond == nil {
+		return false
+	}
+
+	matches := matchesStateValue(torrent, cond.Value, ctx)
+	switch cond.Operator {
+	case OperatorEqual:
+		return matches
+	case OperatorNotEqual:
+		return !matches
+	default:
+		// Preserve legacy behavior for non-state operators (even though the UI only offers EQUAL/NOT_EQUAL).
+		return compareString(string(torrent.State), cond)
+	}
+}
+
+// matchesStateValue matches against the torrent "status" buckets used by the sidebar filters
+// (e.g. "errored", "stalled_uploading") with a fallback to exact torrent.State string matching.
+func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		return false
+	}
+
+	switch strings.ToLower(normalized) {
+	// Sidebar status buckets
+	case "completed":
+		return torrent.Progress >= 1.0
+	case "downloading":
+		return slices.Contains([]qbt.TorrentState{
+			qbt.TorrentStateDownloading,
+			qbt.TorrentStateStalledDl,
+			qbt.TorrentStateMetaDl,
+			qbt.TorrentStateQueuedDl,
+			qbt.TorrentStateAllocating,
+			qbt.TorrentStateCheckingDl,
+			qbt.TorrentStateForcedDl,
+		}, torrent.State)
+	case "uploading", "seeding":
+		return slices.Contains([]qbt.TorrentState{
+			qbt.TorrentStateUploading,
+			qbt.TorrentStateStalledUp,
+			qbt.TorrentStateQueuedUp,
+			qbt.TorrentStateCheckingUp,
+			qbt.TorrentStateForcedUp,
+		}, torrent.State)
+	case "paused", "stopped":
+		return slices.Contains([]qbt.TorrentState{
+			qbt.TorrentStatePausedDl,
+			qbt.TorrentStatePausedUp,
+			qbt.TorrentStateStoppedDl,
+			qbt.TorrentStateStoppedUp,
+		}, torrent.State)
+	case "running", "resumed":
+		return !slices.Contains([]qbt.TorrentState{
+			qbt.TorrentStatePausedDl,
+			qbt.TorrentStatePausedUp,
+			qbt.TorrentStateStoppedDl,
+			qbt.TorrentStateStoppedUp,
+		}, torrent.State)
+	case "active":
+		return slices.Contains([]qbt.TorrentState{
+			qbt.TorrentStateDownloading,
+			qbt.TorrentStateUploading,
+			qbt.TorrentStateForcedDl,
+			qbt.TorrentStateForcedUp,
+		}, torrent.State)
+	case "inactive":
+		return !slices.Contains([]qbt.TorrentState{
+			qbt.TorrentStateDownloading,
+			qbt.TorrentStateUploading,
+			qbt.TorrentStateForcedDl,
+			qbt.TorrentStateForcedUp,
+		}, torrent.State)
+	case "stalled":
+		return slices.Contains([]qbt.TorrentState{
+			qbt.TorrentStateStalledDl,
+			qbt.TorrentStateStalledUp,
+		}, torrent.State)
+	case "stalled_uploading", "stalled_seeding":
+		return torrent.State == qbt.TorrentStateStalledUp
+	case "stalled_downloading":
+		return torrent.State == qbt.TorrentStateStalledDl
+	case "checking":
+		return slices.Contains([]qbt.TorrentState{
+			qbt.TorrentStateCheckingDl,
+			qbt.TorrentStateCheckingUp,
+			qbt.TorrentStateCheckingResumeData,
+		}, torrent.State)
+	case "moving":
+		return torrent.State == qbt.TorrentStateMoving
+	case "errored", "error":
+		return torrent.State == qbt.TorrentStateError || torrent.State == qbt.TorrentStateMissingFiles
+	case "missingfiles":
+		return torrent.State == qbt.TorrentStateMissingFiles
+	case "unregistered":
+		if ctx == nil || ctx.UnregisteredSet == nil {
+			return false
+		}
+		_, ok := ctx.UnregisteredSet[torrent.Hash]
+		return ok
+	case "tracker_down":
+		if ctx == nil || ctx.TrackerDownSet == nil {
+			return false
+		}
+		_, ok := ctx.TrackerDownSet[torrent.Hash]
+		return ok
+	}
+
+	// Fallback to raw torrent state (qBittorrent Web API value, e.g. "stalledUP").
+	return strings.EqualFold(string(torrent.State), normalized)
 }
 
 // compareString compares a string value against the condition.
