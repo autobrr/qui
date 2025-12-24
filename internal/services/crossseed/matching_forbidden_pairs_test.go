@@ -41,7 +41,7 @@ func TestIsTVEpisode(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "multi-episode (uses first episode)",
+			name:     "episode from season 2 (S02E03)",
 			release:  &rls.Release{Series: 2, Episode: 3},
 			expected: true,
 		},
