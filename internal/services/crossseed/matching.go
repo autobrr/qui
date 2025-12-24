@@ -266,21 +266,11 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		return false
 	}
 
-	// Audio must match if both are present (different audio codecs mean different files)
-	if len(source.Audio) > 0 && len(candidate.Audio) > 0 {
-		sourceAudio := joinNormalizedSlice(source.Audio)
-		candidateAudio := joinNormalizedSlice(candidate.Audio)
-		if sourceAudio != candidateAudio {
-			return false
-		}
-	}
-
-	// Channels must match if both are present (5.1 vs 7.1 are different audio tracks)
-	sourceChannels := s.stringNormalizer.Normalize((source.Channels))
-	candidateChannels := s.stringNormalizer.Normalize((candidate.Channels))
-	if sourceChannels != "" && candidateChannels != "" && sourceChannels != candidateChannels {
-		return false
-	}
+	// NOTE: Audio codec and channel checks are intentionally omitted here.
+	// Indexer metadata can be inaccurate (e.g., BTN returning DDPA5.1 when the
+	// actual file is DDP5.1). The downstream file size matching in
+	// hasContentFileSizeMismatch() and alignFilesForCrossSeed() will catch
+	// any real mismatches, so we let potential matches through for validation.
 
 	// Cut must match if both are present (Theatrical vs Extended are different versions)
 	if len(source.Cut) > 0 && len(candidate.Cut) > 0 {

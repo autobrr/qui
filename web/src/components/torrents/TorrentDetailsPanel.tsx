@@ -24,18 +24,19 @@ import { useCrossSeedMatches } from "@/lib/cross-seed-utils"
 import { getLinuxCategory, getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxSavePath, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import { getTrackerStatusBadge } from "@/lib/tracker-utils"
 import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
 import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
-import type { SortedPeersResponse, Torrent, TorrentFile, TorrentPeer } from "@/types"
+import type { SortedPeersResponse, Torrent, TorrentFile, TorrentPeer, TorrentTracker } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import "flag-icons/css/flag-icons.min.css"
 import { Ban, Copy, Loader2, Trash2, UserPlus, X } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
-import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackersTable, WebSeedsTable } from "./details"
-import { RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
+import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackerContextMenu, TrackersTable, WebSeedsTable } from "./details"
+import { EditTrackerDialog, RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
 import { TorrentFileTree } from "./TorrentFileTree"
 
 interface TorrentDetailsPanelProps {
@@ -57,23 +58,6 @@ function isTabValue(value: string): value is TabValue {
 }
 
 
-
-function getTrackerStatusBadge(status: number) {
-  switch (status) {
-    case 0:
-      return <Badge variant="secondary">Disabled</Badge>
-    case 1:
-      return <Badge variant="secondary">Not contacted</Badge>
-    case 2:
-      return <Badge variant="default">Working</Badge>
-    case 3:
-      return <Badge variant="default">Updating</Badge>
-    case 4:
-      return <Badge variant="destructive">Error</Badge>
-    default:
-      return <Badge variant="outline">Unknown</Badge>
-  }
-}
 
 export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent, initialTab, onInitialTabConsumed, layout = "vertical", onClose }: TorrentDetailsPanelProps) {
   const [activeTab, setActiveTab] = usePersistedTabState<TabValue>(TAB_STORAGE_KEY, DEFAULT_TAB, isTabValue)
@@ -109,6 +93,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const [deleteCrossSeedFiles, setDeleteCrossSeedFiles] = useState(false)
   const [showDeleteCurrentDialog, setShowDeleteCurrentDialog] = useState(false)
   const [deleteCurrentFiles, setDeleteCurrentFiles] = useState(false)
+  const [showEditTrackerDialog, setShowEditTrackerDialog] = useState(false)
+  const [trackerToEdit, setTrackerToEdit] = useState<TorrentTracker | null>(null)
+  const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? false
   const copyToClipboard = useCallback(async (text: string, type: string) => {
     try {
       await copyTextToClipboard(text)
@@ -392,6 +379,45 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       toast.error(`Failed to ban peer: ${error.message}`)
     },
   })
+
+  // Edit tracker mutation - for single torrent tracker URL editing
+  const editTrackerMutation = useMutation({
+    mutationFn: async ({ oldURL, newURL }: { oldURL: string; newURL: string }) => {
+      if (!torrent) throw new Error("No torrent selected")
+      await api.bulkAction(instanceId, {
+        hashes: [torrent.hash],
+        action: "editTrackers",
+        trackerOldURL: oldURL,
+        trackerNewURL: newURL,
+      })
+    },
+    onSuccess: () => {
+      toast.success("Tracker URL updated successfully")
+      setShowEditTrackerDialog(false)
+      setTrackerToEdit(null)
+      queryClient.invalidateQueries({ queryKey: ["torrent-trackers", instanceId, torrent?.hash] })
+    },
+    onError: (error: Error) => {
+      toast.error("Failed to update tracker", {
+        description: error.message,
+      })
+    },
+  })
+
+  // Handle edit tracker click
+  const handleEditTrackerClick = useCallback((tracker: TorrentTracker) => {
+    setTrackerToEdit(tracker)
+    setShowEditTrackerDialog(true)
+  }, [])
+
+  // Get tracker domain from URL for display
+  const getTrackerDomain = useCallback((url: string): string => {
+    try {
+      return new URL(url).hostname
+    } catch {
+      return url
+    }
+  }, [])
 
   // Rename file state
   const [showRenameFileDialog, setShowRenameFileDialog] = useState(false)
@@ -999,10 +1025,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                               <p className="text-xs text-muted-foreground">Added</p>
                               <p className="text-sm">{formatTimestamp(properties.addition_date)}</p>
                             </div>
-                            <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground">Completed</p>
-                              <p className="text-sm">{formatTimestamp(properties.completion_date)}</p>
-                            </div>
+                            {properties.completion_date && properties.completion_date !== -1 && (
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">Completed</p>
+                                <p className="text-sm">{formatTimestamp(properties.completion_date)}</p>
+                              </div>
+                            )}
                             <div className="space-y-1">
                               <p className="text-xs text-muted-foreground">Created</p>
                               <p className="text-sm">{formatTimestamp(properties.creation_date)}</p>
@@ -1049,6 +1077,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 trackers={trackers}
                 loading={loadingTrackers}
                 incognitoMode={incognitoMode}
+                onEditTracker={handleEditTrackerClick}
+                supportsTrackerEditing={supportsTrackerEditing}
               />
             ) : (
               <ScrollArea className="h-full">
@@ -1080,48 +1110,54 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             const messageContent = incognitoMode && shouldRenderMessage ? "Tracker message hidden in incognito mode" : tracker.msg
 
                             return (
-                              <div
+                              <TrackerContextMenu
                                 key={index}
-                                className={`backdrop-blur-sm border ${tracker.status === 0 ? "bg-card/30 border-border/30 opacity-60" : "bg-card/50 border-border/50"} hover:border-border transition-all rounded-lg p-4 space-y-3`}
+                                tracker={tracker}
+                                onEditTracker={handleEditTrackerClick}
+                                supportsTrackerEditing={supportsTrackerEditing}
                               >
-                                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
-                                  <div className="flex-1 space-y-1">
-                                    <div className="flex items-center gap-2">
-                                      {getTrackerStatusBadge(tracker.status)}
-                                    </div>
-                                    <p className="text-xs font-mono text-muted-foreground break-all">{displayUrl}</p>
-                                  </div>
-                                </div>
-                                <Separator className="opacity-50" />
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                  <div className="space-y-1">
-                                    <p className="text-xs text-muted-foreground">Seeds</p>
-                                    <p className="text-sm font-medium">{tracker.num_seeds}</p>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <p className="text-xs text-muted-foreground">Peers</p>
-                                    <p className="text-sm font-medium">{tracker.num_peers}</p>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <p className="text-xs text-muted-foreground">Leechers</p>
-                                    <p className="text-sm font-medium">{tracker.num_leeches}</p>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <p className="text-xs text-muted-foreground">Downloaded</p>
-                                    <p className="text-sm font-medium">{tracker.num_downloaded}</p>
-                                  </div>
-                                </div>
-                                {shouldRenderMessage && messageContent && (
-                                  <>
-                                    <Separator className="opacity-50" />
-                                    <div className="bg-background/50 p-2 rounded">
-                                      <div className="text-xs text-muted-foreground break-words">
-                                        {renderTextWithLinks(messageContent)}
+                                <div
+                                  className={`backdrop-blur-sm border ${tracker.status === 0 ? "bg-card/30 border-border/30 opacity-60" : "bg-card/50 border-border/50"} hover:border-border transition-all rounded-lg p-4 space-y-3`}
+                                >
+                                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                                    <div className="flex-1 space-y-1">
+                                      <div className="flex items-center gap-2">
+                                        {getTrackerStatusBadge(tracker.status)}
                                       </div>
+                                      <p className="text-xs font-mono text-muted-foreground break-all">{displayUrl}</p>
                                     </div>
-                                  </>
-                                )}
-                              </div>
+                                  </div>
+                                  <Separator className="opacity-50" />
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                    <div className="space-y-1">
+                                      <p className="text-xs text-muted-foreground">Seeds</p>
+                                      <p className="text-sm font-medium">{tracker.num_seeds}</p>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <p className="text-xs text-muted-foreground">Peers</p>
+                                      <p className="text-sm font-medium">{tracker.num_peers}</p>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <p className="text-xs text-muted-foreground">Leechers</p>
+                                      <p className="text-sm font-medium">{tracker.num_leeches}</p>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <p className="text-xs text-muted-foreground">Downloaded</p>
+                                      <p className="text-sm font-medium">{tracker.num_downloaded}</p>
+                                    </div>
+                                  </div>
+                                  {shouldRenderMessage && messageContent && (
+                                    <>
+                                      <Separator className="opacity-50" />
+                                      <div className="bg-background/50 p-2 rounded">
+                                        <div className="text-xs text-muted-foreground break-words">
+                                          {renderTextWithLinks(messageContent)}
+                                        </div>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              </TrackerContextMenu>
                             )
                           })}
                       </div>
@@ -1947,6 +1983,18 @@ tracker.example.com:8080
         onConfirm={handleRenameFolderConfirm}
         isPending={renameFolderMutation.isPending}
         initialPath={renameFolderPath ?? undefined}
+      />
+
+      {/* Edit Tracker Dialog */}
+      <EditTrackerDialog
+        open={showEditTrackerDialog}
+        onOpenChange={setShowEditTrackerDialog}
+        instanceId={instanceId}
+        tracker={trackerToEdit ? getTrackerDomain(trackerToEdit.url) : ""}
+        trackerURLs={trackerToEdit ? [trackerToEdit.url] : []}
+        selectedHashes={torrent ? [torrent.hash] : []}
+        onConfirm={(oldURL, newURL) => editTrackerMutation.mutate({ oldURL, newURL })}
+        isPending={editTrackerMutation.isPending}
       />
     </div>
   )
