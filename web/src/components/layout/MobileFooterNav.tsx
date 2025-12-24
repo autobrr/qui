@@ -59,8 +59,8 @@ import {
   Search as SearchIcon,
   Server,
   Settings,
-  Wrench,
-  Sun
+  Sun,
+  Wrench
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -123,7 +123,7 @@ export function MobileFooterNav() {
   const isOnInstancePage = location.pathname.startsWith("/instances/")
   const hasMultipleActiveInstances = activeInstances.length > 1
   const singleActiveInstance = activeInstances.length === 1 ? activeInstances[0] : null
-  const currentInstanceId = isOnInstancePage? location.pathname.split("/")[2]: null
+  const currentInstanceId = isOnInstancePage ? location.pathname.split("/")[2] : null
   const currentInstance = instances?.find(i => i.id.toString() === currentInstanceId)
   const currentInstanceLabel = currentInstance && currentInstance.isActive ? currentInstance.name : null
 
@@ -177,7 +177,7 @@ export function MobileFooterNav() {
           to="/dashboard"
           className={cn(
             "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
-            location.pathname === "/dashboard"? "text-primary": "text-muted-foreground hover:text-foreground"
+            location.pathname === "/dashboard" ? "text-primary" : "text-muted-foreground hover:text-foreground"
           )}
         >
           <Home className={cn(
@@ -195,7 +195,7 @@ export function MobileFooterNav() {
                 type="button"
                 className={cn(
                   "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
-                  isOnInstancePage? "text-primary": "text-muted-foreground hover:text-foreground"
+                  isOnInstancePage ? "text-primary" : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 <div className="relative">
@@ -330,7 +330,7 @@ export function MobileFooterNav() {
             <button
               className={cn(
                 "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
-                location.pathname === "/settings"? "text-primary": "text-muted-foreground hover:text-foreground"
+                location.pathname === "/settings" ? "text-primary" : "text-muted-foreground hover:text-foreground"
               )}
             >
               <div className="relative">
@@ -405,6 +405,15 @@ export function MobileFooterNav() {
               >
                 <Archive className="h-4 w-4" />
                 Instance Backups
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link
+                to="/rss"
+                className="flex items-center gap-2"
+              >
+                <Rss className="h-4 w-4" />
+                RSS
               </Link>
             </DropdownMenuItem>
 
