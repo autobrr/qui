@@ -1201,7 +1201,7 @@ export function TorrentCardsMobile({
   })
 
   const { data: capabilities } = useInstanceCapabilities(instanceId)
-  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
+  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
   const supportsTorrentCreation = capabilities?.supportsTorrentCreation ?? true
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
   // subcategoriesFromData reflects backend/server state; allowSubcategories
