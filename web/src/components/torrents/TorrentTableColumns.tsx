@@ -814,7 +814,7 @@ export const createColumns = (
     header: "Completed On",
     cell: ({ row }) => {
       const completionOn = row.original.completion_on
-      if (!completionOn || completionOn === 0) {
+      if (!completionOn || completionOn === -1) {
         return "-"
       }
 

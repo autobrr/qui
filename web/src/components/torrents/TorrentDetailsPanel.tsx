@@ -695,35 +695,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center gap-2 px-4 py-1 sm:px-6 border-b bg-muted/30">
-        <div className="flex items-center gap-1 min-w-0 flex-1">
-          <h3 className="text-sm font-semibold truncate" title={displayName}>
-            {displayName}
-          </h3>
-          {displayName && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5 shrink-0"
-              onClick={() => copyToClipboard(displayName, "Torrent name")}
-            >
-              <Copy className="h-3 w-3" />
-            </Button>
-          )}
-        </div>
-        {onClose && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-5 w-5 shrink-0"
-            onClick={onClose}
-            aria-label="Close details panel"
-          >
-            <X className="h-3 w-3" />
-          </Button>
-        )}
-      </div>
-
       <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
         <TabsList className="w-full justify-start rounded-none border-b h-8 bg-background px-4 sm:px-6 py-0">
           <TabsTrigger
@@ -764,7 +735,19 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
           >
             Cross-Seed
           </TabsTrigger>
+          {onClose && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-10 shrink-0"
+              onClick={onClose}
+              aria-label="Close details panel"
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          )}
         </TabsList>
+
 
         <div className="flex-1 min-h-0 overflow-hidden">
           <TabsContent value="general" className="m-0 h-full">
@@ -776,6 +759,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 speedUnit={speedUnit}
                 downloadLimit={properties?.dl_limit ?? torrent.dl_limit ?? 0}
                 uploadLimit={properties?.up_limit ?? torrent.up_limit ?? 0}
+                displayName={displayName}
                 displaySavePath={displaySavePath || ""}
                 displayTempPath={displayTempPath}
                 tempPathEnabled={tempPathEnabled}
@@ -1041,10 +1025,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                               <p className="text-xs text-muted-foreground">Added</p>
                               <p className="text-sm">{formatTimestamp(properties.addition_date)}</p>
                             </div>
-                            <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground">Completed</p>
-                              <p className="text-sm">{formatTimestamp(properties.completion_date)}</p>
-                            </div>
+                            {properties.completion_date && properties.completion_date !== -1 && (
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">Completed</p>
+                                <p className="text-sm">{formatTimestamp(properties.completion_date)}</p>
+                              </div>
+                            )}
                             <div className="space-y-1">
                               <p className="text-xs text-muted-foreground">Created</p>
                               <p className="text-sm">{formatTimestamp(properties.creation_date)}</p>

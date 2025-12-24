@@ -615,8 +615,8 @@ function SwipeableCard({
       {isSelected && (
         <div className="absolute inset-0 rounded-lg ring-2 ring-primary ring-inset pointer-events-none" />
       )}
-      {/* Selection checkbox - visible in selection mode */}
-      {selectionMode && (
+      {/* Selection checkbox - visible in normal view selection mode */}
+      {selectionMode && viewMode === "normal" && (
         <div className="absolute top-2 right-2 z-10">
           <Checkbox
             checked={isSelected}
@@ -733,13 +733,14 @@ function SwipeableCard({
           {/* Torrent name */}
           <div className="mb-3">
             <h3 className={cn(
-              "font-medium text-sm line-clamp-2 break-all",
+              "font-medium text-sm line-clamp-2 break-all h-10",
               selectionMode && "pr-8"
             )}>
               {displayName}
             </h3>
+            <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground truncate h-4">
             {trackerMeta.title && (
-              <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground truncate">
+              <>
                 <TrackerIcon
                   title={trackerMeta.title}
                   fallback={trackerMeta.fallback}
@@ -749,8 +750,9 @@ function SwipeableCard({
                 <span className="truncate" title={trackerMeta.title}>
                   {trackerMeta.title}
                 </span>
-              </div>
+              </>
             )}
+            </div>
           </div>
 
           {/* Progress bar */}
@@ -879,7 +881,7 @@ function SwipeableCard({
 
           {/* Tags - aligned to the right */}
           {displayTags && (
-            <div className="flex items-center gap-1 flex-wrap justify-end ml-auto">
+            <div className="flex items-center gap-1 flex-wrap justify-end ml-auto overflow-hidden max-h-4">
               <Tag className="h-3 w-3 text-muted-foreground flex-shrink-0" />
               {(Array.isArray(displayTags) ? displayTags : displayTags.split(",")).map((tag, i) => (
                 <Badge key={i} variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
@@ -1313,15 +1315,7 @@ export function TorrentCardsMobile({
   const virtualizer = useVirtualizer({
     count: safeLoadedRows,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => viewMode === "ultra-compact" ? 39 : viewMode === "compact" ? 88 : 180, // More accurate size estimates for each view mode (35px + 4px padding)
-    measureElement: (element) => {
-      // Measure actual element height
-      if (element) {
-        const height = element.getBoundingClientRect().height
-        return height
-      }
-      return viewMode === "ultra-compact" ? 39 : viewMode === "compact" ? 88 : 180
-    },
+    estimateSize: () => viewMode === "ultra-compact" ? 32 : viewMode === "compact" ? 86 : 204,
     overscan: 5,
     // Provide a key to help with item tracking - use hash with index for uniqueness
     getItemKey: useCallback((index: number) => {
@@ -1847,13 +1841,13 @@ export function TorrentCardsMobile({
             return (
               <div
                 key={virtualItem.key}
-                ref={virtualizer.measureElement}
                 data-index={virtualItem.index}
                 style={{
                   position: "absolute",
                   top: 0,
                   left: 0,
                   width: "100%",
+                  height: `${virtualItem.size}px`,
                   transform: `translateY(${virtualItem.start}px)`,
                   paddingBottom: viewMode === "ultra-compact" ? "4px" : "8px",
                 }}
