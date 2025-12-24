@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/pkg/redact"
 )
 
 const (
@@ -50,7 +52,7 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			if attempt > 0 {
 				log.Debug().
 					Str("method", req.Method).
-					Str("url", req.URL.String()).
+					Str("url", redact.URLString(req.URL.String())).
 					Int("attempt", attempt+1).
 					Msg("Proxy request succeeded after retry")
 			}
@@ -62,9 +64,9 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		// Check if the error is retryable
 		if !isRetryableError(err) {
 			log.Debug().
-				Err(err).
+				Str("error", redact.String(err.Error())).
 				Str("method", req.Method).
-				Str("url", req.URL.String()).
+				Str("url", redact.URLString(req.URL.String())).
 				Msg("Proxy request failed with non-retryable error")
 			return nil, err
 		}
@@ -76,9 +78,9 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		// Check if the request method is safe to retry
 		if !isIdempotentMethod(req.Method) {
 			log.Debug().
-				Err(err).
+				Str("error", redact.String(err.Error())).
 				Str("method", req.Method).
-				Str("url", req.URL.String()).
+				Str("url", redact.URLString(req.URL.String())).
 				Msg("Proxy request failed but method is not idempotent, not retrying")
 			return nil, err
 		}
@@ -86,9 +88,9 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		// Don't retry if we've exhausted our attempts
 		if attempt >= maxRetries {
 			log.Warn().
-				Err(err).
+				Str("error", redact.String(err.Error())).
 				Str("method", req.Method).
-				Str("url", req.URL.String()).
+				Str("url", redact.URLString(req.URL.String())).
 				Int("attempts", attempt+1).
 				Msg("Proxy request failed after max retries")
 			return nil, err
@@ -98,9 +100,9 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		backoff := calculateBackoff(attempt, initialRetryWait, maxRetryWait)
 
 		log.Debug().
-			Err(err).
+			Str("error", redact.String(err.Error())).
 			Str("method", req.Method).
-			Str("url", req.URL.String()).
+			Str("url", redact.URLString(req.URL.String())).
 			Int("attempt", attempt+1).
 			Dur("backoff", backoff).
 			Msg("Proxy request failed with retryable error, retrying")
