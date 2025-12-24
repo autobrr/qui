@@ -40,7 +40,7 @@ type Automation struct {
 	Conditions      *ActionConditions `json:"conditions"`
 	Enabled         bool              `json:"enabled"`
 	SortOrder       int               `json:"sortOrder"`
-	IntervalSeconds *int              `json:"intervalSeconds,omitempty"` // nil = use global default (20s)
+	IntervalSeconds *int              `json:"intervalSeconds,omitempty"` // nil = use DefaultRuleInterval (15m)
 	CreatedAt       time.Time         `json:"createdAt"`
 	UpdatedAt       time.Time         `json:"updatedAt"`
 }
@@ -149,12 +149,12 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 	return automations, nil
 }
 
-func (s *AutomationStore) Get(ctx context.Context, id int) (*Automation, error) {
+func (s *AutomationStore) Get(ctx context.Context, instanceID, id int) (*Automation, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, sort_order, interval_seconds, created_at, updated_at
 		FROM automations
-		WHERE id = ?
-	`, id)
+		WHERE id = ? AND instance_id = ?
+	`, id, instanceID)
 
 	var automation Automation
 	var conditionsJSON string
@@ -244,7 +244,7 @@ func (s *AutomationStore) Create(ctx context.Context, automation *Automation) (*
 		return nil, err
 	}
 
-	return s.Get(ctx, int(id))
+	return s.Get(ctx, automation.InstanceID, int(id))
 }
 
 func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*Automation, error) {
@@ -283,7 +283,7 @@ func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*
 		return nil, sql.ErrNoRows
 	}
 
-	return s.Get(ctx, automation.ID)
+	return s.Get(ctx, automation.InstanceID, automation.ID)
 }
 
 func (s *AutomationStore) Delete(ctx context.Context, instanceID int, id int) error {
@@ -375,8 +375,8 @@ const (
 
 // Hardlink scope values (wire format - stable API values)
 const (
-	HardlinkScopeNone             = "none"              // No file has link count > 1
-	HardlinkScopeTorrentsOnly     = "torrents_only"     // All links are within qBittorrent's torrent set
+	HardlinkScopeNone               = "none"                // No file has link count > 1
+	HardlinkScopeTorrentsOnly       = "torrents_only"       // All links are within qBittorrent's torrent set
 	HardlinkScopeOutsideQBitTorrent = "outside_qbittorrent" // At least one file has links outside the torrent set
 )
 

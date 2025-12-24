@@ -41,7 +41,7 @@ type AutomationPayload struct {
 	TrackerDomains  []string                 `json:"trackerDomains"`
 	Enabled         *bool                    `json:"enabled"`
 	SortOrder       *int                     `json:"sortOrder"`
-	IntervalSeconds *int                     `json:"intervalSeconds,omitempty"` // nil = use global default (20s)
+	IntervalSeconds *int                     `json:"intervalSeconds,omitempty"` // nil = use DefaultRuleInterval (15m)
 	Conditions      *models.ActionConditions `json:"conditions"`
 	PreviewLimit    *int                     `json:"previewLimit"`
 	PreviewOffset   *int                     `json:"previewOffset"`
