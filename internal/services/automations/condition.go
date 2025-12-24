@@ -66,7 +66,14 @@ const (
 	// Boolean fields
 	FieldPrivate        = models.FieldPrivate
 	FieldIsUnregistered = models.FieldIsUnregistered
-	FieldIsHardlinked   = models.FieldIsHardlinked
+
+	// Enum-like fields
+	FieldHardlinkScope = models.FieldHardlinkScope
+
+	// Hardlink scope values
+	HardlinkScopeNone               = models.HardlinkScopeNone
+	HardlinkScopeTorrentsOnly       = models.HardlinkScopeTorrentsOnly
+	HardlinkScopeOutsideQBitTorrent = models.HardlinkScopeOutsideQBitTorrent
 
 	// Delete modes
 	DeleteModeNone                        = models.DeleteModeNone

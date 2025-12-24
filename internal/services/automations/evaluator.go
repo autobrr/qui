@@ -32,8 +32,8 @@ type EvalContext struct {
 	UnregisteredSet map[string]struct{}
 	// TrackerDownSet contains hashes of torrents whose trackers are down (from SyncManager health counts)
 	TrackerDownSet map[string]struct{}
-	// HardlinkedSet contains hashes of torrents that have at least one hardlinked file
-	HardlinkedSet map[string]struct{}
+	// HardlinkScopeByHash maps torrent hash to its hardlink scope (none, torrents_only, outside_qbittorrent)
+	HardlinkScopeByHash map[string]string
 	// InstanceHasLocalAccess indicates whether the instance has local filesystem access
 	InstanceHasLocalAccess bool
 
@@ -343,18 +343,24 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 			_, isUnregistered = ctx.UnregisteredSet[torrent.Hash]
 		}
 		return compareBool(isUnregistered, cond)
-	case FieldIsHardlinked:
-		// Instances without local filesystem access cannot detect hardlinks.
+
+	case FieldHardlinkScope:
+		// Instances without local filesystem access cannot detect hardlink scope.
 		// Return false so the condition doesn't match and rules won't trigger unintended actions.
-		// Note: Automations using IS_HARDLINKED are validated at creation time to require local access.
+		// Note: Automations using HARDLINK_SCOPE are validated at creation time to require local access.
 		if ctx == nil || !ctx.InstanceHasLocalAccess {
 			return false
 		}
-		isHardlinked := false
-		if ctx.HardlinkedSet != nil {
-			_, isHardlinked = ctx.HardlinkedSet[torrent.Hash]
+		// If scope couldn't be computed for this torrent (files inaccessible, stat failures, etc.),
+		// treat as "unknown" and don't match any condition to prevent unintended rule triggers.
+		if ctx.HardlinkScopeByHash == nil {
+			return false
 		}
-		return compareBool(isHardlinked, cond)
+		scope, ok := ctx.HardlinkScopeByHash[torrent.Hash]
+		if !ok {
+			return false // Unknown scope - don't match
+		}
+		return compareHardlinkScope(scope, cond)
 
 	default:
 		return false
@@ -574,6 +580,18 @@ func compareBool(value bool, cond *RuleCondition) bool {
 		return value == condValue
 	case OperatorNotEqual:
 		return value != condValue
+	default:
+		return false
+	}
+}
+
+// compareHardlinkScope compares a hardlink scope value against the condition.
+func compareHardlinkScope(value string, cond *RuleCondition) bool {
+	switch cond.Operator {
+	case OperatorEqual:
+		return strings.EqualFold(value, cond.Value)
+	case OperatorNotEqual:
+		return !strings.EqualFold(value, cond.Value)
 	default:
 		return false
 	}

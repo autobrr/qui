@@ -29,6 +29,7 @@ import {
   getFieldType,
   getOperatorsForField,
   TORRENT_STATES,
+  HARDLINK_SCOPE_VALUES,
   BYTE_UNITS,
   SPEED_UNITS,
 } from "./constants";
@@ -93,11 +94,19 @@ export function LeafCondition({
     const newOperators = getOperatorsForField(field);
     const defaultOperator = newOperators[0]?.value ?? "EQUAL";
 
+    // Determine default value based on field type
+    let defaultValue = "";
+    if (newFieldType === "boolean") {
+      defaultValue = "true";
+    } else if (newFieldType === "hardlinkScope") {
+      defaultValue = "outside_qbittorrent";
+    }
+
     onChange({
       ...condition,
       field: field as ConditionField,
       operator: defaultOperator as ConditionOperator,
-      value: newFieldType === "boolean" ? "true" : "",
+      value: defaultValue,
       minValue: undefined,
       maxValue: undefined,
     });
@@ -301,6 +310,19 @@ export function LeafCondition({
             {TORRENT_STATES.filter(state => !hiddenStateValues?.includes(state.value)).map((state) => (
               <SelectItem key={state.value} value={state.value}>
                 {state.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : fieldType === "hardlinkScope" ? (
+        <Select value={condition.value ?? "outside_qbittorrent"} onValueChange={handleValueChange}>
+          <SelectTrigger className="h-8 w-[240px]">
+            <SelectValue placeholder="Select scope" />
+          </SelectTrigger>
+          <SelectContent>
+            {HARDLINK_SCOPE_VALUES.map((scope) => (
+              <SelectItem key={scope.value} value={scope.value}>
+                {scope.label}
               </SelectItem>
             ))}
           </SelectContent>

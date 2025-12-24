@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -41,7 +42,7 @@ type AutomationPayload struct {
 	TrackerDomains  []string                 `json:"trackerDomains"`
 	Enabled         *bool                    `json:"enabled"`
 	SortOrder       *int                     `json:"sortOrder"`
-	IntervalSeconds *int                     `json:"intervalSeconds,omitempty"` // nil = use global default (20s)
+	IntervalSeconds *int                     `json:"intervalSeconds,omitempty"` // nil = use DefaultRuleInterval (15m)
 	Conditions      *models.ActionConditions `json:"conditions"`
 	PreviewLimit    *int                     `json:"previewLimit"`
 	PreviewOffset   *int                     `json:"previewOffset"`
@@ -102,46 +103,9 @@ func (h *AutomationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if payload.Name == "" {
-		RespondError(w, http.StatusBadRequest, "Name is required")
+	if status, msg, err := h.validatePayload(r.Context(), instanceID, &payload); err != nil {
+		RespondError(w, status, msg)
 		return
-	}
-
-	isAllTrackers := strings.TrimSpace(payload.TrackerPattern) == "*"
-	if !isAllTrackers && len(normalizeTrackerDomains(payload.TrackerDomains)) == 0 && strings.TrimSpace(payload.TrackerPattern) == "" {
-		RespondError(w, http.StatusBadRequest, "Select at least one tracker or enable 'Apply to all'")
-		return
-	}
-
-	if payload.Conditions == nil || payload.Conditions.IsEmpty() {
-		RespondError(w, http.StatusBadRequest, "At least one action must be configured")
-		return
-	}
-
-	// Validate category action has a category name
-	if payload.Conditions.Category != nil && payload.Conditions.Category.Enabled && payload.Conditions.Category.Category == "" {
-		RespondError(w, http.StatusBadRequest, "Category action requires a category name")
-		return
-	}
-
-	// Validate intervalSeconds minimum
-	if payload.IntervalSeconds != nil && *payload.IntervalSeconds < 60 {
-		RespondError(w, http.StatusBadRequest, "intervalSeconds must be at least 60")
-		return
-	}
-
-	// Validate IS_HARDLINKED usage requires local filesystem access
-	if conditionsUseHardlink(payload.Conditions) {
-		instance, err := h.instanceStore.Get(r.Context(), instanceID)
-		if err != nil {
-			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for validation")
-			RespondError(w, http.StatusInternalServerError, "Failed to validate automation")
-			return
-		}
-		if !instance.HasLocalFilesystemAccess {
-			RespondError(w, http.StatusBadRequest, "IS_HARDLINKED condition requires local filesystem access. Enable 'Local Filesystem Access' in instance settings first.")
-			return
-		}
 	}
 
 	automation, err := h.store.Create(r.Context(), payload.toModel(instanceID, 0))
@@ -174,46 +138,9 @@ func (h *AutomationHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if payload.Name == "" {
-		RespondError(w, http.StatusBadRequest, "Name is required")
+	if status, msg, err := h.validatePayload(r.Context(), instanceID, &payload); err != nil {
+		RespondError(w, status, msg)
 		return
-	}
-
-	isAllTrackers := strings.TrimSpace(payload.TrackerPattern) == "*"
-	if !isAllTrackers && len(normalizeTrackerDomains(payload.TrackerDomains)) == 0 && strings.TrimSpace(payload.TrackerPattern) == "" {
-		RespondError(w, http.StatusBadRequest, "Select at least one tracker or enable 'Apply to all'")
-		return
-	}
-
-	if payload.Conditions == nil || payload.Conditions.IsEmpty() {
-		RespondError(w, http.StatusBadRequest, "At least one action must be configured")
-		return
-	}
-
-	// Validate category action has a category name
-	if payload.Conditions.Category != nil && payload.Conditions.Category.Enabled && payload.Conditions.Category.Category == "" {
-		RespondError(w, http.StatusBadRequest, "Category action requires a category name")
-		return
-	}
-
-	// Validate intervalSeconds minimum
-	if payload.IntervalSeconds != nil && *payload.IntervalSeconds < 60 {
-		RespondError(w, http.StatusBadRequest, "intervalSeconds must be at least 60")
-		return
-	}
-
-	// Validate IS_HARDLINKED usage requires local filesystem access
-	if conditionsUseHardlink(payload.Conditions) {
-		instance, err := h.instanceStore.Get(r.Context(), instanceID)
-		if err != nil {
-			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for validation")
-			RespondError(w, http.StatusInternalServerError, "Failed to validate automation")
-			return
-		}
-		if !instance.HasLocalFilesystemAccess {
-			RespondError(w, http.StatusBadRequest, "IS_HARDLINKED condition requires local filesystem access. Enable 'Local Filesystem Access' in instance settings first.")
-			return
-		}
 	}
 
 	automation, err := h.store.Update(r.Context(), payload.toModel(instanceID, ruleID))
@@ -327,27 +254,69 @@ func normalizeTrackerDomains(domains []string) []string {
 	return out
 }
 
-// conditionsUseHardlink checks if any action condition uses IS_HARDLINKED field.
+// validatePayload validates an AutomationPayload and returns an HTTP status code and message if invalid.
+// Returns (0, "", nil) if valid.
+func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int, payload *AutomationPayload) (int, string, error) {
+	if payload.Name == "" {
+		return http.StatusBadRequest, "Name is required", errors.New("name required")
+	}
+
+	isAllTrackers := strings.TrimSpace(payload.TrackerPattern) == "*"
+	if !isAllTrackers && len(normalizeTrackerDomains(payload.TrackerDomains)) == 0 && strings.TrimSpace(payload.TrackerPattern) == "" {
+		return http.StatusBadRequest, "Select at least one tracker or enable 'Apply to all'", errors.New("tracker required")
+	}
+
+	if payload.Conditions == nil || payload.Conditions.IsEmpty() {
+		return http.StatusBadRequest, "At least one action must be configured", errors.New("conditions required")
+	}
+
+	// Validate category action has a category name
+	if payload.Conditions.Category != nil && payload.Conditions.Category.Enabled && payload.Conditions.Category.Category == "" {
+		return http.StatusBadRequest, "Category action requires a category name", errors.New("category name required")
+	}
+
+	// Validate intervalSeconds minimum
+	if payload.IntervalSeconds != nil && *payload.IntervalSeconds < 60 {
+		return http.StatusBadRequest, "intervalSeconds must be at least 60", errors.New("interval too short")
+	}
+
+	// Validate hardlink fields require local filesystem access
+	if conditionsUseHardlink(payload.Conditions) {
+		instance, err := h.instanceStore.Get(ctx, instanceID)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for validation")
+			return http.StatusInternalServerError, "Failed to validate automation", err
+		}
+		if !instance.HasLocalFilesystemAccess {
+			return http.StatusBadRequest, "Hardlink conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first.", errors.New("local access required")
+		}
+	}
+
+	return 0, "", nil
+}
+
+// conditionsUseHardlink checks if any action condition uses HARDLINK_SCOPE field.
+// This field requires local filesystem access to work.
 func conditionsUseHardlink(conditions *models.ActionConditions) bool {
 	if conditions == nil {
 		return false
 	}
-	if conditions.SpeedLimits != nil && automations.ConditionUsesField(conditions.SpeedLimits.Condition, automations.FieldIsHardlinked) {
+	if conditions.SpeedLimits != nil && automations.ConditionUsesField(conditions.SpeedLimits.Condition, automations.FieldHardlinkScope) {
 		return true
 	}
-	if conditions.ShareLimits != nil && automations.ConditionUsesField(conditions.ShareLimits.Condition, automations.FieldIsHardlinked) {
+	if conditions.ShareLimits != nil && automations.ConditionUsesField(conditions.ShareLimits.Condition, automations.FieldHardlinkScope) {
 		return true
 	}
-	if conditions.Pause != nil && automations.ConditionUsesField(conditions.Pause.Condition, automations.FieldIsHardlinked) {
+	if conditions.Pause != nil && automations.ConditionUsesField(conditions.Pause.Condition, automations.FieldHardlinkScope) {
 		return true
 	}
-	if conditions.Delete != nil && automations.ConditionUsesField(conditions.Delete.Condition, automations.FieldIsHardlinked) {
+	if conditions.Delete != nil && automations.ConditionUsesField(conditions.Delete.Condition, automations.FieldHardlinkScope) {
 		return true
 	}
-	if conditions.Tag != nil && automations.ConditionUsesField(conditions.Tag.Condition, automations.FieldIsHardlinked) {
+	if conditions.Tag != nil && automations.ConditionUsesField(conditions.Tag.Condition, automations.FieldHardlinkScope) {
 		return true
 	}
-	if conditions.Category != nil && automations.ConditionUsesField(conditions.Category.Condition, automations.FieldIsHardlinked) {
+	if conditions.Category != nil && automations.ConditionUsesField(conditions.Category.Condition, automations.FieldHardlinkScope) {
 		return true
 	}
 	return false
