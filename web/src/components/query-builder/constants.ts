@@ -46,10 +46,12 @@ export const CONDITION_FIELDS = {
   // Boolean fields
   PRIVATE: { label: "Private", type: "boolean" as const, description: "Private tracker torrent" },
   IS_UNREGISTERED: { label: "Unregistered", type: "boolean" as const, description: "Tracker reports torrent as unregistered" },
-  IS_HARDLINKED: { label: "Hardlinked", type: "boolean" as const, description: "At least one file has hardlinks" },
+
+  // Enum-like fields
+  HARDLINK_SCOPE: { label: "Hardlink scope", type: "hardlinkScope" as const, description: "Where hardlinks for this torrent's files exist. Requires Local Filesystem Access." },
 } as const;
 
-export type FieldType = "string" | "state" | "bytes" | "duration" | "timestamp" | "float" | "speed" | "integer" | "boolean";
+export type FieldType = "string" | "state" | "bytes" | "duration" | "timestamp" | "float" | "speed" | "integer" | "boolean" | "hardlinkScope";
 
 // Operators available per field type
 export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string }[]> = {
@@ -124,7 +126,18 @@ export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string
     { value: "EQUAL", label: "is" },
     { value: "NOT_EQUAL", label: "is not" },
   ],
+  hardlinkScope: [
+    { value: "EQUAL", label: "is" },
+    { value: "NOT_EQUAL", label: "is not" },
+  ],
 };
+
+// Hardlink scope values (matches backend wire format)
+export const HARDLINK_SCOPE_VALUES = [
+  { value: "none", label: "None" },
+  { value: "torrents_only", label: "Only other torrents" },
+  { value: "outside_qbittorrent", label: "Outside qBittorrent (library/import)" },
+];
 
 // qBittorrent torrent states
 export const TORRENT_STATES = [
@@ -191,7 +204,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Files",
-    fields: ["IS_HARDLINKED"],
+    fields: ["HARDLINK_SCOPE"],
   },
 ];
 

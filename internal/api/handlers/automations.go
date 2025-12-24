@@ -130,7 +130,7 @@ func (h *AutomationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate IS_HARDLINKED usage requires local filesystem access
+	// Validate hardlink fields require local filesystem access
 	if conditionsUseHardlink(payload.Conditions) {
 		instance, err := h.instanceStore.Get(r.Context(), instanceID)
 		if err != nil {
@@ -139,7 +139,7 @@ func (h *AutomationHandler) Create(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !instance.HasLocalFilesystemAccess {
-			RespondError(w, http.StatusBadRequest, "IS_HARDLINKED condition requires local filesystem access. Enable 'Local Filesystem Access' in instance settings first.")
+			RespondError(w, http.StatusBadRequest, "Hardlink conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first.")
 			return
 		}
 	}
@@ -202,7 +202,7 @@ func (h *AutomationHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate IS_HARDLINKED usage requires local filesystem access
+	// Validate hardlink fields require local filesystem access
 	if conditionsUseHardlink(payload.Conditions) {
 		instance, err := h.instanceStore.Get(r.Context(), instanceID)
 		if err != nil {
@@ -211,7 +211,7 @@ func (h *AutomationHandler) Update(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !instance.HasLocalFilesystemAccess {
-			RespondError(w, http.StatusBadRequest, "IS_HARDLINKED condition requires local filesystem access. Enable 'Local Filesystem Access' in instance settings first.")
+			RespondError(w, http.StatusBadRequest, "Hardlink conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first.")
 			return
 		}
 	}
@@ -327,27 +327,28 @@ func normalizeTrackerDomains(domains []string) []string {
 	return out
 }
 
-// conditionsUseHardlink checks if any action condition uses IS_HARDLINKED field.
+// conditionsUseHardlink checks if any action condition uses HARDLINK_SCOPE field.
+// This field requires local filesystem access to work.
 func conditionsUseHardlink(conditions *models.ActionConditions) bool {
 	if conditions == nil {
 		return false
 	}
-	if conditions.SpeedLimits != nil && automations.ConditionUsesField(conditions.SpeedLimits.Condition, automations.FieldIsHardlinked) {
+	if conditions.SpeedLimits != nil && automations.ConditionUsesField(conditions.SpeedLimits.Condition, automations.FieldHardlinkScope) {
 		return true
 	}
-	if conditions.ShareLimits != nil && automations.ConditionUsesField(conditions.ShareLimits.Condition, automations.FieldIsHardlinked) {
+	if conditions.ShareLimits != nil && automations.ConditionUsesField(conditions.ShareLimits.Condition, automations.FieldHardlinkScope) {
 		return true
 	}
-	if conditions.Pause != nil && automations.ConditionUsesField(conditions.Pause.Condition, automations.FieldIsHardlinked) {
+	if conditions.Pause != nil && automations.ConditionUsesField(conditions.Pause.Condition, automations.FieldHardlinkScope) {
 		return true
 	}
-	if conditions.Delete != nil && automations.ConditionUsesField(conditions.Delete.Condition, automations.FieldIsHardlinked) {
+	if conditions.Delete != nil && automations.ConditionUsesField(conditions.Delete.Condition, automations.FieldHardlinkScope) {
 		return true
 	}
-	if conditions.Tag != nil && automations.ConditionUsesField(conditions.Tag.Condition, automations.FieldIsHardlinked) {
+	if conditions.Tag != nil && automations.ConditionUsesField(conditions.Tag.Condition, automations.FieldHardlinkScope) {
 		return true
 	}
-	if conditions.Category != nil && automations.ConditionUsesField(conditions.Category.Condition, automations.FieldIsHardlinked) {
+	if conditions.Category != nil && automations.ConditionUsesField(conditions.Category.Condition, automations.FieldHardlinkScope) {
 		return true
 	}
 	return false

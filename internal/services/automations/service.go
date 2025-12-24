@@ -7,7 +7,9 @@ package automations
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
@@ -257,11 +259,11 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		}
 	}
 
-	// Check if rule uses hardlink condition and populate context
-	if instance != nil && instance.HasLocalFilesystemAccess {
-		if rule.Conditions != nil && rule.Conditions.Delete != nil &&
-			ConditionUsesField(rule.Conditions.Delete.Condition, FieldIsHardlinked) {
-			evalCtx.HardlinkedSet = s.detectHardlinks(ctx, instanceID, torrents)
+	// Check if rule uses hardlink conditions and populate context
+	if instance != nil && instance.HasLocalFilesystemAccess && rule.Conditions != nil && rule.Conditions.Delete != nil {
+		cond := rule.Conditions.Delete.Condition
+		if ConditionUsesField(cond, FieldHardlinkScope) {
+			evalCtx.HardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
 		}
 	}
 
@@ -372,11 +374,11 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 		evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
 	}
 
-	// Check if rule uses hardlink condition
-	if instance != nil && instance.HasLocalFilesystemAccess {
-		if rule.Conditions != nil && rule.Conditions.Category != nil &&
-			ConditionUsesField(rule.Conditions.Category.Condition, FieldIsHardlinked) {
-			evalCtx.HardlinkedSet = s.detectHardlinks(ctx, instanceID, torrents)
+	// Check if rule uses hardlink conditions
+	if instance != nil && instance.HasLocalFilesystemAccess && rule.Conditions != nil && rule.Conditions.Category != nil {
+		cond := rule.Conditions.Category.Condition
+		if ConditionUsesField(cond, FieldHardlinkScope) {
+			evalCtx.HardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
 		}
 	}
 
@@ -556,9 +558,9 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
 	}
 
-	// On-demand hardlink detection (only if rules use IS_HARDLINKED and instance has local access)
-	if instance.HasLocalFilesystemAccess && rulesUseHardlinkCondition(eligibleRules) {
-		evalCtx.HardlinkedSet = s.detectHardlinks(ctx, instanceID, torrents)
+	// On-demand hardlink detection (only if rules use HARDLINK_SCOPE and instance has local access)
+	if instance.HasLocalFilesystemAccess && rulesUseHardlinkScopeCondition(eligibleRules) {
+		evalCtx.HardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
 	}
 
 	// Ensure lastApplied map is initialized for this instance
@@ -1368,38 +1370,45 @@ func detectCrossSeeds(target qbt.Torrent, allTorrents []qbt.Torrent) bool {
 	return false
 }
 
-// rulesUseHardlinkCondition checks if any enabled rule uses the IS_HARDLINKED field.
-func rulesUseHardlinkCondition(rules []*models.Automation) bool {
+// rulesUseHardlinkScopeCondition checks if any enabled rule uses the HARDLINK_SCOPE field.
+func rulesUseHardlinkScopeCondition(rules []*models.Automation) bool {
 	for _, rule := range rules {
 		if rule.Conditions == nil || !rule.Enabled {
 			continue
 		}
 		ac := rule.Conditions
-		if ac.SpeedLimits != nil && ConditionUsesField(ac.SpeedLimits.Condition, FieldIsHardlinked) {
+		if ac.SpeedLimits != nil && ConditionUsesField(ac.SpeedLimits.Condition, FieldHardlinkScope) {
 			return true
 		}
-		if ac.ShareLimits != nil && ConditionUsesField(ac.ShareLimits.Condition, FieldIsHardlinked) {
+		if ac.ShareLimits != nil && ConditionUsesField(ac.ShareLimits.Condition, FieldHardlinkScope) {
 			return true
 		}
-		if ac.Pause != nil && ConditionUsesField(ac.Pause.Condition, FieldIsHardlinked) {
+		if ac.Pause != nil && ConditionUsesField(ac.Pause.Condition, FieldHardlinkScope) {
 			return true
 		}
-		if ac.Delete != nil && ConditionUsesField(ac.Delete.Condition, FieldIsHardlinked) {
+		if ac.Delete != nil && ConditionUsesField(ac.Delete.Condition, FieldHardlinkScope) {
 			return true
 		}
-		if ac.Tag != nil && ConditionUsesField(ac.Tag.Condition, FieldIsHardlinked) {
+		if ac.Tag != nil && ConditionUsesField(ac.Tag.Condition, FieldHardlinkScope) {
 			return true
 		}
-		if ac.Category != nil && ConditionUsesField(ac.Category.Condition, FieldIsHardlinked) {
+		if ac.Category != nil && ConditionUsesField(ac.Category.Condition, FieldHardlinkScope) {
 			return true
 		}
 	}
 	return false
 }
 
-// detectHardlinks checks which torrents have hardlinked files and returns a set of hashes.
-func (s *Service) detectHardlinks(ctx context.Context, instanceID int, torrents []qbt.Torrent) map[string]struct{} {
-	result := make(map[string]struct{})
+// fileIDInfo holds file identity and link count for hardlink scope detection.
+type fileIDInfo struct {
+	nlink uint64
+	paths map[string]struct{}
+}
+
+// detectHardlinkScope computes the hardlink scope for each torrent.
+// Returns a map of torrent hash to scope value (none, torrents_only, outside_qbittorrent).
+func (s *Service) detectHardlinkScope(ctx context.Context, instanceID int, torrents []qbt.Torrent) map[string]string {
+	result := make(map[string]string)
 
 	hashes := make([]string, 0, len(torrents))
 	torrentByHash := make(map[string]qbt.Torrent)
@@ -1411,26 +1420,115 @@ func (s *Service) detectHardlinks(ctx context.Context, instanceID int, torrents 
 	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).
-			Msg("automations: failed to fetch files for hardlink detection")
+			Msg("automations: failed to fetch files for hardlink scope detection")
+		// Return empty map - scope defaults to "none" in evaluator
 		return result
 	}
 
+	// Build fileID accounting map across ALL torrents first
+	// Key: fileID (unique physical file identifier)
+	// Value: link count and set of paths pointing to this file
+	fileIDMap := make(map[string]*fileIDInfo)
+
 	for hash, files := range filesByHash {
 		torrent := torrentByHash[hash]
-		filePaths := make([]string, len(files))
-		for i, f := range files {
-			filePaths[i] = f.Name
+		for _, f := range files {
+			fullPath := buildFullPath(torrent.SavePath, f.Name)
+
+			info, err := os.Lstat(fullPath)
+			if err != nil {
+				continue // Skip inaccessible files
+			}
+			if !info.Mode().IsRegular() {
+				continue // Skip directories and non-regular files
+			}
+
+			fileID, nlink, err := hardlink.LinkInfo(info, fullPath)
+			if err != nil {
+				continue // Skip files we can't get info for
+			}
+
+			if fileIDMap[fileID] == nil {
+				fileIDMap[fileID] = &fileIDInfo{
+					nlink: nlink,
+					paths: make(map[string]struct{}),
+				}
+			}
+			fileIDMap[fileID].paths[fullPath] = struct{}{}
 		}
-		if hardlink.IsAnyHardlinked(torrent.SavePath, filePaths) {
-			result[hash] = struct{}{}
+	}
+
+	// Now compute scope for each torrent
+	for hash, files := range filesByHash {
+		torrent := torrentByHash[hash]
+		scope := HardlinkScopeNone
+		filesAccessible := 0
+
+		for _, f := range files {
+			fullPath := buildFullPath(torrent.SavePath, f.Name)
+
+			info, err := os.Lstat(fullPath)
+			if err != nil || !info.Mode().IsRegular() {
+				continue
+			}
+
+			fileID, nlink, err := hardlink.LinkInfo(info, fullPath)
+			if err != nil {
+				continue // Skip files we can't get info for
+			}
+
+			filesAccessible++
+
+			if nlink <= 1 {
+				continue // Not hardlinked, but file was accessible
+			}
+
+			// File has hardlinks (nlink > 1)
+			idInfo := fileIDMap[fileID]
+			if idInfo == nil {
+				continue
+			}
+
+			inTorrentSetCount := uint64(len(idInfo.paths))
+
+			if nlink > inTorrentSetCount {
+				// At least one link is outside the torrent set
+				scope = HardlinkScopeOutsideQBitTorrent
+				break // outside_qbittorrent wins - no need to check more files
+			}
+
+			// All links are within the torrent set
+			if scope != HardlinkScopeOutsideQBitTorrent {
+				scope = HardlinkScopeTorrentsOnly
+			}
+		}
+
+		// Only add to result if at least one file was accessible
+		// Unknown scope (no accessible files) = not added = won't match any condition
+		if filesAccessible > 0 {
+			result[hash] = scope
 		}
 	}
 
 	log.Debug().
 		Int("instanceID", instanceID).
 		Int("totalTorrents", len(torrents)).
-		Int("hardlinked", len(result)).
-		Msg("automations: hardlink detection completed")
+		Int("scopeComputed", len(result)).
+		Msg("automations: hardlink scope detection completed")
 
 	return result
+}
+
+// buildFullPath constructs the full path for a torrent file.
+// qBittorrent always returns forward slashes, so we normalize using filepath.FromSlash.
+func buildFullPath(basePath, filePath string) string {
+	// Normalize forward slashes to OS-native path separators
+	normalizedFile := filepath.FromSlash(filePath)
+	normalizedBase := filepath.FromSlash(basePath)
+
+	cleaned := filepath.Clean(normalizedFile)
+	if filepath.IsAbs(cleaned) {
+		return cleaned
+	}
+	return filepath.Join(normalizedBase, cleaned)
 }

@@ -368,7 +368,16 @@ const (
 	// Boolean fields
 	FieldPrivate        ConditionField = "PRIVATE"
 	FieldIsUnregistered ConditionField = "IS_UNREGISTERED"
-	FieldIsHardlinked   ConditionField = "IS_HARDLINKED"
+
+	// Enum-like fields
+	FieldHardlinkScope ConditionField = "HARDLINK_SCOPE"
+)
+
+// Hardlink scope values (wire format - stable API values)
+const (
+	HardlinkScopeNone             = "none"              // No file has link count > 1
+	HardlinkScopeTorrentsOnly     = "torrents_only"     // All links are within qBittorrent's torrent set
+	HardlinkScopeOutsideQBitTorrent = "outside_qbittorrent" // At least one file has links outside the torrent set
 )
 
 // ConditionOperator represents operators for comparing field values.

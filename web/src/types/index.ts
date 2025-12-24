@@ -147,7 +147,8 @@ export type ConditionField =
   // Boolean fields
   | "PRIVATE"
   | "IS_UNREGISTERED"
-  | "IS_HARDLINKED"
+  // Enum-like fields
+  | "HARDLINK_SCOPE"
 
 export type ConditionOperator =
   // Logical operators (for groups)
