@@ -221,6 +221,14 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		return nil, err
 	}
 
+	// Stable sort for deterministic pagination: newest first, then by hash
+	sort.Slice(torrents, func(i, j int) bool {
+		if torrents[i].AddedOn != torrents[j].AddedOn {
+			return torrents[i].AddedOn > torrents[j].AddedOn
+		}
+		return torrents[i].Hash < torrents[j].Hash
+	})
+
 	if limit <= 0 {
 		limit = 25
 	}
@@ -340,6 +348,15 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	if err != nil {
 		return nil, err
 	}
+
+	// Stable sort for deterministic pagination: newest first, then by hash
+	sort.Slice(torrents, func(i, j int) bool {
+		if torrents[i].AddedOn != torrents[j].AddedOn {
+			return torrents[i].AddedOn > torrents[j].AddedOn
+		}
+		return torrents[i].Hash < torrents[j].Hash
+	})
+
 	crossSeedIndex := buildCrossSeedIndex(torrents)
 
 	if limit <= 0 {
