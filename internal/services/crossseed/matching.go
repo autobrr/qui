@@ -249,9 +249,8 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 			}
 		}
 
-		if (sourceRes == "" && isKnownSD(candidateRes)) || (candidateRes == "" && isKnownSD(sourceRes)) {
-			// allow SD-vs-empty
-		} else {
+		sdFallbackAllowed := (sourceRes == "" && isKnownSD(candidateRes)) || (candidateRes == "" && isKnownSD(sourceRes))
+		if !sdFallbackAllowed {
 			return false
 		}
 	}

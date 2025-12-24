@@ -55,6 +55,24 @@ func TestReleasesMatch_ResolutionAndLanguage(t *testing.T) {
 			wantMatch:     true,
 		},
 		{
+			name:          "empty resolution matches 576p (SD exception)",
+			sourceName:    "Show.S01E01.WEB-DL-GROUP",
+			candidateName: "Show.S01E01.576p.WEB-DL-GROUP",
+			wantMatch:     true,
+		},
+		{
+			name:          "empty resolution matches SD (SD exception)",
+			sourceName:    "Show.S01E01.WEB-DL-GROUP",
+			candidateName: "Show.S01E01.SD.WEB-DL-GROUP",
+			wantMatch:     true,
+		},
+		{
+			name:          "576p matches empty resolution (SD exception bidirectional)",
+			sourceName:    "Show.S01E01.576p.WEB-DL-GROUP",
+			candidateName: "Show.S01E01.WEB-DL-GROUP",
+			wantMatch:     true,
+		},
+		{
 			name:          "empty resolution does NOT match 720p",
 			sourceName:    "Show.S01E01.WEB-DL-GROUP",
 			candidateName: "Show.S01E01.720p.WEB-DL-GROUP",
