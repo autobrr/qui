@@ -551,6 +551,55 @@ func namesMatchIgnoringExtension(name1, name2 string) bool {
 	return stripped1 == stripped2
 }
 
+// hasContentFileSizeMismatch checks if the main content files (after applying ignore patterns)
+// have matching sizes between source and candidate. Returns true if there's a size mismatch,
+// indicating the files may be corrupted or from different releases.
+//
+// This is a critical safety check: if source and candidate are supposedly the same release
+// but their content files have different sizes, proceeding with the cross-seed could corrupt
+// the existing good data. Scene releases should be byte-for-byte identical across trackers.
+//
+// The function also returns a list of mismatched files for logging purposes.
+func hasContentFileSizeMismatch(sourceFiles, candidateFiles qbt.TorrentFiles, ignorePatterns []string, normalizer *stringutils.Normalizer[string, string]) (bool, []string) {
+	// Filter files by ignore patterns
+	var filteredSource, filteredCandidate qbt.TorrentFiles
+
+	for _, sf := range sourceFiles {
+		if !shouldIgnoreFile(sf.Name, ignorePatterns, normalizer) {
+			filteredSource = append(filteredSource, sf)
+		}
+	}
+
+	for _, cf := range candidateFiles {
+		if !shouldIgnoreFile(cf.Name, ignorePatterns, normalizer) {
+			filteredCandidate = append(filteredCandidate, cf)
+		}
+	}
+
+	// If no content files remain in source after filtering, nothing to check
+	if len(filteredSource) == 0 {
+		return false, nil
+	}
+
+	// Build size buckets for candidate files
+	candidateSizes := make(map[int64]int)
+	for _, cf := range filteredCandidate {
+		candidateSizes[cf.Size]++
+	}
+
+	// Check if all source content files can be matched by size
+	var mismatchedFiles []string
+	for _, sf := range filteredSource {
+		if count := candidateSizes[sf.Size]; count > 0 {
+			candidateSizes[sf.Size]--
+		} else {
+			mismatchedFiles = append(mismatchedFiles, sf.Name)
+		}
+	}
+
+	return len(mismatchedFiles) > 0, mismatchedFiles
+}
+
 // hasExtraSourceFiles checks if source torrent has files that don't exist in the candidate.
 // This happens when source has extra sidecar files (NFO, SRT, etc.) that weren't filtered
 // by ignorePatterns. Returns true if source has files with sizes not present in candidate.

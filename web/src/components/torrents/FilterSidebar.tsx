@@ -201,8 +201,8 @@ const FilterSidebarComponent = ({
     instanceId,
     { enabled: isInstanceActive }
   )
-  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
-  const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? true
+  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
+  const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? false
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
   const { preferences } = useInstancePreferences(
     instanceId,
@@ -305,6 +305,8 @@ const FilterSidebarComponent = ({
   // const { selectedHashes } = useTorrentSelection()
 
   // Function to fetch tracker URLs for a specific tracker domain
+  // Scans multiple torrents to find ALL unique tracker URLs (handles cases where
+  // different torrents have different passkeys/URLs for the same tracker domain)
   const fetchTrackerURLs = useCallback(async (trackerDomain: string) => {
     setTrackerFullURLs([])
 
@@ -316,7 +318,7 @@ const FilterSidebarComponent = ({
     setLoadingTrackerURLs(true)
 
     try {
-      // Find torrents using this tracker
+      // Find torrents using this tracker - fetch more to find all unique URLs
       const trackerFilters: TorrentFilters = {
         status: [],
         excludeStatus: [],
@@ -331,28 +333,36 @@ const FilterSidebarComponent = ({
 
       const torrentsList = await api.getTorrents(instanceId, {
         filters: trackerFilters,
-        limit: 1, // We only need one torrent to get the tracker URL
+        limit: 100, // Fetch more torrents to find all unique tracker URLs
       })
 
       if (torrentsList.torrents && torrentsList.torrents.length > 0) {
-        // Get trackers for the first torrent
-        const firstTorrentHash = torrentsList.torrents[0].hash
-        const trackers = await api.getTorrentTrackers(instanceId, firstTorrentHash)
+        // Collect unique URLs from multiple torrents
+        const allUrls = new Set<string>()
 
-        // Find all unique tracker URLs for this domain
-        const urls = trackers
-          .filter((t: { url: string }) => {
+        // Fetch trackers from up to 20 torrents in parallel to find all unique URLs
+        // This handles cases where one torrent has wrong passkey while others are correct
+        const torrentsToCheck = torrentsList.torrents.slice(0, 20)
+        const trackerPromises = torrentsToCheck.map(t =>
+          api.getTorrentTrackers(instanceId, t.hash).catch(() => [])
+        )
+
+        const allTrackerResults = await Promise.all(trackerPromises)
+
+        for (const trackers of allTrackerResults) {
+          for (const t of trackers) {
             try {
               const url = new URL(t.url)
-              return url.hostname === trackerDomain
+              if (url.hostname === trackerDomain) {
+                allUrls.add(t.url)
+              }
             } catch {
-              return false
+              // Not a valid URL, skip
             }
-          })
-          .map((t: { url: string }) => t.url)
-          .filter((url: string, index: number, self: string[]) => self.indexOf(url) === index) // Remove duplicates
+          }
+        }
 
-        setTrackerFullURLs(urls)
+        setTrackerFullURLs(Array.from(allUrls).sort())
       }
     } catch (error) {
       console.error("Failed to fetch tracker URLs:", error)

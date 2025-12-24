@@ -975,7 +975,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     order: activeSortOrder,
   })
 
-  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
+  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
   const allowSubcategories =
     supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false)
