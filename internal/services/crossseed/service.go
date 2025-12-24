@@ -3503,7 +3503,7 @@ func (s *Service) findBestCandidateMatch(
 		// Force-on safety guard: always check regardless of user setting since reaching this
 		// code path means we're actually applying a cross-seed (not just searching).
 		if reject, reason := rejectSeasonPackFromEpisode(sourceRelease, candidateRelease, true); reject {
-			if bestRejectReason == "" {
+			if reason != "" && (bestRejectReason == "" || len(reason) > len(bestRejectReason)) {
 				bestRejectReason = reason
 			}
 			continue
