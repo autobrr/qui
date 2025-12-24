@@ -839,49 +839,8 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
 
-	for limit, hashes := range uploadBatches {
-		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
-		for _, batch := range limited {
-			if err := s.syncManager.SetTorrentUploadLimit(ctx, instanceID, batch, limit); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Int64("limitKiB", limit).Int("count", len(batch)).Msg("automations: upload limit failed")
-				if s.activityStore != nil {
-					detailsJSON, _ := json.Marshal(map[string]any{"limitKiB": limit, "count": len(batch), "type": "upload"})
-					if err := s.activityStore.Create(ctx, &models.AutomationActivity{
-						InstanceID: instanceID,
-						Hash:       strings.Join(batch, ","),
-						Action:     models.ActivityActionLimitFailed,
-						Outcome:    models.ActivityOutcomeFailed,
-						Reason:     "upload limit failed: " + err.Error(),
-						Details:    detailsJSON,
-					}); err != nil {
-						log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record activity")
-					}
-				}
-			}
-		}
-	}
-
-	for limit, hashes := range downloadBatches {
-		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
-		for _, batch := range limited {
-			if err := s.syncManager.SetTorrentDownloadLimit(ctx, instanceID, batch, limit); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Int64("limitKiB", limit).Int("count", len(batch)).Msg("automations: download limit failed")
-				if s.activityStore != nil {
-					detailsJSON, _ := json.Marshal(map[string]any{"limitKiB": limit, "count": len(batch), "type": "download"})
-					if err := s.activityStore.Create(ctx, &models.AutomationActivity{
-						InstanceID: instanceID,
-						Hash:       strings.Join(batch, ","),
-						Action:     models.ActivityActionLimitFailed,
-						Outcome:    models.ActivityOutcomeFailed,
-						Reason:     "download limit failed: " + err.Error(),
-						Details:    detailsJSON,
-					}); err != nil {
-						log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record activity")
-					}
-				}
-			}
-		}
-	}
+	s.applySpeedLimits(ctx, instanceID, uploadBatches, "upload", s.syncManager.SetTorrentUploadLimit)
+	s.applySpeedLimits(ctx, instanceID, downloadBatches, "download", s.syncManager.SetTorrentDownloadLimit)
 
 	for key, hashes := range shareBatches {
 		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
@@ -1548,4 +1507,38 @@ func buildFullPath(basePath, filePath string) string {
 		return cleaned
 	}
 	return filepath.Join(normalizedBase, cleaned)
+}
+
+// applySpeedLimits applies upload or download limits in batches, logging and recording failures.
+func (s *Service) applySpeedLimits(
+	ctx context.Context,
+	instanceID int,
+	batches map[int64][]string,
+	limitType string,
+	setLimit func(ctx context.Context, instanceID int, hashes []string, limit int64) error,
+) {
+	for limit, hashes := range batches {
+		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
+		for _, batch := range limited {
+			if err := setLimit(ctx, instanceID, batch, limit); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Int64("limitKiB", limit).Int("count", len(batch)).Str("limitType", limitType).Msg("automations: speed limit failed")
+				if s.activityStore != nil {
+					detailsJSON, marshalErr := json.Marshal(map[string]any{"limitKiB": limit, "count": len(batch), "type": limitType})
+					if marshalErr != nil {
+						log.Warn().Err(marshalErr).Int("instanceID", instanceID).Msg("automations: failed to marshal activity details")
+					}
+					if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+						InstanceID: instanceID,
+						Hash:       strings.Join(batch, ","),
+						Action:     models.ActivityActionLimitFailed,
+						Outcome:    models.ActivityOutcomeFailed,
+						Reason:     limitType + " limit failed: " + err.Error(),
+						Details:    detailsJSON,
+					}); err != nil {
+						log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record activity")
+					}
+				}
+			}
+		}
+	}
 }
