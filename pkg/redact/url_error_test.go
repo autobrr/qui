@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestURLError(t *testing.T) {
@@ -93,24 +95,16 @@ func TestURLError(t *testing.T) {
 			result := URLError(tt.err)
 
 			if tt.err == nil {
-				if result != nil {
-					t.Errorf("URLError(nil) = %v, want nil", result)
-				}
+				assert.Nil(t, result)
 				return
 			}
 
 			gotStr := result.Error()
-
 			for _, want := range tt.wantContain {
-				if !strings.Contains(gotStr, want) {
-					t.Errorf("URLError().Error() = %v, want to contain %v", gotStr, want)
-				}
+				assert.Contains(t, gotStr, want)
 			}
-
 			for _, notWant := range tt.wantNotHave {
-				if strings.Contains(gotStr, notWant) {
-					t.Errorf("URLError().Error() = %v, should not contain %v", gotStr, notWant)
-				}
+				assert.NotContains(t, gotStr, notWant)
 			}
 		})
 	}
@@ -126,15 +120,7 @@ func TestURLError_PreservesErrorType(t *testing.T) {
 	result := URLError(original)
 
 	var urlErr *url.Error
-	if !errors.As(result, &urlErr) {
-		t.Errorf("URLError() should preserve url.Error type")
-	}
-
-	if urlErr.Op != "Get" {
-		t.Errorf("URLError() Op = %v, want Get", urlErr.Op)
-	}
-
-	if strings.Contains(urlErr.URL, "SECRET") {
-		t.Errorf("URLError() URL = %v, should not contain SECRET", urlErr.URL)
-	}
+	require.True(t, errors.As(result, &urlErr), "URLError() should preserve url.Error type")
+	assert.Equal(t, "Get", urlErr.Op)
+	assert.NotContains(t, urlErr.URL, "SECRET")
 }

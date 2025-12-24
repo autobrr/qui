@@ -4,8 +4,9 @@
 package redact
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestURLString(t *testing.T) {
@@ -128,17 +129,11 @@ func TestURLString(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := URLString(tt.input)
-
 			for _, want := range tt.wantContain {
-				if !strings.Contains(got, want) {
-					t.Errorf("URLString() = %v, want to contain %v", got, want)
-				}
+				assert.Contains(t, got, want)
 			}
-
 			for _, notWant := range tt.wantNotHave {
-				if strings.Contains(got, notWant) {
-					t.Errorf("URLString() = %v, should not contain %v", got, notWant)
-				}
+				assert.NotContains(t, got, notWant)
 			}
 		})
 	}
@@ -228,17 +223,11 @@ func TestString(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := String(tt.input)
-
 			for _, want := range tt.wantContain {
-				if !strings.Contains(got, want) {
-					t.Errorf("String() = %v, want to contain %v", got, want)
-				}
+				assert.Contains(t, got, want)
 			}
-
 			for _, notWant := range tt.wantNotHave {
-				if strings.Contains(got, notWant) {
-					t.Errorf("String() = %v, should not contain %v", got, notWant)
-				}
+				assert.NotContains(t, got, notWant)
 			}
 		})
 	}
@@ -279,9 +268,7 @@ func TestProxyPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := ProxyPath(tt.input); got != tt.want {
-				t.Errorf("ProxyPath() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, ProxyPath(tt.input))
 		})
 	}
 }
@@ -321,9 +308,7 @@ func TestBasicAuthUser(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := BasicAuthUser(tt.input); got != tt.want {
-				t.Errorf("BasicAuthUser() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, BasicAuthUser(tt.input))
 		})
 	}
 }
