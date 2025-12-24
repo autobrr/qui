@@ -3,21 +3,12 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useCallback, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { useCallback, useMemo, useState } from "react"
 
 import { api } from "@/lib/api"
-import { searchCrossSeedMatches, normalizePath, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
+import { isInsideBase, normalizePath, searchCrossSeedMatches, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
 import type { Torrent } from "@/types"
-
-/**
- * Check if a path is inside a base directory.
- * Returns true if base is non-empty and path equals base or starts with base + "/".
- */
-const isInsideBase = (path: string, base: string): boolean => {
-  if (!base) return false
-  return path === base || path.startsWith(base + "/")
-}
 
 interface UseCrossSeedWarningOptions {
   instanceId: number

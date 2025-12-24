@@ -5,11 +5,36 @@
 
 import { api } from "@/lib/api"
 import type { Instance, Torrent, TorrentFile } from "@/types"
-import { useQuery, useQueries } from "@tanstack/react-query"
+import { useQueries, useQuery } from "@tanstack/react-query"
 import { useMemo } from "react"
 
 // Cross-seed matching utilities
 export const normalizePath = (path: string) => path?.toLowerCase().replace(/[\\\/]+/g, '/').replace(/\/$/, '') || ''
+
+/**
+ * Check if a path is inside a base directory.
+ * Returns true if base is non-empty and path equals base or starts with base + "/".
+ */
+export const isInsideBase = (path: string, base: string): boolean => {
+  if (!base) return false
+  return path === base || path.startsWith(base + "/")
+}
+
+/**
+ * Check if a torrent is hardlink-managed based on instance config and paths.
+ * Only returns true if the instance has hardlink mode enabled AND has local access.
+ */
+export const isHardlinkManaged = (
+  match: { save_path?: string; content_path?: string },
+  instance: { useHardlinks?: boolean; hasLocalFilesystemAccess?: boolean; hardlinkBaseDir?: string } | undefined
+): boolean => {
+  if (!instance?.useHardlinks || !instance?.hasLocalFilesystemAccess) return false
+  const base = normalizePath(instance.hardlinkBaseDir || "")
+  if (!base) return false
+  const savePath = normalizePath(match.save_path || "")
+  const contentPath = normalizePath(match.content_path || "")
+  return isInsideBase(savePath, base) || isInsideBase(contentPath, base)
+}
 export const normalizeName = (name: string) => name?.toLowerCase().trim() || ''
 
 export const getBaseFileName = (path: string): string => {
