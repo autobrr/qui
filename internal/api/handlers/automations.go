@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -102,46 +103,9 @@ func (h *AutomationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if payload.Name == "" {
-		RespondError(w, http.StatusBadRequest, "Name is required")
+	if status, msg, err := h.validatePayload(r.Context(), instanceID, &payload); err != nil {
+		RespondError(w, status, msg)
 		return
-	}
-
-	isAllTrackers := strings.TrimSpace(payload.TrackerPattern) == "*"
-	if !isAllTrackers && len(normalizeTrackerDomains(payload.TrackerDomains)) == 0 && strings.TrimSpace(payload.TrackerPattern) == "" {
-		RespondError(w, http.StatusBadRequest, "Select at least one tracker or enable 'Apply to all'")
-		return
-	}
-
-	if payload.Conditions == nil || payload.Conditions.IsEmpty() {
-		RespondError(w, http.StatusBadRequest, "At least one action must be configured")
-		return
-	}
-
-	// Validate category action has a category name
-	if payload.Conditions.Category != nil && payload.Conditions.Category.Enabled && payload.Conditions.Category.Category == "" {
-		RespondError(w, http.StatusBadRequest, "Category action requires a category name")
-		return
-	}
-
-	// Validate intervalSeconds minimum
-	if payload.IntervalSeconds != nil && *payload.IntervalSeconds < 60 {
-		RespondError(w, http.StatusBadRequest, "intervalSeconds must be at least 60")
-		return
-	}
-
-	// Validate hardlink fields require local filesystem access
-	if conditionsUseHardlink(payload.Conditions) {
-		instance, err := h.instanceStore.Get(r.Context(), instanceID)
-		if err != nil {
-			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for validation")
-			RespondError(w, http.StatusInternalServerError, "Failed to validate automation")
-			return
-		}
-		if !instance.HasLocalFilesystemAccess {
-			RespondError(w, http.StatusBadRequest, "Hardlink conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first.")
-			return
-		}
 	}
 
 	automation, err := h.store.Create(r.Context(), payload.toModel(instanceID, 0))
@@ -174,46 +138,9 @@ func (h *AutomationHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if payload.Name == "" {
-		RespondError(w, http.StatusBadRequest, "Name is required")
+	if status, msg, err := h.validatePayload(r.Context(), instanceID, &payload); err != nil {
+		RespondError(w, status, msg)
 		return
-	}
-
-	isAllTrackers := strings.TrimSpace(payload.TrackerPattern) == "*"
-	if !isAllTrackers && len(normalizeTrackerDomains(payload.TrackerDomains)) == 0 && strings.TrimSpace(payload.TrackerPattern) == "" {
-		RespondError(w, http.StatusBadRequest, "Select at least one tracker or enable 'Apply to all'")
-		return
-	}
-
-	if payload.Conditions == nil || payload.Conditions.IsEmpty() {
-		RespondError(w, http.StatusBadRequest, "At least one action must be configured")
-		return
-	}
-
-	// Validate category action has a category name
-	if payload.Conditions.Category != nil && payload.Conditions.Category.Enabled && payload.Conditions.Category.Category == "" {
-		RespondError(w, http.StatusBadRequest, "Category action requires a category name")
-		return
-	}
-
-	// Validate intervalSeconds minimum
-	if payload.IntervalSeconds != nil && *payload.IntervalSeconds < 60 {
-		RespondError(w, http.StatusBadRequest, "intervalSeconds must be at least 60")
-		return
-	}
-
-	// Validate hardlink fields require local filesystem access
-	if conditionsUseHardlink(payload.Conditions) {
-		instance, err := h.instanceStore.Get(r.Context(), instanceID)
-		if err != nil {
-			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for validation")
-			RespondError(w, http.StatusInternalServerError, "Failed to validate automation")
-			return
-		}
-		if !instance.HasLocalFilesystemAccess {
-			RespondError(w, http.StatusBadRequest, "Hardlink conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first.")
-			return
-		}
 	}
 
 	automation, err := h.store.Update(r.Context(), payload.toModel(instanceID, ruleID))
@@ -325,6 +252,47 @@ func normalizeTrackerDomains(domains []string) []string {
 		out = append(out, trimmed)
 	}
 	return out
+}
+
+// validatePayload validates an AutomationPayload and returns an HTTP status code and message if invalid.
+// Returns (0, "", nil) if valid.
+func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int, payload *AutomationPayload) (int, string, error) {
+	if payload.Name == "" {
+		return http.StatusBadRequest, "Name is required", errors.New("name required")
+	}
+
+	isAllTrackers := strings.TrimSpace(payload.TrackerPattern) == "*"
+	if !isAllTrackers && len(normalizeTrackerDomains(payload.TrackerDomains)) == 0 && strings.TrimSpace(payload.TrackerPattern) == "" {
+		return http.StatusBadRequest, "Select at least one tracker or enable 'Apply to all'", errors.New("tracker required")
+	}
+
+	if payload.Conditions == nil || payload.Conditions.IsEmpty() {
+		return http.StatusBadRequest, "At least one action must be configured", errors.New("conditions required")
+	}
+
+	// Validate category action has a category name
+	if payload.Conditions.Category != nil && payload.Conditions.Category.Enabled && payload.Conditions.Category.Category == "" {
+		return http.StatusBadRequest, "Category action requires a category name", errors.New("category name required")
+	}
+
+	// Validate intervalSeconds minimum
+	if payload.IntervalSeconds != nil && *payload.IntervalSeconds < 60 {
+		return http.StatusBadRequest, "intervalSeconds must be at least 60", errors.New("interval too short")
+	}
+
+	// Validate hardlink fields require local filesystem access
+	if conditionsUseHardlink(payload.Conditions) {
+		instance, err := h.instanceStore.Get(ctx, instanceID)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for validation")
+			return http.StatusInternalServerError, "Failed to validate automation", err
+		}
+		if !instance.HasLocalFilesystemAccess {
+			return http.StatusBadRequest, "Hardlink conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first.", errors.New("local access required")
+		}
+	}
+
+	return 0, "", nil
 }
 
 // conditionsUseHardlink checks if any action condition uses HARDLINK_SCOPE field.
