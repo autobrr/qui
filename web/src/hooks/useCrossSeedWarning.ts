@@ -7,8 +7,17 @@ import { useCallback, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 
 import { api } from "@/lib/api"
-import { searchCrossSeedMatches, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
+import { searchCrossSeedMatches, normalizePath, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
 import type { Torrent } from "@/types"
+
+/**
+ * Check if a path is inside a base directory.
+ * Returns true if base is non-empty and path equals base or starts with base + "/".
+ */
+const isInsideBase = (path: string, base: string): boolean => {
+  if (!base) return false
+  return path === base || path.startsWith(base + "/")
+}
 
 interface UseCrossSeedWarningOptions {
   instanceId: number
@@ -78,10 +87,23 @@ export function useCrossSeedWarning({
     const allMatches: CrossSeedTorrent[] = []
     const seenHashes = new Set<string>()
 
+    // Get hardlink base directory for this instance (to exclude hardlink-mode torrents)
+    const hardlinkBase = normalizePath(instance.hardlinkBaseDir || "")
+
     try {
       // Check each torrent for cross-seeds
       for (let i = 0; i < torrents.length; i++) {
         const torrent = torrents[i]
+
+        // Normalize source torrent paths
+        const srcSave = normalizePath(torrent.save_path || "")
+        const srcContent = normalizePath(torrent.content_path || "")
+
+        // Skip source torrents inside hardlink base (they don't share files with originals)
+        if (isInsideBase(srcSave, hardlinkBase)) {
+          setCheckedCount(i + 1)
+          continue
+        }
 
         // Fetch files for this torrent
         let torrentFiles: Awaited<ReturnType<typeof api.getTorrentFiles>> = []
@@ -101,7 +123,7 @@ export function useCrossSeedWarning({
           torrent.infohash_v2
         )
 
-        // Filter and dedupe matches
+        // Filter and dedupe matches - only include matches that share the same on-disk files
         for (const match of matches) {
           // Skip torrents being deleted
           if (hashesBeingDeleted.has(match.hash)) continue
@@ -109,6 +131,17 @@ export function useCrossSeedWarning({
           if (match.instanceId !== instanceId) continue
           // Skip duplicates
           if (seenHashes.has(match.hash)) continue
+
+          // Normalize match paths
+          const mSave = normalizePath(match.save_path || "")
+          const mContent = normalizePath(match.content_path || "")
+
+          // Skip matches inside hardlink base directory (hardlink-mode cross-seeds)
+          if (isInsideBase(mSave, hardlinkBase)) continue
+
+          // Only include matches that share the SAME on-disk files:
+          // Both save_path AND content_path must match exactly
+          if (!srcSave || !srcContent || mSave !== srcSave || mContent !== srcContent) continue
 
           seenHashes.add(match.hash)
           allMatches.push({
