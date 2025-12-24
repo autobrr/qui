@@ -288,6 +288,10 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 	if conditionsUseHardlink(payload.Conditions) {
 		instance, err := h.instanceStore.Get(ctx, instanceID)
 		if err != nil {
+			if errors.Is(err, models.ErrInstanceNotFound) {
+				log.Warn().Int("instanceID", instanceID).Msg("Instance not found for automation validation")
+				return http.StatusNotFound, "Instance not found", err
+			}
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for validation")
 			return http.StatusInternalServerError, "Failed to validate automation", err
 		}
