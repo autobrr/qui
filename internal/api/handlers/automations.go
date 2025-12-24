@@ -48,6 +48,9 @@ type AutomationPayload struct {
 	PreviewOffset   *int                     `json:"previewOffset"`
 }
 
+// toModel converts the payload to an Automation model.
+// If TrackerDomains is non-empty after normalization, it takes precedence over
+// TrackerPattern and the raw TrackerPattern input is ignored.
 func (p *AutomationPayload) toModel(instanceID int, id int) *models.Automation {
 	normalizedDomains := normalizeTrackerDomains(p.TrackerDomains)
 	trackerPattern := p.TrackerPattern
@@ -261,6 +264,7 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		return http.StatusBadRequest, "Name is required", errors.New("name required")
 	}
 
+	// Require either "*" (all trackers) or at least one tracker domain/pattern
 	isAllTrackers := strings.TrimSpace(payload.TrackerPattern) == "*"
 	if !isAllTrackers && len(normalizeTrackerDomains(payload.TrackerDomains)) == 0 && strings.TrimSpace(payload.TrackerPattern) == "" {
 		return http.StatusBadRequest, "Select at least one tracker or enable 'Apply to all'", errors.New("tracker required")
@@ -331,6 +335,9 @@ func (h *AutomationHandler) ListActivity(w http.ResponseWriter, r *http.Request)
 	limit := 100
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
+			if parsed > 1000 {
+				parsed = 1000
+			}
 			limit = parsed
 		}
 	}
