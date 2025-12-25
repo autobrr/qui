@@ -20,6 +20,37 @@ import (
 // matching.go groups all heuristics and helpers that decide whether two torrents
 // describe the same underlying content.
 
+// isTVEpisode returns true if the release is a TV episode (has series and episode number).
+func isTVEpisode(r *rls.Release) bool {
+	return r != nil && r.Series > 0 && r.Episode > 0
+}
+
+// isTVSeasonPack returns true if the release is a TV season pack (has series but no episode number).
+func isTVSeasonPack(r *rls.Release) bool {
+	return r != nil && r.Series > 0 && r.Episode == 0
+}
+
+// rejectReasonSeasonPackFromEpisode is the reason returned when rejecting a season pack
+// cross-seed attempt against a single-episode torrent.
+const rejectReasonSeasonPackFromEpisode = "Season packs cannot be cross-seeded against single-episode torrents"
+
+// rejectSeasonPackFromEpisode checks if a cross-seed should be rejected because it would
+// apply a season pack based on a single-episode torrent's files. This is a forbidden pairing
+// that leads to incomplete/incorrect cross-seeds.
+//
+// Parameters:
+//   - newR: the incoming/source release (the torrent being added)
+//   - existingR: the candidate/matched release (the existing torrent with files)
+//   - episodeMatching: whether episode-aware matching mode is enabled
+//
+// Returns (reject=true, reason) if the pairing should be rejected, (false, "") otherwise.
+func rejectSeasonPackFromEpisode(newR, existingR *rls.Release, episodeMatching bool) (reject bool, reason string) {
+	if episodeMatching && isTVSeasonPack(newR) && isTVEpisode(existingR) {
+		return true, rejectReasonSeasonPackFromEpisode
+	}
+	return false, ""
+}
+
 // releaseKey is a comparable struct for matching releases across different torrents.
 // It uses parsed metadata from rls.Release to avoid brittle filename string compares.
 type releaseKey struct {

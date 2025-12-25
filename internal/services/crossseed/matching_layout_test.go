@@ -113,6 +113,41 @@ func TestFindBestCandidateMatch_PrefersTopLevelFolderOnTie(t *testing.T) {
 	require.Len(t, files, 2, "should return folder-based file list")
 }
 
+func TestFindBestCandidateMatch_RejectsSeasonPackAgainstEpisodeCandidate(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		syncManager: &candidateSelectionSyncManager{
+			files: map[string]qbt.TorrentFiles{
+				"ep": {{Name: "The.Show.S01E01.2160p.WEB-DL-GRP.mkv", Size: 2 << 30}},
+			},
+		},
+	}
+
+	seasonPackName := "The.Show.S01.2160p.WEB-DL-GRP"
+	sourceRelease := svc.releaseCache.Parse(seasonPackName)
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "The.Show.S01E01.2160p.WEB-DL-GRP.mkv", Size: 2 << 30},
+		{Name: "The.Show.S01E02.2160p.WEB-DL-GRP.mkv", Size: 2 << 30},
+	}
+
+	candidate := CrossSeedCandidate{
+		InstanceID: 1,
+		Torrents: []qbt.Torrent{
+			{Hash: "ep", Name: "The.Show.S01E01.2160p.WEB-DL-GRP", Progress: 1.0},
+		},
+	}
+
+	filesByHash := svc.batchLoadCandidateFiles(context.Background(), candidate.InstanceID, candidate.Torrents)
+	bestTorrent, files, matchType, rejectReason := svc.findBestCandidateMatch(context.Background(), candidate, sourceRelease, sourceFiles, nil, filesByHash, 5.0)
+	require.Nil(t, bestTorrent)
+	require.Nil(t, files)
+	require.Empty(t, matchType)
+	require.Equal(t, rejectReasonSeasonPackFromEpisode, rejectReason)
+}
+
 type candidateSelectionSyncManager struct {
 	files map[string]qbt.TorrentFiles
 }
