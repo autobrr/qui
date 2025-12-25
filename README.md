@@ -165,7 +165,7 @@ If the app logs to stdout, check logs via Docker → qui → Logs; if it writes 
 
 ### Permissions (PUID/PGID/UMASK)
 
-By default the container runs as root. To run as a specific user and ensure files in `/config` have correct ownership, set `PUID` and `PGID` environment variables.
+By default the container runs as root. To run as a specific user and ensure files in `/config` have correct ownership, set both `PUID` and `PGID` environment variables (required together).
 
 When both are set, the entrypoint will:
 1. Create a user/group with the specified IDs

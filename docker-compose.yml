@@ -10,7 +10,7 @@ services:
     volumes:
       - ./qui:/config
     environment:
-      # User/Group ID for file ownership (optional)
+      # User/Group ID for file ownership (optional, must set both)
       # When set, the entrypoint will:
       # 1. Create a user/group with the specified IDs
       # 2. Recursively chown /config to PUID:PGID

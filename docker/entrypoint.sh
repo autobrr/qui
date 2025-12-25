@@ -6,6 +6,12 @@ if [ -n "$UMASK" ]; then
     umask "$UMASK"
 fi
 
+# Fail fast if only one of PUID/PGID is set
+if { [ -n "$PUID" ] && [ -z "$PGID" ]; } || { [ -z "$PUID" ] && [ -n "$PGID" ]; }; then
+    echo >&2 "ERROR: PUID and PGID must be set together"
+    exit 1
+fi
+
 # If PUID/PGID are set, run as that user
 if [ -n "$PUID" ] && [ -n "$PGID" ]; then
     # Create group if GID doesn't exist in /etc/group
