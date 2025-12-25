@@ -15,6 +15,7 @@ import (
 	"time"
 
 	gojackett "github.com/autobrr/qui/pkg/gojackett"
+	"github.com/autobrr/qui/pkg/redact"
 )
 
 // Config holds the options for constructing a Client.
@@ -147,7 +148,7 @@ func (c *Client) SearchIndexer(ctx context.Context, indexerID string, params map
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return rss, fmt.Errorf("prowlarr request failed: %w", err)
+		return rss, fmt.Errorf("prowlarr request failed: %w", redact.URLError(err))
 	}
 	defer resp.Body.Close()
 
