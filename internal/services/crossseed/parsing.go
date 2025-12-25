@@ -598,6 +598,58 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentF
 	return files
 }
 
+// ParseTorrentAnnounceDomain extracts the primary announce URL's domain from torrent bytes.
+// Prefers the first entry in announce-list if present; falls back to announce.
+// Returns an empty string if no announce URL is found.
+func ParseTorrentAnnounceDomain(torrentBytes []byte) string {
+	mi, err := metainfo.Load(bytes.NewReader(torrentBytes))
+	if err != nil {
+		return ""
+	}
+
+	var announceURL string
+	// Prefer first tier of announce-list
+	if len(mi.AnnounceList) > 0 && len(mi.AnnounceList[0]) > 0 {
+		announceURL = mi.AnnounceList[0][0]
+	}
+	// Fall back to announce
+	if announceURL == "" {
+		announceURL = mi.Announce
+	}
+	if announceURL == "" {
+		return ""
+	}
+
+	// Extract domain from URL
+	return extractDomainFromAnnounce(announceURL)
+}
+
+// extractDomainFromAnnounce extracts and normalizes the domain from an announce URL.
+func extractDomainFromAnnounce(announceURL string) string {
+	// Handle various URL schemes (http, https, udp, etc.)
+	url := announceURL
+	// Remove scheme
+	if idx := strings.Index(url, "://"); idx != -1 {
+		url = url[idx+3:]
+	}
+	// Remove path
+	if idx := strings.Index(url, "/"); idx != -1 {
+		url = url[:idx]
+	}
+	// Remove port
+	if idx := strings.LastIndex(url, ":"); idx != -1 {
+		// Make sure this is a port, not part of IPv6
+		if !strings.Contains(url[idx:], "]") {
+			url = url[:idx]
+		}
+	}
+	// Remove userinfo if present
+	if idx := strings.Index(url, "@"); idx != -1 {
+		url = url[idx+1:]
+	}
+	return strings.ToLower(url)
+}
+
 // FindLargestFile returns the file with the largest size from a list of torrent files.
 // This is useful for content type detection as the largest file usually represents the main content.
 func FindLargestFile(files qbt.TorrentFiles) *struct {

@@ -49,6 +49,7 @@ export function useCrossSeedSearch(instanceId: number) {
   const [crossSeedSelectedKeys, setCrossSeedSelectedKeys] = useState<Set<string>>(new Set())
   const [crossSeedUseTag, setCrossSeedUseTag] = useState(true)
   const [crossSeedTagName, setCrossSeedTagName] = useState("cross-seed")
+  const [crossSeedStartPaused, setCrossSeedStartPaused] = useState(true)
   const [crossSeedSubmitting, setCrossSeedSubmitting] = useState(false)
   const [crossSeedApplyResult, setCrossSeedApplyResult] = useState<CrossSeedApplyResponse | null>(null)
   const [crossSeedIndexerMode, setCrossSeedIndexerMode] = useState<"all" | "custom">("all")
@@ -127,6 +128,7 @@ export function useCrossSeedSearch(instanceId: number) {
     setCrossSeedSelectedKeys(new Set())
     setCrossSeedUseTag(true)
     setCrossSeedTagName("cross-seed")
+    setCrossSeedStartPaused(true)
     setCrossSeedSubmitting(false)
     setCrossSeedApplyResult(null)
     setCrossSeedIndexerMode("all")
@@ -397,7 +399,7 @@ export function useCrossSeedSearch(instanceId: number) {
         selections,
         useTag: crossSeedUseTag,
         tagName: crossSeedUseTag ? (crossSeedTagName.trim() || "cross-seed") : undefined,
-        startPaused: true,
+        startPaused: crossSeedStartPaused,
         findIndividualEpisodes: crossSeedSettings?.findIndividualEpisodes ?? false,
       })
 
@@ -415,6 +417,7 @@ export function useCrossSeedSearch(instanceId: number) {
   }, [
     crossSeedSearchResponse,
     crossSeedSelectedKeys,
+    crossSeedStartPaused,
     crossSeedTagName,
     crossSeedTorrent,
     crossSeedUseTag,
@@ -533,6 +536,8 @@ export function useCrossSeedSearch(instanceId: number) {
       onUseTagChange={setCrossSeedUseTag}
       tagName={crossSeedTagName}
       onTagNameChange={setCrossSeedTagName}
+      startPaused={crossSeedStartPaused}
+      onStartPausedChange={setCrossSeedStartPaused}
       hasSearched={crossSeedHasSearched}
       cacheMetadata={crossSeedSearchResponse?.cache ?? null}
       onForceRefresh={canForceCrossSeedRefresh ? handleCrossSeedForceRefresh : undefined}

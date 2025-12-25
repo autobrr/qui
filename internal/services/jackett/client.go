@@ -21,6 +21,7 @@ import (
 	"github.com/autobrr/qui/internal/buildinfo"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/prowlarr"
+	"github.com/autobrr/qui/pkg/redact"
 )
 
 const maxTorrentDownloadBytes int64 = 16 << 20 // 16 MiB safety limit for torrent blobs
@@ -252,7 +253,7 @@ func (c *Client) fetchCapsFromJackett(ctx context.Context, indexerID string) (*t
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("jackett caps request failed: %w", err)
+		return nil, fmt.Errorf("jackett caps request failed: %w", redact.URLError(err))
 	}
 	defer resp.Body.Close()
 
@@ -287,7 +288,7 @@ func (c *Client) fetchCapsFromProwlarr(ctx context.Context, indexerID string) (*
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("prowlarr caps request failed: %w", err)
+		return nil, fmt.Errorf("prowlarr caps request failed: %w", redact.URLError(err))
 	}
 	defer resp.Body.Close()
 
@@ -322,7 +323,7 @@ func (c *Client) fetchCapsFromNative(ctx context.Context) (*torznabCaps, error) 
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("native caps request failed: %w", err)
+		return nil, fmt.Errorf("native caps request failed: %w", redact.URLError(err))
 	}
 	defer resp.Body.Close()
 
@@ -364,12 +365,12 @@ func (c *Client) Download(ctx context.Context, downloadURL string) ([]byte, erro
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("torrent download failed: %w", err)
+		return nil, fmt.Errorf("torrent download failed: %w", redact.URLError(err))
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, &DownloadError{StatusCode: resp.StatusCode, URL: downloadURL}
+		return nil, &DownloadError{StatusCode: resp.StatusCode, URL: redact.URLString(downloadURL)}
 	}
 
 	limitedReader := io.LimitReader(resp.Body, maxTorrentDownloadBytes+1)

@@ -10,7 +10,7 @@ require (
 	github.com/anacrolix/torrent v1.59.1
 	github.com/andybalholm/brotli v1.2.0
 	github.com/autobrr/autobrr v1.70.0
-	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251209201933-62cc902b8602
+	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251216224643-ee82f209eaff
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/coreos/go-oidc/v3 v3.17.0
@@ -37,6 +37,7 @@ require (
 	golang.org/x/net v0.47.0
 	golang.org/x/oauth2 v0.33.0
 	golang.org/x/sync v0.18.0
+	golang.org/x/sys v0.38.0
 	golang.org/x/term v0.37.0
 	golang.org/x/text v0.31.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
@@ -94,7 +95,6 @@ require (
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/exp v0.0.0-20250819193227-8b4c13bb791b // indirect
-	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	google.golang.org/protobuf v1.36.8 // indirect
 	lukechampine.com/blake3 v1.1.6 // indirect

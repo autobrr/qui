@@ -5,7 +5,7 @@
 
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { TrackerRule } from "@/types"
+import type { Automation } from "@/types"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -171,6 +171,13 @@ export function formatDuration(seconds: number): string {
   return parts.join(" ")
 }
 
+export function formatDurationCompact(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`
+  return `${Math.floor(seconds / 86400)}d`
+}
+
 export function formatErrorMessage(error: string | undefined): string {
   if (!error) return "Unknown error"
 
@@ -279,12 +286,12 @@ export function formatErrorReason(reason: string): string {
 }
 
 /**
- * Parse tracker domains from a TrackerRule.
+ * Parse tracker domains from an Automation.
  * Returns trackerDomains array if present, otherwise parses trackerPattern.
- * @param rule - The tracker rule to parse domains from
+ * @param rule - The automation to parse domains from
  * @returns Array of tracker domain strings
  */
-export function parseTrackerDomains(rule: TrackerRule): string[] {
+export function parseTrackerDomains(rule: Automation): string[] {
   if (rule.trackerDomains && rule.trackerDomains.length > 0) {
     return rule.trackerDomains
   }

@@ -77,6 +77,8 @@ export interface CrossSeedDialogProps {
   onUseTagChange: (value: boolean) => void
   tagName: string
   onTagNameChange: (value: string) => void
+  startPaused: boolean
+  onStartPausedChange: (value: boolean) => void
   hasSearched: boolean
   cacheMetadata?: CrossSeedTorrentSearchResponse["cache"] | null
   canForceRefresh?: boolean
@@ -116,6 +118,8 @@ const CrossSeedDialogComponent = ({
   onUseTagChange,
   tagName,
   onTagNameChange,
+  startPaused,
+  onStartPausedChange,
   hasSearched,
   cacheMetadata,
   canForceRefresh,
@@ -402,24 +406,36 @@ const CrossSeedDialogComponent = ({
                       )
                     })}
                   </div>
-                  <div className="flex items-center justify-between gap-3 rounded-md border p-2.5">
-                    <div className="flex items-center gap-2 shrink-0">
-                      <Switch
-                        id="cross-seed-tag-toggle"
-                        checked={useTag}
-                        onCheckedChange={(value) => onUseTagChange(Boolean(value))}
+                  <div className="flex flex-col gap-2 rounded-md border p-2.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Switch
+                          id="cross-seed-tag-toggle"
+                          checked={useTag}
+                          onCheckedChange={(value) => onUseTagChange(Boolean(value))}
+                        />
+                        <label htmlFor="cross-seed-tag-toggle" className="text-sm whitespace-nowrap">
+                          Tag added torrents
+                        </label>
+                      </div>
+                      <Input
+                        value={tagName}
+                        onChange={(event) => onTagNameChange(event.target.value)}
+                        placeholder="cross-seed"
+                        disabled={!useTag}
+                        className="w-32 min-w-0 h-8"
                       />
-                      <label htmlFor="cross-seed-tag-toggle" className="text-sm whitespace-nowrap">
-                        Tag added torrents
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="cross-seed-start-paused"
+                        checked={startPaused}
+                        onCheckedChange={(value) => onStartPausedChange(Boolean(value))}
+                      />
+                      <label htmlFor="cross-seed-start-paused" className="text-sm">
+                        Start paused
                       </label>
                     </div>
-                    <Input
-                      value={tagName}
-                      onChange={(event) => onTagNameChange(event.target.value)}
-                      placeholder="cross-seed"
-                      disabled={!useTag}
-                      className="w-32 min-w-0 h-8"
-                    />
                   </div>
                 </>
               )}

@@ -7,6 +7,88 @@ When you cross-seed a torrent, qui:
 2. Adds the new torrent pointing to your existing files
 3. Applies the correct category and save path automatically
 
+qui supports two modes for handling files:
+
+- **Default mode**: Reuses existing files directly. No new files or links are created. May require rename-alignment if the incoming torrent has a different folder/file layout.
+- **Hardlink mode** (optional): Creates a hardlinked copy of the matched files laid out exactly as the incoming torrent expects, then adds the torrent pointing at that tree. Avoids rename-alignment entirely.
+
+## Hardlink Mode (optional)
+
+Hardlink mode is an opt-in strategy that creates a hardlinked file tree matching the incoming torrent's expected layout. The torrent is then added with `savepath` pointing to that tree, `contentLayout=Original`, and `skip_checking=true`, so qBittorrent can start seeding immediately without a hash recheck. By forcing `contentLayout=Original`, hardlink mode ensures the on-disk layout matches the incoming torrent exactly, regardless of the instance's default content layout preference.
+
+Hardlink mode is configured **per-instance**, allowing you to enable it only for instances where qui has local filesystem access.
+
+### When to use
+
+- You want cross-seeds to have their own on-disk directory structure (per tracker / per instance / flat), while still sharing data blocks with the original download.
+- You want to avoid rename-alignment and hash rechecks caused by layout differences between torrents.
+
+### Requirements
+
+- **Local filesystem access** must be enabled on the target qBittorrent instance (Instance Settings > "Local filesystem access").
+- The hardlink base directory must be on the **same filesystem/volume** as the instance's download paths (hardlinks cannot cross filesystems).
+
+### Failure behavior
+
+If hardlink mode is enabled for an instance and a hardlink cannot be created (no local access, filesystem mismatch, invalid base directory, permissions issue, etc.), the cross-seed **fails**. There is no fallback to default mode.
+
+### Directory presets
+
+Configure in Cross-Seed > Hardlink Mode for each instance:
+
+- **Hardlink base directory**: Path on the qui host where hardlink trees are created.
+- **Directory preset**:
+  - `flat`: Always creates an isolation folder: `<base>/<TorrentName--shortHash>/...`
+  - `by-tracker`: `<base>/<incoming-tracker-display-name>/...` (isolation folder added when needed)
+  - `by-instance`: `<base>/<instance-name>/...` (isolation folder added when needed)
+
+For `by-tracker`, the "incoming tracker display name" is resolved using your Tracker Customizations (Dashboard > Tracker Breakdown) when available; otherwise it falls back to the tracker domain or indexer name.
+
+#### Isolation folders
+
+For `by-tracker` and `by-instance` presets, qui determines whether an isolation folder is needed based on the torrent's file structure:
+
+- **Torrents with a root folder** (e.g., `Movie/video.mkv`, `Movie/subs.srt`) → files already have a common top-level directory, no isolation folder needed
+- **Rootless torrents** (e.g., `video.mkv`, `subs.srt` at top level) → isolation folder added to prevent file conflicts
+
+When an isolation folder is needed, it uses a human-readable format: `<TorrentName--shortHash>` (e.g., `My.Movie.2024.1080p.BluRay--abcdef12`).
+
+For the `flat` preset, an isolation folder is always used to keep each torrent's files separated.
+
+### How to enable
+
+1. Enable "Local filesystem access" on the qBittorrent instance in Instance Settings.
+2. In Cross-Seed > Hardlink Mode, expand the instance you want to configure.
+3. Enable "Hardlink mode" for that instance.
+4. Set "Hardlink base directory" to a path on the same filesystem as your downloads.
+5. Choose a directory preset (`flat`, `by-tracker`, `by-instance`).
+
+### Pause behavior
+
+By default, hardlink-added torrents start seeding immediately (since `skip_checking=true` means they're at 100% instantly). If you want hardlink-added torrents to remain paused, enable the "Skip auto-resume" option for your cross-seed source (Completion, RSS, Webhook, etc.).
+
+### Notes
+
+- Hardlinks share disk blocks with the original file but increase the link count. Deleting one link does not free space until all links to that file are removed.
+- Windows: Folder names in the hardlink tree are sanitized to remove Windows-illegal characters (like `: * ? " < > |`). The torrent's internal file paths are not modified.
+- Ensure the base directory has sufficient inode capacity for the number of hardlinks you expect to create.
+
+## Recheck & Alignment
+
+### Default mode
+
+In default mode, qui points the cross-seed torrent at the matched torrent's existing files. If the incoming torrent has a different display name or folder structure, qui renames them to match. After rename-alignment, qBittorrent may need to recheck the torrent to verify files at the new paths.
+
+Rechecks are also required when the source torrent contains extra files not present on disk (NFO, SRT, samples not filtered by ignore patterns).
+
+**Auto-resume behavior:**
+- Torrents that complete recheck at 95% or higher (configurable via "Size mismatch tolerance") auto-resume.
+- Torrents below the threshold stay paused for manual investigation.
+
+### Hardlink mode
+
+No recheck or rename-alignment is needed because the hardlink tree matches the incoming layout.
+
 ## Category Behavior
 
 ### The .cross Suffix
@@ -22,10 +104,12 @@ The `.cross` category is created automatically with the same save path as the ba
 ### autoTMM (Auto Torrent Management)
 
 Cross-seeds inherit the autoTMM setting from the matched torrent:
-- If matched torrent uses autoTMM -> cross-seed uses autoTMM
-- If matched torrent has manual path -> cross-seed uses same manual path
+- If matched torrent uses autoTMM, cross-seed uses autoTMM
+- If matched torrent has manual path, cross-seed uses same manual path
 
 This ensures files are always saved to the correct location.
+
+**Note:** When "Use indexer name as category" is enabled, autoTMM is always disabled for cross-seeds (explicit save paths are used instead).
 
 ## Save Path Determination
 
@@ -52,11 +136,26 @@ Example:
 
 ## Troubleshooting
 
-### "Files not found" after cross-seed
+### Hardlink mode failed
 
+Common causes:
+- **Filesystem mismatch**: Hardlink base directory is on a different filesystem/volume than the download paths. Hardlinks cannot cross filesystems.
+- **Missing local filesystem access**: The target instance doesn't have "Local filesystem access" enabled in Instance Settings.
+- **Permissions**: qui cannot read the instance's content paths or write to the hardlink base directory.
+- **Invalid base directory**: The hardlink base directory path doesn't exist and couldn't be created.
+
+### "Files not found" after cross-seed (default mode)
+
+This typically occurs in default mode when the save path doesn't match where files actually exist:
 - Check that the cross-seed's save path matches where files actually exist
 - Verify the matched torrent's save path in qBittorrent
 - Ensure the matched torrent has completed downloading (100% progress)
+
+### Cross-seed stuck at low percentage after recheck
+
+- Check if the source torrent has extra files (NFO, samples) not present on disk
+- Verify the "Size mismatch tolerance" setting in Global rules
+- Torrents below the auto-resume threshold stay paused for manual review
 
 ### Cross-seed in wrong category
 
@@ -65,5 +164,6 @@ Example:
 
 ### autoTMM unexpectedly enabled/disabled
 
-- This mirrors the matched torrent's setting - it's intentional
+- This mirrors the matched torrent's setting (intentional)
 - Check the original torrent's autoTMM status in qBittorrent
+- Note: "Use indexer name as category" always disables autoTMM

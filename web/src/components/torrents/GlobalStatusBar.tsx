@@ -299,7 +299,7 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
                     e.preventDefault()
                     e.stopPropagation()
                     void navigate({
-                      to: "/services",
+                      to: "/automations",
                       search: { instanceId: String(instanceId) },
                     })
                   }}

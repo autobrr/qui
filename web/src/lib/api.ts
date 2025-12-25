@@ -4,10 +4,17 @@
  */
 
 import type {
+  AddRSSFeedRequest,
+  AddRSSFolderRequest,
   AddTorrentResponse,
   AppPreferences,
   AsyncIndexerFilteringState,
   AuthResponse,
+  Automation,
+  AutomationActivity,
+  AutomationInput,
+  AutomationPreviewInput,
+  AutomationPreviewResult,
   BackupManifest,
   BackupRun,
   BackupRunsResponse,
@@ -27,6 +34,8 @@ import type {
   CrossSeedTorrentInfo,
   CrossSeedTorrentSearchResponse,
   CrossSeedTorrentSearchSelection,
+  DashboardSettings,
+  DashboardSettingsInput,
   DiscoverJackettResponse,
   DuplicateTorrentMatch,
   ExternalProgram,
@@ -35,19 +44,33 @@ import type {
   ExternalProgramExecuteResponse,
   ExternalProgramUpdate,
   IndexerActivityStatus,
+  IndexerResponse,
   InstanceCapabilities,
   InstanceCrossSeedCompletionSettings,
   InstanceFormData,
   InstanceReannounceActivity,
   InstanceReannounceCandidate,
   InstanceResponse,
+  MarkRSSAsReadRequest,
+  MoveRSSItemRequest,
+  OrphanScanRun,
+  OrphanScanRunWithFiles,
+  OrphanScanSettings,
+  OrphanScanSettingsUpdate,
   QBittorrentAppInfo,
+  RefreshRSSItemRequest,
+  RemoveRSSItemRequest,
+  RenameRSSRuleRequest,
   RestoreMode,
   RestorePlan,
   RestoreResult,
+  RSSItems,
+  RSSMatchingArticles,
+  RSSRules,
   SearchHistoryResponse,
+  SetRSSFeedURLRequest,
+  SetRSSRuleRequest,
   SortedPeersResponse,
-  WebSeed,
   TorrentCreationParams,
   TorrentCreationTask,
   TorrentCreationTaskResponse,
@@ -56,7 +79,6 @@ import type {
   TorrentProperties,
   TorrentResponse,
   TorrentTracker,
-  IndexerResponse,
   TorznabIndexer,
   TorznabIndexerError,
   TorznabIndexerFormData,
@@ -70,11 +92,9 @@ import type {
   TorznabSearchResult,
   TrackerCustomization,
   TrackerCustomizationInput,
-  TrackerRule,
-  TrackerRuleInput,
   User,
-  DashboardSettings,
-  DashboardSettingsInput
+  WarningResponse,
+  WebSeed,
 } from "@/types"
 import { getApiBaseUrl, withBasePath } from "./base-url"
 
@@ -1276,40 +1296,58 @@ class ApiClient {
     return this.request(`/instances/${instanceId}/trackers`)
   }
 
-  async listTrackerRules(instanceId: number): Promise<TrackerRule[]> {
-    return this.request(`/instances/${instanceId}/tracker-rules`)
+  async listAutomations(instanceId: number): Promise<Automation[]> {
+    return this.request(`/instances/${instanceId}/automations`)
   }
 
-  async createTrackerRule(instanceId: number, payload: TrackerRuleInput): Promise<TrackerRule> {
-    return this.request(`/instances/${instanceId}/tracker-rules`, {
+  async createAutomation(instanceId: number, payload: AutomationInput): Promise<Automation> {
+    return this.request(`/instances/${instanceId}/automations`, {
       method: "POST",
       body: JSON.stringify(payload),
     })
   }
 
-  async updateTrackerRule(instanceId: number, ruleId: number, payload: TrackerRuleInput): Promise<TrackerRule> {
-    return this.request(`/instances/${instanceId}/tracker-rules/${ruleId}`, {
+  async updateAutomation(instanceId: number, ruleId: number, payload: AutomationInput): Promise<Automation> {
+    return this.request(`/instances/${instanceId}/automations/${ruleId}`, {
       method: "PUT",
       body: JSON.stringify(payload),
     })
   }
 
-  async deleteTrackerRule(instanceId: number, ruleId: number): Promise<void> {
-    return this.request(`/instances/${instanceId}/tracker-rules/${ruleId}`, {
+  async deleteAutomation(instanceId: number, ruleId: number): Promise<void> {
+    return this.request(`/instances/${instanceId}/automations/${ruleId}`, {
       method: "DELETE",
     })
   }
 
-  async reorderTrackerRules(instanceId: number, orderedIds: number[]): Promise<void> {
-    return this.request(`/instances/${instanceId}/tracker-rules/order`, {
+  async reorderAutomations(instanceId: number, orderedIds: number[]): Promise<void> {
+    return this.request(`/instances/${instanceId}/automations/order`, {
       method: "PUT",
       body: JSON.stringify({ orderedIds }),
     })
   }
 
-  async applyTrackerRules(instanceId: number): Promise<void> {
-    return this.request(`/instances/${instanceId}/tracker-rules/apply`, {
+  async applyAutomations(instanceId: number): Promise<void> {
+    return this.request(`/instances/${instanceId}/automations/apply`, {
       method: "POST",
+    })
+  }
+
+  async getAutomationActivity(instanceId: number, limit?: number): Promise<AutomationActivity[]> {
+    const query = typeof limit === "number" ? `?limit=${limit}` : ""
+    return this.request<AutomationActivity[]>(`/instances/${instanceId}/automations/activity${query}`)
+  }
+
+  async deleteAutomationActivity(instanceId: number, olderThanDays: number): Promise<{ deleted: number }> {
+    return this.request<{ deleted: number }>(`/instances/${instanceId}/automations/activity?older_than=${olderThanDays}`, {
+      method: "DELETE",
+    })
+  }
+
+  async previewAutomation(instanceId: number, payload: AutomationPreviewInput): Promise<AutomationPreviewResult> {
+    return this.request<AutomationPreviewResult>(`/instances/${instanceId}/automations/preview`, {
+      method: "POST",
+      body: JSON.stringify(payload),
     })
   }
 
@@ -1710,6 +1748,166 @@ class ApiClient {
 
   async getIndexerStats(id: number): Promise<TorznabIndexerLatencyStats[]> {
     return this.request<TorznabIndexerLatencyStats[]>(`/torznab/indexers/${id}/stats`)
+  }
+
+  // RSS Feed Management
+
+  async getRSSItems(instanceId: number, withData = true): Promise<RSSItems> {
+    return this.request<RSSItems>(`/instances/${instanceId}/rss/items?withData=${withData}`)
+  }
+
+  async addRSSFolder(instanceId: number, data: AddRSSFolderRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/folders`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async addRSSFeed(instanceId: number, data: AddRSSFeedRequest): Promise<WarningResponse | undefined> {
+    return this.request<WarningResponse | undefined>(`/instances/${instanceId}/rss/feeds`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async setRSSFeedURL(instanceId: number, data: SetRSSFeedURLRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/feeds/url`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async moveRSSItem(instanceId: number, data: MoveRSSItemRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/items/move`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async removeRSSItem(instanceId: number, data: RemoveRSSItemRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/items`, {
+      method: "DELETE",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async refreshRSSItem(instanceId: number, data: RefreshRSSItemRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/items/refresh`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async markRSSAsRead(instanceId: number, data: MarkRSSAsReadRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/articles/read`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  // RSS Auto-Download Rules
+
+  async getRSSRules(instanceId: number): Promise<RSSRules> {
+    return this.request<RSSRules>(`/instances/${instanceId}/rss/rules`)
+  }
+
+  async setRSSRule(instanceId: number, data: SetRSSRuleRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/rules`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async renameRSSRule(instanceId: number, ruleName: string, data: RenameRSSRuleRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/rules/${encodeURIComponent(ruleName)}/rename`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async removeRSSRule(instanceId: number, ruleName: string): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/rules/${encodeURIComponent(ruleName)}`, {
+      method: "DELETE",
+    })
+  }
+
+  async getRSSMatchingArticles(instanceId: number, ruleName: string): Promise<RSSMatchingArticles> {
+    return this.request<RSSMatchingArticles>(`/instances/${instanceId}/rss/rules/${encodeURIComponent(ruleName)}/preview`)
+  }
+
+  async reprocessRSSRules(instanceId: number): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/rules/reprocess`, {
+      method: "POST",
+    })
+  }
+
+  // Orphan Scan endpoints
+  async getOrphanScanSettings(instanceId: number): Promise<OrphanScanSettings> {
+    return this.request<OrphanScanSettings>(`/instances/${instanceId}/orphan-scan/settings`)
+  }
+
+  async updateOrphanScanSettings(
+    instanceId: number,
+    payload: OrphanScanSettingsUpdate
+  ): Promise<OrphanScanSettings> {
+    return this.request<OrphanScanSettings>(`/instances/${instanceId}/orphan-scan/settings`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async triggerOrphanScan(instanceId: number): Promise<{ runId: number }> {
+    return this.request<{ runId: number }>(`/instances/${instanceId}/orphan-scan/scan`, {
+      method: "POST",
+    })
+  }
+
+  async listOrphanScanRuns(
+    instanceId: number,
+    params?: { limit?: number }
+  ): Promise<OrphanScanRun[]> {
+    const search = new URLSearchParams()
+    if (params?.limit !== undefined) search.set("limit", params.limit.toString())
+
+    const query = search.toString()
+    const suffix = query ? `?${query}` : ""
+    return this.request<OrphanScanRun[]>(`/instances/${instanceId}/orphan-scan/runs${suffix}`)
+  }
+
+  async getOrphanScanRun(
+    instanceId: number,
+    runId: number,
+    params?: { limit?: number; offset?: number }
+  ): Promise<OrphanScanRunWithFiles> {
+    const search = new URLSearchParams()
+    if (params?.limit !== undefined) search.set("limit", params.limit.toString())
+    if (params?.offset !== undefined) search.set("offset", params.offset.toString())
+
+    const query = search.toString()
+    const suffix = query ? `?${query}` : ""
+    return this.request<OrphanScanRunWithFiles>(
+      `/instances/${instanceId}/orphan-scan/runs/${runId}${suffix}`
+    )
+  }
+
+  async confirmOrphanScanDeletion(
+    instanceId: number,
+    runId: number
+  ): Promise<{ status: string }> {
+    return this.request<{ status: string }>(
+      `/instances/${instanceId}/orphan-scan/runs/${runId}/confirm`,
+      { method: "POST" }
+    )
+  }
+
+  async cancelOrphanScanRun(
+    instanceId: number,
+    runId: number
+  ): Promise<{ status: string }> {
+    return this.request<{ status: string }>(
+      `/instances/${instanceId}/orphan-scan/runs/${runId}`,
+      { method: "DELETE" }
+    )
   }
 }
 

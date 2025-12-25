@@ -106,6 +106,30 @@ func (*rootlessSavePathSyncManager) CreateCategory(context.Context, int, string,
 	return nil
 }
 
+// rootlessSavePathInstanceStore is a mock instance provider for tests
+type rootlessSavePathInstanceStore struct {
+	instances map[int]*models.Instance
+}
+
+func (m *rootlessSavePathInstanceStore) Get(_ context.Context, id int) (*models.Instance, error) {
+	if inst, ok := m.instances[id]; ok {
+		return inst, nil
+	}
+	// Return instance with hardlinks disabled by default
+	return &models.Instance{
+		ID:           id,
+		UseHardlinks: false,
+	}, nil
+}
+
+func (m *rootlessSavePathInstanceStore) List(_ context.Context) ([]*models.Instance, error) {
+	result := make([]*models.Instance, 0, len(m.instances))
+	for _, inst := range m.instances {
+		result = append(result, inst)
+	}
+	return result, nil
+}
+
 func TestProcessCrossSeedCandidate_RootlessContentDirOverridesSavePath(t *testing.T) {
 	t.Parallel()
 
@@ -141,8 +165,18 @@ func TestProcessCrossSeedCandidate_RootlessContentDirOverridesSavePath(t *testin
 		},
 	}
 
+	instanceStore := &rootlessSavePathInstanceStore{
+		instances: map[int]*models.Instance{
+			instanceID: {
+				ID:           instanceID,
+				UseHardlinks: false,
+			},
+		},
+	}
+
 	service := &Service{
 		syncManager:      sync,
+		instanceStore:    instanceStore,
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
@@ -209,8 +243,18 @@ func TestProcessCrossSeedCandidate_RootlessContentDirOverridesSavePath_MultiFile
 		},
 	}
 
+	instanceStore := &rootlessSavePathInstanceStore{
+		instances: map[int]*models.Instance{
+			instanceID: {
+				ID:           instanceID,
+				UseHardlinks: false,
+			},
+		},
+	}
+
 	service := &Service{
 		syncManager:      sync,
+		instanceStore:    instanceStore,
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
@@ -275,8 +319,18 @@ func TestProcessCrossSeedCandidate_RootlessContentDirNoopWhenSavePathMatches(t *
 		},
 	}
 
+	instanceStore := &rootlessSavePathInstanceStore{
+		instances: map[int]*models.Instance{
+			instanceID: {
+				ID:           instanceID,
+				UseHardlinks: false,
+			},
+		},
+	}
+
 	service := &Service{
 		syncManager:      sync,
+		instanceStore:    instanceStore,
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {

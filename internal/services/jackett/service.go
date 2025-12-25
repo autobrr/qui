@@ -26,6 +26,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
 	"github.com/autobrr/qui/pkg/prowlarr"
+	"github.com/autobrr/qui/pkg/redact"
 	"github.com/autobrr/qui/pkg/releases"
 )
 
@@ -1803,7 +1804,7 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 			log.Debug().
 				Int("indexer_id", idx.ID).
 				Str("indexer_name", idx.Name).
-				Str("base_url", idx.BaseURL).
+				Str("base_url", redact.URLString(idx.BaseURL)).
 				Str("backend", string(idx.Backend)).
 				Msg("Searching native Torznab endpoint")
 		}

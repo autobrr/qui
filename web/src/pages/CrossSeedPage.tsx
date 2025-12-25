@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { CompletionOverview } from "@/components/instances/preferences/CompletionOverview"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -27,11 +27,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
+import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import type {
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
-  CrossSeedRun
+  CrossSeedRun,
+  Instance
 } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
@@ -90,6 +93,7 @@ interface GlobalCrossSeedSettings {
   webhookSourceTags: string[]
   webhookSourceExcludeCategories: string[]
   webhookSourceExcludeTags: string[]
+  // Note: Hardlink mode settings have been moved to per-instance configuration
 }
 
 // RSS Automation constants
@@ -134,6 +138,7 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   webhookSourceTags: [],
   webhookSourceExcludeCategories: [],
   webhookSourceExcludeTags: [],
+  // Note: Hardlink mode is now per-instance (configured in Instance Settings)
 }
 
 function parseList(value: string): string[] {
@@ -214,6 +219,255 @@ function aggregateInstanceMetadata(
 interface CrossSeedPageProps {
   activeTab: "automation" | "search" | "global"
   onTabChange: (tab: "automation" | "search" | "global") => void
+}
+
+/** Per-instance hardlink mode settings component */
+function HardlinkModeSettings() {
+  const { instances, updateInstance, isUpdating } = useInstances()
+  const [expandedInstances, setExpandedInstances] = useState<string[]>([])
+  const [dirtyMap, setDirtyMap] = useState<Record<number, boolean>>({})
+  const [formMap, setFormMap] = useState<Record<number, {
+    useHardlinks: boolean
+    hardlinkBaseDir: string
+    hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
+  }>>({})
+
+  const activeInstances = useMemo(
+    () => (instances ?? []).filter((inst) => inst.isActive),
+    [instances]
+  )
+
+  const getForm = useCallback((instance: Instance) => {
+    return formMap[instance.id] ?? {
+      useHardlinks: instance.useHardlinks,
+      hardlinkBaseDir: instance.hardlinkBaseDir || "",
+      hardlinkDirPreset: instance.hardlinkDirPreset || "flat",
+    }
+  }, [formMap])
+
+  const handleToggleEnabled = (instance: Instance, enabled: boolean) => {
+    if (!instance.hasLocalFilesystemAccess && enabled) {
+      toast.error("Cannot enable hardlink mode", {
+        description: `Instance "${instance.name}" does not have local filesystem access enabled.`,
+      })
+      return
+    }
+
+    const form = getForm(instance)
+
+    // Block enabling with empty base directory
+    if (enabled && !form.hardlinkBaseDir.trim()) {
+      toast.error("Cannot enable hardlink mode", {
+        description: "Hardlink base directory must be set first.",
+      })
+      return
+    }
+
+    updateInstance({
+      id: instance.id,
+      data: {
+        name: instance.name,
+        host: instance.host,
+        username: instance.username,
+        useHardlinks: enabled,
+        hardlinkBaseDir: form.hardlinkBaseDir,
+        hardlinkDirPreset: form.hardlinkDirPreset,
+      },
+    }, {
+      onSuccess: () => {
+        toast.success(`Hardlink mode ${enabled ? "enabled" : "disabled"}`, {
+          description: instance.name,
+        })
+        // Sync formMap with server state to prevent visual snap-back
+        setFormMap((prev) => ({
+          ...prev,
+          [instance.id]: { ...form, useHardlinks: enabled },
+        }))
+        setDirtyMap((prev) => ({ ...prev, [instance.id]: false }))
+      },
+      onError: (error) => {
+        toast.error("Failed to update settings", {
+          description: error instanceof Error ? error.message : "Unknown error",
+        })
+      },
+    })
+  }
+
+  const handleFormChange = (
+    instanceId: number,
+    field: "hardlinkBaseDir" | "hardlinkDirPreset",
+    value: string,
+    currentForm: { useHardlinks: boolean; hardlinkBaseDir: string; hardlinkDirPreset: "flat" | "by-tracker" | "by-instance" }
+  ) => {
+    setFormMap((prev) => ({
+      ...prev,
+      [instanceId]: {
+        ...currentForm,
+        [field]: value,
+      },
+    }))
+    setDirtyMap((prev) => ({ ...prev, [instanceId]: true }))
+  }
+
+  const handleSave = (instance: Instance) => {
+    const form = getForm(instance)
+    updateInstance({
+      id: instance.id,
+      data: {
+        name: instance.name,
+        host: instance.host,
+        username: instance.username,
+        useHardlinks: form.useHardlinks,
+        hardlinkBaseDir: form.hardlinkBaseDir,
+        hardlinkDirPreset: form.hardlinkDirPreset,
+      },
+    }, {
+      onSuccess: () => {
+        toast.success("Hardlink settings saved", {
+          description: instance.name,
+        })
+        setDirtyMap((prev) => ({ ...prev, [instance.id]: false }))
+      },
+      onError: (error) => {
+        toast.error("Failed to save settings", {
+          description: error instanceof Error ? error.message : "Unknown error",
+        })
+      },
+    })
+  }
+
+  if (!activeInstances.length) {
+    return (
+      <Collapsible className="rounded-lg border border-border/70 bg-muted/40">
+        <CollapsibleTrigger className="flex w-full items-center justify-between p-4 font-medium [&[data-state=open]>svg]:rotate-180">
+          <span>Hardlink Mode (per-instance)</span>
+          <ChevronDown className="h-4 w-4 transition-transform duration-200" />
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="border-t border-border/70 p-4 pt-4">
+            <p className="text-sm text-muted-foreground">No active instances. Add instances first.</p>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    )
+  }
+
+  return (
+    <Collapsible className="rounded-lg border border-border/70 bg-muted/40">
+      <CollapsibleTrigger className="flex w-full items-center justify-between p-4 font-medium [&[data-state=open]>svg]:rotate-180">
+        <span>Hardlink Mode</span>
+        <ChevronDown className="h-4 w-4 transition-transform duration-200" />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <p className="text-xs text-muted-foreground px-4">
+          Create hardlinked file trees instead of using reuse+rename alignment. Each instance can be configured
+          independently. The hardlink base directory must be on the same filesystem as the instance's download paths.
+        </p>
+        <div className="border-t border-border/70 p-4 space-y-4">
+
+          <Accordion
+            type="multiple"
+            value={expandedInstances}
+            onValueChange={setExpandedInstances}
+            className="space-y-2"
+          >
+            {activeInstances.map((instance) => {
+              const form = getForm(instance)
+              const isDirty = dirtyMap[instance.id] ?? false
+              const canEnableHardlinks = instance.hasLocalFilesystemAccess
+
+              return (
+                <AccordionItem
+                  key={instance.id}
+                  value={String(instance.id)}
+                  className="border border-border/70 rounded-lg bg-background/50"
+                >
+                  <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <span className="font-medium truncate">{instance.name}</span>
+                      {form.useHardlinks && (
+                        <Badge variant="outline" className="shrink-0 bg-primary/10 text-primary border-primary/30 text-xs">
+                          Enabled
+                        </Badge>
+                      )}
+                      {!canEnableHardlinks && (
+                        <Badge variant="outline" className="shrink-0 bg-muted text-muted-foreground border-muted-foreground/30 text-xs">
+                          No local access
+                        </Badge>
+                      )}
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-4 pb-4">
+                    <div className="space-y-4 pt-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="space-y-0.5">
+                          <Label className="font-medium">Enable hardlink mode</Label>
+                          <p className="text-xs text-muted-foreground">
+                            {canEnableHardlinks
+                              ? "Create hardlinked file trees for cross-seeds"
+                              : "Enable \"Local filesystem access\" in Instance Settings first"}
+                          </p>
+                        </div>
+                        <Switch
+                          checked={form.useHardlinks}
+                          onCheckedChange={(value) => handleToggleEnabled(instance, !!value)}
+                          disabled={!canEnableHardlinks || isUpdating}
+                        />
+                      </div>
+
+                      <div className="space-y-4 pt-2">
+                        <div className="space-y-2">
+                          <Label>Hardlink base directory</Label>
+                          <Input
+                            placeholder="/path/to/crossseed-data"
+                            value={form.hardlinkBaseDir}
+                            onChange={(e) => handleFormChange(instance.id, "hardlinkBaseDir", e.target.value, form)}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Must be on the same filesystem as download paths.
+                          </p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Directory organization</Label>
+                          <Select
+                            value={form.hardlinkDirPreset}
+                            onValueChange={(value: "flat" | "by-tracker" | "by-instance") =>
+                              handleFormChange(instance.id, "hardlinkDirPreset", value, form)
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="flat">Flat (all in base directory)</SelectItem>
+                              <SelectItem value="by-tracker">By Tracker</SelectItem>
+                              <SelectItem value="by-instance">By Instance</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {isDirty && (
+                          <Button
+                            size="sm"
+                            onClick={() => handleSave(instance)}
+                            disabled={isUpdating}
+                          >
+                            {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Save Changes
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              )
+            })}
+          </Accordion>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  )
 }
 
 export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
@@ -440,6 +694,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         webhookSourceTags: settings.webhookSourceTags ?? [],
         webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
         webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
+        // Note: Hardlink mode is now per-instance (configured in Instance Settings)
       })
       setGlobalSettingsInitialized(true)
     }
@@ -535,6 +790,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         webhookSourceTags: settings.webhookSourceTags ?? [],
         webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
         webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
+        // Note: Hardlink mode is now per-instance
       }
 
     return {
@@ -561,6 +817,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       webhookSourceTags: globalSource.webhookSourceTags,
       webhookSourceExcludeCategories: globalSource.webhookSourceExcludeCategories,
       webhookSourceExcludeTags: globalSource.webhookSourceExcludeTags,
+      // Note: Hardlink mode is now per-instance (see Instance Settings)
     }
   }, [
     settings,
@@ -2135,18 +2392,19 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 </div>
               </div>
 
+              <HardlinkModeSettings />
+
               <Collapsible className="rounded-lg border border-border/70 bg-muted/40">
                 <CollapsibleTrigger className="flex w-full items-center justify-between p-4 font-medium [&[data-state=open]>svg]:rotate-180">
                   <span>Webhook Source Filters</span>
                   <ChevronDown className="h-4 w-4 transition-transform duration-200" />
                 </CollapsibleTrigger>
                 <CollapsibleContent>
+                  <p className="text-xs text-muted-foreground px-4">
+                    Filter which local torrents are considered when autobrr calls the webhook endpoint.
+                    Empty filters mean all torrents are checked. If you configure both category and tag filters, torrents must match both.
+                  </p>
                   <div className="border-t border-border/70 p-4 pt-4 space-y-4">
-                    <p className="text-xs text-muted-foreground">
-                      Filter which local torrents are considered when autobrr calls the webhook endpoint.
-                      Empty filters mean all torrents are checked. If you configure both category and tag filters, torrents must match both.
-                    </p>
-
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="space-y-3">
                         <Label>Exclude categories</Label>
