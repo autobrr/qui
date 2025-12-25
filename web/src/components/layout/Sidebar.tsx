@@ -69,6 +69,11 @@ const navigation: NavItem[] = [
     icon: Archive,
   },
   {
+    title: "RSS",
+    href: "/rss",
+    icon: Rss,
+  },
+  {
     title: "Settings",
     href: "/settings",
     icon: Settings,

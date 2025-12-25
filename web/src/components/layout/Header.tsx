@@ -541,6 +541,15 @@ export function Header({
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link
+                  to="/rss"
+                  className="flex cursor-pointer"
+                >
+                  <Rss className="mr-2 h-4 w-4" />
+                  RSS
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link
                   to="/settings"
                   search={{ tab: "instances" }}
                   className="flex cursor-pointer"

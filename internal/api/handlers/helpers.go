@@ -18,6 +18,11 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
+// WarningResponse represents a success response with optional warnings
+type WarningResponse struct {
+	Warning string `json:"warning,omitempty"`
+}
+
 // RespondJSON sends a JSON response
 func RespondJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
