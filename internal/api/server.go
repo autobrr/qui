@@ -282,6 +282,8 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.automationService)
 	orphanScanHandler := handlers.NewOrphanScanHandler(s.orphanScanStore, s.instanceStore, s.orphanScanService)
 	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore)
+	rssHandler := handlers.NewRSSHandler(s.syncManager)
+	rssSSEHandler := handlers.NewRSSSSEHandler(s.syncManager)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
 
 	// Torznab/Jackett handler
@@ -453,6 +455,12 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Put("/", automationsHandler.Update)
 							r.Delete("/", automationsHandler.Delete)
 						})
+					})
+
+					// RSS management
+					r.Route("/rss", func(r chi.Router) {
+						rssHandler.Routes(r)
+						r.Get("/events", rssSSEHandler.HandleSSE)
 					})
 
 					// Preferences

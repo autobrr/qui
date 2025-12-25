@@ -29,6 +29,7 @@ var (
 	subcategoriesMinVersion    = semver.MustParse("2.9.0")
 	torrentTmpPathMinVersion   = semver.MustParse("2.8.4")
 	pathAutocompleteMinVersion = semver.MustParse("2.11.2")
+	rssSetFeedURLMinVersion    = semver.MustParse("2.9.1")
 )
 
 type Client struct {
@@ -46,6 +47,7 @@ type Client struct {
 	supportsSubcategories    bool
 	supportsTorrentTmpPath   bool
 	supportsPathAutocomplete bool
+	supportsSetRSSFeedURL    bool
 	lastHealthCheck          time.Time
 	isHealthy                bool
 	syncManager              *qbt.SyncManager
@@ -253,6 +255,7 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 	c.supportsSubcategories = !v.LessThan(subcategoriesMinVersion)
 	c.supportsTorrentTmpPath = !v.LessThan(torrentTmpPathMinVersion)
 	c.supportsPathAutocomplete = !v.LessThan(pathAutocompleteMinVersion)
+	c.supportsSetRSSFeedURL = !v.LessThan(rssSetFeedURLMinVersion)
 }
 
 func (c *Client) updateServerState(data *qbt.MainData) {
@@ -413,6 +416,12 @@ func (c *Client) SupportsSetTags() bool {
 
 func (c *Client) SupportsTrackerHealth() bool {
 	return c.supportsTrackerInclude()
+}
+
+func (c *Client) SupportsSetRSSFeedURL() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsSetRSSFeedURL
 }
 
 func (c *Client) GetWebAPIVersion() string {

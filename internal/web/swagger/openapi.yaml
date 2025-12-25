@@ -3255,6 +3255,452 @@ paths:
         '500':
           description: Failed to retrieve torrent file
 
+  # RSS Feed Management
+  /api/instances/{instanceID}/rss/events:
+    get:
+      tags:
+        - RSS
+      summary: RSS events stream (SSE)
+      description: Server-Sent Events stream for real-time RSS feed updates
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: SSE stream established
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-Sent Events stream with feed updates
+        '400':
+          description: Invalid instance ID
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to establish SSE stream
+
+  /api/instances/{instanceID}/rss/items:
+    get:
+      tags:
+        - RSS
+      summary: Get RSS items
+      description: Retrieve all RSS feeds and folders for an instance
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: withData
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+          description: Include article data with feeds
+      responses:
+        '200':
+          description: RSS items retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RSSItems'
+        '400':
+          description: Invalid instance ID
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to get RSS items
+    delete:
+      tags:
+        - RSS
+      summary: Remove RSS item
+      description: Remove an RSS feed or folder
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - path
+              properties:
+                path:
+                  type: string
+                  description: Path of the item to remove
+      responses:
+        '200':
+          description: Item removed successfully
+        '400':
+          description: Invalid request
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to remove RSS item
+
+  /api/instances/{instanceID}/rss/items/move:
+    post:
+      tags:
+        - RSS
+      summary: Move RSS item
+      description: Move an RSS feed or folder to a new location
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - itemPath
+              properties:
+                itemPath:
+                  type: string
+                  description: Current path of the item
+                destPath:
+                  type: string
+                  description: Destination path (empty for root)
+      responses:
+        '200':
+          description: Item moved successfully
+        '400':
+          description: Invalid request
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to move RSS item
+
+  /api/instances/{instanceID}/rss/items/refresh:
+    post:
+      tags:
+        - RSS
+      summary: Refresh RSS item
+      description: Trigger a manual refresh of an RSS feed or folder
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - itemPath
+              properties:
+                itemPath:
+                  type: string
+                  description: Path of the item to refresh
+      responses:
+        '200':
+          description: Refresh triggered successfully
+        '400':
+          description: Invalid request
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to refresh RSS item
+
+  /api/instances/{instanceID}/rss/folders:
+    post:
+      tags:
+        - RSS
+      summary: Create RSS folder
+      description: Create a new RSS folder
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - path
+              properties:
+                path:
+                  type: string
+                  description: Path for the new folder
+      responses:
+        '201':
+          description: Folder created successfully
+        '400':
+          description: Invalid request
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to create RSS folder
+
+  /api/instances/{instanceID}/rss/feeds:
+    post:
+      tags:
+        - RSS
+      summary: Add RSS feed
+      description: Add a new RSS feed
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  description: URL of the RSS feed
+                path:
+                  type: string
+                  description: Optional folder path to add the feed to
+      responses:
+        '201':
+          description: Feed added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WarningResponse'
+        '400':
+          description: Invalid request
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to add RSS feed
+
+  /api/instances/{instanceID}/rss/feeds/url:
+    put:
+      tags:
+        - RSS
+      summary: Set feed URL
+      description: Change the URL of an existing RSS feed
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - path
+                - url
+              properties:
+                path:
+                  type: string
+                  description: Path of the feed
+                url:
+                  type: string
+                  format: uri
+                  description: New URL for the feed
+      responses:
+        '200':
+          description: Feed URL updated successfully
+        '400':
+          description: Invalid request
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to set RSS feed URL
+
+  /api/instances/{instanceID}/rss/articles/read:
+    post:
+      tags:
+        - RSS
+      summary: Mark articles as read
+      description: Mark RSS articles as read
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - itemPath
+              properties:
+                itemPath:
+                  type: string
+                  description: Path of the feed
+                articleId:
+                  type: string
+                  description: Optional specific article ID (omit to mark all as read)
+      responses:
+        '200':
+          description: Articles marked as read successfully
+        '400':
+          description: Invalid request
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to mark RSS item as read
+
+  # RSS Rules Management
+  /api/instances/{instanceID}/rss/rules:
+    get:
+      tags:
+        - RSS
+      summary: Get RSS rules
+      description: Retrieve all RSS auto-download rules
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: Rules retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: '#/components/schemas/RSSAutoDownloadRule'
+        '400':
+          description: Invalid instance ID
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to get RSS rules
+    post:
+      tags:
+        - RSS
+      summary: Create or update RSS rule
+      description: Create a new rule or update an existing one
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - rule
+              properties:
+                name:
+                  type: string
+                  description: Name of the rule
+                rule:
+                  $ref: '#/components/schemas/RSSAutoDownloadRule'
+      responses:
+        '201':
+          description: Rule created/updated successfully
+        '400':
+          description: Invalid request
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to set RSS rule
+
+  /api/instances/{instanceID}/rss/rules/reprocess:
+    post:
+      tags:
+        - RSS
+      summary: Reprocess RSS rules
+      description: Trigger qBittorrent to reprocess all unread articles against rules
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: Reprocessing triggered successfully
+        '400':
+          description: Invalid instance ID
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to reprocess RSS rules
+
+  /api/instances/{instanceID}/rss/rules/{ruleName}:
+    delete:
+      tags:
+        - RSS
+      summary: Delete RSS rule
+      description: Delete an RSS auto-download rule
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: ruleName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the rule to delete
+      responses:
+        '200':
+          description: Rule deleted successfully
+        '400':
+          description: Invalid request
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to remove RSS rule
+
+  /api/instances/{instanceID}/rss/rules/{ruleName}/rename:
+    put:
+      tags:
+        - RSS
+      summary: Rename RSS rule
+      description: Rename an existing RSS auto-download rule
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: ruleName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Current name of the rule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - newName
+              properties:
+                newName:
+                  type: string
+                  description: New name for the rule
+      responses:
+        '200':
+          description: Rule renamed successfully
+        '400':
+          description: Invalid request
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to rename RSS rule
+
+  /api/instances/{instanceID}/rss/rules/{ruleName}/preview:
+    get:
+      tags:
+        - RSS
+      summary: Preview RSS rule matches
+      description: Get articles that would match an RSS rule
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: ruleName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the rule to preview
+      responses:
+        '200':
+          description: Matching articles retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    type: string
+        '400':
+          description: Invalid request
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to get RSS matching articles
+
   # Orphan File Scanning
   /api/instances/{instanceID}/orphan-scan/settings:
     get:
@@ -4738,6 +5184,146 @@ components:
         savePath:
           type: string
 
+    WarningResponse:
+      type: object
+      properties:
+        warning:
+          type: string
+          description: Warning message about partial success
+
+    RSSItems:
+      type: object
+      additionalProperties:
+        oneOf:
+          - $ref: '#/components/schemas/RSSFeed'
+          - $ref: '#/components/schemas/RSSItems'
+      description: Map of RSS feeds and folders (recursive structure)
+
+    RSSFeed:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+        title:
+          type: string
+        lastBuildDate:
+          type: string
+        isLoading:
+          type: boolean
+        hasError:
+          type: boolean
+        articles:
+          type: array
+          items:
+            $ref: '#/components/schemas/RSSArticle'
+
+    RSSArticle:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        torrentURL:
+          type: string
+        link:
+          type: string
+        description:
+          type: string
+        date:
+          type: string
+          format: date-time
+        author:
+          type: string
+        isRead:
+          type: boolean
+
+    RSSAutoDownloadRule:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        priority:
+          type: integer
+        mustContain:
+          type: string
+        mustNotContain:
+          type: string
+        episodeFilter:
+          type: string
+        useRegex:
+          type: boolean
+        affectedFeeds:
+          type: array
+          items:
+            type: string
+        ignoreDays:
+          type: integer
+        lastMatch:
+          type: string
+        smartFilter:
+          type: boolean
+        previouslyMatchedEpisodes:
+          type: array
+          items:
+            type: string
+        torrentParams:
+          $ref: '#/components/schemas/RSSRuleTorrentParams'
+        savePath:
+          type: string
+          description: Legacy field
+        assignedCategory:
+          type: string
+          description: Legacy field
+        addPaused:
+          type: boolean
+          nullable: true
+          description: Legacy field
+
+    RSSRuleTorrentParams:
+      type: object
+      properties:
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        save_path:
+          type: string
+        download_path:
+          type: string
+        content_layout:
+          type: string
+        operating_mode:
+          type: string
+        skip_checking:
+          type: boolean
+        upload_limit:
+          type: integer
+        download_limit:
+          type: integer
+        seeding_time_limit:
+          type: integer
+        inactive_seeding_time_limit:
+          type: integer
+        share_limit_action:
+          type: string
+        ratio_limit:
+          type: number
+          format: double
+        stopped:
+          type: boolean
+        stop_condition:
+          type: string
+        use_auto_tmm:
+          type: boolean
+        use_download_path:
+          type: boolean
+        add_to_top_of_queue:
+          type: boolean
+
     OrphanScanSettings:
       type: object
       properties:
@@ -4893,6 +5479,8 @@ tags:
     description: Tag management
   - name: Cross-Seed
     description: Cross-seeding operations for finding and adding duplicate torrents
+  - name: RSS
+    description: RSS feed and auto-download rule management
   - name: Orphan Scan
     description: Orphan file scanning and cleanup (files on disk not associated with any torrent)
   - name: Theme Licenses
