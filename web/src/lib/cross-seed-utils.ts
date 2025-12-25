@@ -5,11 +5,36 @@
 
 import { api } from "@/lib/api"
 import type { Instance, Torrent, TorrentFile } from "@/types"
-import { useQuery, useQueries } from "@tanstack/react-query"
+import { useQueries, useQuery } from "@tanstack/react-query"
 import { useMemo } from "react"
 
 // Cross-seed matching utilities
 export const normalizePath = (path: string) => path?.toLowerCase().replace(/[\\\/]+/g, '/').replace(/\/$/, '') || ''
+
+/**
+ * Check if a path is inside a base directory.
+ * Returns true if base is non-empty and path equals base or starts with base + "/".
+ */
+export const isInsideBase = (path: string, base: string): boolean => {
+  if (!base) return false
+  return path === base || path.startsWith(base + "/")
+}
+
+/**
+ * Check if a torrent is hardlink-managed based on instance config and paths.
+ * Only returns true if the instance has hardlink mode enabled AND has local access.
+ */
+export const isHardlinkManaged = (
+  match: { save_path?: string; content_path?: string },
+  instance: { useHardlinks?: boolean; hasLocalFilesystemAccess?: boolean; hardlinkBaseDir?: string } | undefined
+): boolean => {
+  if (!instance?.useHardlinks || !instance?.hasLocalFilesystemAccess) return false
+  const base = normalizePath(instance.hardlinkBaseDir || "")
+  if (!base) return false
+  const savePath = normalizePath(match.save_path || "")
+  const contentPath = normalizePath(match.content_path || "")
+  return isInsideBase(savePath, base) || isInsideBase(contentPath, base)
+}
 export const normalizeName = (name: string) => name?.toLowerCase().trim() || ''
 
 export const getBaseFileName = (path: string): string => {
@@ -22,6 +47,104 @@ export const normalizeFileName = (name: string): string => {
   return name.toLowerCase()
     .replace(/\.(mkv|mp4|avi|mov|wmv|flv|webm|m4v|mpg|mpeg)$/i, '') // Remove extension
     .replace(/[._\-\s]+/g, '') // Remove separators
+}
+
+/** Season and episode information parsed from a torrent name */
+export type SeasonEpisodeInfo = {
+  season: number | null
+  episodes: number[]
+  isSeasonPack: boolean
+}
+
+/**
+ * Parse season and episode information from a torrent name.
+ * Handles patterns like: S01, S01E24, S01E01E02, S01E01-E03
+ */
+export const parseSeasonEpisodeInfo = (name: string): SeasonEpisodeInfo => {
+  const lower = name.toLowerCase()
+
+  // Extract season number (S01, S1, etc.) with word boundaries to avoid false matches
+  // Allow 'e' after digits (for S01E05) or non-alphanumeric/end of string
+  const seasonMatch = lower.match(/(?:^|[^a-z0-9])s(\d{1,2})(?:e|[^a-z0-9]|$)/)
+  if (!seasonMatch) {
+    return { season: null, episodes: [], isSeasonPack: false }
+  }
+
+  const season = parseInt(seasonMatch[1], 10)
+  const episodes: number[] = []
+
+  // Try range pattern first (S01E01-E03 or S01E01-03)
+  const rangeMatch = lower.match(/s\d{1,2}e(\d{1,3})-e?(\d{1,3})/)
+  if (rangeMatch) {
+    const start = parseInt(rangeMatch[1], 10)
+    const end = parseInt(rangeMatch[2], 10)
+    for (let i = start; i <= end; i++) {
+      episodes.push(i)
+    }
+  } else {
+    // Try multiple episode pattern (S01E01E02)
+    const multiMatch = lower.match(/s\d{1,2}((?:e\d{1,3})+)/)
+    if (multiMatch) {
+      const episodePart = multiMatch[1]
+      const epMatches = episodePart.matchAll(/e(\d{1,3})/g)
+      for (const m of epMatches) {
+        episodes.push(parseInt(m[1], 10))
+      }
+    }
+  }
+
+  return {
+    season,
+    episodes,
+    isSeasonPack: episodes.length === 0,
+  }
+}
+
+/**
+ * Check if two torrents have compatible season/episode info for cross-seeding.
+ * Returns false if they're incompatible (e.g., season pack vs single episode).
+ */
+export const hasCompatibleSeasonEpisodes = (name1: string, name2: string): boolean => {
+  const a = parseSeasonEpisodeInfo(name1)
+  const b = parseSeasonEpisodeInfo(name2)
+
+  // If neither has season info, no TV filtering applies
+  if (a.season === null && b.season === null) {
+    return true
+  }
+
+  // If only one has season info, they're probably different content types
+  if (a.season === null || b.season === null) {
+    return true // Allow - could be movie vs other content
+  }
+
+  // Both have seasons - must match
+  if (a.season !== b.season) {
+    return false
+  }
+
+  // Same season - check episode compatibility
+  // If one is a season pack and the other has episodes, block
+  if (a.isSeasonPack !== b.isSeasonPack) {
+    return false
+  }
+
+  // Both are season packs or both have episodes
+  if (a.episodes.length > 0 && b.episodes.length > 0) {
+    // Both have episodes - require exact same episodes
+    if (a.episodes.length !== b.episodes.length) {
+      return false
+    }
+    const aSorted = [...a.episodes].sort((x, y) => x - y)
+    const bSorted = [...b.episodes].sort((x, y) => x - y)
+    for (let i = 0; i < aSorted.length; i++) {
+      if (aSorted[i] !== bSorted[i]) {
+        return false
+      }
+    }
+  }
+
+  return true
 }
 
 /** Release modifiers that indicate different versions of the same content */
@@ -221,6 +344,11 @@ export const searchCrossSeedMatches = async (
         return false
       }
 
+      // Check season/episode compatibility - don't match season packs with individual episodes
+      if (!hasCompatibleSeasonEpisodes(torrent.name, t.name)) {
+        return false
+      }
+
       const currentBaseFile = getBaseFileName(torrent.name)
       const otherBaseFile = getBaseFileName(t.name)
 
@@ -313,14 +441,18 @@ export const searchCrossSeedMatches = async (
     const enrichedMatches = finalMatches.map((t: Torrent): CrossSeedTorrent => {
       // Determine match type for display
       let matchType: CrossSeedTorrent['matchType'] = 'name'
-      if ((resolvedInfohashV1 && t.infohash_v1 === resolvedInfohashV1) || 
+      if ((resolvedInfohashV1 && t.infohash_v1 === resolvedInfohashV1) ||
           (resolvedInfohashV2 && t.infohash_v2 === resolvedInfohashV2)) {
         matchType = 'infohash'
       } else if (normalizedContentPath && normalizePath(t.content_path) === normalizedContentPath) {
         matchType = 'content_path'
-      } else if (torrent.save_path && normalizePath(t.save_path) === normalizePath(torrent.save_path)) {
+      } else if (
+        torrent.save_path &&
+        normalizePath(t.save_path) === normalizePath(torrent.save_path) &&
+        normalizeFileName(getBaseFileName(t.name)) === normalizeFileName(getBaseFileName(torrent.name))
+      ) {
+        // Only label as save_path when it's truly the same file (same path AND same base filename)
         matchType = 'save_path'
-      } else {
       }
       
       return { ...t, instanceId: instance.id, instanceName: instance.name, matchType }
