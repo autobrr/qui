@@ -187,7 +187,7 @@ services:
     environment:
       PUID: "1000"
       PGID: "1000"
-      UMASK: "022"  # optional
+      UMASK: "002"  # optional
     volumes:
       - ./qui:/config
     ports:
@@ -199,7 +199,7 @@ services:
 docker run -d \
   -e PUID=1000 \
   -e PGID=1000 \
-  -e UMASK=022 \
+  -e UMASK=002 \
   -p 7476:7476 \
   -v $(pwd)/config:/config \
   ghcr.io/autobrr/qui:latest

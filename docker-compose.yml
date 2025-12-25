@@ -20,8 +20,8 @@ services:
       #PGID: "1000"
 
       # File creation mask (optional)
-      # Example: 022 for rw-r--r-- files and rwxr-xr-x dirs
-      #UMASK: "022"
+      # Example: 002 for rw-rw-r-- files and rwxrwxr-x dirs
+      #UMASK: "002"
 
       # WARNING: Using 'user:' in compose bypasses the entrypoint's
       # chown and privilege-drop behavior. Use PUID/PGID instead.
