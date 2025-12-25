@@ -865,7 +865,7 @@ Pay what you want (minimum $4.99) to unlock premium themes:
 - After paying, DM soup/ze0s on Discord (depending on who you paid to)
   - For crypto, include the transaction hash/link
 - You'll receive a 100% discount code
-- Redeem the code on Polar (free order) to receive your license key: https://buy.polar.sh/polar_cl_yyXJesVM9pFVfAPIplspbfCukgVgXzXjXIc2N0I8WcL
+- Redeem the code on [Polar](https://buy.polar.sh/polar_cl_yyXJesVM9pFVfAPIplspbfCukgVgXzXjXIc2N0I8WcL) (free order) to receive your license key
 - Enter the license key in Settings → Themes in your qui instance
 - License is lifetime
 
