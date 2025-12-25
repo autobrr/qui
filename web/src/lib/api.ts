@@ -41,6 +41,10 @@ import type {
   InstanceReannounceActivity,
   InstanceReannounceCandidate,
   InstanceResponse,
+  OrphanScanRun,
+  OrphanScanRunWithFiles,
+  OrphanScanSettings,
+  OrphanScanSettingsUpdate,
   QBittorrentAppInfo,
   RestoreMode,
   RestorePlan,
@@ -70,8 +74,11 @@ import type {
   TorznabSearchResult,
   TrackerCustomization,
   TrackerCustomizationInput,
-  TrackerRule,
-  TrackerRuleInput,
+  Automation,
+  AutomationActivity,
+  AutomationInput,
+  AutomationPreviewInput,
+  AutomationPreviewResult,
   User,
   DashboardSettings,
   DashboardSettingsInput
@@ -1276,40 +1283,58 @@ class ApiClient {
     return this.request(`/instances/${instanceId}/trackers`)
   }
 
-  async listTrackerRules(instanceId: number): Promise<TrackerRule[]> {
-    return this.request(`/instances/${instanceId}/tracker-rules`)
+  async listAutomations(instanceId: number): Promise<Automation[]> {
+    return this.request(`/instances/${instanceId}/automations`)
   }
 
-  async createTrackerRule(instanceId: number, payload: TrackerRuleInput): Promise<TrackerRule> {
-    return this.request(`/instances/${instanceId}/tracker-rules`, {
+  async createAutomation(instanceId: number, payload: AutomationInput): Promise<Automation> {
+    return this.request(`/instances/${instanceId}/automations`, {
       method: "POST",
       body: JSON.stringify(payload),
     })
   }
 
-  async updateTrackerRule(instanceId: number, ruleId: number, payload: TrackerRuleInput): Promise<TrackerRule> {
-    return this.request(`/instances/${instanceId}/tracker-rules/${ruleId}`, {
+  async updateAutomation(instanceId: number, ruleId: number, payload: AutomationInput): Promise<Automation> {
+    return this.request(`/instances/${instanceId}/automations/${ruleId}`, {
       method: "PUT",
       body: JSON.stringify(payload),
     })
   }
 
-  async deleteTrackerRule(instanceId: number, ruleId: number): Promise<void> {
-    return this.request(`/instances/${instanceId}/tracker-rules/${ruleId}`, {
+  async deleteAutomation(instanceId: number, ruleId: number): Promise<void> {
+    return this.request(`/instances/${instanceId}/automations/${ruleId}`, {
       method: "DELETE",
     })
   }
 
-  async reorderTrackerRules(instanceId: number, orderedIds: number[]): Promise<void> {
-    return this.request(`/instances/${instanceId}/tracker-rules/order`, {
+  async reorderAutomations(instanceId: number, orderedIds: number[]): Promise<void> {
+    return this.request(`/instances/${instanceId}/automations/order`, {
       method: "PUT",
       body: JSON.stringify({ orderedIds }),
     })
   }
 
-  async applyTrackerRules(instanceId: number): Promise<void> {
-    return this.request(`/instances/${instanceId}/tracker-rules/apply`, {
+  async applyAutomations(instanceId: number): Promise<void> {
+    return this.request(`/instances/${instanceId}/automations/apply`, {
       method: "POST",
+    })
+  }
+
+  async getAutomationActivity(instanceId: number, limit?: number): Promise<AutomationActivity[]> {
+    const query = typeof limit === "number" ? `?limit=${limit}` : ""
+    return this.request<AutomationActivity[]>(`/instances/${instanceId}/automations/activity${query}`)
+  }
+
+  async deleteAutomationActivity(instanceId: number, olderThanDays: number): Promise<{ deleted: number }> {
+    return this.request<{ deleted: number }>(`/instances/${instanceId}/automations/activity?older_than=${olderThanDays}`, {
+      method: "DELETE",
+    })
+  }
+
+  async previewAutomation(instanceId: number, payload: AutomationPreviewInput): Promise<AutomationPreviewResult> {
+    return this.request<AutomationPreviewResult>(`/instances/${instanceId}/automations/preview`, {
+      method: "POST",
+      body: JSON.stringify(payload),
     })
   }
 
@@ -1710,6 +1735,75 @@ class ApiClient {
 
   async getIndexerStats(id: number): Promise<TorznabIndexerLatencyStats[]> {
     return this.request<TorznabIndexerLatencyStats[]>(`/torznab/indexers/${id}/stats`)
+  }
+
+  // Orphan Scan endpoints
+  async getOrphanScanSettings(instanceId: number): Promise<OrphanScanSettings> {
+    return this.request<OrphanScanSettings>(`/instances/${instanceId}/orphan-scan/settings`)
+  }
+
+  async updateOrphanScanSettings(
+    instanceId: number,
+    payload: OrphanScanSettingsUpdate
+  ): Promise<OrphanScanSettings> {
+    return this.request<OrphanScanSettings>(`/instances/${instanceId}/orphan-scan/settings`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async triggerOrphanScan(instanceId: number): Promise<{ runId: number }> {
+    return this.request<{ runId: number }>(`/instances/${instanceId}/orphan-scan/scan`, {
+      method: "POST",
+    })
+  }
+
+  async listOrphanScanRuns(
+    instanceId: number,
+    params?: { limit?: number }
+  ): Promise<OrphanScanRun[]> {
+    const search = new URLSearchParams()
+    if (params?.limit !== undefined) search.set("limit", params.limit.toString())
+
+    const query = search.toString()
+    const suffix = query ? `?${query}` : ""
+    return this.request<OrphanScanRun[]>(`/instances/${instanceId}/orphan-scan/runs${suffix}`)
+  }
+
+  async getOrphanScanRun(
+    instanceId: number,
+    runId: number,
+    params?: { limit?: number; offset?: number }
+  ): Promise<OrphanScanRunWithFiles> {
+    const search = new URLSearchParams()
+    if (params?.limit !== undefined) search.set("limit", params.limit.toString())
+    if (params?.offset !== undefined) search.set("offset", params.offset.toString())
+
+    const query = search.toString()
+    const suffix = query ? `?${query}` : ""
+    return this.request<OrphanScanRunWithFiles>(
+      `/instances/${instanceId}/orphan-scan/runs/${runId}${suffix}`
+    )
+  }
+
+  async confirmOrphanScanDeletion(
+    instanceId: number,
+    runId: number
+  ): Promise<{ status: string }> {
+    return this.request<{ status: string }>(
+      `/instances/${instanceId}/orphan-scan/runs/${runId}/confirm`,
+      { method: "POST" }
+    )
+  }
+
+  async cancelOrphanScanRun(
+    instanceId: number,
+    runId: number
+  ): Promise<{ status: string }> {
+    return this.request<{ status: string }>(
+      `/instances/${instanceId}/orphan-scan/runs/${runId}`,
+      { method: "DELETE" }
+    )
   }
 }
 

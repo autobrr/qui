@@ -166,17 +166,18 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 		case <-ctx.Done():
 			// Handle context cancellation gracefully
 			responses[i] = InstanceResponse{
-				ID:                 instances[i].ID,
-				Name:               instances[i].Name,
-				Host:               instances[i].Host,
-				Username:           instances[i].Username,
-				BasicUsername:      instances[i].BasicUsername,
-				TLSSkipVerify:      instances[i].TLSSkipVerify,
-				Connected:          false,
-				HasDecryptionError: false,
-				SortOrder:          instances[i].SortOrder,
-				IsActive:           instances[i].IsActive,
-				ReannounceSettings: payloadFromModel(models.DefaultInstanceReannounceSettings(instances[i].ID)),
+				ID:                       instances[i].ID,
+				Name:                     instances[i].Name,
+				Host:                     instances[i].Host,
+				Username:                 instances[i].Username,
+				BasicUsername:            instances[i].BasicUsername,
+				TLSSkipVerify:            instances[i].TLSSkipVerify,
+				HasLocalFilesystemAccess: instances[i].HasLocalFilesystemAccess,
+				Connected:                false,
+				HasDecryptionError:       false,
+				SortOrder:                instances[i].SortOrder,
+				IsActive:                 instances[i].IsActive,
+				ReannounceSettings:       payloadFromModel(models.DefaultInstanceReannounceSettings(instances[i].ID)),
 				ConnectionStatus: func(active bool) string {
 					if !active {
 						return "disabled"
@@ -209,17 +210,18 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 	hasDecryptionError := slices.Contains(decryptionErrorInstances, instance.ID)
 
 	response := InstanceResponse{
-		ID:                 instance.ID,
-		Name:               instance.Name,
-		Host:               instance.Host,
-		Username:           instance.Username,
-		BasicUsername:      instance.BasicUsername,
-		TLSSkipVerify:      instance.TLSSkipVerify,
-		Connected:          healthy,
-		HasDecryptionError: hasDecryptionError,
-		ConnectionStatus:   connectionStatus,
-		SortOrder:          instance.SortOrder,
-		IsActive:           instance.IsActive,
+		ID:                       instance.ID,
+		Name:                     instance.Name,
+		Host:                     instance.Host,
+		Username:                 instance.Username,
+		BasicUsername:            instance.BasicUsername,
+		TLSSkipVerify:            instance.TLSSkipVerify,
+		HasLocalFilesystemAccess: instance.HasLocalFilesystemAccess,
+		Connected:                healthy,
+		HasDecryptionError:       hasDecryptionError,
+		ConnectionStatus:         connectionStatus,
+		SortOrder:                instance.SortOrder,
+		IsActive:                 instance.IsActive,
 	}
 
 	response.ReannounceSettings = h.getReannounceSettingsPayload(ctx, instance.ID)
@@ -245,17 +247,18 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 		connectionStatus = "disabled"
 	}
 	return InstanceResponse{
-		ID:                 instance.ID,
-		Name:               instance.Name,
-		Host:               instance.Host,
-		Username:           instance.Username,
-		BasicUsername:      instance.BasicUsername,
-		TLSSkipVerify:      instance.TLSSkipVerify,
-		Connected:          false, // Will be updated asynchronously
-		HasDecryptionError: false,
-		SortOrder:          instance.SortOrder,
-		IsActive:           instance.IsActive,
-		ConnectionStatus:   connectionStatus,
+		ID:                       instance.ID,
+		Name:                     instance.Name,
+		Host:                     instance.Host,
+		Username:                 instance.Username,
+		BasicUsername:            instance.BasicUsername,
+		TLSSkipVerify:            instance.TLSSkipVerify,
+		HasLocalFilesystemAccess: instance.HasLocalFilesystemAccess,
+		Connected:                false, // Will be updated asynchronously
+		HasDecryptionError:       false,
+		SortOrder:                instance.SortOrder,
+		IsActive:                 instance.IsActive,
+		ConnectionStatus:         connectionStatus,
 	}
 }
 
@@ -322,26 +325,28 @@ func (h *InstancesHandler) persistReannounceSettings(ctx context.Context, instan
 
 // CreateInstanceRequest represents a request to create a new instance
 type CreateInstanceRequest struct {
-	Name               string                             `json:"name"`
-	Host               string                             `json:"host"`
-	Username           string                             `json:"username"`
-	Password           string                             `json:"password"`
-	BasicUsername      *string                            `json:"basicUsername,omitempty"`
-	BasicPassword      *string                            `json:"basicPassword,omitempty"`
-	TLSSkipVerify      bool                               `json:"tlsSkipVerify,omitempty"`
-	ReannounceSettings *InstanceReannounceSettingsPayload `json:"reannounceSettings,omitempty"`
+	Name                     string                             `json:"name"`
+	Host                     string                             `json:"host"`
+	Username                 string                             `json:"username"`
+	Password                 string                             `json:"password"`
+	BasicUsername            *string                            `json:"basicUsername,omitempty"`
+	BasicPassword            *string                            `json:"basicPassword,omitempty"`
+	TLSSkipVerify            bool                               `json:"tlsSkipVerify,omitempty"`
+	HasLocalFilesystemAccess *bool                              `json:"hasLocalFilesystemAccess,omitempty"`
+	ReannounceSettings       *InstanceReannounceSettingsPayload `json:"reannounceSettings,omitempty"`
 }
 
 // UpdateInstanceRequest represents a request to update an instance
 type UpdateInstanceRequest struct {
-	Name               string                             `json:"name"`
-	Host               string                             `json:"host"`
-	Username           string                             `json:"username"`
-	Password           string                             `json:"password,omitempty"` // Optional for updates
-	BasicUsername      *string                            `json:"basicUsername,omitempty"`
-	BasicPassword      *string                            `json:"basicPassword,omitempty"`
-	TLSSkipVerify      *bool                              `json:"tlsSkipVerify,omitempty"`
-	ReannounceSettings *InstanceReannounceSettingsPayload `json:"reannounceSettings,omitempty"`
+	Name                     string                             `json:"name"`
+	Host                     string                             `json:"host"`
+	Username                 string                             `json:"username"`
+	Password                 string                             `json:"password,omitempty"` // Optional for updates
+	BasicUsername            *string                            `json:"basicUsername,omitempty"`
+	BasicPassword            *string                            `json:"basicPassword,omitempty"`
+	TLSSkipVerify            *bool                              `json:"tlsSkipVerify,omitempty"`
+	HasLocalFilesystemAccess *bool                              `json:"hasLocalFilesystemAccess,omitempty"`
+	ReannounceSettings       *InstanceReannounceSettingsPayload `json:"reannounceSettings,omitempty"`
 }
 
 type UpdateInstanceStatusRequest struct {
@@ -350,19 +355,20 @@ type UpdateInstanceStatusRequest struct {
 
 // InstanceResponse represents an instance in API responses
 type InstanceResponse struct {
-	ID                 int                               `json:"id"`
-	Name               string                            `json:"name"`
-	Host               string                            `json:"host"`
-	Username           string                            `json:"username"`
-	BasicUsername      *string                           `json:"basicUsername,omitempty"`
-	TLSSkipVerify      bool                              `json:"tlsSkipVerify"`
-	Connected          bool                              `json:"connected"`
-	HasDecryptionError bool                              `json:"hasDecryptionError"`
-	RecentErrors       []models.InstanceError            `json:"recentErrors,omitempty"`
-	ConnectionStatus   string                            `json:"connectionStatus,omitempty"`
-	SortOrder          int                               `json:"sortOrder"`
-	IsActive           bool                              `json:"isActive"`
-	ReannounceSettings InstanceReannounceSettingsPayload `json:"reannounceSettings"`
+	ID                       int                               `json:"id"`
+	Name                     string                            `json:"name"`
+	Host                     string                            `json:"host"`
+	Username                 string                            `json:"username"`
+	BasicUsername            *string                           `json:"basicUsername,omitempty"`
+	TLSSkipVerify            bool                              `json:"tlsSkipVerify"`
+	HasLocalFilesystemAccess bool                              `json:"hasLocalFilesystemAccess"`
+	Connected                bool                              `json:"connected"`
+	HasDecryptionError       bool                              `json:"hasDecryptionError"`
+	RecentErrors             []models.InstanceError            `json:"recentErrors,omitempty"`
+	ConnectionStatus         string                            `json:"connectionStatus,omitempty"`
+	SortOrder                int                               `json:"sortOrder"`
+	IsActive                 bool                              `json:"isActive"`
+	ReannounceSettings       InstanceReannounceSettingsPayload `json:"reannounceSettings"`
 }
 
 // InstanceReannounceSettingsPayload carries tracker monitoring config.
@@ -536,7 +542,7 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	// Create instance
-	instance, err := h.instanceStore.Create(r.Context(), req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify)
+	instance, err := h.instanceStore.Create(r.Context(), req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify, req.HasLocalFilesystemAccess)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create instance")
 		RespondError(w, http.StatusInternalServerError, "Failed to create instance")
@@ -603,7 +609,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	// Update instance
-	instance, err := h.instanceStore.Update(r.Context(), instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify)
+	instance, err := h.instanceStore.Update(r.Context(), instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify, req.HasLocalFilesystemAccess)
 	if err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusNotFound, "Instance not found")
