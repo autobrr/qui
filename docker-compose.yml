@@ -10,6 +10,22 @@ services:
     volumes:
       - ./qui:/config
     environment:
+      # User/Group ID for file ownership (optional)
+      # When set, the entrypoint will:
+      # 1. Create a user/group with the specified IDs
+      # 2. Recursively chown /config to PUID:PGID
+      # 3. Run qui as that user
+      # Leave unset to run as root (container default)
+      #PUID: "1000"
+      #PGID: "1000"
+
+      # File creation mask (optional)
+      # Example: 022 for rw-r--r-- files and rwxr-xr-x dirs
+      #UMASK: "022"
+
+      # WARNING: Using 'user:' in compose bypasses the entrypoint's
+      # chown and privilege-drop behavior. Use PUID/PGID instead.
+
       # Server configuration
       # Default: 0.0.0.0 in containers
       #QUI__HOST: "0.0.0.0"
