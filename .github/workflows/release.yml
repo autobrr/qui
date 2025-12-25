@@ -36,7 +36,7 @@ permissions:
 jobs:
   web:
     name: Build web
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -101,7 +101,7 @@ jobs:
 
   test:
     name: Run tests
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     needs: [web]
     steps:
       - name: Checkout
@@ -145,7 +145,7 @@ jobs:
 
   goreleaserbuild:
     name: Build distribution binaries
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     needs: [test, web]
     steps:
       - name: Checkout
@@ -199,7 +199,7 @@ jobs:
 
   docker:
     name: Build Docker images
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     needs: [test, web]
     strategy:
       fail-fast: true
@@ -286,7 +286,7 @@ jobs:
   docker-merge:
     name: Publish Docker multi-arch manifest
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     needs: [docker]
     steps:
       - name: Download image digests
