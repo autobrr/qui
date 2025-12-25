@@ -45,6 +45,19 @@ func (s *Service) alignCrossSeedContentPaths(
 	sourceRelease := s.releaseCache.Parse(sourceTorrentName)
 	matchedRelease := s.releaseCache.Parse(matchedTorrent.Name)
 
+	// Safety check: reject forbidden pairing (season pack from episode) at alignment stage.
+	// This should have been caught earlier, but serves as a defense-in-depth guard.
+	// Returns false so callers know alignment did not succeed (prevents recheck/resume logic).
+	if reject, _ := rejectSeasonPackFromEpisode(sourceRelease, matchedRelease, true); reject {
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("torrentHash", torrentHash).
+			Str("sourceName", sourceTorrentName).
+			Str("matchedName", matchedTorrent.Name).
+			Msg("Skipping alignment: season pack cannot use single-episode files")
+		return false
+	}
+
 	if len(expectedSourceFiles) == 0 || len(candidateFiles) == 0 {
 		log.Debug().
 			Int("instanceID", instanceID).
@@ -510,17 +523,21 @@ func adjustPathForRootRename(path, oldRoot, newRoot string) string {
 }
 
 func shouldRenameTorrentDisplay(newRelease, matchedRelease *rls.Release) bool {
-	// Keep episode torrents named after the episode even when pointing at season pack files
-	if newRelease.Series > 0 && newRelease.Episode > 0 &&
-		matchedRelease.Series > 0 && matchedRelease.Episode == 0 {
+	// Keep episode torrents named after the episode even when pointing at season pack files.
+	if isTVEpisode(newRelease) && isTVSeasonPack(matchedRelease) {
+		return false
+	}
+	// Keep season pack torrents named as season packs; never rename a season pack to an episode.
+	// This is the forbidden pairing (season pack from episode) - also reject rename.
+	if reject, _ := rejectSeasonPackFromEpisode(newRelease, matchedRelease, true); reject {
 		return false
 	}
 	return true
 }
 
 func shouldAlignFilesWithCandidate(newRelease, matchedRelease *rls.Release) bool {
-	if newRelease.Series > 0 && newRelease.Episode > 0 &&
-		matchedRelease.Series > 0 && matchedRelease.Episode == 0 {
+	// Episode pointing at season pack files: don't align files (episode uses subset of pack).
+	if isTVEpisode(newRelease) && isTVSeasonPack(matchedRelease) {
 		return false
 	}
 	return true
