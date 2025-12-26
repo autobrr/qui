@@ -233,11 +233,26 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		return false
 	}
 
-	// Resolution must match if both are present (1080p vs 2160p are different files)
+	// Resolution must match (1080p vs 2160p are different files).
+	// Exception: empty resolution is allowed to match SD resolutions (480p, 576p, SD).
 	sourceRes := s.stringNormalizer.Normalize((source.Resolution))
 	candidateRes := s.stringNormalizer.Normalize((candidate.Resolution))
-	if sourceRes != "" && candidateRes != "" && sourceRes != candidateRes {
-		return false
+	if sourceRes != candidateRes {
+		// rls omits resolution for many SD releases (e.g. "WEB" without "480p"), so
+		// treat an empty resolution as a match only when the other side is clearly SD.
+		isKnownSD := func(res string) bool {
+			switch strings.ToUpper(strings.TrimSpace(res)) {
+			case "480P", "576P", "SD":
+				return true
+			default:
+				return false
+			}
+		}
+
+		sdFallbackAllowed := (sourceRes == "" && isKnownSD(candidateRes)) || (candidateRes == "" && isKnownSD(sourceRes))
+		if !sdFallbackAllowed {
+			return false
+		}
 	}
 
 	// Collection must match if either is present (NF vs AMZN vs Criterion are different sources)
@@ -290,11 +305,17 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		}
 	}
 
-	// Language must match if both are present (FRENCH vs ENGLISH are different audio/subs)
-	if len(source.Language) > 0 && len(candidate.Language) > 0 {
-		sourceLanguage := joinNormalizedSlice(source.Language)
-		candidateLanguage := joinNormalizedSlice(candidate.Language)
-		if sourceLanguage != candidateLanguage {
+	// Language must match (FRENCH vs ENGLISH are different audio/subs).
+	// Exception: empty language is treated as equivalent to ENGLISH since most
+	// English releases omit the language tag entirely.
+	sourceLanguage := joinNormalizedSlice(source.Language)
+	candidateLanguage := joinNormalizedSlice(candidate.Language)
+	if sourceLanguage != candidateLanguage {
+		// Allow empty-vs-ENGLISH since unlabeled releases are typically English.
+		isEnglishOrEmpty := func(lang string) bool {
+			return lang == "" || lang == "ENGLISH"
+		}
+		if !(isEnglishOrEmpty(sourceLanguage) && isEnglishOrEmpty(candidateLanguage)) {
 			return false
 		}
 	}
