@@ -916,6 +916,7 @@ Pay what you want (minimum $9.99) to unlock premium themes:
   - [Buy Me a Coffee](https://buymeacoffee.com/s0up4200)
 - **zze0s**
   - [GitHub Sponsors](https://github.com/zze0s)
+  - [Buy Me a Coffee](https://buymeacoffee.com/ze0s)
 
 #### Cryptocurrency
 
