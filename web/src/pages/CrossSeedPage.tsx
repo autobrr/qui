@@ -1240,13 +1240,15 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         <AlertTitle>How cross-seeding works</AlertTitle>
         <AlertDescription className="space-y-1">
           <p>
-            qui inherits the <strong>Automatic Torrent Management (AutoTMM)</strong> state from the matched torrent.
-            If the source uses AutoTMM, the cross-seed will too; if the source has a custom save path, the cross-seed uses the same path.
-            Files are reused directly without hardlinking.
+            <strong>Reuse mode</strong> (default): inherits AutoTMM/save path behavior from the matched torrent and reuses the existing files.
+          </p>
+          <p>
+            <strong>Hardlink mode</strong> (optional, per-instance): hardlinks the matched files into the instance's configured hardlink base directory and adds the cross-seed there.
+            Requires local filesystem access.
           </p>
           <p className="text-muted-foreground">
             <a
-              href="https://github.com/autobrr/qui#how-qui-differs-from-cross-seed"
+              href="https://github.com/autobrr/qui/blob/main/docs/CROSS_SEEDING.md"
               target="_blank"
               rel="noopener noreferrer"
               className="font-medium text-primary underline-offset-4 hover:underline"
