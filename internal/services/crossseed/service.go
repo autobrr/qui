@@ -72,6 +72,10 @@ type qbittorrentSync interface {
 	GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
 	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error
 	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
+	// DeleteTorrentsDirect deletes torrents without sync validation (use when torrent may not be in sync cache yet).
+	DeleteTorrentsDirect(ctx context.Context, instanceID int, hashes []string, deleteFiles bool) error
+	// RecheckTorrentDirect triggers recheck without sync validation (use when torrent may not be in sync cache yet).
+	RecheckTorrentDirect(ctx context.Context, instanceID int, hashes []string) error
 	GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error)
 	ExtractDomainFromURL(urlStr string) string
 	GetQBittorrentSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error)
@@ -326,6 +330,11 @@ type pendingResume struct {
 	// rollbackPlan is the hardlink tree plan used to create hardlinks; used for rollback
 	// if verification fails (delete torrent + remove created hardlinks).
 	rollbackPlan *hardlinktree.TreePlan
+
+	// seenInSync tracks whether the torrent has ever been found in the sync cache.
+	// For partial hardlinks: if not found but never seen, keep waiting (torrent may not be synced yet).
+	// If not found after being seen, the torrent truly disappeared and we should rollback.
+	seenInSync bool
 }
 
 // NewService creates a new cross-seed service
@@ -3296,12 +3305,23 @@ func (s *Service) recheckResumeWorker() {
 					req := pending[hash]
 					torrent, found := torrentByHash[strings.ToLower(hash)]
 					if !found {
-						// Torrent disappeared - for partial hardlinks, rollback the hardlinks
+						// For partial hardlinks, check if we should wait or rollback
 						if len(req.requiredFiles) > 0 && req.rollbackPlan != nil {
+							if !req.seenInSync {
+								// Torrent not in sync yet (newly added) - keep waiting
+								// The absolute timeout check at the top of the loop will handle timeout
+								log.Debug().
+									Int("instanceID", instanceID).
+									Str("hash", hash).
+									Dur("elapsed", time.Since(req.addedAt)).
+									Msg("Partial hardlink torrent not in sync yet, waiting for sync")
+								continue
+							}
+							// Torrent was seen before but disappeared - rollback
 							log.Warn().
 								Int("instanceID", instanceID).
 								Str("hash", hash).
-								Msg("Partial hardlink torrent disappeared - rolling back hardlinks")
+								Msg("Partial hardlink torrent disappeared after being seen - rolling back hardlinks")
 							if err := hardlinktree.Rollback(req.rollbackPlan); err != nil {
 								log.Error().
 									Err(err).
@@ -3317,6 +3337,15 @@ func (s *Service) recheckResumeWorker() {
 						}
 						delete(pending, hash)
 						continue
+					}
+
+					// Torrent found in sync - mark as seen for future "disappeared" detection
+					if len(req.requiredFiles) > 0 && !req.seenInSync {
+						req.seenInSync = true
+						log.Debug().
+							Int("instanceID", instanceID).
+							Str("hash", hash).
+							Msg("Partial hardlink torrent now visible in sync cache")
 					}
 
 					progress := torrent.Progress
@@ -3507,9 +3536,10 @@ func (s *Service) handlePartialHardlinkUnsafe(req *pendingResume, reason string)
 		Str("reason", reason).
 		Msg("Partial hardlink aborted - deleting torrent and rolling back hardlinks to protect source data")
 
-	// Delete the torrent (without deleting files - the hardlinks will be cleaned up separately)
+	// Delete the torrent using direct method (bypasses sync validation, which may not have the torrent yet).
+	// deleteFiles=false because we'll clean up hardlinks separately via rollback.
 	deleteCtx, deleteCancel := context.WithTimeout(s.recheckResumeCtx, recheckAPITimeout)
-	err := s.syncManager.BulkAction(deleteCtx, req.instanceID, []string{req.hash}, "delete")
+	err := s.syncManager.DeleteTorrentsDirect(deleteCtx, req.instanceID, []string{req.hash}, false)
 	deleteCancel()
 	if err != nil {
 		log.Error().
@@ -8759,36 +8789,20 @@ func (s *Service) processHardlinkMode(
 		}
 	}
 
-	// For partial hardlinks, trigger recheck and queue for VERIFICATION before resume.
+	// For partial hardlinks, queue for VERIFICATION before resume.
 	// This is a safety net: hardlinked files must be verified 100% complete before resuming,
 	// otherwise qBittorrent could overwrite hardlinked data with downloaded content.
 	if isPartialHardlink {
-		// Trigger recheck to verify existing hardlinked files
-		if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "recheck"); err != nil {
-			// Recheck failed - rollback hardlinks and fail
+		// Try to trigger recheck using direct method (bypasses sync validation).
+		// This is best-effort: if it fails, the verification worker will retry later.
+		// We don't rollback on recheck failure because the torrent was added successfully
+		// and the worker will handle verification once the torrent appears in sync.
+		if err := s.syncManager.RecheckTorrentDirect(ctx, candidate.InstanceID, []string{torrentHash}); err != nil {
 			log.Warn().
 				Err(err).
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
-				Msg("[CROSSSEED] Partial hardlink mode: failed to trigger recheck, rolling back")
-			if rollbackErr := hardlinktree.Rollback(plan); rollbackErr != nil {
-				log.Warn().Err(rollbackErr).Msg("[CROSSSEED] Partial hardlink mode: rollback failed")
-			}
-			// Delete the torrent we just added
-			if deleteErr := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "delete"); deleteErr != nil {
-				log.Warn().Err(deleteErr).Msg("[CROSSSEED] Partial hardlink mode: failed to delete torrent after recheck failure")
-			}
-			return hardlinkModeResult{
-				Used:    true,
-				Success: false,
-				Result: InstanceCrossSeedResult{
-					InstanceID:   candidate.InstanceID,
-					InstanceName: candidate.InstanceName,
-					Success:      false,
-					Status:       "hardlink_error",
-					Message:      fmt.Sprintf("Failed to trigger recheck: %v", err),
-				},
-			}
+				Msg("[CROSSSEED] Partial hardlink mode: failed to trigger recheck (will retry in verification worker)")
 		}
 
 		// Build list of required files (the hardlinked file paths that MUST be 100% complete)
@@ -8823,11 +8837,11 @@ func (s *Service) processHardlinkMode(
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
 				Msg("[CROSSSEED] Partial hardlink mode: failed to queue for verification")
-			// Verification queue failed - rollback to be safe
+			// Verification queue failed - rollback to be safe using direct delete
 			if rollbackErr := hardlinktree.Rollback(plan); rollbackErr != nil {
 				log.Warn().Err(rollbackErr).Msg("[CROSSSEED] Partial hardlink mode: rollback failed")
 			}
-			if deleteErr := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "delete"); deleteErr != nil {
+			if deleteErr := s.syncManager.DeleteTorrentsDirect(ctx, candidate.InstanceID, []string{torrentHash}, false); deleteErr != nil {
 				log.Warn().Err(deleteErr).Msg("[CROSSSEED] Partial hardlink mode: failed to delete torrent after queue failure")
 			}
 			return hardlinkModeResult{
