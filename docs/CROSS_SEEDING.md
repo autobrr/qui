@@ -72,6 +72,7 @@ By default, hardlink-added torrents start seeding immediately (since `skip_check
 - Hardlinks share disk blocks with the original file but increase the link count. Deleting one link does not free space until all links to that file are removed.
 - Windows: Folder names in the hardlink tree are sanitized to remove Windows-illegal characters (like `: * ? " < > |`). The torrent's internal file paths are not modified.
 - Ensure the base directory has sufficient inode capacity for the number of hardlinks you expect to create.
+- **Ignore patterns apply to reuse mode only.** Hardlink mode requires a 1:1 file match—if the incoming torrent contains any file that cannot be hardlinked (including `.nfo`/`.srt` sidecars not present in the matched torrent), the cross-seed fails.
 
 ## Recheck & Alignment
 
@@ -87,7 +88,7 @@ Rechecks are also required when the source torrent contains extra files not pres
 
 ### Hardlink mode
 
-No recheck or rename-alignment is needed because the hardlink tree matches the incoming layout.
+No recheck or rename-alignment is needed because the hardlink tree matches the incoming layout exactly. Hardlink mode never rechecks and never downloads missing files—if any incoming file is missing on disk (even if it matches an ignore pattern), the cross-seed fails rather than attempting a partial add.
 
 ## Category Behavior
 

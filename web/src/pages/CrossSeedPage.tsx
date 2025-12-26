@@ -362,6 +362,7 @@ function HardlinkModeSettings() {
         <p className="text-xs text-muted-foreground px-4">
           Create hardlinked file trees instead of using reuse+rename alignment. Each instance can be configured
           independently. The hardlink base directory must be on the same filesystem as the instance's download paths.
+          Hardlink mode requires all incoming files to exist—ignore patterns don't apply; missing/extra files cause failure.
         </p>
         <div className="border-t border-border/70 p-4 space-y-4">
 
@@ -1241,10 +1242,11 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         <AlertDescription className="space-y-1">
           <p>
             <strong>Reuse mode</strong> (default): inherits AutoTMM/save path behavior from the matched torrent and reuses the existing files.
+            Ignore patterns apply during matching (e.g., <code>.nfo</code>, <code>.srt</code>).
           </p>
           <p>
             <strong>Hardlink mode</strong> (optional, per-instance): hardlinks the matched files into the instance's configured hardlink base directory and adds the cross-seed there.
-            Requires local filesystem access.
+            Requires local filesystem access. Only works when all incoming files already exist to hardlink—ignore patterns are reuse-mode only.
           </p>
           <p className="text-muted-foreground">
             <a
@@ -2513,7 +2515,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   className={validationErrors.ignorePatterns ? "border-destructive" : ""}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Applies to RSS automation, autobrr apply requests, and seeded torrent search additions. Plain suffixes (e.g., <code>.nfo</code>) match in any subfolder; glob patterns do not cross <code>/</code>, so use folder-aware globs like <code>*/sample/*</code> for nested paths.
+                  Applies to reuse mode only (RSS automation, autobrr apply requests, seeded torrent search). Plain suffixes (e.g., <code>.nfo</code>) match in any subfolder; glob patterns do not cross <code>/</code>, so use folder-aware globs like <code>*/sample/*</code> for nested paths. Note: ignore patterns don't apply to hardlink mode—hardlink mode fails on missing/extra files.
                 </p>
                 {validationErrors.ignorePatterns && (
                   <p className="text-sm text-destructive">{validationErrors.ignorePatterns}</p>

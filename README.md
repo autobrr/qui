@@ -420,7 +420,7 @@ qui takes a different approach than the [cross-seed](https://github.com/cross-se
 
 | Aspect | cross-seed | qui |
 |--------|-----------|-----|
-| **File handling** | Creates hardlinks/symlinks to a separate directory | Reuses existing files directly |
+| **File handling** | Creates hardlinks/symlinks to a separate directory | Reuse mode (default) + optional hardlink mode |
 | **AutoTMM** | Disabled (uses explicit save paths) | Inherits from matched torrent (unless "Use indexer name as category" is enabled) |
 | **Category** | Uses dedicated `linkCategory` (e.g., "cross-seed-link") | Uses matched torrent's category with `.cross` suffix (configurable) |
 
@@ -455,13 +455,15 @@ File patterns to skip when comparing torrents. Useful for excluding sidecar file
 - Plain strings match any path ending in the text (e.g., `.nfo` ignores all `.nfo` files)
 - Glob patterns treat `/` as a folder separator (e.g., `*/sample/*` ignores sample folders)
 
+**Note:** Ignore patterns only apply to reuse mode. Hardlink mode requires a 1:1 file match and won't download extras—if the incoming torrent has files not present in the matched torrent, hardlink mode fails.
+
 #### External Program
 
 Optionally run an external program after successfully injecting a cross-seed torrent.
 
-### When Rechecks Are Required
+### When Rechecks Are Required (Reuse Mode)
 
-Most cross-seeds are added with hash verification skipped (`skip_checking=true`) and resume immediately. Some scenarios require a recheck:
+In reuse mode (the default), most cross-seeds are added with hash verification skipped (`skip_checking=true`) and resume immediately. Some scenarios require a recheck:
 
 #### 1. Name or folder alignment needed
 
@@ -470,6 +472,8 @@ When the cross-seed torrent has a different display name or root folder, qui ren
 #### 2. Extra files in source torrent
 
 When the source torrent contains files not on disk (NFO, SRT, samples not filtered by ignore patterns), a recheck determines actual progress.
+
+**Note:** In hardlink mode, missing or extra files cause the cross-seed to fail instead of triggering a recheck.
 
 #### Auto-resume behavior
 
@@ -494,28 +498,29 @@ Hardlink mode is an opt-in cross-seeding strategy that creates a hardlinked copy
 
 #### Behavior
 
-- Hardlink mode is a **global cross-seed setting** (not per request).
+- Hardlink mode is a **per-instance setting** (not per request). Each qBittorrent instance can have its own hardlink configuration.
 - If hardlink mode is enabled and a hardlink cannot be created (no local access, filesystem mismatch, invalid base dir, etc.), the cross-seed **fails** (no fallback to the default mode).
 - Hardlinked torrents are still categorized using your existing cross-seed category rules (`.cross` suffix / "use indexer name as category"); the hardlink preset only affects on-disk folder layout.
 
 #### Hardlink directory layout
 
-Configure in Cross-Seed → Global rules:
+Configure in Cross-Seed → Hardlink Mode → (select instance):
 
 - `Hardlink base directory`: path on the qui host where hardlink trees are created.
 - `Directory preset`:
-  - `flat`: `base/<torrentKey>/...`
-  - `by-tracker`: `base/<incoming-tracker-display-name>/<torrentKey>/...`
-  - `by-instance`: `base/<instance-name>/<torrentKey>/...`
+  - `flat`: `base/TorrentName--shortHash/...`
+  - `by-tracker`: `base/<tracker>/TorrentName--shortHash/...`
+  - `by-instance`: `base/<instance>/TorrentName--shortHash/...`
 
-"Incoming tracker display name" uses your Tracker Customizations (Dashboard → Tracker Breakdown) when available; otherwise it falls back to the tracker domain or indexer name.
+See [docs/CROSS_SEEDING.md](docs/CROSS_SEEDING.md) for detailed layout examples and tracker name resolution.
 
 #### How to enable
 
 1. Enable "Local filesystem access" on the qBittorrent instance in Instance Settings.
-2. In Cross-Seed → Global rules, enable "Hardlink mode".
-3. Set "Hardlink base directory" to a path on the same filesystem as your downloads.
-4. Choose a directory preset (`flat`, `by-tracker`, `by-instance`).
+2. In Cross-Seed → Hardlink Mode, expand the instance you want to configure.
+3. Enable "Hardlink mode" for that instance.
+4. Set "Hardlink base directory" to a path on the same filesystem as your downloads.
+5. Choose a directory preset (`flat`, `by-tracker`, `by-instance`).
 
 #### Notes
 
