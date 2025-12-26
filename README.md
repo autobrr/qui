@@ -40,7 +40,7 @@ A fast, modern web interface for qBittorrent. Supports managing multiple qBittor
 - **OIDC Single Sign-On**: Authenticate through your OpenID Connect provider
 - **External Programs**: Launch custom scripts from the torrent context menu ([guide](internal/api/handlers/EXTERNAL_PROGRAMS.md))
 - **Tracker Reannounce**: Automatically fix stalled torrents when qBittorrent doesn't retry fast enough ([info](internal/services/reannounce/REANNOUNCE.md))
-- **Tracker Rules**: Apply per-tracker speed limits, ratio caps, and seeding time limits automatically ([info](internal/services/trackerrules/TRACKER_RULES.md))
+- **Automations**: Apply per-tracker speed limits, ratio caps, and seeding time limits automatically ([info](internal/services/automations/AUTOMATIONS.md))
 - **Backups & Restore**: Scheduled snapshots with incremental, overwrite, and complete restore modes ([info](#backups--restore-modes))
 - **Cross-Seed**: Automatically find and add matching torrents across trackers with autobrr webhook integration ([info](#cross-seed))
 - **Reverse Proxy**: Transparent qBittorrent proxy for external apps like autobrr, Sonarr, and Radarr—no credential sharing needed ([info](#reverse-proxy-for-external-applications))

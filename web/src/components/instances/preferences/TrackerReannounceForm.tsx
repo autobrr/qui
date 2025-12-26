@@ -246,7 +246,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2 bg-muted/40 p-2 rounded-lg border border-border/40 shrink-0">
+        <div className="flex items-center gap-2 bg-muted/50 p-2 rounded-lg border shrink-0">
           <Label htmlFor="tracker-monitoring" className="font-medium text-sm cursor-pointer">
             {settings.enabled ? "Enabled" : "Disabled"}
           </Label>
@@ -338,7 +338,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                       />
                     </div>
 
-                    <div className="flex items-center justify-between rounded-lg border border-border/60 p-3 bg-muted/20">
+                    <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/40">
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-2">
                           <Label htmlFor="quick-retry" className="text-base">Quick Retry</Label>
@@ -370,7 +370,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                     </div>
 
                     <div className="space-y-4">
-                      <div className="flex items-center justify-between rounded-lg border border-border/60 p-3 bg-muted/20">
+                      <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/40">
                         <div className="space-y-0.5">
                           <Label htmlFor="monitor-all" className="text-base">Monitor All Stalled Torrents</Label>
                           <p className="text-sm text-muted-foreground">
@@ -566,11 +566,11 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                   </p>
                 </div>
               ) : activityQuery.isLoading ? (
-                 <div className="h-[300px] flex items-center justify-center border rounded-lg bg-muted/10">
+                 <div className="h-[300px] flex items-center justify-center border rounded-lg bg-muted/30">
                     <p className="text-sm text-muted-foreground">Loading activity...</p>
                  </div>
               ) : activityEvents.length === 0 ? (
-                <div className="h-[300px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/10 text-center p-6">
+                <div className="h-[300px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/30 text-center p-6">
                   <p className="text-sm text-muted-foreground">No activity recorded yet.</p>
                   {activityEnabled && (
                     <p className="text-xs text-muted-foreground/60 mt-1">
@@ -579,10 +579,10 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                   )}
                 </div>
               ) : (
-                <ScrollArea className="h-[400px] rounded-md border">
-                  <div className="divide-y divide-border/40">
+                <ScrollArea className="h-[400px] rounded-md border bg-muted/20">
+                  <div className="divide-y divide-border">
                     {activityEvents.map((event, index) => (
-                      <div key={`${event.hash}-${index}-${event.timestamp}`} className="p-4 hover:bg-muted/20 transition-colors">
+                      <div key={`${event.hash}-${index}-${event.timestamp}`} className="p-4 hover:bg-muted/30 transition-colors">
                         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                           <div className="space-y-1.5 flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -602,7 +602,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                             </div>
                             
                             <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                              <div className="flex items-center gap-1 bg-muted/50 px-1.5 py-0.5 rounded">
+                              <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
                                 <span className="font-mono">{event.hash.substring(0, 7)}</span>
                                 <button
                                   type="button"
@@ -621,7 +621,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                             </div>
 
                             {(event.trackers || event.reason) && (
-                              <div className="mt-2 space-y-1 bg-muted/30 p-2 rounded text-xs">
+                              <div className="mt-2 space-y-1 bg-muted/40 p-2 rounded text-xs">
                                 {event.trackers && (
                                   <div className="flex items-start gap-2">
                                     <span className="font-medium text-muted-foreground shrink-0">Trackers:</span>

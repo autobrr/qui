@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Services } from "@/pages/Services"
+import { Automations } from "@/pages/Automations"
 import { createFileRoute } from "@tanstack/react-router"
 
-export const Route = createFileRoute("/_authenticated/services")({
-  component: Services,
+export const Route = createFileRoute("/_authenticated/automations")({
+  component: Automations,
 })

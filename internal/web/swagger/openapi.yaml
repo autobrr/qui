@@ -575,6 +575,9 @@ paths:
                 tlsSkipVerify:
                   type: boolean
                   description: Set to true to disable TLS certificate verification (for trusted self-signed certificates).
+                hasLocalFilesystemAccess:
+                  type: boolean
+                  description: Set to true if qui can access this instance's download paths locally (required for hardlink detection in automations).
       responses:
         '201':
           description: Instance created
@@ -655,6 +658,9 @@ paths:
                 tlsSkipVerify:
                   type: boolean
                   description: Set to true to disable TLS certificate verification (for trusted self-signed certificates).
+                hasLocalFilesystemAccess:
+                  type: boolean
+                  description: Set to true if qui can access this instance's download paths locally (required for hardlink detection in automations).
       responses:
         '200':
           description: Instance updated
@@ -3229,6 +3235,220 @@ paths:
         '500':
           description: Failed to retrieve torrent file
 
+  # Orphan File Scanning
+  /api/instances/{instanceID}/orphan-scan/settings:
+    get:
+      tags:
+        - Orphan Scan
+      summary: Get orphan scan settings
+      description: Get orphan file scanning settings for an instance. Requires local filesystem access.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: Orphan scan settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrphanScanSettings'
+        '403':
+          description: Instance does not have local filesystem access enabled
+        '404':
+          description: Instance not found
+    put:
+      tags:
+        - Orphan Scan
+      summary: Update orphan scan settings
+      description: Update orphan file scanning settings for an instance. Requires local filesystem access.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrphanScanSettingsUpdate'
+      responses:
+        '200':
+          description: Settings updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrphanScanSettings'
+        '400':
+          description: Invalid settings (e.g., non-absolute ignore paths)
+        '403':
+          description: Instance does not have local filesystem access enabled
+        '404':
+          description: Instance not found
+
+  /api/instances/{instanceID}/orphan-scan/scan:
+    post:
+      tags:
+        - Orphan Scan
+      summary: Trigger orphan scan
+      description: Start a manual orphan file scan for an instance. Returns immediately with the run ID.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '202':
+          description: Scan started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runId:
+                    type: integer
+                    format: int64
+                    description: ID of the created scan run
+        '403':
+          description: Instance does not have local filesystem access enabled
+        '404':
+          description: Instance not found
+        '409':
+          description: A scan is already in progress for this instance
+
+  /api/instances/{instanceID}/orphan-scan/runs:
+    get:
+      tags:
+        - Orphan Scan
+      summary: List orphan scan runs
+      description: Get recent orphan scan runs for an instance. Requires local filesystem access.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+          description: Maximum number of runs to return
+      responses:
+        '200':
+          description: List of scan runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrphanScanRun'
+        '403':
+          description: Instance does not have local filesystem access enabled
+        '404':
+          description: Instance not found
+
+  /api/instances/{instanceID}/orphan-scan/runs/{runID}:
+    get:
+      tags:
+        - Orphan Scan
+      summary: Get orphan scan run
+      description: Get details of a specific scan run including the list of orphan files found. Requires local filesystem access.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: runID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Scan run ID
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+          description: Maximum number of files to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Offset for pagination
+      responses:
+        '200':
+          description: Scan run with files
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrphanScanRunWithFiles'
+        '403':
+          description: Instance does not have local filesystem access enabled
+        '404':
+          description: Run not found
+    delete:
+      tags:
+        - Orphan Scan
+      summary: Cancel orphan scan run
+      description: Cancel a pending, scanning, or preview_ready run. Cannot cancel runs that are actively deleting. Requires local filesystem access.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: runID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Scan run ID
+      responses:
+        '200':
+          description: Run canceled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "canceled"
+        '400':
+          description: Run already finished
+        '403':
+          description: Instance does not have local filesystem access enabled
+        '404':
+          description: Run not found
+        '409':
+          description: Cannot cancel run while deletion is in progress
+
+  /api/instances/{instanceID}/orphan-scan/runs/{runID}/confirm:
+    post:
+      tags:
+        - Orphan Scan
+      summary: Confirm orphan file deletion
+      description: Confirm deletion of orphan files from a preview_ready run. This initiates the actual file deletion. Requires local filesystem access.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: runID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Scan run ID
+      responses:
+        '202':
+          description: Deletion started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "deleting"
+        '400':
+          description: Run is not in preview_ready status
+        '409':
+          description: A scan or deletion is already in progress for this instance
+        '403':
+          description: Instance does not have local filesystem access enabled
+        '404':
+          description: Run not found
+
   /health:
     get:
       tags:
@@ -3483,6 +3703,9 @@ components:
         tlsSkipVerify:
           type: boolean
           description: When true, TLS certificate errors from the upstream qBittorrent instance are ignored.
+        hasLocalFilesystemAccess:
+          type: boolean
+          description: When true, qui can access this instance's download paths locally (required for hardlink detection in automations).
         sortOrder:
           type: integer
           description: Display order preference for the instance.
@@ -4465,6 +4688,140 @@ components:
         savePath:
           type: string
 
+    OrphanScanSettings:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        instanceId:
+          type: integer
+        enabled:
+          type: boolean
+          description: Whether scheduled orphan scanning is enabled
+        gracePeriodMinutes:
+          type: integer
+          description: Skip files modified within this many minutes
+        ignorePaths:
+          type: array
+          items:
+            type: string
+          description: Absolute paths to exclude from scanning
+        scanIntervalHours:
+          type: integer
+          description: Hours between scheduled scans
+        maxFilesPerRun:
+          type: integer
+          description: Maximum orphan files to record per run (prevents DB bloat)
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    OrphanScanSettingsUpdate:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        gracePeriodMinutes:
+          type: integer
+          minimum: 0
+        ignorePaths:
+          type: array
+          items:
+            type: string
+        scanIntervalHours:
+          type: integer
+          minimum: 1
+        maxFilesPerRun:
+          type: integer
+          minimum: 1
+
+    OrphanScanRun:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        instanceId:
+          type: integer
+        status:
+          type: string
+          enum: ["pending", "scanning", "preview_ready", "deleting", "completed", "failed", "canceled"]
+        triggeredBy:
+          type: string
+          enum: ["manual", "scheduled"]
+        scanPaths:
+          type: array
+          items:
+            type: string
+          description: Directories that were scanned (derived from torrent SavePath values)
+        filesFound:
+          type: integer
+          description: Number of orphan files found
+        filesDeleted:
+          type: integer
+          description: Number of files deleted (after confirmation)
+        foldersDeleted:
+          type: integer
+          description: Number of empty folders deleted
+        bytesReclaimed:
+          type: integer
+          format: int64
+          description: Total bytes freed
+        truncated:
+          type: boolean
+          description: True if max_files_per_run was reached and more orphans may exist
+        errorMessage:
+          type: string
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    OrphanScanFile:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        runId:
+          type: integer
+          format: int64
+        filePath:
+          type: string
+          description: Absolute path to the orphan file
+        fileSize:
+          type: integer
+          format: int64
+          description: File size in bytes
+        modifiedAt:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum: ["pending", "deleted", "skipped", "failed"]
+        errorMessage:
+          type: string
+          nullable: true
+
+    OrphanScanRunWithFiles:
+      allOf:
+        - $ref: '#/components/schemas/OrphanScanRun'
+        - type: object
+          properties:
+            files:
+              type: array
+              items:
+                $ref: '#/components/schemas/OrphanScanFile'
+
 tags:
   - name: Authentication
     description: User authentication and session management
@@ -4486,5 +4843,7 @@ tags:
     description: Tag management
   - name: Cross-Seed
     description: Cross-seeding operations for finding and adding duplicate torrents
+  - name: Orphan Scan
+    description: Orphan file scanning and cleanup (files on disk not associated with any torrent)
   - name: Theme Licenses
     description: Theme license management (optional feature)

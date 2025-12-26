@@ -1556,6 +1556,40 @@ func (sm *SyncManager) GetTags(ctx context.Context, instanceID int) ([]string, e
 	return tags, nil
 }
 
+// SetTorrentTags replaces all tags on torrents (for qBit 5.1+ / WebAPI 2.11.4+).
+// Returns an error wrapping qbt.ErrUnsupportedVersion if the client doesn't support SetTags.
+func (sm *SyncManager) SetTorrentTags(ctx context.Context, instanceID int, hashes []string, tags []string) error {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	tagsStr := strings.Join(tags, ",")
+	return client.SetTags(ctx, hashes, tagsStr)
+}
+
+// AddTorrentTags adds tags to torrents (works with all qBittorrent versions).
+func (sm *SyncManager) AddTorrentTags(ctx context.Context, instanceID int, hashes []string, tags []string) error {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	tagsStr := strings.Join(tags, ",")
+	return client.AddTagsCtx(ctx, hashes, tagsStr)
+}
+
+// RemoveTorrentTags removes tags from torrents (works with all qBittorrent versions).
+func (sm *SyncManager) RemoveTorrentTags(ctx context.Context, instanceID int, hashes []string, tags []string) error {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	tagsStr := strings.Join(tags, ",")
+	return client.RemoveTagsCtx(ctx, hashes, tagsStr)
+}
+
 // GetTorrentProperties gets detailed properties for a specific torrent
 func (sm *SyncManager) GetTorrentProperties(ctx context.Context, instanceID int, hash string) (*qbt.TorrentProperties, error) {
 	// Get client and sync manager

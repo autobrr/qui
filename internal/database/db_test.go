@@ -181,6 +181,7 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "tls_skip_verify", Type: "BOOLEAN"},
 		{Name: "sort_order", Type: "INTEGER"},
 		{Name: "is_active", Type: "BOOLEAN"},
+		{Name: "has_local_filesystem_access", Type: "BOOLEAN"},
 	},
 	"licenses": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
@@ -239,6 +240,32 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "torrent_progress", Type: "REAL"},
 		{Name: "file_count", Type: "INTEGER"},
 	},
+	"automations": {
+		{Name: "id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "instance_id", Type: "INTEGER"},
+		{Name: "name", Type: "TEXT"},
+		{Name: "tracker_pattern", Type: "TEXT"},
+		{Name: "conditions", Type: "TEXT"},
+		{Name: "enabled", Type: "INTEGER"},
+		{Name: "sort_order", Type: "INTEGER"},
+		{Name: "interval_seconds", Type: "INTEGER"},
+		{Name: "created_at", Type: "DATETIME"},
+		{Name: "updated_at", Type: "DATETIME"},
+	},
+	"automation_activity": {
+		{Name: "id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "instance_id", Type: "INTEGER"},
+		{Name: "hash", Type: "TEXT"},
+		{Name: "torrent_name", Type: "TEXT"},
+		{Name: "tracker_domain", Type: "TEXT"},
+		{Name: "action", Type: "TEXT"},
+		{Name: "rule_id", Type: "INTEGER"},
+		{Name: "rule_name", Type: "TEXT"},
+		{Name: "outcome", Type: "TEXT"},
+		{Name: "reason", Type: "TEXT"},
+		{Name: "details", Type: "TEXT"},
+		{Name: "created_at", Type: "DATETIME"},
+	},
 }
 
 var expectedIndexes = map[string][]string{
@@ -249,11 +276,14 @@ var expectedIndexes = map[string][]string{
 	"sessions":            {"sessions_expiry_idx"},
 	"torrent_files_cache": {"idx_torrent_files_cache_lookup", "idx_torrent_files_cache_cached_at"},
 	"torrent_files_sync":  {"idx_torrent_files_sync_last_synced"},
+	"automations":         {"idx_automations_instance"},
+	"automation_activity": {"idx_automation_activity_instance_created"},
 }
 
 var expectedTriggers = []string{
 	"update_user_updated_at",
 	"cleanup_old_instance_errors",
+	"trg_automations_updated",
 }
 
 func listMigrationFiles(t *testing.T) []string {
