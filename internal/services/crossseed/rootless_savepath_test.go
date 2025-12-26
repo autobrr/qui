@@ -106,14 +106,6 @@ func (*rootlessSavePathSyncManager) CreateCategory(context.Context, int, string,
 	return nil
 }
 
-func (*rootlessSavePathSyncManager) DeleteTorrentsDirect(context.Context, int, []string, bool) error {
-	return nil
-}
-
-func (*rootlessSavePathSyncManager) RecheckTorrentDirect(context.Context, int, []string) error {
-	return nil
-}
-
 // rootlessSavePathInstanceStore is a mock instance provider for tests
 type rootlessSavePathInstanceStore struct {
 	instances map[int]*models.Instance

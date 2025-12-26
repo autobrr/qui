@@ -1479,45 +1479,6 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	return err
 }
 
-// DeleteTorrentsDirect deletes torrents without sync validation.
-// Use this when you need to delete a torrent that may not yet be in the sync cache
-// (e.g., immediately after adding it). Prefer BulkAction("delete") for normal cases.
-func (sm *SyncManager) DeleteTorrentsDirect(ctx context.Context, instanceID int, hashes []string, deleteFiles bool) error {
-	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
-	if err != nil {
-		return err
-	}
-
-	if err := client.DeleteTorrentsCtx(ctx, hashes, deleteFiles); err != nil {
-		return err
-	}
-
-	// Best-effort cache invalidation
-	sm.RemoveHashesFromTrackerHealthCache(instanceID, hashes)
-	sm.removeHashFromAllTrackerMappings(instanceID, hashes)
-	if fm := sm.getFilesManager(); fm != nil {
-		for _, hash := range hashes {
-			if invalidateErr := fm.InvalidateCache(ctx, instanceID, hash); invalidateErr != nil {
-				log.Warn().Err(invalidateErr).Int("instanceID", instanceID).Str("hash", hash).
-					Msg("Failed to invalidate file cache after direct torrent deletion")
-			}
-		}
-	}
-
-	return nil
-}
-
-// RecheckTorrentDirect triggers a recheck for torrents without sync validation.
-// Use this when you need to recheck a torrent that may not yet be in the sync cache.
-func (sm *SyncManager) RecheckTorrentDirect(ctx context.Context, instanceID int, hashes []string) error {
-	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
-	if err != nil {
-		return err
-	}
-
-	return client.RecheckCtx(ctx, hashes)
-}
-
 // AddTorrent adds a new torrent from file content
 func (sm *SyncManager) AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error {
 	// Get client and sync manager

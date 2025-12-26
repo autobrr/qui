@@ -288,11 +288,3 @@ func (*queueTestSyncManager) GetCategories(_ context.Context, _ int) (map[string
 func (*queueTestSyncManager) CreateCategory(_ context.Context, _ int, _, _ string) error {
 	return nil
 }
-
-func (*queueTestSyncManager) DeleteTorrentsDirect(_ context.Context, _ int, _ []string, _ bool) error {
-	return nil
-}
-
-func (*queueTestSyncManager) RecheckTorrentDirect(_ context.Context, _ int, _ []string) error {
-	return nil
-}

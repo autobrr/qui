@@ -72,10 +72,6 @@ type qbittorrentSync interface {
 	GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
 	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error
 	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
-	// DeleteTorrentsDirect deletes torrents without sync validation (use when torrent may not be in sync cache yet).
-	DeleteTorrentsDirect(ctx context.Context, instanceID int, hashes []string, deleteFiles bool) error
-	// RecheckTorrentDirect triggers recheck without sync validation (use when torrent may not be in sync cache yet).
-	RecheckTorrentDirect(ctx context.Context, instanceID int, hashes []string) error
 	GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error)
 	ExtractDomainFromURL(urlStr string) string
 	GetQBittorrentSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error)
@@ -316,25 +312,6 @@ type pendingResume struct {
 	hash       string
 	threshold  float64
 	addedAt    time.Time
-
-	// Partial hardlink safety fields
-	// requiredFiles are the torrent file paths (relative) that were hardlinked and MUST be
-	// 100% complete before resuming. If any required file is incomplete after recheck,
-	// the torrent is unsafe and must be deleted + hardlinks rolled back.
-	requiredFiles []string
-
-	// resumeAfterVerify indicates whether to resume the torrent after verification passes.
-	// When false (e.g., SkipAutoResume=true), we still verify but leave paused if safe.
-	resumeAfterVerify bool
-
-	// rollbackPlan is the hardlink tree plan used to create hardlinks; used for rollback
-	// if verification fails (delete torrent + remove created hardlinks).
-	rollbackPlan *hardlinktree.TreePlan
-
-	// seenInSync tracks whether the torrent has ever been found in the sync cache.
-	// For partial hardlinks: if not found but never seen, keep waiting (torrent may not be synced yet).
-	// If not found after being seen, the torrent truly disappeared and we should rollback.
-	seenInSync bool
 }
 
 // NewService creates a new cross-seed service
@@ -3180,52 +3157,6 @@ func (s *Service) queueRecheckResume(ctx context.Context, instanceID int, hash s
 	}
 }
 
-// queuePartialHardlinkVerify adds a partial hardlink torrent to the verification queue.
-// Unlike regular recheck-resume, partial hardlinks require per-file verification:
-// all hardlinked files MUST be 100% complete before the torrent can be resumed.
-//
-// Parameters:
-//   - instanceID: qBittorrent instance
-//   - hash: torrent hash
-//   - requiredFiles: relative paths of hardlinked files that must be fully complete
-//   - rollbackPlan: the hardlink tree plan for cleanup if verification fails
-//   - resumeAfterVerify: whether to resume after successful verification
-//   - threshold: overall progress threshold (for logging, not safety-critical)
-func (s *Service) queuePartialHardlinkVerify(
-	instanceID int,
-	hash string,
-	requiredFiles []string,
-	rollbackPlan *hardlinktree.TreePlan,
-	resumeAfterVerify bool,
-	threshold float64,
-) error {
-	select {
-	case s.recheckResumeChan <- &pendingResume{
-		instanceID:        instanceID,
-		hash:              hash,
-		threshold:         threshold,
-		addedAt:           time.Now(),
-		requiredFiles:     requiredFiles,
-		resumeAfterVerify: resumeAfterVerify,
-		rollbackPlan:      rollbackPlan,
-	}:
-		log.Debug().
-			Int("instanceID", instanceID).
-			Str("hash", hash).
-			Int("requiredFileCount", len(requiredFiles)).
-			Bool("resumeAfterVerify", resumeAfterVerify).
-			Int("pendingCount", len(s.recheckResumeChan)+1).
-			Msg("Added partial hardlink torrent to verification queue")
-		return nil
-	default:
-		log.Warn().
-			Int("instanceID", instanceID).
-			Str("hash", hash).
-			Msg("Recheck resume channel full, skipping partial hardlink queue")
-		return fmt.Errorf("recheck resume queue full")
-	}
-}
-
 // recheckResumeWorker is a single goroutine that processes all pending recheck resumes.
 // Instead of spawning a goroutine per torrent, this worker manages all pending torrents
 // in a map and checks them periodically, avoiding goroutine accumulation.
@@ -3258,22 +3189,11 @@ func (s *Service) recheckResumeWorker() {
 			byInstance := make(map[int][]string)
 			for hash, req := range pending {
 				if time.Since(req.addedAt) > recheckAbsoluteTimeout {
-					// For partial hardlinks, timeout is treated as unsafe - must delete + rollback
-					if len(req.requiredFiles) > 0 {
-						log.Warn().
-							Int("instanceID", req.instanceID).
-							Str("hash", hash).
-							Dur("elapsed", time.Since(req.addedAt)).
-							Int("requiredFileCount", len(req.requiredFiles)).
-							Msg("Partial hardlink verification timeout - deleting torrent and rolling back hardlinks to protect source data")
-						s.handlePartialHardlinkUnsafe(req, "timeout reached before verification could complete")
-					} else {
-						log.Warn().
-							Int("instanceID", req.instanceID).
-							Str("hash", hash).
-							Dur("elapsed", time.Since(req.addedAt)).
-							Msg("Recheck resume absolute timeout reached, removing from queue")
-					}
+					log.Warn().
+						Int("instanceID", req.instanceID).
+						Str("hash", hash).
+						Dur("elapsed", time.Since(req.addedAt)).
+						Msg("Recheck resume absolute timeout reached, removing from queue")
 					delete(pending, hash)
 					continue
 				}
@@ -3305,47 +3225,12 @@ func (s *Service) recheckResumeWorker() {
 					req := pending[hash]
 					torrent, found := torrentByHash[strings.ToLower(hash)]
 					if !found {
-						// For partial hardlinks, check if we should wait or rollback
-						if len(req.requiredFiles) > 0 && req.rollbackPlan != nil {
-							if !req.seenInSync {
-								// Torrent not in sync yet (newly added) - keep waiting
-								// The absolute timeout check at the top of the loop will handle timeout
-								log.Debug().
-									Int("instanceID", instanceID).
-									Str("hash", hash).
-									Dur("elapsed", time.Since(req.addedAt)).
-									Msg("Partial hardlink torrent not in sync yet, waiting for sync")
-								continue
-							}
-							// Torrent was seen before but disappeared - rollback
-							log.Warn().
-								Int("instanceID", instanceID).
-								Str("hash", hash).
-								Msg("Partial hardlink torrent disappeared after being seen - rolling back hardlinks")
-							if err := hardlinktree.Rollback(req.rollbackPlan); err != nil {
-								log.Error().
-									Err(err).
-									Int("instanceID", instanceID).
-									Str("hash", hash).
-									Msg("Failed to rollback partial hardlink tree")
-							}
-						} else {
-							log.Debug().
-								Int("instanceID", instanceID).
-								Str("hash", hash).
-								Msg("Torrent not found during recheck resume, removing from queue")
-						}
-						delete(pending, hash)
-						continue
-					}
-
-					// Torrent found in sync - mark as seen for future "disappeared" detection
-					if len(req.requiredFiles) > 0 && !req.seenInSync {
-						req.seenInSync = true
 						log.Debug().
 							Int("instanceID", instanceID).
 							Str("hash", hash).
-							Msg("Partial hardlink torrent now visible in sync cache")
+							Msg("Torrent not found during recheck resume, removing from queue")
+						delete(pending, hash)
+						continue
 					}
 
 					progress := torrent.Progress
@@ -3356,55 +3241,7 @@ func (s *Service) recheckResumeWorker() {
 						state == qbt.TorrentStateCheckingDl ||
 						state == qbt.TorrentStateCheckingResumeData
 
-					// For partial hardlinks, we need per-file verification before resuming
-					if len(req.requiredFiles) > 0 && !isChecking {
-						// Don't verify at 0% progress - we can't distinguish "queued for recheck"
-						// from "recheck completed with no matches". Wait for progress > 0 or timeout.
-						if progress == 0 {
-							continue
-						}
-
-						// Recheck has completed with some progress - verify required files are 100% complete
-						safe := s.verifyPartialHardlinkFiles(instanceID, hash, req)
-						if !safe {
-							// Unsafe: delete torrent and rollback hardlinks
-							s.handlePartialHardlinkUnsafe(req, "required hardlinked files incomplete after recheck")
-							delete(pending, hash)
-							continue
-						}
-
-						// Safe: required files are complete
-						if req.resumeAfterVerify {
-							resumeCtx, resumeCancel := context.WithTimeout(s.recheckResumeCtx, recheckAPITimeout)
-							err := s.syncManager.BulkAction(resumeCtx, instanceID, []string{hash}, "resume")
-							resumeCancel()
-							if err != nil {
-								log.Warn().
-									Err(err).
-									Int("instanceID", instanceID).
-									Str("hash", hash).
-									Msg("Failed to resume partial hardlink torrent after verification")
-							} else {
-								log.Info().
-									Int("instanceID", instanceID).
-									Str("hash", hash).
-									Int("requiredFileCount", len(req.requiredFiles)).
-									Float64("progress", progress).
-									Msg("Partial hardlink verified safe - resumed torrent")
-							}
-						} else {
-							log.Info().
-								Int("instanceID", instanceID).
-								Str("hash", hash).
-								Int("requiredFileCount", len(req.requiredFiles)).
-								Float64("progress", progress).
-								Msg("Partial hardlink verified safe - left paused per user settings")
-						}
-						delete(pending, hash)
-						continue
-					}
-
-					// Regular (non-partial-hardlink) resume path
+					// Resume if threshold reached and not checking
 					if progress >= req.threshold && !isChecking {
 						resumeCtx, resumeCancel := context.WithTimeout(s.recheckResumeCtx, recheckAPITimeout)
 						err := s.syncManager.BulkAction(resumeCtx, instanceID, []string{hash}, "resume")
@@ -3454,118 +3291,6 @@ func (s *Service) recheckResumeWorker() {
 				Int("pendingCount", len(pending)).
 				Msg("Recheck resume worker shutting down")
 			return
-		}
-	}
-}
-
-// verifyPartialHardlinkFiles checks if all required (hardlinked) files are 100% complete.
-// Returns true if all required files have progress >= 1.0, false otherwise.
-func (s *Service) verifyPartialHardlinkFiles(instanceID int, hash string, req *pendingResume) bool {
-	if len(req.requiredFiles) == 0 {
-		return true // No required files = nothing to verify
-	}
-
-	// Fetch file information from qBittorrent with force-refresh to bypass cache.
-	// This is critical: cached data could falsely report Progress < 1.0 and trigger
-	// an unnecessary delete+rollback.
-	apiCtx, cancel := context.WithTimeout(s.recheckResumeCtx, recheckAPITimeout)
-	apiCtx = qbittorrent.WithForceFilesRefresh(apiCtx)
-	filesMap, err := s.syncManager.GetTorrentFilesBatch(apiCtx, instanceID, []string{hash})
-	cancel()
-	if err != nil {
-		log.Error().
-			Err(err).
-			Int("instanceID", instanceID).
-			Str("hash", hash).
-			Msg("Failed to fetch file info for partial hardlink verification - treating as unsafe")
-		return false
-	}
-
-	files, found := filesMap[strings.ToLower(hash)]
-	if !found || len(files) == 0 {
-		log.Error().
-			Int("instanceID", instanceID).
-			Str("hash", hash).
-			Msg("No file info returned for partial hardlink verification - treating as unsafe")
-		return false
-	}
-
-	// Build map of file progress by name
-	fileProgress := make(map[string]float32, len(files))
-	for _, f := range files {
-		fileProgress[f.Name] = f.Progress
-	}
-
-	// Verify each required file is 100% complete
-	for _, requiredFile := range req.requiredFiles {
-		progress, exists := fileProgress[requiredFile]
-		if !exists {
-			log.Warn().
-				Int("instanceID", instanceID).
-				Str("hash", hash).
-				Str("requiredFile", requiredFile).
-				Msg("Required hardlinked file not found in torrent file list - treating as unsafe")
-			return false
-		}
-		if progress < 1.0 {
-			log.Warn().
-				Int("instanceID", instanceID).
-				Str("hash", hash).
-				Str("requiredFile", requiredFile).
-				Float32("progress", progress).
-				Msg("Required hardlinked file not 100% complete - treating as unsafe")
-			return false
-		}
-	}
-
-	log.Debug().
-		Int("instanceID", instanceID).
-		Str("hash", hash).
-		Int("requiredFileCount", len(req.requiredFiles)).
-		Msg("All required hardlinked files verified 100% complete")
-	return true
-}
-
-// handlePartialHardlinkUnsafe deletes a partial hardlink torrent and rolls back the hardlink tree.
-// This is called when verification fails to protect source data from corruption.
-func (s *Service) handlePartialHardlinkUnsafe(req *pendingResume, reason string) {
-	log.Warn().
-		Int("instanceID", req.instanceID).
-		Str("hash", req.hash).
-		Int("requiredFileCount", len(req.requiredFiles)).
-		Str("reason", reason).
-		Msg("Partial hardlink aborted - deleting torrent and rolling back hardlinks to protect source data")
-
-	// Delete the torrent using direct method (bypasses sync validation, which may not have the torrent yet).
-	// deleteFiles=false because we'll clean up hardlinks separately via rollback.
-	deleteCtx, deleteCancel := context.WithTimeout(s.recheckResumeCtx, recheckAPITimeout)
-	err := s.syncManager.DeleteTorrentsDirect(deleteCtx, req.instanceID, []string{req.hash}, false)
-	deleteCancel()
-	if err != nil {
-		log.Error().
-			Err(err).
-			Int("instanceID", req.instanceID).
-			Str("hash", req.hash).
-			Msg("Failed to delete unsafe partial hardlink torrent")
-		// Continue to rollback anyway
-	}
-
-	// Rollback the hardlink tree
-	if req.rollbackPlan != nil {
-		if err := hardlinktree.Rollback(req.rollbackPlan); err != nil {
-			log.Error().
-				Err(err).
-				Int("instanceID", req.instanceID).
-				Str("hash", req.hash).
-				Str("rootDir", req.rollbackPlan.RootDir).
-				Msg("Failed to rollback partial hardlink tree")
-		} else {
-			log.Info().
-				Int("instanceID", req.instanceID).
-				Str("hash", req.hash).
-				Str("rootDir", req.rollbackPlan.RootDir).
-				Int("fileCount", len(req.rollbackPlan.Files)).
-				Msg("Successfully rolled back partial hardlink tree")
 		}
 	}
 }
@@ -7286,43 +7011,6 @@ func normalizePath(p string) string {
 	return p
 }
 
-// isHardlinkManagedTorrent checks if a torrent is managed under the instance's hardlink base directory.
-// Returns true if the torrent's save path or content path is at or under the hardlink base dir.
-func isHardlinkManagedTorrent(t qbt.Torrent, instance *models.Instance) bool {
-	if instance == nil {
-		return false
-	}
-
-	// All conditions must be met for hardlink mode to be active
-	if !instance.UseHardlinks || !instance.HasLocalFilesystemAccess || instance.HardlinkBaseDir == "" {
-		return false
-	}
-
-	// Normalize paths for comparison (lowercase on Windows, consistent slashes)
-	base := strings.ToLower(normalizePath(instance.HardlinkBaseDir))
-	if base == "" {
-		return false
-	}
-
-	// Check if save path is under the hardlink base dir
-	savePath := strings.ToLower(normalizePath(t.SavePath))
-	if savePath != "" {
-		if savePath == base || strings.HasPrefix(savePath, base+"/") {
-			return true
-		}
-	}
-
-	// Check if content path is under the hardlink base dir
-	contentPath := strings.ToLower(normalizePath(t.ContentPath))
-	if contentPath != "" {
-		if contentPath == base || strings.HasPrefix(contentPath, base+"/") {
-			return true
-		}
-	}
-
-	return false
-}
-
 func resolveRootlessContentDir(matchedTorrent *qbt.Torrent, candidateFiles qbt.TorrentFiles) string {
 	if matchedTorrent == nil || matchedTorrent.ContentPath == "" || len(candidateFiles) == 0 {
 		return ""
@@ -7996,54 +7684,22 @@ func (s *Service) buildArgsSimple(template string, torrentData map[string]string
 // recoverErroredTorrents identifies errored torrents and performs batched recheck to fix their state.
 // This function blocks until all recoverable torrents are processed, ensuring they can participate
 // in the current automation run. API calls are batched to minimize qBittorrent load.
-// Note: Hardlink-managed torrents are excluded from recovery since they should never need recheck
-// and rechecking can be expensive.
 func (s *Service) recoverErroredTorrents(ctx context.Context, instanceID int, torrents []qbt.Torrent) error {
-	// Fetch instance config to check hardlink settings
-	var instance *models.Instance
-	if s.instanceStore != nil {
-		var err error
-		instance, err = s.instanceStore.Get(ctx, instanceID)
-		if err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to load instance config for recovery, proceeding without hardlink filtering")
-			// Continue without hardlink filtering - instance will be nil
-		}
-	}
-
-	// Identify errored torrents, excluding hardlink-managed ones
+	// Identify errored torrents
 	var erroredTorrents []qbt.Torrent
-	var skippedHardlinkCount int
 	for _, torrent := range torrents {
 		if torrent.State == qbt.TorrentStateError || torrent.State == qbt.TorrentStateMissingFiles {
-			// Skip hardlink-managed torrents - they should never need recheck
-			if isHardlinkManagedTorrent(torrent, instance) {
-				skippedHardlinkCount++
-				log.Debug().
-					Int("instanceID", instanceID).
-					Str("hash", torrent.Hash).
-					Str("savePath", torrent.SavePath).
-					Str("contentPath", torrent.ContentPath).
-					Msg("Skipping recheck recovery for hardlink-managed torrent")
-				continue
-			}
 			erroredTorrents = append(erroredTorrents, torrent)
 		}
 	}
 
 	if len(erroredTorrents) == 0 {
-		if skippedHardlinkCount > 0 {
-			log.Debug().
-				Int("instanceID", instanceID).
-				Int("skippedHardlinkCount", skippedHardlinkCount).
-				Msg("All errored torrents are hardlink-managed, skipping recovery")
-		}
 		return nil
 	}
 
 	log.Info().
 		Int("instanceID", instanceID).
 		Int("count", len(erroredTorrents)).
-		Int("skippedHardlinkCount", skippedHardlinkCount).
 		Msg("Found errored torrents, attempting batched recovery")
 
 	// Get automation settings once for completion tolerance
@@ -8528,105 +8184,10 @@ func (s *Service) processHardlinkMode(
 	// double-folder nesting issues when the instance default is Subfolder.
 	layout := hardlinktree.LayoutOriginal
 
-	// Build index of existing files (matched torrent) by size for quick lookup
-	type fileEntry struct {
-		Name string
-		Size int64
-	}
-	existingBySize := make(map[int64][]fileEntry)
-	for _, f := range candidateFiles {
-		existingBySize[f.Size] = append(existingBySize[f.Size], fileEntry{Name: f.Name, Size: f.Size})
-	}
-
-	// Classify incoming torrent files into:
-	// - hardlinkFiles: files that have a matching existing file (can be hardlinked)
-	// - downloadFiles: files that don't exist in matched torrent (need to be downloaded)
-	var hardlinkFiles []hardlinktree.TorrentFile
-	var downloadFiles []hardlinktree.TorrentFile
-	var downloadBytesTotal int64
-	var incomingBytesTotal int64
-
+	// Build lists for hardlink tree plan (needed for destDir calculation)
+	candidateTorrentFiles := make([]hardlinktree.TorrentFile, 0, len(sourceFiles))
 	for _, f := range sourceFiles {
-		incomingBytesTotal += f.Size
-		tf := hardlinktree.TorrentFile{Path: f.Name, Size: f.Size}
-
-		// Check if a matching file exists (by size and similar name)
-		bucket := existingBySize[f.Size]
-		hasMatch := false
-		if len(bucket) > 0 {
-			// Try to find a match using normalized comparison (similar to BuildPlan logic)
-			sourceBase := strings.ToLower(filepath.Base(f.Name))
-			for _, ef := range bucket {
-				existingBase := strings.ToLower(filepath.Base(ef.Name))
-				if existingBase == sourceBase || ef.Name == f.Name {
-					hasMatch = true
-					break
-				}
-			}
-			// If no exact name match, check if there's a size-unique file
-			if !hasMatch && len(bucket) == 1 {
-				hasMatch = true
-			}
-		}
-
-		if hasMatch {
-			hardlinkFiles = append(hardlinkFiles, tf)
-		} else {
-			downloadFiles = append(downloadFiles, tf)
-			downloadBytesTotal += f.Size
-		}
-	}
-
-	// Check if any download file is NOT ignorable (would require downloading non-extra content)
-	ignorePatterns := req.IgnorePatterns
-	for _, f := range downloadFiles {
-		if !shouldIgnoreFile(f.Path, ignorePatterns, s.stringNormalizer) {
-			// Non-ignorable file missing from matched torrent - hardlink mode cannot proceed
-			log.Warn().
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentName", torrentName).
-				Str("missingFile", f.Path).
-				Msg("[CROSSSEED] Hardlink mode: non-ignorable file missing from matched torrent")
-			return hardlinkError(fmt.Sprintf("Non-ignorable file '%s' is missing from matched torrent", f.Path))
-		}
-	}
-
-	// Calculate tolerance for partial hardlinks
-	tolerancePercent := req.SizeMismatchTolerancePercent
-	if tolerancePercent <= 0 {
-		tolerancePercent = 5.0 // Default 5%
-	}
-
-	// Check if download size exceeds tolerance (only for partial hardlinks)
-	isPartialHardlink := len(downloadFiles) > 0
-	if isPartialHardlink && incomingBytesTotal > 0 {
-		downloadPercent := (float64(downloadBytesTotal) / float64(incomingBytesTotal)) * 100.0
-		if downloadPercent > tolerancePercent {
-			log.Warn().
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentName", torrentName).
-				Int64("downloadBytes", downloadBytesTotal).
-				Int64("totalBytes", incomingBytesTotal).
-				Float64("downloadPercent", downloadPercent).
-				Float64("tolerancePercent", tolerancePercent).
-				Msg("[CROSSSEED] Hardlink mode: download size exceeds tolerance")
-			return hardlinkError(fmt.Sprintf("Missing file size (%.1f%%) exceeds tolerance (%.1f%%)", downloadPercent, tolerancePercent))
-		}
-
-		log.Debug().
-			Int("instanceID", candidate.InstanceID).
-			Str("torrentName", torrentName).
-			Int("hardlinkCount", len(hardlinkFiles)).
-			Int("downloadCount", len(downloadFiles)).
-			Int64("downloadBytes", downloadBytesTotal).
-			Float64("downloadPercent", downloadPercent).
-			Msg("[CROSSSEED] Partial hardlink mode: ignorable files will be downloaded")
-	}
-
-	// Build full file list for destDir calculation (all incoming files)
-	allCandidateTorrentFiles := make([]hardlinktree.TorrentFile, 0, len(sourceFiles))
-	for _, f := range sourceFiles {
-		allCandidateTorrentFiles = append(allCandidateTorrentFiles, hardlinktree.TorrentFile{
+		candidateTorrentFiles = append(candidateTorrentFiles, hardlinktree.TorrentFile{
 			Path: f.Name,
 			Size: f.Size,
 		})
@@ -8636,7 +8197,7 @@ func (s *Service) processHardlinkMode(
 	incomingTrackerDomain := ParseTorrentAnnounceDomain(torrentBytes)
 
 	// Build destination directory based on preset and torrent structure
-	destDir := s.buildHardlinkDestDir(ctx, instance, torrentHash, torrentName, candidate, incomingTrackerDomain, req, allCandidateTorrentFiles)
+	destDir := s.buildHardlinkDestDir(ctx, instance, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFiles)
 
 	existingFiles := make([]hardlinktree.ExistingFile, 0, len(candidateFiles))
 	for _, f := range candidateFiles {
@@ -8649,9 +8210,8 @@ func (s *Service) processHardlinkMode(
 		})
 	}
 
-	// Build hardlink tree plan - only for files we can actually hardlink
-	// For partial hardlinks, we only hardlink the files that exist in the matched torrent
-	plan, err := hardlinktree.BuildPlan(hardlinkFiles, existingFiles, layout, torrentName, destDir)
+	// Build hardlink tree plan
+	plan, err := hardlinktree.BuildPlan(candidateTorrentFiles, existingFiles, layout, torrentName, destDir)
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -8693,25 +8253,26 @@ func (s *Service) processHardlinkMode(
 		}
 	}
 
-	if isPartialHardlink {
-		log.Info().
-			Int("instanceID", candidate.InstanceID).
-			Str("torrentName", torrentName).
-			Str("destDir", destDir).
-			Int("hardlinkCount", len(plan.Files)).
-			Int("downloadCount", len(downloadFiles)).
-			Msg("[CROSSSEED] Partial hardlink mode: created hardlink tree (some files will be downloaded)")
-	} else {
-		log.Info().
-			Int("instanceID", candidate.InstanceID).
-			Str("torrentName", torrentName).
-			Str("destDir", destDir).
-			Int("fileCount", len(plan.Files)).
-			Msg("[CROSSSEED] Hardlink mode: created hardlink tree")
-	}
+	log.Info().
+		Int("instanceID", candidate.InstanceID).
+		Str("torrentName", torrentName).
+		Str("destDir", destDir).
+		Int("fileCount", len(plan.Files)).
+		Msg("[CROSSSEED] Hardlink mode: created hardlink tree")
 
 	// Build options for adding torrent
 	options := make(map[string]string)
+
+	// Hardlink mode uses skip_checking=true so torrent is instant 100% - no recheck phase.
+	// Default to starting immediately. Only pause if SkipAutoResume is explicitly set,
+	// which is the per-source "keep paused" toggle. Ignore req.StartPaused here since
+	// it's often inherited from unrelated settings (e.g., RSS defaults to paused for
+	// non-hardlink mode where recheck is needed).
+	if req.SkipAutoResume {
+		options["stopped"] = "true"
+	} else {
+		options["stopped"] = "false"
+	}
 
 	// Set category if available
 	if crossCategory != "" {
@@ -8730,37 +8291,15 @@ func (s *Service) processHardlinkMode(
 	options["autoTMM"] = "false"
 	options["savepath"] = plan.RootDir
 	options["contentLayout"] = "Original"
+	// Skip checking - hardlink mode pre-creates exact file layout, hash verification is redundant
+	options["skip_checking"] = "true"
 
-	if isPartialHardlink {
-		// Partial hardlink mode: some ignorable files need to be downloaded
-		// - Add paused so qBittorrent doesn't start downloading immediately
-		// - Do NOT set skip_checking - we need recheck to verify existing hardlinked files
-		// - After add, we'll trigger recheck and queue for resume
-		options["stopped"] = "true"
-		options["paused"] = "true" // For older qBittorrent clients
-		log.Debug().
-			Int("instanceID", candidate.InstanceID).
-			Str("torrentName", torrentName).
-			Str("savepath", plan.RootDir).
-			Str("category", crossCategory).
-			Msg("[CROSSSEED] Partial hardlink mode: adding torrent paused (will recheck then download missing files)")
-	} else {
-		// Full hardlink mode: all files are hardlinked, instant 100%
-		// - Skip checking since all files are pre-created with exact layout
-		// - Start immediately unless user explicitly requested "keep paused"
-		options["skip_checking"] = "true"
-		if req.SkipAutoResume {
-			options["stopped"] = "true"
-		} else {
-			options["stopped"] = "false"
-		}
-		log.Debug().
-			Int("instanceID", candidate.InstanceID).
-			Str("torrentName", torrentName).
-			Str("savepath", plan.RootDir).
-			Str("category", crossCategory).
-			Msg("[CROSSSEED] Hardlink mode: adding torrent")
-	}
+	log.Debug().
+		Int("instanceID", candidate.InstanceID).
+		Str("torrentName", torrentName).
+		Str("savepath", plan.RootDir).
+		Str("category", crossCategory).
+		Msg("[CROSSSEED] Hardlink mode: adding torrent")
 
 	// Add the torrent
 	if err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options); err != nil {
@@ -8789,115 +8328,6 @@ func (s *Service) processHardlinkMode(
 		}
 	}
 
-	// For partial hardlinks, queue for VERIFICATION before resume.
-	// This is a safety net: hardlinked files must be verified 100% complete before resuming,
-	// otherwise qBittorrent could overwrite hardlinked data with downloaded content.
-	if isPartialHardlink {
-		// Try to trigger recheck using direct method (bypasses sync validation).
-		// This is best-effort: if it fails, the verification worker will retry later.
-		// We don't rollback on recheck failure because the torrent was added successfully
-		// and the worker will handle verification once the torrent appears in sync.
-		if err := s.syncManager.RecheckTorrentDirect(ctx, candidate.InstanceID, []string{torrentHash}); err != nil {
-			log.Warn().
-				Err(err).
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Msg("[CROSSSEED] Partial hardlink mode: failed to trigger recheck (will retry in verification worker)")
-		}
-
-		// Build list of required files (the hardlinked file paths that MUST be 100% complete)
-		// These are the file paths from the INCOMING torrent that we created hardlinks for
-		requiredFiles := make([]string, 0, len(hardlinkFiles))
-		for _, hf := range hardlinkFiles {
-			requiredFiles = append(requiredFiles, hf.Path)
-		}
-
-		// Calculate resume threshold (for logging)
-		resumeThreshold := 1.0 - (tolerancePercent / 100.0)
-		if resumeThreshold < 0.9 {
-			resumeThreshold = 0.9
-		}
-
-		// ALWAYS queue for verification (even when SkipAutoResume=true).
-		// The safety net must verify hardlinked files are complete before ANY resume
-		// (whether automatic or manual). Without this, a user could manually resume
-		// and corrupt hardlinked source data.
-		resumeAfterVerify := !req.SkipAutoResume
-
-		if err := s.queuePartialHardlinkVerify(
-			candidate.InstanceID,
-			torrentHash,
-			requiredFiles,
-			plan, // For rollback if verification fails
-			resumeAfterVerify,
-			resumeThreshold,
-		); err != nil {
-			log.Warn().
-				Err(err).
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Msg("[CROSSSEED] Partial hardlink mode: failed to queue for verification")
-			// Verification queue failed - rollback to be safe using direct delete
-			if rollbackErr := hardlinktree.Rollback(plan); rollbackErr != nil {
-				log.Warn().Err(rollbackErr).Msg("[CROSSSEED] Partial hardlink mode: rollback failed")
-			}
-			if deleteErr := s.syncManager.DeleteTorrentsDirect(ctx, candidate.InstanceID, []string{torrentHash}, false); deleteErr != nil {
-				log.Warn().Err(deleteErr).Msg("[CROSSSEED] Partial hardlink mode: failed to delete torrent after queue failure")
-			}
-			return hardlinkModeResult{
-				Used:    true,
-				Success: false,
-				Result: InstanceCrossSeedResult{
-					InstanceID:   candidate.InstanceID,
-					InstanceName: candidate.InstanceName,
-					Success:      false,
-					Status:       "hardlink_error",
-					Message:      "Verification queue full - cannot safely proceed with partial hardlink",
-				},
-			}
-		}
-
-		var statusMsg string
-		if resumeAfterVerify {
-			log.Info().
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Int("hardlinkCount", len(plan.Files)).
-				Int("downloadCount", len(downloadFiles)).
-				Int("requiredFileCount", len(requiredFiles)).
-				Msg("[CROSSSEED] Partial hardlink mode: added torrent, recheck triggered, queued for verified resume")
-			statusMsg = fmt.Sprintf("Added via partial hardlink mode (match: %s, hardlinked: %d, download: %d) - pending verification", matchType, len(plan.Files), len(downloadFiles))
-		} else {
-			log.Info().
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Int("hardlinkCount", len(plan.Files)).
-				Int("downloadCount", len(downloadFiles)).
-				Int("requiredFileCount", len(requiredFiles)).
-				Msg("[CROSSSEED] Partial hardlink mode: added torrent paused, queued for verification only")
-			statusMsg = fmt.Sprintf("Added via partial hardlink mode (hardlinked: %d, download: %d) - will be verified then left paused", len(plan.Files), len(downloadFiles))
-		}
-
-		return hardlinkModeResult{
-			Used:    true,
-			Success: true,
-			Result: InstanceCrossSeedResult{
-				InstanceID:   candidate.InstanceID,
-				InstanceName: candidate.InstanceName,
-				Success:      true,
-				Status:       "added_partial_hardlink",
-				Message:      statusMsg,
-				MatchedTorrent: &MatchedTorrent{
-					Hash:     matchedTorrent.Hash,
-					Name:     matchedTorrent.Name,
-					Progress: matchedTorrent.Progress,
-					Size:     matchedTorrent.Size,
-				},
-			},
-		}
-	}
-
-	// Full hardlink mode - all files hardlinked, instant 100%
 	return hardlinkModeResult{
 		Used:    true,
 		Success: true,

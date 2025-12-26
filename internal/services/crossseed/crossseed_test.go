@@ -2530,14 +2530,6 @@ func (f *fakeSyncManager) CreateCategory(_ context.Context, _ int, _, _ string) 
 	return nil
 }
 
-func (f *fakeSyncManager) DeleteTorrentsDirect(_ context.Context, _ int, _ []string, _ bool) error {
-	return nil
-}
-
-func (f *fakeSyncManager) RecheckTorrentDirect(_ context.Context, _ int, _ []string) error {
-	return nil
-}
-
 // TestWebhookCheckRequest_Validation tests request validation
 func TestWebhookCheckRequest_Validation(t *testing.T) {
 	tests := []struct {
@@ -3088,14 +3080,6 @@ func (m *mockRecoverSyncManager) CreateCategory(_ context.Context, _ int, _, _ s
 	return nil
 }
 
-func (m *mockRecoverSyncManager) DeleteTorrentsDirect(_ context.Context, _ int, _ []string, _ bool) error {
-	return nil
-}
-
-func (m *mockRecoverSyncManager) RecheckTorrentDirect(_ context.Context, _ int, _ []string) error {
-	return nil
-}
-
 func TestRecoverErroredTorrents_NoErroredTorrents(t *testing.T) {
 	// Test with no errored torrents
 	normalTorrent := qbt.Torrent{
@@ -3489,14 +3473,6 @@ func (f *infohashTestSyncManager) GetCategories(context.Context, int) (map[strin
 }
 
 func (f *infohashTestSyncManager) CreateCategory(context.Context, int, string, string) error {
-	return nil
-}
-
-func (f *infohashTestSyncManager) DeleteTorrentsDirect(context.Context, int, []string, bool) error {
-	return nil
-}
-
-func (f *infohashTestSyncManager) RecheckTorrentDirect(context.Context, int, []string) error {
 	return nil
 }
 
@@ -5036,14 +5012,6 @@ func (m *rssFilterTestSyncManager) GetCategories(context.Context, int) (map[stri
 }
 
 func (m *rssFilterTestSyncManager) CreateCategory(context.Context, int, string, string) error {
-	return nil
-}
-
-func (m *rssFilterTestSyncManager) DeleteTorrentsDirect(context.Context, int, []string, bool) error {
-	return nil
-}
-
-func (m *rssFilterTestSyncManager) RecheckTorrentDirect(context.Context, int, []string) error {
 	return nil
 }
 

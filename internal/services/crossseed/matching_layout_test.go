@@ -198,14 +198,6 @@ func (c *candidateSelectionSyncManager) CreateCategory(_ context.Context, _ int,
 	return nil
 }
 
-func (c *candidateSelectionSyncManager) DeleteTorrentsDirect(_ context.Context, _ int, _ []string, _ bool) error {
-	return nil
-}
-
-func (c *candidateSelectionSyncManager) RecheckTorrentDirect(_ context.Context, _ int, _ []string) error {
-	return nil
-}
-
 func TestGetMatchTypeFromTitle_FallbackWhenReleaseKeysMissing(t *testing.T) {
 	t.Parallel()
 
