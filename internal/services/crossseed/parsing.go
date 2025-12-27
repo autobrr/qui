@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -491,26 +492,33 @@ func ParseTorrentName(torrentBytes []byte) (name string, hash string, err error)
 
 // ParseTorrentMetadata extracts comprehensive metadata from torrent bytes
 func ParseTorrentMetadata(torrentBytes []byte) (name string, hash string, files qbt.TorrentFiles, err error) {
+	name, hash, files, _, err = ParseTorrentMetadataWithInfo(torrentBytes)
+	return name, hash, files, err
+}
+
+// ParseTorrentMetadataWithInfo extracts comprehensive metadata from torrent bytes,
+// including the raw metainfo.Info for piece-level operations.
+func ParseTorrentMetadataWithInfo(torrentBytes []byte) (name, hash string, files qbt.TorrentFiles, info *metainfo.Info, err error) {
 	mi, err := metainfo.Load(bytes.NewReader(torrentBytes))
 	if err != nil {
-		return "", "", nil, fmt.Errorf("failed to parse torrent metainfo: %w", err)
+		return "", "", nil, nil, fmt.Errorf("failed to parse torrent metainfo: %w", err)
 	}
 
-	info, err := mi.UnmarshalInfo()
+	infoVal, err := mi.UnmarshalInfo()
 	if err != nil {
-		return "", "", nil, fmt.Errorf("failed to unmarshal torrent info: %w", err)
+		return "", "", nil, nil, fmt.Errorf("failed to unmarshal torrent info: %w", err)
 	}
 
-	name = info.Name
+	name = infoVal.Name
 	hash = mi.HashInfoBytes().HexString()
 
 	if name == "" {
-		return "", "", nil, fmt.Errorf("torrent has no name")
+		return "", "", nil, nil, errors.New("torrent has no name")
 	}
 
-	files = BuildTorrentFilesFromInfo(name, info)
+	files = BuildTorrentFilesFromInfo(name, infoVal)
 
-	return name, hash, files, nil
+	return name, hash, files, &infoVal, nil
 }
 
 // BuildTorrentFilesFromInfo creates qBittorrent-compatible file list from torrent info
@@ -557,7 +565,7 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentF
 		displayPath := f.DisplayPath(&info)
 		name := rootName
 		if info.IsDir() && displayPath != "" {
-			name = strings.Join([]string{rootName, displayPath}, "/")
+			name = rootName + "/" + displayPath
 		} else if !info.IsDir() && displayPath != "" {
 			name = displayPath
 		}
@@ -596,6 +604,58 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentF
 	}
 
 	return files
+}
+
+// ParseTorrentAnnounceDomain extracts the primary announce URL's domain from torrent bytes.
+// Prefers the first entry in announce-list if present; falls back to announce.
+// Returns an empty string if no announce URL is found.
+func ParseTorrentAnnounceDomain(torrentBytes []byte) string {
+	mi, err := metainfo.Load(bytes.NewReader(torrentBytes))
+	if err != nil {
+		return ""
+	}
+
+	var announceURL string
+	// Prefer first tier of announce-list
+	if len(mi.AnnounceList) > 0 && len(mi.AnnounceList[0]) > 0 {
+		announceURL = mi.AnnounceList[0][0]
+	}
+	// Fall back to announce
+	if announceURL == "" {
+		announceURL = mi.Announce
+	}
+	if announceURL == "" {
+		return ""
+	}
+
+	// Extract domain from URL
+	return extractDomainFromAnnounce(announceURL)
+}
+
+// extractDomainFromAnnounce extracts and normalizes the domain from an announce URL.
+func extractDomainFromAnnounce(announceURL string) string {
+	// Handle various URL schemes (http, https, udp, etc.)
+	url := announceURL
+	// Remove scheme
+	if idx := strings.Index(url, "://"); idx != -1 {
+		url = url[idx+3:]
+	}
+	// Remove path
+	if idx := strings.Index(url, "/"); idx != -1 {
+		url = url[:idx]
+	}
+	// Remove port
+	if idx := strings.LastIndex(url, ":"); idx != -1 {
+		// Make sure this is a port, not part of IPv6
+		if !strings.Contains(url[idx:], "]") {
+			url = url[:idx]
+		}
+	}
+	// Remove userinfo if present
+	if idx := strings.Index(url, "@"); idx != -1 {
+		url = url[idx+1:]
+	}
+	return strings.ToLower(url)
 }
 
 // FindLargestFile returns the file with the largest size from a list of torrent files.

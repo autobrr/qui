@@ -484,7 +484,9 @@ func TestHasExtraSourceFiles(t *testing.T) {
 			expectedResult: true,
 		},
 		{
-			name: "both have same count, different sizes matches by size",
+			// Files with different normalized keys are extras even if sizes match.
+			// a.mkv and x.mkv have different normalized keys, so they don't match.
+			name: "different normalized keys same size - has extras",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "Movie/a.mkv", Size: 1000},
 				{Name: "Movie/b.mkv", Size: 2000},
@@ -493,7 +495,7 @@ func TestHasExtraSourceFiles(t *testing.T) {
 				{Name: "Movie/x.mkv", Size: 1000},
 				{Name: "Movie/y.mkv", Size: 2000},
 			},
-			expectedResult: false,
+			expectedResult: true, // a.mkv ≠ x.mkv, b.mkv ≠ y.mkv by normalized key
 		},
 		{
 			name: "candidate has more files than source - no extras",
@@ -536,6 +538,36 @@ func TestHasExtraSourceFiles(t *testing.T) {
 			sourceFiles:    qbt.TorrentFiles{},
 			candidateFiles: qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
 			expectedResult: false,
+		},
+		{
+			// Regression test: same size, different extension should be detected as extras.
+			// Source has .srt, candidate has .nfo - both are 1024 bytes.
+			// Without normalizedKey matching, size-only matching would wrongly see no extras.
+			name: "same size different extension - has extras (regression)",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+				{Name: "Movie/movie.srt", Size: 1024}, // subtitle file
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+				{Name: "Movie/movie.nfo", Size: 1024}, // NFO file with same size as srt
+			},
+			expectedResult: true, // .srt has no match (even though .nfo has same size), so it's extra
+		},
+		{
+			// Different filenames with same extension and size are still extras.
+			// english.srt and spanish.srt have different normalized keys, so they don't match.
+			// This prevents wrong hardlinks when different sidecar files happen to have same size.
+			name: "same size same extension different name - has extras",
+			sourceFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+				{Name: "Movie/english.srt", Size: 1024},
+			},
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 4000000000},
+				{Name: "Movie/spanish.srt", Size: 1024}, // same extension, different name, same size
+			},
+			expectedResult: true, // english.srt ≠ spanish.srt by normalized key
 		},
 	}
 

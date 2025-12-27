@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { CompletionOverview } from "@/components/instances/preferences/CompletionOverview"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -27,11 +27,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
+import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import type {
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
-  CrossSeedRun
+  CrossSeedRun,
+  Instance
 } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
@@ -90,6 +93,7 @@ interface GlobalCrossSeedSettings {
   webhookSourceTags: string[]
   webhookSourceExcludeCategories: string[]
   webhookSourceExcludeTags: string[]
+  // Note: Hardlink mode settings have been moved to per-instance configuration
 }
 
 // RSS Automation constants
@@ -134,6 +138,7 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   webhookSourceTags: [],
   webhookSourceExcludeCategories: [],
   webhookSourceExcludeTags: [],
+  // Note: Hardlink mode is now per-instance (configured in Instance Settings)
 }
 
 function parseList(value: string): string[] {
@@ -214,6 +219,351 @@ function aggregateInstanceMetadata(
 interface CrossSeedPageProps {
   activeTab: "automation" | "search" | "global"
   onTabChange: (tab: "automation" | "search" | "global") => void
+}
+
+/** Per-instance hardlink/reflink mode settings component */
+function HardlinkModeSettings() {
+  const { instances, updateInstance, isUpdating } = useInstances()
+  const [expandedInstances, setExpandedInstances] = useState<string[]>([])
+  const [dirtyMap, setDirtyMap] = useState<Record<number, boolean>>({})
+  const [formMap, setFormMap] = useState<Record<number, {
+    useHardlinks: boolean
+    useReflinks: boolean
+    hardlinkBaseDir: string
+    hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
+  }>>({})
+
+  const activeInstances = useMemo(
+    () => (instances ?? []).filter((inst) => inst.isActive),
+    [instances]
+  )
+
+  const getForm = useCallback((instance: Instance) => {
+    return formMap[instance.id] ?? {
+      useHardlinks: instance.useHardlinks,
+      useReflinks: instance.useReflinks,
+      hardlinkBaseDir: instance.hardlinkBaseDir || "",
+      hardlinkDirPreset: instance.hardlinkDirPreset || "flat",
+    }
+  }, [formMap])
+
+  const handleToggleHardlink = (instance: Instance, enabled: boolean) => {
+    if (!instance.hasLocalFilesystemAccess && enabled) {
+      toast.error("Cannot enable hardlink mode", {
+        description: `Instance "${instance.name}" does not have local filesystem access enabled.`,
+      })
+      return
+    }
+
+    const form = getForm(instance)
+
+    // Block enabling with empty base directory
+    if (enabled && !form.hardlinkBaseDir.trim()) {
+      toast.error("Cannot enable hardlink mode", {
+        description: "Base directory must be set first.",
+      })
+      return
+    }
+
+    // Mutual exclusivity: disable reflink when enabling hardlink
+    const newReflinks = enabled ? false : form.useReflinks
+
+    updateInstance({
+      id: instance.id,
+      data: {
+        name: instance.name,
+        host: instance.host,
+        username: instance.username,
+        useHardlinks: enabled,
+        useReflinks: newReflinks,
+        hardlinkBaseDir: form.hardlinkBaseDir,
+        hardlinkDirPreset: form.hardlinkDirPreset,
+      },
+    }, {
+      onSuccess: () => {
+        toast.success(`Hardlink mode ${enabled ? "enabled" : "disabled"}`, {
+          description: instance.name,
+        })
+        // Sync formMap with server state to prevent visual snap-back
+        setFormMap((prev) => ({
+          ...prev,
+          [instance.id]: { ...form, useHardlinks: enabled, useReflinks: newReflinks },
+        }))
+        setDirtyMap((prev) => ({ ...prev, [instance.id]: false }))
+      },
+      onError: (error) => {
+        toast.error("Failed to update settings", {
+          description: error instanceof Error ? error.message : "Unknown error",
+        })
+      },
+    })
+  }
+
+  const handleToggleReflink = (instance: Instance, enabled: boolean) => {
+    if (!instance.hasLocalFilesystemAccess && enabled) {
+      toast.error("Cannot enable reflink mode", {
+        description: `Instance "${instance.name}" does not have local filesystem access enabled.`,
+      })
+      return
+    }
+
+    const form = getForm(instance)
+
+    // Block enabling with empty base directory
+    if (enabled && !form.hardlinkBaseDir.trim()) {
+      toast.error("Cannot enable reflink mode", {
+        description: "Base directory must be set first.",
+      })
+      return
+    }
+
+    // Mutual exclusivity: disable hardlink when enabling reflink
+    const newHardlinks = enabled ? false : form.useHardlinks
+
+    updateInstance({
+      id: instance.id,
+      data: {
+        name: instance.name,
+        host: instance.host,
+        username: instance.username,
+        useHardlinks: newHardlinks,
+        useReflinks: enabled,
+        hardlinkBaseDir: form.hardlinkBaseDir,
+        hardlinkDirPreset: form.hardlinkDirPreset,
+      },
+    }, {
+      onSuccess: () => {
+        toast.success(`Reflink mode ${enabled ? "enabled" : "disabled"}`, {
+          description: instance.name,
+        })
+        // Sync formMap with server state to prevent visual snap-back
+        setFormMap((prev) => ({
+          ...prev,
+          [instance.id]: { ...form, useHardlinks: newHardlinks, useReflinks: enabled },
+        }))
+        setDirtyMap((prev) => ({ ...prev, [instance.id]: false }))
+      },
+      onError: (error) => {
+        toast.error("Failed to update settings", {
+          description: error instanceof Error ? error.message : "Unknown error",
+        })
+      },
+    })
+  }
+
+  const handleFormChange = (
+    instanceId: number,
+    field: "hardlinkBaseDir" | "hardlinkDirPreset",
+    value: string,
+    currentForm: { useHardlinks: boolean; useReflinks: boolean; hardlinkBaseDir: string; hardlinkDirPreset: "flat" | "by-tracker" | "by-instance" }
+  ) => {
+    setFormMap((prev) => ({
+      ...prev,
+      [instanceId]: {
+        ...currentForm,
+        [field]: value,
+      },
+    }))
+    setDirtyMap((prev) => ({ ...prev, [instanceId]: true }))
+  }
+
+  const handleSave = (instance: Instance) => {
+    const form = getForm(instance)
+    updateInstance({
+      id: instance.id,
+      data: {
+        name: instance.name,
+        host: instance.host,
+        username: instance.username,
+        useHardlinks: form.useHardlinks,
+        useReflinks: form.useReflinks,
+        hardlinkBaseDir: form.hardlinkBaseDir,
+        hardlinkDirPreset: form.hardlinkDirPreset,
+      },
+    }, {
+      onSuccess: () => {
+        toast.success("Settings saved", {
+          description: instance.name,
+        })
+        setDirtyMap((prev) => ({ ...prev, [instance.id]: false }))
+      },
+      onError: (error) => {
+        toast.error("Failed to save settings", {
+          description: error instanceof Error ? error.message : "Unknown error",
+        })
+      },
+    })
+  }
+
+  if (!activeInstances.length) {
+    return (
+      <Collapsible className="rounded-lg border border-border/70 bg-muted/40">
+        <CollapsibleTrigger className="flex w-full items-center justify-between p-4 font-medium [&[data-state=open]>svg]:rotate-180">
+          <span>Hardlink / Reflink Mode</span>
+          <ChevronDown className="h-4 w-4 transition-transform duration-200" />
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="border-t border-border/70 p-4 pt-4">
+            <p className="text-sm text-muted-foreground">No active instances. Add instances first.</p>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    )
+  }
+
+  return (
+    <Collapsible className="rounded-lg border border-border/70 bg-muted/40">
+      <CollapsibleTrigger className="flex w-full items-center justify-between p-4 font-medium [&[data-state=open]>svg]:rotate-180">
+        <span>Hardlink / Reflink Mode</span>
+        <ChevronDown className="h-4 w-4 transition-transform duration-200" />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <p className="text-xs text-muted-foreground px-4">
+          Create hardlinked or reflinked (copy-on-write) file trees for cross-seeds. Each instance can be configured
+          independently. The base directory must be on the same filesystem as the instance's download paths.
+          <strong> Reflink mode</strong> allows safe cross-seeding of torrents with extra/missing files—always triggers recheck,
+          and if below threshold, leaves paused for manual review.
+        </p>
+        <div className="border-t border-border/70 p-4 space-y-4">
+
+          <Accordion
+            type="multiple"
+            value={expandedInstances}
+            onValueChange={setExpandedInstances}
+            className="space-y-2"
+          >
+            {activeInstances.map((instance) => {
+              const form = getForm(instance)
+              const isDirty = dirtyMap[instance.id] ?? false
+              const canEnableModes = instance.hasLocalFilesystemAccess
+
+              return (
+                <AccordionItem
+                  key={instance.id}
+                  value={String(instance.id)}
+                  className="border border-border/70 rounded-lg bg-background/50"
+                >
+                  <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <span className="font-medium truncate">{instance.name}</span>
+                      {form.useHardlinks && (
+                        <Badge variant="outline" className="shrink-0 bg-primary/10 text-primary border-primary/30 text-xs">
+                          Hardlink
+                        </Badge>
+                      )}
+                      {form.useReflinks && (
+                        <Badge variant="outline" className="shrink-0 bg-blue-500/10 text-blue-500 border-blue-500/30 text-xs">
+                          Reflink
+                        </Badge>
+                      )}
+                      {!canEnableModes && (
+                        <Badge variant="outline" className="shrink-0 bg-muted text-muted-foreground border-muted-foreground/30 text-xs">
+                          No local access
+                        </Badge>
+                      )}
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-4 pb-4">
+                    <div className="space-y-4 pt-2">
+                      {/* Hardlink mode toggle */}
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="space-y-0.5">
+                          <Label className="font-medium">Hardlink mode</Label>
+                          <p className="text-xs text-muted-foreground">
+                            {canEnableModes
+                              ? "Create hardlinked file trees (strict piece-boundary check)"
+                              : "Enable \"Local filesystem access\" in Instance Settings first"}
+                          </p>
+                        </div>
+                        <Switch
+                          checked={form.useHardlinks}
+                          onCheckedChange={(value) => handleToggleHardlink(instance, !!value)}
+                          disabled={!canEnableModes || isUpdating}
+                        />
+                      </div>
+
+                      {/* Reflink mode toggle */}
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="space-y-0.5">
+                          <Label className="font-medium">Reflink mode (copy-on-write)</Label>
+                          <p className="text-xs text-muted-foreground">
+                            {canEnableModes
+                              ? "Create reflinked clones—safe for extra/missing files; always rechecks"
+                              : "Enable \"Local filesystem access\" in Instance Settings first"}
+                          </p>
+                        </div>
+                        <Switch
+                          checked={form.useReflinks}
+                          onCheckedChange={(value) => handleToggleReflink(instance, !!value)}
+                          disabled={!canEnableModes || isUpdating}
+                        />
+                      </div>
+
+                      {form.useReflinks && (
+                        <Alert className="bg-blue-500/5 border-blue-500/30">
+                          <Info className="h-4 w-4 text-blue-500" />
+                          <AlertDescription className="text-xs">
+                            Reflink mode always triggers recheck. If completion is below threshold, the torrent
+                            remains paused for manual review. Disk usage starts near-zero but grows as blocks are modified.
+                          </AlertDescription>
+                        </Alert>
+                      )}
+
+                      <Separator />
+
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label>Base directory</Label>
+                          <Input
+                            placeholder="/path/to/crossseed-data"
+                            value={form.hardlinkBaseDir}
+                            onChange={(e) => handleFormChange(instance.id, "hardlinkBaseDir", e.target.value, form)}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Must be on the same filesystem as download paths. Used by both hardlink and reflink modes.
+                          </p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Directory organization</Label>
+                          <Select
+                            value={form.hardlinkDirPreset}
+                            onValueChange={(value: "flat" | "by-tracker" | "by-instance") =>
+                              handleFormChange(instance.id, "hardlinkDirPreset", value, form)
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="flat">Flat (all in base directory)</SelectItem>
+                              <SelectItem value="by-tracker">By Tracker</SelectItem>
+                              <SelectItem value="by-instance">By Instance</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {isDirty && (
+                          <Button
+                            size="sm"
+                            onClick={() => handleSave(instance)}
+                            disabled={isUpdating}
+                          >
+                            {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Save Changes
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              )
+            })}
+          </Accordion>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  )
 }
 
 export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
@@ -440,6 +790,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         webhookSourceTags: settings.webhookSourceTags ?? [],
         webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
         webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
+        // Note: Hardlink mode is now per-instance (configured in Instance Settings)
       })
       setGlobalSettingsInitialized(true)
     }
@@ -535,6 +886,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         webhookSourceTags: settings.webhookSourceTags ?? [],
         webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
         webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
+        // Note: Hardlink mode is now per-instance
       }
 
     return {
@@ -561,6 +913,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       webhookSourceTags: globalSource.webhookSourceTags,
       webhookSourceExcludeCategories: globalSource.webhookSourceExcludeCategories,
       webhookSourceExcludeTags: globalSource.webhookSourceExcludeTags,
+      // Note: Hardlink mode is now per-instance (see Instance Settings)
     }
   }, [
     settings,
@@ -983,13 +1336,16 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         <AlertTitle>How cross-seeding works</AlertTitle>
         <AlertDescription className="space-y-1">
           <p>
-            qui inherits the <strong>Automatic Torrent Management (AutoTMM)</strong> state from the matched torrent.
-            If the source uses AutoTMM, the cross-seed will too; if the source has a custom save path, the cross-seed uses the same path.
-            Files are reused directly without hardlinking.
+            <strong>Reuse mode</strong> (default): inherits AutoTMM/save path behavior from the matched torrent and reuses the existing files.
+            Ignore patterns apply during matching (e.g., <code>.nfo</code>, <code>.srt</code>).
+          </p>
+          <p>
+            <strong>Hardlink mode</strong> (optional, per-instance): hardlinks the matched files into the instance's configured hardlink base directory and adds the cross-seed there.
+            Requires local filesystem access. Supports extra files when piece-boundary safe. Hardlinks content, triggers recheck for extras.
           </p>
           <p className="text-muted-foreground">
             <a
-              href="https://github.com/autobrr/qui#how-qui-differs-from-cross-seed"
+              href="https://github.com/autobrr/qui/blob/main/docs/CROSS_SEEDING.md"
               target="_blank"
               rel="noopener noreferrer"
               className="font-medium text-primary underline-offset-4 hover:underline"
@@ -2135,18 +2491,19 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 </div>
               </div>
 
+              <HardlinkModeSettings />
+
               <Collapsible className="rounded-lg border border-border/70 bg-muted/40">
                 <CollapsibleTrigger className="flex w-full items-center justify-between p-4 font-medium [&[data-state=open]>svg]:rotate-180">
                   <span>Webhook Source Filters</span>
                   <ChevronDown className="h-4 w-4 transition-transform duration-200" />
                 </CollapsibleTrigger>
                 <CollapsibleContent>
+                  <p className="text-xs text-muted-foreground px-4">
+                    Filter which local torrents are considered when autobrr calls the webhook endpoint.
+                    Empty filters mean all torrents are checked. If you configure both category and tag filters, torrents must match both.
+                  </p>
                   <div className="border-t border-border/70 p-4 pt-4 space-y-4">
-                    <p className="text-xs text-muted-foreground">
-                      Filter which local torrents are considered when autobrr calls the webhook endpoint.
-                      Empty filters mean all torrents are checked. If you configure both category and tag filters, torrents must match both.
-                    </p>
-
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="space-y-3">
                         <Label>Exclude categories</Label>
@@ -2253,7 +2610,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   className={validationErrors.ignorePatterns ? "border-destructive" : ""}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Applies to RSS automation, autobrr apply requests, and seeded torrent search additions. Plain suffixes (e.g., <code>.nfo</code>) match in any subfolder; glob patterns do not cross <code>/</code>, so use folder-aware globs like <code>*/sample/*</code> for nested paths.
+                  Used during file matching (RSS automation, autobrr apply, seeded torrent search). Plain suffixes (e.g., <code>.nfo</code>) match in any subfolder; glob patterns do not cross <code>/</code>, so use folder-aware globs like <code>*/sample/*</code> for nested paths. Note: extra files are only allowed when piece-boundary safe—if ignored files share torrent pieces with content, the cross-seed is skipped.
                 </p>
                 {validationErrors.ignorePatterns && (
                   <p className="text-sm text-destructive">{validationErrors.ignorePatterns}</p>
