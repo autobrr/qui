@@ -860,8 +860,13 @@ qui is developed and maintained by volunteers. Your support helps us continue im
 
 ### License Key
 
-Pay what you want (minimum $9.99) to unlock premium themes:
-- Visit [Polar.sh](https://buy.polar.sh/polar_cl_yyXJesVM9pFVfAPIplspbfCukgVgXzXjXIc2N0I8WcL) or Settings → Themes in your qui instance
+Pay what you want (minimum $4.99) to unlock premium themes:
+- Use any payment method below (GitHub Sponsors, Buy Me a Coffee, or crypto)
+- After paying, DM soup/ze0s on Discord (depending on who you paid to)
+  - For crypto, include the transaction hash/link
+- You'll receive a 100% discount code
+- Redeem the code on [Polar](https://buy.polar.sh/polar_cl_yyXJesVM9pFVfAPIplspbfCukgVgXzXjXIc2N0I8WcL) (free order) to receive your license key
+- Enter the license key in Settings → Themes in your qui instance
 - License is lifetime
 
 ### Other methods
