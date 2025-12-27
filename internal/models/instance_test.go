@@ -168,6 +168,7 @@ func TestInstanceStoreWithHost(t *testing.T) {
 			use_hardlinks BOOLEAN NOT NULL DEFAULT 0,
 			hardlink_base_dir TEXT NOT NULL DEFAULT '',
 			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
+			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
 			last_connected_at TIMESTAMP,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -192,7 +193,8 @@ func TestInstanceStoreWithHost(t *testing.T) {
 			i.has_local_filesystem_access,
 			i.use_hardlinks,
 			i.hardlink_base_dir,
-			i.hardlink_dir_preset
+			i.hardlink_dir_preset,
+			i.use_reflinks
 		FROM instances i
 		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
 		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
@@ -284,6 +286,7 @@ func TestInstanceStoreWithEmptyUsername(t *testing.T) {
 			use_hardlinks BOOLEAN NOT NULL DEFAULT 0,
 			hardlink_base_dir TEXT NOT NULL DEFAULT '',
 			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
+			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
 			last_connected_at TIMESTAMP,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -308,7 +311,8 @@ func TestInstanceStoreWithEmptyUsername(t *testing.T) {
 			i.has_local_filesystem_access,
 			i.use_hardlinks,
 			i.hardlink_base_dir,
-			i.hardlink_dir_preset
+			i.hardlink_dir_preset,
+			i.use_reflinks
 		FROM instances i
 		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
 		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
@@ -383,6 +387,7 @@ func TestInstanceStoreEmptyUsernameSelfHealing(t *testing.T) {
 			use_hardlinks BOOLEAN NOT NULL DEFAULT 0,
 			hardlink_base_dir TEXT NOT NULL DEFAULT '',
 			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
+			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
 			FOREIGN KEY (name_id) REFERENCES string_pool(id),
 			FOREIGN KEY (host_id) REFERENCES string_pool(id),
 			FOREIGN KEY (username_id) REFERENCES string_pool(id),
@@ -404,7 +409,8 @@ func TestInstanceStoreEmptyUsernameSelfHealing(t *testing.T) {
 			i.has_local_filesystem_access,
 			i.use_hardlinks,
 			i.hardlink_base_dir,
-			i.hardlink_dir_preset
+			i.hardlink_dir_preset,
+			i.use_reflinks
 		FROM instances i
 		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
 		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
@@ -471,6 +477,7 @@ func TestInstanceStoreUpdateEmptyUsernameSelfHealing(t *testing.T) {
 			use_hardlinks BOOLEAN NOT NULL DEFAULT 0,
 			hardlink_base_dir TEXT NOT NULL DEFAULT '',
 			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
+			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
 			FOREIGN KEY (name_id) REFERENCES string_pool(id),
 			FOREIGN KEY (host_id) REFERENCES string_pool(id),
 			FOREIGN KEY (username_id) REFERENCES string_pool(id),
@@ -492,7 +499,8 @@ func TestInstanceStoreUpdateEmptyUsernameSelfHealing(t *testing.T) {
 			i.has_local_filesystem_access,
 			i.use_hardlinks,
 			i.hardlink_base_dir,
-			i.hardlink_dir_preset
+			i.hardlink_dir_preset,
+			i.use_reflinks
 		FROM instances i
 		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
 		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
@@ -559,6 +567,7 @@ func TestInstanceStoreUpdateOrder(t *testing.T) {
 			use_hardlinks BOOLEAN NOT NULL DEFAULT 0,
 			hardlink_base_dir TEXT NOT NULL DEFAULT '',
 			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
+			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
 			last_connected_at TIMESTAMP,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -583,7 +592,8 @@ func TestInstanceStoreUpdateOrder(t *testing.T) {
 			i.has_local_filesystem_access,
 			i.use_hardlinks,
 			i.hardlink_base_dir,
-			i.hardlink_dir_preset
+			i.hardlink_dir_preset,
+			i.use_reflinks
 		FROM instances i
 		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
 		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id

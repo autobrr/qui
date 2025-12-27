@@ -28,6 +28,8 @@ export interface Instance {
   useHardlinks: boolean
   hardlinkBaseDir: string
   hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
+  // Reflink mode (copy-on-write) - mutually exclusive with hardlink mode
+  useReflinks: boolean
   sortOrder: number
   isActive: boolean
   reannounceSettings: InstanceReannounceSettings
@@ -46,6 +48,8 @@ export interface InstanceFormData {
   useHardlinks?: boolean
   hardlinkBaseDir?: string
   hardlinkDirPreset?: "flat" | "by-tracker" | "by-instance"
+  // Reflink mode (copy-on-write) - mutually exclusive with hardlink mode
+  useReflinks?: boolean
   reannounceSettings: InstanceReannounceSettings
 }
 

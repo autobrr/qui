@@ -7,10 +7,11 @@ When you cross-seed a torrent, qui:
 2. Adds the new torrent pointing to your existing files
 3. Applies the correct category and save path automatically
 
-qui supports two modes for handling files:
+qui supports three modes for handling files:
 
 - **Default mode**: Reuses existing files directly. No new files or links are created. May require rename-alignment if the incoming torrent has a different folder/file layout.
 - **Hardlink mode** (optional): Creates a hardlinked copy of the matched files laid out exactly as the incoming torrent expects, then adds the torrent pointing at that tree. Avoids rename-alignment entirely.
+- **Reflink mode** (optional): Creates copy-on-write clones (reflinks) of the matched files. Allows safe cross-seeding of torrents with extra/missing files because qBittorrent can write/repair the clones without affecting originals.
 
 ## Hardlink Mode (optional)
 
@@ -73,6 +74,74 @@ By default, hardlink-added torrents start seeding immediately (since `skip_check
 - Windows: Folder names in the hardlink tree are sanitized to remove Windows-illegal characters (like `: * ? " < > |`). The torrent's internal file paths are not modified.
 - Ensure the base directory has sufficient inode capacity for the number of hardlinks you expect to create.
 - **Hardlink mode supports extra files when piece-boundary safe.** If the incoming torrent contains extra files not present in the matched torrent (e.g., `.nfo`/`.srt` sidecars), hardlink mode will link the content files and trigger a recheck so qBittorrent downloads the extras. If extras share pieces with content (unsafe), the cross-seed is skipped.
+
+## Reflink Mode (optional)
+
+Reflink mode creates copy-on-write clones of the matched files. Unlike hardlinks, reflinks allow qBittorrent to safely modify the cloned files (download missing pieces, repair corrupted data) without affecting the original seeded files.
+
+**Key advantage:** Reflink mode **bypasses piece-boundary safety checks**. This means you can cross-seed torrents with extra/missing files even when those files share pieces with existing content—the clones can be safely modified.
+
+### When to use
+
+- You want to cross-seed torrents that hardlink mode would skip due to "extra files share pieces with content"
+- Your filesystem supports copy-on-write clones (BTRFS, XFS on Linux; APFS on macOS)
+- You prefer the safety of copy-on-write over hardlinks
+
+### Requirements
+
+- **Local filesystem access** must be enabled on the target qBittorrent instance.
+- The base directory must be on the **same filesystem/volume** as the instance's download paths.
+- The filesystem must support reflinks:
+  - **Linux**: BTRFS, XFS (with reflink=1), and similar CoW filesystems
+  - **macOS**: APFS
+  - **Windows/FreeBSD**: Not currently supported
+
+### Behavior differences from hardlink mode
+
+| Aspect | Hardlink Mode | Reflink Mode |
+|--------|--------------|--------------|
+| Piece-boundary check | Skips if unsafe | Never skips (safe to modify clones) |
+| Recheck | Only when extras exist | Always triggers recheck |
+| Disk usage | Zero (shared blocks) | Starts near-zero; grows as modified |
+| SkipRecheck option | Respects setting | Returns `skipped_recheck` if enabled |
+| Below-threshold behavior | Auto-resume or pause | Always pauses for manual review |
+
+### Disk usage implications
+
+Reflinks use copy-on-write semantics:
+- Initially, cloned files share disk blocks with originals (near-zero additional space)
+- When qBittorrent writes to a clone (downloads extras, repairs pieces), only modified blocks are copied
+- In worst case (entire file rewritten), disk usage approaches full file size
+- If the original and clone become completely different, you're using 2x space
+
+### How to enable
+
+1. Enable "Local filesystem access" on the qBittorrent instance in Instance Settings.
+2. In Cross-Seed > Hardlink / Reflink Mode, expand the instance you want to configure.
+3. Enable "Reflink mode" for that instance.
+4. Set "Base directory" to a path on the same filesystem as your downloads.
+5. Choose a directory preset (`flat`, `by-tracker`, `by-instance`).
+
+**Note:** Hardlink and reflink modes are mutually exclusive—only one can be enabled per instance.
+
+### Recheck always required
+
+Reflink mode always triggers a recheck after adding the torrent. This is because:
+- The clone might have missing/extra files that need downloading
+- qBittorrent must verify which pieces already match
+
+If you have `SkipRecheck` enabled in your cross-seed settings, reflink mode will skip the cross-seed entirely rather than add without rechecking.
+
+### Below-threshold behavior
+
+If recheck completes below the configured threshold (default 95%):
+- The torrent remains **paused for manual review**
+- qui does NOT auto-delete the torrent or reflink directory
+- This gives you a chance to investigate why completion is low
+
+Check the torrent's progress and decide whether to:
+- Resume it to download missing content
+- Delete it if the match was incorrect
 
 ## Recheck & Alignment
 
@@ -173,13 +242,22 @@ This typically occurs in default mode when the save path doesn't match where fil
 - Verify the matched torrent's save path in qBittorrent
 - Ensure the matched torrent has completed downloading (100% progress)
 
+### Reflink mode failed
+
+Common causes:
+- **Filesystem doesn't support reflinks**: The filesystem at the base directory doesn't support copy-on-write clones. On Linux, use BTRFS or XFS (with reflink enabled). On macOS, use APFS.
+- **Filesystem mismatch**: Base directory is on a different filesystem than the download paths.
+- **Missing local filesystem access**: The target instance doesn't have "Local filesystem access" enabled.
+- **SkipRecheck enabled**: Reflink mode always requires recheck; if SkipRecheck is enabled, reflink mode skips the cross-seed.
+
 ### Cross-seed skipped: "extra files share pieces with content"
 
 The incoming torrent has files not present in your matched torrent, and those files share torrent pieces with your existing content. Downloading them would require overwriting parts of your existing files.
 
 **Solutions:**
-- This is expected for some torrents—the skip protects your data
-- If you need to cross-seed this release, you'd need to use copy mode (not currently implemented) or download the torrent fresh
+- **Use reflink mode**: Enable reflink mode for the instance—it bypasses this check and safely clones files so qBittorrent can modify them
+- This is expected for some torrents in hardlink/default mode—the skip protects your data
+- If reflinks aren't available on your filesystem, you'd need to download the torrent fresh
 
 ### Cross-seed stuck at low percentage after recheck
 

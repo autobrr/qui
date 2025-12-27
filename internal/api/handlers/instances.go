@@ -159,7 +159,7 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 	}
 
 	responses := make([]InstanceResponse, len(instances))
-	for i := range len(instances) {
+	for i := range instances {
 		select {
 		case res := <-resultCh:
 			responses[res.index] = res.response
@@ -176,6 +176,7 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 				UseHardlinks:             instances[i].UseHardlinks,
 				HardlinkBaseDir:          instances[i].HardlinkBaseDir,
 				HardlinkDirPreset:        instances[i].HardlinkDirPreset,
+				UseReflinks:              instances[i].UseReflinks,
 				Connected:                false,
 				HasDecryptionError:       false,
 				SortOrder:                instances[i].SortOrder,
@@ -223,6 +224,7 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		UseHardlinks:             instance.UseHardlinks,
 		HardlinkBaseDir:          instance.HardlinkBaseDir,
 		HardlinkDirPreset:        instance.HardlinkDirPreset,
+		UseReflinks:              instance.UseReflinks,
 		Connected:                healthy,
 		HasDecryptionError:       hasDecryptionError,
 		ConnectionStatus:         connectionStatus,
@@ -263,6 +265,7 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 		UseHardlinks:             instance.UseHardlinks,
 		HardlinkBaseDir:          instance.HardlinkBaseDir,
 		HardlinkDirPreset:        instance.HardlinkDirPreset,
+		UseReflinks:              instance.UseReflinks,
 		Connected:                false, // Will be updated asynchronously
 		HasDecryptionError:       false,
 		SortOrder:                instance.SortOrder,
@@ -358,6 +361,7 @@ type UpdateInstanceRequest struct {
 	UseHardlinks             *bool                              `json:"useHardlinks,omitempty"`
 	HardlinkBaseDir          *string                            `json:"hardlinkBaseDir,omitempty"`
 	HardlinkDirPreset        *string                            `json:"hardlinkDirPreset,omitempty"`
+	UseReflinks              *bool                              `json:"useReflinks,omitempty"`
 	ReannounceSettings       *InstanceReannounceSettingsPayload `json:"reannounceSettings,omitempty"`
 }
 
@@ -377,6 +381,7 @@ type InstanceResponse struct {
 	UseHardlinks             bool                              `json:"useHardlinks"`
 	HardlinkBaseDir          string                            `json:"hardlinkBaseDir"`
 	HardlinkDirPreset        string                            `json:"hardlinkDirPreset"`
+	UseReflinks              bool                              `json:"useReflinks"`
 	Connected                bool                              `json:"connected"`
 	HasDecryptionError       bool                              `json:"hasDecryptionError"`
 	RecentErrors             []models.InstanceError            `json:"recentErrors,omitempty"`
@@ -623,7 +628,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		req.BasicPassword = existingInstance.BasicPasswordEncrypted
 	}
 
-	// Validate hardlink settings
+	// Validate hardlink/reflink settings
 	effectiveLocalAccess := existingInstance.HasLocalFilesystemAccess
 	if req.HasLocalFilesystemAccess != nil {
 		effectiveLocalAccess = *req.HasLocalFilesystemAccess
@@ -632,10 +637,21 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	if req.UseHardlinks != nil {
 		effectiveUseHardlinks = *req.UseHardlinks
 	}
+	effectiveUseReflinks := existingInstance.UseReflinks
+	if req.UseReflinks != nil {
+		effectiveUseReflinks = *req.UseReflinks
+	}
 	effectiveHardlinkBaseDir := existingInstance.HardlinkBaseDir
 	if req.HardlinkBaseDir != nil {
 		effectiveHardlinkBaseDir = *req.HardlinkBaseDir
 	}
+
+	// Mutual exclusivity: cannot enable both hardlink and reflink modes
+	if effectiveUseHardlinks && effectiveUseReflinks {
+		RespondError(w, http.StatusBadRequest, "Cannot enable both hardlink and reflink modes - they are mutually exclusive")
+		return
+	}
+
 	if effectiveUseHardlinks {
 		if !effectiveLocalAccess {
 			RespondError(w, http.StatusBadRequest, "Cannot enable hardlink mode without local filesystem access")
@@ -647,6 +663,17 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		}
 	}
 
+	if effectiveUseReflinks {
+		if !effectiveLocalAccess {
+			RespondError(w, http.StatusBadRequest, "Cannot enable reflink mode without local filesystem access")
+			return
+		}
+		if effectiveHardlinkBaseDir == "" {
+			RespondError(w, http.StatusBadRequest, "Cannot enable reflink mode without a base directory")
+			return
+		}
+	}
+
 	// Update instance
 	updateParams := &models.InstanceUpdateParams{
 		TLSSkipVerify:            req.TLSSkipVerify,
@@ -654,6 +681,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		UseHardlinks:             req.UseHardlinks,
 		HardlinkBaseDir:          req.HardlinkBaseDir,
 		HardlinkDirPreset:        req.HardlinkDirPreset,
+		UseReflinks:              req.UseReflinks,
 	}
 	instance, err := h.instanceStore.Update(r.Context(), instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, updateParams)
 	if err != nil {

@@ -49,6 +49,7 @@ import (
 	"github.com/autobrr/qui/pkg/fsutil"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/pathutil"
+	"github.com/autobrr/qui/pkg/reflinktree"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -2667,29 +2668,42 @@ func (s *Service) processCrossSeedCandidate(
 	// Check if source has extra files that won't exist on disk (e.g., NFO files not filtered by ignorePatterns)
 	hasExtraFiles := hasExtraSourceFiles(sourceFiles, candidateFiles)
 
+	// Determine mode selection: reflink vs hardlink vs reuse.
+	// Mode selection must happen BEFORE safety checks because reflink mode bypasses safety
+	// checks that exist to protect the *original* files (reflinks protect originals via CoW).
+	instance, instanceErr := s.instanceStore.Get(ctx, candidate.InstanceID)
+	useReflinkMode := instanceErr == nil && instance != nil && instance.UseReflinks
+	useHardlinkMode := instanceErr == nil && instance != nil && instance.UseHardlinks && !instance.UseReflinks
+
 	// SAFETY: Reject cross-seeds where main content file sizes don't match.
 	// This prevents corrupting existing good data with potentially different or corrupted files.
 	// Scene releases should be byte-for-byte identical across trackers - if sizes differ,
 	// it indicates either corruption or a different release that shouldn't be cross-seeded.
-	if hasMismatch, mismatchedFiles := hasContentFileSizeMismatch(sourceFiles, candidateFiles, req.IgnorePatterns, s.stringNormalizer); hasMismatch {
-		result.Status = "rejected"
-		result.Message = "Content file sizes do not match - possible corruption or different release"
-		log.Warn().
-			Int("instanceID", candidate.InstanceID).
-			Str("instanceName", candidate.InstanceName).
-			Str("torrentHash", torrentHash).
-			Str("matchedHash", matchedTorrent.Hash).
-			Str("matchType", string(matchType)).
-			Strs("mismatchedFiles", mismatchedFiles).
-			Msg("Cross-seed rejected: content file size mismatch - refusing to proceed to avoid potential data corruption")
-		return result
+	//
+	// NOTE: Reflink mode bypasses this check because it is allowed to repair/overwrite
+	// the cloned files without risking corruption to the original seeded files.
+	if !useReflinkMode {
+		if hasMismatch, mismatchedFiles := hasContentFileSizeMismatch(sourceFiles, candidateFiles, req.IgnorePatterns, s.stringNormalizer); hasMismatch {
+			result.Status = "rejected"
+			result.Message = "Content file sizes do not match - possible corruption or different release"
+			log.Warn().
+				Int("instanceID", candidate.InstanceID).
+				Str("instanceName", candidate.InstanceName).
+				Str("torrentHash", torrentHash).
+				Str("matchedHash", matchedTorrent.Hash).
+				Str("matchType", string(matchType)).
+				Strs("mismatchedFiles", mismatchedFiles).
+				Msg("Cross-seed rejected: content file size mismatch - refusing to proceed to avoid potential data corruption")
+			return result
+		}
 	}
 
 	// SAFETY: Check piece-boundary alignment when source has extra files.
 	// If extra/ignored files share pieces with content files, downloading those pieces
 	// would corrupt the existing content data (piece hashes span both file types).
 	// In this case, we must skip - only reflink/copy mode could safely handle it.
-	if hasExtraFiles && torrentInfo != nil {
+	// NOTE: Reflink mode bypasses this check because reflinks allow safe modification.
+	if !useReflinkMode && hasExtraFiles && torrentInfo != nil {
 		// Build set of missing file paths (files in source that have no (normalizedKey, size) match in candidate).
 		// This uses the same multiset matching as hasExtraSourceFiles.
 		type fileKeySize struct {
@@ -2838,15 +2852,30 @@ func (s *Service) processCrossSeedCandidate(
 		}
 	}
 
+	// Try reflink mode first if enabled - reflinks bypass piece-boundary restrictions
+	if useReflinkMode {
+		rlResult := s.processReflinkMode(
+			ctx, candidate, torrentBytes, torrentHash, torrentName, req,
+			matchedTorrent, matchType, sourceFiles, candidateFiles, props,
+			baseCategory, crossCategory,
+		)
+		if rlResult.Used {
+			// Reflink mode was attempted (regardless of success/failure)
+			return rlResult.Result
+		}
+	}
+
 	// Try hardlink mode if enabled - this bypasses the regular reuse+rename alignment
-	hlResult := s.processHardlinkMode(
-		ctx, candidate, torrentBytes, torrentHash, torrentName, req,
-		matchedTorrent, matchType, sourceFiles, candidateFiles, props,
-		baseCategory, crossCategory,
-	)
-	if hlResult.Used {
-		// Hardlink mode was attempted (regardless of success/failure)
-		return hlResult.Result
+	if useHardlinkMode {
+		hlResult := s.processHardlinkMode(
+			ctx, candidate, torrentBytes, torrentHash, torrentName, req,
+			matchedTorrent, matchType, sourceFiles, candidateFiles, props,
+			baseCategory, crossCategory,
+		)
+		if hlResult.Used {
+			// Hardlink mode was attempted (regardless of success/failure)
+			return hlResult.Result
+		}
 	}
 
 	// Regular mode: continue with reuse+rename alignment
@@ -8099,7 +8128,7 @@ type hardlinkModeResult struct {
 }
 
 // processHardlinkMode attempts to add a cross-seed torrent using hardlink mode.
-// This creates a hardline file tree matching the incoming torrent's layout,
+// This creates a hardlinked file tree matching the incoming torrent's layout,
 // eliminating the need for reuse+rename alignment.
 //
 // Returns hardlinkModeResult with Used=false if hardlink mode is not applicable
@@ -8553,4 +8582,368 @@ func (s *Service) resolveTrackerDisplayName(ctx context.Context, incomingTracker
 	}
 
 	return models.ResolveTrackerDisplayName(incomingTrackerDomain, indexerName, customizations)
+}
+
+// reflinkModeResult represents the outcome of reflink mode processing.
+type reflinkModeResult struct {
+	// Used indicates whether reflink mode was used for this cross-seed.
+	Used bool
+	// Success indicates the reflink mode completed successfully.
+	Success bool
+	// Result is the final InstanceCrossSeedResult when reflink mode is used.
+	// Only valid when Used is true.
+	Result InstanceCrossSeedResult
+}
+
+// processReflinkMode attempts to add a cross-seed torrent using reflink (copy-on-write) mode.
+// This creates a reflink tree matching the incoming torrent's layout, allowing safe
+// modification of cloned files without affecting originals.
+//
+// Returns reflinkModeResult with Used=false if reflink mode is not applicable
+// (disabled, instance lacks local access, filesystem doesn't support reflinks, etc).
+// Returns Used=true with the final result when reflink mode is attempted.
+//
+// Key differences from hardlink mode:
+// - Reflinks allow qBittorrent to safely write/repair bytes without corrupting originals
+// - Reflink mode never skips due to piece-boundary safety (that's the whole point)
+// - Reflink mode always requires recheck after add
+// - If SkipRecheck is enabled, reflink mode returns skipped_recheck instead of adding
+func (s *Service) processReflinkMode(
+	ctx context.Context,
+	candidate CrossSeedCandidate,
+	torrentBytes []byte,
+	torrentHash, torrentName string,
+	req *CrossSeedRequest,
+	matchedTorrent *qbt.Torrent,
+	matchType string,
+	sourceFiles, candidateFiles qbt.TorrentFiles,
+	props *qbt.TorrentProperties,
+	_, crossCategory string, // baseCategory unused, crossCategory used for torrent options
+) reflinkModeResult {
+	notUsed := reflinkModeResult{Used: false}
+
+	// Helper to create error result when reflink mode is enabled but fails
+	reflinkError := func(message string) reflinkModeResult {
+		return reflinkModeResult{
+			Used:    true,
+			Success: false,
+			Result: InstanceCrossSeedResult{
+				InstanceID:   candidate.InstanceID,
+				InstanceName: candidate.InstanceName,
+				Success:      false,
+				Status:       "reflink_error",
+				Message:      message,
+			},
+		}
+	}
+
+	// Get instance to check reflink settings (now per-instance)
+	instance, err := s.instanceStore.Get(ctx, candidate.InstanceID)
+	if err != nil || instance == nil {
+		// If we can't get the instance, we can't check if reflinks are enabled
+		return notUsed
+	}
+
+	// Check if reflink mode is disabled for this instance - only case where we return notUsed
+	if !instance.UseReflinks {
+		return notUsed
+	}
+
+	// From here on, reflink mode is ENABLED - failures must return errors (no fallback)
+
+	// Reflink mode always requires recheck (we can't skip checking because we might have
+	// mismatched/extra files that need downloading)
+	if req.SkipRecheck {
+		return reflinkModeResult{
+			Used:    true,
+			Success: false,
+			Result: InstanceCrossSeedResult{
+				InstanceID:   candidate.InstanceID,
+				InstanceName: candidate.InstanceName,
+				Success:      false,
+				Status:       "skipped_recheck",
+				Message:      "Reflink mode always requires recheck; skipped because SkipRecheck is enabled",
+			},
+		}
+	}
+
+	// Validate base directory is configured (reuses hardlink base dir)
+	if instance.HardlinkBaseDir == "" {
+		log.Warn().
+			Int("instanceID", candidate.InstanceID).
+			Msg("[CROSSSEED] Reflink mode enabled but base directory is empty")
+		return reflinkError("Reflink mode enabled but base directory is not configured")
+	}
+
+	// Verify instance has local filesystem access (required for reflinks)
+	if !instance.HasLocalFilesystemAccess {
+		log.Warn().
+			Int("instanceID", candidate.InstanceID).
+			Str("instanceName", candidate.InstanceName).
+			Msg("[CROSSSEED] Reflink mode enabled but instance lacks local filesystem access")
+		return reflinkError(fmt.Sprintf("Instance '%s' does not have local filesystem access enabled", candidate.InstanceName))
+	}
+
+	// Need a valid file path from matched torrent to check filesystem
+	if len(candidateFiles) == 0 {
+		return reflinkError("No candidate files available for reflink matching")
+	}
+
+	// Build path to existing file (matched torrent's content)
+	var existingFilePath string
+	if matchedTorrent.ContentPath != "" {
+		existingFilePath = matchedTorrent.ContentPath
+	} else if props.SavePath != "" {
+		existingFilePath = props.SavePath
+	} else {
+		log.Warn().
+			Int("instanceID", candidate.InstanceID).
+			Str("matchedHash", matchedTorrent.Hash).
+			Msg("[CROSSSEED] Reflink mode: no content path or save path available")
+		return reflinkError("No content path or save path available for matched torrent")
+	}
+
+	// Ensure base directory exists before checking filesystem
+	if err := os.MkdirAll(instance.HardlinkBaseDir, 0o755); err != nil {
+		log.Warn().
+			Err(err).
+			Str("hardlinkBaseDir", instance.HardlinkBaseDir).
+			Msg("[CROSSSEED] Reflink mode: failed to create base directory")
+		return reflinkError(fmt.Sprintf("Failed to create reflink base directory: %v", err))
+	}
+
+	// Validate same filesystem (required for reflinks on Linux)
+	sameFS, err := fsutil.SameFilesystem(existingFilePath, instance.HardlinkBaseDir)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Str("existingPath", existingFilePath).
+			Str("hardlinkBaseDir", instance.HardlinkBaseDir).
+			Msg("[CROSSSEED] Reflink mode: failed to check filesystem, aborting")
+		return reflinkError(fmt.Sprintf("Failed to verify same filesystem: %v", err))
+	}
+	if !sameFS {
+		log.Warn().
+			Str("existingPath", existingFilePath).
+			Str("hardlinkBaseDir", instance.HardlinkBaseDir).
+			Msg("[CROSSSEED] Reflink mode: different filesystems, aborting")
+		return reflinkError("Reflink mode enabled but source and destination are on different filesystems")
+	}
+
+	// Check reflink support
+	supported, reason := reflinktree.SupportsReflink(instance.HardlinkBaseDir)
+	if !supported {
+		log.Warn().
+			Str("reason", reason).
+			Str("hardlinkBaseDir", instance.HardlinkBaseDir).
+			Msg("[CROSSSEED] Reflink mode: filesystem does not support reflinks")
+		return reflinkError("Reflink not supported: " + reason)
+	}
+
+	// Reflink mode always uses Original layout to match the incoming torrent's structure exactly.
+	layout := hardlinktree.LayoutOriginal
+
+	// Build ALL source files list (for destDir calculation - reflects full torrent structure)
+	candidateTorrentFilesAll := make([]hardlinktree.TorrentFile, 0, len(sourceFiles))
+	for _, f := range sourceFiles {
+		candidateTorrentFilesAll = append(candidateTorrentFilesAll, hardlinktree.TorrentFile{
+			Path: f.Name,
+			Size: f.Size,
+		})
+	}
+
+	// Extract incoming tracker domain from torrent bytes (for "by-tracker" preset)
+	incomingTrackerDomain := ParseTorrentAnnounceDomain(torrentBytes)
+
+	// Build destination directory based on preset and torrent structure
+	destDir := s.buildHardlinkDestDir(ctx, instance, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFilesAll)
+
+	// Build existing files list (all files on disk from matched torrent)
+	existingFiles := make([]hardlinktree.ExistingFile, 0, len(candidateFiles))
+	for _, f := range candidateFiles {
+		existingFiles = append(existingFiles, hardlinktree.ExistingFile{
+			AbsPath: filepath.Join(props.SavePath, f.Name),
+			RelPath: f.Name,
+			Size:    f.Size,
+		})
+	}
+
+	// Build CLONEABLE source files list (only files that have matching (normalizedKey, size) in candidate).
+	// Files without matches will be downloaded by qBittorrent.
+	type fileKeySize struct {
+		key  string
+		size int64
+	}
+	candidateKeyMultiset := make(map[fileKeySize]int)
+	for _, cf := range candidateFiles {
+		key := fileKeySize{key: normalizeFileKey(cf.Name), size: cf.Size}
+		candidateKeyMultiset[key]++
+	}
+
+	var candidateTorrentFilesToClone []hardlinktree.TorrentFile
+	sourceKeyUsed := make(map[fileKeySize]int)
+	for _, f := range sourceFiles {
+		key := fileKeySize{key: normalizeFileKey(f.Name), size: f.Size}
+		if sourceKeyUsed[key] < candidateKeyMultiset[key] {
+			// This source file has a matching (normalizedKey, size) in candidate - include it for cloning
+			candidateTorrentFilesToClone = append(candidateTorrentFilesToClone, hardlinktree.TorrentFile{
+				Path: f.Name,
+				Size: f.Size,
+			})
+			sourceKeyUsed[key]++
+		}
+		// else: no matching existing file - this will be downloaded
+	}
+
+	if len(candidateTorrentFilesToClone) == 0 {
+		return reflinkError("No cloneable files found (all source files would need to be downloaded)")
+	}
+
+	// Build reflink tree plan with only the cloneable files
+	plan, err := hardlinktree.BuildPlan(candidateTorrentFilesToClone, existingFiles, layout, torrentName, destDir)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentName", torrentName).
+			Str("destDir", destDir).
+			Msg("[CROSSSEED] Reflink mode: failed to build plan, aborting")
+		return reflinkError(fmt.Sprintf("Failed to build reflink plan: %v", err))
+	}
+
+	// Create reflink tree on disk
+	if err := reflinktree.Create(plan); err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentName", torrentName).
+			Str("destDir", destDir).
+			Msg("[CROSSSEED] Reflink mode: failed to create reflink tree, aborting")
+		return reflinkError(fmt.Sprintf("Failed to create reflink tree: %v", err))
+	}
+
+	log.Info().
+		Int("instanceID", candidate.InstanceID).
+		Str("torrentName", torrentName).
+		Str("destDir", destDir).
+		Int("fileCount", len(plan.Files)).
+		Msg("[CROSSSEED] Reflink mode: created reflink tree")
+
+	// Build options for adding torrent
+	options := make(map[string]string)
+
+	// Set category if available
+	if crossCategory != "" {
+		options["category"] = crossCategory
+	}
+
+	// Set tags
+	finalTags := buildCrossSeedTags(req.Tags, matchedTorrent.Tags, req.InheritSourceTags)
+	if len(finalTags) > 0 {
+		options["tags"] = strings.Join(finalTags, ",")
+	}
+
+	// Reflink mode: files are pre-created, so use savepath pointing to tree root
+	// Force contentLayout=Original to match the reflink tree layout exactly
+	options["autoTMM"] = "false"
+	options["savepath"] = plan.RootDir
+	options["contentLayout"] = "Original"
+
+	// Reflink mode always adds paused and triggers recheck
+	options["skip_checking"] = "true"
+	options["stopped"] = "true"
+	options["paused"] = "true"
+
+	clonedFiles := len(candidateTorrentFilesToClone)
+	totalFiles := len(sourceFiles)
+
+	log.Debug().
+		Int("instanceID", candidate.InstanceID).
+		Str("torrentName", torrentName).
+		Str("savepath", plan.RootDir).
+		Str("category", crossCategory).
+		Int("clonedFiles", clonedFiles).
+		Int("totalFiles", totalFiles).
+		Msg("[CROSSSEED] Reflink mode: adding torrent")
+
+	// Add the torrent
+	if err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options); err != nil {
+		// Rollback reflink tree on failure
+		if rollbackErr := reflinktree.Rollback(plan); rollbackErr != nil {
+			log.Warn().
+				Err(rollbackErr).
+				Str("destDir", destDir).
+				Msg("[CROSSSEED] Reflink mode: failed to rollback reflink tree")
+		}
+		log.Error().
+			Err(err).
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentName", torrentName).
+			Msg("[CROSSSEED] Reflink mode: failed to add torrent, aborting")
+		return reflinkModeResult{
+			Used:    true,
+			Success: false,
+			Result: InstanceCrossSeedResult{
+				InstanceID:   candidate.InstanceID,
+				InstanceName: candidate.InstanceName,
+				Success:      false,
+				Status:       "reflink_error",
+				Message:      fmt.Sprintf("Failed to add torrent: %v", err),
+			},
+		}
+	}
+
+	// Build result message
+	statusMsg := fmt.Sprintf("Added via reflink mode (match: %s, files: %d/%d)", matchType, clonedFiles, totalFiles)
+
+	// Trigger recheck so qBittorrent discovers which pieces are present (cloned)
+	// and which are missing (to download)
+	if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "recheck"); err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentHash", torrentHash).
+			Msg("[CROSSSEED] Reflink mode: failed to trigger recheck after add")
+		statusMsg += " - recheck failed, manual intervention required"
+	} else if req.SkipAutoResume {
+		// User requested to skip auto-resume - leave paused after recheck
+		log.Debug().
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentHash", torrentHash).
+			Msg("[CROSSSEED] Reflink mode: skipping auto-resume per user settings")
+		statusMsg += " - auto-resume skipped per settings"
+	} else {
+		// Queue for background resume - worker will resume when recheck completes at threshold
+		log.Debug().
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentHash", torrentHash).
+			Int("missingFiles", totalFiles-clonedFiles).
+			Msg("[CROSSSEED] Reflink mode: queuing torrent for recheck resume")
+		if err := s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash); err != nil {
+			statusMsg += " - auto-resume queue full, manual resume required"
+		}
+	}
+
+	// Add note about low completion behavior
+	if clonedFiles < totalFiles {
+		statusMsg += " (below threshold = remains paused for manual review)"
+	}
+
+	return reflinkModeResult{
+		Used:    true,
+		Success: true,
+		Result: InstanceCrossSeedResult{
+			InstanceID:   candidate.InstanceID,
+			InstanceName: candidate.InstanceName,
+			Success:      true,
+			Status:       "added_reflink",
+			Message:      statusMsg,
+			MatchedTorrent: &MatchedTorrent{
+				Hash:     matchedTorrent.Hash,
+				Name:     matchedTorrent.Name,
+				Progress: matchedTorrent.Progress,
+				Size:     matchedTorrent.Size,
+			},
+		},
+	}
 }
