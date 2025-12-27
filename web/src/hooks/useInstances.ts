@@ -50,10 +50,13 @@ export function useInstances() {
       data: Partial<InstanceFormData>
     }) => api.updateInstance(id, data),
     onSuccess: async (updatedInstance) => {
-      // Immediately update the instance in cache
+      // Immediately update the instance in cache, preserving only the connected
+      // flag to avoid UI flicker (testConnection will refresh it)
       queryClient.setQueryData<InstanceResponse[]>(["instances"], (old) => {
         if (!old) return [updatedInstance]
-        return old.map(i => i.id === updatedInstance.id ? updatedInstance : i)
+        return old.map(i => i.id === updatedInstance.id
+          ? { ...updatedInstance, connected: i.connected }
+          : i)
       })
 
       // Test connection immediately to get actual status
@@ -75,6 +78,43 @@ export function useInstances() {
     },
   })
 
+  const statusMutation = useMutation<InstanceResponse, Error, { id: number; isActive: boolean }, { previousInstances?: InstanceResponse[] }>({
+    mutationFn: ({ id, isActive }) => api.updateInstanceStatus(id, isActive),
+    onMutate: async ({ id, isActive }) => {
+      await queryClient.cancelQueries({ queryKey: ["instances"] })
+      const previousInstances = queryClient.getQueryData<InstanceResponse[]>(["instances"])
+
+      if (previousInstances) {
+        queryClient.setQueryData<InstanceResponse[]>(["instances"], previousInstances.map(instance =>
+          instance.id === id
+            ? {
+                ...instance,
+                isActive,
+                connected: false,
+                connectionStatus: isActive ? "" : "disabled",
+              }
+            : instance,
+        ))
+      }
+
+      return { previousInstances }
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousInstances) {
+        queryClient.setQueryData(["instances"], context.previousInstances)
+      }
+    },
+    onSuccess: (updatedInstance) => {
+      queryClient.setQueryData<InstanceResponse[]>(["instances"], (instances) => {
+        if (!instances) return [updatedInstance]
+        return instances.map(instance => instance.id === updatedInstance.id ? updatedInstance : instance)
+      })
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["instances"] })
+    },
+  })
+
   const deleteMutation = useMutation({
     mutationFn: ({ id }: { id: number; name: string }) => api.deleteInstance(id),
     onSuccess: () => {
@@ -85,6 +125,46 @@ export function useInstances() {
   const testConnectionMutation = useMutation({
     mutationFn: (id: number) => api.testConnection(id),
   })
+
+  const reorderMutation = useMutation<InstanceResponse[], Error, number[], { previousInstances?: InstanceResponse[] }>({
+    mutationFn: (instanceIds: number[]) => api.reorderInstances(instanceIds),
+    onMutate: async (instanceIds) => {
+      await queryClient.cancelQueries({ queryKey: ["instances"] })
+
+      const previousInstances = queryClient.getQueryData<InstanceResponse[]>(["instances"])
+      if (previousInstances) {
+        const instanceMap = new Map(previousInstances.map(instance => [instance.id, instance]))
+        const reorderedInstances = instanceIds
+          .map((id, index) => {
+            const instance = instanceMap.get(id)
+            if (!instance) return null
+            return { ...instance, sortOrder: index }
+          })
+          .filter((instance): instance is InstanceResponse => instance !== null)
+
+        if (reorderedInstances.length === previousInstances.length) {
+          queryClient.setQueryData<InstanceResponse[]>(["instances"], reorderedInstances)
+        }
+      }
+
+      return { previousInstances }
+    },
+    onError: (_error, _instanceIds, context) => {
+      if (context?.previousInstances) {
+        queryClient.setQueryData(["instances"], context.previousInstances)
+      }
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData<InstanceResponse[]>(["instances"], data)
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["instances"] })
+    },
+  })
+
+  const updatingStatusId = statusMutation.isPending
+    ? statusMutation.variables?.id ?? null
+    : null
 
   return {
     instances: instances as InstanceResponse[] | undefined,
@@ -98,5 +178,11 @@ export function useInstances() {
     isUpdating: updateMutation.isPending,
     isDeleting: deleteMutation.isPending,
     isTesting: testConnectionMutation.isPending,
+    reorderInstances: reorderMutation.mutate,
+    reorderInstancesAsync: reorderMutation.mutateAsync,
+    isReordering: reorderMutation.isPending,
+    setInstanceStatus: statusMutation.mutate,
+    isUpdatingStatus: statusMutation.isPending,
+    updatingStatusId,
   }
 }

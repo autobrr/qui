@@ -36,10 +36,10 @@ permissions:
 jobs:
   web:
     name: Build web
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -59,7 +59,7 @@ jobs:
           echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
 
       - name: Setup pnpm cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -94,21 +94,21 @@ jobs:
         run: CI= pnpm run build
 
       - name: Upload web production build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: web-dist
           path: web/dist
 
   test:
     name: Run tests
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     needs: [web]
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Download web production build
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: web-dist
           path: web/dist
@@ -120,7 +120,7 @@ jobs:
           cache: true
 
       - name: Cache Go modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
@@ -136,7 +136,7 @@ jobs:
           go tool cover -html=coverage.out -o coverage.html
 
       - name: Upload coverage reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-report
           path: |
@@ -145,16 +145,16 @@ jobs:
 
   goreleaserbuild:
     name: Build distribution binaries
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     needs: [test, web]
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Download web production build
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: web-dist
           path: web/dist
@@ -188,7 +188,7 @@ jobs:
           BUILDER: ${{ github.actor }}@github-actions
 
       - name: Upload assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: qui
           path: |
@@ -199,7 +199,7 @@ jobs:
 
   docker:
     name: Build Docker images
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     needs: [test, web]
     strategy:
       fail-fast: true
@@ -213,7 +213,7 @@ jobs:
           - linux/arm64
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -225,7 +225,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download web production build
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: web-dist
           path: web/dist
@@ -246,12 +246,12 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Setup Blacksmith Builder
+        uses: useblacksmith/setup-docker-builder@v1
 
       - name: Build and publish image
         id: docker_build
-        uses: docker/build-push-action@v6
+        uses: useblacksmith/build-push-action@v2
         with:
           context: .
           file: ./ci.Dockerfile
@@ -265,8 +265,6 @@ jobs:
             BUILDER=${{ github.actor }}@github-actions
             GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
             POLAR_ORG_ID=${{ secrets.POLAR_ORG_ID }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
           provenance: false
 
       - name: Export image digest
@@ -278,7 +276,7 @@ jobs:
           touch "/tmp/digests/${digest#sha256:}"
 
       - name: Upload image digest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: docker-digests-${{ steps.digest-prep.outputs.manifest-hash }}
           path: /tmp/digests/*
@@ -288,18 +286,18 @@ jobs:
   docker-merge:
     name: Publish Docker multi-arch manifest
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request' }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     needs: [docker]
     steps:
       - name: Download image digests
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           path: /tmp/digests
           pattern: docker-digests-*
           merge-multiple: true
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Setup Blacksmith Builder
+        uses: useblacksmith/setup-docker-builder@v1
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3

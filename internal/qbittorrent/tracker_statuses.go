@@ -26,6 +26,7 @@ var defaultUnregisteredStatuses = []string{
 	"torrent existiert nicht",
 	"torrent has been deleted",
 	"torrent has been nuked",
+	"torrent introuvable",
 	"torrent is not authorized for use on this tracker",
 	"torrent is not found",
 	"torrent nicht gefunden",
@@ -34,6 +35,7 @@ var defaultUnregisteredStatuses = []string{
 	"trump",
 	"unknown",
 	"unregistered",
+	"não registrado",
 	"upgraded",
 	"uploaded",
 }
@@ -76,4 +78,14 @@ var trackerDownStatuses = []string{
 	"your request could not be processed, please try again later",
 	"unable to process your request",
 	"<none>",
+}
+
+// TrackerMessageMatchesUnregistered reports whether the tracker message indicates an unregistered torrent.
+func TrackerMessageMatchesUnregistered(message string) bool {
+	return trackerMessageMatches(message, defaultUnregisteredStatuses)
+}
+
+// TrackerMessageMatchesDown reports whether the tracker message indicates tracker outage.
+func TrackerMessageMatchesDown(message string) bool {
+	return trackerMessageMatches(message, trackerDownStatuses)
 }

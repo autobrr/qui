@@ -6,7 +6,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { api } from "@/lib/api"
-import type { BackupRun, BackupSettings, RestoreMode, RestorePlan, RestoreResult } from "@/types"
+import type { BackupRun, BackupRunsResponse, BackupSettings, RestoreMode, RestorePlan, RestoreResult } from "@/types"
 
 export function useBackupSettings(instanceId: number, options?: { enabled?: boolean }) {
   const shouldEnable = (options?.enabled ?? true) && instanceId > 0
@@ -49,11 +49,28 @@ export function useTriggerBackup(instanceId: number) {
     mutationFn: (payload: { kind?: string; requestedBy?: string } = {}) => api.triggerBackup(instanceId, payload),
     onSuccess: (run: BackupRun) => {
       queryClient.invalidateQueries({ queryKey: ["instance-backups", instanceId, "runs"] })
-      queryClient.setQueryData<BackupRun[]>(["instance-backups", instanceId, "runs"], (existing) => {
-        if (!existing) return [run]
-        const filtered = existing.filter(item => item.id !== run.id)
-        return [run, ...filtered]
-      })
+      queryClient.setQueriesData<BackupRunsResponse>(
+        {
+          predicate: (query) => {
+            const key = query.queryKey
+            if (!Array.isArray(key)) {
+              return false
+            }
+            const [, keyInstanceId, section, , offset] = key
+            if (keyInstanceId !== instanceId || section !== "runs") {
+              return false
+            }
+            return offset === 0 || offset === null || offset === undefined
+          },
+        },
+        (existing) => {
+          if (!existing) {
+            return { runs: [run], hasMore: false }
+          }
+          const filtered = existing.runs.filter(item => item.id !== run.id)
+          return { ...existing, runs: [run, ...filtered] }
+        }
+      )
     },
   })
 }
@@ -62,16 +79,21 @@ export function useBackupRuns(
   instanceId: number,
   options?: { limit?: number; offset?: number; enabled?: boolean }
 ) {
-  const limit = options?.limit ?? 25
-  const offset = options?.offset ?? 0
+  const limit = options?.limit
+  const offset = options?.offset
   const shouldEnable = (options?.enabled ?? true) && instanceId > 0
 
   return useQuery({
-    queryKey: ["instance-backups", instanceId, "runs", { limit, offset }],
-    queryFn: () => api.listBackupRuns(instanceId, { limit, offset }),
+    queryKey: ["instance-backups", instanceId, "runs", limit ?? null, offset ?? null],
+    queryFn: () =>
+      api.listBackupRuns(instanceId, {
+        ...(limit !== undefined ? { limit } : {}),
+        ...(offset !== undefined ? { offset } : {}),
+      }),
     enabled: shouldEnable,
     refetchInterval: (query) => {
-      const runs = query.state.data as BackupRun[] | undefined
+      const response = query.state.data as BackupRunsResponse | undefined
+      const runs = response?.runs
       if (!runs) {
         return 5_000
       }
@@ -127,6 +149,39 @@ export function useExecuteRestore(instanceId: number) {
       api.executeRestore(instanceId, runId, { mode, dryRun, excludeHashes, startPaused, skipHashCheck, autoResumeVerified }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["instance-backups", instanceId, "runs"] })
+    },
+  })
+}
+
+export function useImportBackupManifest(instanceId: number) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (manifestFile: File) => api.importBackupManifest(instanceId, manifestFile),
+    onSuccess: (run: BackupRun) => {
+      queryClient.invalidateQueries({ queryKey: ["instance-backups", instanceId, "runs"] })
+      queryClient.setQueriesData<BackupRunsResponse>(
+        {
+          predicate: (query) => {
+            const key = query.queryKey
+            if (!Array.isArray(key)) {
+              return false
+            }
+            const [, keyInstanceId, section, , offset] = key
+            if (keyInstanceId !== instanceId || section !== "runs") {
+              return false
+            }
+            return offset === 0 || offset === null || offset === undefined
+          },
+        },
+        (existing) => {
+          if (!existing) {
+            return { runs: [run], hasMore: false }
+          }
+          const filtered = existing.runs.filter(item => item.id !== run.id)
+          return { ...existing, runs: [run, ...filtered] }
+        }
+      )
     },
   })
 }

@@ -3,16 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -28,12 +18,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger
-} from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
+import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
+import { useInstances } from "@/hooks/useInstances"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
 import { formatBytes } from "@/lib/utils"
@@ -41,6 +30,7 @@ import type { Torrent, TorrentFilters } from "@/types"
 import {
   ArrowDown,
   ArrowUp,
+  Blocks,
   CheckCircle,
   ChevronsDown,
   ChevronsUp,
@@ -57,14 +47,17 @@ import {
   Tag,
   Trash2
 } from "lucide-react"
-import { memo, useCallback, useMemo, type ChangeEvent } from "react"
+import { memo, useCallback, useMemo } from "react"
+import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import {
   AddTagsDialog,
+  LocationWarningDialog,
   SetCategoryDialog,
   SetLocationDialog,
   SetTagsDialog,
   ShareLimitDialog,
-  SpeedLimitsDialog
+  SpeedLimitsDialog,
+  TmmConfirmDialog
 } from "./TorrentDialogs"
 
 interface TorrentManagementBarProps {
@@ -92,24 +85,39 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   excludeHashes = [],
   onComplete,
 }: TorrentManagementBarProps) {
-  if (typeof instanceId !== "number" || instanceId <= 0) {
-    return null
-  }
+  const selectionCount = totalSelectionCount || selectedHashes.length
+  // Safe instanceId for hooks - guard at end handles invalid values
+  const safeInstanceId = typeof instanceId === "number" && instanceId > 0 ? instanceId : 0
 
   // Use shared metadata hook to leverage cache from table and filter sidebar
-  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId)
+  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(safeInstanceId)
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
-  
+  const preferences = metadata?.preferences
+
   const isLoadingTagsData = isMetadataLoading && availableTags.length === 0
   const isLoadingCategoriesData = isMetadataLoading && Object.keys(availableCategories).length === 0
+
+  // Get capabilities to check subcategory support
+  const { data: capabilities } = useInstanceCapabilities(safeInstanceId)
+  const supportsSubcategories = capabilities?.supportsSubcategories ?? false
+  const allowSubcategories =
+    supportsSubcategories && (preferences?.use_subcategories ?? false)
+
+  // Get instance name for cross-seed warning
+  const { instances } = useInstances()
+  const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
 
   // Use the shared torrent actions hook
   const {
     showDeleteDialog,
-    setShowDeleteDialog,
+    closeDeleteDialog,
     deleteFiles,
     setDeleteFiles,
+    isDeleteFilesLocked,
+    toggleDeleteFilesLock,
+    deleteCrossSeeds,
+    setDeleteCrossSeeds,
     showAddTagsDialog,
     setShowAddTagsDialog,
     showSetTagsDialog,
@@ -126,6 +134,11 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     setShowRecheckDialog,
     showReannounceDialog,
     setShowReannounceDialog,
+    showTmmDialog,
+    setShowTmmDialog,
+    pendingTmmEnable,
+    showLocationWarningDialog,
+    setShowLocationWarningDialog,
     isPending,
     handleAction,
     handleDelete,
@@ -137,6 +150,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     handleSetSpeedLimits,
     handleRecheck,
     handleReannounce,
+    handleTmmConfirm,
+    proceedToLocationDialog,
     prepareDeleteAction,
     prepareTagsAction,
     prepareCategoryAction,
@@ -145,8 +160,9 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     prepareLocationAction,
     prepareRecheckAction,
     prepareReannounceAction,
+    prepareTmmAction,
   } = useTorrentActions({
-    instanceId,
+    instanceId: safeInstanceId,
     onActionComplete: (action) => {
       if (action === TORRENT_ACTIONS.DELETE) {
         onComplete?.()
@@ -154,7 +170,12 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     },
   })
 
-  const selectionCount = totalSelectionCount || selectedHashes.length
+  // Cross-seed warning for delete dialog
+  const crossSeedWarning = useCrossSeedWarning({
+    instanceId: safeInstanceId,
+    instanceName: instance?.name ?? "",
+    torrents: selectedTorrents,
+  })
 
   // Wrapper functions to adapt hook handlers to component needs
   const actionHashes = useMemo(() => (isAllSelected ? [] : selectedHashes), [isAllSelected, selectedHashes])
@@ -193,15 +214,25 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   }, [handleAction, actionHashes, actionOptions])
 
   const handleDeleteWrapper = useCallback(() => {
+    // Include cross-seed hashes if user opted to delete them
+    const hashesToDelete = deleteCrossSeeds
+      ? [...selectedHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)]
+      : selectedHashes
+
+    // Update count to include cross-seeds for accurate toast message
+    const deleteClientMeta = deleteCrossSeeds
+      ? { clientHashes: hashesToDelete, totalSelected: hashesToDelete.length }
+      : clientMeta
+
     handleDelete(
-      selectedHashes,
+      hashesToDelete,
       isAllSelected,
       filters,
       search,
       excludeHashes,
-      clientMeta
+      deleteClientMeta
     )
-  }, [handleDelete, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
+  }, [handleDelete, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta, deleteCrossSeeds, crossSeedWarning.affectedTorrents])
 
   const handleAddTagsWrapper = useCallback((tags: string[]) => {
     handleAddTags(
@@ -328,9 +359,29 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     )
   }, [handleSetSpeedLimits, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
 
-  const hasSelection = selectionCount > 0 || isAllSelected
-  const isDisabled = !instanceId || !hasSelection
+  const handleTmmClick = useCallback((enable: boolean) => {
+    const count = totalSelectionCount || selectedHashes.length
+    prepareTmmAction(selectedHashes, count, enable)
+  }, [totalSelectionCount, selectedHashes, prepareTmmAction])
 
+  const handleTmmConfirmWrapper = useCallback(() => {
+    handleTmmConfirm(
+      selectedHashes,
+      isAllSelected,
+      filters,
+      search,
+      excludeHashes,
+      clientMeta
+    )
+  }, [handleTmmConfirm, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
+
+  const hasSelection = selectionCount > 0 || isAllSelected
+  const isDisabled = !safeInstanceId || !hasSelection
+
+  // Keep this guard after hooks so their invocation order stays stable.
+  if (!safeInstanceId || !hasSelection) {
+    return null
+  }
 
   return (
     <>
@@ -402,6 +453,27 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
             </TooltipTrigger>
             <TooltipContent>Reannounce</TooltipContent>
           </Tooltip>
+
+          {(() => {
+            const seqDlStates = selectedTorrents?.map(t => t.seq_dl) ?? []
+            const allSeqDlEnabled = seqDlStates.length > 0 && seqDlStates.every(state => state === true)
+
+            return (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => triggerAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, { enable: !allSeqDlEnabled })}
+                    disabled={isPending || isDisabled}
+                  >
+                    <Blocks className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{allSeqDlEnabled ? "Disable" : "Enable"} Sequential Download</TooltipContent>
+              </Tooltip>
+            )
+          })()}
 
           {/* Tag Actions */}
           <DropdownMenu>
@@ -559,7 +631,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => triggerAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, { enable: !allEnabled })}
+                    onClick={() => handleTmmClick(!allEnabled)}
                     disabled={isPending || isDisabled}
                   >
                     <Settings2 className="h-4 w-4" />
@@ -590,42 +662,26 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         </div>
       </div>
 
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete {totalSelectionCount || selectedHashes.length} torrent(s)?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. The torrents will be removed from qBittorrent.
-              {deleteDialogTotalSize > 0 && (
-                <span className="block mt-2 text-xs text-muted-foreground">
-                  Total size: {deleteDialogFormattedSize}
-                </span>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="flex items-center space-x-2 py-4">
-            <input
-              type="checkbox"
-              id="deleteFiles"
-              checked={deleteFiles}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setDeleteFiles(e.target.checked)}
-              className="rounded border-input"
-            />
-            <label htmlFor="deleteFiles" className="text-sm font-medium">
-              Also delete files from disk
-            </label>
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteWrapper}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteTorrentDialog
+        open={showDeleteDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeDeleteDialog()
+            crossSeedWarning.reset()
+          }
+        }}
+        count={totalSelectionCount || selectedHashes.length}
+        totalSize={deleteDialogTotalSize}
+        formattedSize={deleteDialogFormattedSize}
+        deleteFiles={deleteFiles}
+        onDeleteFilesChange={setDeleteFiles}
+        isDeleteFilesLocked={isDeleteFilesLocked}
+        onToggleDeleteFilesLock={toggleDeleteFilesLock}
+        deleteCrossSeeds={deleteCrossSeeds}
+        onDeleteCrossSeedsChange={setDeleteCrossSeeds}
+        crossSeedWarning={crossSeedWarning}
+        onConfirm={handleDeleteWrapper}
+      />
 
       {/* Add Tags Dialog */}
       <AddTagsDialog
@@ -660,6 +716,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         isPending={isPending}
         initialCategory={getCommonCategory(selectedTorrents)}
         isLoadingCategories={isLoadingCategoriesData}
+        useSubcategories={allowSubcategories}
       />
 
       {/* Set Location Dialog */}
@@ -729,6 +786,25 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* TMM Confirmation Dialog */}
+      <TmmConfirmDialog
+        open={showTmmDialog}
+        onOpenChange={setShowTmmDialog}
+        count={totalSelectionCount || selectedHashes.length}
+        enable={pendingTmmEnable}
+        onConfirm={handleTmmConfirmWrapper}
+        isPending={isPending}
+      />
+
+      {/* Location Warning Dialog */}
+      <LocationWarningDialog
+        open={showLocationWarningDialog}
+        onOpenChange={setShowLocationWarningDialog}
+        count={totalSelectionCount || selectedHashes.length}
+        onConfirm={proceedToLocationDialog}
+        isPending={isPending}
+      />
     </>
   )
 })

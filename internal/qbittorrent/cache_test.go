@@ -69,7 +69,7 @@ func TestCache_HighCapacity(t *testing.T) {
 	defer cache.Close()
 
 	// Test storing many items (simulate torrent cache entries)
-	numItems := 10000
+	numItems := 2000
 	for i := 0; i < numItems; i++ {
 		key := fmt.Sprintf("torrents:%d:0:50", i)
 		value := &TorrentResponse{

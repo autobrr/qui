@@ -7,10 +7,13 @@ export interface ThemeMetadata {
   name: string;
   description?: string;
   isPremium?: boolean;
+  variations?: string;
+  lightOnly?: boolean;
 }
 
 export interface ParsedTheme {
   metadata: ThemeMetadata;
+  variations?: string[];
   cssVars: {
     light: Record<string, string>;
     dark: Record<string, string>;
@@ -34,8 +37,15 @@ export function parseThemeCSS(cssContent: string): ParsedTheme | null {
       return null;
     }
 
+    // Parse variations if included
+    let variations: string[] | undefined;
+    if (metadata.variations) {
+      variations = parseVariations(metadata.variations, lightVars, darkVars, metadata.name);
+    }
+
     return {
       metadata,
+      variations,
       cssVars: {
         light: lightVars,
         dark: darkVars,
@@ -53,22 +63,62 @@ export function parseThemeCSS(cssContent: string): ParsedTheme | null {
  * /* @name: Theme Name
  *  * @description: Theme description
  *  * @premium: true/false
+ *  * @lightOnly: true/false (optional)
+ *  * @variations: orange, blue, green (optional)
  *  */
 function extractMetadata(cssContent: string): ThemeMetadata {
   const metadata: ThemeMetadata = {
     name: "Untitled Theme",
   };
 
-  // Match metadata comment block
-  const metadataMatch = cssContent.match(/\/\*\s*@name:\s*(.+?)\s*\n\s*\*\s*@description:\s*(.+?)\s*\n\s*\*\s*@premium:\s*(true|false)\s*\*\//);
+  // Extract individual metadata fields for more flexible parsing
+  const nameMatch = cssContent.match(/@name:\s*(.+?)(?:\s*\n|\s*\*)/);
+  const descMatch = cssContent.match(/@description:\s*(.+?)(?:\s*\n|\s*\*)/);
+  const premiumMatch = cssContent.match(/@premium:\s*(true|false)/);
+  const lightOnlyMatch = cssContent.match(/@lightOnly:\s*(true|false)/);
+  const variationsMatch = cssContent.match(/@variations:\s*(.+?)(?:\s*\n|\s*\*\/)/);
 
-  if (metadataMatch) {
-    metadata.name = metadataMatch[1].trim();
-    metadata.description = metadataMatch[2].trim();
-    metadata.isPremium = metadataMatch[3] === "true";
+  if (nameMatch) {
+    metadata.name = nameMatch[1].trim();
+  }
+  if (descMatch) {
+    metadata.description = descMatch[1].trim();
+  }
+  if (premiumMatch) {
+    metadata.isPremium = premiumMatch[1] === "true";
+  }
+  if (lightOnlyMatch) {
+    metadata.lightOnly = lightOnlyMatch[1] === "true";
+  }
+  if (variationsMatch) {
+    metadata.variations = variationsMatch[1].trim();
   }
 
   return metadata;
+}
+
+function parseVariations(
+  variationsStr: string,
+  lightVars: Record<string, string>,
+  darkVars: Record<string, string>,
+  themeName: string
+): string[] | undefined {
+  const variations = variationsStr.split(",").map(v => v.trim());
+
+  // Check variation variables exist
+  for (const variation of variations) {
+    const varName = `--variation-${variation}`;
+
+    if (!lightVars[varName]) {
+      console.warn(`Theme "${themeName}": Missing light mode CSS variable ${varName}`);
+    }
+
+    if (!darkVars[varName]) {
+      console.warn(`Theme "${themeName}": Missing dark mode CSS variable ${varName}`);
+    }
+  }
+
+  return variations.length > 0 ? variations : undefined;
 }
 
 /**

@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useKeyboardNavigation } from "@/hooks/useKeyboardNavigation"
@@ -11,6 +12,7 @@ import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
+import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
@@ -34,23 +36,19 @@ import {
 import {
   flexRender,
   getCoreRowModel,
+  getFilteredRowModel,
+  getSortedRowModel,
   useReactTable
 } from "@tanstack/react-table"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
 import { TorrentContextMenu } from "./TorrentContextMenu"
+import { TORRENT_SORT_OPTIONS, getDefaultSortOrder, type TorrentSortOptionValue } from "./torrentSortOptions"
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -64,6 +62,8 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
@@ -76,35 +76,41 @@ import {
 } from "@/components/ui/tooltip"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences.ts"
+import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
-import { useIncognitoMode } from "@/lib/incognito"
+import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import { getStateLabel } from "@/lib/torrent-state-utils"
 import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
-import type { Category, ServerState, Torrent, TorrentCounts, TorrentFilters } from "@/types"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { cn } from "@/lib/utils"
+import type {
+  Category,
+  ServerState,
+  Torrent,
+  TorrentCounts,
+  TorrentFilters
+} from "@/types"
+import { useQuery } from "@tanstack/react-query"
 import { useSearch } from "@tanstack/react-router"
 import {
   ArrowUpDown,
-  Ban,
-  BrickWallFire,
   ChevronDown,
   ChevronUp,
   Columns3,
-  EthernetPort,
-  Eye,
-  EyeOff,
-  Globe,
-  Loader2,
-  Rabbit,
-  Turtle,
+  Folder,
+  Tag,
   X
 } from "lucide-react"
 import { createPortal } from "react-dom"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
+import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
+import type { SelectionInfo } from "./GlobalStatusBar"
+import { SelectAllHotkey } from "./SelectAllHotkey"
 import {
   AddTagsDialog,
   CreateAndAssignCategoryDialog,
+  LocationWarningDialog,
   RemoveTagsDialog,
   RenameTorrentDialog,
   RenameTorrentFileDialog,
@@ -113,10 +119,13 @@ import {
   SetLocationDialog,
   SetTagsDialog,
   ShareLimitDialog,
-  SpeedLimitsDialog
+  SpeedLimitsDialog,
+  TmmConfirmDialog
 } from "./TorrentDialogs"
 import { TorrentDropZone } from "./TorrentDropZone"
-import { createColumns } from "./TorrentTableColumns"
+import { createColumns, type TableViewMode } from "./TorrentTableColumns"
+
+const TABLE_ALLOWED_VIEW_MODES = ["normal", "dense", "compact"] as const
 
 // Default values for persisted state hooks (module scope for stable references)
 const DEFAULT_COLUMN_VISIBILITY = {
@@ -159,6 +168,7 @@ const DEFAULT_COLUMN_VISIBILITY = {
   infohash_v2: false,
   reannounce: false,
   private: false,
+  instance: false, // Hidden by default, shown when cross-seed filtering
 }
 const DEFAULT_COLUMN_SIZING = {}
 
@@ -207,38 +217,334 @@ function shallowEqualTrackerIcons(
   return true
 }
 
-interface ExternalIPAddressProps {
-  address?: string | null
-  incognitoMode: boolean
-  label: string
+// Compact view helper functions and components
+
+// Returns the background class for a row based on selection state and zebra striping
+function getRowBackgroundClass(isRowSelected: boolean, isSelected: boolean, rowIndex: number): string {
+  if (isRowSelected || isSelected) return "bg-accent"
+  if (rowIndex % 2 === 1) return "bg-muted/40"
+  return ""
 }
 
-const ExternalIPAddress = memo(
-  ({ address, incognitoMode, label }: ExternalIPAddressProps) => {
-    if (!address) return null
+function getStatusBadgeVariant(state: string): "default" | "secondary" | "destructive" | "outline" {
+  switch (state) {
+    case "downloading":
+      return "default"
+    case "stalledDL":
+      return "secondary"
+    case "uploading":
+      return "default"
+    case "stalledUP":
+      return "secondary"
+    case "pausedDL":
+    case "pausedUP":
+      return "secondary"
+    case "error":
+    case "missingFiles":
+      return "destructive"
+    default:
+      return "outline"
+  }
+}
 
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            className="flex items-center gap-1 text-xs text-muted-foreground"
-            aria-label={`External ${label}`}
-          >
-            <EthernetPort className="h-3.5 w-3.5" />
+function getStatusBadgeProps(torrent: Torrent, supportsTrackerHealth: boolean): {
+  variant: "default" | "secondary" | "destructive" | "outline"
+  label: string
+  className: string
+} {
+  const baseVariant = getStatusBadgeVariant(torrent.state)
+  let variant = baseVariant
+  let label = getStateLabel(torrent.state)
+  let className = ""
+
+  if (supportsTrackerHealth) {
+    const trackerHealth = torrent.tracker_health ?? null
+    if (trackerHealth === "tracker_down") {
+      label = "Tracker Down"
+      variant = "outline"
+      className = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
+    } else if (trackerHealth === "unregistered") {
+      label = "Unregistered"
+      variant = "outline"
+      className = "text-destructive border-destructive/40 bg-destructive/10"
+    }
+  }
+
+  return { variant, label, className }
+}
+
+const trackerIconSizeClasses = {
+  xs: "h-3 w-3 text-[8px]",
+  sm: "h-[14px] w-[14px] text-[9px]",
+  md: "h-4 w-4 text-[10px]",
+} as const
+
+type TrackerIconSize = keyof typeof trackerIconSizeClasses
+
+interface TrackerIconProps {
+  title: string
+  fallback: string
+  src: string | null
+  size?: TrackerIconSize
+  className?: string
+}
+
+const TrackerIcon = memo(({ title, fallback, src, size = "md", className }: TrackerIconProps) => {
+  const [hasError, setHasError] = useState(false)
+
+  useEffect(() => {
+    setHasError(false)
+  }, [src])
+
+  return (
+    <div className={cn("flex items-center justify-center", className)} title={title}>
+      <div
+        className={cn(
+          "flex items-center justify-center rounded-sm border border-border/40 bg-muted font-medium uppercase leading-none select-none",
+          trackerIconSizeClasses[size]
+        )}
+      >
+        {src && !hasError ? (
+          <img
+            src={src}
+            alt=""
+            className="h-full w-full rounded-[2px] object-cover"
+            loading="lazy"
+            draggable={false}
+            onError={() => setHasError(true)}
+          />
+        ) : (
+          <span aria-hidden="true">{fallback}</span>
+        )}
+      </div>
+    </div>
+  )
+}, (prev, next) =>
+  prev.title === next.title &&
+  prev.fallback === next.fallback &&
+  prev.src === next.src &&
+  prev.size === next.size &&
+  prev.className === next.className
+)
+
+const getTrackerDisplayMeta = (tracker?: string) => {
+  if (!tracker) {
+    return {
+      host: "",
+      fallback: "#",
+      title: "",
+    }
+  }
+
+  const trimmed = tracker.trim()
+  const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
+
+  let host = trimmed
+  try {
+    if (trimmed.includes("://")) {
+      const url = new URL(trimmed)
+      host = url.hostname
+    }
+  } catch {
+    // Keep host as trimmed value if URL parsing fails
+  }
+
+  return {
+    host,
+    fallback: fallbackLetter,
+    title: host,
+  }
+}
+
+// Compact row component for desktop
+interface CompactRowProps {
+  torrent: Torrent
+  rowId: string
+  rowIndex: number
+  isSelected: boolean
+  isRowSelected: boolean
+  onClick: (e: React.MouseEvent) => void
+  onContextMenu: () => void
+  onCheckboxPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void
+  onCheckboxChange: (torrent: Torrent, rowId: string, checked: boolean) => void
+  incognitoMode: boolean
+  speedUnit: "bytes" | "bits"
+  supportsTrackerHealth: boolean
+  trackerIcons?: Record<string, string>
+  style: React.CSSProperties
+}
+
+const CompactRow = memo(({
+  torrent,
+  rowId,
+  rowIndex,
+  isSelected,
+  isRowSelected,
+  onClick,
+  onContextMenu,
+  onCheckboxPointerDown,
+  onCheckboxChange,
+  incognitoMode,
+  speedUnit,
+  supportsTrackerHealth,
+  trackerIcons,
+  style,
+}: CompactRowProps) => {
+  const displayName = incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name
+  const displayCategory = incognitoMode ? getLinuxCategory(torrent.hash) : torrent.category
+  const displayTags = incognitoMode ? getLinuxTags(torrent.hash) : torrent.tags
+  const displayRatio = incognitoMode ? getLinuxRatio(torrent.hash) : torrent.ratio
+
+  const { variant: statusBadgeVariant, label: statusBadgeLabel, className: statusBadgeClass } = useMemo(
+    () => getStatusBadgeProps(torrent, supportsTrackerHealth),
+    [torrent, supportsTrackerHealth]
+  )
+
+  const trackerValue = incognitoMode ? getLinuxTracker(torrent.hash) : torrent.tracker
+  const trackerMeta = useMemo(() => getTrackerDisplayMeta(trackerValue), [trackerValue])
+  const trackerIconSrc = trackerMeta.host ? trackerIcons?.[trackerMeta.host] ?? null : null
+
+  // Compact view
+  return (
+    <div
+      className={cn(
+        "relative flex flex-col gap-1 px-3 py-2 cursor-pointer hover:bg-accent/40 overflow-hidden",
+        getRowBackgroundClass(isRowSelected, isSelected, rowIndex)
+      )}
+      style={style}
+      onClick={(e) => onClick(e)}
+      onContextMenu={onContextMenu}
+    >
+      {/* Progress background overlay - only show when downloading */}
+      {torrent.progress < 1 && (
+        <div
+          className="absolute inset-0 -z-10 bg-primary/10 transition-all duration-300"
+          style={{
+            width: `${Math.min(100, Math.max(0, torrent.progress * 100))}%`,
+          }}
+          aria-hidden="true"
+        />
+      )}
+      {/* Name with progress inline */}
+      <div className="flex items-center gap-2">
+        <div
+          className="flex items-center justify-center flex-shrink-0"
+          data-slot="checkbox"
+          onPointerDown={onCheckboxPointerDown}
+        >
+          <Checkbox
+            checked={isRowSelected}
+            onCheckedChange={(checked) => onCheckboxChange(torrent, rowId, checked === true)}
+            aria-label="Select torrent"
+            className="h-4 w-4"
+          />
+        </div>
+        <div className="flex-1 min-w-0 overflow-hidden">
+          <div className="flex items-center gap-1 whitespace-nowrap overflow-x-auto scrollbar-thin">
+            <TrackerIcon
+              title={trackerMeta.title}
+              fallback={trackerMeta.fallback}
+              src={trackerIconSrc}
+              size="sm"
+              className="flex-shrink-0"
+            />
+            <h3 className="font-medium text-sm truncate" title={displayName}>
+              {displayName}
+            </h3>
+          </div>
+        </div>
+        <Badge variant={statusBadgeVariant} className={cn("text-xs flex-shrink-0", statusBadgeClass)}>
+          {statusBadgeLabel}
+        </Badge>
+      </div>
+
+      {/* Downloaded/Size and Ratio */}
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">
+          {formatBytes(torrent.downloaded)} / {formatBytes(torrent.size)}
+        </span>
+        <div className="flex items-center gap-1">
+          <span className="text-muted-foreground">Ratio:</span>
+          <span className={cn(
+            "font-medium",
+            displayRatio >= 1 ? "[color:var(--chart-3)]" : "[color:var(--chart-4)]"
+          )}>
+            {displayRatio === -1 ? "∞" : displayRatio.toFixed(2)}
           </span>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p className="font-mono text-xs">
-            <span {...(incognitoMode && { style: { filter: "blur(4px)" } })}>{address}</span>
-          </p>
-        </TooltipContent>
-      </Tooltip>
-    )
-  },
-  (prev, next) =>
-    prev.address === next.address &&
-    prev.incognitoMode === next.incognitoMode &&
-    prev.label === next.label
+        </div>
+      </div>
+
+      {/* Bottom row: Category/tags and percentage/speeds */}
+      <div className="flex items-center justify-between gap-2 text-xs">
+        {/* Left side: Category and Tags */}
+        <div className="flex items-center gap-2 text-muted-foreground min-w-0 overflow-hidden">
+          {displayCategory && (
+            <span className="flex items-center gap-1 flex-shrink-0">
+              <Folder className="h-3 w-3" />
+              {displayCategory}
+            </span>
+          )}
+          {displayTags && (
+            <div className="flex items-center gap-1 min-w-0 overflow-hidden">
+              <Tag className="h-3 w-3 flex-shrink-0" />
+              <span className="truncate">
+                {Array.isArray(displayTags) ? displayTags.join(", ") : displayTags}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Right side: Percentage and Speeds */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="text-muted-foreground">
+            {torrent.progress >= 0.99 && torrent.progress < 1 ? (
+              (Math.floor(torrent.progress * 1000) / 10).toFixed(1)
+            ) : (
+              Math.round(torrent.progress * 100)
+            )}%
+          </span>
+          {/* Speeds */}
+          {(torrent.dlspeed > 0 || torrent.upspeed > 0) && (
+            <div className="flex items-center gap-1">
+              {torrent.dlspeed > 0 && (
+                <span className="text-chart-2 font-medium">
+                  ↓{formatSpeedWithUnit(torrent.dlspeed, speedUnit)}
+                </span>
+              )}
+              {torrent.upspeed > 0 && (
+                <span className="text-chart-3 font-medium">
+                  ↑{formatSpeedWithUnit(torrent.upspeed, speedUnit)}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}, (prev, next) =>
+  prev.torrent.hash === next.torrent.hash &&
+  prev.rowId === next.rowId &&
+  prev.rowIndex === next.rowIndex &&
+  prev.torrent.name === next.torrent.name &&
+  prev.torrent.category === next.torrent.category &&
+  prev.torrent.tags === next.torrent.tags &&
+  prev.torrent.tracker === next.torrent.tracker &&
+  prev.torrent.tracker_health === next.torrent.tracker_health &&
+  prev.torrent.state === next.torrent.state &&
+  prev.torrent.progress === next.torrent.progress &&
+  prev.torrent.dlspeed === next.torrent.dlspeed &&
+  prev.torrent.upspeed === next.torrent.upspeed &&
+  prev.torrent.downloaded === next.torrent.downloaded &&
+  prev.torrent.size === next.torrent.size &&
+  prev.torrent.ratio === next.torrent.ratio &&
+  prev.isSelected === next.isSelected &&
+  prev.isRowSelected === next.isRowSelected &&
+  prev.incognitoMode === next.incognitoMode &&
+  prev.speedUnit === next.speedUnit &&
+  prev.supportsTrackerHealth === next.supportsTrackerHealth &&
+  prev.trackerIcons === next.trackerIcons &&
+  prev.style === next.style
 )
 
 interface TorrentTableOptimizedProps {
@@ -266,6 +572,12 @@ interface TorrentTableOptimizedProps {
     selectionFilters?: TorrentFilters
   ) => void
   onResetSelection?: (handler?: () => void) => void
+  onFilterChange?: (filters: TorrentFilters) => void
+  canCrossSeedSearch?: boolean
+  onCrossSeedSearch?: (torrent: Torrent) => void
+  isCrossSeedSearching?: boolean
+  onServerStateUpdate?: (serverState: ServerState | null, listenPort?: number | null) => void
+  onSelectionInfoUpdate?: (info: SelectionInfo) => void
 }
 
 export const TorrentTableOptimized = memo(function TorrentTableOptimized({
@@ -278,6 +590,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   onFilteredDataUpdate,
   onSelectionChange,
   onResetSelection,
+  onFilterChange,
+  canCrossSeedSearch,
+  onCrossSeedSearch,
+  isCrossSeedSearching,
+  onServerStateUpdate,
+  onSelectionInfoUpdate,
 }: TorrentTableOptimizedProps) {
   // State management
   // Move default values outside the component for stable references
@@ -292,11 +610,23 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const [excludedFromSelectAll, setExcludedFromSelectAll] = useState<Set<string>>(new Set())
   const [dropPayload, setDropPayload] = useState<AddTorrentDropPayload | null>(null)
 
-  const [incognitoMode, setIncognitoMode] = useIncognitoMode()
+  // Instance preferences dialog state
+  const [preferencesOpen, setPreferencesOpen] = useState(false)
+
+  // Filter lifecycle state machine to replace fragile timing-based coordination
+  type FilterLifecycleState = 'idle' | 'clearing-all' | 'clearing-columns-only' | 'cleared'
+  const [filterLifecycleState, setFilterLifecycleState] = useState<FilterLifecycleState>('idle')
+
+  const [incognitoMode] = useIncognitoMode()
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
-  const [speedUnit, setSpeedUnit] = useSpeedUnits()
+  const [speedUnit] = useSpeedUnits()
   const { formatTimestamp } = useDateTimeFormatters()
   const { preferences } = useInstancePreferences(instanceId)
+  const { instances } = useInstances()
+  const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
+
+  // Desktop view mode state (separate from mobile view mode)
+  const { viewMode: desktopViewMode } = usePersistedCompactViewState("normal", TABLE_ALLOWED_VIEW_MODES)
 
   const trackerIconsQuery = useTrackerIcons()
   const trackerIconsRef = useRef<Record<string, string> | undefined>(undefined)
@@ -343,6 +673,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const shiftPressedRef = useRef<boolean>(false)
   const lastSelectedIndexRef = useRef<number | null>(null)
 
+  // Cross-seed async filtering polling
+
+  const handleCompactCheckboxPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    shiftPressedRef.current = event.shiftKey
+  }, [])
+
   const resetSelectionState = useCallback(() => {
     setIsAllSelected(false)
     setExcludedFromSelectAll(new Set())
@@ -384,9 +720,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Use the shared torrent actions hook
   const {
     showDeleteDialog,
-    setShowDeleteDialog,
+    closeDeleteDialog,
     deleteFiles,
     setDeleteFiles,
+    isDeleteFilesLocked,
+    toggleDeleteFilesLock,
+    deleteCrossSeeds,
+    setDeleteCrossSeeds,
     showAddTagsDialog,
     setShowAddTagsDialog,
     showSetTagsDialog,
@@ -413,6 +753,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     setShowRecheckDialog,
     showReannounceDialog,
     setShowReannounceDialog,
+    showTmmDialog,
+    setShowTmmDialog,
+    pendingTmmEnable,
+    showLocationWarningDialog,
+    setShowLocationWarningDialog,
     contextHashes,
     contextTorrents,
     isPending,
@@ -430,6 +775,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     handleSetSpeedLimits,
     handleRecheck,
     handleReannounce,
+    handleTmmConfirm,
+    proceedToLocationDialog,
     prepareDeleteAction,
     prepareTagsAction,
     prepareCategoryAction,
@@ -442,6 +789,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     prepareRenameFolderAction,
     prepareRecheckAction,
     prepareReannounceAction,
+    prepareTmmAction,
   } = useTorrentActions({
     instanceId,
     onActionComplete: (action) => {
@@ -449,6 +797,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         resetSelectionState()
       }
     },
+  })
+
+  // Cross-seed warning for delete dialog
+  const crossSeedWarning = useCrossSeedWarning({
+    instanceId,
+    instanceName: instance?.name ?? "",
+    torrents: contextTorrents,
   })
 
   // Fetch metadata using shared hook
@@ -465,9 +820,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     isLoading: renameEntriesLoading,
   } = useQuery({
     queryKey: ["torrent-files", instanceId, contextHashes[0]],
-    queryFn: () => api.getTorrentFiles(instanceId, contextHashes[0]!),
+    queryFn: () => api.getTorrentFiles(instanceId, contextHashes[0]!, { refresh: true }),
     enabled: shouldLoadRenameEntries,
-    staleTime: 30000,
+    staleTime: 0,
     gcTime: 5 * 60 * 1000,
   })
 
@@ -515,6 +870,31 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Convert column filters to expr format for backend
   const columnFiltersExpr = useMemo(() => columnFiltersToExpr(columnFilters), [columnFilters])
 
+  // Detect if this is cross-seed filtering (same logic as in useTorrentsList)
+  const isDoingCrossSeedFiltering = useMemo(() => {
+    return filters?.expr?.includes('Hash ==') && filters?.expr?.includes('||')
+  }, [filters?.expr])
+
+  // Combine column filters with any existing filter expression
+  // For cross-seed filtering, we'll apply column filters client-side only
+  const combinedFiltersExpr = useMemo(() => {
+    const columnExpr = columnFiltersExpr
+    const filterExpr = filters?.expr
+
+    // If we're doing cross-seed filtering, don't send column filters to backend
+    // They will be applied client-side by TanStack Table (along with sorting)
+    if (isDoingCrossSeedFiltering) {
+      return filterExpr // Only use the cross-seed expression for backend
+    }
+
+    // For regular filtering, combine column filters with existing filters
+    if (columnExpr && filterExpr) {
+      const combined = `(${columnExpr}) && (${filterExpr})`
+      return combined
+    }
+    return columnExpr || filterExpr
+  }, [columnFiltersExpr, filters?.expr, isDoingCrossSeedFiltering])
+
   // Detect user-initiated changes
   useEffect(() => {
     const filtersChanged = JSON.stringify(previousFiltersRef.current) !== JSON.stringify(filters)
@@ -543,6 +923,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     switch (columnId) {
       case "status_icon":
         return "state"
+      case "num_seeds":
+        return "num_complete" // Sort by total seeds, not connected
+      case "num_leechs":
+        return "num_incomplete" // Sort by total peers, not connected
       default:
         return columnId
     }
@@ -571,6 +955,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     isLoadingMore,
     hasLoadedAll,
     loadMore: backendLoadMore,
+    isCrossSeedFiltering,
   } = useTorrentsList(instanceId, {
     search: effectiveSearch,
     filters: {
@@ -584,17 +969,23 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       excludeTrackers: filters?.excludeTrackers || [],
       expandedCategories: filters?.expandedCategories,
       expandedExcludeCategories: filters?.expandedExcludeCategories,
-      expr: columnFiltersExpr || undefined,
+      expr: combinedFiltersExpr || undefined,
     },
     sort: activeSortField,
     order: activeSortOrder,
   })
 
-  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
+  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
-  const allowSubcategories = Boolean(
+  const allowSubcategories =
     supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false)
-  )
+
+  // When cross-seed filtering is active, ensure instance column is visible
+  useEffect(() => {
+    if (isDoingCrossSeedFiltering && columnVisibility.instance === false) {
+      setColumnVisibility(prev => ({ ...prev, instance: true }))
+    }
+  }, [isDoingCrossSeedFiltering, columnVisibility.instance, setColumnVisibility])
 
   // Delayed loading state to avoid flicker on fast loads
   useEffect(() => {
@@ -617,6 +1008,54 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
   }, [isLoading, torrents.length])
 
+  const hasSidebarFilters = useMemo(() => {
+    if (!filters) {
+      return false
+    }
+
+    const {
+      status = [],
+      excludeStatus = [],
+      categories = [],
+      excludeCategories = [],
+      expandedCategories = [],
+      expandedExcludeCategories = [],
+      tags = [],
+      excludeTags = [],
+      trackers = [],
+      excludeTrackers = [],
+      expr,
+    } = filters
+
+    return (
+      status.length > 0 ||
+      excludeStatus.length > 0 ||
+      categories.length > 0 ||
+      excludeCategories.length > 0 ||
+      expandedCategories.length > 0 ||
+      expandedExcludeCategories.length > 0 ||
+      tags.length > 0 ||
+      excludeTags.length > 0 ||
+      trackers.length > 0 ||
+      excludeTrackers.length > 0 ||
+      Boolean(expr?.trim())
+    )
+  }, [filters])
+
+  const hasSearchQuery = Boolean(effectiveSearch)
+  const hasFilterControls = useMemo(() => {
+    return hasSidebarFilters || columnFilters.length > 0
+  }, [hasSidebarFilters, columnFilters])
+  const emptyStateMessage = useMemo(() => {
+    if (hasFilterControls) {
+      return "No torrents match the current filters"
+    }
+    if (hasSearchQuery) {
+      return "No torrents match the current search"
+    }
+    return "No torrents found"
+  }, [hasFilterControls, hasSearchQuery])
+
   // Call the callback when filtered data updates
   useEffect(() => {
     if (!onFilteredDataUpdate || isLoading) {
@@ -629,7 +1068,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     const prevSupportsSubcategories = lastMetadataRef.current.supportsSubcategories ?? false
     const previousUseSubcategories = lastMetadataRef.current.useSubcategories ?? false
     const nextSupportsSubcategories = supportsSubcategories
-    const nextUseSubcategories = nextSupportsSubcategories? (subcategoriesFromData ?? previousUseSubcategories): false
+    const nextUseSubcategories = nextSupportsSubcategories ? (subcategoriesFromData ?? previousUseSubcategories) : false
     const nextTotalCount = totalCount
 
     const hasAnyMetadata =
@@ -679,6 +1118,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents
+
+  // Atomic filter clearing callback
+  const clearFiltersAtomically = useCallback((mode: 'all' | 'columns-only' = 'all') => {
+    setFilterLifecycleState(mode === 'all' ? 'clearing-all' : 'clearing-columns-only');
+  }, []);
   const effectiveServerState = useMemo(() => {
     const cached = serverStateRef.current
     const instanceChanged = cached.instanceId !== instanceId
@@ -701,6 +1145,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     return cached.state
   }, [serverState, instanceId])
 
+  // Notify parent of server state updates
+  const listenPort = metadata?.preferences?.listen_port
+  useEffect(() => {
+    onServerStateUpdate?.(effectiveServerState, listenPort)
+  }, [effectiveServerState, listenPort, onServerStateUpdate])
+
   const selectedRowIds = useMemo(() => {
     const ids: string[] = []
     for (const [rowId, isSelected] of Object.entries(rowSelection)) {
@@ -711,6 +1161,47 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     return ids
   }, [rowSelection])
   const selectedRowIdSet = useMemo(() => new Set(selectedRowIds), [selectedRowIds])
+
+  useEffect(() => {
+    if (isAllSelected) {
+      if (excludedFromSelectAll.size === 0) {
+        return
+      }
+
+      const visibleHashes = new Set(sortedTorrents.map(torrent => torrent.hash))
+      const hasInvalidExclusion = Array.from(excludedFromSelectAll).some(hash => !visibleHashes.has(hash))
+
+      if (hasInvalidExclusion) {
+        resetSelectionState()
+      }
+
+      return
+    }
+
+    if (Object.keys(rowSelection).length === 0) {
+      return
+    }
+
+    const visibleRowIds = new Set(table.getRowModel().rows.map(row => row.id))
+    const hasInvalidSelection = Object.entries(rowSelection).some(([rowId, selected]) => selected && !visibleRowIds.has(rowId))
+
+    if (hasInvalidSelection) {
+      resetSelectionState()
+    }
+  }, [
+    excludedFromSelectAll,
+    isAllSelected,
+    resetSelectionState,
+    rowSelection,
+    sortedTorrents,
+  ])
+
+  // Reset selection when table becomes empty
+  useEffect(() => {
+    if (sortedTorrents.length === 0 && (isAllSelected || Object.keys(rowSelection).length > 0)) {
+      resetSelectionState()
+    }
+  }, [sortedTorrents.length, isAllSelected, rowSelection, resetSelectionState])
 
   // Custom selection handlers for "select all" functionality
   const handleSelectAll = useCallback(() => {
@@ -791,8 +1282,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       onRowSelection: handleRowSelection,
       isAllSelected,
       excludedFromSelectAll,
-    }, speedUnit, trackerIcons, formatTimestamp, preferences, supportsTrackerHealth),
-    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth]
+    }, speedUnit, trackerIcons, formatTimestamp, preferences, supportsTrackerHealth, isCrossSeedFiltering, desktopViewMode as TableViewMode),
+    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth, isCrossSeedFiltering, desktopViewMode]
   )
 
   const torrentIdentityCounts = useMemo(() => {
@@ -811,7 +1302,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     data: sortedTorrents,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    manualSorting: true,
+    // For cross-seed filtering, enable client-side sorting and filtering
+    // For regular filtering, backend handles sorting and column filters
+    manualSorting: !isCrossSeedFiltering,
+    getSortedRowModel: isCrossSeedFiltering ? getSortedRowModel() : undefined,
+    manualFiltering: !isCrossSeedFiltering,
+    getFilteredRowModel: isCrossSeedFiltering ? getFilteredRowModel() : undefined,
     // Prefer stable torrent hash for row identity while keeping duplicates unique
     getRowId: (row: Torrent, index: number) => {
       const baseIdentity = row.hash ?? row.infohash_v1 ?? row.infohash_v2
@@ -834,6 +1330,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       columnSizing,
       columnVisibility,
       columnOrder,
+      // Convert our custom ColumnFilter format to TanStack Table format when doing client-side filtering
+      ...(isCrossSeedFiltering && {
+        columnFilters: columnFilters.map(filter => ({
+          id: filter.columnId,
+          value: filter.value
+        }))
+      }),
     },
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
@@ -850,6 +1353,129 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     autoResetPageIndex: false,
     autoResetExpanded: false,
   })
+
+  // Fix virtualization when column filters are cleared in cross-seed mode
+  // Only run when lifecycle is idle to avoid racing with filter lifecycle handler
+  useEffect(() => {
+    if (filterLifecycleState === 'idle' && isCrossSeedFiltering && columnFilters.length === 0) {
+      // Reset loadedRows to ensure all rows are visible when filters are cleared
+      const targetRows = Math.min(100, sortedTorrents.length)
+      // Use functional update to ensure idempotent, non-racing updates
+      setLoadedRows(prev => Math.max(prev, targetRows))
+    }
+  }, [filterLifecycleState, isCrossSeedFiltering, columnFilters.length, sortedTorrents.length])
+
+  const resolveSortColumnId = useCallback((field: string): string => {
+    const columns = table.getAllLeafColumns()
+    const directMatch = columns.find(column => column.id === field)
+    if (directMatch) {
+      return directMatch.id
+    }
+
+    const backendMatch = columns.find(column => getBackendSortField(column.id) === field)
+    if (backendMatch) {
+      return backendMatch.id
+    }
+
+    return field
+  }, [table, columnVisibility, columnOrder])
+
+  const compactSortOptions = useMemo(() => {
+    const columns = table.getAllLeafColumns()
+    const availableFields = new Set<string>()
+
+    for (const column of columns) {
+      availableFields.add(column.id)
+      availableFields.add(getBackendSortField(column.id))
+    }
+
+    return TORRENT_SORT_OPTIONS.filter(option => availableFields.has(option.value))
+  }, [table, columnVisibility, columnOrder])
+
+  const currentCompactSortLabel = useMemo(() => {
+    const directOption = compactSortOptions.find(option => option.value === activeSortField)
+    if (directOption) {
+      return directOption.label
+    }
+
+    const columns = table.getAllLeafColumns()
+    const directColumn = columns.find(column => column.id === activeSortField)
+    if (directColumn) {
+      const meta = directColumn.columnDef.meta as { headerString?: string } | undefined
+      if (meta?.headerString) {
+        return meta.headerString
+      }
+      if (typeof directColumn.columnDef.header === "string") {
+        return directColumn.columnDef.header
+      }
+      return directColumn.id
+    }
+
+    const backendColumn = columns.find(column => getBackendSortField(column.id) === activeSortField)
+    if (backendColumn) {
+      const meta = backendColumn.columnDef.meta as { headerString?: string } | undefined
+      if (meta?.headerString) {
+        return meta.headerString
+      }
+      if (typeof backendColumn.columnDef.header === "string") {
+        return backendColumn.columnDef.header
+      }
+      return backendColumn.id
+    }
+
+    return activeSortField
+  }, [compactSortOptions, activeSortField, table, columnVisibility, columnOrder])
+
+  const handleCompactSortFieldChange = useCallback((value: TorrentSortOptionValue) => {
+    if (activeSortField === value) {
+      return
+    }
+
+    const columnId = resolveSortColumnId(value)
+    const defaultOrder = getDefaultSortOrder(value)
+
+    setSorting([{ id: columnId, desc: defaultOrder === "desc" }])
+    setLastUserAction({
+      type: "sort",
+      timestamp: Date.now(),
+    })
+  }, [activeSortField, resolveSortColumnId, setSorting, setLastUserAction])
+
+  const handleCompactSortOrderToggle = useCallback(() => {
+    const columnId = resolveSortColumnId(activeSortField)
+    const nextDesc = activeSortOrder === "asc"
+
+    setSorting([{ id: columnId, desc: nextDesc }])
+    setLastUserAction({
+      type: "sort",
+      timestamp: Date.now(),
+    })
+  }, [activeSortField, activeSortOrder, resolveSortColumnId, setSorting, setLastUserAction])
+
+  const handleCompactCheckboxChange = useCallback((torrent: Torrent, rowId: string, checked: boolean) => {
+    const nextChecked = !!checked
+    const allRows = table.getRowModel().rows
+    const currentIndex = allRows.findIndex(r => r.id === rowId)
+
+    if (shiftPressedRef.current && lastSelectedIndexRef.current !== null && currentIndex !== -1) {
+      const start = Math.min(lastSelectedIndexRef.current, currentIndex)
+      const end = Math.max(lastSelectedIndexRef.current, currentIndex)
+
+      for (let i = start; i <= end; i++) {
+        const targetRow = allRows[i]
+        if (targetRow) {
+          handleRowSelection(targetRow.original.hash, nextChecked, targetRow.id)
+        }
+      }
+    } else {
+      handleRowSelection(torrent.hash, nextChecked, rowId)
+    }
+
+    if (currentIndex !== -1) {
+      lastSelectedIndexRef.current = currentIndex
+    }
+    shiftPressedRef.current = false
+  }, [handleRowSelection, table])
 
   // Get selected torrent hashes - handle both regular selection and "select all" mode
   const selectedHashes = useMemo((): string[] => {
@@ -918,68 +1544,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     return getTotalSize(selectedTorrents)
   }, [isAllSelected, stats?.totalSize, excludedFromSelectAll, sortedTorrents, selectedTorrents])
   const selectedFormattedSize = useMemo(() => formatBytes(selectedTotalSize), [selectedTotalSize])
-  const queryClient = useQueryClient()
-  const [altSpeedOverride, setAltSpeedOverride] = useState<boolean | null>(null)
-  const serverAltSpeedEnabled = effectiveServerState?.use_alt_speed_limits
-  const hasAltSpeedStatus = typeof serverAltSpeedEnabled === "boolean"
-  const isAltSpeedKnown = altSpeedOverride !== null || hasAltSpeedStatus
-  const altSpeedEnabled = altSpeedOverride ?? serverAltSpeedEnabled ?? false
-  const AltSpeedIcon = altSpeedEnabled ? Turtle : Rabbit
-  const altSpeedIconClass = isAltSpeedKnown ? altSpeedEnabled ? "text-destructive" : "text-green-500" : "text-muted-foreground"
-
-  useEffect(() => {
-    setAltSpeedOverride(null)
-  }, [instanceId])
-
-  const { mutateAsync: toggleAltSpeedLimits, isPending: isTogglingAltSpeed } = useMutation({
-    mutationFn: () => api.toggleAlternativeSpeedLimits(instanceId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["torrents-list", instanceId] })
-      queryClient.invalidateQueries({ queryKey: ["alternative-speed-limits", instanceId] })
-    },
-  })
-
-  useEffect(() => {
-    if (altSpeedOverride === null) {
-      return
-    }
-
-    if (serverAltSpeedEnabled === altSpeedOverride) {
-      setAltSpeedOverride(null)
-    }
-  }, [serverAltSpeedEnabled, altSpeedOverride])
-
-  const handleToggleAltSpeedLimits = useCallback(async () => {
-    if (isTogglingAltSpeed) {
-      return
-    }
-
-    const current = altSpeedOverride ?? serverAltSpeedEnabled ?? false
-    const next = !current
-
-    setAltSpeedOverride(next)
-
-    try {
-      await toggleAltSpeedLimits()
-    } catch {
-      setAltSpeedOverride(current)
-    }
-  }, [altSpeedOverride, serverAltSpeedEnabled, toggleAltSpeedLimits, isTogglingAltSpeed])
-
-  const altSpeedTooltip = isAltSpeedKnown ? altSpeedEnabled ? "Alternative speed limits: On" : "Alternative speed limits: Off" : "Alternative speed limits status unknown"
-  const altSpeedAriaLabel = isAltSpeedKnown ? altSpeedEnabled ? "Disable alternative speed limits" : "Enable alternative speed limits" : "Alternative speed limits status unknown"
-
-  const rawConnectionStatus = effectiveServerState?.connection_status ?? ""
-  const normalizedConnectionStatus = rawConnectionStatus ? rawConnectionStatus.trim().toLowerCase() : ""
-  const formattedConnectionStatus = normalizedConnectionStatus ? normalizedConnectionStatus.replace(/_/g, " ") : ""
-  const connectionStatusDisplay = formattedConnectionStatus ? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()) : ""
-  const hasConnectionStatus = Boolean(formattedConnectionStatus)
-  const isConnectable = normalizedConnectionStatus === "connected"
-  const isFirewalled = normalizedConnectionStatus === "firewalled"
-  const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : hasConnectionStatus ? Ban : Globe
-  const connectionStatusTooltip = hasConnectionStatus ? (isConnectable ? "Connectable" : connectionStatusDisplay) : "Connection status unknown"
-  const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-green-500" : isFirewalled ? "text-amber-500" : "text-destructive" : "text-muted-foreground"
-  const connectionStatusAriaLabel = hasConnectionStatus ? `qBittorrent connection status: ${connectionStatusDisplay || formattedConnectionStatus}` : "qBittorrent connection status unknown"
 
   // Size shown in destructive dialogs - prefer the aggregate when select-all is active
   const deleteDialogTotalSize = useMemo(() => {
@@ -1082,16 +1646,61 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Also keep loadedRows in sync with actual data to prevent status display issues
   useEffect(() => {
-    if (loadedRows > rows.length && rows.length > 0) {
+    if (filterLifecycleState === 'idle' && loadedRows > rows.length && rows.length > 0) {
       setLoadedRows(rows.length)
     }
-  }, [loadedRows, rows.length])
+  }, [loadedRows, rows.length, filterLifecycleState])
+
+  // Notify parent of selection info updates
+  useEffect(() => {
+    onSelectionInfoUpdate?.({
+      effectiveSelectionCount,
+      isAllSelected,
+      excludedFromSelectAllSize: excludedFromSelectAll.size,
+      selectedFormattedSize,
+      torrentsLength: torrents.length,
+      totalCount,
+      hasLoadedAll,
+      isLoading,
+      isLoadingMore,
+      isCachedData,
+      isStaleData,
+      emptyStateMessage,
+      safeLoadedRows,
+      rowsLength: rows.length,
+    })
+  }, [
+    onSelectionInfoUpdate,
+    effectiveSelectionCount,
+    isAllSelected,
+    excludedFromSelectAll.size,
+    selectedFormattedSize,
+    torrents.length,
+    totalCount,
+    hasLoadedAll,
+    isLoading,
+    isLoadingMore,
+    isCachedData,
+    isStaleData,
+    emptyStateMessage,
+    safeLoadedRows,
+    rows.length,
+  ])
+
+  // Compute estimated row height based on view mode - used by virtualizer and keyboard navigation
+  const estimatedRowHeight = useMemo(() => {
+    switch (desktopViewMode) {
+      case "compact": return 80
+      case "dense": return 26
+      default: return 40
+    }
+  }, [desktopViewMode])
 
   // useVirtualizer must be called at the top level, not inside useMemo
   const virtualizer = useVirtualizer({
     count: safeLoadedRows,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 40,
+    estimateSize: () => estimatedRowHeight,
     // Optimized overscan based on TanStack Virtual recommendations
     // Start small and adjust based on dataset size and performance
     overscan: sortedTorrents.length > 50000 ? 3 : sortedTorrents.length > 10000 ? 5 : sortedTorrents.length > 1000 ? 10 : 15,
@@ -1119,10 +1728,52 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     },
   })
 
+  // Filter lifecycle state machine
+  useLayoutEffect(() => {
+    if (filterLifecycleState === 'clearing-all' || filterLifecycleState === 'clearing-columns-only') {
+
+      // Perform clearing operations atomically
+      setColumnFilters([]);
+      setSorting([]);
+      virtualizer.scrollToOffset(0);
+      virtualizer.measure();
+
+      // Reset loadedRows to a reasonable initial value
+      const newLoadedRows = Math.min(100, sortedTorrents.length);
+      setLoadedRows(newLoadedRows);
+
+      // Only clear parent filters if clearing all (not just columns)
+      if (filterLifecycleState === 'clearing-all') {
+        const emptyFilters: TorrentFilters = {
+          status: [],
+          excludeStatus: [],
+          categories: [],
+          excludeCategories: [],
+          tags: [],
+          excludeTags: [],
+          trackers: [],
+          excludeTrackers: []
+        };
+        onFilterChange?.(emptyFilters);
+      }
+
+      // Transition to cleared state
+      setFilterLifecycleState('cleared');
+    } else if (filterLifecycleState === 'cleared') {
+      // Reset to idle state after clearing is complete
+      setFilterLifecycleState('idle');
+    }
+  }, [filterLifecycleState, virtualizer, onFilterChange, setLoadedRows, sortedTorrents.length]);
+
   // Force virtualizer to recalculate when count changes
   useEffect(() => {
     virtualizer.measure()
   }, [safeLoadedRows, virtualizer])
+
+  // Recalculate virtualized row sizes when view mode changes
+  useEffect(() => {
+    virtualizer.measure()
+  }, [desktopViewMode, virtualizer])
 
   const virtualRows = virtualizer.getVirtualItems()
 
@@ -1188,12 +1839,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
   }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length, lastUserAction, resetSelectionState])
 
-  // Clear selection handler for keyboard navigation
-  const clearSelection = useCallback(() => {
-    resetSelectionState()
-  }, [resetSelectionState])
-
-  // Set up keyboard navigation with selection clearing
+  // Set up keyboard navigation (PageUp/Down, Home/End)
   useKeyboardNavigation({
     parentRef,
     virtualizer,
@@ -1201,10 +1847,20 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     hasLoadedAll,
     isLoadingMore,
     loadMore,
-    estimatedRowHeight: 40,
-    onClearSelection: clearSelection,
-    hasSelection: isAllSelected || selectedRowIds.length > 0,
+    estimatedRowHeight,
   })
+
+  // Apply Ctrl/Cmd+A shortcut to select all torrents
+  const selectAllWithShortcut = useCallback(() => {
+    if (sortedTorrents.length === 0) {
+      return
+    }
+
+    setIsAllSelected(true)
+    setExcludedFromSelectAll(new Set())
+    setRowSelection({})
+    lastSelectedIndexRef.current = null
+  }, [sortedTorrents.length, setIsAllSelected, setExcludedFromSelectAll, setRowSelection])
 
   // Wrapper functions to adapt hook handlers to component needs
   const selectAllOptions = useMemo(() => ({
@@ -1255,15 +1911,25 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   ])
 
   const handleDeleteWrapper = useCallback(() => {
+    // Include cross-seed hashes if user opted to delete them
+    const hashesToDelete = deleteCrossSeeds
+      ? [...contextHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)]
+      : contextHashes
+
+    // Update count to include cross-seeds for accurate toast message
+    const deleteClientMeta = deleteCrossSeeds
+      ? { clientHashes: hashesToDelete, totalSelected: hashesToDelete.length }
+      : contextClientMeta
+
     handleDelete(
-      contextHashes,
+      hashesToDelete,
       isAllSelected,
       selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
-      contextClientMeta
+      deleteClientMeta
     )
-  }, [handleDelete, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleDelete, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta, deleteCrossSeeds, crossSeedWarning.affectedTorrents])
 
   const handleAddTagsWrapper = useCallback((tags: string[]) => {
     handleAddTags(
@@ -1351,25 +2017,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     await handleRenameTorrent(hash, name)
   }, [handleRenameTorrent, contextHashes])
 
-  const handleRenameFileWrapper = useCallback(async ({ oldPath, newName }: { oldPath: string; newName: string }) => {
+  const handleRenameFileWrapper = useCallback(async ({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
     const hash = contextHashes[0]
     if (!hash) return
-    if (!oldPath) return
-    const segments = oldPath.split("/")
-    segments[segments.length - 1] = newName
-    const newPath = segments.join("/")
+    if (!oldPath || !newPath) return
     await handleRenameFile(hash, oldPath, newPath)
   }, [handleRenameFile, contextHashes])
 
-  const handleRenameFolderWrapper = useCallback(async ({ oldPath, newName }: { oldPath: string; newName: string }) => {
+  const handleRenameFolderWrapper = useCallback(async ({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
     const hash = contextHashes[0]
     if (!hash) return
-    if (!oldPath) return
-    const segments = oldPath.split("/")
-    segments[segments.length - 1] = newName
-    const newPath = segments.join("/")
+    if (!oldPath || !newPath) return
     await handleRenameFolder(hash, oldPath, newPath)
-  }, [contextHashes, handleRenameFolder])
+  }, [handleRenameFolder, contextHashes])
 
   const handleRemoveTagsWrapper = useCallback((tags: string[]) => {
     handleRemoveTags(
@@ -1404,6 +2064,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       contextClientMeta
     )
   }, [handleReannounce, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+
+  const handleTmmConfirmWrapper = useCallback(() => {
+    handleTmmConfirm(
+      contextHashes,
+      isAllSelected,
+      selectAllFilters ?? filters,
+      effectiveSearch,
+      Array.from(excludedFromSelectAll),
+      contextClientMeta
+    )
+  }, [handleTmmConfirm, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleSetShareLimitWrapper = useCallback((
     ratioLimit: number,
@@ -1466,678 +2137,787 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   )
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Search and Actions */}
-      <div className="flex flex-col gap-2 flex-shrink-0">
-        {/* Search bar row */}
-        <div className="flex items-center gap-1 sm:gap-2">
-          {/* Action buttons - now handled by Management Bar in Header */}
-          <div className="flex gap-1 sm:gap-2 flex-shrink-0">
+    <>
+      <SelectAllHotkey
+        onSelectAll={selectAllWithShortcut}
+        isMac={isMac}
+        enabled={sortedTorrents.length > 0}
+      />
+      <div className="relative h-full flex flex-col">
+        {/* Search and Actions */}
+        <div className="flex flex-col gap-2 flex-shrink-0">
+          {/* Search bar row */}
+          <div className="flex items-center gap-1 sm:gap-2">
+            {/* Action buttons - now handled by Management Bar in Header */}
+            <div className="flex gap-1 sm:gap-2 flex-shrink-0">
 
-            {/* Column controls next to search via portal, with inline fallback */}
-            {(() => {
-              const container = typeof document !== "undefined" ? document.getElementById("header-search-actions") : null
-              const actions = (
-                <>
-                  {columnFilters.length > 0 && (
-                    <Tooltip>
-                      <TooltipTrigger
-                        asChild
-                        onFocus={(e) => {
-                          // Prevent tooltip from showing on focus - only show on hover
-                          e.preventDefault()
-                        }}
-                      >
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="relative mr-1"
-                          onClick={() => setColumnFilters([])}
+              {/* Column controls next to search via portal, with inline fallback */}
+              {(() => {
+                const container = typeof document !== "undefined" ? document.getElementById("header-search-actions") : null
+                const actions = (
+                  <>
+                    {desktopViewMode === "compact" && compactSortOptions.length > 0 && (
+                      <div className="flex items-center">
+                        <DropdownMenu>
+                          <Tooltip disableHoverableContent={true}>
+                            <TooltipTrigger
+                              asChild
+                              onFocus={(e) => {
+                                e.preventDefault()
+                              }}
+                            >
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 px-2 text-xs font-medium gap-1"
+                                >
+                                  <ArrowUpDown className="h-3.5 w-3.5" />
+                                  <span className="truncate">{currentCompactSortLabel}</span>
+                                </Button>
+                              </DropdownMenuTrigger>
+                            </TooltipTrigger>
+                            <TooltipContent>Change sort field</TooltipContent>
+                          </Tooltip>
+                          <DropdownMenuContent align="end" className="w-56 max-h-72 overflow-y-auto">
+                            <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuRadioGroup
+                              value={activeSortField}
+                              onValueChange={(value) => handleCompactSortFieldChange(value as TorrentSortOptionValue)}
+                            >
+                              {compactSortOptions.map(option => (
+                                <DropdownMenuRadioItem key={option.value} value={option.value} className="text-sm">
+                                  {option.label}
+                                </DropdownMenuRadioItem>
+                              ))}
+                            </DropdownMenuRadioGroup>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <Tooltip disableHoverableContent={true}>
+                          <TooltipTrigger
+                            asChild
+                            onFocus={(e) => {
+                              e.preventDefault()
+                            }}
+                          >
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={handleCompactSortOrderToggle}
+                              aria-label={`Sort ${activeSortOrder === "desc" ? "ascending" : "descending"}`}
+                            >
+                              {activeSortOrder === "desc" ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronUp className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Sort {activeSortOrder === "desc" ? "ascending" : "descending"}</TooltipContent>
+                        </Tooltip>
+                      </div>
+                    )}
+
+                    {columnFilters.length > 0 && (
+                      <Tooltip>
+                        <TooltipTrigger
+                          asChild
+                          onFocus={(e) => {
+                            // Prevent tooltip from showing on focus - only show on hover
+                            e.preventDefault()
+                          }}
                         >
-                          <X className="h-4 w-4"/>
-                          <span className="sr-only">Clear all column filters</span>
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Clear all column filters ({columnFilters.length})</TooltipContent>
-                    </Tooltip>
-                  )}
-
-                  <DropdownMenu>
-                    <Tooltip disableHoverableContent={true}>
-                      <TooltipTrigger
-                        asChild
-                        onFocus={(e) => {
-                          // Prevent tooltip from showing on focus - only show on hover
-                          e.preventDefault()
-                        }}
-                      >
-                        <DropdownMenuTrigger asChild>
                           <Button
                             variant="outline"
                             size="icon"
+                            className="relative mr-1"
+                            onClick={() => {
+                              // Use atomic filter clearing to avoid race conditions
+                              // Only clear column filters in cross-seed mode, clear all filters otherwise
+                              const clearingMode = isCrossSeedFiltering ? 'columns-only' : 'all'
+                              clearFiltersAtomically(clearingMode)
+                            }}
                           >
-                            <Columns3 className="h-4 w-4"/>
-                            <span className="sr-only">Toggle columns</span>
+                            <X className="h-4 w-4" />
+                            <span className="sr-only">Clear all column filters</span>
                           </Button>
-                        </DropdownMenuTrigger>
-                      </TooltipTrigger>
-                      <TooltipContent>Toggle columns</TooltipContent>
-                    </Tooltip>
-                    <DropdownMenuContent align="end" className="w-48">
-                      <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
-                      <DropdownMenuSeparator/>
-                      {table
-                        .getAllColumns()
-                        .filter(
-                          (column) =>
-                            column.id !== "select" && // Never show select in visibility options
-                            column.getCanHide()
-                        )
-                        .map((column) => {
-                          return (
-                            <DropdownMenuCheckboxItem
-                              key={column.id}
-                              className="capitalize"
-                              checked={column.getIsVisible()}
-                              onCheckedChange={(value) =>
-                                column.toggleVisibility(!!value)
-                              }
-                              onSelect={(e) => e.preventDefault()}
-                            >
-                              <span className="truncate">
-                                {(column.columnDef.meta as { headerString?: string })?.headerString ||
-                                  (typeof column.columnDef.header === "string" ? column.columnDef.header : column.id)}
-                              </span>
-                            </DropdownMenuCheckboxItem>
-                          )
-                        })}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </>
-              )
+                        </TooltipTrigger>
+                        <TooltipContent>Clear all column filters ({columnFilters.length})</TooltipContent>
+                      </Tooltip>
+                    )}
 
-              return container ? createPortal(actions, container) : actions
-            })()}
+                    {desktopViewMode !== "compact" && (
+                      <DropdownMenu>
+                        <Tooltip disableHoverableContent={true}>
+                          <TooltipTrigger
+                            asChild
+                            onFocus={(e) => {
+                              // Prevent tooltip from showing on focus - only show on hover
+                              e.preventDefault()
+                            }}
+                          >
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                              >
+                                <Columns3 className="h-4 w-4" />
+                                <span className="sr-only">Toggle columns</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                          </TooltipTrigger>
+                          <TooltipContent>Toggle columns</TooltipContent>
+                        </Tooltip>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {table
+                            .getAllColumns()
+                            .filter(
+                              (column) =>
+                                column.id !== "select" && // Never show select in visibility options
+                                column.getCanHide()
+                            )
+                            .map((column) => {
+                              return (
+                                <DropdownMenuCheckboxItem
+                                  key={column.id}
+                                  className="capitalize"
+                                  checked={column.getIsVisible()}
+                                  onCheckedChange={(value) =>
+                                    column.toggleVisibility(!!value)
+                                  }
+                                  onSelect={(e) => e.preventDefault()}
+                                >
+                                  <span className="truncate">
+                                    {(column.columnDef.meta as { headerString?: string })?.headerString ||
+                                      (typeof column.columnDef.header === "string" ? column.columnDef.header : column.id)}
+                                  </span>
+                                </DropdownMenuCheckboxItem>
+                              )
+                            })}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </>
+                )
 
-            <AddTorrentDialog
-              instanceId={instanceId}
-              open={addTorrentModalOpen}
-              onOpenChange={onAddTorrentModalChange}
-              dropPayload={dropPayload}
-              onDropPayloadConsumed={handleDropPayloadConsumed}
-              torrents={torrents}
-            />
+                return container ? createPortal(actions, container) : actions
+              })()}
+
+              <AddTorrentDialog
+                instanceId={instanceId}
+                open={addTorrentModalOpen}
+                onOpenChange={onAddTorrentModalChange}
+                dropPayload={dropPayload}
+                onDropPayloadConsumed={handleDropPayloadConsumed}
+                torrents={torrents}
+              />
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Table container */}
-      <div className="flex flex-col flex-1 min-h-0 mt-2 sm:mt-0 overflow-hidden">
-        {/* Virtual scroll container with paint containment optimization for improved rendering performance */}
-        <TorrentDropZone
-          ref={parentRef}
-          className="relative flex-1 overflow-auto scrollbar-thin select-none will-change-transform contain-paint"
-          role="grid"
-          aria-label="Torrents table"
-          aria-rowcount={totalCount}
-          aria-colcount={table.getVisibleLeafColumns().length}
-          onDropPayload={handleDropPayload}
-        >
-          {/* Loading overlay - positioned absolute to scroll container */}
-          {torrents.length === 0 && showLoadingState && (
-            <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-50 animate-in fade-in duration-300">
-              <div className="text-center animate-in zoom-in-95 duration-300">
-                <Logo className="h-12 w-12 animate-pulse mx-auto mb-3"/>
-                <p>Loading torrents...</p>
+        {/* Table container */}
+        <div className="flex flex-col flex-1 min-h-0 mt-2 sm:mt-0 overflow-hidden">
+          {/* Virtual scroll container with paint containment optimization for improved rendering performance */}
+          <TorrentDropZone
+            ref={parentRef}
+            className="relative flex-1 overflow-auto scrollbar-thin select-none will-change-transform contain-paint"
+            role="grid"
+            aria-label="Torrents table"
+            aria-rowcount={totalCount}
+            aria-colcount={table.getVisibleLeafColumns().length}
+            onDropPayload={handleDropPayload}
+          >
+            {/* Loading overlay - positioned absolute to scroll container */}
+            {torrents.length === 0 && showLoadingState && (
+              <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-50 animate-in fade-in duration-300">
+                <div className="text-center animate-in zoom-in-95 duration-300">
+                  <Logo className="h-12 w-12 animate-pulse mx-auto mb-3" />
+                  <p>Loading torrents...</p>
+                </div>
               </div>
-            </div>
-          )}
-          {torrents.length === 0 && !isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center z-40 animate-in fade-in duration-300 pointer-events-none">
-              <div className="text-center animate-in zoom-in-95 duration-300 text-muted-foreground">
-                <p>No torrents found</p>
+            )}
+            {torrents.length === 0 && !isLoading && (
+              <div
+                className={cn(
+                  "absolute inset-0 flex items-center justify-center z-40 animate-in fade-in duration-300",
+                  !hasFilterControls && "pointer-events-none"
+                )}
+              >
+                <div className="text-center animate-in zoom-in-95 duration-300 text-muted-foreground space-y-3">
+                  <p>{emptyStateMessage}</p>
+                  {hasFilterControls && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => clearFiltersAtomically("all")}
+                    >
+                      Clear filters
+                    </Button>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          <div style={{ position: "relative", minWidth: "min-content" }}>
-            {/* Header */}
-            <div className="sticky top-0 bg-background border-b" style={{ zIndex: 50 }}>
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={(event) => {
-                  const { active, over } = event
-                  if (!active || !over || active.id === over.id) {
-                    return
+            <div style={{ position: "relative", minWidth: "min-content" }}>
+              {/* Header - show in normal and dense table views */}
+              {desktopViewMode !== "compact" && (
+                <div className="sticky top-0 bg-background border-b" style={{ zIndex: 50 }}>
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={(event) => {
+                      const { active, over } = event
+                      if (!active || !over || active.id === over.id) {
+                        return
+                      }
+
+                      setColumnOrder((currentOrder: string[]) => {
+                        const allColumnIds = table.getAllLeafColumns().map((col) => col.id)
+
+                        // Normalize current order to include all current columns exactly once
+                        const sanitizedOrder = [
+                          ...currentOrder.filter((id) => allColumnIds.includes(id)),
+                          ...allColumnIds.filter((id) => !currentOrder.includes(id)),
+                        ]
+
+                        const oldIndex = sanitizedOrder.indexOf(active.id as string)
+                        const newIndex = sanitizedOrder.indexOf(over.id as string)
+
+                        if (oldIndex === -1 || newIndex === -1) {
+                          return sanitizedOrder
+                        }
+
+                        return arrayMove(sanitizedOrder, oldIndex, newIndex)
+                      })
+                    }}
+                    modifiers={[restrictToHorizontalAxis]}
+                  >
+                    {table.getHeaderGroups().map(headerGroup => {
+                      const headers = headerGroup.headers
+                      const headerIds = headers.map(h => h.column.id)
+
+                      // Use memoized minTableWidth
+
+                      return (
+                        <SortableContext
+                          key={headerGroup.id}
+                          items={headerIds}
+                          strategy={horizontalListSortingStrategy}
+                        >
+                          <div className="flex" style={{ minWidth: `${minTableWidth}px` }}>
+                            {headers.map(header => (
+                              <DraggableTableHeader
+                                key={header.id}
+                                header={header}
+                                columnFilters={columnFilters}
+                                viewMode={desktopViewMode}
+                                onFilterChange={(columnId, filter) => {
+                                  if (filter === null) {
+                                    setColumnFilters(columnFilters.filter(f => f.columnId !== columnId))
+                                  } else {
+                                    const existing = columnFilters.findIndex(f => f.columnId === columnId)
+                                    if (existing >= 0) {
+                                      const newFilters = [...columnFilters]
+                                      newFilters[existing] = filter
+                                      setColumnFilters(newFilters)
+                                    } else {
+                                      setColumnFilters([...columnFilters, filter])
+                                    }
+                                  }
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </SortableContext>
+                      )
+                    })}
+                  </DndContext>
+                </div>
+              )}
+
+              {/* Body */}
+              <div
+                style={{
+                  height: `${virtualizer.getTotalSize()}px`,
+                  width: "100%",
+                  position: "relative",
+                }}
+              >
+                {virtualRows.map(virtualRow => {
+                  const row = rows[virtualRow.index]
+                  if (!row || !row.original) return null
+                  const torrent = row.original
+                  const isSelected = selectedTorrent?.hash === torrent.hash
+                  const isRowSelected = isAllSelected ? !excludedFromSelectAll.has(torrent.hash) : row.getIsSelected()
+
+                  // Render compact view for compact mode
+                  if (desktopViewMode === "compact") {
+                    return (
+                      <TorrentContextMenu
+                        key={row.id}
+                        instanceId={instanceId}
+                        torrent={torrent}
+                        isSelected={isRowSelected}
+                        isAllSelected={isAllSelected}
+                        selectedHashes={selectedHashes}
+                        selectedTorrents={selectedTorrents}
+                        effectiveSelectionCount={effectiveSelectionCount}
+                        onTorrentSelect={onTorrentSelect}
+                        onAction={runAction}
+                        onPrepareDelete={prepareDeleteAction}
+                        onPrepareTags={prepareTagsAction}
+                        onPrepareCategory={prepareCategoryAction}
+                        onPrepareCreateCategory={prepareCreateCategoryAction}
+                        onPrepareShareLimit={prepareShareLimitAction}
+                        onPrepareSpeedLimits={prepareSpeedLimitAction}
+                        onPrepareLocation={prepareLocationAction}
+                        onPrepareRenameTorrent={prepareRenameTorrentAction}
+                        onPrepareRenameFile={prepareRenameFileAction}
+                        onPrepareRenameFolder={prepareRenameFolderAction}
+                        onPrepareRecheck={prepareRecheckAction}
+                        onPrepareReannounce={prepareReannounceAction}
+                        onPrepareTmm={prepareTmmAction}
+                        availableCategories={availableCategories}
+                        onSetCategory={handleSetCategoryDirect}
+                        isPending={isPending}
+                        onExport={handleExportWrapper}
+                        isExporting={isExportingTorrent}
+                        capabilities={capabilities}
+                        useSubcategories={allowSubcategories}
+                        canCrossSeedSearch={canCrossSeedSearch}
+                        onCrossSeedSearch={onCrossSeedSearch}
+                        isCrossSeedSearching={isCrossSeedSearching}
+                        onFilterChange={onFilterChange}
+                      >
+                        <CompactRow
+                          torrent={torrent}
+                          rowId={row.id}
+                          rowIndex={virtualRow.index}
+                          isSelected={isSelected}
+                          isRowSelected={isRowSelected}
+                          onClick={(e) => {
+                            const target = e.target as HTMLElement
+                            const isCheckboxElement = target.closest("[data-slot=\"checkbox\"]") || target.closest("[role=\"checkbox\"]")
+                            if (isCheckboxElement) {
+                              return
+                            }
+                            // Handle shift-click for range selection
+                            if (e.shiftKey) {
+                              e.preventDefault()
+                              const allRows = table.getRowModel().rows
+                              const currentIndex = allRows.findIndex(r => r.id === row.id)
+                              if (lastSelectedIndexRef.current !== null) {
+                                const start = Math.min(lastSelectedIndexRef.current, currentIndex)
+                                const end = Math.max(lastSelectedIndexRef.current, currentIndex)
+                                for (let i = start; i <= end; i++) {
+                                  const targetRow = allRows[i]
+                                  if (targetRow) {
+                                    handleRowSelection(targetRow.original.hash, true, targetRow.id)
+                                  }
+                                }
+                              } else {
+                                handleRowSelection(torrent.hash, true, row.id)
+                                lastSelectedIndexRef.current = currentIndex
+                              }
+                            } else if (e.ctrlKey || e.metaKey) {
+                              const allRows = table.getRowModel().rows
+                              const currentIndex = allRows.findIndex(r => r.id === row.id)
+                              handleRowSelection(torrent.hash, !isRowSelected, row.id)
+                              lastSelectedIndexRef.current = currentIndex
+                            } else {
+                              // Plain click - open details panel
+                              // If row is already selected, keep selection intact
+                              // Otherwise, select only this torrent (replace selection)
+                              if (!isRowSelected) {
+                                const allRows = table.getRowModel().rows
+                                const currentIndex = allRows.findIndex(r => r.id === row.id)
+                                setIsAllSelected(false)
+                                setExcludedFromSelectAll(new Set())
+                                setRowSelection({ [row.id]: true })
+                                lastSelectedIndexRef.current = currentIndex
+                              }
+                              onTorrentSelect?.(torrent)
+                            }
+                          }}
+                          onContextMenu={() => {
+                            if (!isRowSelected && selectedHashes.length <= 1) {
+                              setRowSelection({ [row.id]: true })
+                            }
+                          }}
+                          incognitoMode={incognitoMode}
+                          speedUnit={speedUnit}
+                          supportsTrackerHealth={supportsTrackerHealth}
+                          trackerIcons={trackerIcons}
+                          onCheckboxPointerDown={handleCompactCheckboxPointerDown}
+                          onCheckboxChange={handleCompactCheckboxChange}
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            width: "100%",
+                            height: `${virtualRow.size}px`,
+                            transform: `translateY(${virtualRow.start}px)`,
+                          }}
+                        />
+                      </TorrentContextMenu>
+                    )
                   }
 
-                  setColumnOrder((currentOrder: string[]) => {
-                    const allColumnIds = table.getAllLeafColumns().map((col) => col.id)
-
-                    // Normalize current order to include all current columns exactly once
-                    const sanitizedOrder = [
-                      ...currentOrder.filter((id) => allColumnIds.includes(id)),
-                      ...allColumnIds.filter((id) => !currentOrder.includes(id)),
-                    ]
-
-                    const oldIndex = sanitizedOrder.indexOf(active.id as string)
-                    const newIndex = sanitizedOrder.indexOf(over.id as string)
-
-                    if (oldIndex === -1 || newIndex === -1) {
-                      return sanitizedOrder
-                    }
-
-                    return arrayMove(sanitizedOrder, oldIndex, newIndex)
-                  })
-                }}
-                modifiers={[restrictToHorizontalAxis]}
-              >
-                {table.getHeaderGroups().map(headerGroup => {
-                  const headers = headerGroup.headers
-                  const headerIds = headers.map(h => h.column.id)
-
-                  // Use memoized minTableWidth
-
+                  // Use memoized minTableWidth for normal table view
                   return (
-                    <SortableContext
-                      key={headerGroup.id}
-                      items={headerIds}
-                      strategy={horizontalListSortingStrategy}
+                    <TorrentContextMenu
+                      key={row.id}
+                      instanceId={instanceId}
+                      torrent={torrent}
+                      isSelected={isRowSelected}
+                      isAllSelected={isAllSelected}
+                      selectedHashes={selectedHashes}
+                      selectedTorrents={selectedTorrents}
+                      effectiveSelectionCount={effectiveSelectionCount}
+                      onTorrentSelect={onTorrentSelect}
+                      onAction={runAction}
+                      onPrepareDelete={prepareDeleteAction}
+                      onPrepareTags={prepareTagsAction}
+                      onPrepareCategory={prepareCategoryAction}
+                      onPrepareCreateCategory={prepareCreateCategoryAction}
+                      onPrepareShareLimit={prepareShareLimitAction}
+                      onPrepareSpeedLimits={prepareSpeedLimitAction}
+                      onPrepareLocation={prepareLocationAction}
+                      onPrepareRenameTorrent={prepareRenameTorrentAction}
+                      onPrepareRenameFile={prepareRenameFileAction}
+                      onPrepareRenameFolder={prepareRenameFolderAction}
+                      onPrepareRecheck={prepareRecheckAction}
+                      onPrepareReannounce={prepareReannounceAction}
+                      onPrepareTmm={prepareTmmAction}
+                      availableCategories={availableCategories}
+                      onSetCategory={handleSetCategoryDirect}
+                      isPending={isPending}
+                      onExport={handleExportWrapper}
+                      isExporting={isExportingTorrent}
+                      capabilities={capabilities}
+                      useSubcategories={allowSubcategories}
+                      canCrossSeedSearch={canCrossSeedSearch}
+                      onCrossSeedSearch={onCrossSeedSearch}
+                      isCrossSeedSearching={isCrossSeedSearching}
+                      onFilterChange={onFilterChange}
                     >
-                      <div className="flex" style={{ minWidth: `${minTableWidth}px` }}>
-                        {headers.map(header => (
-                          <DraggableTableHeader
-                            key={header.id}
-                            header={header}
-                            columnFilters={columnFilters}
-                            onFilterChange={(columnId, filter) => {
-                              if (filter === null) {
-                                setColumnFilters(columnFilters.filter(f => f.columnId !== columnId))
-                              } else {
-                                const existing = columnFilters.findIndex(f => f.columnId === columnId)
-                                if (existing >= 0) {
-                                  const newFilters = [...columnFilters]
-                                  newFilters[existing] = filter
-                                  setColumnFilters(newFilters)
-                                } else {
-                                  setColumnFilters([...columnFilters, filter])
+                      <div
+                        className={`flex cursor-pointer hover:bg-accent/40 ${getRowBackgroundClass(isRowSelected, isSelected, virtualRow.index)}`}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          minWidth: `${minTableWidth}px`,
+                          height: `${virtualRow.size}px`,
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
+                        onClick={(e) => {
+                          // Don't select when clicking checkbox or its wrapper
+                          const target = e.target as HTMLElement
+                          const isCheckbox = target.closest("[data-slot=\"checkbox\"]") || target.closest("[role=\"checkbox\"]") || target.closest(".p-1.-m-1")
+                          if (!isCheckbox) {
+                            // Handle shift-click for range selection - EXACTLY like checkbox
+                            if (e.shiftKey) {
+                              e.preventDefault() // Prevent text selection
+
+                              const allRows = table.getRowModel().rows
+                              const currentIndex = allRows.findIndex(r => r.id === row.id)
+
+                              if (lastSelectedIndexRef.current !== null) {
+                                const start = Math.min(lastSelectedIndexRef.current, currentIndex)
+                                const end = Math.max(lastSelectedIndexRef.current, currentIndex)
+
+                                // Select range EXACTLY like checkbox does
+                                for (let i = start; i <= end; i++) {
+                                  const targetRow = allRows[i]
+                                  if (targetRow) {
+                                    handleRowSelection(targetRow.original.hash, true, targetRow.id)
+                                  }
                                 }
+                              } else {
+                                // No anchor - just select this row
+                                handleRowSelection(torrent.hash, true, row.id)
+                                lastSelectedIndexRef.current = currentIndex
                               }
-                            }}
-                          />
-                        ))}
+
+                              // Don't update lastSelectedIndexRef on shift-click (keeps anchor stable)
+                            } else if (e.ctrlKey || e.metaKey) {
+                              // Ctrl/Cmd click - toggle single row EXACTLY like checkbox
+                              const allRows = table.getRowModel().rows
+                              const currentIndex = allRows.findIndex(r => r.id === row.id)
+
+                              handleRowSelection(torrent.hash, !isRowSelected, row.id)
+                              lastSelectedIndexRef.current = currentIndex
+                            } else {
+                              // Plain click - open details panel
+                              // If row is already selected, keep selection intact
+                              // Otherwise, select only this torrent (replace selection)
+                              if (!isRowSelected) {
+                                const allRows = table.getRowModel().rows
+                                const currentIndex = allRows.findIndex(r => r.id === row.id)
+                                setIsAllSelected(false)
+                                setExcludedFromSelectAll(new Set())
+                                setRowSelection({ [row.id]: true })
+                                lastSelectedIndexRef.current = currentIndex
+                              }
+                              onTorrentSelect?.(torrent)
+                            }
+                          }
+                        }}
+                        onContextMenu={() => {
+                          // Only select this row if not already selected and not part of a multi-selection
+                          if (!isRowSelected && selectedHashes.length <= 1) {
+                            setRowSelection({ [row.id]: true })
+                          }
+                        }}
+                      >
+                        {row.getVisibleCells().map(cell => {
+                          // Compact columns (tracker_icon, status_icon) use px-0 to match header
+                          const isCompactColumn = cell.column.id === "tracker_icon" || cell.column.id === "status_icon"
+                          const isSelectColumn = cell.column.id === "select"
+                          return (
+                            <div
+                              key={cell.id}
+                              style={{
+                                width: cell.column.getSize(),
+                                flexShrink: 0,
+                              }}
+                              className={cn(
+                                "flex items-center overflow-hidden min-w-0",
+                                // Select and compact columns are centered to match header
+                                (isSelectColumn || isCompactColumn) && "justify-center",
+                                isCompactColumn
+                                  ? (desktopViewMode === "dense" ? "px-0 py-0.5" : "px-0 py-2")
+                                  : (desktopViewMode === "dense" ? "px-2 py-0.5" : "px-3 py-2")
+                              )}
+                            >
+                              {flexRender(
+                                cell.column.columnDef.cell,
+                                cell.getContext()
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
-                    </SortableContext>
+                    </TorrentContextMenu>
                   )
                 })}
-              </DndContext>
+              </div>
             </div>
+          </TorrentDropZone>
+        </div>
 
-            {/* Body */}
-            <div
-              style={{
-                height: `${virtualizer.getTotalSize()}px`,
-                width: "100%",
-                position: "relative",
-              }}
-            >
-              {virtualRows.map(virtualRow => {
-                const row = rows[virtualRow.index]
-                if (!row || !row.original) return null
-                const torrent = row.original
-                const isSelected = selectedTorrent?.hash === torrent.hash
+        <DeleteTorrentDialog
+          open={showDeleteDialog}
+          onOpenChange={(open) => {
+            if (!open) {
+              closeDeleteDialog()
+              crossSeedWarning.reset()
+            }
+          }}
+          count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+          totalSize={deleteDialogTotalSize}
+          formattedSize={deleteDialogFormattedSize}
+          deleteFiles={deleteFiles}
+          onDeleteFilesChange={setDeleteFiles}
+          isDeleteFilesLocked={isDeleteFilesLocked}
+          onToggleDeleteFilesLock={toggleDeleteFilesLock}
+          deleteCrossSeeds={deleteCrossSeeds}
+          onDeleteCrossSeedsChange={setDeleteCrossSeeds}
+          crossSeedWarning={crossSeedWarning}
+          onConfirm={handleDeleteWrapper}
+        />
 
-                // Use memoized minTableWidth
-                return (
-                  <TorrentContextMenu
-                    key={row.id}
-                    torrent={torrent}
-                    isSelected={row.getIsSelected()}
-                    isAllSelected={isAllSelected}
-                    selectedHashes={selectedHashes}
-                    selectedTorrents={selectedTorrents}
-                    effectiveSelectionCount={effectiveSelectionCount}
-                    onTorrentSelect={onTorrentSelect}
-                    onAction={runAction}
-                    onPrepareDelete={prepareDeleteAction}
-                    onPrepareTags={prepareTagsAction}
-                    onPrepareCategory={prepareCategoryAction}
-                    onPrepareCreateCategory={prepareCreateCategoryAction}
-                    onPrepareShareLimit={prepareShareLimitAction}
-                    onPrepareSpeedLimits={prepareSpeedLimitAction}
-                    onPrepareLocation={prepareLocationAction}
-                    onPrepareRenameTorrent={prepareRenameTorrentAction}
-                    onPrepareRenameFile={prepareRenameFileAction}
-                    onPrepareRenameFolder={prepareRenameFolderAction}
-                    onPrepareRecheck={prepareRecheckAction}
-                    onPrepareReannounce={prepareReannounceAction}
-                    availableCategories={availableCategories}
-                    onSetCategory={handleSetCategoryDirect}
-                    isPending={isPending}
-                    onExport={handleExportWrapper}
-                    isExporting={isExportingTorrent}
-                    capabilities={capabilities}
-                    useSubcategories={allowSubcategories}
-                  >
-                    <div
-                      className={`flex border-b cursor-pointer hover:bg-muted/50 ${row.getIsSelected() ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}
-                      style={{
-                        position: "absolute",
-                        top: 0,
-                        left: 0,
-                        minWidth: `${minTableWidth}px`,
-                        height: `${virtualRow.size}px`,
-                        transform: `translateY(${virtualRow.start}px)`,
-                      }}
-                      onClick={(e) => {
-                        // Don't select when clicking checkbox or its wrapper
-                        const target = e.target as HTMLElement
-                        const isCheckbox = target.closest("[data-slot=\"checkbox\"]") || target.closest("[role=\"checkbox\"]") || target.closest(".p-1.-m-1")
-                        if (!isCheckbox) {
-                          // Handle shift-click for range selection - EXACTLY like checkbox
-                          if (e.shiftKey) {
-                            e.preventDefault() // Prevent text selection
+        {/* Add Tags Dialog */}
+        <AddTagsDialog
+          open={showAddTagsDialog}
+          onOpenChange={setShowAddTagsDialog}
+          availableTags={availableTags || []}
+          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+          onConfirm={handleAddTagsWrapper}
+          isPending={isPending}
+          isLoadingTags={isLoadingTags}
+        />
 
-                            const allRows = table.getRowModel().rows
-                            const currentIndex = allRows.findIndex(r => r.id === row.id)
+        {/* Set Tags Dialog */}
+        <SetTagsDialog
+          open={showSetTagsDialog}
+          onOpenChange={setShowSetTagsDialog}
+          availableTags={availableTags || []}
+          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+          onConfirm={handleSetTagsWrapper}
+          isPending={isPending}
+          initialTags={getCommonTags(contextTorrents)}
+          isLoadingTags={isLoadingTags}
+        />
 
-                            if (lastSelectedIndexRef.current !== null) {
-                              const start = Math.min(lastSelectedIndexRef.current, currentIndex)
-                              const end = Math.max(lastSelectedIndexRef.current, currentIndex)
+        {/* Set Category Dialog */}
+        <SetCategoryDialog
+          open={showCategoryDialog}
+          onOpenChange={setShowCategoryDialog}
+          availableCategories={availableCategories || {}}
+          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+          onConfirm={handleSetCategoryWrapper}
+          isPending={isPending}
+          initialCategory={getCommonCategory(contextTorrents)}
+          isLoadingCategories={isLoadingCategories}
+          useSubcategories={allowSubcategories}
+        />
 
-                              // Select range EXACTLY like checkbox does
-                              for (let i = start; i <= end; i++) {
-                                const targetRow = allRows[i]
-                                if (targetRow) {
-                                  handleRowSelection(targetRow.original.hash, true, targetRow.id)
-                                }
-                              }
-                            } else {
-                              // No anchor - just select this row
-                              handleRowSelection(torrent.hash, true, row.id)
-                              lastSelectedIndexRef.current = currentIndex
-                            }
+        {/* Create and Assign Category Dialog */}
+        <CreateAndAssignCategoryDialog
+          open={showCreateCategoryDialog}
+          onOpenChange={setShowCreateCategoryDialog}
+          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+          onConfirm={handleSetCategoryWrapper}
+          isPending={isPending}
+        />
 
-                            // Don't update lastSelectedIndexRef on shift-click (keeps anchor stable)
-                          } else if (e.ctrlKey || e.metaKey) {
-                            // Ctrl/Cmd click - toggle single row EXACTLY like checkbox
-                            const allRows = table.getRowModel().rows
-                            const currentIndex = allRows.findIndex(r => r.id === row.id)
+        <ShareLimitDialog
+          open={showShareLimitDialog}
+          onOpenChange={setShowShareLimitDialog}
+          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+          torrents={contextTorrents}
+          onConfirm={handleSetShareLimitWrapper}
+          isPending={isPending}
+        />
 
-                            handleRowSelection(torrent.hash, !row.getIsSelected(), row.id)
-                            lastSelectedIndexRef.current = currentIndex
-                          } else {
-                            // Plain click - open details without changing checkbox selection state
-                            onTorrentSelect?.(torrent)
-                          }
-                        }
-                      }}
-                      onContextMenu={() => {
-                        // Only select this row if not already selected and not part of a multi-selection
-                        if (!row.getIsSelected() && selectedHashes.length <= 1) {
-                          setRowSelection({ [row.id]: true })
-                        }
-                      }}
-                    >
-                      {row.getVisibleCells().map(cell => (
-                        <div
-                          key={cell.id}
-                          style={{
-                            width: cell.column.getSize(),
-                            flexShrink: 0,
-                          }}
-                          className="px-3 py-2 flex items-center overflow-hidden min-w-0"
-                        >
-                          {flexRender(
-                            cell.column.columnDef.cell,
-                            cell.getContext()
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </TorrentContextMenu>
-                )
-              })}
-            </div>
-          </div>
-        </TorrentDropZone>
+        <SpeedLimitsDialog
+          open={showSpeedLimitDialog}
+          onOpenChange={setShowSpeedLimitDialog}
+          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+          torrents={contextTorrents}
+          onConfirm={handleSetSpeedLimitsWrapper}
+          isPending={isPending}
+        />
 
-        {/* Status bar */}
-        <div className="flex items-center justify-between p-2 border-t flex-shrink-0 select-none">
-          <div className="text-sm text-muted-foreground">
-            {/* Show special loading message when fetching without cache (cold load) */}
-            {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (
-              <>
-                <Loader2 className="h-3 w-3 animate-spin inline mr-1"/>
-                Loading torrents from instance... (no cache available)
-              </>
-            ) : totalCount === 0 ? (
-              "No torrents found"
-            ) : (
-              <>
-                {hasLoadedAll ? (
-                  `${torrents.length} torrent${torrents.length !== 1 ? "s" : ""}`
-                ) : isLoadingMore ? (
-                  "Loading more torrents..."
-                ) : (
-                  `${torrents.length} of ${totalCount} torrents loaded`
-                )}
-                {hasLoadedAll && safeLoadedRows < rows.length && " (scroll for more)"}
-              </>
-            )}
-            {effectiveSelectionCount > 0 && (
-              <>
-                <span className="ml-2">
-                  ({isAllSelected && excludedFromSelectAll.size === 0 ? `All ${effectiveSelectionCount}` : effectiveSelectionCount} selected
-                  {selectedTotalSize > 0 && <> • {selectedFormattedSize}</>})
-                </span>
-                {/* Keyboard shortcuts helper - only show on desktop */}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="hidden sm:inline-block ml-2 text-xs opacity-70 cursor-help">
-                      • Selection shortcuts
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <div className="text-xs">
-                      <div>Shift+click for range</div>
-                      <div>{isMac ? "Cmd" : "Ctrl"}+click for multiple</div>
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
-              </>
-            )}
-          </div>
+        {/* Set Location Dialog */}
+        <SetLocationDialog
+          open={showLocationDialog}
+          onOpenChange={setShowLocationDialog}
+          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+          onConfirm={handleSetLocationWrapper}
+          isPending={isPending}
+          initialLocation={getCommonSavePath(contextTorrents)}
+        />
 
+        {/* Rename dialogs */}
+        <RenameTorrentDialog
+          open={showRenameTorrentDialog}
+          onOpenChange={setShowRenameTorrentDialog}
+          currentName={contextTorrents[0]?.name}
+          onConfirm={handleRenameTorrentWrapper}
+          isPending={isPending}
+        />
+        <RenameTorrentFileDialog
+          open={showRenameFileDialog}
+          onOpenChange={setShowRenameFileDialog}
+          files={renameFileEntries}
+          isLoading={renameEntriesLoading}
+          onConfirm={handleRenameFileWrapper}
+          isPending={isPending}
+        />
+        <RenameTorrentFolderDialog
+          open={showRenameFolderDialog}
+          onOpenChange={setShowRenameFolderDialog}
+          folders={renameFolderEntries}
+          isLoading={renameEntriesLoading}
+          onConfirm={handleRenameFolderWrapper}
+          isPending={isPending}
+        />
 
-          <div className="flex items-center gap-2 text-xs">
-            <div className="flex items-center gap-1">
-              <ChevronDown className="h-3 w-3 text-muted-foreground"/>
-              <span className="font-medium">{formatSpeedWithUnit(stats.totalDownloadSpeed || 0, speedUnit)}</span>
-              <ChevronUp className="h-3 w-3 text-muted-foreground"/>
-              <span className="font-medium">{formatSpeedWithUnit(stats.totalUploadSpeed || 0, speedUnit)}</span>
-            </div>
-          </div>
+        {/* Remove Tags Dialog */}
+        <RemoveTagsDialog
+          open={showRemoveTagsDialog}
+          onOpenChange={setShowRemoveTagsDialog}
+          availableTags={availableTags || []}
+          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+          onConfirm={handleRemoveTagsWrapper}
+          isPending={isPending}
+          currentTags={getCommonTags(contextTorrents)}
+        />
 
+        {/* Force Recheck Confirmation Dialog */}
+        <Dialog open={showRecheckDialog} onOpenChange={setShowRecheckDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Force Recheck {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?</DialogTitle>
+              <DialogDescription>
+                This will force qBittorrent to recheck all pieces of the selected torrents. This process may take some time and will temporarily pause the torrents.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowRecheckDialog(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleRecheckWrapper} disabled={isPending}>
+                Force Recheck
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-          <div className="flex items-center gap-4">
-            {/* Speed units toggle */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => setSpeedUnit(speedUnit === "bytes" ? "bits" : "bytes")}
-                  className="flex items-center gap-1 pl-1.5 py-0.5 rounded-sm transition-all hover:bg-muted/50"
-                >
-                  <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground"/>
-                  <span className="text-xs text-muted-foreground">
-                    {speedUnit === "bytes" ? "MiB/s" : "Mbps"}
-                  </span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {speedUnit === "bytes" ? "Switch to bits per second (bps)" : "Switch to bytes per second (B/s)"}
-              </TooltipContent>
-            </Tooltip>
-            {/* Incognito mode toggle */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => setIncognitoMode(!incognitoMode)}
-                  className="p-1 rounded-sm transition-all hover:bg-muted/50"
-                >
-                  {incognitoMode ? (
-                    <EyeOff className="h-3.5 w-3.5 text-muted-foreground"/>
-                  ) : (
-                    <Eye className="h-3.5 w-3.5 text-muted-foreground"/>
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {incognitoMode ? "Exit incognito mode" : "Enable incognito mode"}
-              </TooltipContent>
-            </Tooltip>
-            {/* External IPv4 */}
-            <ExternalIPAddress
-              address={serverState?.last_external_address_v4}
-              incognitoMode={incognitoMode}
-              label="IPv4"
-            />
-            {/* External IPv6 */}
-            <ExternalIPAddress
-              address={serverState?.last_external_address_v6}
-              incognitoMode={incognitoMode}
-              label="IPv6"
-            />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => void handleToggleAltSpeedLimits()}
-                  disabled={isTogglingAltSpeed}
-                  aria-pressed={isAltSpeedKnown ? altSpeedEnabled : undefined}
-                  aria-label={altSpeedAriaLabel}
-                  className="p-1 rounded-sm transition-all hover:bg-muted/50 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {isTogglingAltSpeed ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground"/>
-                  ) : (
-                    <AltSpeedIcon className={`h-3.5 w-3.5 ${altSpeedIconClass}`}/>
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {altSpeedTooltip}
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span
-                  aria-label={connectionStatusAriaLabel}
-                  className={`inline-flex h-5 w-5 items-center justify-center ${connectionStatusIconClass}`}
-                >
-                  <ConnectionStatusIcon className="h-3.5 w-3.5" aria-hidden="true"/>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-[220px]">
-                <p>{connectionStatusTooltip}</p>
-              </TooltipContent>
-            </Tooltip>
-          </div>
+        {/* Reannounce Confirmation Dialog */}
+        <Dialog open={showReannounceDialog} onOpenChange={setShowReannounceDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reannounce {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?</DialogTitle>
+              <DialogDescription>
+                This will force the selected torrents to reannounce to all their trackers. This is useful when trackers are not responding or you want to refresh your connection.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowReannounceDialog(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleReannounceWrapper} disabled={isPending}>
+                Reannounce
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* TMM Confirmation Dialog */}
+        <TmmConfirmDialog
+          open={showTmmDialog}
+          onOpenChange={setShowTmmDialog}
+          count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+          enable={pendingTmmEnable}
+          onConfirm={handleTmmConfirmWrapper}
+          isPending={isPending}
+        />
+
+        {/* Location Warning Dialog */}
+        <LocationWarningDialog
+          open={showLocationWarningDialog}
+          onOpenChange={setShowLocationWarningDialog}
+          count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+          onConfirm={proceedToLocationDialog}
+          isPending={isPending}
+        />
+
+        {/* Instance Preferences Dialog */}
+        {instance && (
+          <InstancePreferencesDialog
+            open={preferencesOpen}
+            onOpenChange={setPreferencesOpen}
+            instanceId={instanceId}
+            instanceName={instance.name}
+          />
+        )}
+
+        {/* Scroll to top button*/}
+        <div className="hidden lg:block">
+          <ScrollToTopButton
+            scrollContainerRef={parentRef}
+            className="bottom-4 right-6"
+          />
         </div>
       </div>
-
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. The torrents will be removed from qBittorrent.
-              {deleteDialogTotalSize > 0 && (
-                <span className="block mt-2 text-xs text-muted-foreground">
-                  Total size: {deleteDialogFormattedSize}
-                </span>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="flex items-center space-x-2 py-4">
-            <input
-              type="checkbox"
-              id="deleteFiles"
-              checked={deleteFiles}
-              onChange={(e) => setDeleteFiles(e.target.checked)}
-              className="rounded border-input"
-            />
-            <label htmlFor="deleteFiles" className="text-sm font-medium">
-              Also delete files from disk
-            </label>
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteWrapper}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Add Tags Dialog */}
-      <AddTagsDialog
-        open={showAddTagsDialog}
-        onOpenChange={setShowAddTagsDialog}
-        availableTags={availableTags || []}
-        hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-        onConfirm={handleAddTagsWrapper}
-        isPending={isPending}
-        isLoadingTags={isLoadingTags}
-      />
-
-      {/* Set Tags Dialog */}
-      <SetTagsDialog
-        open={showSetTagsDialog}
-        onOpenChange={setShowSetTagsDialog}
-        availableTags={availableTags || []}
-        hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-        onConfirm={handleSetTagsWrapper}
-        isPending={isPending}
-        initialTags={getCommonTags(contextTorrents)}
-        isLoadingTags={isLoadingTags}
-      />
-
-      {/* Set Category Dialog */}
-      <SetCategoryDialog
-        open={showCategoryDialog}
-        onOpenChange={setShowCategoryDialog}
-        availableCategories={availableCategories || {}}
-        hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-        onConfirm={handleSetCategoryWrapper}
-        isPending={isPending}
-        initialCategory={getCommonCategory(contextTorrents)}
-        isLoadingCategories={isLoadingCategories}
-      />
-
-      {/* Create and Assign Category Dialog */}
-      <CreateAndAssignCategoryDialog
-        open={showCreateCategoryDialog}
-        onOpenChange={setShowCreateCategoryDialog}
-        hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-        onConfirm={handleSetCategoryWrapper}
-        isPending={isPending}
-      />
-
-      <ShareLimitDialog
-        open={showShareLimitDialog}
-        onOpenChange={setShowShareLimitDialog}
-        hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-        torrents={contextTorrents}
-        onConfirm={handleSetShareLimitWrapper}
-        isPending={isPending}
-      />
-
-      <SpeedLimitsDialog
-        open={showSpeedLimitDialog}
-        onOpenChange={setShowSpeedLimitDialog}
-        hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-        torrents={contextTorrents}
-        onConfirm={handleSetSpeedLimitsWrapper}
-        isPending={isPending}
-      />
-
-      {/* Set Location Dialog */}
-      <SetLocationDialog
-        open={showLocationDialog}
-        onOpenChange={setShowLocationDialog}
-        hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-        onConfirm={handleSetLocationWrapper}
-        isPending={isPending}
-        initialLocation={getCommonSavePath(contextTorrents)}
-      />
-
-      {/* Rename dialogs */}
-      <RenameTorrentDialog
-        open={showRenameTorrentDialog}
-        onOpenChange={setShowRenameTorrentDialog}
-        currentName={contextTorrents[0]?.name}
-        onConfirm={handleRenameTorrentWrapper}
-        isPending={isPending}
-      />
-      <RenameTorrentFileDialog
-        open={showRenameFileDialog}
-        onOpenChange={setShowRenameFileDialog}
-        files={renameFileEntries}
-        isLoading={renameEntriesLoading}
-        onConfirm={handleRenameFileWrapper}
-        isPending={isPending}
-      />
-      <RenameTorrentFolderDialog
-        open={showRenameFolderDialog}
-        onOpenChange={setShowRenameFolderDialog}
-        folders={renameFolderEntries}
-        isLoading={renameEntriesLoading}
-        onConfirm={handleRenameFolderWrapper}
-        isPending={isPending}
-      />
-
-      {/* Remove Tags Dialog */}
-      <RemoveTagsDialog
-        open={showRemoveTagsDialog}
-        onOpenChange={setShowRemoveTagsDialog}
-        availableTags={availableTags || []}
-        hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-        onConfirm={handleRemoveTagsWrapper}
-        isPending={isPending}
-        currentTags={getCommonTags(contextTorrents)}
-      />
-
-      {/* Force Recheck Confirmation Dialog */}
-      <Dialog open={showRecheckDialog} onOpenChange={setShowRecheckDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Force Recheck {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?</DialogTitle>
-            <DialogDescription>
-              This will force qBittorrent to recheck all pieces of the selected torrents. This process may take some time and will temporarily pause the torrents.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowRecheckDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleRecheckWrapper} disabled={isPending}>
-              Force Recheck
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Reannounce Confirmation Dialog */}
-      <Dialog open={showReannounceDialog} onOpenChange={setShowReannounceDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reannounce {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?</DialogTitle>
-            <DialogDescription>
-              This will force the selected torrents to reannounce to all their trackers. This is useful when trackers are not responding or you want to refresh your connection.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowReannounceDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleReannounceWrapper} disabled={isPending}>
-              Reannounce
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Scroll to top button*/}
-      <div className="hidden lg:block">
-        <ScrollToTopButton
-          scrollContainerRef={parentRef}
-          className="bottom-20 right-6"
-        />
-      </div>
-    </div>
+    </>
   )
 });

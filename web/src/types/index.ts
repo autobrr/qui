@@ -23,6 +23,9 @@ export interface Instance {
   username: string
   basicUsername?: string
   tlsSkipVerify: boolean
+  sortOrder: number
+  isActive: boolean
+  reannounceSettings: InstanceReannounceSettings
 }
 
 export interface InstanceFormData {
@@ -33,6 +36,65 @@ export interface InstanceFormData {
   basicUsername?: string
   basicPassword?: string
   tlsSkipVerify: boolean
+  reannounceSettings: InstanceReannounceSettings
+}
+
+export interface InstanceReannounceSettings {
+  enabled: boolean
+  initialWaitSeconds: number
+  reannounceIntervalSeconds: number
+  maxAgeSeconds: number
+  maxRetries: number
+  aggressive: boolean
+  monitorAll: boolean
+  excludeCategories: boolean
+  categories: string[]
+  excludeTags: boolean
+  tags: string[]
+  excludeTrackers: boolean
+  trackers: string[]
+}
+
+// Reannounce settings constraints - shared across components
+export const REANNOUNCE_CONSTRAINTS = {
+  MIN_INITIAL_WAIT: 5,
+  MIN_INTERVAL: 5,
+  MIN_MAX_AGE: 60,
+  MIN_MAX_RETRIES: 1,
+  MAX_MAX_RETRIES: 50,
+  DEFAULT_MAX_RETRIES: 50,
+} as const
+
+export interface InstanceCrossSeedCompletionSettings {
+  instanceId: number
+  enabled: boolean
+  categories: string[]
+  tags: string[]
+  excludeCategories: string[]
+  excludeTags: string[]
+}
+
+export interface InstanceReannounceActivity {
+  instanceId: number
+  hash: string
+  torrentName?: string
+  trackers?: string
+  outcome: "skipped" | "failed" | "succeeded"
+  reason?: string
+  timestamp: string
+}
+
+export interface InstanceReannounceCandidate {
+  instanceId: number
+  hash: string
+  torrentName?: string
+  trackers?: string
+  timeActiveSeconds?: number
+  category?: string
+  tags?: string
+  state: "watching" | "reannouncing" | "cooldown"
+  hasTrackerProblem: boolean
+  waitingForInitial: boolean
 }
 
 export interface InstanceError {
@@ -41,6 +103,38 @@ export interface InstanceError {
   errorType: string
   errorMessage: string
   occurredAt: string
+}
+
+export interface TrackerRule {
+  id: number
+  instanceId: number
+  name: string
+  trackerPattern: string
+  trackerDomains?: string[]
+  category?: string
+  tag?: string
+  uploadLimitKiB?: number
+  downloadLimitKiB?: number
+  ratioLimit?: number
+  seedingTimeLimitMinutes?: number
+  enabled: boolean
+  sortOrder: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface TrackerRuleInput {
+  name: string
+  trackerPattern?: string
+  trackerDomains?: string[]
+  category?: string
+  tag?: string
+  uploadLimitKiB?: number
+  downloadLimitKiB?: number
+  ratioLimit?: number
+  seedingTimeLimitMinutes?: number
+  enabled?: boolean
+  sortOrder?: number
 }
 
 export interface InstanceResponse extends Instance {
@@ -59,7 +153,10 @@ export interface InstanceCapabilities {
   supportsRenameTorrent: boolean
   supportsRenameFile: boolean
   supportsRenameFolder: boolean
+  supportsFilePriority: boolean
   supportsSubcategories: boolean
+  supportsTorrentTmpPath: boolean
+  supportsPathAutocomplete: boolean
   webAPIVersion?: string
 }
 
@@ -213,11 +310,58 @@ export interface CacheMetadata {
   nextRefresh?: string
 }
 
+export interface TrackerTransferStats {
+  uploaded: number
+  downloaded: number
+  totalSize: number
+  count: number
+}
+
+export interface TrackerCustomization {
+  id: number
+  displayName: string
+  domains: string[]
+  includedInStats?: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface TrackerCustomizationInput {
+  displayName: string
+  domains: string[]
+  includedInStats?: string[]
+}
+
+export interface DashboardSettings {
+  id: number
+  userId: number
+  sectionVisibility: Record<string, boolean>
+  sectionOrder: string[]
+  sectionCollapsed: Record<string, boolean>
+  trackerBreakdownSortColumn: string
+  trackerBreakdownSortDirection: string
+  trackerBreakdownItemsPerPage: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DashboardSettingsInput {
+  sectionVisibility?: Record<string, boolean>
+  sectionOrder?: string[]
+  sectionCollapsed?: Record<string, boolean>
+  trackerBreakdownSortColumn?: string
+  trackerBreakdownSortDirection?: string
+  trackerBreakdownItemsPerPage?: number
+}
+
 export interface TorrentCounts {
   status: Record<string, number>
   categories: Record<string, number>
+  categorySizes?: Record<string, number>
   tags: Record<string, number>
+  tagSizes?: Record<string, number>
   trackers: Record<string, number>
+  trackerTransfers?: Record<string, TrackerTransferStats>
   total: number
 }
 
@@ -237,6 +381,8 @@ export interface TorrentFilters {
 
 export interface TorrentResponse {
   torrents: Torrent[]
+  crossInstanceTorrents?: CrossInstanceTorrent[]
+  cross_instance_torrents?: CrossInstanceTorrent[]  // Backend uses snake_case
   total: number
   stats?: TorrentStats
   counts?: TorrentCounts
@@ -247,6 +393,30 @@ export interface TorrentResponse {
   cacheMetadata?: CacheMetadata
   hasMore?: boolean
   trackerHealthSupported?: boolean
+  isCrossInstance?: boolean
+}
+
+export interface AddTorrentFailedURL {
+  url: string
+  error: string
+}
+
+export interface AddTorrentFailedFile {
+  filename: string
+  error: string
+}
+
+export interface AddTorrentResponse {
+  message: string
+  added: number
+  failed: number
+  failedURLs?: AddTorrentFailedURL[]
+  failedFiles?: AddTorrentFailedFile[]
+}
+
+export interface CrossInstanceTorrent extends Torrent {
+  instanceId: number
+  instanceName: string
 }
 
 // Simplified MainData - only used for Dashboard server stats
@@ -326,7 +496,11 @@ export interface SortedPeersResponse extends TorrentPeersResponse {
   sorted_peers?: SortedPeer[]
 }
 
-export type BackupRunKind = "manual" | "hourly" | "daily" | "weekly" | "monthly"
+export interface WebSeed {
+  url: string
+}
+
+export type BackupRunKind = "manual" | "hourly" | "daily" | "weekly" | "monthly" | "import"
 
 export type BackupRunStatus = "pending" | "running" | "success" | "failed" | "canceled"
 
@@ -356,7 +530,6 @@ export interface BackupRun {
   requestedAt: string
   startedAt?: string
   completedAt?: string
-  archivePath?: string | null
   manifestPath?: string | null
   totalBytes: number
   torrentCount: number
@@ -369,12 +542,16 @@ export interface BackupRun {
   progressPercentage?: number
 }
 
+export interface BackupRunsResponse {
+  runs: BackupRun[]
+  hasMore: boolean
+}
+
 export interface BackupManifestItem {
   hash: string
   name: string
   category?: string | null
   sizeBytes: number
-  archivePath: string
   infohashV1?: string | null
   infohashV2?: string | null
   tags?: string[]
@@ -670,6 +847,8 @@ export interface AppPreferences {
   category_changed_tmm_enabled: boolean
   save_path_changed_tmm_enabled: boolean
   use_category_paths_in_manual_mode: boolean
+  // Subcategory behavior
+  use_subcategories?: boolean
 
   // Torrent behavior
   torrent_changed_tmm_enabled: boolean
@@ -791,4 +970,593 @@ export interface TorrentCreationTask {
 
 export interface TorrentCreationTaskResponse {
   taskID: string
+}
+
+// External Program Types
+export interface PathMapping {
+  from: string
+  to: string
+}
+
+export interface ExternalProgram {
+  id: number
+  name: string
+  path: string
+  args_template: string
+  enabled: boolean
+  use_terminal: boolean
+  path_mappings: PathMapping[]
+  created_at: string
+  updated_at: string
+}
+
+export interface ExternalProgramCreate {
+  name: string
+  path: string
+  args_template: string
+  enabled: boolean
+  use_terminal: boolean
+  path_mappings: PathMapping[]
+}
+
+export interface ExternalProgramUpdate {
+  name: string
+  path: string
+  args_template: string
+  enabled: boolean
+  use_terminal: boolean
+  path_mappings: PathMapping[]
+}
+
+export interface ExternalProgramExecute {
+  program_id: number
+  instance_id: number
+  hashes: string[]
+}
+
+export interface ExternalProgramExecuteResult {
+  hash: string
+  success: boolean
+  stdout?: string
+  stderr?: string
+  error?: string
+}
+
+export interface ExternalProgramExecuteResponse {
+  results: ExternalProgramExecuteResult[]
+}
+
+export interface TorznabIndexer {
+  id: number
+  name: string
+  base_url: string
+  indexer_id: string
+  backend: "jackett" | "prowlarr" | "native"
+  enabled: boolean
+  priority: number
+  timeout_seconds: number
+  capabilities: string[]
+  categories: TorznabIndexerCategory[]
+  last_test_at?: string
+  last_test_status: string
+  last_test_error?: string
+  created_at: string
+  updated_at: string
+}
+
+/** Response from create/update indexer endpoints, may include warnings for partial failures */
+export interface IndexerResponse extends TorznabIndexer {
+  warnings?: string[]
+}
+
+export interface TorznabIndexerCategory {
+  indexer_id: number
+  category_id: number
+  category_name: string
+  parent_category_id?: number
+}
+
+export interface TorznabIndexerError {
+  id: number
+  indexer_id: number
+  error_message: string
+  error_code: string
+  occurred_at: string
+  resolved_at?: string
+  error_count: number
+}
+
+export interface TorznabIndexerLatencyStats {
+  indexer_id: number
+  operation_type: string
+  total_requests: number
+  successful_requests: number
+  avg_latency_ms?: number
+  min_latency_ms?: number
+  max_latency_ms?: number
+  success_rate_pct: number
+  last_measured_at: string
+}
+
+export interface TorznabIndexerHealth {
+  indexer_id: number
+  indexer_name: string
+  enabled: boolean
+  last_test_status: string
+  errors_last_24h: number
+  unresolved_errors: number
+  avg_latency_ms?: number
+  success_rate_pct?: number
+  requests_last_7d?: number
+  last_measured_at?: string
+}
+
+// Activity/Scheduler types
+export interface SchedulerTaskStatus {
+  jobId: number
+  taskId: number
+  indexerId: number
+  indexerName: string
+  priority: string
+  createdAt: string
+  isRss: boolean
+}
+
+export interface SchedulerJobStatus {
+  jobId: number
+  totalTasks: number
+  completedTasks: number
+}
+
+export interface SchedulerStatus {
+  queuedTasks: SchedulerTaskStatus[]
+  inFlightTasks: SchedulerTaskStatus[]
+  activeJobs: SchedulerJobStatus[]
+  queueLength: number
+  workerCount: number
+  workersInUse: number
+}
+
+export interface IndexerCooldownStatus {
+  indexerId: number
+  indexerName: string
+  cooldownEnd: string
+  reason?: string
+}
+
+export interface IndexerActivityStatus {
+  scheduler?: SchedulerStatus
+  cooldownIndexers: IndexerCooldownStatus[]
+}
+
+export interface SearchHistoryEntry {
+  id: number
+  jobId: number
+  taskId: number
+  indexerId: number
+  indexerName: string
+  query?: string
+  releaseName?: string
+  params?: Record<string, string>
+  categories?: number[]
+  contentType?: string
+  priority: string
+  searchMode?: string
+  status: "success" | "error" | "skipped" | "rate_limited"
+  resultCount: number
+  startedAt: string
+  completedAt: string
+  durationMs: number
+  errorMessage?: string
+  // Cross-seed outcome tracking
+  outcome?: "added" | "failed" | "no_match" | ""
+  addedCount?: number
+}
+
+export interface SearchHistoryResponse {
+  entries: SearchHistoryEntry[]
+  total: number
+  source: string
+}
+
+export interface TorznabIndexerFormData {
+  name: string
+  base_url: string
+  indexer_id?: string
+  api_key: string
+  backend?: "jackett" | "prowlarr" | "native"
+  enabled?: boolean
+  priority?: number
+  timeout_seconds?: number
+  capabilities?: string[]
+  categories?: TorznabIndexerCategory[]
+}
+
+export interface TorznabIndexerUpdate {
+  name?: string
+  base_url?: string
+  api_key?: string
+  indexer_id?: string
+  backend?: "jackett" | "prowlarr" | "native"
+  enabled?: boolean
+  priority?: number
+  timeout_seconds?: number
+  capabilities?: string[]
+  categories?: TorznabIndexerCategory[]
+}
+
+export interface TorznabSearchRequest {
+  query?: string
+  categories?: number[]
+  imdb_id?: string
+  tvdb_id?: string
+  year?: number
+  season?: number
+  episode?: number
+  artist?: string
+  album?: string
+  limit?: number
+  offset?: number
+  indexer_ids?: number[]
+  cache_mode?: "bypass"
+}
+
+export interface TorznabSearchResponse {
+  results: TorznabSearchResult[]
+  total: number
+  cache?: TorznabSearchCacheMetadata
+}
+
+export interface TorznabSearchCacheMetadata {
+  hit: boolean
+  scope: string
+  source: string
+  cachedAt: string
+  expiresAt: string
+  lastUsed?: string
+}
+
+export interface TorznabSearchCacheStats {
+  entries: number
+  totalHits: number
+  approxSizeBytes: number
+  oldestCachedAt?: string
+  newestCachedAt?: string
+  lastUsedAt?: string
+  enabled: boolean
+  ttlMinutes: number
+}
+
+export interface TorznabRecentSearch {
+  cacheKey: string
+  scope: string
+  query: string
+  categories: number[]
+  indexerIds: number[]
+  totalResults: number
+  cachedAt: string
+  lastUsedAt?: string
+  expiresAt: string
+  hitCount: number
+}
+
+export interface TorznabSearchResult {
+  indexer: string
+  indexerId: number
+  title: string
+  downloadUrl: string
+  infoUrl?: string
+  size: number
+  seeders: number
+  leechers: number
+  categoryId: number
+  categoryName: string
+  publishDate: string
+  downloadVolumeFactor: number
+  uploadVolumeFactor: number
+  guid: string
+  imdbId?: string
+  tvdbId?: string
+  source?: string
+  collection?: string
+  group?: string
+}
+
+export interface JackettIndexer {
+  id: string
+  name: string
+  description: string
+  type: string
+  configured: boolean
+  backend?: "jackett" | "prowlarr" | "native"
+  caps?: string[]
+  categories?: TorznabIndexerCategory[]
+}
+
+export interface DiscoverJackettRequest {
+  base_url: string
+  api_key: string
+}
+
+export interface DiscoverJackettResponse {
+  indexers: JackettIndexer[]
+  warnings?: string[]
+}
+
+export interface CrossSeedTorrentInfo {
+  instanceId?: number
+  instanceName?: string
+  hash?: string
+  name: string
+  category?: string
+  size?: number
+  progress?: number
+  totalFiles?: number
+  matchingFiles?: number
+  fileCount?: number
+  contentType?: string
+  searchType?: string
+  searchCategories?: number[]
+  requiredCaps?: string[]
+  // Pre-filtering information for UI context menu
+  availableIndexers?: number[]
+  filteredIndexers?: number[]
+  excludedIndexers?: Record<number, string>
+  contentMatches?: string[]
+  // Async filtering status
+  contentFilteringCompleted?: boolean
+}
+
+export interface AsyncIndexerFilteringState {
+  capabilitiesCompleted: boolean
+  contentCompleted: boolean
+  capabilityIndexers: number[]
+  filteredIndexers: number[]
+  excludedIndexers: Record<number, string>
+  contentMatches: string[]
+}
+
+export interface CrossSeedInstanceResult {
+  instanceId: number
+  instanceName: string
+  success: boolean
+  status: string
+  message?: string
+  matchedTorrent?: {
+    hash: string
+    name: string
+    progress: number
+    size: number
+  }
+}
+
+export interface CrossSeedTorrentSearchResult {
+  indexer: string
+  indexerId: number
+  title: string
+  downloadUrl: string
+  infoUrl?: string
+  size: number
+  seeders: number
+  leechers: number
+  categoryId: number
+  categoryName: string
+  publishDate: string
+  downloadVolumeFactor: number
+  uploadVolumeFactor: number
+  guid: string
+  imdbId?: string
+  tvdbId?: string
+  matchReason?: string
+  matchScore: number
+}
+
+export interface CrossSeedTorrentSearchResponse {
+  sourceTorrent: CrossSeedTorrentInfo
+  results: CrossSeedTorrentSearchResult[]
+  cache?: TorznabSearchCacheMetadata
+}
+
+export interface CrossSeedTorrentSearchSelection {
+  indexerId: number
+  indexer: string
+  downloadUrl: string
+  title: string
+  guid?: string
+}
+
+export interface CrossSeedApplyResult {
+  title: string
+  indexer: string
+  torrentName?: string
+  success: boolean
+  instanceResults?: CrossSeedInstanceResult[]
+  error?: string
+}
+
+export interface CrossSeedApplyResponse {
+  results: CrossSeedApplyResult[]
+}
+
+export interface CrossSeedRunResult {
+  instanceId: number
+  instanceName: string
+  indexerName?: string
+  success: boolean
+  status: string
+  message?: string
+  matchedTorrentHash?: string
+  matchedTorrentName?: string
+}
+
+export interface CrossSeedRun {
+  id: number
+  triggeredBy: string
+  mode: "auto" | "manual"
+  status: "pending" | "running" | "success" | "partial" | "failed"
+  startedAt: string
+  completedAt?: string
+  totalFeedItems: number
+  candidatesFound: number
+  torrentsAdded: number
+  torrentsFailed: number
+  torrentsSkipped: number
+  message?: string
+  errorMessage?: string
+  results?: CrossSeedRunResult[]
+  createdAt: string
+}
+
+export interface CrossSeedAutomationSettings {
+  enabled: boolean
+  runIntervalMinutes: number
+  startPaused: boolean
+  category?: string | null
+  ignorePatterns: string[]
+  targetInstanceIds: number[]
+  targetIndexerIds: number[]
+  // RSS source filtering: filter which local torrents to search when checking RSS feeds
+  rssSourceCategories: string[]
+  rssSourceTags: string[]
+  rssSourceExcludeCategories: string[]
+  rssSourceExcludeTags: string[]
+  // Webhook source filtering: filter which local torrents to search when checking webhook requests
+  webhookSourceCategories: string[]
+  webhookSourceTags: string[]
+  webhookSourceExcludeCategories: string[]
+  webhookSourceExcludeTags: string[]
+  findIndividualEpisodes: boolean
+  sizeMismatchTolerancePercent: number
+  useCategoryFromIndexer: boolean
+  useCrossCategorySuffix: boolean
+  runExternalProgramId?: number | null
+  // Source-specific tagging
+  rssAutomationTags: string[]
+  seededSearchTags: string[]
+  completionSearchTags: string[]
+  webhookTags: string[]
+  inheritSourceTags: boolean
+  // Skip auto-resume settings per source mode
+  skipAutoResumeRss: boolean
+  skipAutoResumeSeededSearch: boolean
+  skipAutoResumeCompletion: boolean
+  skipAutoResumeWebhook: boolean
+  skipRecheck: boolean
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface CrossSeedAutomationSettingsPatch {
+  enabled?: boolean
+  runIntervalMinutes?: number
+  startPaused?: boolean
+  category?: string | null
+  ignorePatterns?: string[]
+  targetInstanceIds?: number[]
+  targetIndexerIds?: number[]
+  // RSS source filtering: filter which local torrents to search when checking RSS feeds
+  rssSourceCategories?: string[]
+  rssSourceTags?: string[]
+  rssSourceExcludeCategories?: string[]
+  rssSourceExcludeTags?: string[]
+  // Webhook source filtering: filter which local torrents to search when checking webhook requests
+  webhookSourceCategories?: string[]
+  webhookSourceTags?: string[]
+  webhookSourceExcludeCategories?: string[]
+  webhookSourceExcludeTags?: string[]
+  findIndividualEpisodes?: boolean
+  sizeMismatchTolerancePercent?: number
+  useCategoryFromIndexer?: boolean
+  useCrossCategorySuffix?: boolean
+  runExternalProgramId?: number | null
+  // Source-specific tagging
+  rssAutomationTags?: string[]
+  seededSearchTags?: string[]
+  completionSearchTags?: string[]
+  webhookTags?: string[]
+  inheritSourceTags?: boolean
+  // Skip auto-resume settings per source mode
+  skipAutoResumeRss?: boolean
+  skipAutoResumeSeededSearch?: boolean
+  skipAutoResumeCompletion?: boolean
+  skipAutoResumeWebhook?: boolean
+  skipRecheck?: boolean
+}
+
+export interface CrossSeedAutomationStatus {
+  settings: CrossSeedAutomationSettings
+  lastRun?: CrossSeedRun | null
+  nextRunAt?: string
+  running: boolean
+}
+
+export interface CrossSeedSearchFilters {
+  categories: string[]
+  tags: string[]
+}
+
+export interface CrossSeedSearchSettings {
+  instanceId?: number | null
+  categories: string[]
+  tags: string[]
+  indexerIds: number[]
+  intervalSeconds: number
+  cooldownMinutes: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface CrossSeedSearchSettingsPatch {
+  instanceId?: number | null
+  categories?: string[]
+  tags?: string[]
+  indexerIds?: number[]
+  intervalSeconds?: number
+  cooldownMinutes?: number
+}
+
+export interface CrossSeedSearchResult {
+  torrentHash: string
+  torrentName: string
+  indexerName: string
+  releaseTitle: string
+  added: boolean
+  message?: string
+  processedAt: string
+}
+
+export interface CrossSeedSearchRun {
+  id: number
+  instanceId: number
+  status: string
+  startedAt: string
+  completedAt?: string
+  totalTorrents: number
+  processed: number
+  torrentsAdded: number
+  torrentsFailed: number
+  torrentsSkipped: number
+  message?: string
+  errorMessage?: string
+  filters: CrossSeedSearchFilters
+  indexerIds: number[]
+  intervalSeconds: number
+  cooldownMinutes: number
+  results: CrossSeedSearchResult[]
+  createdAt: string
+}
+
+export interface CrossSeedSearchCandidate {
+  torrentHash: string
+  torrentName: string
+  category?: string
+  tags: string[]
+}
+
+export interface CrossSeedSearchStatus {
+  running: boolean
+  run?: CrossSeedSearchRun
+  currentTorrent?: CrossSeedSearchCandidate
+  recentResults: CrossSeedSearchResult[]
+  nextRunAt?: string
 }

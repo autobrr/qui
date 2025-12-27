@@ -16,16 +16,16 @@ const TORRENT_STATE_LABELS: Record<string, string> = {
 
   // Uploading / Seeding related
   uploading: "Seeding",
-  stalledUP: "Stalled",
+  stalledUP: "Seeding",
   queuedUP: "Queued",
   checkingUP: "Checking",
   forcedUP: "(F) Seeding",
 
   // Paused / Stopped
   pausedDL: "Paused",
-  pausedUP: "Paused",
+  pausedUP: "Completed",
   stoppedDL: "Stopped",
-  stoppedUP: "Stopped",
+  stoppedUP: "Completed",
 
   // Other
   error: "Error",

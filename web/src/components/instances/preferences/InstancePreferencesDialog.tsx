@@ -19,6 +19,7 @@ interface InstancePreferencesDialogProps {
   onOpenChange: (open: boolean) => void
   instanceId: number
   instanceName: string
+  defaultTab?: string
 }
 
 export function InstancePreferencesDialog({
@@ -26,6 +27,7 @@ export function InstancePreferencesDialog({
   onOpenChange,
   instanceId,
   instanceName,
+  defaultTab,
 }: InstancePreferencesDialogProps) {
   const handleSuccess = () => {
     // Keep dialog open after successful updates
@@ -45,7 +47,7 @@ export function InstancePreferencesDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="speed" className="w-full">
+        <Tabs defaultValue={defaultTab ?? "speed"} className="w-full">
           <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="speed" className="flex items-center gap-2">
               <Gauge className="h-4 w-4" />
@@ -146,6 +148,7 @@ export function InstancePreferencesDialog({
             </div>
             <AdvancedNetworkForm instanceId={instanceId} onSuccess={handleSuccess} />
           </TabsContent>
+
         </Tabs>
       </DialogContent>
     </Dialog>

@@ -4,35 +4,17 @@
  */
 
 import { Button } from "@/components/ui/button"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { type ColumnType, type FilterOperation } from "@/lib/column-constants"
-import { getDefaultOperation, getOperations } from "@/lib/column-filter-utils"
-import { CaseSensitive, Filter, X } from "lucide-react"
+import type { ColumnType, DurationUnit, FilterOperation, SizeUnit, SpeedUnit } from "@/lib/column-constants"
+import { type ColumnFilter, getDefaultOperation, getOperations } from "@/lib/column-filter-utils"
+import { cn } from "@/lib/utils"
+import { CaseSensitive, Check, Filter, X } from "lucide-react"
 import { type KeyboardEvent, useEffect, useRef, useState } from "react"
-
-export type SizeUnit = "B" | "KiB" | "MiB" | "GiB" | "TiB"
-
-export type SpeedUnit = "B/s" | "KiB/s" | "MiB/s" | "GiB/s" | "TiB/s"
-
-export type DurationUnit = "seconds" | "minutes" | "hours" | "days"
-
-export interface ColumnFilter {
-  columnId: string
-  operation: FilterOperation
-  value: string
-  value2?: string
-  sizeUnit?: SizeUnit
-  sizeUnit2?: SizeUnit
-  speedUnit?: SpeedUnit
-  speedUnit2?: SpeedUnit
-  durationUnit?: DurationUnit
-  durationUnit2?: DurationUnit
-  caseSensitive?: boolean
-}
 
 interface ColumnFilterPopoverProps {
   columnId: string
@@ -40,6 +22,8 @@ interface ColumnFilterPopoverProps {
   columnType: ColumnType
   currentFilter?: ColumnFilter
   onApply: (filter: ColumnFilter | null) => void
+  options?: { value: string; label: string }[]
+  multiSelect?: boolean
 }
 
 function getScrollableParent(element: HTMLElement | null): HTMLElement | null {
@@ -119,6 +103,8 @@ interface ValueInputProps {
   onKeyDown: (e: KeyboardEvent) => void
   caseSensitive?: boolean
   onCaseSensitiveChange?: (value: boolean) => void
+  options?: { value: string; label: string }[]
+  multiSelect?: boolean
 }
 
 function ValueInput({
@@ -129,6 +115,8 @@ function ValueInput({
   onKeyDown,
   caseSensitive,
   onCaseSensitiveChange,
+  options,
+  multiSelect,
 }: ValueInputProps) {
   const isSizeColumn = columnType === "size"
   const isSpeedColumn = columnType === "speed"
@@ -154,7 +142,7 @@ function ValueInput({
           onValueChange={(v) => unit.onChange(v as SizeUnit)}
         >
           <SelectTrigger className="w-24">
-            <SelectValue/>
+            <SelectValue />
           </SelectTrigger>
           <SelectContent>
             {SIZE_UNITS.map((u) => (
@@ -181,10 +169,10 @@ function ValueInput({
         />
         <Select
           value={unit.value as string}
-          onValueChange={(v) => unit.onChange(v as SizeUnit)}
+          onValueChange={(v) => unit.onChange(v as SpeedUnit)}
         >
           <SelectTrigger className="w-24">
-            <SelectValue/>
+            <SelectValue />
           </SelectTrigger>
           <SelectContent>
             {SPEED_UNITS.map((u) => (
@@ -214,7 +202,7 @@ function ValueInput({
           onValueChange={(v) => unit.onChange(v as DurationUnit)}
         >
           <SelectTrigger className="w-28">
-            <SelectValue/>
+            <SelectValue />
           </SelectTrigger>
           <SelectContent>
             {DURATION_UNITS.map((u) => (
@@ -253,7 +241,7 @@ function ValueInput({
         onValueChange={onChange}
       >
         <SelectTrigger>
-          <SelectValue placeholder="Select value"/>
+          <SelectValue placeholder="Select value" />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="true">True</SelectItem>
@@ -264,18 +252,75 @@ function ValueInput({
   }
 
   if (isEnumColumn) {
+    const enumOptions = options || TORRENT_STATES
+
+    if (multiSelect) {
+      const selectedValues = value ? value.split(",") : []
+
+      const handleSelect = (optionValue: string) => {
+        const newSelected = selectedValues.includes(optionValue)
+          ? selectedValues.filter(v => v !== optionValue)
+          : [...selectedValues, optionValue]
+        onChange(newSelected.join(","))
+      }
+
+      return (
+        <div className="flex flex-col gap-1">
+          <Command className="border rounded-md">
+            <CommandInput placeholder="Search..." className="h-8" />
+            <CommandList className="max-h-[200px]">
+              <CommandEmpty>No results found.</CommandEmpty>
+              <CommandGroup>
+                {enumOptions.map((option) => {
+                  const isSelected = selectedValues.includes(option.value)
+                  return (
+                    <CommandItem
+                      key={option.value}
+                      onSelect={() => handleSelect(option.value)}
+                    >
+                      <div
+                        className={cn(
+                          "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
+                          isSelected
+                            ? "bg-primary text-primary-foreground"
+                            : "opacity-50 [&_svg]:invisible"
+                        )}
+                      >
+                        <Check className={cn("h-4 w-4")} />
+                      </div>
+                      <span>{option.label}</span>
+                    </CommandItem>
+                  )
+                })}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+          {selectedValues.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onChange("")}
+              className="h-8 w-full"
+            >
+              Clear filters
+            </Button>
+          )}
+        </div>
+      )
+    }
+
     return (
       <Select
         value={value}
         onValueChange={onChange}
       >
         <SelectTrigger>
-          <SelectValue placeholder="Select status"/>
+          <SelectValue placeholder="Select status" />
         </SelectTrigger>
         <SelectContent>
-          {TORRENT_STATES.map((state) => (
-            <SelectItem key={state.value} value={state.value}>
-              {state.label}
+          {enumOptions.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
             </SelectItem>
           ))}
         </SelectContent>
@@ -303,7 +348,7 @@ function ValueInput({
               className={`${caseSensitive ? "text-primary hover:text-primary/80" : "text-muted-foreground"}`}
               onClick={() => onCaseSensitiveChange(!caseSensitive)}
             >
-              <CaseSensitive className="size-4"/>
+              <CaseSensitive className="size-4" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>{caseSensitive ? "Match case (click to ignore)" : "Ignore case (click to match)"}</TooltipContent>
@@ -329,6 +374,8 @@ export function ColumnFilterPopover({
   columnType,
   currentFilter,
   onApply,
+  options,
+  multiSelect,
 }: ColumnFilterPopoverProps) {
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const lastScrollPosition = useRef({ left: 0, top: 0 })
@@ -339,7 +386,7 @@ export function ColumnFilterPopover({
   )
   const [value, setValue] = useState(
     currentFilter?.value ||
-    (columnType === "boolean" ? "true" : columnType === "enum" ? "downloading" : "")
+    (columnType === "boolean" ? "true" : columnType === "enum" ? (multiSelect ? "" : (options?.[0]?.value || "")) : "")
   )
   const [value2, setValue2] = useState(currentFilter?.value2 || "")
   const [sizeUnit, setSizeUnit] = useState<SizeUnit>(
@@ -483,15 +530,14 @@ export function ColumnFilterPopover({
           variant="ghost"
           size="icon"
           ref={triggerRef}
-          className={`h-6 w-6 p-0 transition-opacity ${
-            hasActiveFilter || open ? "opacity-100 text-primary" : "opacity-10 group-hover:opacity-100 focus:opacity-100 focus-visible:opacity-100 active:opacity-100 text-muted-foreground"
-          }`}
+          className={`h-6 w-6 p-0 transition-opacity ${hasActiveFilter || open ? "opacity-100 text-primary" : "opacity-10 group-hover:opacity-100 focus:opacity-100 focus-visible:opacity-100 active:opacity-100 text-muted-foreground"
+            }`}
           onClick={(e) => {
             e.stopPropagation()
             setOpen(true)
           }}
         >
-          <Filter className={`h-3.5 w-3.5 ${hasActiveFilter ? "fill-current" : ""}`}/>
+          <Filter className={`h-3.5 w-3.5 ${hasActiveFilter ? "fill-current" : ""}`} />
         </Button>
       </PopoverTrigger>
       <PopoverContent
@@ -509,24 +555,26 @@ export function ColumnFilterPopover({
               Set conditions to filter this column
             </p>
           </div>
-          <div className="grid gap-2">
-            <Label htmlFor="operation">Operation</Label>
-            <Select
-              value={operation}
-              onValueChange={(value) => setOperation(value as FilterOperation)}
-            >
-              <SelectTrigger id="operation">
-                <SelectValue placeholder="Select operation"/>
-              </SelectTrigger>
-              <SelectContent>
-                {operations.map((op) => (
-                  <SelectItem key={op.value} value={op.value}>
-                    {op.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {!multiSelect && (
+            <div className="grid gap-2">
+              <Label htmlFor="operation">Operation</Label>
+              <Select
+                value={operation}
+                onValueChange={(value) => setOperation(value as FilterOperation)}
+              >
+                <SelectTrigger id="operation">
+                  <SelectValue placeholder="Select operation" />
+                </SelectTrigger>
+                <SelectContent>
+                  {operations.map((op) => (
+                    <SelectItem key={op.value} value={op.value}>
+                      {op.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="grid gap-2">
             <Label htmlFor="value">{isBetweenOperation ? "From" : "Value"}</Label>
             <ValueInput
@@ -548,6 +596,8 @@ export function ColumnFilterPopover({
               onKeyDown={handleKeyDown}
               caseSensitive={caseSensitive}
               onCaseSensitiveChange={setCaseSensitive}
+              options={options}
+              multiSelect={multiSelect}
             />
           </div>
           {isBetweenOperation && (
@@ -572,6 +622,7 @@ export function ColumnFilterPopover({
                 onKeyDown={handleKeyDown}
                 caseSensitive={caseSensitive}
                 onCaseSensitiveChange={setCaseSensitive}
+                options={options}
               />
             </div>
           )}
@@ -581,7 +632,7 @@ export function ColumnFilterPopover({
             </Button>
             {hasActiveFilter && (
               <Button onClick={handleClear} variant="outline" size="icon">
-                <X className="h-4 w-4"/>
+                <X className="h-4 w-4" />
               </Button>
             )}
           </div>

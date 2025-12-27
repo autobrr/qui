@@ -24,16 +24,24 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger
+} from "@/components/ui/tooltip"
 import { useInstances } from "@/hooks/useInstances"
 import { useIncognitoMode } from "@/lib/incognito"
 import { cn, formatErrorMessage } from "@/lib/utils"
 import type { InstanceResponse } from "@/types"
 import {
+  ArrowDown,
+  ArrowUp,
   CheckCircle,
   Edit,
   Eye,
   EyeOff,
   MoreVertical,
+  Power,
   RefreshCw,
   Trash2,
   XCircle
@@ -44,17 +52,48 @@ import { toast } from "sonner"
 interface InstanceCardProps {
   instance: InstanceResponse
   onEdit: () => void
+  onMoveUp?: () => void
+  onMoveDown?: () => void
+  disableMoveUp?: boolean
+  disableMoveDown?: boolean
 }
 
-export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
-  const { deleteInstance, testConnection, isDeleting, isTesting } = useInstances()
+export function InstanceCard({
+  instance,
+  onEdit,
+  onMoveUp,
+  onMoveDown,
+  disableMoveUp = false,
+  disableMoveDown = false,
+}: InstanceCardProps) {
+  const {
+    deleteInstance,
+    testConnection,
+    setInstanceStatus,
+    isDeleting,
+    isTesting,
+    isUpdatingStatus,
+    updatingStatusId,
+  } = useInstances()
   const [testResult, setTestResult] = useState<{ success: boolean; message: string | undefined } | null>(null)
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const displayUrl = instance.host
 
+  const statusBadge = !instance.isActive
+    ? { label: "Disabled", variant: "secondary" as const }
+    : instance.connected
+      ? { label: "Connected", variant: "default" as const }
+      : { label: "Disconnected", variant: "destructive" as const }
 
   const handleTest = async () => {
+    if (!instance.isActive) {
+      toast.error("Instance Disabled", {
+        description: "Enable the instance before testing the connection.",
+      })
+      return
+    }
+
     setTestResult(null)
     try {
       const result = await testConnection(instance.id)
@@ -80,6 +119,25 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
     }
   }
 
+  const handleToggleStatus = () => {
+    const nextState = !instance.isActive
+    setInstanceStatus({ id: instance.id, isActive: nextState }, {
+      onSuccess: () => {
+        setTestResult(null)
+        toast.success(nextState ? "Instance Enabled" : "Instance Disabled", {
+          description: nextState
+            ? "qui will resume connecting to this qBittorrent instance."
+            : "qui will stop attempting to reach this qBittorrent instance.",
+        })
+      },
+      onError: (error) => {
+        toast.error("Status Update Failed", {
+          description: error instanceof Error ? formatErrorMessage(error.message) : "Failed to update instance status",
+        })
+      },
+    })
+  }
+
   const handleDelete = () => {
     deleteInstance({ id: instance.id, name: instance.name }, {
       onSuccess: () => {
@@ -98,7 +156,7 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
   }
 
   return (
-    <Card>
+    <Card className="bg-muted/40">
       <div>
         <CardHeader className="flex flex-row items-center justify-between pr-2 space-y-0">
           <div className="flex-1 min-w-0 overflow-hidden">
@@ -107,11 +165,81 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
             </CardTitle>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <Badge
-              variant={instance.connected ? "default" : "destructive"}
-            >
-              {instance.connected ? "Connected" : "Disconnected"}
+            <Badge variant={statusBadge.variant}>
+              {statusBadge.label}
             </Badge>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={instance.isActive ? "ghost" : "outline"}
+                  size="icon"
+                  className={cn("h-8 w-8 p-0")}
+                  disabled={isUpdatingStatus && updatingStatusId === instance.id}
+                  aria-pressed={instance.isActive}
+                  aria-label={instance.isActive ? "Disable instance" : "Enable instance"}
+                  onClick={(event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    handleToggleStatus()
+                  }}
+                >
+                  <Power className={cn("h-4 w-4", isUpdatingStatus && updatingStatusId === instance.id && "animate-pulse", !instance.isActive && "text-destructive")} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {instance.isActive ? "Disable instance" : "Enable instance"}
+              </TooltipContent>
+            </Tooltip>
+            {(onMoveUp || onMoveDown) && (
+              <div className="flex items-center gap-1">
+                {onMoveUp && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 p-0"
+                        disabled={disableMoveUp}
+                        aria-label="Move instance up"
+                        onClick={(event) => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          if (!disableMoveUp) {
+                            onMoveUp()
+                          }
+                        }}
+                      >
+                        <ArrowUp className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Move up</TooltipContent>
+                  </Tooltip>
+                )}
+                {onMoveDown && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 p-0"
+                        disabled={disableMoveDown}
+                        aria-label="Move instance down"
+                        onClick={(event) => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          if (!disableMoveDown) {
+                            onMoveDown()
+                          }
+                        }}
+                      >
+                        <ArrowDown className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Move down</TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
@@ -123,7 +251,7 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
                   <Edit className="mr-2 h-4 w-4" />
                   Edit
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleTest} disabled={isTesting}>
+                <DropdownMenuItem onClick={handleTest} disabled={isTesting || !instance.isActive}>
                   <RefreshCw className="mr-2 h-4 w-4" />
                   Test Connection
                 </DropdownMenuItem>

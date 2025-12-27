@@ -27,6 +27,8 @@ import type { AppPreferences, Torrent } from "@/types"
 import type { ColumnDef } from "@tanstack/react-table"
 import {
   AlertCircle,
+  ArrowDownAZ,
+  ArrowDownZA,
   CheckCircle2,
   Download,
   Globe,
@@ -237,11 +239,12 @@ const getStatusIcon = (state: string, trackerHealth?: string | null, supportsTra
     case "stalledUP":
     case "stalled_uploading":
       return Upload
-    case "pausedDL":
     case "pausedUP":
+    case "stoppedUP":
+      return CheckCircle2
+    case "pausedDL":
     case "stopped":
     case "stoppedDL":
-    case "stoppedUP":
     case "inactive":
       return StopCircle
     case "checkingDL":
@@ -376,6 +379,8 @@ const getStatusBadgeMeta = (
   }
 }
 
+export type TableViewMode = "normal" | "dense" | "compact"
+
 export const createColumns = (
   incognitoMode: boolean,
   selectionEnhancers?: {
@@ -394,8 +399,14 @@ export const createColumns = (
   trackerIcons?: Record<string, string>,
   formatTimestamp?: (timestamp: number) => string,
   instancePreferences?: AppPreferences | null,
-  supportsTrackerHealth: boolean = true
-): ColumnDef<Torrent>[] => [
+  supportsTrackerHealth: boolean = true,
+  showInstanceColumn: boolean = false,
+  viewMode: TableViewMode = "normal"
+): ColumnDef<Torrent>[] => {
+  // Badge padding classes based on view mode
+  const badgePadding = viewMode === "dense" ? "px-1.5 py-0" : ""
+
+  return [
   {
     id: "select",
     header: ({ table }) => (
@@ -546,6 +557,22 @@ export const createColumns = (
     },
     size: 200,
   },
+  ...(showInstanceColumn ? [{
+    id: "instance",
+    accessorKey: "instanceName",
+    header: "Instance",
+    cell: ({ row }: { row: any }) => {
+      const instanceName = row.original.instanceName || ""
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm font-medium" title={instanceName}>
+          <Badge variant="outline" className="text-xs">
+            {instanceName}
+          </Badge>
+        </div>
+      )
+    },
+    size: calculateMinWidth("Instance"),
+  }] : []),
   {
     accessorKey: "size",
     header: "Size",
@@ -627,7 +654,7 @@ export const createColumns = (
       if (isQueued && priority > 0) {
         return (
           <div className="flex items-center gap-1">
-            <Badge variant={badgeVariant} className={cn("text-xs", badgeClass)}>
+            <Badge variant={badgeVariant} className={cn("text-xs", badgePadding, badgeClass)}>
               {displayLabel}
             </Badge>
             <span className="text-xs text-muted-foreground">#{priority}</span>
@@ -636,7 +663,7 @@ export const createColumns = (
       }
 
       return (
-        <Badge variant={badgeVariant} className={cn("text-xs", badgeClass)}>
+        <Badge variant={badgeVariant} className={cn("text-xs", badgePadding, badgeClass)}>
           {displayLabel}
         </Badge>
       )
@@ -714,6 +741,18 @@ export const createColumns = (
         </span>
       )
     },
+    sortingFn: (rowA, rowB) => {
+      const ratioA = incognitoMode ? getLinuxRatio(rowA.original.hash) : rowA.original.ratio
+      const ratioB = incognitoMode ? getLinuxRatio(rowB.original.hash) : rowB.original.ratio
+      
+      // Handle infinity values: -1 should be treated as the highest value
+      if (ratioA === -1 && ratioB === -1) return 0
+      if (ratioA === -1) return 1  // ratioA is infinity, so it's greater
+      if (ratioB === -1) return -1 // ratioB is infinity, so it's greater
+      
+      // Normal numeric comparison
+      return ratioA - ratioB
+    },
     size: 90,
   },
   {
@@ -775,7 +814,7 @@ export const createColumns = (
     header: "Completed On",
     cell: ({ row }) => {
       const completionOn = row.original.completion_on
-      if (!completionOn || completionOn === 0) {
+      if (!completionOn || completionOn === -1) {
         return "-"
       }
 
@@ -787,16 +826,26 @@ export const createColumns = (
   },
   {
     id: "tracker_icon",
-    header: () => (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label="Tracker Icon">
-            <Globe className="h-4 w-4" aria-hidden="true" />
-          </div>
-        </TooltipTrigger>
-        <TooltipContent>Tracker Icon</TooltipContent>
-      </Tooltip>
-    ),
+    header: ({ table }) => {
+      const trackerColumn = table.getColumn("tracker")
+      const sortState = trackerColumn?.getIsSorted()
+      const Icon = sortState === "asc"
+        ? ArrowDownAZ
+        : sortState === "desc"
+          ? ArrowDownZA
+          : Globe
+
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label="Tracker Icon">
+              <Icon className="h-4 w-4" aria-hidden="true" />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>Tracker Icon</TooltipContent>
+        </Tooltip>
+      )
+    },
     meta: {
       headerString: "Tracker Icon",
     },
@@ -1076,4 +1125,4 @@ export const createColumns = (
     },
     size: calculateMinWidth("Private"),
   },
-]
+]}

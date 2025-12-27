@@ -38,7 +38,6 @@ func GetDeviceID(appID string, userID string, configDir string) (string, error) 
 	return persistFingerprint(fingerprint, userID, configDir)
 }
 
-
 func generateFallbackMachineID() string {
 	hostInfo := fmt.Sprintf("%s-%s", runtime.GOOS, runtime.GOARCH)
 

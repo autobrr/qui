@@ -59,9 +59,14 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
   const form = useForm({
     defaultValues: {
       auto_tmm_enabled: false,
+      torrent_changed_tmm_enabled: true,
+      save_path_changed_tmm_enabled: true,
+      category_changed_tmm_enabled: true,
       start_paused_enabled: false,
       use_subcategories: false,
       save_path: "",
+      temp_path_enabled: false,
+      temp_path: "",
       torrent_content_layout: "Original",
     },
     onSubmit: async ({ value }) => {
@@ -73,7 +78,12 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
         // Update other preferences to qBittorrent (excluding start_paused_enabled)
         const qbittorrentPrefs: Record<string, unknown> = {
           auto_tmm_enabled: value.auto_tmm_enabled,
+          torrent_changed_tmm_enabled: value.torrent_changed_tmm_enabled,
+          save_path_changed_tmm_enabled: value.save_path_changed_tmm_enabled,
+          category_changed_tmm_enabled: value.category_changed_tmm_enabled,
           save_path: value.save_path,
+          temp_path_enabled: value.temp_path_enabled,
+          temp_path: value.temp_path,
           torrent_content_layout: value.torrent_content_layout ?? "Original",
         }
         if (supportsSubcategories) {
@@ -92,12 +102,17 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
   React.useEffect(() => {
     if (preferences) {
       form.setFieldValue("auto_tmm_enabled", preferences.auto_tmm_enabled)
+      form.setFieldValue("torrent_changed_tmm_enabled", preferences.torrent_changed_tmm_enabled ?? true)
+      form.setFieldValue("save_path_changed_tmm_enabled", preferences.save_path_changed_tmm_enabled ?? true)
+      form.setFieldValue("category_changed_tmm_enabled", preferences.category_changed_tmm_enabled ?? true)
       if (supportsSubcategories) {
         form.setFieldValue("use_subcategories", Boolean(preferences.use_subcategories))
       } else {
         form.setFieldValue("use_subcategories", false)
       }
       form.setFieldValue("save_path", preferences.save_path)
+      form.setFieldValue("temp_path_enabled", preferences.temp_path_enabled)
+      form.setFieldValue("temp_path", preferences.temp_path)
       form.setFieldValue("torrent_content_layout", preferences.torrent_content_layout ?? "Original")
     }
   }, [preferences, form, supportsSubcategories])
@@ -143,6 +158,47 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
           )}
         </form.Field>
 
+        <form.Subscribe selector={(state) => state.values.auto_tmm_enabled}>
+          {(autoTmmEnabled) =>
+            autoTmmEnabled && (
+              <div className="ml-6 pl-4 border-l-2 border-muted space-y-4">
+                <form.Field name="torrent_changed_tmm_enabled">
+                  {(field) => (
+                    <SwitchSetting
+                      label="Relocate on Category Change"
+                      checked={field.state.value as boolean}
+                      onCheckedChange={field.handleChange}
+                      description="Relocate torrent when its category changes (disable to switch to Manual Mode instead)"
+                    />
+                  )}
+                </form.Field>
+
+                <form.Field name="save_path_changed_tmm_enabled">
+                  {(field) => (
+                    <SwitchSetting
+                      label="Relocate on Default Save Path Change"
+                      checked={field.state.value as boolean}
+                      onCheckedChange={field.handleChange}
+                      description="Relocate affected torrents when default save path changes (disable to switch to Manual Mode instead)"
+                    />
+                  )}
+                </form.Field>
+
+                <form.Field name="category_changed_tmm_enabled">
+                  {(field) => (
+                    <SwitchSetting
+                      label="Relocate on Category Save Path Change"
+                      checked={field.state.value as boolean}
+                      onCheckedChange={field.handleChange}
+                      description="Relocate affected torrents when category save path changes (disable to switch to Manual Mode instead)"
+                    />
+                  )}
+                </form.Field>
+              </div>
+            )
+          }
+        </form.Subscribe>
+
         {supportsSubcategories && (
           <form.Field name="use_subcategories">
             {(field) => (
@@ -180,6 +236,38 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                 placeholder="/downloads"
               />
             </div>
+          )}
+        </form.Field>
+
+        <form.Field name="temp_path_enabled">
+          {(field) => (
+            <SwitchSetting
+              label="Use Temporary Path"
+              checked={field.state.value as boolean}
+              onCheckedChange={field.handleChange}
+              description="Download to temporary path before moving to final location"
+            />
+          )}
+        </form.Field>
+
+        <form.Field name="temp_path">
+          {(field) => (
+            <form.Subscribe selector={(state) => state.values.temp_path_enabled}>
+              {(tempPathEnabled) => (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Temporary Download Path</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Directory where torrents are downloaded before moving to save path
+                  </p>
+                  <Input
+                    value={field.state.value as string}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    placeholder="/temp-downloads"
+                    disabled={!tempPathEnabled}
+                  />
+                </div>
+              )}
+            </form.Subscribe>
           )}
         </form.Field>
 

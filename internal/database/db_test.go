@@ -106,8 +106,9 @@ func TestConnectionPragmasApplyToEachConnection(t *testing.T) {
 	db := openTestDatabase(t)
 	sqlDB := db.Conn()
 
-	sqlDB.SetMaxOpenConns(2)
-	sqlDB.SetMaxIdleConns(2)
+	// Set max connections to 4: 1 for writeConn + 2 test connections + 1 buffer
+	sqlDB.SetMaxOpenConns(4)
+	sqlDB.SetMaxIdleConns(3)
 
 	conn1, err := sqlDB.Conn(ctx)
 	require.NoError(t, err)
@@ -125,59 +126,22 @@ func TestConnectionPragmasApplyToEachConnection(t *testing.T) {
 	verifyPragmas(t, ctx, conn2)
 }
 
-func TestCloseDrainsPendingWrites(t *testing.T) {
+func TestReadOnlyConnectionsDoNotApplyWritePragmas(t *testing.T) {
 	log.Output(io.Discard)
 	ctx := t.Context()
-	dbPath := filepath.Join(t.TempDir(), "close-drain.db")
+	statementsRW := make([]string, 0, 8)
+	require.NoError(t, applyConnectionPragmas(ctx, func(ctx context.Context, stmt string) error {
+		statementsRW = append(statementsRW, stmt)
+		return nil
+	}, false))
+	require.Contains(t, statementsRW, "PRAGMA journal_mode = WAL", "write connections must set journal_mode")
 
-	db, err := New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
-
-	_, err = db.Conn().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS close_drain (id INTEGER PRIMARY KEY AUTOINCREMENT, val TEXT NOT NULL)")
-	require.NoError(t, err)
-
-	barrier := make(chan struct{})
-	signal := make(chan struct{}, 1)
-	db.writeBarrier.Store(barrier)
-	db.barrierSignal.Store(signal)
-	t.Cleanup(func() {
-		db.writeBarrier.Store((chan struct{})(nil))
-		db.barrierSignal.Store((chan struct{})(nil))
-	})
-
-	firstDone := make(chan error, 1)
-	go func() {
-		_, execErr := db.ExecContext(ctx, "INSERT INTO close_drain (val) VALUES (?)", "first")
-		firstDone <- execErr
-	}()
-
-	select {
-	case <-signal:
-	case <-time.After(time.Second):
-		t.Fatal("writer did not reach barrier")
-	}
-
-	secondDone := make(chan error, 1)
-	go func() {
-		_, execErr := db.ExecContext(ctx, "INSERT INTO close_drain (val) VALUES (?)", "second")
-		secondDone <- execErr
-	}()
-
-	require.Eventually(t, func() bool {
-		return len(db.writeCh) > 0
-	}, time.Second, 10*time.Millisecond)
-
-	closeDone := make(chan error, 1)
-	go func() {
-		closeDone <- db.Close()
-	}()
-
-	require.NoError(t, <-closeDone)
-	require.NoError(t, <-firstDone)
-	require.NoError(t, <-secondDone)
+	statementsRO := make([]string, 0, 8)
+	require.NoError(t, applyConnectionPragmas(ctx, func(ctx context.Context, stmt string) error {
+		statementsRO = append(statementsRO, stmt)
+		return nil
+	}, true))
+	require.NotContains(t, statementsRO, "PRAGMA journal_mode = WAL", "read-only connections must not attempt to set journal_mode")
 }
 
 type columnSpec struct {
@@ -202,19 +166,21 @@ var expectedSchema = map[string][]columnSpec{
 	"api_keys": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
 		{Name: "key_hash", Type: "TEXT"},
-		{Name: "name", Type: "TEXT"},
+		{Name: "name_id", Type: "INTEGER"},
 		{Name: "created_at", Type: "TIMESTAMP"},
 		{Name: "last_used_at", Type: "TIMESTAMP"},
 	},
 	"instances": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
-		{Name: "name", Type: "TEXT"},
-		{Name: "host", Type: "TEXT"},
-		{Name: "username", Type: "TEXT"},
+		{Name: "name_id", Type: "INTEGER"},
+		{Name: "host_id", Type: "INTEGER"},
+		{Name: "username_id", Type: "INTEGER"},
 		{Name: "password_encrypted", Type: "TEXT"},
-		{Name: "basic_username", Type: "TEXT"},
+		{Name: "basic_username_id", Type: "INTEGER"},
 		{Name: "basic_password_encrypted", Type: "TEXT"},
 		{Name: "tls_skip_verify", Type: "BOOLEAN"},
+		{Name: "sort_order", Type: "INTEGER"},
+		{Name: "is_active", Type: "BOOLEAN"},
 	},
 	"licenses": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
@@ -234,7 +200,7 @@ var expectedSchema = map[string][]columnSpec{
 	"client_api_keys": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
 		{Name: "key_hash", Type: "TEXT"},
-		{Name: "client_name", Type: "TEXT"},
+		{Name: "client_name_id", Type: "INTEGER"},
 		{Name: "instance_id", Type: "INTEGER"},
 		{Name: "created_at", Type: "TIMESTAMP"},
 		{Name: "last_used_at", Type: "TIMESTAMP"},
@@ -242,8 +208,8 @@ var expectedSchema = map[string][]columnSpec{
 	"instance_errors": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
 		{Name: "instance_id", Type: "INTEGER"},
-		{Name: "error_type", Type: "TEXT"},
-		{Name: "error_message", Type: "TEXT"},
+		{Name: "error_type_id", Type: "INTEGER"},
+		{Name: "error_message_id", Type: "INTEGER"},
 		{Name: "occurred_at", Type: "TIMESTAMP"},
 	},
 	"sessions": {
@@ -251,14 +217,38 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "data", Type: "BLOB"},
 		{Name: "expiry", Type: "REAL"},
 	},
+	"torrent_files_cache": {
+		{Name: "id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "instance_id", Type: "INTEGER"},
+		{Name: "torrent_hash_id", Type: "INTEGER"},
+		{Name: "file_index", Type: "INTEGER"},
+		{Name: "name_id", Type: "INTEGER"},
+		{Name: "size", Type: "INTEGER"},
+		{Name: "progress", Type: "REAL"},
+		{Name: "priority", Type: "INTEGER"},
+		{Name: "is_seed", Type: "INTEGER"},
+		{Name: "piece_range_start", Type: "INTEGER"},
+		{Name: "piece_range_end", Type: "INTEGER"},
+		{Name: "availability", Type: "REAL"},
+		{Name: "cached_at", Type: "TIMESTAMP"},
+	},
+	"torrent_files_sync": {
+		{Name: "instance_id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "torrent_hash_id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "last_synced_at", Type: "TIMESTAMP"},
+		{Name: "torrent_progress", Type: "REAL"},
+		{Name: "file_count", Type: "INTEGER"},
+	},
 }
 
 var expectedIndexes = map[string][]string{
-	"api_keys":        {"idx_api_keys_hash"},
-	"licenses":        {"idx_licenses_status", "idx_licenses_theme", "idx_licenses_key"},
-	"client_api_keys": {"idx_client_api_keys_key_hash", "idx_client_api_keys_instance_id"},
-	"instance_errors": {"idx_instance_errors_lookup"},
-	"sessions":        {"sessions_expiry_idx"},
+	"instances":           {"idx_instances_sort_order", "idx_instances_is_active"},
+	"licenses":            {"idx_licenses_status", "idx_licenses_theme", "idx_licenses_key"},
+	"client_api_keys":     {"idx_client_api_keys_instance_id"},
+	"instance_errors":     {"idx_instance_errors_lookup"},
+	"sessions":            {"sessions_expiry_idx"},
+	"torrent_files_cache": {"idx_torrent_files_cache_lookup", "idx_torrent_files_cache_cached_at"},
+	"torrent_files_sync":  {"idx_torrent_files_sync_last_synced"},
 }
 
 var expectedTriggers = []string{
@@ -319,6 +309,7 @@ func verifyPragmas(t *testing.T, ctx context.Context, q pragmaQuerier) {
 	if rows.Next() {
 		t.Fatal("PRAGMA foreign_key_check reported violations")
 	}
+	require.NoError(t, rows.Err())
 
 	var integrity string
 	require.NoError(t, q.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&integrity))
@@ -405,4 +396,266 @@ func verifyTriggers(t *testing.T, ctx context.Context, conn *sql.DB) {
 		require.NoErrorf(t, err, "expected trigger %s to exist", trigger)
 		require.Equal(t, trigger, name)
 	}
+}
+
+func TestCleanupUnusedStrings(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+	conn := db.Conn()
+
+	// Get initial count of strings
+	var initialCount int
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM string_pool").Scan(&initialCount))
+
+	// Insert some test strings into string_pool
+	var id1, id2, id3 int64
+	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "referenced_string").Scan(&id1))
+	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "orphaned_string").Scan(&id2))
+	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "another_orphaned").Scan(&id3))
+
+	// Reference id1 in instances table (create a minimal instance)
+	_, err := conn.ExecContext(ctx, "INSERT INTO instances (name_id, host_id, username_id, password_encrypted) VALUES (?, ?, ?, ?)", id1, id1, id1, "dummy_password")
+	require.NoError(t, err)
+
+	// Verify 3 more strings exist
+	var count int
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM string_pool").Scan(&count))
+	require.Equal(t, initialCount+3, count)
+
+	// Run cleanup
+	deleted, err := db.CleanupUnusedStrings(ctx)
+	require.NoError(t, err)
+	require.Greater(t, deleted, int64(0)) // Should delete some orphaned strings
+
+	// Verify our referenced string still exists
+	var exists bool
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", id1).Scan(&exists))
+	require.True(t, exists)
+
+	// Run cleanup again - should delete nothing since temp table was properly dropped
+	deleted2, err := db.CleanupUnusedStrings(ctx)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), deleted2)
+
+	// Verify our referenced string still exists
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", id1).Scan(&exists))
+	require.True(t, exists)
+}
+
+// TestTransactionCommitSuccessMutexRelease tests that the writer mutex is properly released
+// after a successful commit.
+func TestTransactionCommitSuccessMutexRelease(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+
+	// Start a write transaction
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NotNil(t, tx)
+
+	// Perform a simple write operation
+	_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "test_string")
+	require.NoError(t, err)
+
+	// Commit should succeed and release the mutex
+	err = tx.Commit()
+	require.NoError(t, err)
+
+	// Should be able to start another write transaction immediately (mutex was released)
+	tx2, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NotNil(t, tx2)
+
+	// Clean up
+	require.NoError(t, tx2.Rollback())
+}
+
+// TestTransactionRollbackReleasesMutex tests that Rollback() always releases the mutex,
+// even after a failed commit attempt.
+func TestTransactionRollbackReleasesMutex(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+
+	// Start a write transaction
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NotNil(t, tx)
+
+	// Do some work
+	_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "test_string")
+	require.NoError(t, err)
+
+	// Rollback instead of commit
+	err = tx.Rollback()
+	require.NoError(t, err)
+
+	// Should be able to start another write transaction immediately (mutex was released)
+	tx2, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err, "Should be able to start new transaction after rollback")
+	require.NotNil(t, tx2)
+	require.NoError(t, tx2.Rollback())
+}
+
+// TestTransactionDoubleRollbackSafe tests that calling Rollback() twice doesn't panic
+// or cause mutex issues (sync.Once protects the unlock).
+func TestTransactionDoubleRollbackSafe(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+
+	// Start a write transaction
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+
+	// Rollback twice - second call should be safe (returns ErrTxDone, but no panic)
+	err = tx.Rollback()
+	require.NoError(t, err)
+
+	err = tx.Rollback()
+	require.Error(t, err) // Expected: sql.ErrTxDone
+
+	// Mutex should still be released, can start new transaction
+	tx2, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NoError(t, tx2.Rollback())
+}
+
+// TestTransactionCommitThenRollbackSafe tests that calling Rollback() after successful
+// Commit() doesn't cause mutex issues (sync.Once protects the unlock).
+func TestTransactionCommitThenRollbackSafe(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+
+	// Start a write transaction
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+
+	// Insert something
+	_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "test_string")
+	require.NoError(t, err)
+
+	// Commit successfully
+	err = tx.Commit()
+	require.NoError(t, err)
+
+	// Call Rollback after commit (like a deferred rollback pattern) - should be safe
+	err = tx.Rollback()
+	require.Error(t, err) // Expected: sql.ErrTxDone
+
+	// Mutex should still be released, can start new transaction
+	tx2, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NoError(t, tx2.Rollback())
+}
+
+// TestTransactionSerialization tests that write transactions are properly serialized
+// and that the mutex prevents concurrent write transactions.
+func TestTransactionSerialization(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+
+	// Channel to coordinate the test
+	started := make(chan bool, 1)
+	committed := make(chan bool, 1)
+
+	// Start first transaction in a goroutine
+	go func() {
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			t.Errorf("Failed to begin first transaction: %v", err)
+			return
+		}
+		defer tx.Rollback()
+
+		// Signal that we started
+		started <- true
+
+		// Hold the transaction for a bit
+		time.Sleep(200 * time.Millisecond)
+
+		// Insert something
+		_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "serialization_test")
+		if err != nil {
+			t.Errorf("Failed to insert in first transaction: %v", err)
+			return
+		}
+
+		// Commit
+		err = tx.Commit()
+		if err != nil {
+			t.Errorf("Failed to commit first transaction: %v", err)
+			return
+		}
+
+		committed <- true
+	}()
+
+	// Wait for first transaction to start
+	select {
+	case <-started:
+		// Good, first transaction started
+	case <-time.After(1 * time.Second):
+		t.Fatal("First transaction didn't start")
+	}
+
+	// Now try to start a second transaction - it should block until the first commits
+	start := time.Now()
+	tx2, err := db.BeginTx(ctx, nil)
+	elapsed := time.Since(start)
+
+	require.NoError(t, err)
+	require.NotNil(t, tx2)
+
+	// Should have taken at least 100ms (the sleep time in the first transaction)
+	require.GreaterOrEqual(t, elapsed, 100*time.Millisecond, "Second transaction should have been blocked by first")
+
+	// Clean up
+	require.NoError(t, tx2.Rollback())
+
+	// Wait for first transaction to complete
+	select {
+	case <-committed:
+		// Good
+	case <-time.After(1 * time.Second):
+		t.Fatal("First transaction didn't commit")
+	}
+}
+
+// TestReadOnlyTransactionConcurrency tests that read-only transactions can run concurrently
+// with write transactions (due to WAL mode).
+func TestReadOnlyTransactionConcurrency(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+
+	// Start a write transaction
+	txWrite, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NotNil(t, txWrite)
+
+	// Insert something in the write transaction
+	_, err = txWrite.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "concurrency_test")
+	require.NoError(t, err)
+
+	// Start a read-only transaction while write transaction is active
+	txRead, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	require.NoError(t, err)
+	require.NotNil(t, txRead)
+
+	// Read transaction should be able to query (may or may not see the uncommitted write)
+	var count int
+	err = txRead.QueryRowContext(ctx, "SELECT COUNT(*) FROM string_pool").Scan(&count)
+	require.NoError(t, err)
+	// Count could be anything depending on isolation level
+
+	// Commit the read transaction
+	require.NoError(t, txRead.Rollback())
+
+	// Commit the write transaction
+	require.NoError(t, txWrite.Commit())
 }

@@ -3,69 +3,122 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 
-export type ViewMode = "normal" | "compact" | "ultra-compact"
+const STORAGE_KEY = "qui-torrent-view-mode"
+const ALL_VIEW_MODES = ["normal", "dense", "compact", "ultra-compact"] as const
 
-export function usePersistedCompactViewState(defaultMode: ViewMode = "compact") {
-  const storageKey = "qui-torrent-view-mode"
+export type ViewMode = typeof ALL_VIEW_MODES[number]
 
-  // Initialize state from localStorage or default value
+function sanitizeAllowedModes(allowedModes?: readonly ViewMode[]): ViewMode[] {
+  if (!allowedModes || allowedModes.length === 0) {
+    return [...ALL_VIEW_MODES]
+  }
+
+  const deduped = Array.from(new Set(allowedModes))
+  const filtered = deduped.filter(mode => ALL_VIEW_MODES.includes(mode))
+
+  return filtered.length > 0 ? filtered : [...ALL_VIEW_MODES]
+}
+
+export function usePersistedCompactViewState(
+  defaultMode: ViewMode = "normal",
+  allowedModesInput?: readonly ViewMode[]
+) {
+  const allowedModes = useMemo(() => sanitizeAllowedModes(allowedModesInput), [allowedModesInput])
+  const effectiveDefaultMode = allowedModes.includes(defaultMode) ? defaultMode : allowedModes[0]
+
   const [viewMode, setViewModeState] = useState<ViewMode>(() => {
+    if (typeof window === "undefined") {
+      return effectiveDefaultMode
+    }
+
     try {
-      const stored = localStorage.getItem(storageKey)
-      if (stored && ["normal", "compact", "ultra-compact"].includes(stored)) {
+      const stored = window.localStorage.getItem(STORAGE_KEY)
+      if (stored && allowedModes.includes(stored as ViewMode)) {
         return stored as ViewMode
       }
     } catch (error) {
       console.error("Failed to load view mode state from localStorage:", error)
     }
 
-    return defaultMode
+    return effectiveDefaultMode
   })
 
-  // Persist to localStorage whenever view mode changes
+  const setViewMode = useCallback((updater: ViewMode | ((prev: ViewMode) => ViewMode)) => {
+    setViewModeState(prev => {
+      const requested = typeof updater === "function" ? updater(prev) : updater
+      return allowedModes.includes(requested) ? requested : allowedModes[0]
+    })
+  }, [allowedModes])
+
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
     try {
-      localStorage.setItem(storageKey, viewMode)
+      window.localStorage.setItem(STORAGE_KEY, viewMode)
     } catch (error) {
       console.error("Failed to save view mode state to localStorage:", error)
     }
+
+    const evt = new CustomEvent(STORAGE_KEY, { detail: { viewMode } })
+    window.dispatchEvent(evt)
   }, [viewMode])
 
-  // Listen for cross-component updates via CustomEvent within the same tab
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
     const handleEvent = (e: Event) => {
       const custom = e as CustomEvent<{ viewMode: ViewMode }>
-      if (custom.detail?.viewMode && ["normal", "compact", "ultra-compact"].includes(custom.detail.viewMode)) {
-        setViewModeState(custom.detail.viewMode)
+      const nextMode = custom.detail?.viewMode
+
+      if (!nextMode) {
+        return
+      }
+
+      if (allowedModes.includes(nextMode)) {
+        setViewModeState(prev => (prev === nextMode ? prev : nextMode))
+        return
+      }
+
+      if (allowedModes.length > 0) {
+        setViewMode(allowedModes[0])
       }
     }
-    window.addEventListener(storageKey, handleEvent as EventListener)
-    return () => window.removeEventListener(storageKey, handleEvent as EventListener)
-  }, [])
 
-  // Cycle through view modes: normal -> compact -> ultra-compact -> normal
-  const cycleViewMode = () => {
-    setViewModeState((prev: ViewMode) => {
-      const nextMode = prev === "normal" ? "compact" : 
-                     prev === "compact" ? "ultra-compact" : "normal"
-      
-      try {
-        localStorage.setItem(storageKey, nextMode)
-      } catch (error) {
-        console.error("Failed to save view mode state to localStorage:", error)
-      }
-      
-      const evt = new CustomEvent(storageKey, { detail: { viewMode: nextMode } })
-      window.dispatchEvent(evt)
-      return nextMode
+    window.addEventListener(STORAGE_KEY, handleEvent as EventListener)
+    return () => window.removeEventListener(STORAGE_KEY, handleEvent as EventListener)
+  }, [allowedModes, setViewMode])
+
+  useEffect(() => {
+    if (allowedModes.includes(viewMode)) {
+      return
+    }
+
+    if (allowedModes.length > 0) {
+      setViewMode(allowedModes[0])
+    }
+  }, [allowedModes, setViewMode, viewMode])
+
+  const cycleViewMode = useCallback(() => {
+    if (allowedModes.length === 0) {
+      return
+    }
+
+    setViewMode(prev => {
+      const currentIndex = allowedModes.indexOf(prev)
+      const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % allowedModes.length
+      return allowedModes[nextIndex]
     })
-  }
+  }, [allowedModes, setViewMode])
 
   return {
     viewMode,
-    setViewMode: setViewModeState,
-    cycleViewMode
+    setViewMode,
+    cycleViewMode,
   } as const
 }

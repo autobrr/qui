@@ -5,10 +5,13 @@
 
 import { Button } from "@/components/ui/button"
 import { Logo } from "@/components/ui/Logo"
+import { NapsterLogo } from "@/components/ui/NapsterLogo"
 import { Separator } from "@/components/ui/separator"
 import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { UpdateBanner } from "@/components/ui/UpdateBanner"
 import { useAuth } from "@/hooks/useAuth"
+import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useTheme } from "@/hooks/useTheme"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
@@ -18,17 +21,24 @@ import { Link, useLocation } from "@tanstack/react-router"
 import {
   Archive,
   Copyright,
+  GitBranch,
   Github,
   HardDrive,
   Home,
+  Loader2,
   LogOut,
-  Settings
+  Rss,
+  Search,
+  SearchCode,
+  Settings,
+  Wrench
 } from "lucide-react"
 
 interface NavItem {
   title: string
   href: string
   icon: React.ComponentType<{ className?: string }>
+  params?: Record<string, string>
 }
 
 const navigation: NavItem[] = [
@@ -36,6 +46,22 @@ const navigation: NavItem[] = [
     title: "Dashboard",
     href: "/dashboard",
     icon: Home,
+  },
+  {
+    title: "Search",
+    href: "/search",
+    icon: Search,
+  },
+  {
+    title: "Cross-Seed",
+    href: "/cross-seed",
+    icon: GitBranch,
+    params: {},
+  },
+  {
+    title: "Services",
+    href: "/services",
+    icon: Wrench,
   },
   {
     title: "Backups",
@@ -58,6 +84,10 @@ export function Sidebar() {
     queryKey: ["instances"],
     queryFn: () => api.getInstances(),
   })
+  const activeInstances = instances?.filter(instance => instance.isActive) ?? []
+  const hasConfiguredInstances = (instances?.length ?? 0) > 0
+
+  const { state: crossSeedInstanceState } = useCrossSeedInstanceState()
 
   const appVersion = getAppVersion()
 
@@ -67,6 +97,8 @@ export function Sidebar() {
         <h2 className="flex items-center gap-2 text-lg font-semibold text-sidebar-foreground">
           {theme === "swizzin" ? (
             <SwizzinLogo className="h-5 w-5" />
+          ) : theme === "napster" ? (
+            <NapsterLogo className="h-5 w-5" />
           ) : (
             <Logo className="h-5 w-5" />
           )}
@@ -84,6 +116,7 @@ export function Sidebar() {
               <Link
                 key={item.href}
                 to={item.href}
+                params={item.params}
                 className={cn(
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
                   isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -104,9 +137,12 @@ export function Sidebar() {
               Instances
             </p>
             <div className="mt-1 flex-1 overflow-y-auto space-y-1 pr-1">
-              {instances?.map((instance) => {
+              {activeInstances.map((instance) => {
                 const instancePath = `/instances/${instance.id}`
                 const isActive = location.pathname === instancePath || location.pathname.startsWith(`${instancePath}/`)
+                const csState = crossSeedInstanceState[instance.id]
+                const hasRss = csState?.rssEnabled || csState?.rssRunning
+                const hasSearch = csState?.searchRunning
 
                 return (
                   <Link
@@ -120,18 +156,57 @@ export function Sidebar() {
                   >
                     <HardDrive className="h-4 w-4 flex-shrink-0" />
                     <span className="truncate max-w-36" title={instance.name}>{instance.name}</span>
-                    <span
-                      className={cn(
-                        "ml-auto h-2 w-2 rounded-full",
-                        instance.connected ? "bg-green-500" : "bg-red-500"
+                    <span className="ml-auto flex items-center gap-1.5">
+                      {hasRss && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="flex items-center">
+                              {csState?.rssRunning ? (
+                                <Loader2 className={cn(
+                                  "h-3 w-3 animate-spin",
+                                  isActive ? "text-sidebar-primary-foreground/70" : "text-sidebar-foreground/70"
+                                )} />
+                              ) : (
+                                <Rss className={cn(
+                                  "h-3 w-3",
+                                  isActive ? "text-sidebar-primary-foreground/70" : "text-sidebar-foreground/70"
+                                )} />
+                              )}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="text-xs">
+                            RSS {csState?.rssRunning ? "running" : "enabled"}
+                          </TooltipContent>
+                        </Tooltip>
                       )}
-                    />
+                      {hasSearch && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="flex items-center">
+                              <SearchCode className={cn(
+                                "h-3 w-3",
+                                isActive ? "text-sidebar-primary-foreground/70" : "text-sidebar-foreground/70"
+                              )} />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="text-xs">
+                            Seeded search running
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                      <span
+                        className={cn(
+                          "h-2 w-2 rounded-full flex-shrink-0",
+                          instance.connected ? "bg-green-500" : "bg-red-500"
+                        )}
+                      />
+                    </span>
                   </Link>
                 )
               })}
-              {(!instances || instances.length === 0) && (
+              {activeInstances.length === 0 && (
                 <p className="px-3 py-2 text-sm text-sidebar-foreground/50">
-                  No instances configured
+                  {hasConfiguredInstances ? "All instances are disabled" : "No instances configured"}
                 </p>
               )}
             </div>

@@ -5,6 +5,7 @@
 
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
+import type { TrackerRule } from "@/types"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -16,6 +17,38 @@ export function formatBytes(bytes: number): string {
   const sizes = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1)
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
+}
+
+/**
+ * Format a relative time string (e.g., "2h ago", "in 5m").
+ * @param value - Date, ISO string, or timestamp in seconds (number)
+ * @returns Formatted relative time string or "—" for invalid input
+ */
+export function formatRelativeTime(value?: string | number | Date | null): string {
+  if (value === undefined || value === null) {
+    return "—"
+  }
+
+  const date =
+    value instanceof Date ? value : new Date(typeof value === "number" ? value * 1000 : value)
+  if (Number.isNaN(date.getTime())) {
+    return "—"
+  }
+
+  const diffMs = date.getTime() - Date.now()
+  const absDiff = Math.abs(diffMs)
+
+  const units = [
+    { label: "d", ms: 86_400_000 },
+    { label: "h", ms: 3_600_000 },
+    { label: "m", ms: 60_000 },
+    { label: "s", ms: 1_000 },
+  ]
+
+  const unit = units.find(u => absDiff >= u.ms) ?? units[units.length - 1]
+  const valueAbs = Math.max(1, Math.round(absDiff / unit.ms))
+
+  return diffMs < 0 ? `${valueAbs}${unit.label} ago` : `in ${valueAbs}${unit.label}`
 }
 
 const SECOND_FACTOR = 1000
@@ -211,4 +244,53 @@ function copyTextToClipboardFallback(text: string): void {
       selection.addRange(originalRange)
     }
   }
+}
+
+/**
+ * Simplify verbose error messages by extracting the root cause.
+ * Useful for displaying cleaner error messages in UIs.
+ * @param reason - The full error message/reason string
+ * @returns Simplified error message with root cause
+ */
+export function formatErrorReason(reason: string): string {
+  if (!reason) return reason
+
+  const rootCauses = [
+    "context deadline exceeded",
+    "connection refused",
+    "no such host",
+    "connection reset",
+    "timeout",
+  ]
+
+  for (const cause of rootCauses) {
+    if (reason.toLowerCase().includes(cause)) {
+      const firstColon = reason.indexOf(":")
+      const action = firstColon > 0 ? reason.substring(0, firstColon).trim() : "operation failed"
+      return `${action} (${cause})`
+    }
+  }
+
+  if (reason.length > 150) {
+    return reason.substring(0, 147) + "..."
+  }
+
+  return reason
+}
+
+/**
+ * Parse tracker domains from a TrackerRule.
+ * Returns trackerDomains array if present, otherwise parses trackerPattern.
+ * @param rule - The tracker rule to parse domains from
+ * @returns Array of tracker domain strings
+ */
+export function parseTrackerDomains(rule: TrackerRule): string[] {
+  if (rule.trackerDomains && rule.trackerDomains.length > 0) {
+    return rule.trackerDomains
+  }
+  if (!rule.trackerPattern) return []
+  return rule.trackerPattern
+    .split(/[|,;]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
 }

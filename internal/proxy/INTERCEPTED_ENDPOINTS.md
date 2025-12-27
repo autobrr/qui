@@ -12,9 +12,11 @@ These endpoints are intercepted to:
 
 ## Intercepted Endpoints
 
-All intercepted endpoints are **GET requests only**. Write operations (POST, PUT, DELETE) are always forwarded to qBittorrent.
+### Read Operations (GET)
 
-### 1. Torrent List (Standard)
+All intercepted read endpoints use qui's sync manager for faster response times and reduced qBittorrent load.
+
+#### 1. Torrent List (Standard)
 - **Endpoint**: `/api/v2/torrents/info`
 - **SyncManager Method**: `GetTorrentsWithFilters`
 - **Benefits**: 
@@ -115,10 +117,39 @@ For `/api/v2/auth/login` requests that are proxied to qBittorrent:
 
 All intercepted endpoints return responses in qBittorrent's native JSON format, ensuring full compatibility with existing qBittorrent clients.
 
+### Write Operations (POST)
+
+Some write operations are intercepted to perform additional qui-specific actions (like cache invalidation) before forwarding to qBittorrent:
+
+#### 1. Set Location
+- **Endpoint**: `/api/v2/torrents/setLocation`
+- **Action**: Invalidates file cache for affected torrents after forwarding to qBittorrent
+- **Reason**: File paths may change when torrent location changes
+
+#### 2. Rename File
+- **Endpoint**: `/api/v2/torrents/renameFile`
+- **Action**: Invalidates file cache for the torrent after forwarding to qBittorrent
+- **Reason**: Cached file names need to be refreshed
+
+#### 3. Rename Folder
+- **Endpoint**: `/api/v2/torrents/renameFolder`
+- **Action**: Invalidates file cache for the torrent after forwarding to qBittorrent
+- **Reason**: All file paths under the folder change
+
+#### 4. Delete Torrents
+- **Endpoint**: `/api/v2/torrents/delete`
+- **Action**: Invalidates file cache for deleted torrents after forwarding to qBittorrent
+- **Reason**: Cleanup cached data for removed torrents
+
+#### 5. Reannounce torrents
+- **Endpoint**: `/api/v2/torrents/reannounce`
+- **Action**: When tracker monitoring is enabled for an instance, qui consumes the request and delegates it to the internal reannounce service with debouncing. Hashes that aren't monitored are still forwarded upstream.
+- **Reason**: Prevents duplicate or excessive reannounce calls by centralizing retry logic.
+
 ## Non-Intercepted Endpoints
 
 All other endpoints are forwarded to qBittorrent via reverse proxy, including:
-- Write operations (add torrents, pause, resume, delete, etc.)
+- Other write operations (add torrents, pause, resume, set category/tags, etc.)
 - Application settings
 - Transfer info
 - RSS feeds

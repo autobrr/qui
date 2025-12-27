@@ -4,9 +4,9 @@
  */
 
 import { Link } from "@tanstack/react-router"
-import { ArrowDownToLine, CircleHelp, CircleX, Clock, Download, FileText, HardDrive, ListChecks, RefreshCw, Trash, Undo2 } from "lucide-react"
+import { ArrowDownToLine, ChevronLeft, ChevronRight, CircleHelp, CircleX, Clock, Download, FileText, HardDrive, ListChecks, RefreshCw, Trash, Undo2 } from "lucide-react"
 import type { ChangeEvent } from "react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 
 import {
@@ -35,6 +35,12 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
@@ -64,6 +70,7 @@ import {
   useDeleteAllBackupRuns,
   useDeleteBackupRun,
   useExecuteRestore,
+  useImportBackupManifest,
   usePreviewRestore,
   useTriggerBackup,
   useUpdateBackupSettings
@@ -77,12 +84,13 @@ import type {
   BackupRun,
   BackupRunKind,
   BackupRunStatus,
+  BackupRunsResponse,
   RestoreDiffChange,
   RestoreMode,
   RestorePlan,
   RestoreResult
 } from "@/types"
-import { useQueries } from "@tanstack/react-query"
+import { useQueries, useQueryClient } from "@tanstack/react-query"
 
 type SettingsFormState = {
   enabled: boolean
@@ -108,7 +116,6 @@ type SettingsToggleKey =
   | "includeTags"
 
 type SettingsNumericKey = "keepHourly" | "keepDaily" | "keepWeekly" | "keepMonthly"
-
 type ExcludedTorrentMeta = {
   hash: string
   name?: string | null
@@ -122,6 +129,7 @@ const runKindLabels: Record<BackupRunKind, string> = {
   daily: "Daily",
   weekly: "Weekly",
   monthly: "Monthly",
+  import: "Import",
 }
 
 const statusVariants: Record<BackupRunStatus, "default" | "secondary" | "destructive" | "outline"> = {
@@ -192,14 +200,45 @@ export function InstanceBackups() {
 
   // Only load data when instance is selected AND supports backups
   const shouldLoadData = !!instanceId && supportsTorrentExport
+
+  // Pagination state
+  const [backupsPage, setBackupsPage] = useState(1)
+
   const { data: settings, isLoading: settingsLoading } = useBackupSettings(instanceId ?? 0, { enabled: shouldLoadData })
-  const { data: runs, isLoading: runsLoading } = useBackupRuns(instanceId ?? 0, { enabled: shouldLoadData })
+
+  const BACKUPS_PER_PAGE = 10
+  const backupsOffset = (backupsPage - 1) * BACKUPS_PER_PAGE
+  const { data: runsResponse, isLoading: runsLoading } = useBackupRuns(instanceId ?? 0, {
+    limit: BACKUPS_PER_PAGE,
+    offset: backupsOffset,
+    enabled: shouldLoadData
+  })
+  const runs = runsResponse?.runs ?? []
+  const queryClient = useQueryClient()
+  const { data: firstPageResponse } = useBackupRuns(instanceId ?? 0, {
+    limit: BACKUPS_PER_PAGE,
+    offset: 0,
+    enabled: shouldLoadData && backupsPage > 1,
+  })
+  const summaryRuns = useMemo(() => {
+    if (!instanceId) return runs
+    if (backupsPage === 1) return runs
+    const freshest = firstPageResponse?.runs ?? queryClient.getQueryData<BackupRunsResponse>([
+      "instance-backups",
+      instanceId,
+      "runs",
+      BACKUPS_PER_PAGE,
+      0,
+    ])?.runs
+    return freshest ?? runs
+  }, [backupsPage, firstPageResponse, instanceId, queryClient, runs])
   const updateSettings = useUpdateBackupSettings(instanceId ?? 0)
   const triggerBackup = useTriggerBackup(instanceId ?? 0)
   const deleteRun = useDeleteBackupRun(instanceId ?? 0)
   const deleteAllRuns = useDeleteAllBackupRuns(instanceId ?? 0)
   const previewRestore = usePreviewRestore(instanceId ?? 0)
   const executeRestore = useExecuteRestore(instanceId ?? 0)
+  const importManifest = useImportBackupManifest(instanceId ?? 0)
   const { formatDate } = useDateTimeFormatters()
 
   const [formState, setFormState] = useState<SettingsFormState | null>(null)
@@ -219,6 +258,11 @@ export function InstanceBackups() {
   const [restorePlanError, setRestorePlanError] = useState<string | null>(null)
   const [restoreResult, setRestoreResult] = useState<RestoreResult | null>(null)
   const [restoreExcludedHashes, setRestoreExcludedHashes] = useState<string[]>([])
+
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
+
+  const backupHistoryRef = useRef<HTMLDivElement>(null)
 
   const { data: manifest, isLoading: manifestLoading } = useBackupManifest(instanceId ?? 0, manifestRunId, {
     enabled: supportsTorrentExport && !!instanceId,
@@ -314,13 +358,156 @@ export function InstanceBackups() {
     }
   }, [settings])
 
-  const lastRun = useMemo(() => (runs && runs.length > 0 ? runs[0] : undefined), [runs])
-  const hasRuns = useMemo(() => (runs?.length ?? 0) > 0, [runs])
+  const lastRun = summaryRuns.length > 0 ? summaryRuns[0] : undefined
+  const hasRuns = summaryRuns.length > 0
 
   const hasActiveCadence = useMemo(() => {
     if (!formState) return false
     return formState.hourlyEnabled || formState.dailyEnabled || formState.weeklyEnabled || formState.monthlyEnabled
   }, [formState])
+
+  const nextScheduleInfo = useMemo<{
+    state: "loading" | "ready"
+    kind?: BackupRunKind
+    timestamp?: string
+    status: string
+  }>(() => {
+    if (settingsLoading || !formState) {
+      return {
+        state: "loading",
+        status: "Loading schedule…",
+      }
+    }
+
+    if (!formState.enabled) {
+      return {
+        state: "ready",
+        timestamp: "—",
+        status: "Automatic backups are turned off for this instance.",
+      }
+    }
+
+    const cadenceDefinitions: Array<{
+      kind: BackupRunKind
+      enabled: boolean
+      computeNext: (last: Date) => Date
+    }> = [
+      { kind: "hourly", enabled: formState.hourlyEnabled, computeNext: last => addIntervalMs(last, 60 * 60 * 1000) },
+      { kind: "daily", enabled: formState.dailyEnabled, computeNext: last => addIntervalMs(last, 24 * 60 * 60 * 1000) },
+      { kind: "weekly", enabled: formState.weeklyEnabled, computeNext: last => addIntervalMs(last, 7 * 24 * 60 * 60 * 1000) },
+      { kind: "monthly", enabled: formState.monthlyEnabled, computeNext: addOneMonth },
+    ]
+    const enabledCadences = cadenceDefinitions.filter(c => c.enabled)
+
+    if (enabledCadences.length === 0) {
+      return {
+        state: "ready",
+        timestamp: "—",
+        status: "Enable at least one automatic cadence to schedule backups.",
+      }
+    }
+
+    const enabledKinds = new Set(enabledCadences.map(c => c.kind))
+    const activeRun = summaryRuns.find(
+      run =>
+        enabledKinds.has(run.kind) &&
+        (run.status === "running" || run.status === "pending")
+    )
+    if (activeRun) {
+      return {
+        state: "ready",
+        kind: activeRun.kind,
+        timestamp: formatDateSafe(activeRun.startedAt ?? activeRun.requestedAt, formatDate),
+        status: activeRun.status === "running"
+          ? "Backup is currently running."
+          : "Backup is queued and will start shortly.",
+      }
+    }
+
+    const lastSuccessByKind = buildLastSuccessMap(summaryRuns)
+    const now = new Date()
+
+    let best:
+      | {
+          kind: BackupRunKind
+          nextDate?: Date
+          hasHistory: boolean
+        }
+      | null = null
+
+    for (const cadence of enabledCadences) {
+      const lastSuccess = lastSuccessByKind[cadence.kind]
+      const candidate = {
+        kind: cadence.kind,
+        nextDate: lastSuccess ? cadence.computeNext(lastSuccess) : undefined,
+        hasHistory: !!lastSuccess,
+      }
+
+      if (!best) {
+        best = candidate
+        continue
+      }
+
+      const candidateTime = candidate.nextDate?.getTime() ?? now.getTime()
+      const bestTime = best.nextDate?.getTime() ?? now.getTime()
+      if (candidateTime < bestTime) {
+        best = candidate
+      }
+    }
+
+    if (!best) {
+      return {
+        state: "ready",
+        timestamp: "—",
+        status: "Waiting for the scheduler to pick up the next backup.",
+      }
+    }
+
+    if (!best.hasHistory) {
+      return {
+        state: "ready",
+        kind: best.kind,
+        timestamp: "—",
+        status: "Waiting for the first backup; scheduler will run ASAP.",
+      }
+    }
+
+    if (!best.nextDate) {
+      return {
+        state: "ready",
+        kind: best.kind,
+        timestamp: "—",
+        status: "Waiting for scheduler information.",
+      }
+    }
+
+    const overdue = best.nextDate.getTime() <= now.getTime()
+
+    return {
+      state: "ready",
+      kind: best.kind,
+      timestamp: formatDate(best.nextDate),
+      status: overdue ? "Should have already run; scheduler will retry automatically." : "",
+    }
+  }, [formatDate, formState, settingsLoading, summaryRuns])
+
+  // Pagination helpers
+  const hasMoreBackups = runsResponse?.hasMore ?? false
+  const canGoPrevious = backupsPage > 1
+  const canGoNext = hasMoreBackups
+  const shouldShowPagination = runsLoading || hasRuns || canGoPrevious
+
+  // Reset page when instance changes
+  useEffect(() => {
+    setBackupsPage(1)
+  }, [instanceId])
+
+  // Scroll to backup history when page changes
+  useEffect(() => {
+    if (backupsPage > 1 && backupHistoryRef.current) {
+      backupHistoryRef.current.scrollIntoView({ behavior: "smooth", block: "start" })
+    }
+  }, [backupsPage])
 
   const requiresCadenceSelection = Boolean(formState?.enabled && !hasActiveCadence)
 
@@ -734,16 +921,27 @@ export function InstanceBackups() {
 
           <Card className="flex flex-col">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Queued backups</CardTitle>
+              <CardTitle className="text-sm font-medium">Next scheduled backup</CardTitle>
               <RefreshCw className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
-            <CardContent>
-              {runsLoading ? (
-                <p className="text-sm text-muted-foreground">Loading...</p>
+            <CardContent className="flex-1 flex flex-col">
+              {nextScheduleInfo.state === "loading" ? (
+                <p className="text-sm text-muted-foreground">Loading schedule...</p>
+              ) : nextScheduleInfo.kind ? (
+                <div className="flex flex-col flex-1">
+                  <div className="space-y-2">
+                    <Badge variant="default">{runKindLabels[nextScheduleInfo.kind]}</Badge>
+                    <p className="text-sm">{nextScheduleInfo.timestamp ?? "—"}</p>
+                  </div>
+                  {nextScheduleInfo.status && (
+                    <div className="min-h-[44px] flex items-start pt-1 mt-auto">
+                      <p className="text-xs text-muted-foreground">{nextScheduleInfo.status}</p>
+                    </div>
+                  )}
+                </div>
               ) : (
-                <p className="text-2xl font-bold">{runs?.filter(run => run.status === "running" || run.status === "pending").length ?? 0}</p>
+                <p className="text-sm text-muted-foreground">{nextScheduleInfo.status}</p>
               )}
-              <p className="text-xs text-muted-foreground">Pending or running backups</p>
             </CardContent>
           </Card>
 
@@ -843,6 +1041,9 @@ export function InstanceBackups() {
                     <Button onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
                       <ArrowDownToLine className="mr-2 h-4 w-4" /> Run manual backup
                     </Button>
+                    <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+                      <FileText className="mr-2 h-4 w-4" /> Import backup
+                    </Button>
                     <Button
                       variant="outline"
                       onClick={handleSave}
@@ -863,7 +1064,7 @@ export function InstanceBackups() {
           </CardContent>
         </Card>
 
-        <Dialog open={restoreDialogOpen} onOpenChange={(open) => {
+        <Dialog open={restoreDialogOpen} onOpenChange={(open: boolean) => {
           if (!open) {
             closeRestoreDialog()
           }
@@ -1408,8 +1609,68 @@ export function InstanceBackups() {
           </DialogContent>
         </Dialog>
 
-        <Card>
-          <CardHeader>
+        <Dialog open={importDialogOpen} onOpenChange={(open: boolean) => {
+          setImportDialogOpen(open)
+          if (!open) {
+            setImportFile(null)
+          }
+        }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Import backup</DialogTitle>
+              <DialogDescription>
+                Upload a backup archive (with torrent files) or manifest.json (metadata only).
+                Archive formats: zip, tar.gz, tar.zst, tar.br, tar.xz, tar.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="manifest-file">Backup file</Label>
+                <Input
+                  id="manifest-file"
+                  type="file"
+                  accept=".json,.zip,.tar,.tgz,.zst,.br,.xz,application/json,application/zip,application/x-tar,application/gzip,application/zstd,application/x-brotli,application/x-xz"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    setImportFile(file || null)
+                  }}
+                />
+                {importFile && (
+                  <p className="text-sm text-muted-foreground">
+                    Selected: {importFile.name} ({(importFile.size / 1024).toFixed(1)} KB)
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (!importFile) return
+
+                  try {
+                    await importManifest.mutateAsync(importFile)
+                    toast.success("Backup imported successfully")
+                    setImportDialogOpen(false)
+                    setImportFile(null)
+                  } catch (error) {
+                    toast.error("Failed to import backup")
+                    console.error("Import error:", error)
+                  }
+                }}
+                disabled={!importFile || importManifest.isPending}
+              >
+                {importManifest.isPending ? "Importing..." : "Import"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <div ref={backupHistoryRef}>
+          <Card>
+            <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>Backup history</CardTitle>
               <div className="flex items-center gap-2">
@@ -1447,108 +1708,188 @@ export function InstanceBackups() {
           <CardContent className="space-y-4">
             {runsLoading ? (
               <p className="text-sm text-muted-foreground">Loading backups...</p>
-            ) : runs && runs.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Requested</TableHead>
-                    <TableHead>Completed</TableHead>
-                    <TableHead className="text-right">Torrents</TableHead>
-                    <TableHead className="text-right">Size</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {runs.map(run => (
-                    <TableRow key={run.id}>
-                      <TableCell className="font-medium">{runKindLabels[run.kind]}</TableCell>
-                      <TableCell>
-                        {run.status === "running" && run.progressTotal && run.progressTotal > 0 ? (
-                          <div className="space-y-1 min-w-[200px]">
-                            <Progress value={run.progressPercentage ?? 0} className="h-2" />
-                            <p className="text-xs text-muted-foreground">
-                              {run.progressCurrent ?? 0} of {run.progressTotal} torrents ({(run.progressPercentage ?? 0).toFixed(1)}%)
-                            </p>
-                          </div>
-                        ) : (
-                          <Badge variant={statusVariants[run.status]} className="capitalize">{run.status}</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>{formatDateSafe(run.requestedAt, formatDate)}</TableCell>
-                      <TableCell>{formatDateSafe(run.completedAt, formatDate)}</TableCell>
-                      <TableCell className="text-right">{run.torrentCount}</TableCell>
-                      <TableCell className="text-right">{formatBytes(run.totalBytes)}</TableCell>
-                      <TableCell className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => openManifest(run.id)}
-                          aria-label="View manifest"
-                        >
-                          <FileText className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => openRestore(run)}
-                          aria-label="Restore from backup"
-                        >
-                          <Undo2 className="h-4 w-4" />
-                        </Button>
-                        {run.archivePath ? (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            asChild
-                            aria-label="Download backup"
-                          >
-                            <a
-                              href={api.getBackupDownloadUrl(instanceId!, run.id)}
-                              rel="noreferrer"
+            ) : runs.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="w-40">Requested</TableHead>
+                        <TableHead className="w-40">Completed</TableHead>
+                        <TableHead className="text-right">Torrents</TableHead>
+                        <TableHead className="text-right">Size</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {runs.map(run => (
+                        <TableRow key={run.id}>
+                          <TableCell className="font-medium">{runKindLabels[run.kind]}</TableCell>
+                          <TableCell>
+                            {run.status === "running" && run.progressTotal && run.progressTotal > 0 ? (
+                              <div className="space-y-1 min-w-[200px]">
+                                <Progress value={run.progressPercentage ?? 0} className="h-2" />
+                                <p className="text-xs text-muted-foreground">
+                                  {run.progressCurrent ?? 0} of {run.progressTotal} torrents ({(run.progressPercentage ?? 0).toFixed(1)}%)
+                                </p>
+                              </div>
+                            ) : (
+                              <Badge variant={statusVariants[run.status]} className="capitalize">{run.status}</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>{formatDateSafe(run.requestedAt, formatDate)}</TableCell>
+                          <TableCell>{formatDateSafe(run.completedAt, formatDate)}</TableCell>
+                          <TableCell className="text-right">{run.torrentCount}</TableCell>
+                          <TableCell className="text-right">{formatBytes(run.totalBytes)}</TableCell>
+                          <TableCell className="flex justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => openManifest(run.id)}
+                              aria-label="View manifest"
                             >
-                              <Download className="h-4 w-4" />
-                            </a>
-                          </Button>
-                        ) : (
-                          <Button variant="ghost" size="icon" disabled aria-label="Download unavailable">
-                            <Download className="h-4 w-4" />
-                          </Button>
-                        )}
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" aria-label="Delete backup">
-                              <Trash className="h-4 w-4" />
+                              <FileText className="h-4 w-4" />
                             </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Delete backup?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This will remove the backup archive and manifest from disk. This action cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleDelete(run)}>
-                                Delete
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => openRestore(run)}
+                              aria-label="Restore from backup"
+                            >
+                              <Undo2 className="h-4 w-4" />
+                            </Button>
+                            {run.status === "success" && run.torrentCount > 0 ? (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" aria-label="Download backup">
+                                    <Download className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "zip")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      Download as ZIP
+                                    </a>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.gz")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      Download as TAR.GZ
+                                    </a>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.zst")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      Download as TAR.ZST
+                                    </a>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.br")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      Download as TAR.BR
+                                    </a>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar.xz")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      Download as TAR.XZ
+                                    </a>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <a
+                                      href={api.getBackupDownloadUrl(instanceId!, run.id, "tar")}
+                                      rel="noreferrer"
+                                      download
+                                    >
+                                      Download as TAR
+                                    </a>
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            ) : (
+                              <Button variant="ghost" size="icon" disabled aria-label="Download unavailable">
+                                <Download className="h-4 w-4" />
+                              </Button>
+                            )}
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="icon" aria-label="Delete backup">
+                                  <Trash className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete backup?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    This will remove the backup archive and manifest from disk. This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => handleDelete(run)}>
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
             ) : (
-              <p className="text-sm text-muted-foreground">No backups have been created yet.</p>
+              <p className="text-sm text-muted-foreground">
+                {canGoPrevious ? "No backups on this page. Use pagination to go back." : "No backups have been created yet."}
+              </p>
             )}
-          </CardContent>
-        </Card>
+            {shouldShowPagination && (
+              <div className="flex items-center justify-between pt-4">
+                <p className="text-sm text-muted-foreground">
+                  Page {backupsPage} • Showing {runs.length} backup{runs.length !== 1 ? "s" : ""}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setBackupsPage(p => p - 1)}
+                    disabled={!canGoPrevious || runsLoading}
+                  >
+                    <ChevronLeft className="h-4 w-4 mr-1" />
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setBackupsPage(p => p + 1)}
+                    disabled={!canGoNext || runsLoading}
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4 ml-1" />
+                  </Button>
+                </div>
+              </div>
+            )}
+            </CardContent>
+          </Card>
+        </div>
 
-        <Dialog open={manifestOpen} onOpenChange={(open) => {
+        <Dialog open={manifestOpen} onOpenChange={(open: boolean) => {
           setManifestOpen(open)
           if (!open) {
             setManifestRunId(undefined)
@@ -1626,7 +1967,7 @@ export function InstanceBackups() {
                     <TableBody>
                       {filteredManifestItems.length > 0 ? (
                         filteredManifestItems.map(item => (
-                          <TableRow key={item.hash + item.archivePath}>
+                          <TableRow key={item.hash}>
                             <TableCell className="font-medium !max-w-md truncate">{item.name}</TableCell>
                             <TableCell>{item.category ?? "—"}</TableCell>
                             <TableCell className="max-w-sm truncate">{item.tags && item.tags.length > 0 ? item.tags.join(", ") : "—"}</TableCell>
@@ -1762,6 +2103,40 @@ function formatChangeValue(value: unknown): string {
 
 function countItems<T>(items?: T[] | null): number {
   return items?.length ?? 0
+}
+
+function buildLastSuccessMap(runs: BackupRun[]): Partial<Record<BackupRunKind, Date>> {
+  const map: Partial<Record<BackupRunKind, Date>> = {}
+
+  for (const run of runs) {
+    if (run.status !== "success") continue
+    if (map[run.kind]) continue
+    const timestamp = parseDate(run.completedAt ?? run.requestedAt)
+    if (timestamp) {
+      map[run.kind] = timestamp
+    }
+  }
+
+  return map
+}
+
+function addIntervalMs(date: Date, interval: number): Date {
+  return new Date(date.getTime() + interval)
+}
+
+function addOneMonth(date: Date): Date {
+  const next = new Date(date.getTime())
+  next.setUTCMonth(next.getUTCMonth() + 1)
+  return next
+}
+
+function parseDate(value?: string | null): Date | undefined {
+  if (!value) return undefined
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return undefined
+  }
+  return parsed
 }
 
 function formatBytes(bytes: number): string {

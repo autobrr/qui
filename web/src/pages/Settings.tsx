@@ -3,11 +3,13 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { IndexersPage } from "@/components/indexers/IndexersPage"
 import { InstanceCard } from "@/components/instances/InstanceCard"
 import { InstanceForm } from "@/components/instances/InstanceForm"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
 import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
+import { ExternalProgramsManager } from "@/components/settings/ExternalProgramsManager"
 import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
 import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import {
@@ -44,21 +46,19 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
-import { copyTextToClipboard } from "@/lib/utils"
-import type { Instance } from "@/types"
+import { copyTextToClipboard, formatBytes } from "@/lib/utils"
+import type { Instance, TorznabSearchCacheStats } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useNavigate, useSearch } from "@tanstack/react-router"
-import { Clock, Copy, ExternalLink, Key, Palette, Plus, Server, Share2, Shield, Trash2 } from "lucide-react"
-import { useState } from "react"
+import type { SettingsSearch } from "@/routes/_authenticated/settings"
+import { Clock, Copy, Database, ExternalLink, Key, Layers, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
+import type { FormEvent } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
-const settingsTabs = ["instances", "client-api", "api", "datetime", "themes", "security"] as const
-type SettingsTab = (typeof settingsTabs)[number]
+type SettingsTab = NonNullable<SettingsSearch["tab"]>
 
-const isSettingsTab = (value: unknown): value is SettingsTab => {
-  return typeof value === "string" && settingsTabs.some((tab) => tab === value)
-}
+const TORZNAB_CACHE_MIN_TTL_MINUTES = 1440
 
 function ChangePasswordForm() {
   const mutation = useMutation({
@@ -365,7 +365,7 @@ function ApiKeysManager() {
             {keys.map((key) => (
               <div
                 key={key.id}
-                className="flex items-center justify-between rounded-lg border p-4"
+                className="flex items-center bg-muted/40 justify-between rounded-lg border p-4"
               >
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
@@ -423,33 +423,46 @@ function ApiKeysManager() {
   )
 }
 
-function InstancesManager() {
-  const { instances, isLoading } = useInstances()
-  const navigate = useNavigate()
-  const search = useSearch({ strict: false }) as Record<string, unknown> | undefined
-  const tab = isSettingsTab(search?.tab) ? search?.tab : undefined
-  const modal = typeof search?.modal === "string" ? search?.modal : undefined
-  const isDialogOpen = tab === "instances" && modal === "add-instance"
+interface InstancesManagerProps {
+  search: SettingsSearch
+  onSearchChange: (search: SettingsSearch) => void
+}
+
+function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
+  const { instances, isLoading, reorderInstances, isReordering } = useInstances()
+  const isDialogOpen = search.tab === "instances" && search.modal === "add-instance"
   const [editingInstance, setEditingInstance] = useState<Instance | undefined>()
 
   const handleOpenDialog = (instance?: Instance) => {
     setEditingInstance(instance)
-    const nextSearch: Record<string, unknown> = {
-      ...(search ?? {}),
-      tab: "instances",
-      modal: "add-instance",
-    }
-    navigate({ search: nextSearch as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+    onSearchChange({ ...search, tab: "instances", modal: "add-instance" })
   }
 
   const handleCloseDialog = () => {
     setEditingInstance(undefined)
-    const nextSearch: Record<string, unknown> = {
-      ...(search ?? {}),
-      tab: "instances",
-    }
-    delete nextSearch.modal
-    navigate({ search: nextSearch as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+    onSearchChange({ tab: "instances" })
+  }
+
+  const handleReorder = (instanceId: number, direction: -1 | 1) => {
+    if (!instances || isReordering) return
+
+    const currentIndex = instances.findIndex(instance => instance.id === instanceId)
+    if (currentIndex === -1) return
+
+    const targetIndex = currentIndex + direction
+    if (targetIndex < 0 || targetIndex >= instances.length) return
+
+    const orderedIds = instances.map(instance => instance.id)
+    const [moved] = orderedIds.splice(currentIndex, 1)
+    orderedIds.splice(targetIndex, 0, moved)
+
+    reorderInstances(orderedIds, {
+      onError: (error) => {
+        toast.error("Failed to update instance order", {
+          description: error instanceof Error ? error.message : undefined,
+        })
+      },
+    })
   }
 
   return (
@@ -472,11 +485,15 @@ function InstancesManager() {
           <>
             {instances && instances.length > 0 ? (
               <div className="grid gap-4 lg:grid-cols-2">
-                {instances.map((instance) => (
+                {instances.map((instance, index) => (
                   <InstanceCard
                     key={instance.id}
                     instance={instance}
                     onEdit={() => handleOpenDialog(instance)}
+                    onMoveUp={index > 0 ? () => handleReorder(instance.id, -1) : undefined}
+                    onMoveDown={index < instances.length - 1 ? () => handleReorder(instance.id, 1) : undefined}
+                    disableMoveUp={isReordering}
+                    disableMoveDown={isReordering}
                   />
                 ))}
               </div>
@@ -518,21 +535,169 @@ function InstancesManager() {
   )
 }
 
-export function Settings() {
-  const navigate = useNavigate()
-  const search = useSearch({ strict: false }) as Record<string, unknown> | undefined
-  const tabFromSearch = isSettingsTab(search?.tab) ? search?.tab : undefined
-  const activeTab: SettingsTab = tabFromSearch ?? "instances"
+function TorznabSearchCachePanel() {
+  const queryClient = useQueryClient()
+  const statsQuery = useQuery({
+    queryKey: ["torznab", "search-cache", "stats"],
+    queryFn: () => api.getTorznabSearchCacheStats(),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  })
+  const { formatDate } = useDateTimeFormatters()
+
+  const stats: TorznabSearchCacheStats | undefined = statsQuery.data
+  const [ttlInput, setTtlInput] = useState("")
+
+  const formatCacheTimestamp = (value?: string | null) => {
+    if (!value) {
+      return "—"
+    }
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) {
+      return "—"
+    }
+    return formatDate(parsed)
+  }
+
+  useEffect(() => {
+    if (stats?.ttlMinutes !== undefined) {
+      setTtlInput(String(stats.ttlMinutes))
+    }
+  }, [stats?.ttlMinutes])
+
+  const updateTTLMutation = useMutation({
+    mutationFn: async (nextTTL: number) => {
+      return api.updateTorznabSearchCacheSettings(nextTTL)
+    },
+    onSuccess: (updatedStats) => {
+      toast.success(`Cache TTL updated to ${updatedStats.ttlMinutes} minutes`)
+      setTtlInput(String(updatedStats.ttlMinutes))
+      queryClient.setQueryData(["torznab", "search-cache", "stats"], updatedStats)
+      queryClient.invalidateQueries({
+        queryKey: ["torznab", "search-cache"],
+        exact: false,
+      })
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "Failed to update cache TTL"
+      toast.error(message)
+    },
+  })
+
+  const handleUpdateTTL = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const parsed = Number(ttlInput)
+    if (!Number.isFinite(parsed)) {
+      toast.error("Enter a valid number of minutes")
+      return
+    }
+    const normalized = Math.floor(parsed)
+    if (normalized < TORZNAB_CACHE_MIN_TTL_MINUTES) {
+      toast.error(`Cache TTL must be at least ${TORZNAB_CACHE_MIN_TTL_MINUTES} minutes`)
+      return
+    }
+    updateTTLMutation.mutate(normalized)
+  }
+
+  const ttlMinutes = stats?.ttlMinutes ?? 0
+  const approxSize = stats?.approxSizeBytes ?? 0
+
+  const cacheStatusText = stats?.enabled ? "Enabled" : "Disabled"
+
+  const rows = useMemo(
+    () => [
+      { label: "Entries", value: stats?.entries?.toLocaleString() ?? "0" },
+      { label: "Hit count", value: stats?.totalHits?.toLocaleString() ?? "0" },
+      { label: "Approx. size", value: approxSize > 0 ? formatBytes(approxSize) : "—" },
+      { label: "TTL", value: ttlMinutes > 0 ? `${ttlMinutes} minutes` : "—" },
+      { label: "Newest entry", value: formatCacheTimestamp(stats?.newestCachedAt) },
+      { label: "Last used", value: formatCacheTimestamp(stats?.lastUsedAt) },
+    ],
+    [approxSize, formatDate, stats?.entries, stats?.lastUsedAt, stats?.newestCachedAt, stats?.totalHits, ttlMinutes]
+  )
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>Torznab Search Cache</CardTitle>
+            <CardDescription>Reduce repeated searches by reusing recent Torznab responses.</CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant={stats?.enabled ? "default" : "secondary"}>{cacheStatusText}</Badge>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => statsQuery.refetch()}
+              disabled={statsQuery.isFetching}
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${statsQuery.isFetching ? "animate-spin" : ""}`} />
+              Refresh stats
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          {rows.map(row => (
+            <div key={row.label} className="space-y-1 rounded-lg border p-3 bg-muted/40">
+              <p className="text-xs uppercase text-muted-foreground">{row.label}</p>
+              <p className="text-lg font-semibold">{row.value}</p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Configuration</CardTitle>
+          <CardDescription>Control how long cached searches remain valid.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleUpdateTTL} className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="torznab-cache-ttl">Cache TTL (minutes)</Label>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  id="torznab-cache-ttl"
+                  type="number"
+                  min={TORZNAB_CACHE_MIN_TTL_MINUTES}
+                  value={ttlInput}
+                  onChange={(event) => setTtlInput(event.target.value)}
+                  disabled={updateTTLMutation.isPending}
+                />
+                <Button type="submit" disabled={updateTTLMutation.isPending}>
+                  {updateTTLMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving…
+                    </>
+                  ) : (
+                    "Save TTL"
+                  )}
+                </Button>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Minimum {TORZNAB_CACHE_MIN_TTL_MINUTES} minutes (24 hours). Larger values reduce load on your indexers at the expense of fresher results.
+            </p>
+          </form>
+        </CardContent>
+      </Card>
+
+    </div>
+  )
+}
+
+interface SettingsProps {
+  search: SettingsSearch
+  onSearchChange: (search: SettingsSearch) => void
+}
+
+export function Settings({ search, onSearchChange }: SettingsProps) {
+  const activeTab: SettingsTab = search.tab ?? "instances"
 
   const handleTabChange = (tab: SettingsTab) => {
-    const nextSearch: Record<string, unknown> = {
-      ...(search ?? {}),
-      tab,
-    }
-    if (tab !== "instances") {
-      delete nextSearch.modal
-    }
-    navigate({ search: nextSearch as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+    onSearchChange({ tab })
   }
 
   return (
@@ -548,11 +713,7 @@ export function Settings() {
       <div className="md:hidden mb-4">
         <Select
           value={activeTab}
-          onValueChange={(value) => {
-            if (isSettingsTab(value)) {
-              handleTabChange(value)
-            }
-          }}
+          onValueChange={(value) => handleTabChange(value as SettingsTab)}
         >
           <SelectTrigger className="w-full">
             <SelectValue />
@@ -562,6 +723,18 @@ export function Settings() {
               <div className="flex items-center">
                 <Server className="w-4 h-4 mr-2" />
                 Instances
+              </div>
+            </SelectItem>
+            <SelectItem value="indexers">
+              <div className="flex items-center">
+                <Database className="w-4 h-4 mr-2" />
+                Indexers
+              </div>
+            </SelectItem>
+            <SelectItem value="search-cache">
+              <div className="flex items-center">
+                <Layers className="w-4 h-4 mr-2" />
+                Search Cache
               </div>
             </SelectItem>
             <SelectItem value="client-api">
@@ -574,6 +747,12 @@ export function Settings() {
               <div className="flex items-center">
                 <Key className="w-4 h-4 mr-2" />
                 API Keys
+              </div>
+            </SelectItem>
+            <SelectItem value="external-programs">
+              <div className="flex items-center">
+                <Terminal className="w-4 h-4 mr-2" />
+                External Programs
               </div>
             </SelectItem>
             <SelectItem value="datetime">
@@ -612,6 +791,24 @@ export function Settings() {
               Instances
             </button>
             <button
+              onClick={() => handleTabChange("indexers")}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === "indexers"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+              }`}
+            >
+              <Database className="w-4 h-4 mr-2" />
+              Indexers
+            </button>
+            <button
+              onClick={() => handleTabChange("search-cache")}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === "search-cache"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+              }`}
+            >
+              <Layers className="w-4 h-4 mr-2" />
+              Search Cache
+            </button>
+            <button
               onClick={() => handleTabChange("client-api")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
                 activeTab === "client-api"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
@@ -628,6 +825,15 @@ export function Settings() {
             >
               <Key className="w-4 h-4 mr-2" />
               API Keys
+            </button>
+            <button
+              onClick={() => handleTabChange("external-programs")}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === "external-programs"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+              }`}
+            >
+              <Terminal className="w-4 h-4 mr-2" />
+              External Programs
             </button>
             <button
               onClick={() => handleTabChange("datetime")}
@@ -672,9 +878,21 @@ export function Settings() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <InstancesManager />
+                  <InstancesManager search={search} onSearchChange={onSearchChange} />
                 </CardContent>
               </Card>
+            </div>
+          )}
+
+          {activeTab === "indexers" && (
+            <div className="space-y-4">
+              <IndexersPage withContainer={false} />
+            </div>
+          )}
+
+          {activeTab === "search-cache" && (
+            <div className="space-y-4">
+              <TorznabSearchCachePanel />
             </div>
           )}
 
@@ -719,6 +937,22 @@ export function Settings() {
                 </CardHeader>
                 <CardContent>
                   <ApiKeysManager />
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {activeTab === "external-programs" && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>External Programs</CardTitle>
+                  <CardDescription>
+                    Configure external programs or scripts that can be executed from the torrent context menu
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ExternalProgramsManager />
                 </CardContent>
               </Card>
             </div>

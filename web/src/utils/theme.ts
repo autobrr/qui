@@ -5,6 +5,7 @@
 
 import { themes, getThemeById, getDefaultTheme, type Theme } from "@/config/themes";
 import { loadThemeFonts } from "./fontLoader";
+import { getStoredVariation, setStoredVariation } from "@/hooks/usePersistedThemeVariation";
 
 // Theme constants
 const THEME_KEY = "theme";
@@ -13,117 +14,16 @@ const THEME_DARK = "dark";
 const THEME_LIGHT = "light";
 const THEME_AUTO = "auto";
 const THEME_TRANSITION_CLASS = "theme-transition";
-const THEME_TRANSITION_DURATION = 400;
+const THEME_TRANSITION_DURATION = 150;
 const THEME_STYLES_ID = "theme-transitions";
+const ENABLE_THEME_TRANSITIONS = false;
 
-// CSS for theme transitions
+// CSS for theme transitions - lightweight version for performance
+// Only transitions the root background; child elements inherit instantly via CSS variables
 const THEME_TRANSITION_CSS = `
-  /* CSS Variables for transition control */
-  :root {
-    --theme-transition-duration: 400ms;
-    --theme-transition-easing: cubic-bezier(0.4, 0.0, 0.2, 1);
-    --theme-transition-stagger: 50ms;
-  }
-
-  /* Main transition for theme switching */
   .theme-transition {
-    position: relative;
+    transition: background-color 150ms ease-out;
   }
-  
-  /* Core element transitions */
-  .theme-transition * {
-    transition-property: background-color, border-color, color, fill, stroke, box-shadow;
-    transition-duration: var(--theme-transition-duration);
-    transition-timing-function: var(--theme-transition-easing);
-  }
-  
-  /* Font transitions for smooth font family changes */
-  .theme-transition body,
-  .theme-transition .font-sans,
-  .theme-transition .font-serif,
-  .theme-transition .font-mono {
-    transition-property: font-family, letter-spacing, line-height;
-    transition-duration: calc(var(--theme-transition-duration) * 0.8);
-    transition-timing-function: var(--theme-transition-easing);
-  }
-  
-  /* Subtle fade effect without any transforms */
-  .theme-transition {
-    animation: theme-transition-fade var(--theme-transition-duration) var(--theme-transition-easing);
-  }
-  
-  @keyframes theme-transition-fade {
-    0% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.96;
-    }
-    100% {
-      opacity: 1;
-    }
-  }
-  
-  /* Staggered transitions for different UI sections */
-  .theme-transition header,
-  .theme-transition nav {
-    transition-delay: calc(var(--theme-transition-stagger) * 0);
-  }
-  
-  .theme-transition main {
-    transition-delay: calc(var(--theme-transition-stagger) * 1);
-  }
-  
-  .theme-transition aside {
-    transition-delay: calc(var(--theme-transition-stagger) * 2);
-  }
-  
-  .theme-transition footer {
-    transition-delay: calc(var(--theme-transition-stagger) * 3);
-  }
-  
-  /* Cards and panels get a subtle lift effect */
-  .theme-transition [class*="card"],
-  .theme-transition [class*="panel"] {
-    transition-property: background-color, border-color, color, box-shadow, transform;
-    transition-duration: var(--theme-transition-duration);
-    transition-timing-function: var(--theme-transition-easing);
-  }
-  
-  /* Buttons get special treatment */
-  .theme-transition button,
-  .theme-transition [role="button"] {
-    transition-property: background-color, border-color, color, box-shadow, transform, filter;
-    transition-duration: calc(var(--theme-transition-duration) * 0.8);
-    transition-timing-function: var(--theme-transition-easing);
-  }
-  
-  /* Prevent scrollbar transitions */
-  .theme-transition ::-webkit-scrollbar,
-  .theme-transition ::-webkit-scrollbar-track,
-  .theme-transition ::-webkit-scrollbar-thumb,
-  ::-webkit-scrollbar,
-  ::-webkit-scrollbar-track,
-  ::-webkit-scrollbar-thumb {
-    transition: none !important;
-  }
-  
-  /* Prevent scrollbar color from animating */
-  html.theme-transition {
-    scrollbar-color: initial !important;
-  }
-  
-  /* Disable transitions for performance-sensitive elements */
-  .theme-transition svg *,
-  .theme-transition path,
-  .theme-transition circle,
-  .theme-transition rect,
-  .theme-transition line,
-  .theme-transition polyline,
-  .theme-transition polygon {
-    transition: none !important;
-  }
-  
 `;
 
 // Type definitions
@@ -134,6 +34,7 @@ interface ThemeChangeEvent extends CustomEvent {
     mode: ThemeMode;
     theme: Theme;
     isSystemChange: boolean;
+    variant?: string | null;
   };
 }
 
@@ -166,36 +67,60 @@ const getSystemTheme = (): typeof THEME_DARK | typeof THEME_LIGHT => {
   return getSystemPreference().matches ? THEME_DARK : THEME_LIGHT;
 };
 
-const dispatchThemeChange = (mode: ThemeMode, theme: Theme, isSystemChange: boolean): void => {
+const dispatchThemeChange = (mode: ThemeMode, theme: Theme, isSystemChange: boolean, variant?: string | null): void => {
   const event = new CustomEvent("themechange", {
-    detail: { mode, theme, isSystemChange },
+    detail: { mode, theme, isSystemChange, variant },
   }) as ThemeChangeEvent;
   window.dispatchEvent(event);
 };
 
 // Core theme application logic
-const applyTheme = async (theme: Theme, isDark: boolean, withTransition = false): Promise<void> => {
+const applyTheme = async (theme: Theme, variation: string | null, isDark: boolean, withTransition = false): Promise<void> => {
   const root = document.documentElement;
 
-  // Load fonts for this theme
-  await loadThemeFonts(theme);
+  // Kick off font loading in the background (non-blocking)
+  // Fonts will render when ready; no need to wait
+  loadThemeFonts(theme);
 
-  if (withTransition) {
+  if (ENABLE_THEME_TRANSITIONS && withTransition) {
     root.classList.add(THEME_TRANSITION_CLASS);
   }
 
+  // For lightOnly themes, force light mode regardless of user preference
+  const effectiveIsDark = theme.lightOnly ? false : isDark;
+
+  // Store lightOnly flag for anti-FOUC script
+  if (theme.lightOnly) {
+    localStorage.setItem("theme-light-only", "true");
+  } else {
+    localStorage.removeItem("theme-light-only");
+  }
+
   // Apply dark mode class
-  if (isDark) {
+  if (effectiveIsDark) {
     root.classList.add(THEME_DARK);
   } else {
     root.classList.remove(THEME_DARK);
   }
 
-  // Apply theme CSS variables
-  const cssVars = isDark ? theme.cssVars.dark : theme.cssVars.light;
+  // Clean up all variation variables to prevent stale values
+  Array.from(root.style)
+    .filter(prop => prop.startsWith('--variation'))
+    .forEach(prop => root.style.removeProperty(prop));
+
+  // Apply theme CSS variables (lightOnly themes always use light vars)
+  const cssVars = effectiveIsDark ? theme.cssVars.dark : theme.cssVars.light;
   Object.entries(cssVars).forEach(([key, value]) => {
     root.style.setProperty(key, value);
   });
+
+  // Apply variation if provided
+  if (variation && theme.variations && theme.variations.length > 0) {
+    const variationColor = cssVars[`--variation-${variation}`];
+    if (variationColor) {
+      root.style.setProperty("--variation-color", variationColor);
+    }
+  }
 
   // Add theme class
   root.setAttribute("data-theme", theme.id);
@@ -223,7 +148,7 @@ const applyTheme = async (theme: Theme, isDark: boolean, withTransition = false)
     }
   }
 
-  if (withTransition) {
+  if (ENABLE_THEME_TRANSITIONS && withTransition) {
     setTimeout(() => {
       root.classList.remove(THEME_TRANSITION_CLASS);
     }, THEME_TRANSITION_DURATION);
@@ -237,8 +162,9 @@ const handleSystemThemeChange = async (event: MediaQueryListEvent): Promise<void
   // Only apply system theme if set to auto or not set
   if (!storedMode || storedMode === THEME_AUTO) {
     const theme = getCurrentTheme();
-    await applyTheme(theme, event.matches, true);
-    dispatchThemeChange(THEME_AUTO, theme, true);
+    const variation = getThemeVariation(theme.id);
+    await applyTheme(theme, variation, event.matches, true);
+    dispatchThemeChange(THEME_AUTO, theme, true, variation);
   }
 };
 
@@ -324,7 +250,7 @@ export const getCurrentThemeMode = (): ThemeMode => {
   return getStoredMode() || THEME_AUTO;
 };
 
-export const setTheme = async (themeId: string, mode?: ThemeMode): Promise<void> => {
+export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: string): Promise<void> => {
   const theme = getThemeById(themeId);
 
   // Validate theme access before applying
@@ -337,12 +263,17 @@ export const setTheme = async (themeId: string, mode?: ThemeMode): Promise<void>
     if (mode) {
       setStoredMode(mode);
     }
+    // Get variation for default theme
+    const currentVariation = getThemeVariation(defaultTheme.id);
+    if (currentVariation) {
+      setStoredVariation(defaultTheme.id, currentVariation);
+    }
 
     const isDark = currentMode === THEME_DARK ||
       (currentMode === THEME_AUTO && getSystemPreference().matches);
 
-    await applyTheme(defaultTheme, isDark, true);
-    dispatchThemeChange(currentMode, defaultTheme, false);
+    await applyTheme(defaultTheme, currentVariation, isDark, false);
+    dispatchThemeChange(currentMode, defaultTheme, false, currentVariation);
     return;
   }
 
@@ -353,22 +284,32 @@ export const setTheme = async (themeId: string, mode?: ThemeMode): Promise<void>
     setStoredMode(mode);
   }
 
+  // Validate and store variation
+  const currentVariation = (variation && theme.variations?.includes(variation))
+    ? variation
+    : getThemeVariation(theme.id);
+
+  if (currentVariation) {
+    setStoredVariation(theme.id, currentVariation);
+  }
+
   const isDark = currentMode === THEME_DARK ||
     (currentMode === THEME_AUTO && getSystemPreference().matches);
 
-  await applyTheme(theme, isDark, true);
-  dispatchThemeChange(currentMode, theme, false);
+  await applyTheme(theme, currentVariation, isDark, false);
+  dispatchThemeChange(currentMode, theme, false, currentVariation);
 };
 
 export const setThemeMode = async (mode: ThemeMode): Promise<void> => {
   const theme = getCurrentTheme();
+  const variation = getThemeVariation(theme.id);
   setStoredMode(mode);
 
   const isDark = mode === THEME_DARK ||
     (mode === THEME_AUTO && getSystemPreference().matches);
 
-  await applyTheme(theme, isDark, true);
-  dispatchThemeChange(mode, theme, false);
+  await applyTheme(theme, variation, isDark, false);
+  dispatchThemeChange(mode, theme, false, variation);
 };
 
 export const initializeTheme = async (): Promise<void> => {
@@ -376,6 +317,7 @@ export const initializeTheme = async (): Promise<void> => {
 
   const storedMode = getStoredMode();
   const theme = getCurrentTheme();
+  const variation = getThemeVariation(theme.id);
   const systemPreference = getSystemPreference();
 
   // Determine initial theme
@@ -391,7 +333,7 @@ export const initializeTheme = async (): Promise<void> => {
     }
   }
 
-  await applyTheme(theme, isDark, false);
+  await applyTheme(theme, variation, isDark, false);
 
   // Always listen for system theme changes
   addMediaQueryListener(systemPreference, handleSystemThemeChange);
@@ -400,14 +342,110 @@ export const initializeTheme = async (): Promise<void> => {
 export const resetToSystemTheme = async (): Promise<void> => {
   setStoredMode(THEME_AUTO);
   const theme = getCurrentTheme();
-  await applyTheme(theme, getSystemPreference().matches, true);
-  dispatchThemeChange(THEME_AUTO, theme, false);
+  const variation = getThemeVariation(theme.id);
+  await applyTheme(theme, variation, getSystemPreference().matches, false);
+  dispatchThemeChange(THEME_AUTO, theme, false, variation);
 };
 
 export const setAutoTheme = async (): Promise<void> => {
   await resetToSystemTheme();
 };
 
+export const setThemeVariation = async (variation: string): Promise<void> => {
+  const theme = getCurrentTheme();
+
+  // Validate variation exists for this theme
+  if (!theme.variations?.includes(variation)) {
+    console.warn(`Variation "${variation}" not found for theme "${theme.id}"`);
+    return;
+  }
+
+  setStoredVariation(theme.id, variation);
+
+  const currentMode = getCurrentThemeMode();
+  const isDark = currentMode === THEME_DARK ||
+    (currentMode === THEME_AUTO && getSystemPreference().matches);
+
+  await applyTheme(theme, variation, isDark, false);
+  dispatchThemeChange(currentMode, theme, false, variation);
+};
+
+export const getThemeVariation = (themeId?: string): string | null => {
+  const theme = themeId ? getThemeById(themeId) : getCurrentTheme();
+  if (!theme || !theme.variations || theme.variations.length === 0) {
+    return null;
+  }
+
+  const stored = getStoredVariation(theme.id);
+  if (stored && theme.variations.includes(stored)) {
+    return stored;
+  }
+
+  return theme.variations[0];
+};
+
+// When colorVar is provided, return string
+export function getThemeColors(
+  theme: Theme,
+  colorVar: '--primary' | '--secondary' | '--accent',
+  mode?: 'light' | 'dark'
+): string;
+
+// When colorVar is not provided, return object
+export function getThemeColors(
+  theme: Theme
+): {
+  primary: string;
+  secondary: string;
+  accent: string;
+  variations?: Array<{ id: string; color: string }>;
+};
+
+export function getThemeColors(
+  theme: Theme,
+  colorVar?: '--primary' | '--secondary' | '--accent',
+  mode?: 'light' | 'dark'
+): string | {
+  primary: string;
+  secondary: string;
+  accent: string;
+  variations?: Array<{ id: string; color: string }>;
+} {
+  // Use passed mode if specified
+  const isDark = mode ? mode === 'dark' : document.documentElement.classList.contains("dark");
+  const cssVars = isDark ? theme.cssVars.dark : theme.cssVars.light;
+
+  // Helper to resolve variation colors
+  const resolveColor = (varName: '--primary' | '--secondary' | '--accent'): string => {
+    const colorValue = cssVars[varName];
+
+    if (colorValue === "var(--variation-color)") {
+      // Get stored variation or fallback to first variation
+      const variation = getThemeVariation(theme.id);
+      if (!variation) return "";
+      return cssVars[`--variation-${variation}`] || "";
+    }
+    return colorValue || "";
+  };
+
+  // Return single color if colorVar passed
+  if (colorVar) {
+    return resolveColor(colorVar);
+  }
+
+  // Otherwise return all
+  return {
+    primary: resolveColor('--primary'),
+    secondary: resolveColor('--secondary'),
+    accent: resolveColor('--accent'),
+    variations: theme.variations?.map(varId => ({
+      id: varId,
+      color: cssVars[`--variation-${varId}`],
+    })).filter(v => v.color !== undefined),
+  };
+}
+
 // Re-export for backward compatibility
 export { getSystemTheme };
 export { themes };
+export { getStoredVariation };

@@ -33,6 +33,8 @@ type Instance struct {
 	BasicUsername          *string `json:"basic_username,omitempty"`
 	BasicPasswordEncrypted *string `json:"-"`
 	TLSSkipVerify          bool    `json:"tlsSkipVerify"`
+	SortOrder              int     `json:"sortOrder"`
+	IsActive               bool    `json:"isActive"`
 }
 
 func (i Instance) MarshalJSON() ([]byte, error) {
@@ -46,10 +48,11 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 		BasicUsername   *string    `json:"basic_username,omitempty"`
 		BasicPassword   string     `json:"basic_password,omitempty"`
 		TLSSkipVerify   bool       `json:"tlsSkipVerify"`
-		IsActive        bool       `json:"is_active"`
+		IsActive        bool       `json:"isActive"`
 		LastConnectedAt *time.Time `json:"last_connected_at,omitempty"`
 		CreatedAt       time.Time  `json:"created_at"`
 		UpdatedAt       time.Time  `json:"updated_at"`
+		SortOrder       int        `json:"sortOrder"`
 	}{
 		ID:            i.ID,
 		Name:          i.Name,
@@ -64,6 +67,8 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 			return ""
 		}(),
 		TLSSkipVerify: i.TLSSkipVerify,
+		SortOrder:     i.SortOrder,
+		IsActive:      i.IsActive,
 	})
 }
 
@@ -78,10 +83,11 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 		BasicUsername   *string    `json:"basic_username,omitempty"`
 		BasicPassword   string     `json:"basic_password,omitempty"`
 		TLSSkipVerify   *bool      `json:"tlsSkipVerify,omitempty"`
-		IsActive        bool       `json:"is_active"`
+		IsActive        bool       `json:"isActive"`
 		LastConnectedAt *time.Time `json:"last_connected_at,omitempty"`
 		CreatedAt       time.Time  `json:"created_at"`
 		UpdatedAt       time.Time  `json:"updated_at"`
+		SortOrder       *int       `json:"sortOrder,omitempty"`
 	}
 
 	if err := json.Unmarshal(data, &temp); err != nil {
@@ -98,6 +104,12 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 	if temp.TLSSkipVerify != nil {
 		i.TLSSkipVerify = *temp.TLSSkipVerify
 	}
+
+	if temp.SortOrder != nil {
+		i.SortOrder = *temp.SortOrder
+	}
+
+	i.IsActive = temp.IsActive
 
 	// Handle password - don't overwrite if redacted
 	if temp.Password != "" && !domain.IsRedactedString(temp.Password) {
@@ -236,26 +248,100 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		encryptedBasicPassword = &encrypted
 	}
 
-	query := `
-		INSERT INTO instances (name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify) 
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		RETURNING id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify
-	`
+	// Start a transaction to ensure atomicity
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
 
-	instance := &Instance{}
-	err = s.db.QueryRowContext(ctx, query, name, normalizedHost, username, encryptedPassword, basicUsername, encryptedBasicPassword, tlsSkipVerify).Scan(
-		&instance.ID,
-		&instance.Name,
-		&instance.Host,
-		&instance.Username,
-		&instance.PasswordEncrypted,
-		&instance.BasicUsername,
-		&instance.BasicPasswordEncrypted,
-		&instance.TLSSkipVerify,
+	// Intern all strings in a single call
+	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &name, &normalizedHost, &username, basicUsername)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern strings: %w", err)
+	}
+
+	// Ensure required fields (name, host, username) have valid IDs
+	// If username is empty (localhost bypass), intern the empty string
+	nameID := allIDs[0].Int64
+	hostID := allIDs[1].Int64
+
+	var usernameID int64
+	if allIDs[2].Valid {
+		usernameID = allIDs[2].Int64
+	} else {
+		// Username was empty - intern empty string for localhost bypass auth
+		usernameID, err = dbinterface.InternEmptyString(ctx, tx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to intern empty username: %w", err)
+		}
+	}
+
+	// Insert instance with the interned IDs
+	var instanceID int
+	var passwordEncrypted sql.NullString
+	var basicPasswordEncrypted sql.NullString
+	var tlsSkipVerifyResult bool
+	var sortOrder int
+	var isActive bool
+
+	err = tx.QueryRowContext(ctx, `
+		WITH next_sort AS (
+			SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM instances
+		)
+		INSERT INTO instances (
+			name_id,
+			host_id,
+			username_id,
+			password_encrypted,
+			basic_username_id,
+			basic_password_encrypted,
+			tls_skip_verify,
+			sort_order
+		)
+		SELECT ?, ?, ?, ?, ?, ?, ?, next_order FROM next_sort
+		RETURNING id, password_encrypted, basic_password_encrypted, tls_skip_verify, sort_order, is_active
+	`,
+		nameID,
+		hostID,
+		usernameID,
+		encryptedPassword,
+		allIDs[3],
+		encryptedBasicPassword,
+		tlsSkipVerify,
+	).Scan(
+		&instanceID,
+		&passwordEncrypted,
+		&basicPasswordEncrypted,
+		&tlsSkipVerifyResult,
+		&sortOrder,
+		&isActive,
 	)
 
 	if err != nil {
 		return nil, err
+	}
+
+	instance := &Instance{
+		ID:                instanceID,
+		Name:              name,
+		Host:              normalizedHost,
+		Username:          username,
+		PasswordEncrypted: passwordEncrypted.String,
+		TLSSkipVerify:     tlsSkipVerifyResult,
+		SortOrder:         sortOrder,
+		IsActive:          isActive,
+	}
+
+	if basicUsername != nil {
+		instance.BasicUsername = basicUsername
+	}
+	if basicPasswordEncrypted.Valid {
+		instance.BasicPasswordEncrypted = &basicPasswordEncrypted.String
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return instance, nil
@@ -263,21 +349,29 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 
 func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	query := `
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify 
-		FROM instances 
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active
+		FROM instances_view 
 		WHERE id = ?
 	`
 
-	instance := &Instance{}
+	var instanceID int
+	var name, host, username, passwordEncrypted string
+	var basicUsername, basicPasswordEncrypted sql.NullString
+	var tlsSkipVerify bool
+	var sortOrder int
+	var isActive bool
+
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
-		&instance.ID,
-		&instance.Name,
-		&instance.Host,
-		&instance.Username,
-		&instance.PasswordEncrypted,
-		&instance.BasicUsername,
-		&instance.BasicPasswordEncrypted,
-		&instance.TLSSkipVerify,
+		&instanceID,
+		&name,
+		&host,
+		&username,
+		&passwordEncrypted,
+		&basicUsername,
+		&basicPasswordEncrypted,
+		&tlsSkipVerify,
+		&sortOrder,
+		&isActive,
 	)
 
 	if err != nil {
@@ -287,14 +381,32 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		return nil, err
 	}
 
+	instance := &Instance{
+		ID:                instanceID,
+		Name:              name,
+		Host:              host,
+		Username:          username,
+		PasswordEncrypted: passwordEncrypted,
+		TLSSkipVerify:     tlsSkipVerify,
+		SortOrder:         sortOrder,
+		IsActive:          isActive,
+	}
+
+	if basicUsername.Valid {
+		instance.BasicUsername = &basicUsername.String
+	}
+	if basicPasswordEncrypted.Valid {
+		instance.BasicPasswordEncrypted = &basicPasswordEncrypted.String
+	}
+
 	return instance, nil
 }
 
 func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	query := `
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify 
-		FROM instances
-		ORDER BY name ASC
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active
+		FROM instances_view
+		ORDER BY sort_order ASC, name COLLATE NOCASE ASC, id ASC
 	`
 
 	rows, err := s.db.QueryContext(ctx, query)
@@ -305,24 +417,55 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 
 	var instances []*Instance
 	for rows.Next() {
-		instance := &Instance{}
+		var id int
+		var name, host, username, passwordEncrypted string
+		var basicUsername, basicPasswordEncrypted sql.NullString
+		var tlsSkipVerify bool
+		var sortOrder int
+		var isActive bool
+
 		err := rows.Scan(
-			&instance.ID,
-			&instance.Name,
-			&instance.Host,
-			&instance.Username,
-			&instance.PasswordEncrypted,
-			&instance.BasicUsername,
-			&instance.BasicPasswordEncrypted,
-			&instance.TLSSkipVerify,
+			&id,
+			&name,
+			&host,
+			&username,
+			&passwordEncrypted,
+			&basicUsername,
+			&basicPasswordEncrypted,
+			&tlsSkipVerify,
+			&sortOrder,
+			&isActive,
 		)
 		if err != nil {
 			return nil, err
 		}
+
+		instance := &Instance{
+			ID:                id,
+			Name:              name,
+			Host:              host,
+			Username:          username,
+			PasswordEncrypted: passwordEncrypted,
+			TLSSkipVerify:     tlsSkipVerify,
+			SortOrder:         sortOrder,
+			IsActive:          isActive,
+		}
+
+		if basicUsername.Valid {
+			instance.BasicUsername = &basicUsername.String
+		}
+		if basicPasswordEncrypted.Valid {
+			instance.BasicPasswordEncrypted = &basicPasswordEncrypted.String
+		}
+
 		instances = append(instances, instance)
 	}
 
-	return instances, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return instances, nil
 }
 
 func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify *bool) (*Instance, error) {
@@ -332,9 +475,57 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		return nil, err
 	}
 
-	// Start building the update query
-	query := `UPDATE instances SET name = ?, host = ?, username = ?, basic_username = ?`
-	args := []any{name, normalizedHost, username, basicUsername}
+	// Start a transaction
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Prepare strings to intern - always intern name, host, username
+	// Also intern basic_username if it's provided and not empty
+	var basicUsernameToIntern *string
+	if basicUsername != nil && *basicUsername != "" {
+		basicUsernameToIntern = basicUsername
+	}
+
+	// Intern all strings in a single call
+	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &name, &normalizedHost, &username, basicUsernameToIntern)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern strings: %w", err)
+	}
+
+	// Ensure required fields (name, host, username) have valid IDs
+	// If username is empty (localhost bypass), intern the empty string
+	nameID := allIDs[0].Int64
+	hostID := allIDs[1].Int64
+
+	var usernameID int64
+	if allIDs[2].Valid {
+		usernameID = allIDs[2].Int64
+	} else {
+		// Username was empty - intern empty string for localhost bypass auth
+		usernameID, err = dbinterface.InternEmptyString(ctx, tx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to intern empty username: %w", err)
+		}
+	}
+
+	// Build UPDATE query
+	query := "UPDATE instances SET name_id = ?, host_id = ?, username_id = ?"
+	args := []any{nameID, hostID, usernameID}
+
+	// Handle basic_username update
+	if basicUsername != nil {
+		if *basicUsername == "" {
+			// Empty string explicitly provided - clear the basic username
+			query += ", basic_username_id = NULL"
+		} else {
+			// Basic username provided - use the already interned ID
+			query += ", basic_username_id = ?"
+			args = append(args, allIDs[3])
+		}
+	}
 
 	// Handle password update - encrypt if provided
 	if password != "" {
@@ -370,7 +561,7 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	query += " WHERE id = ?"
 	args = append(args, id)
 
-	result, err := s.db.ExecContext(ctx, query, args...)
+	result, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -384,13 +575,100 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		return nil, ErrInstanceNotFound
 	}
 
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	return s.Get(ctx, id)
 }
 
+func (s *InstanceStore) SetActiveState(ctx context.Context, id int, active bool) (*Instance, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	result, err := tx.ExecContext(ctx, `UPDATE instances SET is_active = ? WHERE id = ?`, active, id)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+
+	if rows == 0 {
+		return nil, ErrInstanceNotFound
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return s.Get(ctx, id)
+}
+
+func (s *InstanceStore) UpdateOrder(ctx context.Context, instanceIDs []int) error {
+	if len(instanceIDs) == 0 {
+		return errors.New("instance ids cannot be empty")
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var totalInstances int
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM instances").Scan(&totalInstances); err != nil {
+		return fmt.Errorf("failed to validate instance list: %w", err)
+	}
+	if len(instanceIDs) != totalInstances {
+		return fmt.Errorf("partial reordering not allowed: expected %d instances, got %d", totalInstances, len(instanceIDs))
+	}
+
+	seen := make(map[int]struct{}, len(instanceIDs))
+	updateQuery := `UPDATE instances SET sort_order = ? WHERE id = ?`
+	for order, id := range instanceIDs {
+		if _, exists := seen[id]; exists {
+			return fmt.Errorf("duplicate instance id %d in reorder payload", id)
+		}
+		seen[id] = struct{}{}
+
+		result, err := tx.ExecContext(ctx, updateQuery, order, id)
+		if err != nil {
+			return err
+		}
+
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+
+		if rows != 1 {
+			return ErrInstanceNotFound
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
 func (s *InstanceStore) Delete(ctx context.Context, id int) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	query := `DELETE FROM instances WHERE id = ?`
 
-	result, err := s.db.ExecContext(ctx, query, id)
+	result, err := tx.ExecContext(ctx, query, id)
 	if err != nil {
 		return err
 	}
@@ -402,6 +680,10 @@ func (s *InstanceStore) Delete(ctx context.Context, id int) error {
 
 	if rows == 0 {
 		return ErrInstanceNotFound
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return nil

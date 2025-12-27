@@ -2,14 +2,14 @@ name: Check for missing License Headers
 description: Automatically adds missing license headers and create PR if changes needed
 
 on:
-  schedule:
+  #schedule:
     # Run every Monday at 9:00 AM UTC
-    - cron: '0 9 * * 1'
+    #- cron: '0 9 * * 1'
   workflow_dispatch:
 
 jobs:
   update-licenses:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     permissions:
       contents: write
@@ -17,7 +17,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
