@@ -186,7 +186,7 @@ func TestShouldRenameTorrentDisplay(t *testing.T) {
 	otherPack := rls.Release{Series: 2, Episode: 0}
 
 	require.False(t, shouldRenameTorrentDisplay(&episode, &seasonPack))
-	require.True(t, shouldRenameTorrentDisplay(&seasonPack, &episode))
+	require.False(t, shouldRenameTorrentDisplay(&seasonPack, &episode))
 	require.True(t, shouldRenameTorrentDisplay(&seasonPack, &otherPack))
 	require.False(t, shouldRenameTorrentDisplay(&episode, &otherPack))
 }
