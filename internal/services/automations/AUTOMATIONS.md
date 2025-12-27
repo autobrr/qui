@@ -72,3 +72,27 @@ The service only sends API calls to qBittorrent when the torrent's current setti
 ### Batched API Calls
 
 To handle large torrent collections efficiently, torrents are grouped by setting value and sent to qBittorrent in batches of up to 150 hashes per API call.
+
+## Age Fields
+
+In addition to absolute timestamp fields (`Added On`, `Completed On`, `Last Activity`), the query builder supports **age** versions of these fields that express time as "how long ago" rather than as a specific date:
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| Added Age | Time since torrent was added | `Added Age > 7 days` - matches torrents added more than 7 days ago |
+| Completed Age | Time since download completed | `Completed Age < 1 hour` - matches torrents completed within the last hour |
+| Inactive Time | Time since last activity | `Inactive Time > 24 hours` - matches inactive torrents |
+
+### When to Use Age Fields
+
+Age fields are useful when you want rules that adapt to the current time:
+
+- **"Delete torrents older than 30 days"** - Use `Added Age > 30 days`
+- **"Pause torrents with no activity for 1 week"** - Use `Inactive Time > 7 days`
+- **"Apply limits to recently completed torrents"** - Use `Completed Age < 2 hours`
+
+### Behavior Notes
+
+- **Unset timestamps**: If completion or last activity is 0 (never completed / never had activity), the age condition will **not match**. This prevents unexpected matches on torrents still downloading.
+- **Clock skew**: Negative ages (timestamp in the future) are clamped to 0 seconds to avoid unexpected behavior from clock drift.
+- **Input format**: Age values use the same duration input as Seeding Time (minutes, hours, or days).

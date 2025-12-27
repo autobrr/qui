@@ -21,6 +21,9 @@ export const CONDITION_FIELDS = {
   // Duration fields (seconds)
   SEEDING_TIME: { label: "Seeding Time", type: "duration" as const, description: "Time spent seeding" },
   TIME_ACTIVE: { label: "Time Active", type: "duration" as const, description: "Total active time" },
+  ADDED_ON_AGE: { label: "Added Age", type: "duration" as const, description: "Time since torrent was added" },
+  COMPLETION_ON_AGE: { label: "Completed Age", type: "duration" as const, description: "Time since download completed" },
+  LAST_ACTIVITY_AGE: { label: "Inactive Time", type: "duration" as const, description: "Time since last activity" },
 
   // Timestamp fields (unix)
   ADDED_ON: { label: "Added On", type: "timestamp" as const, description: "When torrent was added" },
@@ -184,7 +187,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Time",
-    fields: ["SEEDING_TIME", "TIME_ACTIVE", "ADDED_ON", "COMPLETION_ON", "LAST_ACTIVITY"],
+    fields: ["SEEDING_TIME", "TIME_ACTIVE", "ADDED_ON_AGE", "COMPLETION_ON_AGE", "LAST_ACTIVITY_AGE", "ADDED_ON", "COMPLETION_ON", "LAST_ACTIVITY"],
   },
   {
     label: "Progress",

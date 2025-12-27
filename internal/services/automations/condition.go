@@ -47,6 +47,11 @@ const (
 	FieldSeedingTime  = models.FieldSeedingTime
 	FieldTimeActive   = models.FieldTimeActive
 
+	// Age fields (time since timestamp)
+	FieldAddedOnAge      = models.FieldAddedOnAge
+	FieldCompletionOnAge = models.FieldCompletionOnAge
+	FieldLastActivityAge = models.FieldLastActivityAge
+
 	// Numeric fields (float64)
 	FieldRatio        = models.FieldRatio
 	FieldProgress     = models.FieldProgress
