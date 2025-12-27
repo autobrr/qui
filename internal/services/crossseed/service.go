@@ -8415,8 +8415,10 @@ func (s *Service) processHardlinkMode(
 		options["skip_checking"] = "true"
 		if req.SkipAutoResume {
 			options["stopped"] = "true"
+			options["paused"] = "true"
 		} else {
 			options["stopped"] = "false"
+			options["paused"] = "false"
 		}
 	}
 
@@ -8606,8 +8608,8 @@ type reflinkModeResult struct {
 // Key differences from hardlink mode:
 // - Reflinks allow qBittorrent to safely write/repair bytes without corrupting originals
 // - Reflink mode never skips due to piece-boundary safety (that's the whole point)
-// - Reflink mode always requires recheck after add
-// - If SkipRecheck is enabled, reflink mode returns skipped_recheck instead of adding
+// - Reflink mode triggers recheck only when extra files are present
+// - If SkipRecheck is enabled and reflink mode would require recheck, it returns skipped_recheck instead of adding
 func (s *Service) processReflinkMode(
 	ctx context.Context,
 	candidate CrossSeedCandidate,
@@ -8651,9 +8653,10 @@ func (s *Service) processReflinkMode(
 
 	// From here on, reflink mode is ENABLED - failures must return errors (no fallback)
 
-	// Reflink mode always requires recheck (we can't skip checking because we might have
-	// mismatched/extra files that need downloading)
-	if req.SkipRecheck {
+	// Reflink mode only requires recheck when the incoming torrent has extra files
+	// (files not present in the matched torrent).
+	hasExtras := hasExtraSourceFiles(sourceFiles, candidateFiles)
+	if req.SkipRecheck && hasExtras {
 		return reflinkModeResult{
 			Used:    true,
 			Success: false,
@@ -8662,7 +8665,7 @@ func (s *Service) processReflinkMode(
 				InstanceName: candidate.InstanceName,
 				Success:      false,
 				Status:       "skipped_recheck",
-				Message:      "Reflink mode always requires recheck; skipped because SkipRecheck is enabled",
+				Message:      "Skipped cross-seed: reflink mode requires recheck for extra files and SkipRecheck is enabled",
 			},
 		}
 	}
@@ -8849,10 +8852,24 @@ func (s *Service) processReflinkMode(
 	options["savepath"] = plan.RootDir
 	options["contentLayout"] = "Original"
 
-	// Reflink mode always adds paused and triggers recheck
+	// Handle skip_checking and pause behavior based on extras:
+	// - No extras: skip_checking=true, start immediately (100% complete)
+	// - With extras: skip_checking=true, add paused, then recheck to find missing pieces
 	options["skip_checking"] = "true"
-	options["stopped"] = "true"
-	options["paused"] = "true"
+	if hasExtras {
+		// With extras: add paused, we'll trigger recheck after add
+		options["stopped"] = "true"
+		options["paused"] = "true"
+	} else {
+		// No extras: start immediately unless SkipAutoResume
+		if req.SkipAutoResume {
+			options["stopped"] = "true"
+			options["paused"] = "true"
+		} else {
+			options["stopped"] = "false"
+			options["paused"] = "false"
+		}
+	}
 
 	clonedFiles := len(candidateTorrentFilesToClone)
 	totalFiles := len(sourceFiles)
@@ -8862,6 +8879,7 @@ func (s *Service) processReflinkMode(
 		Str("torrentName", torrentName).
 		Str("savepath", plan.RootDir).
 		Str("category", crossCategory).
+		Bool("hasExtras", hasExtras).
 		Int("clonedFiles", clonedFiles).
 		Int("totalFiles", totalFiles).
 		Msg("[CROSSSEED] Reflink mode: adding torrent")
@@ -8896,36 +8914,39 @@ func (s *Service) processReflinkMode(
 	// Build result message
 	statusMsg := fmt.Sprintf("Added via reflink mode (match: %s, files: %d/%d)", matchType, clonedFiles, totalFiles)
 
-	// Trigger recheck so qBittorrent discovers which pieces are present (cloned)
-	// and which are missing (to download)
-	if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "recheck"); err != nil {
-		log.Warn().
-			Err(err).
-			Int("instanceID", candidate.InstanceID).
-			Str("torrentHash", torrentHash).
-			Msg("[CROSSSEED] Reflink mode: failed to trigger recheck after add")
-		statusMsg += " - recheck failed, manual intervention required"
-	} else if req.SkipAutoResume {
-		// User requested to skip auto-resume - leave paused after recheck
-		log.Debug().
-			Int("instanceID", candidate.InstanceID).
-			Str("torrentHash", torrentHash).
-			Msg("[CROSSSEED] Reflink mode: skipping auto-resume per user settings")
-		statusMsg += " - auto-resume skipped per settings"
-	} else {
-		// Queue for background resume - worker will resume when recheck completes at threshold
-		log.Debug().
-			Int("instanceID", candidate.InstanceID).
-			Str("torrentHash", torrentHash).
-			Int("missingFiles", totalFiles-clonedFiles).
-			Msg("[CROSSSEED] Reflink mode: queuing torrent for recheck resume")
-		if err := s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash); err != nil {
-			statusMsg += " - auto-resume queue full, manual resume required"
+	// Handle recheck and auto-resume when extras exist
+	if hasExtras {
+		// Trigger recheck so qBittorrent discovers which pieces are present (cloned)
+		// and which are missing (extras to download)
+		if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{torrentHash}, "recheck"); err != nil {
+			log.Warn().
+				Err(err).
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentHash", torrentHash).
+				Msg("[CROSSSEED] Reflink mode: failed to trigger recheck after add")
+			statusMsg += " - recheck failed, manual intervention required"
+		} else if req.SkipAutoResume {
+			// User requested to skip auto-resume - leave paused after recheck
+			log.Debug().
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentHash", torrentHash).
+				Msg("[CROSSSEED] Reflink mode: skipping auto-resume per user settings")
+			statusMsg += " - auto-resume skipped per settings"
+		} else {
+			// Queue for background resume - worker will resume when recheck completes at threshold
+			log.Debug().
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentHash", torrentHash).
+				Int("missingFiles", totalFiles-clonedFiles).
+				Msg("[CROSSSEED] Reflink mode: queuing torrent for recheck resume")
+			if err := s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash); err != nil {
+				statusMsg += " - auto-resume queue full, manual resume required"
+			}
 		}
 	}
 
 	// Add note about low completion behavior
-	if clonedFiles < totalFiles {
+	if hasExtras && clonedFiles < totalFiles {
 		statusMsg += " (below threshold = remains paused for manual review)"
 	}
 

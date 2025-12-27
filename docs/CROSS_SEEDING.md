@@ -91,20 +91,23 @@ Reflink mode creates copy-on-write clones of the matched files. Unlike hardlinks
 
 - **Local filesystem access** must be enabled on the target qBittorrent instance.
 - The base directory must be on the **same filesystem/volume** as the instance's download paths.
+- The base directory must be a **real filesystem mount**, not a pooled/virtual mount (common examples: `mergerfs`, other FUSE mounts, `overlayfs`). Even if the underlying disks are XFS with `reflink=1`, reflink clone ioctls typically will not work through these layers.
 - The filesystem must support reflinks:
   - **Linux**: BTRFS, XFS (with reflink=1), and similar CoW filesystems
   - **macOS**: APFS
   - **Windows/FreeBSD**: Not currently supported
+
+Tip: On Linux, check the filesystem type for a path with `stat -f -c %T /path` (you want `xfs`/`btrfs`, not `fuseblk`/`fuse.mergerfs`/`overlayfs`). If qui runs in Docker, ensure you mount the **direct disk path** (e.g. `/mnt/disk1/...`) into the container.
 
 ### Behavior differences from hardlink mode
 
 | Aspect | Hardlink Mode | Reflink Mode |
 |--------|--------------|--------------|
 | Piece-boundary check | Skips if unsafe | Never skips (safe to modify clones) |
-| Recheck | Only when extras exist | Always triggers recheck |
+| Recheck | Only when extras exist | Only when extras exist |
 | Disk usage | Zero (shared blocks) | Starts near-zero; grows as modified |
-| SkipRecheck option | Respects setting | Returns `skipped_recheck` if enabled |
-| Below-threshold behavior | Auto-resume or pause | Always pauses for manual review |
+| SkipRecheck option | Respects setting | Returns `skipped_recheck` only when recheck is required |
+| Below-threshold behavior | Auto-resume or pause | Auto-resume or pause (when recheck runs) |
 
 ### Disk usage implications
 
@@ -124,13 +127,13 @@ Reflinks use copy-on-write semantics:
 
 **Note:** Hardlink and reflink modes are mutually exclusive—only one can be enabled per instance.
 
-### Recheck always required
+### When recheck is required
 
-Reflink mode always triggers a recheck after adding the torrent. This is because:
-- The clone might have missing/extra files that need downloading
-- qBittorrent must verify which pieces already match
+Recheck is required when the incoming torrent has **extra files** that are not present in the matched torrent. In this case qBittorrent needs a recheck to identify which pieces are missing so it can download the extras.
 
-If you have `SkipRecheck` enabled in your cross-seed settings, reflink mode will skip the cross-seed entirely rather than add without rechecking.
+If there are no extra files, reflink mode adds the torrent with `skip_checking=true` (like hardlink mode) so it can start seeding immediately unless you enabled "Skip auto-resume".
+
+If you have `SkipRecheck` enabled in your cross-seed settings, reflink mode will skip only the cases where a recheck is required (extra files).
 
 ### Below-threshold behavior
 
@@ -246,9 +249,10 @@ This typically occurs in default mode when the save path doesn't match where fil
 
 Common causes:
 - **Filesystem doesn't support reflinks**: The filesystem at the base directory doesn't support copy-on-write clones. On Linux, use BTRFS or XFS (with reflink enabled). On macOS, use APFS.
+- **Pooled/virtual mount**: The base directory is on a pooled/virtual filesystem (like `mergerfs`, other FUSE mounts, or `overlayfs`) which often does not implement reflink cloning. Use a direct disk mount (e.g. `/mnt/disk1/...`) for both your seeded data and the reflink base directory.
 - **Filesystem mismatch**: Base directory is on a different filesystem than the download paths.
 - **Missing local filesystem access**: The target instance doesn't have "Local filesystem access" enabled.
-- **SkipRecheck enabled**: Reflink mode always requires recheck; if SkipRecheck is enabled, reflink mode skips the cross-seed.
+- **SkipRecheck enabled**: If reflink mode would require recheck (extra files), it skips the cross-seed.
 
 ### Cross-seed skipped: "extra files share pieces with content"
 

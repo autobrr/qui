@@ -421,8 +421,8 @@ function HardlinkModeSettings() {
         <p className="text-xs text-muted-foreground px-4">
           Create hardlinked or reflinked (copy-on-write) file trees for cross-seeds. Each instance can be configured
           independently. The base directory must be on the same filesystem as the instance's download paths.
-          <strong> Reflink mode</strong> allows safe cross-seeding of torrents with extra/missing files—always triggers recheck,
-          and if below threshold, leaves paused for manual review.
+          <strong> Reflink mode</strong> allows safe cross-seeding of torrents with extra/missing files. When extra files are
+          present, qui triggers a recheck; if below threshold, the torrent stays paused for manual review.
         </p>
         <div className="border-t border-border/70 p-4 space-y-4">
 
@@ -488,7 +488,7 @@ function HardlinkModeSettings() {
                           <Label className="font-medium">Reflink mode (copy-on-write)</Label>
                           <p className="text-xs text-muted-foreground">
                             {canEnableModes
-                              ? "Create reflinked clones—safe for extra/missing files; always rechecks"
+                              ? "Create reflinked clones—safe for extra/missing files; rechecks when needed"
                               : "Enable \"Local filesystem access\" in Instance Settings first"}
                           </p>
                         </div>
@@ -503,8 +503,9 @@ function HardlinkModeSettings() {
                         <Alert className="bg-blue-500/5 border-blue-500/30">
                           <Info className="h-4 w-4 text-blue-500" />
                           <AlertDescription className="text-xs">
-                            Reflink mode always triggers recheck. If completion is below threshold, the torrent
-                            remains paused for manual review. Disk usage starts near-zero but grows as blocks are modified.
+                            Reflink mode triggers recheck when extra files are present so qBittorrent can download
+                            missing pieces. If completion is below threshold, the torrent remains paused for manual
+                            review. Disk usage starts near-zero but grows as blocks are modified.
                           </AlertDescription>
                         </Alert>
                       )}
