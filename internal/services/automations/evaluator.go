@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
@@ -44,6 +45,10 @@ type EvalContext struct {
 	// CategoryNames maps lowercased category → slice of categoryEntry.
 	// Used for CONTAINS_IN iteration (stores pre-normalized names).
 	CategoryNames map[string][]categoryEntry
+
+	// NowUnix is the current Unix timestamp, used for age field evaluation.
+	// If zero, time.Now().Unix() is used. Set this for deterministic tests.
+	NowUnix int64
 }
 
 // separatorReplacer replaces common torrent name separators with spaces.
@@ -307,6 +312,22 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareInt64(torrent.SeedingTime, cond)
 	case FieldTimeActive:
 		return compareInt64(torrent.TimeActive, cond)
+
+	// Age fields (time since timestamp)
+	case FieldAddedOnAge:
+		return compareAge(torrent.AddedOn, cond, ctx)
+	case FieldCompletionOnAge:
+		// If completion_on is 0 (never completed), don't match
+		if torrent.CompletionOn == 0 {
+			return false
+		}
+		return compareAge(torrent.CompletionOn, cond, ctx)
+	case FieldLastActivityAge:
+		// If last_activity is 0 (never had activity), don't match
+		if torrent.LastActivity == 0 {
+			return false
+		}
+		return compareAge(torrent.LastActivity, cond, ctx)
 
 	// Float64 fields
 	case FieldRatio:
@@ -595,4 +616,19 @@ func compareHardlinkScope(value string, cond *RuleCondition) bool {
 	default:
 		return false
 	}
+}
+
+// compareAge computes the age (time since timestamp) and compares it against the condition.
+// Age is calculated as: nowUnix - timestamp, clamped to 0 to avoid clock-skew weirdness.
+func compareAge(timestamp int64, cond *RuleCondition, ctx *EvalContext) bool {
+	// Get current time from context (for testability) or use time.Now()
+	nowUnix := time.Now().Unix()
+	if ctx != nil && ctx.NowUnix > 0 {
+		nowUnix = ctx.NowUnix
+	}
+
+	// Compute age in seconds, clamped to 0 to avoid negative ages from clock skew
+	ageSeconds := max(nowUnix-timestamp, 0)
+
+	return compareInt64(ageSeconds, cond)
 }

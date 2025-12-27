@@ -143,6 +143,10 @@ export type ConditionField =
   | "LAST_ACTIVITY"
   | "SEEDING_TIME"
   | "TIME_ACTIVE"
+  // Age fields (time since timestamp - duration type)
+  | "ADDED_ON_AGE"
+  | "COMPLETION_ON_AGE"
+  | "LAST_ACTIVITY_AGE"
   // Numeric fields (float64)
   | "RATIO"
   | "PROGRESS"

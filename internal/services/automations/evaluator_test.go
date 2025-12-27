@@ -1165,6 +1165,205 @@ func TestEvaluateCondition_ErrorCases(t *testing.T) {
 	}
 }
 
+func TestEvaluateCondition_AgeFields(t *testing.T) {
+	// Fixed "now" for deterministic tests: 2024-01-15 12:00:00 UTC
+	nowUnix := int64(1705320000)
+
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		torrent  qbt.Torrent
+		ctx      *EvalContext
+		expected bool
+	}{
+		// ADDED_ON_AGE tests
+		{
+			name: "added_on_age less than 1 hour - matches",
+			cond: &RuleCondition{
+				Field:    FieldAddedOnAge,
+				Operator: OperatorLessThan,
+				Value:    "3600", // 1 hour in seconds
+			},
+			torrent:  qbt.Torrent{AddedOn: nowUnix - 1800}, // added 30 minutes ago
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: true,
+		},
+		{
+			name: "added_on_age less than 1 hour - does not match",
+			cond: &RuleCondition{
+				Field:    FieldAddedOnAge,
+				Operator: OperatorLessThan,
+				Value:    "3600", // 1 hour in seconds
+			},
+			torrent:  qbt.Torrent{AddedOn: nowUnix - 7200}, // added 2 hours ago
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: false,
+		},
+		{
+			name: "added_on_age greater than 1 day - matches",
+			cond: &RuleCondition{
+				Field:    FieldAddedOnAge,
+				Operator: OperatorGreaterThan,
+				Value:    "86400", // 1 day in seconds
+			},
+			torrent:  qbt.Torrent{AddedOn: nowUnix - 172800}, // added 2 days ago
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: true,
+		},
+		{
+			name: "added_on_age between 1 hour and 2 hours - matches",
+			cond: &RuleCondition{
+				Field:    FieldAddedOnAge,
+				Operator: OperatorBetween,
+				MinValue: float64Ptr(3600),  // 1 hour
+				MaxValue: float64Ptr(7200),  // 2 hours
+			},
+			torrent:  qbt.Torrent{AddedOn: nowUnix - 5400}, // added 1.5 hours ago
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: true,
+		},
+		{
+			name: "added_on_age between 1 hour and 2 hours - outside range",
+			cond: &RuleCondition{
+				Field:    FieldAddedOnAge,
+				Operator: OperatorBetween,
+				MinValue: float64Ptr(3600),  // 1 hour
+				MaxValue: float64Ptr(7200),  // 2 hours
+			},
+			torrent:  qbt.Torrent{AddedOn: nowUnix - 10800}, // added 3 hours ago
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: false,
+		},
+
+		// COMPLETION_ON_AGE tests
+		{
+			name: "completion_on_age less than 1 hour - matches",
+			cond: &RuleCondition{
+				Field:    FieldCompletionOnAge,
+				Operator: OperatorLessThan,
+				Value:    "3600", // 1 hour
+			},
+			torrent:  qbt.Torrent{CompletionOn: nowUnix - 1800}, // completed 30 min ago
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: true,
+		},
+		{
+			name: "completion_on_age greater than 1 day - matches",
+			cond: &RuleCondition{
+				Field:    FieldCompletionOnAge,
+				Operator: OperatorGreaterThan,
+				Value:    "86400", // 1 day
+			},
+			torrent:  qbt.Torrent{CompletionOn: nowUnix - 172800}, // completed 2 days ago
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: true,
+		},
+		{
+			name: "completion_on_age unset (0) - does not match",
+			cond: &RuleCondition{
+				Field:    FieldCompletionOnAge,
+				Operator: OperatorGreaterThan,
+				Value:    "0", // any age
+			},
+			torrent:  qbt.Torrent{CompletionOn: 0}, // never completed
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: false,
+		},
+		{
+			name: "completion_on_age between - matches",
+			cond: &RuleCondition{
+				Field:    FieldCompletionOnAge,
+				Operator: OperatorBetween,
+				MinValue: float64Ptr(3600),
+				MaxValue: float64Ptr(7200),
+			},
+			torrent:  qbt.Torrent{CompletionOn: nowUnix - 5400}, // completed 1.5 hours ago
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: true,
+		},
+
+		// LAST_ACTIVITY_AGE tests
+		{
+			name: "last_activity_age less than 1 hour - matches",
+			cond: &RuleCondition{
+				Field:    FieldLastActivityAge,
+				Operator: OperatorLessThan,
+				Value:    "3600", // 1 hour
+			},
+			torrent:  qbt.Torrent{LastActivity: nowUnix - 1800}, // active 30 min ago
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: true,
+		},
+		{
+			name: "last_activity_age greater than 1 day - matches",
+			cond: &RuleCondition{
+				Field:    FieldLastActivityAge,
+				Operator: OperatorGreaterThan,
+				Value:    "86400", // 1 day
+			},
+			torrent:  qbt.Torrent{LastActivity: nowUnix - 172800}, // active 2 days ago
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: true,
+		},
+		{
+			name: "last_activity_age unset (0) - does not match",
+			cond: &RuleCondition{
+				Field:    FieldLastActivityAge,
+				Operator: OperatorGreaterThan,
+				Value:    "0", // any age
+			},
+			torrent:  qbt.Torrent{LastActivity: 0}, // never had activity
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: false,
+		},
+		{
+			name: "last_activity_age between - matches",
+			cond: &RuleCondition{
+				Field:    FieldLastActivityAge,
+				Operator: OperatorBetween,
+				MinValue: float64Ptr(3600),
+				MaxValue: float64Ptr(7200),
+			},
+			torrent:  qbt.Torrent{LastActivity: nowUnix - 5400}, // active 1.5 hours ago
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: true,
+		},
+
+		// Clock skew handling (negative age clamped to 0)
+		{
+			name: "added_on_age with future timestamp (clock skew) - clamped to 0",
+			cond: &RuleCondition{
+				Field:    FieldAddedOnAge,
+				Operator: OperatorEqual,
+				Value:    "0",
+			},
+			torrent:  qbt.Torrent{AddedOn: nowUnix + 3600}, // timestamp in the future
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: true, // age clamped to 0
+		},
+		{
+			name: "added_on_age with future timestamp - greater than fails",
+			cond: &RuleCondition{
+				Field:    FieldAddedOnAge,
+				Operator: OperatorGreaterThan,
+				Value:    "0",
+			},
+			torrent:  qbt.Torrent{AddedOn: nowUnix + 3600}, // timestamp in the future
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: false, // clamped to 0, so not > 0
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := EvaluateConditionWithContext(tt.cond, tt.torrent, tt.ctx, 0)
+			if result != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
+
 func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 	torrent := qbt.Torrent{
 		Hash: "abc123",

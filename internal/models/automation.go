@@ -349,6 +349,11 @@ const (
 	FieldSeedingTime  ConditionField = "SEEDING_TIME"
 	FieldTimeActive   ConditionField = "TIME_ACTIVE"
 
+	// Age fields (time since timestamp - computed as nowUnix - timestamp)
+	FieldAddedOnAge      ConditionField = "ADDED_ON_AGE"
+	FieldCompletionOnAge ConditionField = "COMPLETION_ON_AGE"
+	FieldLastActivityAge ConditionField = "LAST_ACTIVITY_AGE"
+
 	// Numeric fields (float64)
 	FieldRatio        ConditionField = "RATIO"
 	FieldProgress     ConditionField = "PROGRESS"
