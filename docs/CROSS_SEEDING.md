@@ -72,11 +72,11 @@ By default, hardlink-added torrents start seeding immediately (since `skip_check
 - Hardlinks share disk blocks with the original file but increase the link count. Deleting one link does not free space until all links to that file are removed.
 - Windows: Folder names in the hardlink tree are sanitized to remove Windows-illegal characters (like `: * ? " < > |`). The torrent's internal file paths are not modified.
 - Ensure the base directory has sufficient inode capacity for the number of hardlinks you expect to create.
-- **Ignore patterns apply to reuse mode only.** Hardlink mode requires a 1:1 file match—if the incoming torrent contains any file that cannot be hardlinked (including `.nfo`/`.srt` sidecars not present in the matched torrent), the cross-seed fails.
+- **Hardlink mode supports extra files when piece-boundary safe.** If the incoming torrent contains extra files not present in the matched torrent (e.g., `.nfo`/`.srt` sidecars), hardlink mode will link the content files and trigger a recheck so qBittorrent downloads the extras. If extras share pieces with content (unsafe), the cross-seed is skipped.
 
 ## Recheck & Alignment
 
-### Default mode
+### Default mode (reuse)
 
 In default mode, qui points the cross-seed torrent at the matched torrent's existing files. If the incoming torrent has a different display name or folder structure, qui renames them to match. After rename-alignment, qBittorrent may need to recheck the torrent to verify files at the new paths.
 
@@ -86,9 +86,30 @@ Rechecks are also required when the source torrent contains extra files not pres
 - Torrents that complete recheck at 95% or higher (configurable via "Size mismatch tolerance") auto-resume.
 - Torrents below the threshold stay paused for manual investigation.
 
+#### Piece-boundary safety for extra files
+
+When the incoming torrent has extra files (files not present in the matched torrent), qBittorrent will download them during recheck. This is only safe when those extra files are **piece-boundary aligned**—meaning no torrent piece spans both existing content and the missing file.
+
+**Why this matters:** BitTorrent pieces are hashed together. If a piece contains bytes from both your existing content file AND a missing file, qBittorrent would need to download new data that overlaps with your existing content—potentially corrupting it.
+
+**What qui does:**
+- Before adding any cross-seed with extra files, qui analyzes the torrent's piece layout
+- If extra files share pieces with content files, the cross-seed is **skipped** with reason "extra files share pieces with content"
+- If extra files are safely isolated (piece-boundary aligned), the cross-seed proceeds normally
+
+This check applies regardless of whether the extra files match ignore patterns. The piece-boundary constraint is fundamental to how BitTorrent works.
+
 ### Hardlink mode
 
-No recheck or rename-alignment is needed because the hardlink tree matches the incoming layout exactly. Hardlink mode never rechecks and never downloads missing files—if any incoming file is missing on disk (even if it matches an ignore pattern), the cross-seed fails rather than attempting a partial add.
+No rename-alignment is needed because the hardlink tree is created to match the incoming torrent's layout exactly.
+
+When the incoming torrent has extra files not present in the matched torrent:
+- qui hardlinks the content files that exist on disk
+- The torrent is added paused, then qui triggers a recheck
+- qBittorrent identifies the missing pieces (extras) and downloads them
+- Once recheck completes at the configured threshold, qui auto-resumes the torrent
+
+The same piece-boundary safety check applies: if extra files share pieces with content, the cross-seed is skipped to prevent data corruption.
 
 ## Category Behavior
 
@@ -151,6 +172,14 @@ This typically occurs in default mode when the save path doesn't match where fil
 - Check that the cross-seed's save path matches where files actually exist
 - Verify the matched torrent's save path in qBittorrent
 - Ensure the matched torrent has completed downloading (100% progress)
+
+### Cross-seed skipped: "extra files share pieces with content"
+
+The incoming torrent has files not present in your matched torrent, and those files share torrent pieces with your existing content. Downloading them would require overwriting parts of your existing files.
+
+**Solutions:**
+- This is expected for some torrents—the skip protects your data
+- If you need to cross-seed this release, you'd need to use copy mode (not currently implemented) or download the torrent fresh
 
 ### Cross-seed stuck at low percentage after recheck
 

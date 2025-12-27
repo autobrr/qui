@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -491,26 +492,33 @@ func ParseTorrentName(torrentBytes []byte) (name string, hash string, err error)
 
 // ParseTorrentMetadata extracts comprehensive metadata from torrent bytes
 func ParseTorrentMetadata(torrentBytes []byte) (name string, hash string, files qbt.TorrentFiles, err error) {
+	name, hash, files, _, err = ParseTorrentMetadataWithInfo(torrentBytes)
+	return name, hash, files, err
+}
+
+// ParseTorrentMetadataWithInfo extracts comprehensive metadata from torrent bytes,
+// including the raw metainfo.Info for piece-level operations.
+func ParseTorrentMetadataWithInfo(torrentBytes []byte) (name, hash string, files qbt.TorrentFiles, info *metainfo.Info, err error) {
 	mi, err := metainfo.Load(bytes.NewReader(torrentBytes))
 	if err != nil {
-		return "", "", nil, fmt.Errorf("failed to parse torrent metainfo: %w", err)
+		return "", "", nil, nil, fmt.Errorf("failed to parse torrent metainfo: %w", err)
 	}
 
-	info, err := mi.UnmarshalInfo()
+	infoVal, err := mi.UnmarshalInfo()
 	if err != nil {
-		return "", "", nil, fmt.Errorf("failed to unmarshal torrent info: %w", err)
+		return "", "", nil, nil, fmt.Errorf("failed to unmarshal torrent info: %w", err)
 	}
 
-	name = info.Name
+	name = infoVal.Name
 	hash = mi.HashInfoBytes().HexString()
 
 	if name == "" {
-		return "", "", nil, fmt.Errorf("torrent has no name")
+		return "", "", nil, nil, errors.New("torrent has no name")
 	}
 
-	files = BuildTorrentFilesFromInfo(name, info)
+	files = BuildTorrentFilesFromInfo(name, infoVal)
 
-	return name, hash, files, nil
+	return name, hash, files, &infoVal, nil
 }
 
 // BuildTorrentFilesFromInfo creates qBittorrent-compatible file list from torrent info
@@ -557,7 +565,7 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentF
 		displayPath := f.DisplayPath(&info)
 		name := rootName
 		if info.IsDir() && displayPath != "" {
-			name = strings.Join([]string{rootName, displayPath}, "/")
+			name = rootName + "/" + displayPath
 		} else if !info.IsDir() && displayPath != "" {
 			name = displayPath
 		}

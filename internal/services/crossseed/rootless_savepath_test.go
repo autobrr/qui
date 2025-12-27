@@ -2,6 +2,7 @@ package crossseed
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"testing"
 
@@ -60,9 +61,7 @@ func (*rootlessSavePathSyncManager) GetAppPreferences(context.Context, int) (qbt
 
 func (m *rootlessSavePathSyncManager) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) error {
 	m.addedOptions = make(map[string]string, len(options))
-	for key, value := range options {
-		m.addedOptions[key] = value
-	}
+	maps.Copy(m.addedOptions, options)
 	return nil
 }
 
@@ -195,7 +194,7 @@ func TestProcessCrossSeedCandidate_RootlessContentDirOverridesSavePath(t *testin
 		Torrents:     []qbt.Torrent{matchedTorrent},
 	}
 
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
 	require.True(t, result.Success)
 	require.Equal(t, "added", result.Status)
 
@@ -273,7 +272,7 @@ func TestProcessCrossSeedCandidate_RootlessContentDirOverridesSavePath_MultiFile
 		Torrents:     []qbt.Torrent{matchedTorrent},
 	}
 
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
 	require.True(t, result.Success)
 	require.Equal(t, "added", result.Status)
 
@@ -349,7 +348,7 @@ func TestProcessCrossSeedCandidate_RootlessContentDirNoopWhenSavePathMatches(t *
 		Torrents:     []qbt.Torrent{matchedTorrent},
 	}
 
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil)
 	require.True(t, result.Success)
 	require.Equal(t, "added", result.Status)
 

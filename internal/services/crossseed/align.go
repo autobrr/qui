@@ -600,28 +600,38 @@ func hasContentFileSizeMismatch(sourceFiles, candidateFiles qbt.TorrentFiles, ig
 	return len(mismatchedFiles) > 0, mismatchedFiles
 }
 
+// fileKeySize is a composite key for matching files by normalized name + size.
+// This prevents mismatches when different files happen to have the same size
+// (e.g., source has english.srt, candidate has spanish.srt, same size → should NOT match).
+type fileKeySize struct {
+	key  string
+	size int64
+}
+
 // hasExtraSourceFiles checks if source torrent has files that don't exist in the candidate.
 // This happens when source has extra sidecar files (NFO, SRT, etc.) that weren't filtered
-// by ignorePatterns. Returns true if source has files with sizes not present in candidate.
+// by ignorePatterns. Returns true if source has files with (normalizedKey, size) not present in candidate.
 // This includes cases where source and candidate have the same file count but different files
 // (e.g., source has mkv+srt, candidate has mkv+nfo - the srt won't exist on disk).
 func hasExtraSourceFiles(sourceFiles, candidateFiles qbt.TorrentFiles) bool {
-	// Build size buckets for candidate files
-	candidateSizes := make(map[int64]int)
+	// Build (normalizedKey, size) multiset for candidate files
+	candidateKeys := make(map[fileKeySize]int)
 	for _, cf := range candidateFiles {
-		candidateSizes[cf.Size]++
+		key := fileKeySize{key: normalizeFileKey(cf.Name), size: cf.Size}
+		candidateKeys[key]++
 	}
 
-	// Count how many source files can be matched by size
+	// Count how many source files can be matched by (normalizedKey, size)
 	matched := 0
 	for _, sf := range sourceFiles {
-		if count := candidateSizes[sf.Size]; count > 0 {
-			candidateSizes[sf.Size]--
+		key := fileKeySize{key: normalizeFileKey(sf.Name), size: sf.Size}
+		if count := candidateKeys[key]; count > 0 {
+			candidateKeys[key]--
 			matched++
 		}
 	}
 
-	// If we couldn't match all source files by size, there are extras/mismatches
+	// If we couldn't match all source files, there are extras/mismatches
 	return matched < len(sourceFiles)
 }
 
