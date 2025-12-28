@@ -235,6 +235,24 @@ function InstanceOrphanScanItem({
                   </>
                 )}
               </Button>
+              {latestRun && ["pending", "scanning"].includes(latestRun.status) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleCancelRun(latestRun.id)}
+                  disabled={cancelMutation.isPending}
+                  className="h-8"
+                >
+                  {cancelMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <X className="h-4 w-4 mr-2" />
+                      Cancel
+                    </>
+                  )}
+                </Button>
+              )}
               {onConfigureInstance && (
                 <Button
                   variant="outline"
