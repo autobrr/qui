@@ -20,7 +20,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
-	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/autobrr/qui/internal/domain"
 )
@@ -33,8 +32,12 @@ type AppConfig struct {
 	dataDir string
 	version string
 
+	configMu sync.Mutex
+
 	listenersMu sync.RWMutex
 	listeners   []func(*domain.Config)
+
+	logManager *LogManager
 }
 
 func New(configDirOrPath string, versions ...string) (*AppConfig, error) {
@@ -44,9 +47,10 @@ func New(configDirOrPath string, versions ...string) (*AppConfig, error) {
 	}
 
 	c := &AppConfig{
-		viper:   viper.New(),
-		Config:  &domain.Config{},
-		version: version,
+		viper:      viper.New(),
+		Config:     &domain.Config{},
+		version:    version,
+		logManager: NewLogManager(version),
 	}
 
 	// Set defaults
@@ -64,6 +68,7 @@ func New(configDirOrPath string, versions ...string) (*AppConfig, error) {
 	if err := c.viper.Unmarshal(c.Config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
+	c.hydrateConfigFromViper()
 	c.Config.Version = c.version
 
 	// Resolve data directory after config is unmarshaled
@@ -209,11 +214,15 @@ func (c *AppConfig) watchConfig() {
 	c.viper.OnConfigChange(func(e fsnotify.Event) {
 		log.Info().Msgf("Config file changed: %s", e.Name)
 
+		c.configMu.Lock()
+		defer c.configMu.Unlock()
+
 		// Reload configuration
 		if err := c.viper.Unmarshal(c.Config); err != nil {
 			log.Error().Err(err).Msg("Failed to reload configuration")
 			return
 		}
+		c.hydrateConfigFromViper()
 
 		// Apply dynamic changes
 		c.applyDynamicChanges()
@@ -222,12 +231,42 @@ func (c *AppConfig) watchConfig() {
 
 func (c *AppConfig) applyDynamicChanges() {
 	c.Config.Version = c.version
-	c.ApplyLogConfig()
-
-	// Update check for updates flag from config changes
-	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
+	if err := c.ApplyLogConfig(); err != nil {
+		log.Error().Err(err).Msg("Failed to apply log configuration")
+	}
 
 	c.notifyListeners()
+}
+
+func (c *AppConfig) hydrateConfigFromViper() {
+	c.Config.Host = c.viper.GetString("host")
+	c.Config.Port = c.viper.GetInt("port")
+	c.Config.BaseURL = c.viper.GetString("baseUrl")
+	c.Config.SessionSecret = c.viper.GetString("sessionSecret")
+
+	c.Config.LogLevel = c.viper.GetString("logLevel")
+	c.Config.LogPath = c.viper.GetString("logPath")
+	c.Config.LogMaxSize = c.viper.GetInt("logMaxSize")
+	c.Config.LogMaxBackups = c.viper.GetInt("logMaxBackups")
+
+	c.Config.DataDir = c.viper.GetString("dataDir")
+	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
+	c.Config.TrackerIconsFetchEnabled = c.viper.GetBool("trackerIconsFetchEnabled")
+	c.Config.PprofEnabled = c.viper.GetBool("pprofEnabled")
+
+	c.Config.MetricsEnabled = c.viper.GetBool("metricsEnabled")
+	c.Config.MetricsHost = c.viper.GetString("metricsHost")
+	c.Config.MetricsPort = c.viper.GetInt("metricsPort")
+	c.Config.MetricsBasicAuthUsers = c.viper.GetString("metricsBasicAuthUsers")
+
+	c.Config.ExternalProgramAllowList = c.viper.GetStringSlice("externalProgramAllowList")
+
+	c.Config.OIDCEnabled = c.viper.GetBool("oidcEnabled")
+	c.Config.OIDCIssuer = c.viper.GetString("oidcIssuer")
+	c.Config.OIDCClientID = c.viper.GetString("oidcClientId")
+	c.Config.OIDCClientSecret = c.viper.GetString("oidcClientSecret")
+	c.Config.OIDCRedirectURL = c.viper.GetString("oidcRedirectUrl")
+	c.Config.OIDCDisableBuiltInLogin = c.viper.GetBool("oidcDisableBuiltInLogin")
 }
 
 // RegisterReloadListener registers a callback that's invoked when the configuration file is reloaded.
@@ -455,23 +494,19 @@ func generateSecureToken(length int) (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-func (c *AppConfig) ApplyLogConfig() {
+func (c *AppConfig) ApplyLogConfig() error {
 	zerolog.TimeFieldFormat = time.RFC3339
 
-	setLogLevel(c.Config.LogLevel)
+	// Initialize the log manager on first call (sets up switchable writer)
+	c.logManager.Initialize()
 
-	writer := c.baseLogWriter()
+	// Apply configuration through the log manager
+	return c.logManager.Apply(c.Config.LogLevel, c.Config.LogPath, c.Config.LogMaxSize, c.Config.LogMaxBackups)
+}
 
-	if c.Config.LogPath != "" {
-		multiWriter, err := setupLogFile(c.Config.LogPath, writer, c.Config.LogMaxSize, c.Config.LogMaxBackups)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to setup log file")
-		} else {
-			writer = multiWriter
-		}
-	}
-
-	log.Logger = log.Logger.Output(writer)
+// GetLogManager returns the LogManager for log streaming.
+func (c *AppConfig) GetLogManager() *LogManager {
+	return c.logManager
 }
 
 func setLogLevel(level string) {
@@ -480,31 +515,6 @@ func setLogLevel(level string) {
 		lvl = zerolog.InfoLevel
 	}
 	zerolog.SetGlobalLevel(lvl)
-	log.Logger = log.Logger.Level(lvl)
-}
-
-func setupLogFile(path string, base io.Writer, maxSize, maxBackups int) (io.Writer, error) {
-	// Create log directory if needed
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create log directory: %w", err)
-	}
-
-	if maxSize <= 0 {
-		maxSize = 50
-	}
-
-	if maxBackups < 0 {
-		maxBackups = 0
-	}
-
-	rotator := &lumberjack.Logger{
-		Filename:   path,
-		MaxSize:    maxSize,
-		MaxBackups: maxBackups,
-	}
-
-	return io.MultiWriter(base, rotator), nil
 }
 
 func baseLogWriter(version string) io.Writer {
@@ -530,10 +540,6 @@ func baseLogWriter(version string) io.Writer {
 		return writer
 	}
 	return os.Stderr
-}
-
-func (c *AppConfig) baseLogWriter() io.Writer {
-	return baseLogWriter(c.version)
 }
 
 // DefaultLogWriter returns the base log writer for the provided version.

@@ -41,6 +41,8 @@ import type {
   InstanceReannounceActivity,
   InstanceReannounceCandidate,
   InstanceResponse,
+  LogSettings,
+  LogSettingsUpdate,
   QBittorrentAppInfo,
   RestoreMode,
   RestorePlan,
@@ -1710,6 +1712,23 @@ class ApiClient {
 
   async getIndexerStats(id: number): Promise<TorznabIndexerLatencyStats[]> {
     return this.request<TorznabIndexerLatencyStats[]>(`/torznab/indexers/${id}/stats`)
+  }
+
+  // Log Settings endpoints
+  async getLogSettings(): Promise<LogSettings> {
+    return this.request<LogSettings>("/log-settings")
+  }
+
+  async updateLogSettings(settings: LogSettingsUpdate): Promise<LogSettings> {
+    return this.request<LogSettings>("/log-settings", {
+      method: "PUT",
+      body: JSON.stringify(settings),
+    })
+  }
+
+  // Get the SSE log stream URL for EventSource
+  getLogStreamUrl(limit = 1000): string {
+    return `${API_BASE}/logs/stream?limit=${limit}`
   }
 }
 

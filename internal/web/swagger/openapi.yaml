@@ -2951,6 +2951,62 @@ paths:
         '500':
           description: Failed to add torrents
 
+  /api/log-settings:
+    get:
+      tags:
+        - System
+      summary: Get log settings
+      description: Get the current log configuration including level, file path, and rotation settings
+      responses:
+        '200':
+          description: Current log settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogSettings'
+    put:
+      tags:
+        - System
+      summary: Update log settings
+      description: Update log configuration. Changes are applied immediately.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogSettingsUpdate'
+      responses:
+        '200':
+          description: Updated log settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogSettings'
+        '400':
+          description: Invalid settings or attempting to modify locked fields
+
+  /api/logs/stream:
+    get:
+      tags:
+        - System
+      summary: Stream live logs
+      description: Server-Sent Events endpoint for streaming live log lines. Sends initial history (configurable via limit parameter) then streams new log lines in real-time.
+      parameters:
+        - name: limit
+          in: query
+          description: Number of historical log lines to send initially (default 1000)
+          schema:
+            type: integer
+            default: 1000
+      responses:
+        '200':
+          description: SSE stream of log lines
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Each message is a log line in SSE format
+
   /api/version/latest:
     get:
       tags:
@@ -3676,6 +3732,64 @@ components:
           type: string
         savePath:
           type: string
+
+    LogSettings:
+      type: object
+      description: Log configuration settings
+      required:
+        - level
+        - path
+        - maxSize
+        - maxBackups
+      properties:
+        level:
+          type: string
+          description: Log level
+          enum: [trace, debug, info, warn, error]
+          example: "info"
+        path:
+          type: string
+          description: Path to log file (empty for stdout only)
+          example: "/var/log/qui/qui.log"
+        maxSize:
+          type: integer
+          description: Maximum size of log file in megabytes before rotation
+          example: 50
+        maxBackups:
+          type: integer
+          description: Number of old log files to keep (0 for unlimited)
+          example: 3
+        configPath:
+          type: string
+          description: Path to the active config file being modified
+          example: "/config/config.toml"
+        locked:
+          type: object
+          description: Map of field names to lock source (environment or cli) if locked
+          additionalProperties:
+            type: string
+
+    LogSettingsUpdate:
+      type: object
+      description: Request to update log settings
+      properties:
+        level:
+          type: string
+          description: Log level to set
+          enum: [trace, debug, info, warn, error]
+          example: "debug"
+        path:
+          type: string
+          description: Path to log file
+          example: "/var/log/qui/qui.log"
+        maxSize:
+          type: integer
+          description: Maximum log file size in MB
+          example: 100
+        maxBackups:
+          type: integer
+          description: Number of backup files to keep
+          example: 5
 
     LatestVersionResponse:
       type: object

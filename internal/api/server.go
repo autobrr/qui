@@ -272,6 +272,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	trackerRulesHandler := handlers.NewTrackerRuleHandler(s.trackerRuleStore, s.trackerRuleService)
 	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
+	logsHandler := handlers.NewLogsHandler(s.config)
 
 	// Torznab/Jackett handler
 	var jackettHandler *handlers.JackettHandler
@@ -359,6 +360,9 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			// Dashboard settings (per-user layout preferences)
 			r.Get("/dashboard-settings", dashboardSettingsHandler.Get)
 			r.Put("/dashboard-settings", dashboardSettingsHandler.Update)
+
+			// Log settings and streaming
+			logsHandler.Routes(r)
 
 			// Version endpoint for update checks
 			r.Get("/version/latest", versionHandler.GetLatestVersion)

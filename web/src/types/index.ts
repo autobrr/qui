@@ -1560,3 +1560,20 @@ export interface CrossSeedSearchStatus {
   recentResults: CrossSeedSearchResult[]
   nextRunAt?: string
 }
+
+// Log Settings Types
+export interface LogSettings {
+  level: string
+  path: string
+  maxSize: number
+  maxBackups: number
+  configPath?: string
+  locked?: Record<string, string>
+}
+
+export interface LogSettingsUpdate {
+  level?: string
+  path?: string
+  maxSize?: number
+  maxBackups?: number
+}
