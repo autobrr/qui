@@ -19,18 +19,18 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
+  SelectValue
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
-  TooltipTrigger,
+  TooltipTrigger
 } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
-import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
+import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
@@ -42,7 +42,7 @@ import type {
   Automation,
   AutomationInput,
   AutomationPreviewResult,
-  RuleCondition,
+  RuleCondition
 } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Folder, Info, Loader2 } from "lucide-react"
@@ -60,6 +60,12 @@ interface WorkflowDialogProps {
 }
 
 type ActionType = "speedLimits" | "shareLimits" | "pause" | "delete" | "tag" | "category"
+
+// Speed units for display - storage is always KiB/s
+const SPEED_LIMIT_UNITS = [
+  { value: 1, label: "KiB/s" },
+  { value: 1024, label: "MiB/s" },
+]
 
 type FormState = {
   name: string
@@ -138,6 +144,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [previewInput, setPreviewInput] = useState<FormState | null>(null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [enabledBeforePreview, setEnabledBeforePreview] = useState<boolean | null>(null)
+  // Speed limit units - track separately so they persist when value is cleared
+  const [uploadSpeedUnit, setUploadSpeedUnit] = useState(1024) // Default MiB/s
+  const [downloadSpeedUnit, setDownloadSpeedUnit] = useState(1024) // Default MiB/s
   const previewPageSize = 25
 
   const trackersQuery = useInstanceTrackers(instanceId, { enabled: open })
@@ -284,6 +293,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             actionCondition = conditions.speedLimits.condition ?? null
             exprUploadKiB = conditions.speedLimits.uploadKiB
             exprDownloadKiB = conditions.speedLimits.downloadKiB
+            // Infer units from existing values - use MiB/s if divisible by 1024
+            if (exprUploadKiB !== undefined && exprUploadKiB > 0) {
+              setUploadSpeedUnit(exprUploadKiB % 1024 === 0 ? 1024 : 1)
+            }
+            if (exprDownloadKiB !== undefined && exprDownloadKiB > 0) {
+              setDownloadSpeedUnit(exprDownloadKiB % 1024 === 0 ? 1024 : 1)
+            }
           } else if (conditions.shareLimits?.enabled) {
             actionType = "shareLimits"
             actionCondition = conditions.shareLimits.condition ?? null
@@ -451,9 +467,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       return api.previewAutomation(instanceId, payload)
     },
     onSuccess: (result) => {
-      setPreviewResult(prev => prev
-        ? { ...prev, examples: [...prev.examples, ...result.examples], totalMatches: result.totalMatches }
-        : result
+      setPreviewResult(prev => prev? { ...prev, examples: [...prev.examples, ...result.examples], totalMatches: result.totalMatches }: result
       )
     },
     onError: (error) => {
@@ -621,24 +635,94 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   <div className="grid grid-cols-[auto_1fr_1fr] gap-3 items-end">
                     <ActionTypeSelector value={formState.actionType} onChange={handleActionTypeChange} />
                     <div className="space-y-1">
-                      <Label className="text-xs">Upload (KiB/s)</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={formState.exprUploadKiB ?? ""}
-                        onChange={(e) => setFormState(prev => ({ ...prev, exprUploadKiB: e.target.value ? Number(e.target.value) : undefined }))}
-                        placeholder="No limit"
-                      />
+                      <Label className="text-xs">Upload limit</Label>
+                      <div className="flex gap-1">
+                        <Input
+                          type="number"
+                          min={0}
+                          className="w-24"
+                          value={formState.exprUploadKiB !== undefined ? formState.exprUploadKiB / uploadSpeedUnit : ""}
+                          onChange={(e) => {
+                            const displayValue = e.target.value ? Number(e.target.value) : undefined
+                            setFormState(prev => ({
+                              ...prev,
+                              exprUploadKiB: displayValue !== undefined ? Math.round(displayValue * uploadSpeedUnit) : undefined,
+                            }))
+                          }}
+                          placeholder="No limit"
+                        />
+                        <Select
+                          value={String(uploadSpeedUnit)}
+                          onValueChange={(v) => {
+                            const newUnit = Number(v)
+                            // Convert existing value to new unit
+                            if (formState.exprUploadKiB !== undefined) {
+                              const displayValue = formState.exprUploadKiB / uploadSpeedUnit
+                              setFormState(prev => ({
+                                ...prev,
+                                exprUploadKiB: Math.round(displayValue * newUnit),
+                              }))
+                            }
+                            setUploadSpeedUnit(newUnit)
+                          }}
+                        >
+                          <SelectTrigger className="w-fit">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {SPEED_LIMIT_UNITS.map((u) => (
+                              <SelectItem key={u.value} value={String(u.value)}>
+                                {u.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">Download (KiB/s)</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={formState.exprDownloadKiB ?? ""}
-                        onChange={(e) => setFormState(prev => ({ ...prev, exprDownloadKiB: e.target.value ? Number(e.target.value) : undefined }))}
-                        placeholder="No limit"
-                      />
+                      <Label className="text-xs">Download limit</Label>
+                      <div className="flex gap-1">
+                        <Input
+                          type="number"
+                          min={0}
+                          className="w-24"
+                          value={formState.exprDownloadKiB !== undefined ? formState.exprDownloadKiB / downloadSpeedUnit : ""}
+                          onChange={(e) => {
+                            const displayValue = e.target.value ? Number(e.target.value) : undefined
+                            setFormState(prev => ({
+                              ...prev,
+                              exprDownloadKiB: displayValue !== undefined ? Math.round(displayValue * downloadSpeedUnit) : undefined,
+                            }))
+                          }}
+                          placeholder="No limit"
+                        />
+                        <Select
+                          value={String(downloadSpeedUnit)}
+                          onValueChange={(v) => {
+                            const newUnit = Number(v)
+                            // Convert existing value to new unit
+                            if (formState.exprDownloadKiB !== undefined) {
+                              const displayValue = formState.exprDownloadKiB / downloadSpeedUnit
+                              setFormState(prev => ({
+                                ...prev,
+                                exprDownloadKiB: Math.round(displayValue * newUnit),
+                              }))
+                            }
+                            setDownloadSpeedUnit(newUnit)
+                          }}
+                        >
+                          <SelectTrigger className="w-fit">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {SPEED_LIMIT_UNITS.map((u) => (
+                              <SelectItem key={u.value} value={String(u.value)}>
+                                {u.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -887,9 +971,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           setShowConfirmDialog(open)
         }}
         title={
-          isDeleteRule
-            ? (formState.enabled ? "Confirm Delete Rule" : "Preview Delete Rule")
-            : `Confirm Category Change → ${previewInput?.exprCategory ?? formState.exprCategory}`
+          isDeleteRule? (formState.enabled ? "Confirm Delete Rule" : "Preview Delete Rule"): `Confirm Category Change → ${previewInput?.exprCategory ?? formState.exprCategory}`
         }
         description={
           previewResult && previewResult.totalMatches > 0 ? (

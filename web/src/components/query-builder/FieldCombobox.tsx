@@ -1,6 +1,3 @@
-import { useState } from "react";
-import { Check, ChevronsUpDown } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -8,13 +5,16 @@ import {
   CommandGroup,
   CommandInput,
   CommandItem,
-  CommandList,
+  CommandList
 } from "@/components/ui/command";
 import {
   Popover,
   PopoverContent,
-  PopoverTrigger,
+  PopoverTrigger
 } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import { Check, ChevronsUpDown } from "lucide-react";
+import { useState } from "react";
 import { CONDITION_FIELDS, FIELD_GROUPS } from "./constants";
 
 interface FieldComboboxProps {
@@ -26,9 +26,7 @@ interface FieldComboboxProps {
 export function FieldCombobox({ value, onChange, hiddenFields }: FieldComboboxProps) {
   const [open, setOpen] = useState(false);
 
-  const selectedField = value
-    ? CONDITION_FIELDS[value as keyof typeof CONDITION_FIELDS]
-    : null;
+  const selectedField = value? CONDITION_FIELDS[value as keyof typeof CONDITION_FIELDS]: null;
 
   const visibleGroups = FIELD_GROUPS
     .map(group => ({
@@ -44,9 +42,9 @@ export function FieldCombobox({ value, onChange, hiddenFields }: FieldComboboxPr
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="h-8 w-[140px] justify-between px-2 text-xs font-normal"
+          className="h-8 w-fit min-w-[120px] justify-between px-2 text-xs font-normal"
         >
-          <span className="truncate">
+          <span>
             {selectedField?.label ?? "Select field"}
           </span>
           <ChevronsUpDown className="ml-1 size-3 shrink-0 opacity-50" />
