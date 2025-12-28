@@ -300,7 +300,9 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
             {properties.completion_date && properties.completion_date !== -1 && (
               <StatRow label="Completed" value={formatTimestamp(properties.completion_date)} />
             )}
-            <StatRow label="Created" value={formatTimestamp(properties.creation_date)} />
+            {properties.creation_date && properties.creation_date !== -1 && (
+              <StatRow label="Created" value={formatTimestamp(properties.creation_date)} />
+            )}
           </div>
         </div>
 
