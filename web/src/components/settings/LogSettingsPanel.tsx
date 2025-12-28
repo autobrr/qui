@@ -7,6 +7,14 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -23,10 +31,11 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { api } from "@/lib/api"
+import { copyTextToClipboard } from "@/lib/utils"
 import type { LogSettingsUpdate } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlertCircle, ChevronDown, FileText, Filter, Loader2, Lock, Search, Settings, X } from "lucide-react"
+import { AlertCircle, ChevronDown, Copy, FileText, Filter, Loader2, Lock, Search, Settings, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 
@@ -251,6 +260,7 @@ interface ParsedLogEntry {
   message: string
   extra: Record<string, unknown>
   raw: string
+  isJson: boolean
 }
 
 const LEVEL_COLORS: Record<LogLevel, string> = {
@@ -283,7 +293,7 @@ function normalizeLevel(raw: string | undefined): LogLevel {
   return "info"
 }
 
-function parseLogLine(entry: RawLogLine): ParsedLogEntry | null {
+function parseLogLine(entry: RawLogLine): ParsedLogEntry {
   try {
     const parsed = JSON.parse(entry.text) as Record<string, unknown>
     const level = normalizeLevel(typeof parsed.level === "string" ? parsed.level : undefined)
@@ -293,10 +303,10 @@ function parseLogLine(entry: RawLogLine): ParsedLogEntry | null {
     // Extract extra fields (everything except level, time, message)
     const { level: _l, time: _t, message: _m, ...extra } = parsed
 
-    return { id: entry.id, level, time, message, extra, raw: entry.text }
+    return { id: entry.id, level, time, message, extra, raw: entry.text, isJson: true }
   } catch {
     // Not valid JSON, return as raw text with info level
-    return { id: entry.id, level: "info", time: "", message: entry.text, extra: {}, raw: entry.text }
+    return { id: entry.id, level: "info", time: "", message: entry.text, extra: {}, raw: entry.text, isJson: false }
   }
 }
 
@@ -315,11 +325,25 @@ function formatTime(isoTime: string): string {
   }
 }
 
-function LogEntry({ entry }: { entry: ParsedLogEntry }) {
+function LogEntry({ entry, onSelect }: { entry: ParsedLogEntry; onSelect?: () => void }) {
   const extraKeys = Object.keys(entry.extra)
+  const isClickable = onSelect && entry.isJson
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (isClickable && (e.key === "Enter" || e.key === " ")) {
+      e.preventDefault()
+      onSelect?.()
+    }
+  }
 
   return (
-    <div className="flex gap-2 py-0.5 whitespace-nowrap hover:bg-muted/50">
+    <div
+      className={`flex gap-2 py-0.5 whitespace-nowrap hover:bg-muted/50 ${isClickable ? "cursor-pointer focus:outline-none focus:bg-muted/50" : ""}`}
+      onClick={isClickable ? onSelect : undefined}
+      onKeyDown={handleKeyDown}
+      role={isClickable ? "button" : undefined}
+      tabIndex={isClickable ? 0 : undefined}
+    >
       <span className="shrink-0 text-muted-foreground/60">{formatTime(entry.time)}</span>
       <span
         className={`shrink-0 w-12 inline-flex items-center justify-center text-[10px] font-medium uppercase rounded py-0.5 ${LEVEL_BADGE_COLORS[entry.level]}`}
@@ -346,6 +370,143 @@ function LogEntry({ entry }: { entry: ParsedLogEntry }) {
   )
 }
 
+// Syntax highlight JSON string - returns React elements
+function highlightJson(json: string): React.ReactNode[] {
+  if (!json) return []
+
+  // Token pattern: keys, strings, numbers, booleans, null, punctuation
+  const tokenRegex = /("(?:\\.|[^"\\])*")\s*:|("(?:\\.|[^"\\])*")|(-?\d+\.?\d*(?:[eE][+-]?\d+)?)|(\btrue\b|\bfalse\b)|(\bnull\b)|([{}[\],:])/g
+
+  const result: React.ReactNode[] = []
+  let lastIndex = 0
+  let key = 0
+
+  for (const match of json.matchAll(tokenRegex)) {
+    const matchIndex = match.index
+    if (matchIndex == null) continue
+
+    // Add any whitespace/text before this match
+    if (matchIndex > lastIndex) {
+      result.push(json.slice(lastIndex, matchIndex))
+    }
+
+    const [fullMatch, keyMatch, stringMatch, numberMatch, boolMatch, nullMatch, punctMatch] = match
+
+    if (keyMatch) {
+      // Key (property name) - theme-aware cyan/teal
+      result.push(
+        <span key={key++} className="text-cyan-700 dark:text-cyan-400">{keyMatch}</span>,
+        ":"
+      )
+    } else if (stringMatch) {
+      // String value - theme-aware green
+      result.push(<span key={key++} className="text-green-700 dark:text-green-400">{stringMatch}</span>)
+    } else if (numberMatch) {
+      // Number - theme-aware amber
+      result.push(<span key={key++} className="text-amber-700 dark:text-amber-400">{numberMatch}</span>)
+    } else if (boolMatch) {
+      // Boolean - theme-aware purple
+      result.push(<span key={key++} className="text-purple-700 dark:text-purple-400">{boolMatch}</span>)
+    } else if (nullMatch) {
+      // null - muted
+      result.push(<span key={key++} className="text-muted-foreground">{nullMatch}</span>)
+    } else if (punctMatch) {
+      // Punctuation - default color
+      result.push(<span key={key++} className="text-muted-foreground/70">{punctMatch}</span>)
+    } else {
+      result.push(fullMatch)
+    }
+
+    lastIndex = matchIndex + fullMatch.length
+  }
+
+  // Add any remaining text
+  if (lastIndex < json.length) {
+    result.push(json.slice(lastIndex))
+  }
+
+  return result
+}
+
+function LogEntryDialog({
+  entry,
+  open,
+  onOpenChange,
+}: {
+  entry: ParsedLogEntry | null
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  // Memoize JSON stringification and highlighting to avoid re-tokenizing on unrelated renders
+  const { prettyJson, highlightedJson } = useMemo(() => {
+    if (!entry) return { prettyJson: "", highlightedJson: [] as React.ReactNode[] }
+    const jsonObj = {
+      level: entry.level,
+      time: entry.time,
+      message: entry.message,
+      ...entry.extra,
+    }
+    const pretty = JSON.stringify(jsonObj, null, 2)
+    return { prettyJson: pretty, highlightedJson: highlightJson(pretty) }
+  }, [entry])
+
+  const handleCopyJson = useCallback(async () => {
+    if (!prettyJson) return
+    try {
+      await copyTextToClipboard(prettyJson)
+      toast.success("JSON copied to clipboard")
+    } catch {
+      toast.error("Failed to copy to clipboard")
+    }
+  }, [prettyJson])
+
+  const handleCopyRaw = useCallback(async () => {
+    if (!entry) return
+    try {
+      await copyTextToClipboard(entry.raw)
+      toast.success("Raw line copied to clipboard")
+    } catch {
+      toast.error("Failed to copy to clipboard")
+    }
+  }, [entry])
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="!max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            Log Entry
+            {entry && (
+              <span className={`text-xs font-medium uppercase px-1.5 py-0.5 rounded ${LEVEL_BADGE_COLORS[entry.level]}`}>
+                {entry.level}
+              </span>
+            )}
+          </DialogTitle>
+          <DialogDescription>
+            {entry?.time ? new Date(entry.time).toLocaleString() : "Raw log line"}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[400px] overflow-auto rounded-md border bg-muted/30 p-4">
+          <pre className="font-mono text-sm whitespace-pre-wrap break-all">{highlightedJson}</pre>
+        </div>
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button variant="outline" size="sm" onClick={handleCopyRaw}>
+            <Copy className="mr-2 h-4 w-4" />
+            Copy Raw
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleCopyJson}>
+            <Copy className="mr-2 h-4 w-4" />
+            Copy JSON
+          </Button>
+          <Button size="sm" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 const ALL_LOG_LEVELS: LogLevel[] = ["trace", "debug", "info", "warn", "error"]
 
 // Buffer limits: soft cap when following live, hard cap always
@@ -360,6 +521,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
   const [selectedLevels, setSelectedLevels] = useState<Set<LogLevel>>(new Set(ALL_LOG_LEVELS))
   const [searchQuery, setSearchQuery] = useState("")
   const [droppedWhilePaused, setDroppedWhilePaused] = useState(false)
+  const [selectedEntry, setSelectedEntry] = useState<ParsedLogEntry | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
   const reconnectTimeoutRef = useRef<number | null>(null)
@@ -432,15 +594,14 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
     }
   }, [connect])
 
-  // Parse and filter log entries
-  const filteredEntries = useMemo(() => {
-    const entries = lines
-      .map(parseLogLine)
-      .filter((e): e is ParsedLogEntry => e !== null)
+  // Parse entries once when lines change (avoid re-parsing on filter/search changes)
+  const parsedEntries = useMemo(() => lines.map(parseLogLine), [lines])
 
+  // Filter parsed entries
+  const filteredEntries = useMemo(() => {
     const query = searchQuery.toLowerCase().trim()
 
-    return entries.filter((e) => {
+    return parsedEntries.filter((e) => {
       // Filter by level
       if (!selectedLevels.has(e.level)) return false
 
@@ -456,7 +617,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
 
       return true
     })
-  }, [lines, selectedLevels, searchQuery])
+  }, [parsedEntries, selectedLevels, searchQuery])
 
   const toggleLevel = (level: LogLevel) => {
     setSelectedLevels((prev) => {
@@ -592,12 +753,18 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
 
       <div
         ref={scrollRef}
-        className="h-[400px] overflow-auto rounded-md border bg-muted/30 p-3"
+        className="h-[clamp(300px,calc(100dvh-24rem),600px)] overflow-auto rounded-md border bg-muted/30 p-3"
         style={{ overflowAnchor: "none" }}
       >
         <div className="font-mono text-xs leading-relaxed w-fit min-w-full">
           {filteredEntries.length > 0 ? (
-            filteredEntries.map((entry) => <LogEntry key={entry.id} entry={entry} />)
+            filteredEntries.map((entry) => (
+              <LogEntry
+                key={entry.id}
+                entry={entry}
+                onSelect={() => setSelectedEntry(entry)}
+              />
+            ))
           ) : (
             <span className="text-muted-foreground">
               {lines.length > 0
@@ -625,6 +792,12 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
           </span>
         )}
       </div>
+
+      <LogEntryDialog
+        entry={selectedEntry}
+        open={selectedEntry !== null}
+        onOpenChange={(open) => !open && setSelectedEntry(null)}
+      />
     </div>
   )
 }
