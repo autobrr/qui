@@ -536,6 +536,8 @@ func (s *OrphanScanStore) ListFiles(ctx context.Context, runID int64, limit, off
 }
 
 // GetFilesForDeletion returns all pending files for a run.
+// Note: loads all files into memory. If memory usage becomes a concern with very
+// large orphan sets, consider adding batched retrieval here.
 func (s *OrphanScanStore) GetFilesForDeletion(ctx context.Context, runID int64) ([]*OrphanScanFile, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, run_id, file_path, file_size, modified_at, status, error_message
