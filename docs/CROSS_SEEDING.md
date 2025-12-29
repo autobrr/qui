@@ -290,4 +290,4 @@ The incoming torrent has files not present in your matched torrent, and those fi
 
 ## ARR Integration (Sonarr/Radarr)
 
-Configure Sonarr/Radarr instances in **Settings → Integrations** to enable external ID lookups (IMDb, TMDb, TVDb, TVMaze) during cross-seed searches. qui queries your *arr instances to resolve IDs, then includes them in Torznab requests for more accurate matching on indexers that support ID-based queries. Results are cached to minimize API calls.
+Configure Sonarr/Radarr instances in **Settings → Integrations** to enable external ID lookups (IMDb, TMDb, TVDb, TVMaze) during cross-seed searches. qui queries your *arr instances to resolve IDs, then includes them in Torznab requests for more accurate matching on indexers that support ID-based queries. Results are cached (30 days for found IDs, 1 hour for misses) to minimize API calls.

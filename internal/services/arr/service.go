@@ -17,9 +17,11 @@ import (
 
 const (
 	// DefaultPositiveCacheTTL is the default TTL for positive cache entries (IDs found)
-	DefaultPositiveCacheTTL = 2 * time.Hour
+	// Long TTL because external IDs (IMDb, TMDb, TVDb, TVMaze) are immutable
+	DefaultPositiveCacheTTL = 30 * 24 * time.Hour // 30 days
 
 	// DefaultNegativeCacheTTL is the default TTL for negative cache entries (no IDs found)
+	// Short TTL because content may be added to *arr instances later
 	DefaultNegativeCacheTTL = 1 * time.Hour
 
 	// cacheCleanupInterval is how often to run cache cleanup (opportunistically)

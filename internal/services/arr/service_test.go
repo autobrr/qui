@@ -190,6 +190,6 @@ func TestContentType_Constants(t *testing.T) {
 
 func TestDefaultTTL_Values(t *testing.T) {
 	// Verify default TTL values match expected configuration
-	assert.Equal(t, 2*time.Hour, DefaultPositiveCacheTTL)
+	assert.Equal(t, 30*24*time.Hour, DefaultPositiveCacheTTL)
 	assert.Equal(t, 1*time.Hour, DefaultNegativeCacheTTL)
 }
