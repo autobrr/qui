@@ -191,26 +191,14 @@ func (s *Service) getInstanceMutex(instanceID int) *sync.Mutex {
 // TriggerScan starts a new orphan scan for an instance.
 // Returns the run ID or an error if a scan is already in progress.
 func (s *Service) TriggerScan(ctx context.Context, instanceID int, triggeredBy string) (int64, error) {
-	mu := s.getInstanceMutex(instanceID)
-	if !mu.TryLock() {
+	// Atomically check for active runs and create a new one.
+	// This avoids TOCTOU races between HasActiveRun and CreateRun,
+	// and avoids mutex deadlocks when a goroutine is stuck in a blocking call.
+	runID, err := s.store.CreateRunIfNoActive(ctx, instanceID, triggeredBy)
+	if errors.Is(err, models.ErrRunAlreadyActive) {
 		return 0, ErrScanInProgress
 	}
-	// Note: unlock happens in goroutine after scan completes
-
-	// Also check DB for stuck runs (from previous process restart)
-	hasActive, err := s.store.HasActiveRun(ctx, instanceID)
 	if err != nil {
-		mu.Unlock()
-		return 0, err
-	}
-	if hasActive {
-		mu.Unlock()
-		return 0, ErrScanInProgress
-	}
-
-	runID, err := s.store.CreateRun(ctx, instanceID, triggeredBy)
-	if err != nil {
-		mu.Unlock()
 		return 0, err
 	}
 
@@ -221,7 +209,6 @@ func (s *Service) TriggerScan(ctx context.Context, instanceID int, triggeredBy s
 	s.cancelMu.Unlock()
 
 	go func() {
-		defer mu.Unlock()
 		defer func() {
 			s.cancelMu.Lock()
 			delete(s.cancelFuncs, runID)
@@ -683,6 +670,10 @@ func (s *Service) updateFileStatus(ctx context.Context, fileID int64, status, er
 }
 
 func (s *Service) buildFileMap(ctx context.Context, instanceID int) (*TorrentFileMap, []string, error) {
+	// Add timeout to prevent indefinite blocking if qBittorrent is unresponsive
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
 	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get torrents: %w", err)

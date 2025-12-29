@@ -27,7 +27,7 @@ When an automation matches a torrent, it can apply any combination of:
 
 Automations are applied in two ways:
 
-- **Automatically** - A background service scans all torrents every 20 seconds
+- **Automatically** - A background service scans all torrents every 15 minutes
 - **Manually** - Click "Apply Now" in the UI to trigger immediately
 
 To avoid hammering qBittorrent, the same torrent won't be re-processed within 2 minutes (debouncing).
@@ -66,8 +66,8 @@ The service only sends API calls to qBittorrent when the torrent's current setti
 
 ### Existing vs New Torrents
 
-- **Existing torrents** - Processed on the next scan cycle (within 20 seconds)
-- **New torrents** - Picked up automatically within 20 seconds of appearing in qBittorrent
+- **Existing torrents** - Processed on the next scan cycle (within 15 minutes)
+- **New torrents** - Picked up automatically within 15 minutes of appearing in qBittorrent
 
 ### Batched API Calls
 

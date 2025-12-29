@@ -1,37 +1,36 @@
-import { useState } from "react";
-import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { format } from "date-fns";
-import { GripVertical, X, ToggleLeft, ToggleRight, CalendarIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
-  PopoverTrigger,
+  PopoverTrigger
 } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
+  SelectValue
 } from "@/components/ui/select";
 import {
   Tooltip,
   TooltipContent,
-  TooltipTrigger,
+  TooltipTrigger
 } from "@/components/ui/tooltip";
-import type { RuleCondition, ConditionField, ConditionOperator } from "@/types";
+import { cn } from "@/lib/utils";
+import type { ConditionField, ConditionOperator, RuleCondition } from "@/types";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { format } from "date-fns";
+import { CalendarIcon, GripVertical, ToggleLeft, ToggleRight, X } from "lucide-react";
+import { useState } from "react";
 import {
+  BYTE_UNITS,
   getFieldType,
   getOperatorsForField,
-  TORRENT_STATES,
   HARDLINK_SCOPE_VALUES,
-  BYTE_UNITS,
-  SPEED_UNITS,
+  TORRENT_STATES
 } from "./constants";
 import { FieldCombobox } from "./FieldCombobox";
 
@@ -39,6 +38,19 @@ const DURATION_INPUT_UNITS = [
   { value: 60, label: "minutes" },
   { value: 3600, label: "hours" },
   { value: 86400, label: "days" },
+];
+
+// Detect best duration unit from seconds value
+function detectDurationUnit(secs: number): number {
+  if (secs >= 86400 && secs % 86400 === 0) return 86400;
+  if (secs >= 3600 && secs % 3600 === 0) return 3600;
+  return 60;
+}
+
+const SPEED_INPUT_UNITS = [
+  { value: 1, label: "B/s" },
+  { value: 1024, label: "KiB/s" },
+  { value: 1024 * 1024, label: "MiB/s" },
 ];
 
 interface LeafConditionProps {
@@ -81,13 +93,26 @@ export function LeafCondition({
   const operators = condition.field ? getOperatorsForField(condition.field) : [];
 
   // Track duration unit separately so it persists when value is empty
-  const [durationUnit, setDurationUnit] = useState<number>(() => {
-    // Initialize from existing value if present
-    const secs = parseFloat(condition.value ?? "0") || 0;
-    if (secs >= 86400 && secs % 86400 === 0) return 86400;
-    if (secs >= 3600 && secs % 3600 === 0) return 3600;
-    return 60;
+  const [durationUnit, setDurationUnit] = useState<number>(() =>
+    detectDurationUnit(parseFloat(condition.value ?? "0") || 0)
+  );
+
+  // Track speed unit separately so it persists when value is empty
+  const [speedUnit, setSpeedUnit] = useState<number>(() => {
+    // Initialize from existing value if present, default to MiB/s
+    const bytesPerSec = parseFloat(condition.value ?? "0") || 0;
+    const mib = 1024 * 1024;
+    const kib = 1024;
+    if (bytesPerSec >= mib && bytesPerSec % mib === 0) return mib;
+    if (bytesPerSec >= kib && bytesPerSec % kib === 0) return kib;
+    if (bytesPerSec === 0) return mib; // Default to MiB/s for new conditions
+    return 1;
   });
+
+  // Track duration unit for BETWEEN operator (shared for min/max)
+  const [betweenDurationUnit, setBetweenDurationUnit] = useState<number>(() =>
+    detectDurationUnit(condition.minValue ?? 0)
+  );
 
   const handleFieldChange = (field: string) => {
     const newFieldType = getFieldType(field);
@@ -163,6 +188,48 @@ export function LeafCondition({
     }
   };
 
+  // Speed handling - parse bytes/s to display value using tracked unit
+  const getSpeedDisplay = (): { value: string; unit: number } => {
+    const bytesPerSec = parseFloat(condition.value ?? "0") || 0;
+    if (bytesPerSec === 0) return { value: "", unit: speedUnit };
+    return { value: String(bytesPerSec / speedUnit), unit: speedUnit };
+  };
+
+  const speedDisplay = fieldType === "speed" ? getSpeedDisplay() : null;
+
+  const handleSpeedChange = (value: string, unit: number) => {
+    // Always update the unit preference
+    setSpeedUnit(unit);
+    // Only update condition value if there's an actual value
+    if (value === "") {
+      onChange({ ...condition, value: "" });
+    } else {
+      const numValue = parseFloat(value) || 0;
+      const bytesPerSec = Math.round(numValue * unit);
+      onChange({ ...condition, value: String(bytesPerSec) });
+    }
+  };
+
+  // BETWEEN duration display - convert seconds to display unit
+  const getBetweenDurationDisplay = (): { minValue: string; maxValue: string; unit: number } => {
+    const minSecs = condition.minValue ?? 0;
+    const maxSecs = condition.maxValue ?? 0;
+    return {
+      minValue: minSecs === 0 ? "" : String(minSecs / betweenDurationUnit),
+      maxValue: maxSecs === 0 ? "" : String(maxSecs / betweenDurationUnit),
+      unit: betweenDurationUnit,
+    };
+  };
+
+  const handleBetweenDurationChange = (minVal: string, maxVal: string, unit: number) => {
+    setBetweenDurationUnit(unit);
+    const minNum = minVal === "" ? 0 : Math.round((parseFloat(minVal) || 0) * unit);
+    const maxNum = maxVal === "" ? 0 : Math.round((parseFloat(maxVal) || 0) * unit);
+    onChange({ ...condition, minValue: minNum, maxValue: maxNum });
+  };
+
+  const betweenDurationDisplay = (fieldType === "duration" && condition.operator === "BETWEEN")? getBetweenDurationDisplay(): null;
+
   return (
     <div
       ref={setNodeRef}
@@ -213,7 +280,7 @@ export function LeafCondition({
         onValueChange={handleOperatorChange}
         disabled={!condition.field}
       >
-        <SelectTrigger className="h-8 w-[120px]">
+        <SelectTrigger className="h-8 w-fit min-w-[80px]">
           <SelectValue placeholder="Operator" />
         </SelectTrigger>
         <SelectContent>
@@ -239,9 +306,7 @@ export function LeafCondition({
                 )}
               >
                 <CalendarIcon className="mr-1 size-3" />
-                {condition.minValue
-                  ? format(new Date(condition.minValue * 1000), "PP")
-                  : "From"}
+                {condition.minValue? format(new Date(condition.minValue * 1000), "PP"): "From"}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="start">
@@ -266,9 +331,7 @@ export function LeafCondition({
                 )}
               >
                 <CalendarIcon className="mr-1 size-3" />
-                {condition.maxValue
-                  ? format(new Date(condition.maxValue * 1000), "PP")
-                  : "To"}
+                {condition.maxValue? format(new Date(condition.maxValue * 1000), "PP"): "To"}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="start">
@@ -281,6 +344,39 @@ export function LeafCondition({
               />
             </PopoverContent>
           </Popover>
+        </div>
+      ) : condition.operator === "BETWEEN" && fieldType === "duration" && betweenDurationDisplay ? (
+        <div className="flex items-center gap-1">
+          <Input
+            type="number"
+            className="h-8 w-20"
+            value={betweenDurationDisplay.minValue}
+            onChange={(e) => handleBetweenDurationChange(e.target.value, betweenDurationDisplay.maxValue, betweenDurationDisplay.unit)}
+            placeholder="Min"
+          />
+          <span className="text-muted-foreground">-</span>
+          <Input
+            type="number"
+            className="h-8 w-20"
+            value={betweenDurationDisplay.maxValue}
+            onChange={(e) => handleBetweenDurationChange(betweenDurationDisplay.minValue, e.target.value, betweenDurationDisplay.unit)}
+            placeholder="Max"
+          />
+          <Select
+            value={String(betweenDurationDisplay.unit)}
+            onValueChange={(unit) => handleBetweenDurationChange(betweenDurationDisplay.minValue, betweenDurationDisplay.maxValue, parseInt(unit, 10))}
+          >
+            <SelectTrigger className="h-8 w-fit">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DURATION_INPUT_UNITS.map((u) => (
+                <SelectItem key={u.value} value={String(u.value)}>
+                  {u.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       ) : condition.operator === "BETWEEN" ? (
         <div className="flex items-center gap-1">
@@ -362,6 +458,31 @@ export function LeafCondition({
             </SelectContent>
           </Select>
         </div>
+      ) : fieldType === "speed" && speedDisplay ? (
+        <div className="flex items-center gap-1">
+          <Input
+            type="number"
+            className="h-8 w-20"
+            value={speedDisplay.value}
+            onChange={(e) => handleSpeedChange(e.target.value, speedDisplay.unit)}
+            placeholder="0"
+          />
+          <Select
+            value={String(speedDisplay.unit)}
+            onValueChange={(unit) => handleSpeedChange(speedDisplay.value, parseInt(unit, 10))}
+          >
+            <SelectTrigger className="h-8 w-fit">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SPEED_INPUT_UNITS.map((u) => (
+                <SelectItem key={u.value} value={String(u.value)}>
+                  {u.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       ) : fieldType === "timestamp" ? (
         <Popover>
           <PopoverTrigger asChild>
@@ -374,9 +495,7 @@ export function LeafCondition({
               )}
             >
               <CalendarIcon className="mr-2 size-4" />
-              {condition.value
-                ? format(new Date(parseInt(condition.value, 10) * 1000), "PP")
-                : "Pick a date"}
+              {condition.value? format(new Date(parseInt(condition.value, 10) * 1000), "PP"): "Pick a date"}
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
@@ -513,8 +632,6 @@ function getUnitsForType(type: string) {
   switch (type) {
     case "bytes":
       return BYTE_UNITS;
-    case "speed":
-      return SPEED_UNITS;
     default:
       return null;
   }

@@ -452,7 +452,7 @@ Configure tags applied to cross-seed torrents based on how they were discovered:
 
 #### Ignore Patterns
 
-File patterns to skip when comparing torrents. Useful for excluding sidecar files like `.nfo`, `.srr`, or sample folders.
+File patterns to skip when comparing torrents. Useful for excluding sidecar files like `.nfo`, `.srr`, or sample folders. This means torrents including those files will be skipped by default. If you want those to be grabbed, add the files to the ignore pattern.
 
 - Plain strings match any path ending in the text (e.g., `.nfo` ignores all `.nfo` files)
 - Glob patterns treat `/` as a folder separator (e.g., `*/sample/*` ignores sample folders)

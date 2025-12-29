@@ -1037,10 +1037,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                 <p className="text-sm">{formatTimestamp(properties.completion_date)}</p>
                               </div>
                             )}
-                            <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground">Created</p>
-                              <p className="text-sm">{formatTimestamp(properties.creation_date)}</p>
-                            </div>
+                            {properties.creation_date && properties.creation_date !== -1 && (
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">Created</p>
+                                <p className="text-sm">{formatTimestamp(properties.creation_date)}</p>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>

@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
@@ -144,9 +145,48 @@ func (s *OrphanScanStore) CreateRun(ctx context.Context, instanceID int, trigger
 		VALUES (?, 'pending', ?)
 	`, instanceID, triggeredBy)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("insert orphan scan run: %w", err)
 	}
-	return res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("get last insert id: %w", err)
+	}
+	return id, nil
+}
+
+// ErrRunAlreadyActive is returned when attempting to create a run while one is already active.
+var ErrRunAlreadyActive = errors.New("an active run already exists for this instance")
+
+// CreateRunIfNoActive atomically checks for active runs and creates a new one if none exist.
+// This prevents race conditions between HasActiveRun and CreateRun.
+func (s *OrphanScanStore) CreateRunIfNoActive(ctx context.Context, instanceID int, triggeredBy string) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `
+		INSERT INTO orphan_scan_runs (instance_id, status, triggered_by)
+		SELECT ?, 'pending', ?
+		WHERE NOT EXISTS (
+			SELECT 1 FROM orphan_scan_runs
+			WHERE instance_id = ?
+			  AND (status IN ('pending', 'scanning', 'deleting')
+			       OR (status = 'preview_ready' AND files_found > 0))
+		)
+	`, instanceID, triggeredBy, instanceID)
+	if err != nil {
+		return 0, fmt.Errorf("insert orphan scan run: %w", err)
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("get rows affected: %w", err)
+	}
+	if rows == 0 {
+		return 0, ErrRunAlreadyActive
+	}
+
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("get last insert id: %w", err)
+	}
+	return id, nil
 }
 
 // GetRun retrieves an orphan scan run by ID.
@@ -496,6 +536,8 @@ func (s *OrphanScanStore) ListFiles(ctx context.Context, runID int64, limit, off
 }
 
 // GetFilesForDeletion returns all pending files for a run.
+// Note: loads all files into memory. If memory usage becomes a concern with very
+// large orphan sets, consider adding batched retrieval here.
 func (s *OrphanScanStore) GetFilesForDeletion(ctx context.Context, runID int64) ([]*OrphanScanFile, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, run_id, file_path, file_size, modified_at, status, error_message
