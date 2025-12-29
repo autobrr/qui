@@ -26,8 +26,8 @@ import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useHasPremiumAccess } from "@/hooks/useLicense"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
-import { cn } from "@/lib/utils"
 import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
+import { cn } from "@/lib/utils"
 import {
   getCurrentTheme,
   getCurrentThemeMode,
@@ -60,8 +60,8 @@ import {
   Search as SearchIcon,
   Server,
   Settings,
-  Zap,
-  Sun
+  Sun,
+  Zap
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -279,7 +279,7 @@ export function MobileFooterNav() {
                               </span>
                             </TooltipTrigger>
                             <TooltipContent side="left" className="text-xs">
-                              Seeded search running
+                              Scan running
                             </TooltipContent>
                           </Tooltip>
                         )}

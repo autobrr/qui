@@ -382,7 +382,7 @@ qui offers several ways to find cross-seed opportunities:
 
 #### RSS Automation
 
-Scheduled polling of tracker RSS feeds. Configure in the **Automation** tab on the Cross-Seed page.
+Scheduled polling of tracker RSS feeds. Configure in the **Auto** tab on the Cross-Seed page.
 
 - **Run interval** - How often to poll feeds (minimum 30 minutes)
 - **Target instances** - Which qBittorrent instances receive cross-seeds
@@ -390,9 +390,9 @@ Scheduled polling of tracker RSS feeds. Configure in the **Automation** tab on t
 
 RSS automation processes the full feed from every enabled indexer on each run, matching against torrents across your target instances.
 
-#### Seeded Torrent Search
+#### Library Scan
 
-Deep scan of torrents you already seed to find cross-seed opportunities on other trackers. Configure in the **Seeded search** tab.
+Deep scan of torrents you already seed to find cross-seed opportunities on other trackers. Configure in the **Scan** tab.
 
 - **Source instance** - The qBittorrent instance to scan
 - **Categories/Tags** - Filter which torrents to include
@@ -400,11 +400,11 @@ Deep scan of torrents you already seed to find cross-seed opportunities on other
 - **Cooldown** - Skip torrents searched within this window (minimum 12 hours)
 
 > [!WARNING]
-> Run sparingly. This deep scan touches every matching torrent and queries indexers for each one. Use RSS automation or autobrr for routine coverage; reserve seeded search for occasional catch-up passes.
+> Run sparingly. This deep scan touches every matching torrent and queries indexers for each one. Use RSS automation or autobrr for routine coverage; reserve library scan for occasional catch-up passes.
 
 #### Auto-Search on Completion
 
-Triggers a cross-seed search when torrents finish downloading. Configure in the **Automation** tab under "Auto-search on completion".
+Triggers a cross-seed search when torrents finish downloading. Configure in the **Auto** tab under "Auto-search on completion".
 
 - **Categories/Tags** - Filter which completed torrents trigger searches
 - **Exclude categories/tags** - Skip torrents matching these filters
@@ -426,9 +426,9 @@ qui takes a different approach than the [cross-seed](https://github.com/cross-se
 | **AutoTMM** | Disabled (uses explicit save paths) | Inherits from matched torrent (unless "Use indexer name as category" is enabled) |
 | **Category** | Uses dedicated `linkCategory` (e.g., "cross-seed-link") | Uses matched torrent's category with `.cross` suffix (configurable) |
 
-### Global Settings
+### Rules
 
-Configure matching behavior in the **Global rules** tab on the Cross-Seed page.
+Configure matching behavior in the **Rules** tab on the Cross-Seed page.
 
 #### Matching
 
@@ -482,7 +482,7 @@ When the source torrent contains files not on disk (NFO, SRT, samples not matchi
 
 - Default tolerance 5% → auto-resumes at ≥95% completion
 - Torrents below threshold stay paused for manual investigation
-- Configure via **Size mismatch tolerance** in Global rules
+- Configure via **Size mismatch tolerance** in Rules
 
 ### Hardlink Mode (optional)
 

@@ -190,7 +190,7 @@ export function Sidebar() {
                             </span>
                           </TooltipTrigger>
                           <TooltipContent side="right" className="text-xs">
-                            Seeded search running
+                            Scan running
                           </TooltipContent>
                         </Tooltip>
                       )}

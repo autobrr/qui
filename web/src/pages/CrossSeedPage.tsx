@@ -218,8 +218,8 @@ function aggregateInstanceMetadata(
 }
 
 interface CrossSeedPageProps {
-  activeTab: "automation" | "search" | "global"
-  onTabChange: (tab: "automation" | "search" | "global") => void
+  activeTab: "auto" | "scan" | "rules"
+  onTabChange: (tab: "auto" | "scan" | "rules") => void
 }
 
 /** Per-instance hardlink/reflink mode settings component */
@@ -1413,12 +1413,12 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
       <Tabs value={activeTab} onValueChange={(v) => onTabChange(v as typeof activeTab)} className="space-y-4">
         <TabsList className="grid w-full grid-cols-3 gap-2 md:w-auto">
-          <TabsTrigger value="automation">Automation</TabsTrigger>
-          <TabsTrigger value="search">Seeded search</TabsTrigger>
-          <TabsTrigger value="global">Global rules</TabsTrigger>
+          <TabsTrigger value="auto">Auto</TabsTrigger>
+          <TabsTrigger value="scan">Scan</TabsTrigger>
+          <TabsTrigger value="rules">Rules</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="automation" className="space-y-6">
+        <TabsContent value="auto" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>RSS Automation</CardTitle>
@@ -1974,10 +1974,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
         </TabsContent>
 
-        <TabsContent value="search" className="space-y-6">
+        <TabsContent value="scan" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Seeded Torrent Search</CardTitle>
+              <CardTitle>Library Scan</CardTitle>
               <CardDescription>Walk the torrents you already seed on the selected instance, collapse identical content down to the oldest copy, and query Torznab feeds once per unique release while skipping trackers you already have it from.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -2247,10 +2247,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
         </TabsContent>
 
-        <TabsContent value="global" className="space-y-6">
+        <TabsContent value="rules" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Global Cross-Seed Settings</CardTitle>
+              <CardTitle>Cross-Seed Rules</CardTitle>
               <CardDescription>Settings that apply to all cross-seed operations.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">

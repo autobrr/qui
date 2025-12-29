@@ -172,7 +172,7 @@ When the incoming torrent has extra files (files not present in the matched torr
 This check applies regardless of whether the extra files match allowed extra file patterns. The piece-boundary constraint is fundamental to how BitTorrent works.
 
 **Enabling this check:**
-- **Piece boundary safety check** (opt-in): Uncheck "Skip piece boundary safety check" in Global rules to enable this protection. When enabled, qui will skip matches where extra files share pieces with content.
+- **Piece boundary safety check** (opt-in): Uncheck "Skip piece boundary safety check" in Rules to enable this protection. When enabled, qui will skip matches where extra files share pieces with content.
 - **Reflink mode** (always safe): Reflink mode never needs this check because copy-on-write clones can be safely modified without affecting originals.
 
 **Why this check is opt-in:** Skipping the check maximizes cross-seed matches, especially for torrents with extra files (NFOs, samples, etc.) which are common. The tradeoff is potential data corruption if the matched content differs. Users who want extra protection can enable the check or use reflink mode.
@@ -262,19 +262,19 @@ Common causes:
 
 ### Cross-seed skipped: "extra files share pieces with content"
 
-This only occurs when you have enabled the piece boundary safety check (disabled "Skip piece boundary safety check" in Global rules).
+This only occurs when you have enabled the piece boundary safety check (disabled "Skip piece boundary safety check" in Rules).
 
 The incoming torrent has files not present in your matched torrent, and those files share torrent pieces with your existing content. Downloading them could overwrite parts of your existing files.
 
 **Solutions:**
 - **Use reflink mode** (recommended): Enable reflink mode for the instance—it safely clones files so qBittorrent can modify them without affecting originals
-- **Disable the safety check**: Check "Skip piece boundary safety check" in Global rules (the default). The match will proceed but **may corrupt your existing seeded files** if content differs
+- **Disable the safety check**: Check "Skip piece boundary safety check" in Rules (the default). The match will proceed but **may corrupt your existing seeded files** if content differs
 - If reflinks aren't available and you want to avoid any risk, download the torrent fresh
 
 ### Cross-seed stuck at low percentage after recheck
 
 - Check if the source torrent has extra files (NFO, samples) not present on disk
-- Verify the "Size mismatch tolerance" setting in Global rules
+- Verify the "Size mismatch tolerance" setting in Rules
 - Torrents below the auto-resume threshold stay paused for manual review
 
 ### Cross-seed in wrong category
