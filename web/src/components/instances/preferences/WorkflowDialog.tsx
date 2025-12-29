@@ -89,6 +89,8 @@ type FormState = {
   // Tag action settings
   exprTags: string[]
   exprTagMode: "full" | "add" | "remove"
+  exprUseTrackerAsTag: boolean
+  exprUseDisplayName: boolean
   // Category action settings
   exprCategory: string
   exprIncludeCrossSeeds: boolean
@@ -111,6 +113,8 @@ const emptyFormState: FormState = {
   exprDeleteMode: "deleteWithFilesPreserveCrossSeeds",
   exprTags: [],
   exprTagMode: "full",
+  exprUseTrackerAsTag: false,
+  exprUseDisplayName: false,
   exprCategory: "",
   exprIncludeCrossSeeds: false,
   exprBlockIfCrossSeedInCategories: [],
@@ -282,6 +286,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprDeleteMode: FormState["exprDeleteMode"] = "deleteWithFilesPreserveCrossSeeds"
         let exprTags: string[] = []
         let exprTagMode: FormState["exprTagMode"] = "full"
+        let exprUseTrackerAsTag = false
+        let exprUseDisplayName = false
         let exprCategory = ""
         let exprIncludeCrossSeeds = false
         let exprBlockIfCrossSeedInCategories: string[] = []
@@ -317,6 +323,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             actionCondition = conditions.tag.condition ?? null
             exprTags = conditions.tag.tags ?? []
             exprTagMode = conditions.tag.mode ?? "full"
+            exprUseTrackerAsTag = conditions.tag.useTrackerAsTag ?? false
+            exprUseDisplayName = conditions.tag.useDisplayName ?? false
           } else if (conditions.category?.enabled) {
             actionType = "category"
             actionCondition = conditions.category.condition ?? null
@@ -343,6 +351,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprDeleteMode,
           exprTags,
           exprTagMode,
+          exprUseTrackerAsTag,
+          exprUseDisplayName,
           exprCategory,
           exprIncludeCrossSeeds,
           exprBlockIfCrossSeedInCategories,
@@ -392,6 +402,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           enabled: true,
           tags: input.exprTags,
           mode: input.exprTagMode,
+          useTrackerAsTag: input.exprUseTrackerAsTag,
+          useDisplayName: input.exprUseDisplayName,
           condition: input.actionCondition ?? undefined,
         }
         break
@@ -530,8 +542,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       }
     }
     if (formState.actionType === "tag") {
-      if (formState.exprTags.length === 0) {
-        toast.error("Specify at least one tag")
+      if (!formState.exprUseTrackerAsTag && formState.exprTags.length === 0) {
+        toast.error("Specify at least one tag or enable 'Use tracker name'")
         return
       }
     }
@@ -777,35 +789,91 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                 )}
 
                 {formState.actionType === "tag" && (
-                  <div className="grid grid-cols-[auto_1fr_auto] gap-3 items-start">
-                    <ActionTypeSelector value={formState.actionType} onChange={handleActionTypeChange} />
-                    <div className="space-y-1">
-                      <Label className="text-xs">Tags</Label>
-                      <Input
-                        type="text"
-                        value={formState.exprTags.join(", ")}
-                        onChange={(e) => {
-                          const tags = e.target.value.split(",").map(t => t.trim()).filter(Boolean)
-                          setFormState(prev => ({ ...prev, exprTags: tags }))
-                        }}
-                        placeholder="tag1, tag2, ..."
-                      />
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-[auto_1fr_auto] gap-3 items-start">
+                      <ActionTypeSelector value={formState.actionType} onChange={handleActionTypeChange} />
+                      {formState.exprUseTrackerAsTag ? (
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Tags derived from tracker</Label>
+                          <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-muted/50 text-sm text-muted-foreground">
+                            Torrents will be tagged with their tracker name
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <Label className="text-xs">Tags</Label>
+                          <Input
+                            type="text"
+                            value={formState.exprTags.join(", ")}
+                            onChange={(e) => {
+                              const tags = e.target.value.split(",").map(t => t.trim()).filter(Boolean)
+                              setFormState(prev => ({ ...prev, exprTags: tags }))
+                            }}
+                            placeholder="tag1, tag2, ..."
+                          />
+                        </div>
+                      )}
+                      <div className="space-y-1">
+                        <Label className="text-xs">Mode</Label>
+                        <Select
+                          value={formState.exprTagMode}
+                          onValueChange={(value: FormState["exprTagMode"]) => setFormState(prev => ({ ...prev, exprTagMode: value }))}
+                        >
+                          <SelectTrigger className="w-[120px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="full">Full sync</SelectItem>
+                            <SelectItem value="add">Add only</SelectItem>
+                            <SelectItem value="remove">Remove only</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Mode</Label>
-                      <Select
-                        value={formState.exprTagMode}
-                        onValueChange={(value: FormState["exprTagMode"]) => setFormState(prev => ({ ...prev, exprTagMode: value }))}
-                      >
-                        <SelectTrigger className="w-[120px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="full">Full sync</SelectItem>
-                          <SelectItem value="add">Add only</SelectItem>
-                          <SelectItem value="remove">Remove only</SelectItem>
-                        </SelectContent>
-                      </Select>
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          id="use-tracker-tag"
+                          checked={formState.exprUseTrackerAsTag}
+                          onCheckedChange={(checked) => setFormState(prev => ({
+                            ...prev,
+                            exprUseTrackerAsTag: checked,
+                            exprUseDisplayName: checked ? prev.exprUseDisplayName : false,
+                            exprTags: checked ? [] : prev.exprTags,
+                          }))}
+                        />
+                        <Label htmlFor="use-tracker-tag" className="text-sm cursor-pointer whitespace-nowrap">
+                          Use tracker name as tag
+                        </Label>
+                      </div>
+                      {formState.exprUseTrackerAsTag && (
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            id="use-display-name"
+                            checked={formState.exprUseDisplayName}
+                            onCheckedChange={(checked) => setFormState(prev => ({ ...prev, exprUseDisplayName: checked }))}
+                          />
+                          <Label htmlFor="use-display-name" className="text-sm cursor-pointer whitespace-nowrap">
+                            Use display name
+                          </Label>
+                          <TooltipProvider delayDuration={150}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                                  aria-label="About display names"
+                                >
+                                  <Info className="h-3.5 w-3.5" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-[280px]">
+                                <p>Uses friendly names from Tracker Customizations instead of raw domains (e.g., "MyTracker" instead of "tracker.example.com").</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

@@ -49,6 +49,10 @@ type EvalContext struct {
 	// NowUnix is the current Unix timestamp, used for age field evaluation.
 	// If zero, time.Now().Unix() is used. Set this for deterministic tests.
 	NowUnix int64
+
+	// TrackerDisplayNameByDomain maps lowercase tracker domains to their display names.
+	// Used for UseTrackerAsTag with UseDisplayName option.
+	TrackerDisplayNameByDomain map[string]string
 }
 
 // separatorReplacer replaces common torrent name separators with spaces.
