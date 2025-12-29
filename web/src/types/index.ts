@@ -229,6 +229,8 @@ export interface TagAction {
   enabled: boolean
   tags: string[]
   mode: "full" | "add" | "remove"
+  useTrackerAsTag?: boolean
+  useDisplayName?: boolean
   condition?: RuleCondition
 }
 
