@@ -46,6 +46,7 @@ interface TorrentDetailsPanelProps {
   onInitialTabConsumed?: () => void;
   layout?: "horizontal" | "vertical";
   onClose?: () => void;
+  onNavigateToTorrent?: (instanceId: number, torrentHash: string) => void;
 }
 
 const TAB_VALUES = ["general", "trackers", "peers", "webseeds", "content", "crossseed"] as const
@@ -59,7 +60,7 @@ function isTabValue(value: string): value is TabValue {
 
 
 
-export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent, initialTab, onInitialTabConsumed, layout = "vertical", onClose }: TorrentDetailsPanelProps) {
+export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent, initialTab, onInitialTabConsumed, layout = "vertical", onClose, onNavigateToTorrent }: TorrentDetailsPanelProps) {
   const [activeTab, setActiveTab] = usePersistedTabState<TabValue>(TAB_STORAGE_KEY, DEFAULT_TAB, isTabValue)
 
   // Apply initialTab override when provided
@@ -1574,6 +1575,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 onDeselectAll={handleDeselectAllCrossSeed}
                 onDeleteMatches={() => setShowDeleteCrossSeedDialog(true)}
                 onDeleteCurrent={() => setShowDeleteCurrentDialog(true)}
+                onNavigateToTorrent={onNavigateToTorrent}
               />
             ) : (
               <ScrollArea className="h-full">
@@ -1701,7 +1703,18 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                 : 'Same torrent name'
 
                           return (
-                            <div key={torrentKey} className="rounded-lg border bg-card p-4 space-y-3">
+                            <div
+                              key={torrentKey}
+                              className={cn(
+                                "rounded-lg border bg-card p-4 space-y-3",
+                                onNavigateToTorrent && "cursor-pointer hover:bg-muted/30"
+                              )}
+                              onClick={(e) => {
+                                // Don't navigate if clicking checkbox
+                                if ((e.target as HTMLElement).closest('[role="checkbox"]')) return
+                                onNavigateToTorrent?.(match.instanceId, match.hash)
+                              }}
+                            >
                               <div className="space-y-2">
                                 <div className="flex items-start gap-3">
                                   <Checkbox

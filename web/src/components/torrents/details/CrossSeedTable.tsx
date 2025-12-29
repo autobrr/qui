@@ -40,6 +40,7 @@ interface CrossSeedTableProps {
   onDeselectAll: () => void
   onDeleteMatches: () => void
   onDeleteCurrent: () => void
+  onNavigateToTorrent?: (instanceId: number, torrentHash: string) => void
 }
 
 const columnHelper = createColumnHelper<CrossSeedTorrent>()
@@ -100,6 +101,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
   onDeselectAll,
   onDeleteMatches,
   onDeleteCurrent,
+  onNavigateToTorrent,
 }: CrossSeedTableProps) {
   const [sorting, setSorting] = useState<SortingState>([])
   const { data: trackerIcons } = useTrackerIcons()
@@ -379,7 +381,17 @@ export const CrossSeedTable = memo(function CrossSeedTable({
               {table.getRowModel().rows.map((row) => (
                 <tr
                   key={row.id}
-                  className="border-b border-border/50 hover:bg-muted/30"
+                  className={cn(
+                    "border-b border-border/50 hover:bg-muted/30",
+                    onNavigateToTorrent && "cursor-pointer"
+                  )}
+                  onClick={(e) => {
+                    // Don't navigate if clicking checkbox or button
+                    if ((e.target as HTMLElement).closest('button, [role="checkbox"]')) return
+                    if (onNavigateToTorrent) {
+                      onNavigateToTorrent(row.original.instanceId, row.original.hash)
+                    }
+                  }}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td
