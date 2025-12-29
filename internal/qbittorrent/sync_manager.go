@@ -215,13 +215,13 @@ type OptimisticTorrentUpdate struct {
 // NewSyncManager creates a new sync manager
 func NewSyncManager(clientPool *ClientPool) *SyncManager {
 	sm := &SyncManager{
-		clientPool:             clientPool,
-		exprCache:              ttlcache.New(ttlcache.Options[string, *vm.Program]{}.SetDefaultTTL(5 * time.Minute)),
-		debouncedSyncTimers:    make(map[int]*time.Timer),
-		syncDebounceDelay:      200 * time.Millisecond,
-		syncDebounceMinJitter:  10 * time.Millisecond,
-		fileFetchSem:           make(map[int]chan struct{}),
-		fileFetchMaxConcurrent: 16,
+		clientPool:              clientPool,
+		exprCache:               ttlcache.New(ttlcache.Options[string, *vm.Program]{}.SetDefaultTTL(5 * time.Minute)),
+		debouncedSyncTimers:     make(map[int]*time.Timer),
+		syncDebounceDelay:       200 * time.Millisecond,
+		syncDebounceMinJitter:   10 * time.Millisecond,
+		fileFetchSem:            make(map[int]chan struct{}),
+		fileFetchMaxConcurrent:  16,
 		trackerHealthCache:      make(map[int]*TrackerHealthCounts),
 		trackerHealthCancel:     make(map[int]context.CancelFunc),
 		trackerHealthRefresh:    60 * time.Second,
@@ -1494,6 +1494,28 @@ func (sm *SyncManager) AddTorrent(ctx context.Context, instanceID int, fileConte
 
 	// Sync after modification
 	sm.syncAfterModification(instanceID, client, "add_torrent_from_memory")
+
+	return nil
+}
+
+// AddTorrents adds multiple torrents from file content in a single request.
+// This is more efficient than calling AddTorrent multiple times as it sends
+// all files to qBittorrent in one HTTP request.
+func (sm *SyncManager) AddTorrents(ctx context.Context, instanceID int, files [][]byte, options map[string]string) error {
+	if len(files) == 0 {
+		return nil
+	}
+
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	if err := client.AddTorrentsFromMemoryCtx(ctx, files, options); err != nil {
+		return err
+	}
+
+	sm.syncAfterModification(instanceID, client, "add_torrents_batch")
 
 	return nil
 }

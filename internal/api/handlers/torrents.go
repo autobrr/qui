@@ -30,6 +30,7 @@ import (
 // torrentAdder is the interface for adding torrents (used for testing)
 type torrentAdder interface {
 	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error
+	AddTorrents(ctx context.Context, instanceID int, files [][]byte, options map[string]string) error
 	AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) error
 	GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
 }
@@ -90,6 +91,14 @@ func (h *TorrentsHandler) addTorrent(ctx context.Context, instanceID int, fileCo
 		return h.torrentAdder.AddTorrent(ctx, instanceID, fileContent, options)
 	}
 	return h.syncManager.AddTorrent(ctx, instanceID, fileContent, options)
+}
+
+// addTorrents wraps batch torrent addition to support both production and test modes
+func (h *TorrentsHandler) addTorrents(ctx context.Context, instanceID int, files [][]byte, options map[string]string) error {
+	if h.torrentAdder != nil {
+		return h.torrentAdder.AddTorrents(ctx, instanceID, files, options)
+	}
+	return h.syncManager.AddTorrents(ctx, instanceID, files, options)
 }
 
 // addTorrentFromURLs wraps URL-based torrent addition to support both production and test modes
@@ -504,25 +513,19 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 
 	// Add torrent(s)
 	if len(torrentFiles) > 0 {
-		// Add from files
-		for i, fileContent := range torrentFiles {
-			// Check if context is already cancelled (timeout or client disconnect)
-			if ctx.Err() != nil {
-				log.Warn().Int("instanceID", instanceID).Msg("Request cancelled, stopping torrent additions")
-				break
+		// Add all files in a single batch request to qBittorrent
+		// This is much faster than sequential uploads (one HTTP request vs many)
+		if err := h.addTorrents(ctx, instanceID, torrentFiles, options); err != nil {
+			if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
+				return
 			}
-
-			if err := h.addTorrent(ctx, instanceID, fileContent, options); err != nil {
-				if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
-					return
-				}
-				log.Error().Err(err).Int("instanceID", instanceID).Int("fileIndex", i).Msg("Failed to add torrent file")
-				failedFiles = append(failedFiles, failedFile{Filename: fmt.Sprintf("file_%d", i), Error: err.Error()})
-				failedCount++
-				lastError = err
-			} else {
-				addedCount++
-			}
+			log.Error().Err(err).Int("instanceID", instanceID).Int("fileCount", len(torrentFiles)).Msg("Failed to add torrent files")
+			// With batch upload, we can't know which specific files failed
+			failedFiles = append(failedFiles, failedFile{Filename: "batch", Error: err.Error()})
+			failedCount = len(torrentFiles)
+			lastError = err
+		} else {
+			addedCount = len(torrentFiles)
 		}
 		// Include file read failures in the count and response
 		for _, f := range fileReadFailures {
