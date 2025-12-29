@@ -434,6 +434,7 @@ Configure matching behavior in the **Global rules** tab on the Cross-Seed page.
 
 - **Find individual episodes** - When enabled, season packs also match individual episodes. When disabled, season packs only match other season packs. Episodes are added with AutoTMM disabled to prevent save path conflicts.
 - **Size mismatch tolerance** - Maximum size difference percentage (default: 5%). Also determines auto-resume threshold after recheck.
+- **Skip piece boundary safety check** - Enabled by default. When enabled, allows cross-seeds even if extra files share torrent pieces with content files. **Warning:** This may corrupt your existing seeded data if content differs. Uncheck this to enable the safety check, or use reflink mode which safely handles these cases.
 
 #### Categories
 
@@ -450,14 +451,14 @@ Configure tags applied to cross-seed torrents based on how they were discovered:
 - **Webhook Tags** - Torrents added via `/apply` webhook (default: `["cross-seed"]`)
 - **Inherit source torrent tags** - Also copy tags from the matched source torrent
 
-#### Ignore Patterns
+#### Allowed Extra Files
 
-File patterns to skip when comparing torrents. Useful for excluding sidecar files like `.nfo`, `.srr`, or sample folders. This means torrents including those files will be skipped by default. If you want those to be grabbed, add the files to the ignore pattern.
+File patterns excluded from comparison when matching torrents. Adding patterns here **increases matches** by allowing torrents to match even if they differ in these files (e.g., one has an NFO, the other doesn't).
 
-- Plain strings match any path ending in the text (e.g., `.nfo` ignores all `.nfo` files)
-- Glob patterns treat `/` as a folder separator (e.g., `*/sample/*` ignores sample folders)
+- Plain strings match any path ending in the text (e.g., `.nfo` matches all `.nfo` files)
+- Glob patterns treat `/` as a folder separator (e.g., `*/*sample/*` matches sample folders)
 
-**Note:** Ignore patterns only apply to reuse mode. Hardlink mode requires a 1:1 file match and won't download extras—if the incoming torrent has files not present in the matched torrent, hardlink mode fails.
+**Note:** These patterns only apply to reuse mode. Hardlink mode requires a 1:1 file match and won't download extras—if the incoming torrent has files not present in the matched torrent, hardlink mode fails.
 
 #### External Program
 
@@ -473,7 +474,7 @@ When the cross-seed torrent has a different display name or root folder, qui ren
 
 #### 2. Extra files in source torrent
 
-When the source torrent contains files not on disk (NFO, SRT, samples not filtered by ignore patterns), a recheck determines actual progress.
+When the source torrent contains files not on disk (NFO, SRT, samples not matching allowed extra file patterns), a recheck determines actual progress.
 
 **Note:** In hardlink mode, missing or extra files cause the cross-seed to fail instead of triggering a recheck.
 

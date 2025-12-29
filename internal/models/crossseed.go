@@ -61,11 +61,12 @@ type CrossSeedAutomationSettings struct {
 
 	// Skip auto-resume settings per source mode.
 	// When enabled, torrents remain paused after hash check instead of auto-resuming.
-	SkipAutoResumeRSS          bool `json:"skipAutoResumeRss"`          // Skip auto-resume for RSS automation results
-	SkipAutoResumeSeededSearch bool `json:"skipAutoResumeSeededSearch"` // Skip auto-resume for seeded torrent search results
-	SkipAutoResumeCompletion   bool `json:"skipAutoResumeCompletion"`   // Skip auto-resume for completion-triggered search results
-	SkipAutoResumeWebhook      bool `json:"skipAutoResumeWebhook"`      // Skip auto-resume for /apply webhook results
-	SkipRecheck                bool `json:"skipRecheck"` // Skip cross-seed matches that require a recheck
+	SkipAutoResumeRSS            bool `json:"skipAutoResumeRss"`            // Skip auto-resume for RSS automation results
+	SkipAutoResumeSeededSearch   bool `json:"skipAutoResumeSeededSearch"`   // Skip auto-resume for seeded torrent search results
+	SkipAutoResumeCompletion     bool `json:"skipAutoResumeCompletion"`     // Skip auto-resume for completion-triggered search results
+	SkipAutoResumeWebhook        bool `json:"skipAutoResumeWebhook"`        // Skip auto-resume for /apply webhook results
+	SkipRecheck                  bool `json:"skipRecheck"`                  // Skip cross-seed matches that require a recheck
+	SkipPieceBoundarySafetyCheck bool `json:"skipPieceBoundarySafetyCheck"` // Skip piece boundary safety check (risky: may corrupt existing seeded data)
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -115,13 +116,14 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		// Category isolation - default to true for backwards compatibility
 		UseCrossCategorySuffix: true,
 		// Skip auto-resume - default to false to preserve existing behavior
-		SkipAutoResumeRSS:          false,
-		SkipAutoResumeSeededSearch: false,
-		SkipAutoResumeCompletion:   false,
-		SkipAutoResumeWebhook:      false,
-		SkipRecheck:                false,
-		CreatedAt:                  time.Now().UTC(),
-		UpdatedAt:         time.Now().UTC(),
+		SkipAutoResumeRSS:            false,
+		SkipAutoResumeSeededSearch:   false,
+		SkipAutoResumeCompletion:     false,
+		SkipAutoResumeWebhook:        false,
+		SkipRecheck:                  false,
+		SkipPieceBoundarySafetyCheck: true, // Skip by default to maximize matches
+		CreatedAt:                    time.Now().UTC(),
+		UpdatedAt:                    time.Now().UTC(),
 	}
 }
 
@@ -299,7 +301,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		       webhook_tags, inherit_source_tags, use_cross_category_suffix,
 		       skip_auto_resume_rss, skip_auto_resume_seeded_search,
 		       skip_auto_resume_completion, skip_auto_resume_webhook,
-		       skip_recheck,
+		       skip_recheck, skip_piece_boundary_safety_check,
 		       use_hardlinks, hardlink_base_dir, hardlink_dir_preset,
 		       created_at, updated_at
 		FROM cross_seed_settings
@@ -352,6 +354,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&settings.SkipAutoResumeCompletion,
 		&settings.SkipAutoResumeWebhook,
 		&settings.SkipRecheck,
+		&settings.SkipPieceBoundarySafetyCheck,
 		&unusedUseHardlinks,      // Hardlink settings moved to per-instance
 		&unusedHardlinkBaseDir,   // Hardlink settings moved to per-instance
 		&unusedHardlinkDirPreset, // Hardlink settings moved to per-instance
@@ -525,10 +528,10 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			webhook_tags, inherit_source_tags, use_cross_category_suffix,
 			skip_auto_resume_rss, skip_auto_resume_seeded_search,
 			skip_auto_resume_completion, skip_auto_resume_webhook,
-			skip_recheck,
+			skip_recheck, skip_piece_boundary_safety_check,
 			use_hardlinks, hardlink_base_dir, hardlink_dir_preset
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -562,6 +565,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			skip_auto_resume_completion = excluded.skip_auto_resume_completion,
 			skip_auto_resume_webhook = excluded.skip_auto_resume_webhook,
 			skip_recheck = excluded.skip_recheck,
+			skip_piece_boundary_safety_check = excluded.skip_piece_boundary_safety_check,
 			use_hardlinks = excluded.use_hardlinks,
 			hardlink_base_dir = excluded.hardlink_base_dir,
 			hardlink_dir_preset = excluded.hardlink_dir_preset
@@ -616,6 +620,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		settings.SkipAutoResumeCompletion,
 		settings.SkipAutoResumeWebhook,
 		settings.SkipRecheck,
+		settings.SkipPieceBoundarySafetyCheck,
 		unusedHardlinkUse,       // Hardlink settings moved to per-instance
 		unusedHardlinkBaseDir,   // Hardlink settings moved to per-instance
 		unusedHardlinkDirPreset, // Hardlink settings moved to per-instance

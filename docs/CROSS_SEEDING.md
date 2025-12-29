@@ -152,7 +152,7 @@ Check the torrent's progress and decide whether to:
 
 In default mode, qui points the cross-seed torrent at the matched torrent's existing files. If the incoming torrent has a different display name or folder structure, qui renames them to match. After rename-alignment, qBittorrent may need to recheck the torrent to verify files at the new paths.
 
-Rechecks are also required when the source torrent contains extra files not present on disk (NFO, SRT, samples not filtered by ignore patterns).
+Rechecks are also required when the source torrent contains extra files not present on disk (NFO, SRT, samples not matching allowed extra file patterns).
 
 **Auto-resume behavior:**
 - Torrents that complete recheck at 95% or higher (configurable via "Size mismatch tolerance") auto-resume.
@@ -164,12 +164,18 @@ When the incoming torrent has extra files (files not present in the matched torr
 
 **Why this matters:** BitTorrent pieces are hashed together. If a piece contains bytes from both your existing content file AND a missing file, qBittorrent would need to download new data that overlaps with your existing content—potentially corrupting it.
 
-**What qui does:**
+**What qui does (when safety check is enabled):**
 - Before adding any cross-seed with extra files, qui analyzes the torrent's piece layout
 - If extra files share pieces with content files, the cross-seed is **skipped** with reason "extra files share pieces with content"
 - If extra files are safely isolated (piece-boundary aligned), the cross-seed proceeds normally
 
-This check applies regardless of whether the extra files match ignore patterns. The piece-boundary constraint is fundamental to how BitTorrent works.
+This check applies regardless of whether the extra files match allowed extra file patterns. The piece-boundary constraint is fundamental to how BitTorrent works.
+
+**Enabling this check:**
+- **Piece boundary safety check** (opt-in): Uncheck "Skip piece boundary safety check" in Global rules to enable this protection. When enabled, qui will skip matches where extra files share pieces with content.
+- **Reflink mode** (always safe): Reflink mode never needs this check because copy-on-write clones can be safely modified without affecting originals.
+
+**Why this check is opt-in:** Skipping the check maximizes cross-seed matches, especially for torrents with extra files (NFOs, samples, etc.) which are common. The tradeoff is potential data corruption if the matched content differs. Users who want extra protection can enable the check or use reflink mode.
 
 ### Hardlink mode
 
@@ -181,7 +187,7 @@ When the incoming torrent has extra files not present in the matched torrent:
 - qBittorrent identifies the missing pieces (extras) and downloads them
 - Once recheck completes at the configured threshold, qui auto-resumes the torrent
 
-The same piece-boundary safety check applies: if extra files share pieces with content, the cross-seed is skipped to prevent data corruption.
+The piece-boundary safety check (if enabled) applies here too: if extra files share pieces with content, the cross-seed is skipped to prevent data corruption.
 
 ## Category Behavior
 
@@ -256,12 +262,14 @@ Common causes:
 
 ### Cross-seed skipped: "extra files share pieces with content"
 
-The incoming torrent has files not present in your matched torrent, and those files share torrent pieces with your existing content. Downloading them would require overwriting parts of your existing files.
+This only occurs when you have enabled the piece boundary safety check (disabled "Skip piece boundary safety check" in Global rules).
+
+The incoming torrent has files not present in your matched torrent, and those files share torrent pieces with your existing content. Downloading them could overwrite parts of your existing files.
 
 **Solutions:**
-- **Use reflink mode**: Enable reflink mode for the instance—it bypasses this check and safely clones files so qBittorrent can modify them
-- This is expected for some torrents in hardlink/default mode—the skip protects your data
-- If reflinks aren't available on your filesystem, you'd need to download the torrent fresh
+- **Use reflink mode** (recommended): Enable reflink mode for the instance—it safely clones files so qBittorrent can modify them without affecting originals
+- **Disable the safety check**: Check "Skip piece boundary safety check" in Global rules (the default). The match will proceed but **may corrupt your existing seeded files** if content differs
+- If reflinks aren't available and you want to avoid any risk, download the torrent fresh
 
 ### Cross-seed stuck at low percentage after recheck
 
