@@ -83,6 +83,15 @@ import type {
   DashboardSettings,
   DashboardSettingsInput
 } from "@/types"
+import type {
+  ArrInstance,
+  ArrInstanceFormData,
+  ArrInstanceUpdateData,
+  ArrTestConnectionRequest,
+  ArrTestResponse,
+  ArrResolveRequest,
+  ArrResolveResponse,
+} from "@/types/arr"
 import { getApiBaseUrl, withBasePath } from "./base-url"
 
 const API_BASE = getApiBaseUrl()
@@ -1804,6 +1813,53 @@ class ApiClient {
       `/instances/${instanceId}/orphan-scan/runs/${runId}`,
       { method: "DELETE" }
     )
+  }
+
+  // ARR Instance endpoints
+  async listArrInstances(): Promise<ArrInstance[]> {
+    return this.request<ArrInstance[]>("/arr/instances")
+  }
+
+  async getArrInstance(id: number): Promise<ArrInstance> {
+    return this.request<ArrInstance>(`/arr/instances/${id}`)
+  }
+
+  async createArrInstance(data: ArrInstanceFormData): Promise<ArrInstance> {
+    return this.request<ArrInstance>("/arr/instances", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateArrInstance(id: number, data: ArrInstanceUpdateData): Promise<ArrInstance> {
+    return this.request<ArrInstance>(`/arr/instances/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteArrInstance(id: number): Promise<void> {
+    return this.request(`/arr/instances/${id}`, { method: "DELETE" })
+  }
+
+  async testArrInstance(id: number): Promise<ArrTestResponse> {
+    return this.request<ArrTestResponse>(`/arr/instances/${id}/test`, {
+      method: "POST",
+    })
+  }
+
+  async testArrConnection(data: ArrTestConnectionRequest): Promise<ArrTestResponse> {
+    return this.request<ArrTestResponse>("/arr/test", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async resolveArrTitle(data: ArrResolveRequest): Promise<ArrResolveResponse> {
+    return this.request<ArrResolveResponse>("/arr/resolve", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
   }
 }
 

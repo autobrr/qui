@@ -520,6 +520,178 @@ paths:
         '500':
           description: Internal server error (failed to get client for instance, failed to retrieve torrent info)
 
+  /api/arr/instances:
+    get:
+      tags:
+        - ARR Integrations
+      summary: List ARR instances
+      description: Get all configured Sonarr/Radarr instances
+      responses:
+        '200':
+          description: List of ARR instances
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ArrInstance'
+    post:
+      tags:
+        - ARR Integrations
+      summary: Create ARR instance
+      description: Add a new Sonarr or Radarr instance configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArrInstanceCreate'
+      responses:
+        '201':
+          description: ARR instance created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArrInstance'
+        '400':
+          description: Invalid request
+        '409':
+          description: An instance with this URL already exists for this type
+
+  /api/arr/instances/{id}:
+    get:
+      tags:
+        - ARR Integrations
+      summary: Get ARR instance
+      description: Get a single Sonarr/Radarr instance by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: ARR instance details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArrInstance'
+        '404':
+          description: ARR instance not found
+    put:
+      tags:
+        - ARR Integrations
+      summary: Update ARR instance
+      description: Update an existing Sonarr/Radarr instance configuration
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArrInstanceUpdate'
+      responses:
+        '200':
+          description: ARR instance updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArrInstance'
+        '404':
+          description: ARR instance not found
+        '409':
+          description: An instance with this URL already exists for this type
+    delete:
+      tags:
+        - ARR Integrations
+      summary: Delete ARR instance
+      description: Delete an ARR instance configuration
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: ARR instance deleted successfully
+        '404':
+          description: ARR instance not found
+
+  /api/arr/instances/{id}/test:
+    post:
+      tags:
+        - ARR Integrations
+      summary: Test ARR instance
+      description: Test connectivity to an existing ARR instance
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Test result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArrTestResponse'
+        '404':
+          description: ARR instance not found
+
+  /api/arr/test:
+    post:
+      tags:
+        - ARR Integrations
+      summary: Test ARR connection
+      description: Test connectivity to an ARR instance before saving
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArrTestConnectionRequest'
+      responses:
+        '200':
+          description: Test result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArrTestResponse'
+        '400':
+          description: Invalid request
+
+  /api/arr/resolve:
+    post:
+      tags:
+        - ARR Integrations
+      summary: Resolve title to external IDs
+      description: Use configured ARR instances to resolve a title to external IDs (IMDb, TMDb, TVDb, TVMaze)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArrResolveRequest'
+      responses:
+        '200':
+          description: Resolved IDs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArrResolveResponse'
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to resolve title
+
   /api/instances:
     get:
       tags:
@@ -4872,11 +5044,206 @@ components:
               items:
                 $ref: '#/components/schemas/OrphanScanFile'
 
+    ArrInstance:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: ["sonarr", "radarr"]
+        name:
+          type: string
+        base_url:
+          type: string
+        enabled:
+          type: boolean
+        priority:
+          type: integer
+        timeout_seconds:
+          type: integer
+        last_test_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_test_status:
+          type: string
+          enum: ["unknown", "ok", "error"]
+        last_test_error:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ArrInstanceCreate:
+      type: object
+      required:
+        - type
+        - name
+        - base_url
+        - api_key
+      properties:
+        type:
+          type: string
+          enum: ["sonarr", "radarr"]
+        name:
+          type: string
+        base_url:
+          type: string
+        api_key:
+          type: string
+          writeOnly: true
+        enabled:
+          type: boolean
+          default: true
+        priority:
+          type: integer
+          default: 0
+        timeout_seconds:
+          type: integer
+          default: 15
+
+    ArrInstanceUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        base_url:
+          type: string
+        api_key:
+          type: string
+          writeOnly: true
+          description: Only update if provided
+        enabled:
+          type: boolean
+        priority:
+          type: integer
+        timeout_seconds:
+          type: integer
+
+    ArrTestConnectionRequest:
+      type: object
+      required:
+        - type
+        - base_url
+        - api_key
+      properties:
+        type:
+          type: string
+          enum: ["sonarr", "radarr"]
+        base_url:
+          type: string
+        api_key:
+          type: string
+          writeOnly: true
+
+    ArrTestResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        error:
+          type: string
+          nullable: true
+
+    ArrResolveRequest:
+      type: object
+      required:
+        - title
+        - content_type
+      properties:
+        title:
+          type: string
+        content_type:
+          type: string
+          enum: ["movie", "tv"]
+
+    ArrExternalIDs:
+      type: object
+      properties:
+        imdb_id:
+          type: string
+        tmdb_id:
+          type: integer
+        tvdb_id:
+          type: integer
+        tvmaze_id:
+          type: integer
+
+    ArrIDCacheEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        title_hash:
+          type: string
+        content_type:
+          type: string
+        arr_instance_id:
+          type: integer
+          nullable: true
+        external_ids:
+          $ref: '#/components/schemas/ArrExternalIDs'
+        is_negative:
+          type: boolean
+        cached_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+
+    ArrInstanceResult:
+      type: object
+      properties:
+        instance_id:
+          type: integer
+        instance_name:
+          type: string
+        instance_type:
+          type: string
+        ids:
+          $ref: '#/components/schemas/ArrExternalIDs'
+        error:
+          type: string
+          nullable: true
+
+    ArrResolveResponse:
+      type: object
+      properties:
+        title:
+          type: string
+        title_hash:
+          type: string
+        content_type:
+          type: string
+          enum: ["movie", "tv"]
+        cache_hit:
+          type: boolean
+        cache_entry:
+          $ref: '#/components/schemas/ArrIDCacheEntry'
+        instances_available:
+          type: integer
+        instance_results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ArrInstanceResult'
+        error:
+          type: string
+          nullable: true
+
 tags:
   - name: Authentication
     description: User authentication and session management
   - name: API Keys
     description: API key management
+  - name: ARR Integrations
+    description: Sonarr/Radarr instance management for external ID lookups
   - name: Client API Keys
     description: Client API key management for external applications
   - name: External Programs

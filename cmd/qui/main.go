@@ -32,6 +32,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/filesmanager"
@@ -489,6 +490,11 @@ func (app *Application) runServer() {
 
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db)
 	externalProgramStore := models.NewExternalProgramStore(db)
+	arrInstanceStore, err := models.NewArrInstanceStore(db, cfg.GetEncryptionKey())
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize ARR instance store")
+	}
+	arrIDCacheStore := models.NewArrIDCacheStore(db)
 	errorStore := models.NewInstanceErrorStore(db)
 
 	// Initialize services
@@ -552,10 +558,14 @@ func (app *Application) runServer() {
 	)
 	log.Info().Msg("Torznab/Jackett service initialized")
 
+	// Initialize ARR service for Sonarr/Radarr ID lookup
+	arrService := arr.NewService(arrInstanceStore, arrIDCacheStore)
+	log.Info().Msg("ARR service initialized")
+
 	// Initialize cross-seed automation store and service
 	crossSeedStore := models.NewCrossSeedStore(db)
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
-	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore, instanceCrossSeedCompletionStore, trackerCustomizationStore)
+	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, arrService, externalProgramStore, instanceCrossSeedCompletionStore, trackerCustomizationStore)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 	automationActivityStore := models.NewAutomationActivityStore(db)
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, syncManager)
@@ -674,6 +684,8 @@ func (app *Application) runServer() {
 		InstanceCrossSeedCompletionStore: instanceCrossSeedCompletionStore,
 		OrphanScanStore:                  orphanScanStore,
 		OrphanScanService:                orphanScanService,
+		ArrInstanceStore:                 arrInstanceStore,
+		ArrService:                       arrService,
 	})
 
 	errorChannel := make(chan error)

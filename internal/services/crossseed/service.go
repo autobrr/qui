@@ -44,6 +44,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/fsutil"
@@ -261,6 +262,7 @@ type Service struct {
 	automationStore          *models.CrossSeedStore
 	automationSettingsLoader func(context.Context) (*models.CrossSeedAutomationSettings, error)
 	jackettService           *jackett.Service
+	arrService               *arr.Service // ARR service for ID lookup
 
 	// External program execution
 	externalProgramStore *models.ExternalProgramStore
@@ -323,6 +325,7 @@ func NewService(
 	filesManager *filesmanager.Service,
 	automationStore *models.CrossSeedStore,
 	jackettService *jackett.Service,
+	arrService *arr.Service,
 	externalProgramStore *models.ExternalProgramStore,
 	completionStore *models.InstanceCrossSeedCompletionStore,
 	trackerCustomizationStore *models.TrackerCustomizationStore,
@@ -353,6 +356,7 @@ func NewService(
 		stringNormalizer:          stringutils.NewDefaultNormalizer(),
 		automationStore:           automationStore,
 		jackettService:            jackettService,
+		arrService:                arrService,
 		externalProgramStore:      externalProgramStore,
 		completionStore:           completionStore,
 		automationWake:            make(chan struct{}, 1),
@@ -457,10 +461,10 @@ type SearchRunOptions struct {
 	InheritSourceTags            bool
 	IgnorePatterns               []string
 	SpecificHashes               []string
-	SizeMismatchTolerancePercent     float64
-	SkipAutoResume                   bool
-	SkipRecheck                      bool
-	SkipPieceBoundarySafetyCheck     bool
+	SizeMismatchTolerancePercent float64
+	SkipAutoResume               bool
+	SkipRecheck                  bool
+	SkipPieceBoundarySafetyCheck bool
 }
 
 // SearchSettingsPatch captures optional updates to seeded search defaults.
@@ -1145,16 +1149,16 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 
 	searchState := &searchRunState{
 		opts: SearchRunOptions{
-			InstanceID:             instanceID,
-			FindIndividualEpisodes: settings.FindIndividualEpisodes,
-			StartPaused:            settings.StartPaused,
+			InstanceID:                   instanceID,
+			FindIndividualEpisodes:       settings.FindIndividualEpisodes,
+			StartPaused:                  settings.StartPaused,
 			SkipAutoResume:               settings.SkipAutoResumeCompletion,
 			SkipRecheck:                  settings.SkipRecheck,
 			SkipPieceBoundarySafetyCheck: settings.SkipPieceBoundarySafetyCheck,
 			CategoryOverride:             settings.Category,
-			TagsOverride:           append([]string(nil), settings.CompletionSearchTags...),
-			InheritSourceTags:      settings.InheritSourceTags,
-			IgnorePatterns:         append([]string(nil), settings.IgnorePatterns...),
+			TagsOverride:                 append([]string(nil), settings.CompletionSearchTags...),
+			InheritSourceTags:            settings.InheritSourceTags,
+			IgnorePatterns:               append([]string(nil), settings.IgnorePatterns...),
 		},
 	}
 	// Pass completion source filters to ensure CrossSeed respects them when finding candidates
@@ -2523,19 +2527,19 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 	}
 
 	crossReq := &CrossSeedRequest{
-		TorrentData:                     req.TorrentData,
-		TargetInstanceIDs:               targetInstanceIDs,
-		Category:                        req.Category,
-		Tags:                            tags,
-		InheritSourceTags:               inheritSourceTags,
-		IgnorePatterns:                  ignorePatterns,
-		StartPaused:                     req.StartPaused,
-		SkipIfExists:                    req.SkipIfExists,
-		FindIndividualEpisodes:          findIndividualEpisodes,
-		SizeMismatchTolerancePercent:    sizeTolerance,
-		SkipAutoResume:                  skipAutoResume,
-		SkipRecheck:                     skipRecheck,
-		SkipPieceBoundarySafetyCheck:    skipPieceBoundarySafetyCheck,
+		TorrentData:                  req.TorrentData,
+		TargetInstanceIDs:            targetInstanceIDs,
+		Category:                     req.Category,
+		Tags:                         tags,
+		InheritSourceTags:            inheritSourceTags,
+		IgnorePatterns:               ignorePatterns,
+		StartPaused:                  req.StartPaused,
+		SkipIfExists:                 req.SkipIfExists,
+		FindIndividualEpisodes:       findIndividualEpisodes,
+		SizeMismatchTolerancePercent: sizeTolerance,
+		SkipAutoResume:               skipAutoResume,
+		SkipRecheck:                  skipRecheck,
+		SkipPieceBoundarySafetyCheck: skipPieceBoundarySafetyCheck,
 	}
 	// Pass webhook source filters so CrossSeed respects them when finding candidates
 	if settings != nil {
@@ -4274,7 +4278,26 @@ func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, h
 	}
 
 	return torrentInfo, nil
-} // SearchTorrentMatches queries Torznab indexers for candidate torrents that match an existing torrent.
+}
+
+// mapContentTypeToARR maps crossseed content type to ARR content type for ID lookup.
+// Returns empty string for content types that don't have ARR lookup support.
+func mapContentTypeToARR(contentType string) arr.ContentType {
+	switch contentType {
+	case "movie":
+		return arr.ContentTypeMovie
+	case "tv":
+		return arr.ContentTypeTV
+	case "anime":
+		// Anime is handled by Sonarr, same as TV
+		return arr.ContentTypeAnime
+	default:
+		// No ARR lookup for music, books, games, adult, unknown, etc.
+		return ""
+	}
+}
+
+// SearchTorrentMatches queries Torznab indexers for candidate torrents that match an existing torrent.
 func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash string, opts TorrentSearchOptions) (*TorrentSearchResponse, error) {
 	if s.jackettService == nil {
 		return nil, errors.New("torznab search is not configured")
@@ -4541,12 +4564,54 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		Ints("filteredIndexers", filteredIndexerIDs).
 		Msg("[CROSSSEED-SEARCH] Applied indexer filtering")
 
+	// ARR-driven ID lookup for enhanced Torznab searching
+	var externalIDs *models.ExternalIDs
+	if s.arrService != nil {
+		arrContentType := mapContentTypeToARR(contentInfo.ContentType)
+		if arrContentType != "" {
+			result, err := s.arrService.LookupExternalIDs(ctx, sourceTorrent.Name, arrContentType)
+			if err != nil {
+				log.Debug().Err(err).
+					Str("torrentName", sourceTorrent.Name).
+					Str("contentType", contentInfo.ContentType).
+					Msg("[CROSSSEED-SEARCH] ARR ID lookup failed, continuing without IDs")
+			} else if result != nil && result.IDs != nil && !result.IDs.IsEmpty() {
+				externalIDs = result.IDs
+				log.Debug().
+					Str("torrentName", sourceTorrent.Name).
+					Str("imdbId", externalIDs.IMDbID).
+					Int("tmdbId", externalIDs.TMDbID).
+					Int("tvdbId", externalIDs.TVDbID).
+					Int("tvmazeId", externalIDs.TVMazeID).
+					Bool("fromCache", result.FromCache).
+					Msg("[CROSSSEED-SEARCH] ARR ID lookup succeeded")
+			}
+		}
+	}
+
 	searchReq := &jackett.TorznabSearchRequest{
 		Query:       query,
 		ReleaseName: sourceTorrent.Name,
 		Limit:       requestLimit,
 		IndexerIDs:  filteredIndexerIDs,
 		CacheMode:   opts.CacheMode,
+	}
+
+	// Apply IDs from ARR lookup and set OmitQueryForIDs flag
+	if externalIDs != nil {
+		if externalIDs.IMDbID != "" {
+			searchReq.IMDbID = externalIDs.IMDbID
+		}
+		if externalIDs.TVDbID > 0 {
+			searchReq.TVDbID = strconv.Itoa(externalIDs.TVDbID)
+		}
+		if externalIDs.TMDbID > 0 {
+			searchReq.TMDbID = externalIDs.TMDbID
+		}
+		if externalIDs.TVMazeID > 0 {
+			searchReq.TVMazeID = externalIDs.TVMazeID
+		}
+		searchReq.OmitQueryForIDs = true // Cross-seed: omit q when IDs present
 	}
 
 	if seasonPtr != nil {
@@ -4968,17 +5033,17 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 			}
 
 			payload := &CrossSeedRequest{
-				TorrentData:                     base64.StdEncoding.EncodeToString(torrentBytes),
-				TargetInstanceIDs:               []int{instanceID},
-				StartPaused:                     &startPausedCopy,
-				Tags:                            applyTags,
-				InheritSourceTags:               inheritSourceTags,
-				IndexerName:                     indexerName,
-				FindIndividualEpisodes:          req.FindIndividualEpisodes,
-				SizeMismatchTolerancePercent:    sizeTolerance,
-				SkipAutoResume:                  skipAutoResume,
-				SkipRecheck:                     skipRecheck,
-				SkipPieceBoundarySafetyCheck:    skipPieceBoundarySafetyCheck,
+				TorrentData:                  base64.StdEncoding.EncodeToString(torrentBytes),
+				TargetInstanceIDs:            []int{instanceID},
+				StartPaused:                  &startPausedCopy,
+				Tags:                         applyTags,
+				InheritSourceTags:            inheritSourceTags,
+				IndexerName:                  indexerName,
+				FindIndividualEpisodes:       req.FindIndividualEpisodes,
+				SizeMismatchTolerancePercent: sizeTolerance,
+				SkipAutoResume:               skipAutoResume,
+				SkipRecheck:                  skipRecheck,
+				SkipPieceBoundarySafetyCheck: skipPieceBoundarySafetyCheck,
 			}
 			if settings != nil && len(settings.IgnorePatterns) > 0 {
 				payload.IgnorePatterns = append([]string(nil), settings.IgnorePatterns...)
@@ -6065,9 +6130,9 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		FindIndividualEpisodes:       state.opts.FindIndividualEpisodes,
 		SkipIfExists:                 &skipIfExists,
 		SizeMismatchTolerancePercent: sizeTolerance,
-		SkipAutoResume:                  state.opts.SkipAutoResume,
-		SkipRecheck:                     state.opts.SkipRecheck,
-		SkipPieceBoundarySafetyCheck:    state.opts.SkipPieceBoundarySafetyCheck,
+		SkipAutoResume:               state.opts.SkipAutoResume,
+		SkipRecheck:                  state.opts.SkipRecheck,
+		SkipPieceBoundarySafetyCheck: state.opts.SkipPieceBoundarySafetyCheck,
 		// Pass seeded search filters so CrossSeed respects them when finding candidates
 		SourceFilterCategories:        append([]string(nil), state.opts.Categories...),
 		SourceFilterTags:              append([]string(nil), state.opts.Tags...),
