@@ -53,11 +53,12 @@ func DefaultConfig() Config {
 
 // Service periodically applies automation rules to torrents for all active instances.
 type Service struct {
-	cfg           Config
-	instanceStore *models.InstanceStore
-	ruleStore     *models.AutomationStore
-	activityStore *models.AutomationActivityStore
-	syncManager   *qbittorrent.SyncManager
+	cfg                       Config
+	instanceStore             *models.InstanceStore
+	ruleStore                 *models.AutomationStore
+	activityStore             *models.AutomationActivityStore
+	trackerCustomizationStore *models.TrackerCustomizationStore
+	syncManager               *qbittorrent.SyncManager
 
 	// keep lightweight memory of recent applications to avoid hammering qBittorrent
 	lastApplied map[int]map[string]time.Time // instanceID -> hash -> timestamp
@@ -65,7 +66,7 @@ type Service struct {
 	mu          sync.RWMutex
 }
 
-func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, syncManager *qbittorrent.SyncManager) *Service {
+func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager) *Service {
 	if cfg.ScanInterval <= 0 {
 		cfg.ScanInterval = DefaultConfig().ScanInterval
 	}
@@ -79,13 +80,14 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		cfg.ActivityRetentionDays = DefaultConfig().ActivityRetentionDays
 	}
 	return &Service{
-		cfg:           cfg,
-		instanceStore: instanceStore,
-		ruleStore:     ruleStore,
-		activityStore: activityStore,
-		syncManager:   syncManager,
-		lastApplied:   make(map[int]map[string]time.Time),
-		lastRuleRun:   make(map[ruleKey]time.Time),
+		cfg:                       cfg,
+		instanceStore:             instanceStore,
+		ruleStore:                 ruleStore,
+		activityStore:             activityStore,
+		trackerCustomizationStore: trackerCustomizationStore,
+		syncManager:               syncManager,
+		lastApplied:               make(map[int]map[string]time.Time),
+		lastRuleRun:               make(map[ruleKey]time.Time),
 	}
 }
 
@@ -580,6 +582,16 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		evalCtx.HardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
 	}
 
+	// Load tracker display names if any rule uses UseTrackerAsTag with UseDisplayName
+	if rulesUseTrackerDisplayName(eligibleRules) && s.trackerCustomizationStore != nil {
+		customizations, err := s.trackerCustomizationStore.List(ctx)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load tracker customizations for display names")
+		} else {
+			evalCtx.TrackerDisplayNameByDomain = buildTrackerDisplayNameMap(customizations)
+		}
+	}
+
 	// Ensure lastApplied map is initialized for this instance
 	s.mu.RLock()
 	instLastApplied, ok := s.lastApplied[instanceID]
@@ -742,10 +754,14 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 				action = models.ActivityActionDeletedSeeding
 			}
 
+			trackerDomain := ""
+			if len(state.trackerDomains) > 0 {
+				trackerDomain = state.trackerDomains[0]
+			}
 			pendingByHash[hash] = pendingDeletion{
 				hash:          hash,
 				torrentName:   state.name,
-				trackerDomain: state.trackerDomain,
+				trackerDomain: trackerDomain,
 				action:        action,
 				ruleID:        state.deleteRuleID,
 				ruleName:      state.deleteRuleName,
@@ -1373,6 +1389,31 @@ func rulesUseHardlinkScopeCondition(rules []*models.Automation) bool {
 		}
 	}
 	return false
+}
+
+// rulesUseTrackerDisplayName checks if any enabled rule uses UseTrackerAsTag with UseDisplayName.
+func rulesUseTrackerDisplayName(rules []*models.Automation) bool {
+	for _, rule := range rules {
+		if rule.Conditions == nil || !rule.Enabled {
+			continue
+		}
+		tag := rule.Conditions.Tag
+		if tag != nil && tag.Enabled && tag.UseTrackerAsTag && tag.UseDisplayName {
+			return true
+		}
+	}
+	return false
+}
+
+// buildTrackerDisplayNameMap builds a map from lowercase domain to display name.
+func buildTrackerDisplayNameMap(customizations []*models.TrackerCustomization) map[string]string {
+	result := make(map[string]string)
+	for _, c := range customizations {
+		for _, domain := range c.Domains {
+			result[strings.ToLower(domain)] = c.DisplayName
+		}
+	}
+	return result
 }
 
 // fileIDInfo holds file identity and link count for hardlink scope detection.

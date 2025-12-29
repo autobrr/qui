@@ -14,9 +14,9 @@ import (
 
 // torrentDesiredState tracks accumulated actions for a single torrent across all matching rules.
 type torrentDesiredState struct {
-	hash          string
-	name          string
-	trackerDomain string
+	hash           string
+	name           string
+	trackerDomains []string // all tracker domains for this torrent
 
 	// Speed limits (last rule wins)
 	uploadLimitKiB   *int64
@@ -46,21 +46,21 @@ type torrentDesiredState struct {
 }
 
 type ruleRunStats struct {
-	MatchedTrackers                    int
-	SpeedApplied                       int
-	SpeedConditionNotMet               int
-	ShareApplied                       int
-	ShareConditionNotMet               int
-	PauseApplied                       int
-	PauseConditionNotMet               int
-	TagConditionMet                    int
-	TagConditionNotMet                 int
-	TagSkippedMissingUnregisteredSet   int
-	CategoryApplied                    int
-	CategoryConditionNotMetOrBlocked   int
-	DeleteApplied                      int
-	DeleteConditionNotMet              int
-	DeleteNotCompleted                 int
+	MatchedTrackers                  int
+	SpeedApplied                     int
+	SpeedConditionNotMet             int
+	ShareApplied                     int
+	ShareConditionNotMet             int
+	PauseApplied                     int
+	PauseConditionNotMet             int
+	TagConditionMet                  int
+	TagConditionNotMet               int
+	TagSkippedMissingUnregisteredSet int
+	CategoryApplied                  int
+	CategoryConditionNotMetOrBlocked int
+	DeleteApplied                    int
+	DeleteConditionNotMet            int
+	DeleteNotCompleted               int
 }
 
 func (s *ruleRunStats) totalApplied() int {
@@ -132,10 +132,8 @@ func processTorrents(
 			tagActions:  make(map[string]string),
 		}
 
-		// Get primary tracker domain
-		if domains := collectTrackerDomains(torrent, sm); len(domains) > 0 {
-			state.trackerDomain = domains[0]
-		}
+		// Get all tracker domains for this torrent
+		state.trackerDomains = collectTrackerDomains(torrent, sm)
 
 		// Process each matching rule in order
 		for _, rule := range matchingRules {
@@ -226,7 +224,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 	}
 
 	// Tags
-	if conditions.Tag != nil && conditions.Tag.Enabled && len(conditions.Tag.Tags) > 0 {
+	if conditions.Tag != nil && conditions.Tag.Enabled && (len(conditions.Tag.Tags) > 0 || conditions.Tag.UseTrackerAsTag) {
 		// Skip if condition uses IS_UNREGISTERED but health data isn't available
 		if ConditionUsesField(conditions.Tag.Condition, FieldIsUnregistered) &&
 			(evalCtx == nil || evalCtx.UnregisteredSet == nil) {
@@ -355,7 +353,19 @@ func processTagAction(tagAction *models.TagAction, torrent qbt.Torrent, state *t
 	matchesCondition := tagAction.Condition == nil ||
 		EvaluateConditionWithContext(tagAction.Condition, torrent, evalCtx, 0)
 
-	for _, managedTag := range tagAction.Tags {
+	// Determine tags to manage - either from static list or derived from tracker
+	var tagsToManage []string
+	if tagAction.UseTrackerAsTag && len(state.trackerDomains) > 0 {
+		// Derive tag from tracker domain, preferring domains with customizations
+		tag := selectTrackerTag(state.trackerDomains, tagAction.UseDisplayName, evalCtx)
+		if tag != "" {
+			tagsToManage = []string{tag}
+		}
+	} else {
+		tagsToManage = tagAction.Tags
+	}
+
+	for _, managedTag := range tagsToManage {
 		// Check current state AND pending changes from earlier rules
 		hasTagNow := false
 		if _, ok := state.currentTags[managedTag]; ok {
@@ -391,6 +401,27 @@ func hasActions(state *torrentDesiredState) bool {
 		len(state.tagActions) > 0 ||
 		state.category != nil ||
 		state.shouldDelete
+}
+
+// selectTrackerTag picks the best tracker domain to use as a tag.
+// If useDisplayName is true, it prefers domains that have a customization (display name).
+// Falls back to the first domain if no customizations match.
+func selectTrackerTag(domains []string, useDisplayName bool, evalCtx *EvalContext) string {
+	if len(domains) == 0 {
+		return ""
+	}
+
+	// If using display names, prefer domains that have a customization
+	if useDisplayName && evalCtx != nil && evalCtx.TrackerDisplayNameByDomain != nil {
+		for _, domain := range domains {
+			if displayName, ok := evalCtx.TrackerDisplayNameByDomain[strings.ToLower(domain)]; ok {
+				return displayName
+			}
+		}
+	}
+
+	// Fall back to the first domain
+	return domains[0]
 }
 
 // parseTorrentTags parses the comma-separated tag string into a set.
