@@ -6,6 +6,7 @@
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
+import { TruncatedText } from "@/components/ui/truncated-text"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
@@ -94,16 +95,16 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
   return (
     <ScrollArea className="h-full">
       <div className="p-3">
-        {/* Row 1: Name + Save Path */}
-        <div className="flex gap-6 h-5">
-          {displayName && (
-            <div className="flex items-center gap-2 flex-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 w-20">
-                Name:
-              </span>
-              <code className="text-xs font-mono text-muted-foreground truncate" title={displayName}>
-                {displayName}
-              </code>
+        {/* Row 1: Name + Hash v1 */}
+        <div className="grid grid-cols-2 gap-6 h-5">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
+              Name:
+            </span>
+            <TruncatedText className="text-xs font-mono text-muted-foreground">
+              {displayName || "N/A"}
+            </TruncatedText>
+            {displayName && (
               <Button
                 variant="ghost"
                 size="icon"
@@ -112,15 +113,37 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
               >
                 <Copy className="h-4 w-4" />
               </Button>
-            </div>
-          )}
-          <div className="flex items-center gap-2 flex-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 w-20">
+            )}
+          </div>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
+              Hash v1:
+            </span>
+            <TruncatedText className="text-xs font-mono text-muted-foreground">
+              {displayInfohashV1 || "N/A"}
+            </TruncatedText>
+            {displayInfohashV1 && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 shrink-0"
+                onClick={() => copyToClipboard(displayInfohashV1, "Info Hash v1")}
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Row 2: Save Path + Hash v2 (or Created By if no v2) */}
+        <div className="grid grid-cols-2 gap-6 h-5">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
               Save Path:
             </span>
-            <code className="text-xs font-mono text-muted-foreground truncate">
+            <TruncatedText className="text-xs font-mono text-muted-foreground">
               {displaySavePath || "N/A"}
-            </code>
+            </TruncatedText>
             {displaySavePath && (
               <Button
                 variant="ghost"
@@ -132,19 +155,45 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
               </Button>
             )}
           </div>
+          {displayInfohashV2 ? (
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
+                Hash v2:
+              </span>
+              <TruncatedText className="text-xs font-mono text-muted-foreground">
+                {displayInfohashV2}
+              </TruncatedText>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 shrink-0"
+                onClick={() => copyToClipboard(displayInfohashV2, "Info Hash v2")}
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : displayCreatedBy ? (
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
+                Created By:
+              </span>
+              <span className="text-xs text-muted-foreground truncate" title={displayCreatedBy}>
+                {renderTextWithLinks(displayCreatedBy)}
+              </span>
+            </div>
+          ) : null}
         </div>
 
-        {/* Row 2: Temp Path (if enabled) */}
+        {/* Row 3: Temp Path (if enabled) */}
         {tempPathEnabled && displayTempPath && (
-          <div className="flex gap-6 h-5">
-            {displayName && <div className="flex-1" />}
-            <div className="flex items-center gap-2 flex-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 w-20">
+          <div className="grid grid-cols-2 gap-6 h-5">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
                 Temp Path:
               </span>
-              <code className="text-xs font-mono text-muted-foreground truncate">
+              <TruncatedText className="text-xs font-mono text-muted-foreground">
                 {displayTempPath}
-              </code>
+              </TruncatedText>
               <Button
                 variant="ghost"
                 size="icon"
@@ -157,67 +206,27 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
           </div>
         )}
 
-        {/* Row 3: Hashes */}
-        <div className="flex gap-6 h-5">
-          <div className="flex items-center gap-2 flex-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 w-20">
-              Hash v1:
-            </span>
-            <code className="text-xs font-mono text-muted-foreground truncate">
-              {displayInfohashV1 || "N/A"}
-            </code>
-            {displayInfohashV1 && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5 shrink-0"
-                onClick={() => copyToClipboard(displayInfohashV1, "Info Hash v1")}
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-          {displayInfohashV2 && (
-            <div className="flex items-center gap-2 flex-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 w-20">
-                Hash v2:
-              </span>
-              <code className="text-xs font-mono text-muted-foreground truncate">
-                {displayInfohashV2}
-              </code>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5 shrink-0"
-                onClick={() => copyToClipboard(displayInfohashV2, "Info Hash v2")}
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
-        </div>
 
-
-        {/* Row 4: Additional Info (if present) */}
-        {(displayComment || displayCreatedBy) && (
-          <div className="flex gap-6 h-5">
-            {displayCreatedBy && (
-              <div className="flex items-center gap-2 flex-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 w-20 whitespace-nowrap">
-                  Created By:
-                </span>
-                <span className="text-xs text-muted-foreground truncate" title={displayCreatedBy}>
-                  {renderTextWithLinks(displayCreatedBy)}
-                </span>
-              </div>
-            )}
+        {/* Row 4: Additional Info (if present) - Created By only shows here if Hash v2 exists */}
+        {(displayComment || (displayCreatedBy && displayInfohashV2)) && (
+          <div className="grid grid-cols-2 gap-6 h-5">
             {displayComment && (
-              <div className="flex items-center gap-2 flex-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 w-20">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
                   Comment:
                 </span>
                 <span className="text-xs text-muted-foreground truncate" title={displayComment}>
                   {renderTextWithLinks(displayComment)}
+                </span>
+              </div>
+            )}
+            {displayCreatedBy && displayInfohashV2 && (
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
+                  Created By:
+                </span>
+                <span className="text-xs text-muted-foreground truncate" title={displayCreatedBy}>
+                  {renderTextWithLinks(displayCreatedBy)}
                 </span>
               </div>
             )}
