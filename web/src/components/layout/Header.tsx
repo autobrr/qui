@@ -38,7 +38,7 @@ import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
-import { Archive, ChevronsUpDown, Download, FileEdit, FunnelPlus, FunnelX, GitBranch, HardDrive, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Rss, Search, SearchCode, Server, Settings, Zap, X } from "lucide-react"
+import { Archive, ChevronsUpDown, Download, FileEdit, FunnelPlus, FunnelX, GitBranch, HardDrive, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Rss, Search, SearchCode, Server, Settings, X, Zap } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 
@@ -590,7 +590,7 @@ export function Header({
                                   </span>
                                 </TooltipTrigger>
                                 <TooltipContent side="left" className="text-xs">
-                                  Seeded search running
+                                  Scan running
                                 </TooltipContent>
                               </Tooltip>
                             )}

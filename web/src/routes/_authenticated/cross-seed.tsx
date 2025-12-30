@@ -8,7 +8,7 @@ import { createFileRoute } from "@tanstack/react-router"
 import { z } from "zod"
 
 const crossSeedSearchSchema = z.object({
-  tab: z.enum(["automation", "search", "global"]).optional().catch(undefined),
+  tab: z.enum(["auto", "scan", "rules"]).optional().catch(undefined),
 })
 
 export const Route = createFileRoute("/_authenticated/cross-seed")({
@@ -20,7 +20,7 @@ function CrossSeedRoute() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
 
-  const handleTabChange = (tab: "automation" | "search" | "global") => {
+  const handleTabChange = (tab: "auto" | "scan" | "rules") => {
     navigate({
       search: { tab },
       replace: true,
@@ -29,7 +29,7 @@ function CrossSeedRoute() {
 
   return (
     <CrossSeedPage
-      activeTab={search.tab ?? "automation"}
+      activeTab={search.tab ?? "auto"}
       onTabChange={handleTabChange}
     />
   )

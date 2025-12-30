@@ -367,9 +367,11 @@ Downloaded backups can be imported into any qui instance. Useful for migrating t
 qui includes intelligent cross-seeding capabilities that help you automatically find and add matching torrents across different trackers. This allows you to seed the same content on multiple trackers.
 
 > [!NOTE]
-> qui adds cross-seeded torrents by inheriting the **Automatic Torrent Management (AutoTMM)** state from the matched torrent. If the matched torrent uses AutoTMM, the cross-seed will too; if the matched torrent has a custom save path (AutoTMM disabled), the cross-seed will use the same explicit path. This reuses existing files directly without creating hardlinks.
+> qui adds cross-seeded torrents by inheriting the **Automatic Torrent Management (AutoTMM)** state from the matched torrent. If the matched torrent uses AutoTMM, the cross-seed will too; if the matched torrent has a custom save path (AutoTMM disabled), the cross-seed will use the same explicit path. This reuses existing files directly without creating hardlinks (unless [hardlink mode](#hardlink-mode-optional) is enabled).
 >
-> For detailed information about category behavior, save paths, and best practices, see the [Cross-Seeding Guide](docs/CROSS_SEEDING.md).
+> For detailed information about category behavior, save paths, hardlink mode, and best practices, see the [Cross-Seeding Guide](docs/CROSS_SEEDING.md).
+>
+> If you see a cross-seed skipped with “extra files share pieces with content”, see the explanation and options in the guide.
 
 ### Prerequisites
 
@@ -381,7 +383,7 @@ qui offers several ways to find cross-seed opportunities:
 
 #### RSS Automation
 
-Scheduled polling of tracker RSS feeds. Configure in the **Automation** tab on the Cross-Seed page.
+Scheduled polling of tracker RSS feeds. Configure in the **Auto** tab on the Cross-Seed page.
 
 - **Run interval** - How often to poll feeds (minimum 30 minutes)
 - **Target instances** - Which qBittorrent instances receive cross-seeds
@@ -389,9 +391,9 @@ Scheduled polling of tracker RSS feeds. Configure in the **Automation** tab on t
 
 RSS automation processes the full feed from every enabled indexer on each run, matching against torrents across your target instances.
 
-#### Seeded Torrent Search
+#### Library Scan
 
-Deep scan of torrents you already seed to find cross-seed opportunities on other trackers. Configure in the **Seeded search** tab.
+Deep scan of torrents you already seed to find cross-seed opportunities on other trackers. Configure in the **Scan** tab.
 
 - **Source instance** - The qBittorrent instance to scan
 - **Categories/Tags** - Filter which torrents to include
@@ -399,11 +401,11 @@ Deep scan of torrents you already seed to find cross-seed opportunities on other
 - **Cooldown** - Skip torrents searched within this window (minimum 12 hours)
 
 > [!WARNING]
-> Run sparingly. This deep scan touches every matching torrent and queries indexers for each one. Use RSS automation or autobrr for routine coverage; reserve seeded search for occasional catch-up passes.
+> Run sparingly. This deep scan touches every matching torrent and queries indexers for each one. Use RSS automation or autobrr for routine coverage; reserve library scan for occasional catch-up passes.
 
 #### Auto-Search on Completion
 
-Triggers a cross-seed search when torrents finish downloading. Configure in the **Automation** tab under "Auto-search on completion".
+Triggers a cross-seed search when torrents finish downloading. Configure in the **Auto** tab under "Auto-search on completion".
 
 - **Categories/Tags** - Filter which completed torrents trigger searches
 - **Exclude categories/tags** - Skip torrents matching these filters
@@ -421,18 +423,19 @@ qui takes a different approach than the [cross-seed](https://github.com/cross-se
 
 | Aspect | cross-seed | qui |
 |--------|-----------|-----|
-| **File handling** | Creates hardlinks/symlinks to a separate directory | Reuses existing files directly |
+| **File handling** | Creates hardlinks/symlinks to a separate directory | Reuse mode (default) + optional hardlink mode |
 | **AutoTMM** | Disabled (uses explicit save paths) | Inherits from matched torrent (unless "Use indexer name as category" is enabled) |
 | **Category** | Uses dedicated `linkCategory` (e.g., "cross-seed-link") | Uses matched torrent's category with `.cross` suffix (configurable) |
 
-### Global Settings
+### Rules
 
-Configure matching behavior in the **Global rules** tab on the Cross-Seed page.
+Configure matching behavior in the **Rules** tab on the Cross-Seed page.
 
 #### Matching
 
 - **Find individual episodes** - When enabled, season packs also match individual episodes. When disabled, season packs only match other season packs. Episodes are added with AutoTMM disabled to prevent save path conflicts.
 - **Size mismatch tolerance** - Maximum size difference percentage (default: 5%). Also determines auto-resume threshold after recheck.
+- **Skip piece boundary safety check** - Enabled by default. When enabled, allows cross-seeds even if extra files share torrent pieces with content files. **Warning:** This may corrupt your existing seeded data if content differs. Uncheck this to enable the safety check, or use reflink mode which safely handles these cases.
 
 #### Categories
 
@@ -449,20 +452,22 @@ Configure tags applied to cross-seed torrents based on how they were discovered:
 - **Webhook Tags** - Torrents added via `/apply` webhook (default: `["cross-seed"]`)
 - **Inherit source torrent tags** - Also copy tags from the matched source torrent
 
-#### Ignore Patterns
+#### Allowed Extra Files
 
-File patterns to skip when comparing torrents. Useful for excluding sidecar files like `.nfo`, `.srr`, or sample folders. This means torrents including those files will be skipped by default. If you want those to be grabbed, add the files to the ignore pattern.
+File patterns excluded from comparison when matching torrents. Adding patterns here **increases matches** by allowing torrents to match even if they differ in these files (e.g., one has an NFO, the other doesn't).
 
-- Plain strings match any path ending in the text (e.g., `.nfo` ignores all `.nfo` files)
-- Glob patterns treat `/` as a folder separator (e.g., `*/sample/*` ignores sample folders)
+- Plain strings match any path ending in the text (e.g., `.nfo` matches all `.nfo` files)
+- Glob patterns treat `/` as a folder separator (e.g., `*/*sample/*` matches sample folders)
+
+**Note:** These patterns only apply to reuse mode. Hardlink mode requires a 1:1 file match and won't download extras—if the incoming torrent has files not present in the matched torrent, hardlink mode fails.
 
 #### External Program
 
 Optionally run an external program after successfully injecting a cross-seed torrent.
 
-### When Rechecks Are Required
+### When Rechecks Are Required (Reuse Mode)
 
-Most cross-seeds are added with hash verification skipped (`skip_checking=true`) and resume immediately. Some scenarios require a recheck:
+In reuse mode (the default), most cross-seeds are added with hash verification skipped (`skip_checking=true`) and resume immediately. Some scenarios require a recheck:
 
 #### 1. Name or folder alignment needed
 
@@ -470,13 +475,61 @@ When the cross-seed torrent has a different display name or root folder, qui ren
 
 #### 2. Extra files in source torrent
 
-When the source torrent contains files not on disk (NFO, SRT, samples not filtered by ignore patterns), a recheck determines actual progress.
+When the source torrent contains files not on disk (NFO, SRT, samples not matching allowed extra file patterns), a recheck determines actual progress.
+
+**Note:** In hardlink mode, missing or extra files cause the cross-seed to fail instead of triggering a recheck.
 
 #### Auto-resume behavior
 
 - Default tolerance 5% → auto-resumes at ≥95% completion
 - Torrents below threshold stay paused for manual investigation
-- Configure via **Size mismatch tolerance** in Global rules
+- Configure via **Size mismatch tolerance** in Rules
+
+### Hardlink Mode (optional)
+
+Hardlink mode is an opt-in cross-seeding strategy that creates a hardlinked copy of the matched files laid out exactly as the incoming torrent expects, then adds the torrent pointing at that hardlink tree. This can make cross-seed alignment simpler and faster, because qBittorrent can start seeding immediately without file rename alignment.
+
+#### When to use
+
+- You want cross-seeds to have their own on-disk directory structure (per tracker / per instance / flat), while still sharing data blocks with the original download.
+- You want to avoid qBittorrent rename-alignment and hash rechecks for layout differences.
+
+#### Requirements
+
+- Requires **Local filesystem access** on the target qBittorrent instance.
+- Hardlink base directory must be on the **same filesystem/volume** as the instance's download paths (hardlinks can't cross filesystems).
+- qui must be able to read the instance's content paths and write to the hardlink base directory.
+
+#### Behavior
+
+- Hardlink mode is a **per-instance setting** (not per request). Each qBittorrent instance can have its own hardlink configuration.
+- If hardlink mode is enabled and a hardlink cannot be created (no local access, filesystem mismatch, invalid base dir, etc.), the cross-seed **fails** (no fallback to the default mode).
+- Hardlinked torrents are still categorized using your existing cross-seed category rules (`.cross` suffix / "use indexer name as category"); the hardlink preset only affects on-disk folder layout.
+
+#### Hardlink directory layout
+
+Configure in Cross-Seed → Hardlink Mode → (select instance):
+
+- `Hardlink base directory`: path on the qui host where hardlink trees are created.
+- `Directory preset`:
+  - `flat`: `base/TorrentName--shortHash/...`
+  - `by-tracker`: `base/<tracker>/TorrentName--shortHash/...`
+  - `by-instance`: `base/<instance>/TorrentName--shortHash/...`
+
+See [docs/CROSS_SEEDING.md](docs/CROSS_SEEDING.md) for detailed layout examples and tracker name resolution.
+
+#### How to enable
+
+1. Enable "Local filesystem access" on the qBittorrent instance in Instance Settings.
+2. In Cross-Seed → Hardlink Mode, expand the instance you want to configure.
+3. Enable "Hardlink mode" for that instance.
+4. Set "Hardlink base directory" to a path on the same filesystem as your downloads.
+5. Choose a directory preset (`flat`, `by-tracker`, `by-instance`).
+
+#### Notes
+
+- Hardlinks share disk blocks with the original file but increase the link count. Deleting one link does not necessarily free space until all links are removed.
+- Windows support: folder names are sanitized to remove characters Windows forbids. Torrent file paths themselves still need to be valid for your qBittorrent setup.
 
 ### autobrr Integration
 

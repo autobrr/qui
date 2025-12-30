@@ -578,6 +578,16 @@ paths:
                 hasLocalFilesystemAccess:
                   type: boolean
                   description: Set to true if qui can access this instance's download paths locally (required for hardlink detection in automations).
+                useHardlinks:
+                  type: boolean
+                  description: Enable hardlink mode for cross-seed operations on this instance.
+                hardlinkBaseDir:
+                  type: string
+                  description: Base directory for hardlink trees when hardlink mode is enabled.
+                hardlinkDirPreset:
+                  type: string
+                  enum: [flat, by-tracker, by-instance]
+                  description: Directory organization preset for hardlink mode.
       responses:
         '201':
           description: Instance created
@@ -661,6 +671,16 @@ paths:
                 hasLocalFilesystemAccess:
                   type: boolean
                   description: Set to true if qui can access this instance's download paths locally (required for hardlink detection in automations).
+                useHardlinks:
+                  type: boolean
+                  description: Enable hardlink mode for cross-seed operations on this instance.
+                hardlinkBaseDir:
+                  type: string
+                  description: Base directory for hardlink trees when hardlink mode is enabled.
+                hardlinkDirPreset:
+                  type: string
+                  enum: [flat, by-tracker, by-instance]
+                  description: Directory organization preset for hardlink mode.
       responses:
         '200':
           description: Instance updated
@@ -3706,6 +3726,16 @@ components:
         hasLocalFilesystemAccess:
           type: boolean
           description: When true, qui can access this instance's download paths locally (required for hardlink detection in automations).
+        useHardlinks:
+          type: boolean
+          description: When true, cross-seed operations use hardlink mode for this instance.
+        hardlinkBaseDir:
+          type: string
+          description: Base directory for hardlink trees when hardlink mode is enabled.
+        hardlinkDirPreset:
+          type: string
+          enum: [flat, by-tracker, by-instance]
+          description: Directory organization preset for hardlink mode.
         sortOrder:
           type: integer
           description: Display order preference for the instance.
@@ -4182,6 +4212,16 @@ components:
         skipRecheck:
           type: boolean
           description: Skip cross-seed matches that would require a manual recheck
+        useHardlinks:
+          type: boolean
+          description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
+        hardlinkBaseDir:
+          type: string
+          description: Base directory for hardlink trees (must be on same filesystem as downloads)
+        hardlinkDirPreset:
+          type: string
+          enum: [flat, by-tracker, by-instance]
+          description: Directory organization preset for hardlink trees
 
     CrossSeedAutomationSettings:
       type: object
@@ -4248,6 +4288,16 @@ components:
         skipRecheck:
           type: boolean
           description: Skip cross-seed matches that would require a manual recheck
+        useHardlinks:
+          type: boolean
+          description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
+        hardlinkBaseDir:
+          type: string
+          description: Base directory for hardlink trees (must be on same filesystem as downloads)
+        hardlinkDirPreset:
+          type: string
+          enum: [flat, by-tracker, by-instance]
+          description: Directory organization preset for hardlink trees
         createdAt:
           type: string
           format: date-time

@@ -48,6 +48,9 @@ type CrossSeedRequest struct {
 	SkipAutoResume bool `json:"skip_auto_resume,omitempty"`
 	// SkipRecheck skips matches that would require a manual recheck (rename alignment or extra files).
 	SkipRecheck bool `json:"skip_recheck,omitempty"`
+	// SkipPieceBoundarySafetyCheck bypasses the piece boundary safety check that prevents
+	// corruption when extra files share pieces with content. Risky: may corrupt existing seeded data.
+	SkipPieceBoundarySafetyCheck bool `json:"skip_piece_boundary_safety_check,omitempty"`
 
 	// SourceFilterCategories filters candidate torrents to only those in these categories.
 	// Used by RSS automation to respect RSSSourceCategories setting.

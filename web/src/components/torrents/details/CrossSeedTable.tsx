@@ -13,17 +13,18 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
-import type { CrossSeedTorrent } from "@/lib/cross-seed-utils"
+import { isHardlinkManaged, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
 import { getLinuxFileName, getLinuxTracker } from "@/lib/incognito"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
+import type { Instance } from "@/types"
 import {
   createColumnHelper,
   flexRender,
   getCoreRowModel,
   getSortedRowModel,
-  type SortingState,
   useReactTable,
+  type SortingState,
 } from "@tanstack/react-table"
 import { Copy, Loader2, Trash2 } from "lucide-react"
 import { memo, useMemo, useState } from "react"
@@ -39,6 +40,7 @@ interface CrossSeedTableProps {
   onDeselectAll: () => void
   onDeleteMatches: () => void
   onDeleteCurrent: () => void
+  instanceById: Map<number, Instance>
   onNavigateToTorrent?: (instanceId: number, torrentHash: string) => void
 }
 
@@ -99,6 +101,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
   onDeselectAll,
   onDeleteMatches,
   onDeleteCurrent,
+  instanceById,
   onNavigateToTorrent,
 }: CrossSeedTableProps) {
   const [sorting, setSorting] = useState<SortingState>([])
@@ -137,15 +140,30 @@ export const CrossSeedTable = memo(function CrossSeedTable({
         const name = incognitoMode
           ? getLinuxFileName(info.row.original.hash, 0)
           : info.getValue()
+        const isHardlink = isHardlinkManaged(info.row.original, instanceById.get(info.row.original.instanceId))
         return (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="truncate block">{name}</span>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-[400px]">
-              <p className="text-xs break-all">{name}</p>
-            </TooltipContent>
-          </Tooltip>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="truncate block max-w-[220px]">{name}</span>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-[400px]">
+                <p className="text-xs break-all">{name}</p>
+              </TooltipContent>
+            </Tooltip>
+            {isHardlink && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0 text-blue-500 border-blue-500/40">
+                    Hardlink
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="text-xs">Files stored in hardlink directory (separate from source)</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </div>
         )
       },
       size: 300,
@@ -284,7 +302,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
       },
       size: 130,
     }),
-  ], [incognitoMode, selectedTorrents, onToggleSelection, trackerDisplayNames, trackerIcons])
+  ], [incognitoMode, selectedTorrents, onToggleSelection, trackerDisplayNames, trackerIcons, instanceById])
 
   const table = useReactTable({
     data: matches,
