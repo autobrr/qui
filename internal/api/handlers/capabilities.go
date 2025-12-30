@@ -21,6 +21,7 @@ type InstanceCapabilitiesResponse struct {
 	SupportsSubcategories    bool   `json:"supportsSubcategories"`
 	SupportsTorrentTmpPath   bool   `json:"supportsTorrentTmpPath"`
 	SupportsPathAutocomplete bool   `json:"supportsPathAutocomplete"`
+	SupportsSetRSSFeedURL    bool   `json:"supportsSetRSSFeedURL"`
 	WebAPIVersion            string `json:"webAPIVersion,omitempty"`
 }
 
@@ -39,6 +40,7 @@ func NewInstanceCapabilitiesResponse(client *internalqbittorrent.Client) Instanc
 		SupportsSubcategories:    client.SupportsSubcategories(),
 		SupportsTorrentTmpPath:   client.SupportsTorrentTmpPath(),
 		SupportsPathAutocomplete: client.SupportsPathAutocomplete(),
+		SupportsSetRSSFeedURL:    client.SupportsSetRSSFeedURL(),
 	}
 
 	if version := client.GetWebAPIVersion(); version != "" {
