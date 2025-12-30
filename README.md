@@ -13,6 +13,7 @@ A fast, modern web interface for qBittorrent. Supports managing multiple qBittor
 - [Docker](#docker)
 - [Updating](#updating)
 - [Configuration](#configuration)
+- [Magnet Link Handling](#magnet-link-handling)
   - [Base URL](#base-url-configuration)
   - [OpenID Connect (OIDC)](#openid-connect-oidc)
   - [CLI Commands](#cli-commands)
@@ -198,6 +199,10 @@ QUI__LOG_MAX_BACKUPS=3   # Optional: retain N rotated files (default: 3, 0 keeps
 
 # Storage
 QUI__DATA_DIR=...        # Optional: custom data directory (default: next to config)
+
+## Magnet Link Handling
+
+qui can register itself as the magnet: protocol handler so you can open magnet links directly in the app (desktop browser or PWA). Register the handler from the **Browser Integration** card in Settings, or use the banner on the dashboard. Chrome usually surfaces approval from the address-bar icon or via a small modal in a regular tab; if you don’t see it immediately, confirm `Sites can ask to handle protocols` is enabled in `chrome://settings/handlers` (or `chrome://settings/content/handlers`) and that your qui host is permitted. Chromium-based PWAs currently suppress that prompt, so plan to register while using a normal tab before installing the app to guarantee the handler lands.
 
 # Tracker Icons
 QUI__TRACKER_ICONS_FETCH_ENABLED=false  # Optional: set to false to disable remote tracker icon fetching (default: true)
