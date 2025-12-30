@@ -2,6 +2,7 @@ package crossseed
 
 import (
 	"context"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -43,6 +44,19 @@ func (s *Service) alignCrossSeedContentPaths(
 
 	sourceRelease := s.releaseCache.Parse(sourceTorrentName)
 	matchedRelease := s.releaseCache.Parse(matchedTorrent.Name)
+
+	// Safety check: reject forbidden pairing (season pack from episode) at alignment stage.
+	// This should have been caught earlier, but serves as a defense-in-depth guard.
+	// Returns false so callers know alignment did not succeed (prevents recheck/resume logic).
+	if reject, _ := rejectSeasonPackFromEpisode(sourceRelease, matchedRelease, true); reject {
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("torrentHash", torrentHash).
+			Str("sourceName", sourceTorrentName).
+			Str("matchedName", matchedTorrent.Name).
+			Msg("Skipping alignment: season pack cannot use single-episode files")
+		return false
+	}
 
 	if len(expectedSourceFiles) == 0 || len(candidateFiles) == 0 {
 		log.Debug().
@@ -509,17 +523,21 @@ func adjustPathForRootRename(path, oldRoot, newRoot string) string {
 }
 
 func shouldRenameTorrentDisplay(newRelease, matchedRelease *rls.Release) bool {
-	// Keep episode torrents named after the episode even when pointing at season pack files
-	if newRelease.Series > 0 && newRelease.Episode > 0 &&
-		matchedRelease.Series > 0 && matchedRelease.Episode == 0 {
+	// Keep episode torrents named after the episode even when pointing at season pack files.
+	if isTVEpisode(newRelease) && isTVSeasonPack(matchedRelease) {
+		return false
+	}
+	// Keep season pack torrents named as season packs; never rename a season pack to an episode.
+	// This is the forbidden pairing (season pack from episode) - also reject rename.
+	if reject, _ := rejectSeasonPackFromEpisode(newRelease, matchedRelease, true); reject {
 		return false
 	}
 	return true
 }
 
 func shouldAlignFilesWithCandidate(newRelease, matchedRelease *rls.Release) bool {
-	if newRelease.Series > 0 && newRelease.Episode > 0 &&
-		matchedRelease.Series > 0 && matchedRelease.Episode == 0 {
+	// Episode pointing at season pack files: don't align files (episode uses subset of pack).
+	if isTVEpisode(newRelease) && isTVSeasonPack(matchedRelease) {
 		return false
 	}
 	return true
@@ -548,6 +566,55 @@ func namesMatchIgnoringExtension(name1, name2 string) bool {
 	}
 
 	return stripped1 == stripped2
+}
+
+// hasContentFileSizeMismatch checks if the main content files (after applying ignore patterns)
+// have matching sizes between source and candidate. Returns true if there's a size mismatch,
+// indicating the files may be corrupted or from different releases.
+//
+// This is a critical safety check: if source and candidate are supposedly the same release
+// but their content files have different sizes, proceeding with the cross-seed could corrupt
+// the existing good data. Scene releases should be byte-for-byte identical across trackers.
+//
+// The function also returns a list of mismatched files for logging purposes.
+func hasContentFileSizeMismatch(sourceFiles, candidateFiles qbt.TorrentFiles, ignorePatterns []string, normalizer *stringutils.Normalizer[string, string]) (bool, []string) {
+	// Filter files by ignore patterns
+	var filteredSource, filteredCandidate qbt.TorrentFiles
+
+	for _, sf := range sourceFiles {
+		if !shouldIgnoreFile(sf.Name, ignorePatterns, normalizer) {
+			filteredSource = append(filteredSource, sf)
+		}
+	}
+
+	for _, cf := range candidateFiles {
+		if !shouldIgnoreFile(cf.Name, ignorePatterns, normalizer) {
+			filteredCandidate = append(filteredCandidate, cf)
+		}
+	}
+
+	// If no content files remain in source after filtering, nothing to check
+	if len(filteredSource) == 0 {
+		return false, nil
+	}
+
+	// Build size buckets for candidate files
+	candidateSizes := make(map[int64]int)
+	for _, cf := range filteredCandidate {
+		candidateSizes[cf.Size]++
+	}
+
+	// Check if all source content files can be matched by size
+	var mismatchedFiles []string
+	for _, sf := range filteredSource {
+		if count := candidateSizes[sf.Size]; count > 0 {
+			candidateSizes[sf.Size]--
+		} else {
+			mismatchedFiles = append(mismatchedFiles, sf.Name)
+		}
+	}
+
+	return len(mismatchedFiles) > 0, mismatchedFiles
 }
 
 // hasExtraSourceFiles checks if source torrent has files that don't exist in the candidate.
@@ -582,9 +649,20 @@ func needsRenameAlignment(torrentName string, matchedTorrentName string, sourceF
 	sourceRoot := detectCommonRoot(sourceFiles)
 	candidateRoot := detectCommonRoot(candidateFiles)
 
-	// Single file → folder: layout handled by contentLayout=Subfolder,
-	// but file renames may still be needed if names differ
+	// Single file → folder: contentLayout=Subfolder handles adding folder structure,
+	// but we need alignment if:
+	// 1. The auto-generated folder name differs from candidate's folder
+	// 2. File names differ
 	if sourceRoot == "" && candidateRoot != "" {
+		// qBittorrent auto-generates folder by stripping extension from the single file's name.
+		// Only applies to single-file rootless torrents (multi-file rootless is rare/invalid).
+		if len(sourceFiles) == 1 {
+			sourceFileName := fileBaseName(sourceFiles[0].Name)
+			autoGeneratedFolder := strings.TrimSuffix(sourceFileName, filepath.Ext(sourceFileName))
+			if autoGeneratedFolder != candidateRoot {
+				return true // Folder will need renaming after add
+			}
+		}
 		return filesNeedRenaming(sourceFiles, candidateFiles)
 	}
 
@@ -606,7 +684,7 @@ func needsRenameAlignment(torrentName string, matchedTorrentName string, sourceF
 		return true
 	}
 
-	return false
+	return planRequiresRenames(sourceFiles, candidateFiles)
 }
 
 // filesNeedRenaming checks if any files would need renaming after a layout change.
@@ -656,6 +734,19 @@ func filesNeedRenaming(sourceFiles, candidateFiles qbt.TorrentFiles) bool {
 		}
 	}
 
+	return false
+}
+
+// planRequiresRenames checks if the rename plan contains any actual path changes.
+// Uses buildFileRenamePlan which compares full paths (including subfolder structure),
+// not just base filenames.
+func planRequiresRenames(sourceFiles, candidateFiles qbt.TorrentFiles) bool {
+	plan, _ := buildFileRenamePlan(sourceFiles, candidateFiles)
+	for _, instr := range plan {
+		if instr.oldPath != "" && instr.newPath != "" && instr.oldPath != instr.newPath {
+			return true
+		}
+	}
 	return false
 }
 

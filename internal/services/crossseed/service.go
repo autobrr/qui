@@ -1373,6 +1373,8 @@ func (s *Service) automationLoop(ctx context.Context) {
 					log.Debug().Msg("Cross-seed automation run canceled (context canceled)")
 				} else {
 					log.Warn().Err(err).Msg("Cross-seed automation run failed")
+					// Prevent tight loop on unexpected errors
+					s.waitTimer(ctx, timer, time.Minute)
 				}
 			}
 			continue
@@ -1896,7 +1898,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		case "exists":
 			itemHadExisting = true
 			run.TorrentsSkipped++
-		case "no_match", "skipped":
+		case "no_match", "skipped", "rejected":
 			run.TorrentsSkipped++
 		default:
 			itemHasFailure = true
@@ -2224,6 +2226,11 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			}
 
 			candidateRelease := s.releaseCache.Parse(torrent.Name)
+
+			// Reject forbidden pairing: season pack (new) vs single episode (existing).
+			if reject, _ := rejectSeasonPackFromEpisode(targetRelease, candidateRelease, req.FindIndividualEpisodes); reject {
+				continue
+			}
 
 			// Check if releases are related (quick filter)
 			if !s.releasesMatch(targetRelease, candidateRelease, req.FindIndividualEpisodes) {
@@ -2653,6 +2660,24 @@ func (s *Service) processCrossSeedCandidate(
 
 	// Check if source has extra files that won't exist on disk (e.g., NFO files not filtered by ignorePatterns)
 	hasExtraFiles := hasExtraSourceFiles(sourceFiles, candidateFiles)
+
+	// SAFETY: Reject cross-seeds where main content file sizes don't match.
+	// This prevents corrupting existing good data with potentially different or corrupted files.
+	// Scene releases should be byte-for-byte identical across trackers - if sizes differ,
+	// it indicates either corruption or a different release that shouldn't be cross-seeded.
+	if hasMismatch, mismatchedFiles := hasContentFileSizeMismatch(sourceFiles, candidateFiles, req.IgnorePatterns, s.stringNormalizer); hasMismatch {
+		result.Status = "rejected"
+		result.Message = "Content file sizes do not match - possible corruption or different release"
+		log.Warn().
+			Int("instanceID", candidate.InstanceID).
+			Str("instanceName", candidate.InstanceName).
+			Str("torrentHash", torrentHash).
+			Str("matchedHash", matchedTorrent.Hash).
+			Str("matchType", string(matchType)).
+			Strs("mismatchedFiles", mismatchedFiles).
+			Msg("Cross-seed rejected: content file size mismatch - refusing to proceed to avoid potential data corruption")
+		return result
+	}
 
 	if req.SkipRecheck && (requiresAlignment || hasExtraFiles) {
 		result.Status = "skipped_recheck"
@@ -3475,6 +3500,17 @@ func (s *Service) findBestCandidateMatch(
 		}
 
 		candidateRelease := s.releaseCache.Parse(torrent.Name)
+
+		// Reject forbidden pairing: season pack (new) vs single episode (existing).
+		// Force-on safety guard: always check regardless of user setting since reaching this
+		// code path means we're actually applying a cross-seed (not just searching).
+		if reject, reason := rejectSeasonPackFromEpisode(sourceRelease, candidateRelease, true); reject {
+			if reason != "" && (bestRejectReason == "" || len(reason) > len(bestRejectReason)) {
+				bestRejectReason = reason
+			}
+			continue
+		}
+
 		// Swap parameter order: check if EXISTING files (files) are contained in NEW files (sourceFiles)
 		// This matches the search behavior where we found "partial-in-pack" (existing mkv in new mkv+nfo)
 		matchResult := s.getMatchTypeWithReason(candidateRelease, sourceRelease, files, sourceFiles, ignorePatterns, tolerancePercent)
@@ -4543,13 +4579,14 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 			continue
 		}
 
-		sourceIsPack := sourceRelease.Series > 0 && sourceRelease.Episode == 0
-		sourceIsEpisode := sourceRelease.Series > 0 && sourceRelease.Episode > 0
-		candidateIsPack := candidateRelease.Series > 0 && candidateRelease.Episode == 0
-		candidateIsEpisode := candidateRelease.Series > 0 && candidateRelease.Episode > 0
+		// Reject forbidden pairing: season pack candidate (new) vs single episode source (existing).
+		// In search context: candidateRelease is the new torrent, sourceRelease is the existing local torrent.
+		if reject, _ := rejectSeasonPackFromEpisode(candidateRelease, sourceRelease, opts.FindIndividualEpisodes); reject {
+			releaseFilteredCount++
+			continue
+		}
 
-		ignoreSizeCheck := opts.FindIndividualEpisodes &&
-			((sourceIsPack && candidateIsEpisode) || (sourceIsEpisode && candidateIsPack))
+		ignoreSizeCheck := opts.FindIndividualEpisodes && isTVSeasonPack(sourceRelease) && isTVEpisode(candidateRelease)
 
 		// Size validation: check if candidate size is within tolerance of source size
 		if !ignoreSizeCheck && !s.isSizeWithinTolerance(sourceTorrent.Size, res.Size, settings.SizeMismatchTolerancePercent) {
@@ -7364,6 +7401,11 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		for _, torrent := range torrents {
 			// Parse the existing torrent's release info
 			existingRelease := s.releaseCache.Parse(torrent.Name)
+
+			// Reject forbidden pairing: season pack (incoming) vs single episode (existing).
+			if reject, _ := rejectSeasonPackFromEpisode(incomingRelease, existingRelease, findIndividualEpisodes); reject {
+				continue
+			}
 
 			// Check if releases match using the configured strict or episode-aware matching.
 			if !s.releasesMatch(incomingRelease, existingRelease, findIndividualEpisodes) {

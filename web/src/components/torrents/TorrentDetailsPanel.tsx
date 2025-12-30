@@ -27,15 +27,16 @@ import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
+import { getTrackerStatusBadge } from "@/lib/tracker-utils"
 import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
-import type { SortedPeersResponse, Torrent, TorrentFile, TorrentPeer } from "@/types"
+import type { SortedPeersResponse, Torrent, TorrentFile, TorrentPeer, TorrentTracker } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import "flag-icons/css/flag-icons.min.css"
 import { Ban, Copy, Loader2, Trash2, UserPlus, X } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
-import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackersTable, WebSeedsTable } from "./details"
-import { RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
+import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackerContextMenu, TrackersTable, WebSeedsTable } from "./details"
+import { EditTrackerDialog, RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
 import { TorrentFileTree } from "./TorrentFileTree"
 
 interface TorrentDetailsPanelProps {
@@ -45,6 +46,7 @@ interface TorrentDetailsPanelProps {
   onInitialTabConsumed?: () => void;
   layout?: "horizontal" | "vertical";
   onClose?: () => void;
+  onNavigateToTorrent?: (instanceId: number, torrentHash: string) => void;
 }
 
 const TAB_VALUES = ["general", "trackers", "peers", "webseeds", "content", "crossseed"] as const
@@ -58,24 +60,7 @@ function isTabValue(value: string): value is TabValue {
 
 
 
-function getTrackerStatusBadge(status: number) {
-  switch (status) {
-    case 0:
-      return <Badge variant="secondary">Disabled</Badge>
-    case 1:
-      return <Badge variant="secondary">Not contacted</Badge>
-    case 2:
-      return <Badge variant="default">Working</Badge>
-    case 3:
-      return <Badge variant="default">Updating</Badge>
-    case 4:
-      return <Badge variant="destructive">Error</Badge>
-    default:
-      return <Badge variant="outline">Unknown</Badge>
-  }
-}
-
-export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent, initialTab, onInitialTabConsumed, layout = "vertical", onClose }: TorrentDetailsPanelProps) {
+export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent, initialTab, onInitialTabConsumed, layout = "vertical", onClose, onNavigateToTorrent }: TorrentDetailsPanelProps) {
   const [activeTab, setActiveTab] = usePersistedTabState<TabValue>(TAB_STORAGE_KEY, DEFAULT_TAB, isTabValue)
 
   // Apply initialTab override when provided
@@ -109,6 +94,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const [deleteCrossSeedFiles, setDeleteCrossSeedFiles] = useState(false)
   const [showDeleteCurrentDialog, setShowDeleteCurrentDialog] = useState(false)
   const [deleteCurrentFiles, setDeleteCurrentFiles] = useState(false)
+  const [showEditTrackerDialog, setShowEditTrackerDialog] = useState(false)
+  const [trackerToEdit, setTrackerToEdit] = useState<TorrentTracker | null>(null)
+  const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? false
   const copyToClipboard = useCallback(async (text: string, type: string) => {
     try {
       await copyTextToClipboard(text)
@@ -192,12 +180,48 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     gcTime: 5 * 60 * 1000,
   })
 
+  // Poll for live torrent data (the prop is a stale snapshot from selection time)
+  // This keeps state, priority, progress, and other fields up-to-date across all tabs
+  const { data: liveTorrent } = useQuery({
+    queryKey: ["torrent-live-state", instanceId, torrent?.hash],
+    queryFn: async () => {
+      const response = await api.getTorrents(instanceId, {
+        filters: {
+          expr: `Hash == "${torrent!.hash}"`,
+          status: [],
+          excludeStatus: [],
+          categories: [],
+          excludeCategories: [],
+          tags: [],
+          excludeTags: [],
+          trackers: [],
+          excludeTrackers: [],
+        },
+        limit: 1,
+      })
+      return response.torrents[0] ?? null
+    },
+    enabled: !!torrent && isReady,
+    staleTime: 1000,
+    refetchInterval: 2000,
+  })
+
+  // Merge live data with prop, preferring live values for frequently-changing fields
+  const displayTorrent = useMemo(() => {
+    if (!torrent) return null
+    if (!liveTorrent) return torrent
+    return { ...torrent, ...liveTorrent }
+  }, [torrent, liveTorrent])
+
   // Fetch torrent files
+  // Bypass cache during recheck so progress bars update in real-time
+  const currentState = displayTorrent?.state
+  const isChecking = !!currentState && ["checkingDL", "checkingUP", "checkingResumeData"].includes(currentState)
   const { data: files, isLoading: loadingFiles } = useQuery({
     queryKey: ["torrent-files", instanceId, torrent?.hash],
-    queryFn: () => api.getTorrentFiles(instanceId, torrent!.hash),
+    queryFn: () => api.getTorrentFiles(instanceId, torrent!.hash, { refresh: isChecking }),
     enabled: !!torrent && isReady && isContentTabActive,
-    staleTime: 30000,
+    staleTime: 3000,
     gcTime: 5 * 60 * 1000,
     refetchInterval: () => {
       if (!isContentTabActive) return false
@@ -393,6 +417,45 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     },
   })
 
+  // Edit tracker mutation - for single torrent tracker URL editing
+  const editTrackerMutation = useMutation({
+    mutationFn: async ({ oldURL, newURL }: { oldURL: string; newURL: string }) => {
+      if (!torrent) throw new Error("No torrent selected")
+      await api.bulkAction(instanceId, {
+        hashes: [torrent.hash],
+        action: "editTrackers",
+        trackerOldURL: oldURL,
+        trackerNewURL: newURL,
+      })
+    },
+    onSuccess: () => {
+      toast.success("Tracker URL updated successfully")
+      setShowEditTrackerDialog(false)
+      setTrackerToEdit(null)
+      queryClient.invalidateQueries({ queryKey: ["torrent-trackers", instanceId, torrent?.hash] })
+    },
+    onError: (error: Error) => {
+      toast.error("Failed to update tracker", {
+        description: error.message,
+      })
+    },
+  })
+
+  // Handle edit tracker click
+  const handleEditTrackerClick = useCallback((tracker: TorrentTracker) => {
+    setTrackerToEdit(tracker)
+    setShowEditTrackerDialog(true)
+  }, [])
+
+  // Get tracker domain from URL for display
+  const getTrackerDomain = useCallback((url: string): string => {
+    try {
+      return new URL(url).hostname
+    } catch {
+      return url
+    }
+  }, [])
+
   // Rename file state
   const [showRenameFileDialog, setShowRenameFileDialog] = useState(false)
   const [renameFilePath, setRenameFilePath] = useState<string | null>(null)
@@ -408,14 +471,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       setRenameFilePath(null)
       // Small delay to let qBittorrent process the rename internally
       await new Promise(resolve => setTimeout(resolve, 500))
-      // Force immediate refresh with cache bypass
-      try {
-        const freshFiles = await api.getTorrentFiles(instanceId, variables.hash, { refresh: true })
-        queryClient.setQueryData(["torrent-files", instanceId, variables.hash], freshFiles)
-      } catch {
-        // Refresh failed, invalidate to trigger background refetch
-        queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
-      }
+      // Invalidate to trigger refetch with fresh data
+      await queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "Failed to rename file"
@@ -438,14 +495,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       setRenameFolderPath(null)
       // Small delay to let qBittorrent process the rename internally
       await new Promise(resolve => setTimeout(resolve, 500))
-      // Force immediate refresh with cache bypass
-      try {
-        const freshFiles = await api.getTorrentFiles(instanceId, variables.hash, { refresh: true })
-        queryClient.setQueryData(["torrent-files", instanceId, variables.hash], freshFiles)
-      } catch {
-        // Refresh failed, invalidate to trigger background refetch
-        queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
-      }
+      // Invalidate to trigger refetch with fresh data
+      await queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "Failed to rename folder"
@@ -455,12 +506,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   const refreshTorrentFiles = useCallback(async () => {
     if (!torrent) return
-    try {
-      const freshFiles = await api.getTorrentFiles(instanceId, torrent.hash, { refresh: true })
-      queryClient.setQueryData(["torrent-files", instanceId, torrent.hash], freshFiles)
-    } catch (err) {
-      console.warn("Failed to refresh torrent files", err)
-    }
+    await queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, torrent.hash] })
   }, [instanceId, queryClient, torrent])
 
   // Handle copy peer IP:port
@@ -727,12 +773,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
           <TabsContent value="general" className="m-0 h-full">
             {isHorizontal ? (
               <GeneralTabHorizontal
-                torrent={torrent}
+                torrent={displayTorrent!}
                 properties={properties}
                 loading={loadingProperties}
                 speedUnit={speedUnit}
-                downloadLimit={properties?.dl_limit ?? torrent.dl_limit ?? 0}
-                uploadLimit={properties?.up_limit ?? torrent.up_limit ?? 0}
+                downloadLimit={properties?.dl_limit ?? displayTorrent!.dl_limit ?? 0}
+                uploadLimit={properties?.up_limit ?? displayTorrent!.up_limit ?? 0}
                 displayName={displayName}
                 displaySavePath={displaySavePath || ""}
                 displayTempPath={displayTempPath}
@@ -841,11 +887,11 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                               <span className="text-sm text-muted-foreground">Priority</span>
                               <div className="flex items-center gap-2">
                                 <span className="text-sm font-semibold">
-                                  {torrent?.priority > 0 ? torrent.priority : "Normal"}
+                                  {displayTorrent?.priority && displayTorrent.priority > 0 ? displayTorrent.priority : "Normal"}
                                 </span>
-                                {(torrent?.state === "queuedDL" || torrent?.state === "queuedUP") && (
+                                {(displayTorrent?.state === "queuedDL" || displayTorrent?.state === "queuedUP") && (
                                   <Badge variant="secondary" className="text-xs">
-                                    Queued {torrent.state === "queuedDL" ? "DL" : "UP"}
+                                    Queued {displayTorrent.state === "queuedDL" ? "DL" : "UP"}
                                   </Badge>
                                 )}
                               </div>
@@ -999,14 +1045,18 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                               <p className="text-xs text-muted-foreground">Added</p>
                               <p className="text-sm">{formatTimestamp(properties.addition_date)}</p>
                             </div>
-                            <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground">Completed</p>
-                              <p className="text-sm">{formatTimestamp(properties.completion_date)}</p>
-                            </div>
-                            <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground">Created</p>
-                              <p className="text-sm">{formatTimestamp(properties.creation_date)}</p>
-                            </div>
+                            {properties.completion_date && properties.completion_date !== -1 && (
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">Completed</p>
+                                <p className="text-sm">{formatTimestamp(properties.completion_date)}</p>
+                              </div>
+                            )}
+                            {properties.creation_date && properties.creation_date !== -1 && (
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">Created</p>
+                                <p className="text-sm">{formatTimestamp(properties.creation_date)}</p>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1049,6 +1099,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 trackers={trackers}
                 loading={loadingTrackers}
                 incognitoMode={incognitoMode}
+                onEditTracker={handleEditTrackerClick}
+                supportsTrackerEditing={supportsTrackerEditing}
               />
             ) : (
               <ScrollArea className="h-full">
@@ -1080,48 +1132,54 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             const messageContent = incognitoMode && shouldRenderMessage ? "Tracker message hidden in incognito mode" : tracker.msg
 
                             return (
-                              <div
+                              <TrackerContextMenu
                                 key={index}
-                                className={`backdrop-blur-sm border ${tracker.status === 0 ? "bg-card/30 border-border/30 opacity-60" : "bg-card/50 border-border/50"} hover:border-border transition-all rounded-lg p-4 space-y-3`}
+                                tracker={tracker}
+                                onEditTracker={handleEditTrackerClick}
+                                supportsTrackerEditing={supportsTrackerEditing}
                               >
-                                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
-                                  <div className="flex-1 space-y-1">
-                                    <div className="flex items-center gap-2">
-                                      {getTrackerStatusBadge(tracker.status)}
-                                    </div>
-                                    <p className="text-xs font-mono text-muted-foreground break-all">{displayUrl}</p>
-                                  </div>
-                                </div>
-                                <Separator className="opacity-50" />
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                  <div className="space-y-1">
-                                    <p className="text-xs text-muted-foreground">Seeds</p>
-                                    <p className="text-sm font-medium">{tracker.num_seeds}</p>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <p className="text-xs text-muted-foreground">Peers</p>
-                                    <p className="text-sm font-medium">{tracker.num_peers}</p>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <p className="text-xs text-muted-foreground">Leechers</p>
-                                    <p className="text-sm font-medium">{tracker.num_leeches}</p>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <p className="text-xs text-muted-foreground">Downloaded</p>
-                                    <p className="text-sm font-medium">{tracker.num_downloaded}</p>
-                                  </div>
-                                </div>
-                                {shouldRenderMessage && messageContent && (
-                                  <>
-                                    <Separator className="opacity-50" />
-                                    <div className="bg-background/50 p-2 rounded">
-                                      <div className="text-xs text-muted-foreground break-words">
-                                        {renderTextWithLinks(messageContent)}
+                                <div
+                                  className={`backdrop-blur-sm border ${tracker.status === 0 ? "bg-card/30 border-border/30 opacity-60" : "bg-card/50 border-border/50"} hover:border-border transition-all rounded-lg p-4 space-y-3`}
+                                >
+                                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                                    <div className="flex-1 space-y-1">
+                                      <div className="flex items-center gap-2">
+                                        {getTrackerStatusBadge(tracker.status)}
                                       </div>
+                                      <p className="text-xs font-mono text-muted-foreground break-all">{displayUrl}</p>
                                     </div>
-                                  </>
-                                )}
-                              </div>
+                                  </div>
+                                  <Separator className="opacity-50" />
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                    <div className="space-y-1">
+                                      <p className="text-xs text-muted-foreground">Seeds</p>
+                                      <p className="text-sm font-medium">{tracker.num_seeds}</p>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <p className="text-xs text-muted-foreground">Peers</p>
+                                      <p className="text-sm font-medium">{tracker.num_peers}</p>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <p className="text-xs text-muted-foreground">Leechers</p>
+                                      <p className="text-sm font-medium">{tracker.num_leeches}</p>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <p className="text-xs text-muted-foreground">Downloaded</p>
+                                      <p className="text-sm font-medium">{tracker.num_downloaded}</p>
+                                    </div>
+                                  </div>
+                                  {shouldRenderMessage && messageContent && (
+                                    <>
+                                      <Separator className="opacity-50" />
+                                      <div className="bg-background/50 p-2 rounded">
+                                        <div className="text-xs text-muted-foreground break-words">
+                                          {renderTextWithLinks(messageContent)}
+                                        </div>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              </TrackerContextMenu>
                             )
                           })}
                       </div>
@@ -1509,7 +1567,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
               <CrossSeedTable
                 matches={matchingTorrents}
                 loading={isLoadingMatches}
-                speedUnit={speedUnit}
                 incognitoMode={incognitoMode}
                 selectedTorrents={selectedCrossSeedTorrents}
                 onToggleSelection={handleToggleCrossSeedSelection}
@@ -1517,6 +1574,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 onDeselectAll={handleDeselectAllCrossSeed}
                 onDeleteMatches={() => setShowDeleteCrossSeedDialog(true)}
                 onDeleteCurrent={() => setShowDeleteCurrentDialog(true)}
+                onNavigateToTorrent={onNavigateToTorrent}
               />
             ) : (
               <ScrollArea className="h-full">
@@ -1644,7 +1702,18 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                 : 'Same torrent name'
 
                           return (
-                            <div key={torrentKey} className="rounded-lg border bg-card p-4 space-y-3">
+                            <div
+                              key={torrentKey}
+                              className={cn(
+                                "rounded-lg border bg-card p-4 space-y-3",
+                                onNavigateToTorrent && "cursor-pointer hover:bg-muted/30"
+                              )}
+                              onClick={(e) => {
+                                // Don't navigate if clicking checkbox
+                                if ((e.target as HTMLElement).closest('[role="checkbox"]')) return
+                                onNavigateToTorrent?.(match.instanceId, match.hash)
+                              }}
+                            >
                               <div className="space-y-2">
                                 <div className="flex items-start gap-3">
                                   <Checkbox
@@ -1947,6 +2016,18 @@ tracker.example.com:8080
         onConfirm={handleRenameFolderConfirm}
         isPending={renameFolderMutation.isPending}
         initialPath={renameFolderPath ?? undefined}
+      />
+
+      {/* Edit Tracker Dialog */}
+      <EditTrackerDialog
+        open={showEditTrackerDialog}
+        onOpenChange={setShowEditTrackerDialog}
+        instanceId={instanceId}
+        tracker={trackerToEdit ? getTrackerDomain(trackerToEdit.url) : ""}
+        trackerURLs={trackerToEdit ? [trackerToEdit.url] : []}
+        selectedHashes={torrent ? [torrent.hash] : []}
+        onConfirm={(oldURL, newURL) => editTrackerMutation.mutate({ oldURL, newURL })}
+        isPending={editTrackerMutation.isPending}
       />
     </div>
   )

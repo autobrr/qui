@@ -27,6 +27,7 @@ import { useHasPremiumAccess } from "@/hooks/useLicense"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
 import { cn } from "@/lib/utils"
+import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
 import {
   getCurrentTheme,
   getCurrentThemeMode,
@@ -95,7 +96,8 @@ export function MobileFooterNav() {
   const { logout } = useAuth()
   const { isSelectionMode } = useTorrentSelection()
   const { currentMode, currentTheme } = useThemeChange()
-  const { hasPremiumAccess } = useHasPremiumAccess()
+  const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess()
+  const canSwitchPremium = canSwitchToPremiumTheme({ hasPremiumAccess, isLoading, isError })
   const [showThemeDialog, setShowThemeDialog] = useState(false)
   const appVersion = getAppVersion()
 
@@ -135,20 +137,32 @@ export function MobileFooterNav() {
 
   const handleThemeSelect = useCallback(async (themeId: string) => {
     const isPremium = isThemePremium(themeId)
-    if (isPremium && !hasPremiumAccess) {
-      toast.error("This is a premium theme. Please purchase a license to use it.")
+    if (isPremium && !canSwitchPremium) {
+      if (isError) {
+        toast.error("Unable to verify license", {
+          description: "License check failed. Premium theme switching is temporarily unavailable.",
+        })
+      } else {
+        toast.error("This is a premium theme. Open Settings → Themes to activate a license.")
+      }
       return
     }
 
     await setTheme(themeId)
     const theme = themes.find(t => t.id === themeId)
     toast.success(`Switched to ${theme?.name || themeId} theme`)
-  }, [hasPremiumAccess])
+  }, [canSwitchPremium, isError])
 
   const handleVariationSelect = useCallback(async (themeId: string, variationId: string): Promise<boolean> => {
     const isPremium = isThemePremium(themeId)
-    if (isPremium && !hasPremiumAccess) {
-      toast.error("This is a premium theme. Please purchase a license to use it.")
+    if (isPremium && !canSwitchPremium) {
+      if (isError) {
+        toast.error("Unable to verify license", {
+          description: "License check failed. Premium theme switching is temporarily unavailable.",
+        })
+      } else {
+        toast.error("This is a premium theme. Open Settings → Themes to activate a license.")
+      }
       return false
     }
 
@@ -157,7 +171,7 @@ export function MobileFooterNav() {
     const theme = themes.find(t => t.id === themeId)
     toast.success(`Switched to ${theme?.name || themeId} theme (${variationId})`)
     return true
-  }, [hasPremiumAccess])
+  }, [canSwitchPremium, isError])
 
   if (isSelectionMode) {
     return null

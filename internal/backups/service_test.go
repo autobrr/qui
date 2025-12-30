@@ -126,6 +126,7 @@ func TestStartBlocksWhileRecoveringMissedBackups(t *testing.T) {
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
+	t.Cleanup(svc.Stop)
 
 	instanceNames := []string{"instance-a", "instance-b", "instance-c"}
 	for _, name := range instanceNames {
