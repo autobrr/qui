@@ -14,6 +14,8 @@ import { z } from "zod"
 
 const instanceSearchSchema = z.object({
   modal: z.enum(["add-torrent", "create-torrent", "tasks"]).optional(),
+  torrent: z.string().optional(),
+  tab: z.string().optional(),
 })
 
 export const Route = createFileRoute("/_authenticated/instances/$instanceId")({

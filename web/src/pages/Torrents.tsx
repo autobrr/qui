@@ -18,16 +18,18 @@ import { useInstances } from "@/hooks/useInstances"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilters } from "@/hooks/usePersistedFilters"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
+import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import type { Category, ServerState, Torrent, TorrentCounts } from "@/types"
+import { useNavigate } from "@tanstack/react-router"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ImperativePanelHandle } from "react-resizable-panels"
 
 interface TorrentsProps {
   instanceId: number
   instanceName: string
-  search: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined }
-  onSearchChange: (search: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined }) => void
+  search: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined; torrent?: string; tab?: string }
+  onSearchChange: (search: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined; torrent?: string; tab?: string }) => void
 }
 
 export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) {
@@ -58,6 +60,78 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   const [initialDetailsTab, setInitialDetailsTab] = useState<string | undefined>(undefined)
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
   const handleInitialTabConsumed = useCallback(() => setInitialDetailsTab(undefined), [])
+  const navigate = useNavigate()
+
+  // Handle deep link to a specific torrent (from cross-seed navigation)
+  useEffect(() => {
+    if (!search.torrent) return
+
+    const hash = search.torrent
+    const tab = search.tab
+
+    // Fetch the torrent by hash and select it
+    api.getTorrents(instanceId, {
+      filters: {
+        expr: `Hash == "${hash}"`,
+        status: [],
+        excludeStatus: [],
+        categories: [],
+        excludeCategories: [],
+        tags: [],
+        excludeTags: [],
+        trackers: [],
+        excludeTrackers: [],
+      },
+      limit: 1,
+    }).then((response) => {
+      const torrent = response.torrents[0]
+      if (torrent) {
+        setSelectedTorrent(torrent)
+        if (tab) {
+          setInitialDetailsTab(tab)
+        }
+      }
+      // Clear the search params after consuming
+      onSearchChange({ modal: search.modal })
+    }).catch(() => {
+      // Silently fail - torrent might not exist
+      onSearchChange({ modal: search.modal })
+    })
+  }, [instanceId, search, onSearchChange])
+
+  // Navigate to a cross-seed match torrent
+  const handleNavigateToTorrent = useCallback((targetInstanceId: number, torrentHash: string) => {
+    if (targetInstanceId === instanceId) {
+      // Same instance - fetch and select the torrent directly
+      api.getTorrents(instanceId, {
+        filters: {
+          expr: `Hash == "${torrentHash}"`,
+          status: [],
+          excludeStatus: [],
+          categories: [],
+          excludeCategories: [],
+          tags: [],
+          excludeTags: [],
+          trackers: [],
+          excludeTrackers: [],
+        },
+        limit: 1,
+      }).then((response) => {
+        const torrent = response.torrents[0]
+        if (torrent) {
+          setSelectedTorrent(torrent)
+          setInitialDetailsTab("general")
+        }
+      })
+    } else {
+      // Different instance - navigate with search params
+      navigate({
+        to: "/instances/$instanceId",
+        params: { instanceId: String(targetInstanceId) },
+        search: { torrent: torrentHash, tab: "general" },
+      })
+    }
+  }, [instanceId, navigate])
 
   // Mobile detection for responsive layout
   const [isMobile, setIsMobile] = useState(() => {
@@ -417,6 +491,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
                         onInitialTabConsumed={handleInitialTabConsumed}
                         layout="horizontal"
                         onClose={() => setSelectedTorrent(null)}
+                        onNavigateToTorrent={handleNavigateToTorrent}
                       />
                     </div>
                   </ResizablePanel>
@@ -480,6 +555,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
                 initialTab={initialDetailsTab}
                 onInitialTabConsumed={handleInitialTabConsumed}
                 onClose={() => setSelectedTorrent(null)}
+                onNavigateToTorrent={handleNavigateToTorrent}
               />
             )}
           </SheetContent>

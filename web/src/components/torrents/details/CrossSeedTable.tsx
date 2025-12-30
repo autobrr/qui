@@ -8,15 +8,15 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { SortIcon } from "@/components/ui/sort-icon"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import type { CrossSeedTorrent } from "@/lib/cross-seed-utils"
 import { getLinuxFileName, getLinuxTracker } from "@/lib/incognito"
-import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
-import { cn, formatBytes } from "@/lib/utils"
+import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
 import {
   createColumnHelper,
   flexRender,
@@ -25,14 +25,13 @@ import {
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table"
-import { SortIcon } from "@/components/ui/sort-icon"
-import { Loader2, Trash2 } from "lucide-react"
+import { Copy, Loader2, Trash2 } from "lucide-react"
 import { memo, useMemo, useState } from "react"
+import { toast } from "sonner"
 
 interface CrossSeedTableProps {
   matches: CrossSeedTorrent[]
   loading: boolean
-  speedUnit: SpeedUnit
   incognitoMode: boolean
   selectedTorrents: Set<string>
   onToggleSelection: (key: string) => void
@@ -40,6 +39,7 @@ interface CrossSeedTableProps {
   onDeselectAll: () => void
   onDeleteMatches: () => void
   onDeleteCurrent: () => void
+  onNavigateToTorrent?: (instanceId: number, torrentHash: string) => void
 }
 
 const columnHelper = createColumnHelper<CrossSeedTorrent>()
@@ -92,7 +92,6 @@ function getMatchTypeLabel(matchType: string): { label: string; description: str
 export const CrossSeedTable = memo(function CrossSeedTable({
   matches,
   loading,
-  speedUnit,
   incognitoMode,
   selectedTorrents,
   onToggleSelection,
@@ -100,6 +99,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
   onDeselectAll,
   onDeleteMatches,
   onDeleteCurrent,
+  onNavigateToTorrent,
 }: CrossSeedTableProps) {
   const [sorting, setSorting] = useState<SortingState>([])
   const { data: trackerIcons } = useTrackerIcons()
@@ -140,7 +140,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
         return (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="truncate block max-w-[250px]">{name}</span>
+              <span className="truncate block">{name}</span>
             </TooltipTrigger>
             <TooltipContent side="top" className="max-w-[400px]">
               <p className="text-xs break-all">{name}</p>
@@ -148,14 +148,14 @@ export const CrossSeedTable = memo(function CrossSeedTable({
           </Tooltip>
         )
       },
-      size: 250,
+      size: 300,
     }),
     columnHelper.accessor("instanceName", {
       header: "Instance",
       cell: (info) => (
-        <span className="truncate block max-w-[100px]">{info.getValue()}</span>
+        <span className="truncate block">{info.getValue()}</span>
       ),
-      size: 100,
+      size: 70,
     }),
     columnHelper.accessor("matchType", {
       header: "Match",
@@ -172,7 +172,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
           </Tooltip>
         )
       },
-      size: 80,
+      size: 70,
     }),
     columnHelper.accessor("tracker", {
       header: "Tracker",
@@ -230,15 +230,15 @@ export const CrossSeedTable = memo(function CrossSeedTable({
         const progress = info.getValue() * 100
         const isComplete = progress === 100
         return (
-          <div className="flex items-center gap-2">
-            <Progress value={progress} className="h-1.5 w-16" />
-            <span className={cn("tabular-nums text-[10px] w-10", isComplete ? "text-green-500" : "text-muted-foreground")}>
+          <div className="flex items-center gap-1.5">
+            <Progress value={progress} className="h-1.5 w-14" />
+            <span className={cn("tabular-nums text-[10px]", isComplete ? "text-green-500" : "text-muted-foreground")}>
               {progress.toFixed(0)}%
             </span>
           </div>
         )
       },
-      size: 100,
+      size: 85,
     }),
     columnHelper.accessor("size", {
       header: "Size",
@@ -247,26 +247,44 @@ export const CrossSeedTable = memo(function CrossSeedTable({
       ),
       size: 80,
     }),
-    columnHelper.display({
-      id: "speed",
-      header: "Speed",
-      cell: ({ row }) => {
-        const { dlspeed, upspeed } = row.original
-        if (!dlspeed && !upspeed) return <span className="text-muted-foreground">-</span>
+    columnHelper.accessor("save_path", {
+      header: "Save Path",
+      cell: (info) => {
+        const path = info.getValue()
+        if (!path) return <span className="text-muted-foreground">-</span>
         return (
-          <div className="flex flex-col text-[10px]">
-            {dlspeed > 0 && (
-              <span className="text-green-500">↓ {formatSpeedWithUnit(dlspeed, speedUnit)}</span>
-            )}
-            {upspeed > 0 && (
-              <span className="text-blue-500">↑ {formatSpeedWithUnit(upspeed, speedUnit)}</span>
-            )}
+          <div className="flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="truncate block max-w-[100px] text-muted-foreground font-mono text-[10px]">
+                  {path}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-[400px]">
+                <p className="text-xs font-mono break-all">{path}</p>
+              </TooltipContent>
+            </Tooltip>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 shrink-0"
+              onClick={(e) => {
+                e.stopPropagation()
+                copyTextToClipboard(path).then(() => {
+                  toast.success("Save path copied")
+                }).catch(() => {
+                  toast.error("Failed to copy")
+                })
+              }}
+            >
+              <Copy className="h-3 w-3" />
+            </Button>
           </div>
         )
       },
-      size: 90,
+      size: 130,
     }),
-  ], [incognitoMode, selectedTorrents, onToggleSelection, speedUnit, trackerDisplayNames, trackerIcons])
+  ], [incognitoMode, selectedTorrents, onToggleSelection, trackerDisplayNames, trackerIcons])
 
   const table = useReactTable({
     data: matches,
@@ -379,7 +397,17 @@ export const CrossSeedTable = memo(function CrossSeedTable({
               {table.getRowModel().rows.map((row) => (
                 <tr
                   key={row.id}
-                  className="border-b border-border/50 hover:bg-muted/30"
+                  className={cn(
+                    "border-b border-border/50 hover:bg-muted/30",
+                    onNavigateToTorrent && "cursor-pointer"
+                  )}
+                  onClick={(e) => {
+                    // Don't navigate if clicking checkbox or button
+                    if ((e.target as HTMLElement).closest('button, [role="checkbox"]')) return
+                    if (onNavigateToTorrent) {
+                      onNavigateToTorrent(row.original.instanceId, row.original.hash)
+                    }
+                  }}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td

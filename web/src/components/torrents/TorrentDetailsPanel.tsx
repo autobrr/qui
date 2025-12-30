@@ -24,10 +24,10 @@ import { useCrossSeedMatches } from "@/lib/cross-seed-utils"
 import { getLinuxCategory, getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxSavePath, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
-import { getTrackerStatusBadge } from "@/lib/tracker-utils"
 import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
+import { getTrackerStatusBadge } from "@/lib/tracker-utils"
 import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
 import type { SortedPeersResponse, Torrent, TorrentFile, TorrentPeer, TorrentTracker } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -46,6 +46,7 @@ interface TorrentDetailsPanelProps {
   onInitialTabConsumed?: () => void;
   layout?: "horizontal" | "vertical";
   onClose?: () => void;
+  onNavigateToTorrent?: (instanceId: number, torrentHash: string) => void;
 }
 
 const TAB_VALUES = ["general", "trackers", "peers", "webseeds", "content", "crossseed"] as const
@@ -59,7 +60,7 @@ function isTabValue(value: string): value is TabValue {
 
 
 
-export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent, initialTab, onInitialTabConsumed, layout = "vertical", onClose }: TorrentDetailsPanelProps) {
+export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent, initialTab, onInitialTabConsumed, layout = "vertical", onClose, onNavigateToTorrent }: TorrentDetailsPanelProps) {
   const [activeTab, setActiveTab] = usePersistedTabState<TabValue>(TAB_STORAGE_KEY, DEFAULT_TAB, isTabValue)
 
   // Apply initialTab override when provided
@@ -179,12 +180,48 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     gcTime: 5 * 60 * 1000,
   })
 
+  // Poll for live torrent data (the prop is a stale snapshot from selection time)
+  // This keeps state, priority, progress, and other fields up-to-date across all tabs
+  const { data: liveTorrent } = useQuery({
+    queryKey: ["torrent-live-state", instanceId, torrent?.hash],
+    queryFn: async () => {
+      const response = await api.getTorrents(instanceId, {
+        filters: {
+          expr: `Hash == "${torrent!.hash}"`,
+          status: [],
+          excludeStatus: [],
+          categories: [],
+          excludeCategories: [],
+          tags: [],
+          excludeTags: [],
+          trackers: [],
+          excludeTrackers: [],
+        },
+        limit: 1,
+      })
+      return response.torrents[0] ?? null
+    },
+    enabled: !!torrent && isReady,
+    staleTime: 1000,
+    refetchInterval: 2000,
+  })
+
+  // Merge live data with prop, preferring live values for frequently-changing fields
+  const displayTorrent = useMemo(() => {
+    if (!torrent) return null
+    if (!liveTorrent) return torrent
+    return { ...torrent, ...liveTorrent }
+  }, [torrent, liveTorrent])
+
   // Fetch torrent files
+  // Bypass cache during recheck so progress bars update in real-time
+  const currentState = displayTorrent?.state
+  const isChecking = !!currentState && ["checkingDL", "checkingUP", "checkingResumeData"].includes(currentState)
   const { data: files, isLoading: loadingFiles } = useQuery({
     queryKey: ["torrent-files", instanceId, torrent?.hash],
-    queryFn: () => api.getTorrentFiles(instanceId, torrent!.hash),
+    queryFn: () => api.getTorrentFiles(instanceId, torrent!.hash, { refresh: isChecking }),
     enabled: !!torrent && isReady && isContentTabActive,
-    staleTime: 30000,
+    staleTime: 3000,
     gcTime: 5 * 60 * 1000,
     refetchInterval: () => {
       if (!isContentTabActive) return false
@@ -434,14 +471,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       setRenameFilePath(null)
       // Small delay to let qBittorrent process the rename internally
       await new Promise(resolve => setTimeout(resolve, 500))
-      // Force immediate refresh with cache bypass
-      try {
-        const freshFiles = await api.getTorrentFiles(instanceId, variables.hash, { refresh: true })
-        queryClient.setQueryData(["torrent-files", instanceId, variables.hash], freshFiles)
-      } catch {
-        // Refresh failed, invalidate to trigger background refetch
-        queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
-      }
+      // Invalidate to trigger refetch with fresh data
+      await queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "Failed to rename file"
@@ -464,14 +495,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       setRenameFolderPath(null)
       // Small delay to let qBittorrent process the rename internally
       await new Promise(resolve => setTimeout(resolve, 500))
-      // Force immediate refresh with cache bypass
-      try {
-        const freshFiles = await api.getTorrentFiles(instanceId, variables.hash, { refresh: true })
-        queryClient.setQueryData(["torrent-files", instanceId, variables.hash], freshFiles)
-      } catch {
-        // Refresh failed, invalidate to trigger background refetch
-        queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
-      }
+      // Invalidate to trigger refetch with fresh data
+      await queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "Failed to rename folder"
@@ -481,12 +506,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   const refreshTorrentFiles = useCallback(async () => {
     if (!torrent) return
-    try {
-      const freshFiles = await api.getTorrentFiles(instanceId, torrent.hash, { refresh: true })
-      queryClient.setQueryData(["torrent-files", instanceId, torrent.hash], freshFiles)
-    } catch (err) {
-      console.warn("Failed to refresh torrent files", err)
-    }
+    await queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, torrent.hash] })
   }, [instanceId, queryClient, torrent])
 
   // Handle copy peer IP:port
@@ -753,12 +773,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
           <TabsContent value="general" className="m-0 h-full">
             {isHorizontal ? (
               <GeneralTabHorizontal
-                torrent={torrent}
+                torrent={displayTorrent!}
                 properties={properties}
                 loading={loadingProperties}
                 speedUnit={speedUnit}
-                downloadLimit={properties?.dl_limit ?? torrent.dl_limit ?? 0}
-                uploadLimit={properties?.up_limit ?? torrent.up_limit ?? 0}
+                downloadLimit={properties?.dl_limit ?? displayTorrent!.dl_limit ?? 0}
+                uploadLimit={properties?.up_limit ?? displayTorrent!.up_limit ?? 0}
                 displayName={displayName}
                 displaySavePath={displaySavePath || ""}
                 displayTempPath={displayTempPath}
@@ -867,11 +887,11 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                               <span className="text-sm text-muted-foreground">Priority</span>
                               <div className="flex items-center gap-2">
                                 <span className="text-sm font-semibold">
-                                  {torrent?.priority > 0 ? torrent.priority : "Normal"}
+                                  {displayTorrent?.priority && displayTorrent.priority > 0 ? displayTorrent.priority : "Normal"}
                                 </span>
-                                {(torrent?.state === "queuedDL" || torrent?.state === "queuedUP") && (
+                                {(displayTorrent?.state === "queuedDL" || displayTorrent?.state === "queuedUP") && (
                                   <Badge variant="secondary" className="text-xs">
-                                    Queued {torrent.state === "queuedDL" ? "DL" : "UP"}
+                                    Queued {displayTorrent.state === "queuedDL" ? "DL" : "UP"}
                                   </Badge>
                                 )}
                               </div>
@@ -1031,10 +1051,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                 <p className="text-sm">{formatTimestamp(properties.completion_date)}</p>
                               </div>
                             )}
-                            <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground">Created</p>
-                              <p className="text-sm">{formatTimestamp(properties.creation_date)}</p>
-                            </div>
+                            {properties.creation_date && properties.creation_date !== -1 && (
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">Created</p>
+                                <p className="text-sm">{formatTimestamp(properties.creation_date)}</p>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1545,7 +1567,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
               <CrossSeedTable
                 matches={matchingTorrents}
                 loading={isLoadingMatches}
-                speedUnit={speedUnit}
                 incognitoMode={incognitoMode}
                 selectedTorrents={selectedCrossSeedTorrents}
                 onToggleSelection={handleToggleCrossSeedSelection}
@@ -1553,6 +1574,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 onDeselectAll={handleDeselectAllCrossSeed}
                 onDeleteMatches={() => setShowDeleteCrossSeedDialog(true)}
                 onDeleteCurrent={() => setShowDeleteCurrentDialog(true)}
+                onNavigateToTorrent={onNavigateToTorrent}
               />
             ) : (
               <ScrollArea className="h-full">
@@ -1680,7 +1702,18 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                 : 'Same torrent name'
 
                           return (
-                            <div key={torrentKey} className="rounded-lg border bg-card p-4 space-y-3">
+                            <div
+                              key={torrentKey}
+                              className={cn(
+                                "rounded-lg border bg-card p-4 space-y-3",
+                                onNavigateToTorrent && "cursor-pointer hover:bg-muted/30"
+                              )}
+                              onClick={(e) => {
+                                // Don't navigate if clicking checkbox
+                                if ((e.target as HTMLElement).closest('[role="checkbox"]')) return
+                                onNavigateToTorrent?.(match.instanceId, match.hash)
+                              }}
+                            >
                               <div className="space-y-2">
                                 <div className="flex items-start gap-3">
                                   <Checkbox
