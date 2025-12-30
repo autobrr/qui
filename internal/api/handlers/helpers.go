@@ -18,16 +18,25 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
-// RespondJSON sends a JSON response
+// RespondJSON sends a JSON response.
+// For 204 No Content and 304 Not Modified, no body or Content-Type is sent per HTTP spec.
 func RespondJSON(w http.ResponseWriter, status int, data any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
+	// 204 and 304 must not have a body per RFC 7230/9110
+	if status == http.StatusNoContent || status == http.StatusNotModified {
+		w.WriteHeader(status)
+		return
+	}
 
 	if data != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
 		if err := json.NewEncoder(w).Encode(data); err != nil {
 			log.Error().Err(err).Msg("Failed to encode JSON response")
 		}
+		return
 	}
+
+	w.WriteHeader(status)
 }
 
 // RespondError sends an error response

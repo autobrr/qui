@@ -31,7 +31,7 @@ import {
   Search,
   SearchCode,
   Settings,
-  Wrench
+  Zap
 } from "lucide-react"
 
 interface NavItem {
@@ -59,9 +59,9 @@ const navigation: NavItem[] = [
     params: {},
   },
   {
-    title: "Services",
-    href: "/services",
-    icon: Wrench,
+    title: "Automations",
+    href: "/automations",
+    icon: Zap,
   },
   {
     title: "Backups",
