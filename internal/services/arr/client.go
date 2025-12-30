@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/httphelpers"
 )
 
 const (
@@ -59,11 +60,11 @@ func (c *Client) Ping(ctx context.Context) error {
 
 	c.setHeaders(req)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(req) //nolint:bodyclose // closed by DrainAndClose
 	if err != nil {
 		return fmt.Errorf("connection failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer httphelpers.DrainAndClose(resp)
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return fmt.Errorf("authentication failed: invalid API key")
@@ -109,11 +110,11 @@ func (c *Client) ParseTitle(ctx context.Context, title string) (*models.External
 
 	c.setHeaders(req)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(req) //nolint:bodyclose // closed by DrainAndClose
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer httphelpers.DrainAndClose(resp)
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, fmt.Errorf("authentication failed: invalid API key")
