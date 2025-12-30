@@ -79,6 +79,7 @@ import type {
   AutomationInput,
   AutomationPreviewInput,
   AutomationPreviewResult,
+  RegexValidationResult,
   User,
   DashboardSettings,
   DashboardSettingsInput
@@ -1333,6 +1334,13 @@ class ApiClient {
 
   async previewAutomation(instanceId: number, payload: AutomationPreviewInput): Promise<AutomationPreviewResult> {
     return this.request<AutomationPreviewResult>(`/instances/${instanceId}/automations/preview`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async validateAutomationRegex(instanceId: number, payload: AutomationInput): Promise<RegexValidationResult> {
+    return this.request<RegexValidationResult>(`/instances/${instanceId}/automations/validate-regex`, {
       method: "POST",
       body: JSON.stringify(payload),
     })

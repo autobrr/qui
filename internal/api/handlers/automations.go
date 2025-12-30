@@ -279,9 +279,33 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		return http.StatusBadRequest, "Category action requires a category name", errors.New("category name required")
 	}
 
+	// Validate delete is standalone - it cannot be combined with any other action
+	hasDelete := payload.Conditions.Delete != nil && payload.Conditions.Delete.Enabled
+	if hasDelete {
+		hasOtherAction := (payload.Conditions.SpeedLimits != nil && payload.Conditions.SpeedLimits.Enabled) ||
+			(payload.Conditions.ShareLimits != nil && payload.Conditions.ShareLimits.Enabled) ||
+			(payload.Conditions.Pause != nil && payload.Conditions.Pause.Enabled) ||
+			(payload.Conditions.Tag != nil && payload.Conditions.Tag.Enabled) ||
+			(payload.Conditions.Category != nil && payload.Conditions.Category.Enabled)
+		if hasOtherAction {
+			return http.StatusBadRequest, "Delete action cannot be combined with other actions", errors.New("delete must be standalone")
+		}
+	}
+
 	// Validate intervalSeconds minimum
 	if payload.IntervalSeconds != nil && *payload.IntervalSeconds < 60 {
 		return http.StatusBadRequest, "intervalSeconds must be at least 60", errors.New("interval too short")
+	}
+
+	// Validate regex patterns are valid RE2 (only when enabling the workflow)
+	isEnabled := payload.Enabled == nil || *payload.Enabled
+	if isEnabled {
+		if regexErrs := collectConditionRegexErrors(payload.Conditions); len(regexErrs) > 0 {
+			// Return the first error with a helpful message
+			firstErr := regexErrs[0]
+			msg := fmt.Sprintf("Invalid regex pattern in %s: %s (Go/RE2 does not support Perl features like lookahead/lookbehind)", firstErr.Field, firstErr.Message)
+			return http.StatusBadRequest, msg, errors.New("invalid regex")
+		}
 	}
 
 	// Validate hardlink fields require local filesystem access
@@ -457,4 +481,86 @@ func (h *AutomationHandler) PreviewDeleteRule(w http.ResponseWriter, r *http.Req
 	}
 
 	RespondJSON(w, http.StatusOK, result)
+}
+
+// RegexValidationError represents a regex compilation error at a specific path in the condition tree.
+type RegexValidationError struct {
+	Path     string `json:"path"`     // JSON pointer to the condition, e.g., "/conditions/delete/condition/conditions/0"
+	Message  string `json:"message"`  // Error message from regex compilation
+	Pattern  string `json:"pattern"`  // The invalid pattern
+	Field    string `json:"field"`    // Field name being matched
+	Operator string `json:"operator"` // Operator (MATCHES or string op with regex flag)
+}
+
+// ValidateRegex validates all regex patterns in the automation conditions.
+func (h *AutomationHandler) ValidateRegex(w http.ResponseWriter, r *http.Request) {
+	var payload AutomationPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		log.Warn().Err(err).Msg("automations: failed to decode validate-regex payload")
+		RespondError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	validationErrors := collectConditionRegexErrors(payload.Conditions)
+
+	RespondJSON(w, http.StatusOK, map[string]any{
+		"valid":  len(validationErrors) == 0,
+		"errors": validationErrors,
+	})
+}
+
+// collectConditionRegexErrors extracts all regex validation errors from action conditions.
+func collectConditionRegexErrors(conditions *models.ActionConditions) []RegexValidationError {
+	if conditions == nil {
+		return nil
+	}
+
+	var result []RegexValidationError
+
+	if conditions.SpeedLimits != nil {
+		validateConditionRegex(conditions.SpeedLimits.Condition, "/conditions/speedLimits/condition", &result)
+	}
+	if conditions.ShareLimits != nil {
+		validateConditionRegex(conditions.ShareLimits.Condition, "/conditions/shareLimits/condition", &result)
+	}
+	if conditions.Pause != nil {
+		validateConditionRegex(conditions.Pause.Condition, "/conditions/pause/condition", &result)
+	}
+	if conditions.Delete != nil {
+		validateConditionRegex(conditions.Delete.Condition, "/conditions/delete/condition", &result)
+	}
+	if conditions.Tag != nil {
+		validateConditionRegex(conditions.Tag.Condition, "/conditions/tag/condition", &result)
+	}
+	if conditions.Category != nil {
+		validateConditionRegex(conditions.Category.Condition, "/conditions/category/condition", &result)
+	}
+
+	return result
+}
+
+// validateConditionRegex recursively validates regex patterns in a condition tree.
+func validateConditionRegex(cond *models.RuleCondition, path string, errs *[]RegexValidationError) {
+	if cond == nil {
+		return
+	}
+
+	// Check if this condition uses regex
+	isRegex := cond.Regex || cond.Operator == models.OperatorMatches
+	if isRegex && cond.Value != "" {
+		if err := cond.CompileRegex(); err != nil {
+			*errs = append(*errs, RegexValidationError{
+				Path:     path,
+				Message:  err.Error(),
+				Pattern:  cond.Value,
+				Field:    string(cond.Field),
+				Operator: string(cond.Operator),
+			})
+		}
+	}
+
+	// Recurse into child conditions
+	for i, child := range cond.Conditions {
+		validateConditionRegex(child, fmt.Sprintf("%s/conditions/%d", path, i), errs)
+	}
 }
