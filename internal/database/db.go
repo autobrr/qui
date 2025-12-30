@@ -901,7 +901,9 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 					Err(err).
 					Msg("SQLite writer connection appears wedged in a transaction; attempting rollback and retry (stack suppressed)")
 			}
-			db.rollbackWriterConn(context.Background())
+			rollbackCtx, rollbackCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			db.rollbackWriterConn(rollbackCtx)
+			rollbackCancel()
 			tx, err = db.writerConn.BeginTx(ctx, opts)
 		}
 		if err != nil {

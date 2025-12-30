@@ -825,7 +825,7 @@ func (s *CrossSeedStore) GetRun(ctx context.Context, id int64) (*CrossSeedRun, e
 
 	row := s.db.QueryRowContext(ctx, query, id)
 	run, err := scanCrossSeedRun(row)
-	if err != nil && errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	return run, err
@@ -845,7 +845,7 @@ func (s *CrossSeedStore) GetLatestRun(ctx context.Context) (*CrossSeedRun, error
 
 	row := s.db.QueryRowContext(ctx, query)
 	run, err := scanCrossSeedRun(row)
-	if err != nil && errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	return run, err
