@@ -485,6 +485,7 @@ func (app *Application) runServer() {
 	trackerRuleStore := models.NewTrackerRuleStore(db)
 	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
 	dashboardSettingsStore := models.NewDashboardSettingsStore(db)
+	logExclusionsStore := models.NewLogExclusionsStore(db)
 
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db)
 	externalProgramStore := models.NewExternalProgramStore(db)
@@ -661,6 +662,7 @@ func (app *Application) runServer() {
 		TrackerRuleService:               trackerRuleService,
 		TrackerCustomizationStore:        trackerCustomizationStore,
 		DashboardSettingsStore:           dashboardSettingsStore,
+		LogExclusionsStore:               logExclusionsStore,
 		InstanceCrossSeedCompletionStore: instanceCrossSeedCompletionStore,
 	})
 

@@ -3,48 +3,62 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useEffect, useState } from "react"
+import { api } from "@/lib/api"
+import type { LogExclusions } from "@/types"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useCallback } from "react"
 
-const STORAGE_KEY = "qui-log-exclusions"
-
-function isBrowser() {
-  return typeof window !== "undefined" && typeof window.localStorage !== "undefined"
-}
+const QUERY_KEY = ["log-exclusions"]
 
 /**
- * Hook for persisting muted log message patterns to localStorage.
- * Returns [exclusions, setExclusions] where exclusions is an array of message strings to hide.
+ * Hook for managing muted log message patterns.
+ * Returns [exclusions, setExclusions] similar to useState.
  */
 export function usePersistedLogExclusions() {
-  const [exclusions, setExclusions] = useState<string[]>(() => {
-    if (!isBrowser()) {
-      return []
-    }
-    try {
-      const stored = window.localStorage.getItem(STORAGE_KEY)
-      if (stored) {
-        const parsed: unknown = JSON.parse(stored)
-        if (Array.isArray(parsed) && parsed.every(item => typeof item === "string")) {
-          return parsed as string[]
-        }
-      }
-    } catch (error) {
-      console.error("Failed to load log exclusions from localStorage:", error)
-    }
-    return []
+  const queryClient = useQueryClient()
+
+  const { data } = useQuery<LogExclusions>({
+    queryKey: QUERY_KEY,
+    queryFn: () => api.getLogExclusions(),
+    staleTime: 60000,
+    gcTime: 300000,
   })
 
-  // Persist to localStorage when exclusions change
-  useEffect(() => {
-    if (!isBrowser()) {
-      return
-    }
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(exclusions))
-    } catch (error) {
-      console.error("Failed to save log exclusions to localStorage:", error)
-    }
-  }, [exclusions])
+  const mutation = useMutation({
+    mutationFn: (patterns: string[]) => api.updateLogExclusions({ patterns }),
+    onMutate: async (newPatterns) => {
+      await queryClient.cancelQueries({ queryKey: QUERY_KEY })
+      const previous = queryClient.getQueryData<LogExclusions>(QUERY_KEY)
+
+      // Optimistic update
+      if (previous) {
+        queryClient.setQueryData<LogExclusions>(QUERY_KEY, {
+          ...previous,
+          patterns: newPatterns,
+        })
+      }
+
+      return { previous }
+    },
+    onError: (_err, _newPatterns, context) => {
+      // Rollback on error
+      if (context?.previous) {
+        queryClient.setQueryData(QUERY_KEY, context.previous)
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEY })
+    },
+  })
+
+  const setExclusions = useCallback(
+    (patterns: string[]) => {
+      mutation.mutate(patterns)
+    },
+    [mutation.mutate]
+  )
+
+  const exclusions = data?.patterns ?? []
 
   return [exclusions, setExclusions] as const
 }

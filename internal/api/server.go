@@ -68,6 +68,7 @@ type Server struct {
 	trackerRuleService               *trackerrules.Service
 	trackerCustomizationStore        *models.TrackerCustomizationStore
 	dashboardSettingsStore           *models.DashboardSettingsStore
+	logExclusionsStore               *models.LogExclusionsStore
 	instanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
 }
 
@@ -97,6 +98,7 @@ type Dependencies struct {
 	TrackerRuleService               *trackerrules.Service
 	TrackerCustomizationStore        *models.TrackerCustomizationStore
 	DashboardSettingsStore           *models.DashboardSettingsStore
+	LogExclusionsStore               *models.LogExclusionsStore
 	InstanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
 }
 
@@ -133,6 +135,7 @@ func NewServer(deps *Dependencies) *Server {
 		trackerRuleService:               deps.TrackerRuleService,
 		trackerCustomizationStore:        deps.TrackerCustomizationStore,
 		dashboardSettingsStore:           deps.DashboardSettingsStore,
+		logExclusionsStore:               deps.LogExclusionsStore,
 		instanceCrossSeedCompletionStore: deps.InstanceCrossSeedCompletionStore,
 	}
 
@@ -272,6 +275,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	trackerRulesHandler := handlers.NewTrackerRuleHandler(s.trackerRuleStore, s.trackerRuleService)
 	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
+	logExclusionsHandler := handlers.NewLogExclusionsHandler(s.logExclusionsStore)
 	logsHandler := handlers.NewLogsHandler(s.config)
 
 	// Torznab/Jackett handler
@@ -360,6 +364,10 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			// Dashboard settings (per-user layout preferences)
 			r.Get("/dashboard-settings", dashboardSettingsHandler.Get)
 			r.Put("/dashboard-settings", dashboardSettingsHandler.Update)
+
+			// Log exclusions (muted log message patterns)
+			r.Get("/log-exclusions", logExclusionsHandler.Get)
+			r.Put("/log-exclusions", logExclusionsHandler.Update)
 
 			// Log settings and streaming
 			logsHandler.Routes(r)

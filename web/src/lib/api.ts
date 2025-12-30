@@ -76,7 +76,9 @@ import type {
   TrackerRuleInput,
   User,
   DashboardSettings,
-  DashboardSettingsInput
+  DashboardSettingsInput,
+  LogExclusions,
+  LogExclusionsInput
 } from "@/types"
 import { getApiBaseUrl, withBasePath } from "./base-url"
 
@@ -1556,6 +1558,18 @@ class ApiClient {
 
   async updateDashboardSettings(data: DashboardSettingsInput): Promise<DashboardSettings> {
     return this.request<DashboardSettings>("/dashboard-settings", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  // Log Exclusions endpoints
+  async getLogExclusions(): Promise<LogExclusions> {
+    return this.request<LogExclusions>("/log-exclusions")
+  }
+
+  async updateLogExclusions(data: LogExclusionsInput): Promise<LogExclusions> {
+    return this.request<LogExclusions>("/log-exclusions", {
       method: "PUT",
       body: JSON.stringify(data),
     })

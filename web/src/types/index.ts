@@ -354,6 +354,17 @@ export interface DashboardSettingsInput {
   trackerBreakdownItemsPerPage?: number
 }
 
+export interface LogExclusions {
+  id: number
+  patterns: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface LogExclusionsInput {
+  patterns: string[]
+}
+
 export interface TorrentCounts {
   status: Record<string, number>
   categories: Record<string, number>
