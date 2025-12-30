@@ -2357,7 +2357,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       htmlFor="skip-piece-boundary-check"
                       className={`font-medium ${globalSettings.skipPieceBoundarySafetyCheck ? "text-yellow-600 dark:text-yellow-500" : "text-green-600 dark:text-green-500"}`}
                     >
-                      {globalSettings.skipPieceBoundarySafetyCheck ? "Skip piece boundary safety check" : "Piece boundary safety check enabled"}
+                      {globalSettings.skipPieceBoundarySafetyCheck ? "Piece boundary safety check currently disabled" : "Piece boundary safety check enabled"}
                     </Label>
                     <p className="text-xs text-muted-foreground">
                       {globalSettings.skipPieceBoundarySafetyCheck
