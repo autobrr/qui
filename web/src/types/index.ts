@@ -316,6 +316,18 @@ export interface AutomationPreviewTorrent {
   downloaded: number
   isUnregistered?: boolean
   isCrossSeed?: boolean
+  hardlinkScope?: string // none, torrents_only, outside_qbittorrent
+  // Additional fields for dynamic columns
+  numSeeds: number
+  numComplete: number
+  numLeechs: number
+  numIncomplete: number
+  progress: number
+  availability: number
+  timeActive: number
+  lastActivity: number
+  completionOn: number
+  totalSize: number
 }
 
 export interface AutomationPreviewResult {

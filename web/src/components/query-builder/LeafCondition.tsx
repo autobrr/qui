@@ -1,11 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger
-} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -22,8 +16,7 @@ import { cn } from "@/lib/utils";
 import type { ConditionField, ConditionOperator, RuleCondition } from "@/types";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { format } from "date-fns";
-import { CalendarIcon, GripVertical, ToggleLeft, ToggleRight, X } from "lucide-react";
+import { GripVertical, ToggleLeft, ToggleRight, X } from "lucide-react";
 import { useState } from "react";
 import {
   BYTE_UNITS,
@@ -293,59 +286,7 @@ export function LeafCondition({
       </Select>
 
       {/* Value input - varies by field type */}
-      {condition.operator === "BETWEEN" && fieldType === "timestamp" ? (
-        <div className="flex items-center gap-1">
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                className={cn(
-                  "h-8 w-[130px] justify-start text-left font-normal text-xs",
-                  !condition.minValue && "text-muted-foreground"
-                )}
-              >
-                <CalendarIcon className="mr-1 size-3" />
-                {condition.minValue? format(new Date(condition.minValue * 1000), "PP"): "From"}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="single"
-                selected={condition.minValue ? new Date(condition.minValue * 1000) : undefined}
-                onSelect={(date) => {
-                  onChange({ ...condition, minValue: date ? Math.floor(date.getTime() / 1000) : undefined });
-                }}
-              />
-            </PopoverContent>
-          </Popover>
-          <span className="text-muted-foreground">-</span>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                className={cn(
-                  "h-8 w-[130px] justify-start text-left font-normal text-xs",
-                  !condition.maxValue && "text-muted-foreground"
-                )}
-              >
-                <CalendarIcon className="mr-1 size-3" />
-                {condition.maxValue? format(new Date(condition.maxValue * 1000), "PP"): "To"}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="single"
-                selected={condition.maxValue ? new Date(condition.maxValue * 1000) : undefined}
-                onSelect={(date) => {
-                  onChange({ ...condition, maxValue: date ? Math.floor(date.getTime() / 1000) : undefined });
-                }}
-              />
-            </PopoverContent>
-          </Popover>
-        </div>
-      ) : condition.operator === "BETWEEN" && fieldType === "duration" && betweenDurationDisplay ? (
+      {condition.operator === "BETWEEN" && fieldType === "duration" && betweenDurationDisplay ? (
         <div className="flex items-center gap-1">
           <Input
             type="number"
@@ -483,31 +424,6 @@ export function LeafCondition({
             </SelectContent>
           </Select>
         </div>
-      ) : fieldType === "timestamp" ? (
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              className={cn(
-                "h-8 w-[160px] justify-start text-left font-normal",
-                !condition.value && "text-muted-foreground"
-              )}
-            >
-              <CalendarIcon className="mr-2 size-4" />
-              {condition.value? format(new Date(parseInt(condition.value, 10) * 1000), "PP"): "Pick a date"}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
-            <Calendar
-              mode="single"
-              selected={condition.value ? new Date(parseInt(condition.value, 10) * 1000) : undefined}
-              onSelect={(date) => {
-                handleValueChange(date ? String(Math.floor(date.getTime() / 1000)) : "");
-              }}
-            />
-          </PopoverContent>
-        </Popover>
       ) : (condition.operator === "EXISTS_IN" || condition.operator === "CONTAINS_IN" || (condition.field === "CATEGORY" && (condition.operator === "EQUAL" || condition.operator === "NOT_EQUAL"))) && categoryOptions && categoryOptions.length > 0 ? (
         // Category selector for category-related conditions when categories available
         <Select value={condition.value ?? ""} onValueChange={handleValueChange}>
@@ -581,7 +497,7 @@ export function LeafCondition({
 }
 
 function isNumericType(type: string): boolean {
-  return ["bytes", "duration", "timestamp", "float", "speed", "integer"].includes(type);
+  return ["bytes", "duration", "float", "speed", "integer"].includes(type);
 }
 
 function getPlaceholder(type: string): string {
@@ -590,8 +506,6 @@ function getPlaceholder(type: string): string {
       return "Size in bytes";
     case "duration":
       return "Seconds";
-    case "timestamp":
-      return "Unix timestamp";
     case "float":
       return "0.0";
     case "speed":

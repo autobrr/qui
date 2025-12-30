@@ -1299,6 +1299,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           )
         }
         preview={previewResult}
+        condition={previewInput?.actionCondition ?? formState.actionCondition}
         onConfirm={handleConfirmSave}
         onLoadMore={handleLoadMore}
         isLoadingMore={loadMorePreview.isPending}

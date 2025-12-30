@@ -210,6 +210,59 @@ type PreviewTorrent struct {
 	Downloaded     int64   `json:"downloaded"`
 	IsUnregistered bool    `json:"isUnregistered,omitempty"`
 	IsCrossSeed    bool    `json:"isCrossSeed,omitempty"` // For category preview
+
+	// Additional fields for dynamic columns based on filter conditions
+	NumSeeds      int64   `json:"numSeeds"`                // Active seeders (connected to)
+	NumComplete   int64   `json:"numComplete"`             // Total seeders in swarm
+	NumLeechs     int64   `json:"numLeechs"`               // Active leechers (connected to)
+	NumIncomplete int64   `json:"numIncomplete"`           // Total leechers in swarm
+	Progress      float64 `json:"progress"`                // Download progress (0-1)
+	Availability  float64 `json:"availability"`            // Distributed copies
+	TimeActive    int64   `json:"timeActive"`              // Total active time (seconds)
+	LastActivity  int64   `json:"lastActivity"`            // Last activity timestamp
+	CompletionOn  int64   `json:"completionOn"`            // Completion timestamp
+	TotalSize     int64   `json:"totalSize"`               // Total torrent size
+	HardlinkScope string  `json:"hardlinkScope,omitempty"` // none, torrents_only, outside_qbittorrent
+}
+
+// buildPreviewTorrent creates a PreviewTorrent from a qbt.Torrent with optional context flags.
+func buildPreviewTorrent(torrent qbt.Torrent, tracker string, evalCtx *EvalContext, isCrossSeed bool) PreviewTorrent {
+	pt := PreviewTorrent{
+		Name:          torrent.Name,
+		Hash:          torrent.Hash,
+		Size:          torrent.Size,
+		Ratio:         torrent.Ratio,
+		SeedingTime:   torrent.SeedingTime,
+		Tracker:       tracker,
+		Category:      torrent.Category,
+		Tags:          torrent.Tags,
+		State:         string(torrent.State),
+		AddedOn:       torrent.AddedOn,
+		Uploaded:      torrent.Uploaded,
+		Downloaded:    torrent.Downloaded,
+		IsCrossSeed:   isCrossSeed,
+		NumSeeds:      torrent.NumSeeds,
+		NumComplete:   torrent.NumComplete,
+		NumLeechs:     torrent.NumLeechs,
+		NumIncomplete: torrent.NumIncomplete,
+		Progress:      torrent.Progress,
+		Availability:  torrent.Availability,
+		TimeActive:    torrent.TimeActive,
+		LastActivity:  torrent.LastActivity,
+		CompletionOn:  torrent.CompletionOn,
+		TotalSize:     torrent.TotalSize,
+	}
+
+	if evalCtx != nil {
+		if evalCtx.UnregisteredSet != nil {
+			_, pt.IsUnregistered = evalCtx.UnregisteredSet[torrent.Hash]
+		}
+		if evalCtx.HardlinkScopeByHash != nil {
+			pt.HardlinkScope = evalCtx.HardlinkScopeByHash[torrent.Hash]
+		}
+	}
+
+	return pt
 }
 
 // PreviewDeleteRule returns torrents that would be deleted by the given rule.
@@ -259,10 +312,8 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	evalCtx.CategoryIndex, evalCtx.CategoryNames = BuildCategoryIndex(torrents)
 
 	// Get health counts for tracker health conditions (from background cache)
-	var unregisteredSet map[string]struct{}
 	if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil {
 		if len(healthCounts.UnregisteredSet) > 0 {
-			unregisteredSet = healthCounts.UnregisteredSet
 			evalCtx.UnregisteredSet = healthCounts.UnregisteredSet
 		}
 		if len(healthCounts.TrackerDownSet) > 0 {
@@ -307,31 +358,11 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 				continue
 			}
 			if len(result.Examples) < limit {
-				// Get primary tracker domain for display
 				tracker := ""
 				if domains := collectTrackerDomains(torrent, s.syncManager); len(domains) > 0 {
 					tracker = domains[0]
 				}
-				// Check if torrent is unregistered (safe: nil map returns false)
-				var isUnregistered bool
-				if unregisteredSet != nil {
-					_, isUnregistered = unregisteredSet[torrent.Hash]
-				}
-				result.Examples = append(result.Examples, PreviewTorrent{
-					Name:           torrent.Name,
-					Hash:           torrent.Hash,
-					Size:           torrent.Size,
-					Ratio:          torrent.Ratio,
-					SeedingTime:    torrent.SeedingTime,
-					Tracker:        tracker,
-					Category:       torrent.Category,
-					Tags:           torrent.Tags,
-					State:          string(torrent.State),
-					AddedOn:        torrent.AddedOn,
-					Uploaded:       torrent.Uploaded,
-					Downloaded:     torrent.Downloaded,
-					IsUnregistered: isUnregistered,
-				})
+				result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, false))
 			}
 		}
 	}
@@ -487,28 +518,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 			tracker = domains[0]
 		}
 
-		// Check unregistered status for display
-		var isUnregistered bool
-		if evalCtx.UnregisteredSet != nil {
-			_, isUnregistered = evalCtx.UnregisteredSet[torrent.Hash]
-		}
-
-		result.Examples = append(result.Examples, PreviewTorrent{
-			Name:           torrent.Name,
-			Hash:           torrent.Hash,
-			Size:           torrent.Size,
-			Ratio:          torrent.Ratio,
-			SeedingTime:    torrent.SeedingTime,
-			Tracker:        tracker,
-			Category:       torrent.Category,
-			Tags:           torrent.Tags,
-			State:          string(torrent.State),
-			AddedOn:        torrent.AddedOn,
-			Uploaded:       torrent.Uploaded,
-			Downloaded:     torrent.Downloaded,
-			IsUnregistered: isUnregistered,
-			IsCrossSeed:    isCrossSeed,
-		})
+		result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, isCrossSeed))
 	}
 
 	return result, nil
