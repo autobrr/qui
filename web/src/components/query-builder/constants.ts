@@ -40,10 +40,10 @@ export const CONDITION_FIELDS = {
   UP_SPEED: { label: "Upload Speed", type: "speed" as const, description: "Current upload speed" },
 
   // Count fields
-  NUM_SEEDS: { label: "Seeds", type: "integer" as const, description: "Connected seeds" },
-  NUM_LEECHS: { label: "Leechers", type: "integer" as const, description: "Connected leechers" },
-  NUM_COMPLETE: { label: "Complete", type: "integer" as const, description: "Seeds in swarm" },
-  NUM_INCOMPLETE: { label: "Incomplete", type: "integer" as const, description: "Leechers in swarm" },
+  NUM_SEEDS: { label: "Active Seeders", type: "integer" as const, description: "Seeders currently connected to" },
+  NUM_LEECHS: { label: "Active Leechers", type: "integer" as const, description: "Leechers currently connected to" },
+  NUM_COMPLETE: { label: "Total Seeders", type: "integer" as const, description: "Total seeders in swarm (tracker-reported)" },
+  NUM_INCOMPLETE: { label: "Total Leechers", type: "integer" as const, description: "Total leechers in swarm (tracker-reported)" },
   TRACKERS_COUNT: { label: "Trackers", type: "integer" as const, description: "Number of trackers" },
 
   // Boolean fields
