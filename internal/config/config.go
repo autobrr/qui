@@ -6,11 +6,13 @@ package config
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"text/template"
@@ -92,7 +94,7 @@ func (c *AppConfig) defaults() {
 	if err != nil {
 		// Log error but continue with a fallback
 		log.Error().Err(err).Msg("Failed to generate secure session secret, using fallback")
-		sessionSecret = "change-me-" + fmt.Sprintf("%d", os.Getpid())
+		sessionSecret = "change-me-" + strconv.Itoa(os.Getpid())
 	}
 
 	c.viper.SetDefault("host", host)
@@ -120,63 +122,60 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("oidcClientSecret", "")
 	c.viper.SetDefault("oidcRedirectUrl", "")
 	c.viper.SetDefault("oidcDisableBuiltInLogin", false)
-
 }
 
 func (c *AppConfig) load(configDirOrPath string) error {
 	c.viper.SetConfigType("toml")
 
 	if configDirOrPath != "" {
-		// Determine if this is a directory or file path
-		configPath := c.resolveConfigPath(configDirOrPath)
-		c.viper.SetConfigFile(configPath)
+		return c.loadFromPath(configDirOrPath)
+	}
+	return c.loadFromStandardLocations()
+}
 
-		// Try to read the config
-		if err := c.viper.ReadInConfig(); err != nil {
-			// If file doesn't exist, create it
-			if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-				if err := c.writeDefaultConfig(configPath); err != nil {
-					return err
-				}
-				// Re-read after creating
-				if err := c.viper.ReadInConfig(); err != nil {
-					return fmt.Errorf("failed to read newly created config: %w", err)
-				}
-				return nil
-			}
+func (c *AppConfig) loadFromPath(configDirOrPath string) error {
+	configPath := c.resolveConfigPath(configDirOrPath)
+	c.viper.SetConfigFile(configPath)
+
+	if err := c.viper.ReadInConfig(); err != nil {
+		var notFound viper.ConfigFileNotFoundError
+		if !errors.As(err, &notFound) {
 			return fmt.Errorf("failed to read config: %w", err)
 		}
-	} else {
-		// Search for config in standard locations
-		c.viper.SetConfigName("config")
-		c.viper.AddConfigPath(".")                   // Current directory
-		c.viper.AddConfigPath(GetDefaultConfigDir()) // OS-specific config directory
-
-		// Try to read existing config
-		if err := c.viper.ReadInConfig(); err != nil {
-			if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-				// No config found, create in OS-specific location
-				defaultConfigPath := filepath.Join(GetDefaultConfigDir(), "config.toml")
-				if err := c.writeDefaultConfig(defaultConfigPath); err != nil {
-					return err
-				}
-				// Set the config file explicitly and read it
-				c.viper.SetConfigFile(defaultConfigPath)
-				if err := c.viper.ReadInConfig(); err != nil {
-					return fmt.Errorf("failed to read newly created config: %w", err)
-				}
-				// Explicitly set data directory for newly created config
-				configDir := filepath.Dir(defaultConfigPath)
-				c.dataDir = configDir
-				return nil
-			}
-			return fmt.Errorf("failed to read config: %w", err)
+		if writeErr := c.writeDefaultConfig(configPath); writeErr != nil {
+			return writeErr
+		}
+		if readErr := c.viper.ReadInConfig(); readErr != nil {
+			return fmt.Errorf("failed to read newly created config: %w", readErr)
 		}
 	}
-
 	return nil
 }
 
+func (c *AppConfig) loadFromStandardLocations() error {
+	c.viper.SetConfigName("config")
+	c.viper.AddConfigPath(".")
+	c.viper.AddConfigPath(GetDefaultConfigDir())
+
+	if err := c.viper.ReadInConfig(); err != nil {
+		var notFound viper.ConfigFileNotFoundError
+		if !errors.As(err, &notFound) {
+			return fmt.Errorf("failed to read config: %w", err)
+		}
+		defaultConfigPath := filepath.Join(GetDefaultConfigDir(), "config.toml")
+		if writeErr := c.writeDefaultConfig(defaultConfigPath); writeErr != nil {
+			return writeErr
+		}
+		c.viper.SetConfigFile(defaultConfigPath)
+		if readErr := c.viper.ReadInConfig(); readErr != nil {
+			return fmt.Errorf("failed to read newly created config: %w", readErr)
+		}
+		c.dataDir = filepath.Dir(defaultConfigPath)
+	}
+	return nil
+}
+
+//nolint:errcheck // BindEnv only errors on empty key, which can't happen with static strings
 func (c *AppConfig) loadFromEnv() {
 	// DO NOT use AutomaticEnv() - it reads ALL env vars and causes conflicts with K8s
 	// Instead, explicitly bind only the environment variables we want
@@ -206,7 +205,6 @@ func (c *AppConfig) loadFromEnv() {
 	c.bindOrReadFromFile("oidcClientSecret", envPrefix+"OIDC_CLIENT_SECRET")
 	c.viper.BindEnv("oidcRedirectUrl", envPrefix+"OIDC_REDIRECT_URL")
 	c.viper.BindEnv("oidcDisableBuiltInLogin", envPrefix+"OIDC_DISABLE_BUILT_IN_LOGIN")
-
 }
 
 func (c *AppConfig) watchConfig() {
@@ -291,6 +289,7 @@ func (c *AppConfig) notifyListeners() {
 	}
 }
 
+//nolint:funlen // config template is inherently long
 func (c *AppConfig) writeDefaultConfig(path string) error {
 	// Check if config already exists
 	if _, err := os.Stat(path); err == nil {
@@ -300,7 +299,7 @@ func (c *AppConfig) writeDefaultConfig(path string) error {
 
 	// Ensure directory exists
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("failed to create config directory %s: %w", dir, err)
 	}
 	log.Debug().Msgf("Created config directory: %s", dir)
@@ -461,12 +460,16 @@ func GetDefaultConfigDir() string {
 			return filepath.Join(appData, "qui")
 		}
 		// Fallback to home directory
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, "AppData", "Roaming", "qui")
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, "AppData", "Roaming", "qui")
+		}
+		return filepath.Join(".", "qui")
 	default:
 		// Use ~/.config/qui for Unix-like systems
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, ".config", "qui")
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, ".config", "qui")
+		}
+		return filepath.Join(".", ".config", "qui")
 	}
 }
 
@@ -649,17 +652,17 @@ func (c *AppConfig) GetEncryptionKey() []byte {
 
 	// Pad the secret if it's too short
 	padded := make([]byte, encryptionKeySize)
-	copy(padded, []byte(secret))
+	copy(padded, secret)
 	return padded
 }
 
 // bindOrReadFromFile sets the viper variable from a file if the _FILE suffixed
 // environment variable is present, otherwise it binds to the regular env var.
-func (c *AppConfig) bindOrReadFromFile(viperVar string, envVar string) {
+func (c *AppConfig) bindOrReadFromFile(viperVar, envVar string) {
 	envVarFile := envVar + "_FILE"
 	filePath := os.Getenv(envVarFile)
 	if filePath == "" {
-		c.viper.BindEnv(viperVar, envVar)
+		c.viper.BindEnv(viperVar, envVar) //nolint:errcheck // BindEnv only errors on empty key
 		return
 	}
 

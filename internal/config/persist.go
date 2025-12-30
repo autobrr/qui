@@ -217,26 +217,31 @@ func canonicalizeLogLevel(level string) string {
 	}
 }
 
+// validateLockedFields checks if any locked fields are being modified.
+func validateLockedFields(update LogSettingsUpdate, locked map[string]string) error {
+	if update.Level != nil && locked["level"] != "" {
+		return fmt.Errorf("cannot modify level: locked by %s", locked["level"])
+	}
+	if update.Path != nil && locked["path"] != "" {
+		return fmt.Errorf("cannot modify path: locked by %s", locked["path"])
+	}
+	if update.MaxSize != nil && locked["maxSize"] != "" {
+		return fmt.Errorf("cannot modify maxSize: locked by %s", locked["maxSize"])
+	}
+	if update.MaxBackups != nil && locked["maxBackups"] != "" {
+		return fmt.Errorf("cannot modify maxBackups: locked by %s", locked["maxBackups"])
+	}
+	return nil
+}
+
 // UpdateLogSettings validates and applies log settings updates.
 // It rejects changes to locked fields and returns an error if any locked field is modified.
 func (c *AppConfig) UpdateLogSettings(update LogSettingsUpdate) (LogSettingsResponse, error) {
 	c.configMu.Lock()
 	defer c.configMu.Unlock()
 
-	locked := c.GetLockedLogSettings()
-
-	// Check for locked field modifications
-	if update.Level != nil && locked["level"] != "" {
-		return LogSettingsResponse{}, fmt.Errorf("cannot modify level: locked by %s", locked["level"])
-	}
-	if update.Path != nil && locked["path"] != "" {
-		return LogSettingsResponse{}, fmt.Errorf("cannot modify path: locked by %s", locked["path"])
-	}
-	if update.MaxSize != nil && locked["maxSize"] != "" {
-		return LogSettingsResponse{}, fmt.Errorf("cannot modify maxSize: locked by %s", locked["maxSize"])
-	}
-	if update.MaxBackups != nil && locked["maxBackups"] != "" {
-		return LogSettingsResponse{}, fmt.Errorf("cannot modify maxBackups: locked by %s", locked["maxBackups"])
+	if err := validateLockedFields(update, c.GetLockedLogSettings()); err != nil {
+		return LogSettingsResponse{}, err
 	}
 
 	// Save current values for rollback on failure
@@ -262,7 +267,7 @@ func (c *AppConfig) UpdateLogSettings(update LogSettingsUpdate) (LogSettingsResp
 		c.viper.Set("logMaxBackups", oldMaxBackups)
 		// Best-effort restore of logger state (ApplyLogConfig may have partially
 		// applied before failing, e.g., changed log level before path error)
-		_ = c.ApplyLogConfig()
+		c.ApplyLogConfig() //nolint:errcheck // best-effort rollback, error is not actionable
 	}()
 
 	// Apply updates to in-memory config
