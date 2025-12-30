@@ -275,7 +275,7 @@ export interface AutomationActivity {
   hash: string
   torrentName?: string
   trackerDomain?: string
-  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed"
+  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused"
   ruleId?: number
   ruleName?: string
   outcome: "success" | "failed"
@@ -295,6 +295,8 @@ export interface AutomationActivity {
     removed?: Record<string, number> // tag -> count of torrents
     // Category activity details
     categories?: Record<string, number> // category -> count of torrents
+    // Speed/share limit activity details
+    limits?: Record<string, number> // "upload:1024" -> count, or "2.00:1440" -> count
   }
   createdAt: string
 }
@@ -320,6 +322,19 @@ export interface AutomationPreviewResult {
   totalMatches: number
   crossSeedCount?: number
   examples: AutomationPreviewTorrent[]
+}
+
+export interface RegexValidationError {
+  path: string
+  message: string
+  pattern: string
+  field: string
+  operator: string
+}
+
+export interface RegexValidationResult {
+  valid: boolean
+  errors: RegexValidationError[]
 }
 
 export interface InstanceResponse extends Instance {

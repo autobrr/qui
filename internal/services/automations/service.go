@@ -7,6 +7,7 @@ package automations
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -855,9 +856,33 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
 
-	s.applySpeedLimits(ctx, instanceID, uploadBatches, "upload", s.syncManager.SetTorrentUploadLimit)
-	s.applySpeedLimits(ctx, instanceID, downloadBatches, "download", s.syncManager.SetTorrentDownloadLimit)
+	// Apply speed limits and track success
+	uploadSuccess := s.applySpeedLimits(ctx, instanceID, uploadBatches, "upload", s.syncManager.SetTorrentUploadLimit)
+	downloadSuccess := s.applySpeedLimits(ctx, instanceID, downloadBatches, "download", s.syncManager.SetTorrentDownloadLimit)
 
+	// Record aggregated speed limit activity
+	if s.activityStore != nil && (len(uploadSuccess) > 0 || len(downloadSuccess) > 0) {
+		speedLimits := make(map[string]int) // "upload:1024" -> count, "download:2048" -> count
+		for limit, count := range uploadSuccess {
+			speedLimits[fmt.Sprintf("upload:%d", limit)] = count
+		}
+		for limit, count := range downloadSuccess {
+			speedLimits[fmt.Sprintf("download:%d", limit)] = count
+		}
+		detailsJSON, _ := json.Marshal(map[string]any{"limits": speedLimits})
+		if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "",
+			Action:     models.ActivityActionSpeedLimitsChanged,
+			Outcome:    models.ActivityOutcomeSuccess,
+			Details:    detailsJSON,
+		}); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record speed limit activity")
+		}
+	}
+
+	// Apply share limits and track success
+	shareLimitSuccess := make(map[string]int) // "ratio:seed" -> count
 	for key, hashes := range shareBatches {
 		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
@@ -876,11 +901,29 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 						log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record activity")
 					}
 				}
+			} else {
+				limitKey := fmt.Sprintf("%.2f:%d", key.ratio, key.seed)
+				shareLimitSuccess[limitKey] += len(batch)
 			}
 		}
 	}
 
+	// Record aggregated share limit activity
+	if s.activityStore != nil && len(shareLimitSuccess) > 0 {
+		detailsJSON, _ := json.Marshal(map[string]any{"limits": shareLimitSuccess})
+		if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "",
+			Action:     models.ActivityActionShareLimitsChanged,
+			Outcome:    models.ActivityOutcomeSuccess,
+			Details:    detailsJSON,
+		}); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record share limit activity")
+		}
+	}
+
 	// Execute pause actions for expression-based rules
+	pausedCount := 0
 	if len(pauseHashes) > 0 {
 		limited := limitHashBatch(pauseHashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
@@ -888,7 +931,22 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: pause action failed")
 			} else {
 				log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: paused torrents")
+				pausedCount += len(batch)
 			}
+		}
+	}
+
+	// Record aggregated pause activity
+	if s.activityStore != nil && pausedCount > 0 {
+		detailsJSON, _ := json.Marshal(map[string]any{"count": pausedCount})
+		if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "",
+			Action:     models.ActivityActionPaused,
+			Outcome:    models.ActivityOutcomeSuccess,
+			Details:    detailsJSON,
+		}); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record pause activity")
 		}
 	}
 
@@ -1095,23 +1153,24 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		}
 	}
 
-	// Record category activity per torrent (like deletions)
-	if s.activityStore != nil {
+	// Record aggregated category activity (like tags)
+	if s.activityStore != nil && len(successfulMoves) > 0 {
+		categoryCounts := make(map[string]int) // category -> count of torrents moved
 		for _, move := range successfulMoves {
-			detailsJSON, _ := json.Marshal(map[string]any{
-				"category": move.category,
-			})
-			if err := s.activityStore.Create(ctx, &models.AutomationActivity{
-				InstanceID:    instanceID,
-				Hash:          move.hash,
-				TorrentName:   move.name,
-				TrackerDomain: move.trackerDomain,
-				Action:        models.ActivityActionCategoryChanged,
-				Outcome:       models.ActivityOutcomeSuccess,
-				Details:       detailsJSON,
-			}); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", move.hash).Msg("automations: failed to record category activity")
-			}
+			categoryCounts[move.category]++
+		}
+
+		detailsJSON, _ := json.Marshal(map[string]any{
+			"categories": categoryCounts,
+		})
+		if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "", // No single hash for batch operations
+			Action:     models.ActivityActionCategoryChanged,
+			Outcome:    models.ActivityOutcomeSuccess,
+			Details:    detailsJSON,
+		}); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record category activity")
 		}
 	}
 
@@ -1551,13 +1610,15 @@ func buildFullPath(basePath, filePath string) string {
 }
 
 // applySpeedLimits applies upload or download limits in batches, logging and recording failures.
+// Returns a map of limit (KiB) -> count of successfully updated torrents.
 func (s *Service) applySpeedLimits(
 	ctx context.Context,
 	instanceID int,
 	batches map[int64][]string,
 	limitType string,
 	setLimit func(ctx context.Context, instanceID int, hashes []string, limit int64) error,
-) {
+) map[int64]int {
+	successCounts := make(map[int64]int)
 	for limit, hashes := range batches {
 		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
@@ -1579,7 +1640,10 @@ func (s *Service) applySpeedLimits(
 						log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record activity")
 					}
 				}
+			} else {
+				successCounts[limit] += len(batch)
 			}
 		}
 	}
+	return successCounts
 }
