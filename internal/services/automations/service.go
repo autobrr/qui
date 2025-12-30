@@ -7,6 +7,7 @@ package automations
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -31,6 +32,7 @@ type Config struct {
 	SkipWithin            time.Duration
 	MaxBatchHashes        int
 	ActivityRetentionDays int
+	ApplyTimeout          time.Duration // timeout for applying all actions per instance
 }
 
 // DefaultRuleInterval is the cadence for rules that don't specify their own interval.
@@ -48,6 +50,7 @@ func DefaultConfig() Config {
 		SkipWithin:            2 * time.Minute,
 		MaxBatchHashes:        50, // matches qBittorrent's max_concurrent_http_announces default
 		ActivityRetentionDays: 7,
+		ApplyTimeout:          60 * time.Second,
 	}
 }
 
@@ -209,6 +212,59 @@ type PreviewTorrent struct {
 	Downloaded     int64   `json:"downloaded"`
 	IsUnregistered bool    `json:"isUnregistered,omitempty"`
 	IsCrossSeed    bool    `json:"isCrossSeed,omitempty"` // For category preview
+
+	// Additional fields for dynamic columns based on filter conditions
+	NumSeeds      int64   `json:"numSeeds"`                // Active seeders (connected to)
+	NumComplete   int64   `json:"numComplete"`             // Total seeders in swarm
+	NumLeechs     int64   `json:"numLeechs"`               // Active leechers (connected to)
+	NumIncomplete int64   `json:"numIncomplete"`           // Total leechers in swarm
+	Progress      float64 `json:"progress"`                // Download progress (0-1)
+	Availability  float64 `json:"availability"`            // Distributed copies
+	TimeActive    int64   `json:"timeActive"`              // Total active time (seconds)
+	LastActivity  int64   `json:"lastActivity"`            // Last activity timestamp
+	CompletionOn  int64   `json:"completionOn"`            // Completion timestamp
+	TotalSize     int64   `json:"totalSize"`               // Total torrent size
+	HardlinkScope string  `json:"hardlinkScope,omitempty"` // none, torrents_only, outside_qbittorrent
+}
+
+// buildPreviewTorrent creates a PreviewTorrent from a qbt.Torrent with optional context flags.
+func buildPreviewTorrent(torrent qbt.Torrent, tracker string, evalCtx *EvalContext, isCrossSeed bool) PreviewTorrent {
+	pt := PreviewTorrent{
+		Name:          torrent.Name,
+		Hash:          torrent.Hash,
+		Size:          torrent.Size,
+		Ratio:         torrent.Ratio,
+		SeedingTime:   torrent.SeedingTime,
+		Tracker:       tracker,
+		Category:      torrent.Category,
+		Tags:          torrent.Tags,
+		State:         string(torrent.State),
+		AddedOn:       torrent.AddedOn,
+		Uploaded:      torrent.Uploaded,
+		Downloaded:    torrent.Downloaded,
+		IsCrossSeed:   isCrossSeed,
+		NumSeeds:      torrent.NumSeeds,
+		NumComplete:   torrent.NumComplete,
+		NumLeechs:     torrent.NumLeechs,
+		NumIncomplete: torrent.NumIncomplete,
+		Progress:      torrent.Progress,
+		Availability:  torrent.Availability,
+		TimeActive:    torrent.TimeActive,
+		LastActivity:  torrent.LastActivity,
+		CompletionOn:  torrent.CompletionOn,
+		TotalSize:     torrent.TotalSize,
+	}
+
+	if evalCtx != nil {
+		if evalCtx.UnregisteredSet != nil {
+			_, pt.IsUnregistered = evalCtx.UnregisteredSet[torrent.Hash]
+		}
+		if evalCtx.HardlinkScopeByHash != nil {
+			pt.HardlinkScope = evalCtx.HardlinkScopeByHash[torrent.Hash]
+		}
+	}
+
+	return pt
 }
 
 // PreviewDeleteRule returns torrents that would be deleted by the given rule.
@@ -258,10 +314,8 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	evalCtx.CategoryIndex, evalCtx.CategoryNames = BuildCategoryIndex(torrents)
 
 	// Get health counts for tracker health conditions (from background cache)
-	var unregisteredSet map[string]struct{}
 	if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil {
 		if len(healthCounts.UnregisteredSet) > 0 {
-			unregisteredSet = healthCounts.UnregisteredSet
 			evalCtx.UnregisteredSet = healthCounts.UnregisteredSet
 		}
 		if len(healthCounts.TrackerDownSet) > 0 {
@@ -306,31 +360,11 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 				continue
 			}
 			if len(result.Examples) < limit {
-				// Get primary tracker domain for display
 				tracker := ""
 				if domains := collectTrackerDomains(torrent, s.syncManager); len(domains) > 0 {
 					tracker = domains[0]
 				}
-				// Check if torrent is unregistered (safe: nil map returns false)
-				var isUnregistered bool
-				if unregisteredSet != nil {
-					_, isUnregistered = unregisteredSet[torrent.Hash]
-				}
-				result.Examples = append(result.Examples, PreviewTorrent{
-					Name:           torrent.Name,
-					Hash:           torrent.Hash,
-					Size:           torrent.Size,
-					Ratio:          torrent.Ratio,
-					SeedingTime:    torrent.SeedingTime,
-					Tracker:        tracker,
-					Category:       torrent.Category,
-					Tags:           torrent.Tags,
-					State:          string(torrent.State),
-					AddedOn:        torrent.AddedOn,
-					Uploaded:       torrent.Uploaded,
-					Downloaded:     torrent.Downloaded,
-					IsUnregistered: isUnregistered,
-				})
+				result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, false))
 			}
 		}
 	}
@@ -486,28 +520,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 			tracker = domains[0]
 		}
 
-		// Check unregistered status for display
-		var isUnregistered bool
-		if evalCtx.UnregisteredSet != nil {
-			_, isUnregistered = evalCtx.UnregisteredSet[torrent.Hash]
-		}
-
-		result.Examples = append(result.Examples, PreviewTorrent{
-			Name:           torrent.Name,
-			Hash:           torrent.Hash,
-			Size:           torrent.Size,
-			Ratio:          torrent.Ratio,
-			SeedingTime:    torrent.SeedingTime,
-			Tracker:        tracker,
-			Category:       torrent.Category,
-			Tags:           torrent.Tags,
-			State:          string(torrent.State),
-			AddedOn:        torrent.AddedOn,
-			Uploaded:       torrent.Uploaded,
-			Downloaded:     torrent.Downloaded,
-			IsUnregistered: isUnregistered,
-			IsCrossSeed:    isCrossSeed,
-		})
+		result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, isCrossSeed))
 	}
 
 	return result, nil
@@ -852,12 +865,36 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		s.mu.Unlock()
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, s.cfg.ApplyTimeout)
 	defer cancel()
 
-	s.applySpeedLimits(ctx, instanceID, uploadBatches, "upload", s.syncManager.SetTorrentUploadLimit)
-	s.applySpeedLimits(ctx, instanceID, downloadBatches, "download", s.syncManager.SetTorrentDownloadLimit)
+	// Apply speed limits and track success
+	uploadSuccess := s.applySpeedLimits(ctx, instanceID, uploadBatches, "upload", s.syncManager.SetTorrentUploadLimit)
+	downloadSuccess := s.applySpeedLimits(ctx, instanceID, downloadBatches, "download", s.syncManager.SetTorrentDownloadLimit)
 
+	// Record aggregated speed limit activity
+	if s.activityStore != nil && (len(uploadSuccess) > 0 || len(downloadSuccess) > 0) {
+		speedLimits := make(map[string]int) // "upload:1024" -> count, "download:2048" -> count
+		for limit, count := range uploadSuccess {
+			speedLimits[fmt.Sprintf("upload:%d", limit)] = count
+		}
+		for limit, count := range downloadSuccess {
+			speedLimits[fmt.Sprintf("download:%d", limit)] = count
+		}
+		detailsJSON, _ := json.Marshal(map[string]any{"limits": speedLimits})
+		if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "",
+			Action:     models.ActivityActionSpeedLimitsChanged,
+			Outcome:    models.ActivityOutcomeSuccess,
+			Details:    detailsJSON,
+		}); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record speed limit activity")
+		}
+	}
+
+	// Apply share limits and track success
+	shareLimitSuccess := make(map[string]int) // "ratio:seed" -> count
 	for key, hashes := range shareBatches {
 		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
@@ -876,11 +913,29 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 						log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record activity")
 					}
 				}
+			} else {
+				limitKey := fmt.Sprintf("%.2f:%d", key.ratio, key.seed)
+				shareLimitSuccess[limitKey] += len(batch)
 			}
 		}
 	}
 
+	// Record aggregated share limit activity
+	if s.activityStore != nil && len(shareLimitSuccess) > 0 {
+		detailsJSON, _ := json.Marshal(map[string]any{"limits": shareLimitSuccess})
+		if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "",
+			Action:     models.ActivityActionShareLimitsChanged,
+			Outcome:    models.ActivityOutcomeSuccess,
+			Details:    detailsJSON,
+		}); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record share limit activity")
+		}
+	}
+
 	// Execute pause actions for expression-based rules
+	pausedCount := 0
 	if len(pauseHashes) > 0 {
 		limited := limitHashBatch(pauseHashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
@@ -888,7 +943,22 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: pause action failed")
 			} else {
 				log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: paused torrents")
+				pausedCount += len(batch)
 			}
+		}
+	}
+
+	// Record aggregated pause activity
+	if s.activityStore != nil && pausedCount > 0 {
+		detailsJSON, _ := json.Marshal(map[string]any{"count": pausedCount})
+		if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "",
+			Action:     models.ActivityActionPaused,
+			Outcome:    models.ActivityOutcomeSuccess,
+			Details:    detailsJSON,
+		}); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record pause activity")
 		}
 	}
 
@@ -1095,23 +1165,24 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		}
 	}
 
-	// Record category activity per torrent (like deletions)
-	if s.activityStore != nil {
+	// Record aggregated category activity (like tags)
+	if s.activityStore != nil && len(successfulMoves) > 0 {
+		categoryCounts := make(map[string]int) // category -> count of torrents moved
 		for _, move := range successfulMoves {
-			detailsJSON, _ := json.Marshal(map[string]any{
-				"category": move.category,
-			})
-			if err := s.activityStore.Create(ctx, &models.AutomationActivity{
-				InstanceID:    instanceID,
-				Hash:          move.hash,
-				TorrentName:   move.name,
-				TrackerDomain: move.trackerDomain,
-				Action:        models.ActivityActionCategoryChanged,
-				Outcome:       models.ActivityOutcomeSuccess,
-				Details:       detailsJSON,
-			}); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", move.hash).Msg("automations: failed to record category activity")
-			}
+			categoryCounts[move.category]++
+		}
+
+		detailsJSON, _ := json.Marshal(map[string]any{
+			"categories": categoryCounts,
+		})
+		if err := s.activityStore.Create(ctx, &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "", // No single hash for batch operations
+			Action:     models.ActivityActionCategoryChanged,
+			Outcome:    models.ActivityOutcomeSuccess,
+			Details:    detailsJSON,
+		}); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record category activity")
 		}
 	}
 
@@ -1551,13 +1622,15 @@ func buildFullPath(basePath, filePath string) string {
 }
 
 // applySpeedLimits applies upload or download limits in batches, logging and recording failures.
+// Returns a map of limit (KiB) -> count of successfully updated torrents.
 func (s *Service) applySpeedLimits(
 	ctx context.Context,
 	instanceID int,
 	batches map[int64][]string,
 	limitType string,
 	setLimit func(ctx context.Context, instanceID int, hashes []string, limit int64) error,
-) {
+) map[int64]int {
+	successCounts := make(map[int64]int)
 	for limit, hashes := range batches {
 		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
@@ -1579,7 +1652,10 @@ func (s *Service) applySpeedLimits(
 						log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record activity")
 					}
 				}
+			} else {
+				successCounts[limit] += len(batch)
 			}
 		}
 	}
+	return successCounts
 }

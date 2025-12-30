@@ -25,11 +25,6 @@ export const CONDITION_FIELDS = {
   COMPLETION_ON_AGE: { label: "Completed Age", type: "duration" as const, description: "Time since download completed" },
   LAST_ACTIVITY_AGE: { label: "Inactive Time", type: "duration" as const, description: "Time since last activity" },
 
-  // Timestamp fields (unix)
-  ADDED_ON: { label: "Added On", type: "timestamp" as const, description: "When torrent was added" },
-  COMPLETION_ON: { label: "Completed On", type: "timestamp" as const, description: "When download completed" },
-  LAST_ACTIVITY: { label: "Last Activity", type: "timestamp" as const, description: "Last activity timestamp" },
-
   // Float fields
   RATIO: { label: "Ratio", type: "float" as const, description: "Upload/download ratio" },
   PROGRESS: { label: "Progress", type: "float" as const, description: "Download progress (0-1)" },
@@ -40,10 +35,10 @@ export const CONDITION_FIELDS = {
   UP_SPEED: { label: "Upload Speed", type: "speed" as const, description: "Current upload speed" },
 
   // Count fields
-  NUM_SEEDS: { label: "Seeds", type: "integer" as const, description: "Connected seeds" },
-  NUM_LEECHS: { label: "Leechers", type: "integer" as const, description: "Connected leechers" },
-  NUM_COMPLETE: { label: "Complete", type: "integer" as const, description: "Seeds in swarm" },
-  NUM_INCOMPLETE: { label: "Incomplete", type: "integer" as const, description: "Leechers in swarm" },
+  NUM_SEEDS: { label: "Active Seeders", type: "integer" as const, description: "Seeders currently connected to" },
+  NUM_LEECHS: { label: "Active Leechers", type: "integer" as const, description: "Leechers currently connected to" },
+  NUM_COMPLETE: { label: "Total Seeders", type: "integer" as const, description: "Total seeders in swarm (tracker-reported)" },
+  NUM_INCOMPLETE: { label: "Total Leechers", type: "integer" as const, description: "Total leechers in swarm (tracker-reported)" },
   TRACKERS_COUNT: { label: "Trackers", type: "integer" as const, description: "Number of trackers" },
 
   // Boolean fields
@@ -54,7 +49,7 @@ export const CONDITION_FIELDS = {
   HARDLINK_SCOPE: { label: "Hardlink scope", type: "hardlinkScope" as const, description: "Where hardlinks for this torrent's files exist. Requires Local Filesystem Access." },
 } as const;
 
-export type FieldType = "string" | "state" | "bytes" | "duration" | "timestamp" | "float" | "speed" | "integer" | "boolean" | "hardlinkScope";
+export type FieldType = "string" | "state" | "bytes" | "duration" | "float" | "speed" | "integer" | "boolean" | "hardlinkScope";
 
 // Operators available per field type
 export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string }[]> = {
@@ -87,15 +82,6 @@ export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string
     { value: "GREATER_THAN_OR_EQUAL", label: ">=" },
     { value: "LESS_THAN", label: "<" },
     { value: "LESS_THAN_OR_EQUAL", label: "<=" },
-    { value: "BETWEEN", label: "between" },
-  ],
-  timestamp: [
-    { value: "EQUAL", label: "=" },
-    { value: "NOT_EQUAL", label: "!=" },
-    { value: "GREATER_THAN", label: "after" },
-    { value: "GREATER_THAN_OR_EQUAL", label: "on or after" },
-    { value: "LESS_THAN", label: "before" },
-    { value: "LESS_THAN_OR_EQUAL", label: "on or before" },
     { value: "BETWEEN", label: "between" },
   ],
   float: [
@@ -187,7 +173,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Time",
-    fields: ["SEEDING_TIME", "TIME_ACTIVE", "ADDED_ON_AGE", "COMPLETION_ON_AGE", "LAST_ACTIVITY_AGE", "ADDED_ON", "COMPLETION_ON", "LAST_ACTIVITY"],
+    fields: ["SEEDING_TIME", "TIME_ACTIVE", "ADDED_ON_AGE", "COMPLETION_ON_AGE", "LAST_ACTIVITY_AGE"],
   },
   {
     label: "Progress",

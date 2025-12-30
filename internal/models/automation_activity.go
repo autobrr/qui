@@ -20,8 +20,11 @@ const (
 	ActivityActionDeletedCondition    = "deleted_condition" // Expression-based deletion
 	ActivityActionDeleteFailed        = "delete_failed"
 	ActivityActionLimitFailed         = "limit_failed"
-	ActivityActionTagsChanged         = "tags_changed"     // Batch tag operation
-	ActivityActionCategoryChanged     = "category_changed" // Batch category operation
+	ActivityActionTagsChanged         = "tags_changed"         // Batch tag operation
+	ActivityActionCategoryChanged     = "category_changed"     // Batch category operation
+	ActivityActionSpeedLimitsChanged  = "speed_limits_changed" // Batch speed limit operation
+	ActivityActionShareLimitsChanged  = "share_limits_changed" // Batch share limit operation
+	ActivityActionPaused              = "paused"               // Batch pause operation
 )
 
 // Activity outcome types

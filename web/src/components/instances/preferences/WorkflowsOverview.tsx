@@ -13,14 +13,33 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
+  AlertDialogTrigger
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { TruncatedText } from "@/components/ui/truncated-text"
@@ -30,9 +49,16 @@ import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
 import { cn, copyTextToClipboard, formatRelativeTime, parseTrackerDomains } from "@/lib/utils"
-import type { Automation, AutomationActivity, AutomationPreviewResult } from "@/types"
+import {
+  fromImportFormat,
+  parseImportJSON,
+  toExportFormat,
+  toExportJSON,
+  toDuplicateInput
+} from "@/lib/workflow-utils"
+import type { Automation, AutomationActivity, AutomationPreviewResult, InstanceResponse } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Clock, Copy, Folder, Info, Loader2, Pause, Pencil, Plus, RefreshCcw, Scale, Search, Tag, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, Clock, Copy, CopyPlus, Download, Folder, Info, Loader2, MoreVertical, Pause, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Trash2, Upload } from "lucide-react"
 import { useCallback, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { WorkflowDialog } from "./WorkflowDialog"
@@ -89,6 +115,12 @@ function formatAction(action: AutomationActivity["action"]): string {
       return "Tags"
     case "category_changed":
       return "Category"
+    case "speed_limits_changed":
+      return "Speed"
+    case "share_limits_changed":
+      return "Share"
+    case "paused":
+      return "Pause"
     default:
       return action
   }
@@ -120,6 +152,29 @@ function formatCategoryChangedSummary(details: AutomationActivity["details"]): s
   return `${total} torrent${total !== 1 ? "s" : ""} moved`
 }
 
+function formatSpeedLimitsSummary(details: AutomationActivity["details"]): string {
+  const limits = details?.limits ?? {}
+  const total = Object.values(limits).reduce((sum, value) => {
+    const asNumber = typeof value === "number" ? value : Number(value)
+    return sum + (Number.isFinite(asNumber) ? asNumber : 0)
+  }, 0)
+  return `${total} torrent${total !== 1 ? "s" : ""} limited`
+}
+
+function formatShareLimitsSummary(details: AutomationActivity["details"]): string {
+  const limits = details?.limits ?? {}
+  const total = Object.values(limits).reduce((sum, value) => {
+    const asNumber = typeof value === "number" ? value : Number(value)
+    return sum + (Number.isFinite(asNumber) ? asNumber : 0)
+  }, 0)
+  return `${total} torrent${total !== 1 ? "s" : ""} limited`
+}
+
+function formatPausedSummary(details: AutomationActivity["details"]): string {
+  const count = details?.count ?? 0
+  return `${count} torrent${count !== 1 ? "s" : ""} paused`
+}
+
 interface WorkflowsOverviewProps {
   expandedInstances?: string[]
   onExpandedInstancesChange?: (values: string[]) => void
@@ -145,9 +200,15 @@ export function WorkflowsOverview({
   const [enableConfirm, setEnableConfirm] = useState<{ instanceId: number; rule: Automation; preview: AutomationPreviewResult } | null>(null)
   const previewPageSize = 25
 
+  // Import dialog state
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [importInstanceId, setImportInstanceId] = useState<number | null>(null)
+  const [importJSON, setImportJSON] = useState("")
+  const [importError, setImportError] = useState<string | null>(null)
+
   // Activity-related state
   const { formatISOTimestamp } = useDateTimeFormatters()
-  const [activityFilterMap, setActivityFilterMap] = useState<Record<number, "all" | "deletions" | "errors">>({})
+  const [activityFilterMap, setActivityFilterMap] = useState<Record<number, "all" | "success" | "errors">>({})
   const [activitySearchMap, setActivitySearchMap] = useState<Record<number, string>>({})
   const [clearDaysMap, setClearDaysMap] = useState<Record<number, string>>({})
   const [displayLimitMap, setDisplayLimitMap] = useState<Record<number, number>>({})
@@ -224,15 +285,108 @@ export function WorkflowsOverview({
     mutationFn: ({ instanceId, rule, offset }: { instanceId: number; rule: Automation; offset: number }) =>
       api.previewAutomation(instanceId, { ...rule, enabled: true, previewLimit: previewPageSize, previewOffset: offset }),
     onSuccess: (preview) => {
-      setEnableConfirm(prev => prev
-        ? { ...prev, preview: { ...prev.preview, examples: [...prev.preview.examples, ...preview.examples], totalMatches: preview.totalMatches } }
-        : prev
+      setEnableConfirm(prev => prev? { ...prev, preview: { ...prev.preview, examples: [...prev.preview.examples, ...preview.examples], totalMatches: preview.totalMatches } }: prev
       )
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to load more previews")
     },
   })
+
+  const createWorkflow = useMutation({
+    mutationFn: ({ instanceId, payload }: { instanceId: number; payload: Parameters<typeof api.createAutomation>[1] }) =>
+      api.createAutomation(instanceId, payload),
+    onSuccess: (_, { instanceId }) => {
+      void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to create workflow")
+    },
+  })
+
+  // Get existing workflow names for an instance
+  const getExistingNames = useCallback((instanceId: number): string[] => {
+    const queryData = queryClient.getQueryData<Automation[]>(["automations", instanceId])
+    return queryData?.map(r => r.name) ?? []
+  }, [queryClient])
+
+  // Export workflow to clipboard
+  const handleExport = useCallback(async (rule: Automation) => {
+    const exportData = toExportFormat(rule)
+    const json = toExportJSON(exportData)
+    try {
+      await copyTextToClipboard(json)
+      toast.success("Workflow copied to clipboard")
+    } catch {
+      toast.error("Failed to copy to clipboard")
+    }
+  }, [])
+
+  // Duplicate workflow in the same instance
+  const handleDuplicate = useCallback((instanceId: number, rule: Automation) => {
+    const existingNames = getExistingNames(instanceId)
+    const input = toDuplicateInput(rule, existingNames)
+    createWorkflow.mutate(
+      { instanceId, payload: input },
+      {
+        onSuccess: () => {
+          toast.success(`Created "${input.name}"`)
+        },
+      }
+    )
+  }, [getExistingNames, createWorkflow])
+
+  // Copy workflow to another instance
+  const handleCopyToInstance = useCallback((sourceRule: Automation, targetInstanceId: number) => {
+    const existingNames = getExistingNames(targetInstanceId)
+    const input = toDuplicateInput(sourceRule, existingNames)
+    createWorkflow.mutate(
+      { instanceId: targetInstanceId, payload: input },
+      {
+        onSuccess: () => {
+          const targetInstance = instances?.find(i => i.id === targetInstanceId)
+          toast.success(`Copied "${input.name}" to ${targetInstance?.name ?? "instance"}`)
+        },
+      }
+    )
+  }, [getExistingNames, createWorkflow, instances])
+
+  // Open import dialog
+  const openImportDialog = (instanceId: number) => {
+    setImportInstanceId(instanceId)
+    setImportJSON("")
+    setImportError(null)
+    setImportDialogOpen(true)
+  }
+
+  // Handle import
+  const handleImport = useCallback(() => {
+    if (!importInstanceId) return
+
+    const result = parseImportJSON(importJSON)
+    if (result.error || !result.data) {
+      setImportError(result.error ?? "Invalid import data")
+      return
+    }
+
+    const existingNames = getExistingNames(importInstanceId)
+    const input = fromImportFormat(result.data, existingNames)
+
+    createWorkflow.mutate(
+      { instanceId: importInstanceId, payload: input },
+      {
+        onSuccess: () => {
+          toast.success(`Imported "${input.name}"`)
+          setImportDialogOpen(false)
+          setImportJSON("")
+          setImportError(null)
+        },
+        onError: (err) => {
+          setImportError(err instanceof Error ? err.message : "Import failed")
+        },
+      }
+    )
+  }, [importInstanceId, importJSON, getExistingNames, createWorkflow])
 
   // Check if a rule is a delete or category rule (both need previews)
   const isDeleteRule = (rule: Automation): boolean => {
@@ -322,6 +476,9 @@ export function WorkflowsOverview({
     limit_failed: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
     tags_changed: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
     category_changed: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+    speed_limits_changed: "bg-sky-500/10 text-sky-500 border-sky-500/20",
+    share_limits_changed: "bg-violet-500/10 text-violet-500 border-violet-500/20",
+    paused: "bg-amber-500/10 text-amber-500 border-amber-500/20",
   }
 
   const openCreateDialog = (instanceId: number) => {
@@ -395,7 +552,7 @@ export function WorkflowsOverview({
 
             // Filter events
             const allFilteredEvents = events.filter((e) => {
-              if (activityFilter === "deletions" && e.outcome !== "success") return false
+              if (activityFilter === "success" && e.outcome !== "success") return false
               if (activityFilter === "errors" && e.outcome !== "failed") return false
               if (activitySearchTerm) {
                 const nameMatch = e.torrentName?.toLowerCase().includes(activitySearchTerm)
@@ -473,380 +630,445 @@ export function WorkflowsOverview({
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        {sortedRules.map((rule) => (
-                          <RulePreview
-                            key={rule.id}
-                            rule={rule}
-                            onToggle={() => handleToggle(instance.id, rule)}
-                            isToggling={toggleEnabled.isPending || previewRule.isPending}
-                            onEdit={() => openEditDialog(instance.id, rule)}
-                            onDelete={() => setDeleteConfirm({ instanceId: instance.id, rule })}
-                          />
-                        ))}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openCreateDialog(instance.id)}
-                          className="w-full"
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add rule
-                        </Button>
+                        {sortedRules.map((rule) => {
+                          const otherInstances = activeInstances.filter(i => i.id !== instance.id)
+                          return (
+                            <RulePreview
+                              key={rule.id}
+                              rule={rule}
+                              otherInstances={otherInstances}
+                              onToggle={() => handleToggle(instance.id, rule)}
+                              isToggling={toggleEnabled.isPending || previewRule.isPending}
+                              onEdit={() => openEditDialog(instance.id, rule)}
+                              onDelete={() => setDeleteConfirm({ instanceId: instance.id, rule })}
+                              onDuplicate={() => handleDuplicate(instance.id, rule)}
+                              onCopyToInstance={(targetId) => handleCopyToInstance(rule, targetId)}
+                              onExport={() => handleExport(rule)}
+                            />
+                          )
+                        })}
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openCreateDialog(instance.id)}
+                            className="flex-1"
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add rule
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openImportDialog(instance.id)}
+                          >
+                            <Upload className="h-4 w-4 mr-2" />
+                            Import
+                          </Button>
+                        </div>
                       </div>
                     )}
 
                     {/* Activity Section */}
                     <div className="space-y-3">
-                        {/* Activity filters */}
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">
-                              {allFilteredEvents.length === events.length
-                                ? `${events.length} events`
-                                : `${allFilteredEvents.length} of ${events.length}`}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Select
-                              value={activityFilter}
-                              onValueChange={(value: "all" | "deletions" | "errors") =>
-                                setActivityFilterMap((prev) => ({ ...prev, [instance.id]: value }))
-                              }
-                            >
-                              <SelectTrigger className="h-7 w-28 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="all">All</SelectItem>
-                                <SelectItem value="deletions">Deletions</SelectItem>
-                                <SelectItem value="errors">Errors</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              disabled={activityQuery?.isFetching}
-                              onClick={() => queryClient.invalidateQueries({
-                                queryKey: ["automation-activity", instance.id],
-                              })}
-                              className="h-7 px-2"
-                            >
-                              <RefreshCcw className={cn(
-                                "h-3.5 w-3.5",
-                                activityQuery?.isFetching && "animate-spin"
-                              )} />
-                            </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 px-2"
-                                  disabled={events.length === 0}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Clear Activity History</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Delete activity history older than the selected period.
-                                    This action cannot be undone.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <div className="py-4">
-                                  <label className="text-sm font-medium mb-2 block">
-                                    Keep activity from the last:
-                                  </label>
-                                  <Select
-                                    value={clearDaysMap[instance.id] ?? "7"}
-                                    onValueChange={(value) =>
-                                      setClearDaysMap((prev) => ({ ...prev, [instance.id]: value }))
-                                    }
-                                  >
-                                    <SelectTrigger className="w-full">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="1">1 day</SelectItem>
-                                      <SelectItem value="3">3 days</SelectItem>
-                                      <SelectItem value="7">7 days</SelectItem>
-                                      <SelectItem value="14">14 days</SelectItem>
-                                      <SelectItem value="30">30 days</SelectItem>
-                                      <SelectItem value="0">Delete all</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() => handleDeleteOldActivity(
-                                      instance.id,
-                                      parseInt(clearDaysMap[instance.id] ?? "7", 10)
-                                    )}
-                                  >
-                                    Delete
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </div>
+                      {/* Activity filters */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">
+                            {allFilteredEvents.length === events.length? `${events.length} events`: `${allFilteredEvents.length} of ${events.length}`}
+                          </span>
                         </div>
-
-                        {/* Search filter */}
-                        <div className="relative">
-                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            type="text"
-                            placeholder="Filter by name, hash, or rule..."
-                            value={activitySearchMap[instance.id] ?? ""}
-                            onChange={(e) => setActivitySearchMap((prev) => ({
-                              ...prev,
-                              [instance.id]: e.target.value,
-                            }))}
-                            className="pl-9 h-8 text-sm"
-                          />
-                        </div>
-
-                        {/* Activity list */}
-                        {activityQuery?.isError ? (
-                          <div className="h-[100px] flex flex-col items-center justify-center border border-destructive/30 rounded-lg bg-destructive/10 text-center p-4">
-                            <p className="text-sm text-destructive">Failed to load activity</p>
-                            <p className="text-xs text-destructive/70 mt-1">
-                              Check connection to the instance.
-                            </p>
-                          </div>
-                        ) : activityQuery?.isLoading ? (
-                          <div className="h-[150px] flex items-center justify-center border rounded-lg bg-muted/30">
-                            <p className="text-sm text-muted-foreground">Loading activity...</p>
-                          </div>
-                        ) : filteredEvents.length === 0 ? (
-                          <div className="h-[100px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/30 text-center p-4">
-                            <p className="text-sm text-muted-foreground">
-                              {activitySearchTerm ? "No matching events found." : "No activity recorded yet."}
-                            </p>
-                            <p className="text-xs text-muted-foreground/60 mt-1">
-                              {activitySearchTerm
-                                ? "Try a different search term or clear the filter."
-                                : "Events will appear here when automations delete torrents."}
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="max-h-[350px] overflow-auto rounded-md border bg-muted/20">
-                            <div className="divide-y divide-border">
-                              {filteredEvents.map((event) => (
-                                <div
-                                  key={event.id}
-                                  className="p-3 hover:bg-muted/30 transition-colors"
+                        <div className="flex items-center gap-2">
+                          <Select
+                            value={activityFilter}
+                            onValueChange={(value: "all" | "success" | "errors") =>
+                              setActivityFilterMap((prev) => ({ ...prev, [instance.id]: value }))
+                            }
+                          >
+                            <SelectTrigger className="h-7 w-28 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All</SelectItem>
+                              <SelectItem value="success">Success</SelectItem>
+                              <SelectItem value="errors">Errors</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            disabled={activityQuery?.isFetching}
+                            onClick={() => queryClient.invalidateQueries({
+                              queryKey: ["automation-activity", instance.id],
+                            })}
+                            className="h-7 px-2"
+                          >
+                            <RefreshCcw className={cn(
+                              "h-3.5 w-3.5",
+                              activityQuery?.isFetching && "animate-spin"
+                            )} />
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2"
+                                disabled={events.length === 0}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Clear Activity History</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Delete activity history older than the selected period.
+                                  This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <div className="py-4">
+                                <label className="text-sm font-medium mb-2 block">
+                                  Keep activity from the last:
+                                </label>
+                                <Select
+                                  value={clearDaysMap[instance.id] ?? "7"}
+                                  onValueChange={(value) =>
+                                    setClearDaysMap((prev) => ({ ...prev, [instance.id]: value }))
+                                  }
                                 >
-                                  <div className="flex flex-col gap-2">
-                                    <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-                                      <div className="min-w-0">
-                                        {event.action === "tags_changed" ? (
-                                          <span className="font-medium text-sm block">
-                                            {formatTagsChangedSummary(event.details)}
-                                          </span>
-                                        ) : event.action === "category_changed" ? (
-                                          <span className="font-medium text-sm block">
-                                            {formatCategoryChangedSummary(event.details)}
-                                          </span>
-                                        ) : (
-                                          <TruncatedText className="font-medium text-sm block cursor-default">
-                                            {event.torrentName || event.hash}
-                                          </TruncatedText>
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="1">1 day</SelectItem>
+                                    <SelectItem value="3">3 days</SelectItem>
+                                    <SelectItem value="7">7 days</SelectItem>
+                                    <SelectItem value="14">14 days</SelectItem>
+                                    <SelectItem value="30">30 days</SelectItem>
+                                    <SelectItem value="0">Delete all</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleDeleteOldActivity(
+                                    instance.id,
+                                    parseInt(clearDaysMap[instance.id] ?? "7", 10)
+                                  )}
+                                >
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </div>
+
+                      {/* Search filter */}
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          type="text"
+                          placeholder="Filter by name, hash, or rule..."
+                          value={activitySearchMap[instance.id] ?? ""}
+                          onChange={(e) => setActivitySearchMap((prev) => ({
+                            ...prev,
+                            [instance.id]: e.target.value,
+                          }))}
+                          className="pl-9 h-8 text-sm"
+                        />
+                      </div>
+
+                      {/* Activity list */}
+                      {activityQuery?.isError ? (
+                        <div className="h-[100px] flex flex-col items-center justify-center border border-destructive/30 rounded-lg bg-destructive/10 text-center p-4">
+                          <p className="text-sm text-destructive">Failed to load activity</p>
+                          <p className="text-xs text-destructive/70 mt-1">
+                            Check connection to the instance.
+                          </p>
+                        </div>
+                      ) : activityQuery?.isLoading ? (
+                        <div className="h-[150px] flex items-center justify-center border rounded-lg bg-muted/30">
+                          <p className="text-sm text-muted-foreground">Loading activity...</p>
+                        </div>
+                      ) : filteredEvents.length === 0 ? (
+                        <div className="h-[100px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/30 text-center p-4">
+                          <p className="text-sm text-muted-foreground">
+                            {activitySearchTerm ? "No matching events found." : "No activity recorded yet."}
+                          </p>
+                          <p className="text-xs text-muted-foreground/60 mt-1">
+                            {activitySearchTerm? "Try a different search term or clear the filter.": "Events will appear here when automations delete torrents."}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="max-h-[350px] overflow-auto rounded-md border bg-muted/20">
+                          <div className="divide-y divide-border">
+                            {filteredEvents.map((event) => (
+                              <div
+                                key={event.id}
+                                className="p-3 hover:bg-muted/30 transition-colors"
+                              >
+                                <div className="flex flex-col gap-2">
+                                  <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+                                    <div className="min-w-0">
+                                      {event.action === "tags_changed" ? (
+                                        <span className="font-medium text-sm block">
+                                          {formatTagsChangedSummary(event.details)}
+                                        </span>
+                                      ) : event.action === "category_changed" ? (
+                                        <span className="font-medium text-sm block">
+                                          {formatCategoryChangedSummary(event.details)}
+                                        </span>
+                                      ) : event.action === "speed_limits_changed" ? (
+                                        <span className="font-medium text-sm block">
+                                          {formatSpeedLimitsSummary(event.details)}
+                                        </span>
+                                      ) : event.action === "share_limits_changed" ? (
+                                        <span className="font-medium text-sm block">
+                                          {formatShareLimitsSummary(event.details)}
+                                        </span>
+                                      ) : event.action === "paused" ? (
+                                        <span className="font-medium text-sm block">
+                                          {formatPausedSummary(event.details)}
+                                        </span>
+                                      ) : (
+                                        <TruncatedText className="font-medium text-sm block cursor-default">
+                                          {event.torrentName || event.hash}
+                                        </TruncatedText>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <Badge
+                                        variant="outline"
+                                        className={cn(
+                                          "text-[10px] px-1.5 py-0 h-5 shrink-0",
+                                          actionClasses[event.action]
                                         )}
-                                      </div>
-                                      <div className="flex items-center gap-1.5">
+                                      >
+                                        {formatAction(event.action)}
+                                      </Badge>
+                                      {!["tags_changed", "category_changed", "speed_limits_changed", "share_limits_changed", "paused"].includes(event.action) && (
                                         <Badge
                                           variant="outline"
                                           className={cn(
                                             "text-[10px] px-1.5 py-0 h-5 shrink-0",
-                                            actionClasses[event.action]
+                                            outcomeClasses[event.outcome]
                                           )}
                                         >
-                                          {formatAction(event.action)}
+                                          {event.outcome === "success" ? "Removed" : "Failed"}
                                         </Badge>
-                                        {event.action !== "tags_changed" && event.action !== "category_changed" && (
-                                          <Badge
-                                            variant="outline"
-                                            className={cn(
-                                              "text-[10px] px-1.5 py-0 h-5 shrink-0",
-                                              outcomeClasses[event.outcome]
-                                            )}
-                                          >
-                                            {event.outcome === "success" ? "Removed" : "Failed"}
-                                          </Badge>
-                                        )}
-                                      </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-                                      {event.hash && (
-                                        <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
-                                          <span className="font-mono">{event.hash.substring(0, 7)}</span>
-                                          <button
-                                            type="button"
-                                            className="hover:text-foreground transition-colors"
-                                            onClick={() => {
-                                              copyTextToClipboard(event.hash)
-                                              toast.success("Hash copied")
-                                            }}
-                                            title="Copy hash"
-                                          >
-                                            <Copy className="h-3 w-3" />
-                                          </button>
-                                        </div>
                                       )}
-                                      {event.trackerDomain && (() => {
-                                        const tracker = getTrackerDisplay(event.trackerDomain)
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+                                    {event.hash && (
+                                      <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
+                                        <span className="font-mono">{event.hash.substring(0, 7)}</span>
+                                        <button
+                                          type="button"
+                                          className="hover:text-foreground transition-colors"
+                                          onClick={() => {
+                                            copyTextToClipboard(event.hash)
+                                            toast.success("Hash copied")
+                                          }}
+                                          title="Copy hash"
+                                        >
+                                          <Copy className="h-3 w-3" />
+                                        </button>
+                                      </div>
+                                    )}
+                                    {event.trackerDomain && (() => {
+                                      const tracker = getTrackerDisplay(event.trackerDomain)
+                                      return (
+                                        <>
+                                          <span className="text-muted-foreground/40">·</span>
+                                          <div className="flex items-center gap-1">
+                                            <TrackerIconImage tracker={tracker.iconDomain} trackerIcons={trackerIcons} />
+                                            {tracker.isCustomized ? (
+                                              <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                  <span className="text-xs font-medium cursor-default">{tracker.displayName}</span>
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                  <p className="text-xs">Original: {event.trackerDomain}</p>
+                                                </TooltipContent>
+                                              </Tooltip>
+                                            ) : (
+                                              <span className="text-xs font-medium">{tracker.displayName}</span>
+                                            )}
+                                          </div>
+                                        </>
+                                      )
+                                    })()}
+                                    {(event.hash || event.trackerDomain) && (
+                                      <span className="text-muted-foreground/40">·</span>
+                                    )}
+                                    <span>{formatISOTimestamp(event.createdAt)}</span>
+                                  </div>
+
+                                  {event.reason && event.outcome === "failed" && (
+                                    <div className="text-xs bg-muted/40 p-2 rounded">
+                                      <span>{event.reason}</span>
+                                    </div>
+                                  )}
+
+                                  {(event.details || event.ruleName) && (
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                                      {(() => {
+                                        const ratio = event.details?.ratio
+                                        const ratioLimit = event.details?.ratioLimit
+                                        const hasRatio = typeof ratio === "number" && Number.isFinite(ratio)
+                                        const hasRatioLimit = typeof ratioLimit === "number" && Number.isFinite(ratioLimit)
+
+                                        if (!hasRatio) return null
+
                                         return (
-                                          <>
-                                            <span className="text-muted-foreground/40">·</span>
-                                            <div className="flex items-center gap-1">
-                                              <TrackerIconImage tracker={tracker.iconDomain} trackerIcons={trackerIcons} />
-                                              {tracker.isCustomized ? (
-                                                <Tooltip>
-                                                  <TooltipTrigger asChild>
-                                                    <span className="text-xs font-medium cursor-default">{tracker.displayName}</span>
-                                                  </TooltipTrigger>
-                                                  <TooltipContent>
-                                                    <p className="text-xs">Original: {event.trackerDomain}</p>
-                                                  </TooltipContent>
-                                                </Tooltip>
-                                              ) : (
-                                                <span className="text-xs font-medium">{tracker.displayName}</span>
-                                              )}
-                                            </div>
-                                          </>
+                                          <span>
+                                            Ratio: {ratio.toFixed(2)}
+                                            {hasRatioLimit ? `/${ratioLimit.toFixed(2)}` : ""}
+                                          </span>
                                         )
                                       })()}
-                                      {(event.hash || event.trackerDomain) && (
-                                        <span className="text-muted-foreground/40">·</span>
+                                      {(() => {
+                                        const seedingMinutes = event.details?.seedingMinutes
+                                        const seedingLimitMinutes = event.details?.seedingLimitMinutes
+                                        const hasSeedingMinutes = typeof seedingMinutes === "number" && Number.isFinite(seedingMinutes)
+                                        const hasSeedingLimitMinutes = typeof seedingLimitMinutes === "number" && Number.isFinite(seedingLimitMinutes)
+
+                                        if (!hasSeedingMinutes) return null
+
+                                        return (
+                                          <span>
+                                            Seeding: {seedingMinutes}m
+                                            {hasSeedingLimitMinutes ? `/${seedingLimitMinutes}m` : ""}
+                                          </span>
+                                        )
+                                      })()}
+                                      {event.details?.filesKept !== undefined && (() => {
+                                        const { filesKept, deleteMode } = event.details
+                                        let label: string
+                                        const badgeClassName = "text-[10px] px-1.5 py-0 h-5"
+
+                                        if (deleteMode === "delete") {
+                                          label = "Torrent only"
+                                        } else if (deleteMode === "deleteWithFilesPreserveCrossSeeds" && filesKept) {
+                                          label = "Files kept due to cross-seeds"
+                                        } else if (deleteMode === "deleteWithFiles" || deleteMode === "deleteWithFilesPreserveCrossSeeds") {
+                                          label = "With files"
+                                        } else {
+                                          label = filesKept ? "Files kept" : "Files deleted"
+                                        }
+
+                                        return (
+                                          <Badge variant="outline" className={badgeClassName}>
+                                            {label}
+                                          </Badge>
+                                        )
+                                      })()}
+                                      {event.action === "tags_changed" && event.details && (() => {
+                                        const added = event.details.added ?? {}
+                                        const removed = event.details.removed ?? {}
+                                        const addedTags = Object.entries(added)
+                                        const removedTags = Object.entries(removed)
+
+                                        return (
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {addedTags.map(([tag, count]) => (
+                                              <Badge key={`add-${tag}`} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                                                +{tag} ({count})
+                                              </Badge>
+                                            ))}
+                                            {removedTags.map(([tag, count]) => (
+                                              <Badge key={`rm-${tag}`} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-red-500/10 text-red-500 border-red-500/20">
+                                                -{tag} ({count})
+                                              </Badge>
+                                            ))}
+                                          </div>
+                                        )
+                                      })()}
+                                      {event.action === "category_changed" && event.details?.categories && (() => {
+                                        const categories = Object.entries(event.details.categories as Record<string, number>)
+
+                                        return (
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {categories.map(([category, count]) => (
+                                              <Badge key={category} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                                                {category} ({count})
+                                              </Badge>
+                                            ))}
+                                          </div>
+                                        )
+                                      })()}
+                                      {event.action === "speed_limits_changed" && event.details?.limits && (() => {
+                                        const limits = Object.entries(event.details.limits as Record<string, number>)
+
+                                        return (
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {limits.map(([key, count]) => {
+                                              const [type, limitKiB] = key.split(":")
+                                              const limitMiB = Number(limitKiB) / 1024
+                                              const label = limitMiB >= 1 ? `${limitMiB} MiB/s` : `${limitKiB} KiB/s`
+                                              return (
+                                                <Badge key={key} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-sky-500/10 text-sky-500 border-sky-500/20">
+                                                  {type === "upload" ? "↑" : "↓"} {label} ({count})
+                                                </Badge>
+                                              )
+                                            })}
+                                          </div>
+                                        )
+                                      })()}
+                                      {event.action === "share_limits_changed" && event.details?.limits && (() => {
+                                        const limits = Object.entries(event.details.limits as Record<string, number>)
+
+                                        return (
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {limits.map(([key, count]) => {
+                                              const [ratio, seedMinutes] = key.split(":")
+                                              const parts = []
+                                              if (ratio !== "-1.00") parts.push(`${ratio}x`)
+                                              if (seedMinutes !== "-1") {
+                                                const hours = Math.floor(Number(seedMinutes) / 60)
+                                                parts.push(`${hours}h`)
+                                              }
+                                              return (
+                                                <Badge key={key} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-violet-500/10 text-violet-500 border-violet-500/20">
+                                                  {parts.join(" / ") || "limit"} ({count})
+                                                </Badge>
+                                              )
+                                            })}
+                                          </div>
+                                        )
+                                      })()}
+                                      {event.ruleName && (
+                                        <span className="text-muted-foreground">Rule: {event.ruleName}</span>
                                       )}
-                                      <span>{formatISOTimestamp(event.createdAt)}</span>
                                     </div>
-
-                                    {event.reason && event.outcome === "failed" && (
-                                      <div className="text-xs bg-muted/40 p-2 rounded">
-                                        <span>{event.reason}</span>
-                                      </div>
-                                    )}
-
-                                    {(event.details || event.ruleName) && (
-                                      <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                                        {(() => {
-                                          const ratio = event.details?.ratio
-                                          const ratioLimit = event.details?.ratioLimit
-                                          const hasRatio = typeof ratio === "number" && Number.isFinite(ratio)
-                                          const hasRatioLimit = typeof ratioLimit === "number" && Number.isFinite(ratioLimit)
-
-                                          if (!hasRatio) return null
-
-                                          return (
-                                            <span>
-                                              Ratio: {ratio.toFixed(2)}
-                                              {hasRatioLimit ? `/${ratioLimit.toFixed(2)}` : ""}
-                                            </span>
-                                          )
-                                        })()}
-                                        {(() => {
-                                          const seedingMinutes = event.details?.seedingMinutes
-                                          const seedingLimitMinutes = event.details?.seedingLimitMinutes
-                                          const hasSeedingMinutes = typeof seedingMinutes === "number" && Number.isFinite(seedingMinutes)
-                                          const hasSeedingLimitMinutes = typeof seedingLimitMinutes === "number" && Number.isFinite(seedingLimitMinutes)
-
-                                          if (!hasSeedingMinutes) return null
-
-                                          return (
-                                            <span>
-                                              Seeding: {seedingMinutes}m
-                                              {hasSeedingLimitMinutes ? `/${seedingLimitMinutes}m` : ""}
-                                            </span>
-                                          )
-                                        })()}
-                                        {event.details?.filesKept !== undefined && (() => {
-                                          const { filesKept, deleteMode } = event.details
-                                          let label: string
-                                          const badgeClassName = "text-[10px] px-1.5 py-0 h-5"
-
-                                          if (deleteMode === "delete") {
-                                            label = "Torrent only"
-                                          } else if (deleteMode === "deleteWithFilesPreserveCrossSeeds" && filesKept) {
-                                            label = "Files kept due to cross-seeds"
-                                          } else if (deleteMode === "deleteWithFiles" || deleteMode === "deleteWithFilesPreserveCrossSeeds") {
-                                            label = "With files"
-                                          } else {
-                                            label = filesKept ? "Files kept" : "Files deleted"
-                                          }
-
-                                          return (
-                                            <Badge variant="outline" className={badgeClassName}>
-                                              {label}
-                                            </Badge>
-                                          )
-                                        })()}
-                                        {event.action === "tags_changed" && event.details && (() => {
-                                          const added = event.details.added ?? {}
-                                          const removed = event.details.removed ?? {}
-                                          const addedTags = Object.entries(added)
-                                          const removedTags = Object.entries(removed)
-
-                                          return (
-                                            <div className="flex flex-wrap gap-1.5">
-                                              {addedTags.map(([tag, count]) => (
-                                                <Badge key={`add-${tag}`} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
-                                                  +{tag} ({count})
-                                                </Badge>
-                                              ))}
-                                              {removedTags.map(([tag, count]) => (
-                                                <Badge key={`rm-${tag}`} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-red-500/10 text-red-500 border-red-500/20">
-                                                  -{tag} ({count})
-                                                </Badge>
-                                              ))}
-                                            </div>
-                                          )
-                                        })()}
-                                        {event.action === "category_changed" && event.details?.categories && (() => {
-                                          const categories = Object.entries(event.details.categories as Record<string, number>)
-
-                                          return (
-                                            <div className="flex flex-wrap gap-1.5">
-                                              {categories.map(([category, count]) => (
-                                                <Badge key={category} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
-                                                  {category} ({count})
-                                                </Badge>
-                                              ))}
-                                            </div>
-                                          )
-                                        })()}
-                                        {event.ruleName && (
-                                          <span className="text-muted-foreground">Rule: {event.ruleName}</span>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
+                                  )}
                                 </div>
-                              ))}
-                            </div>
-                            {hasMoreEvents && (
-                              <div className="p-2 border-t">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="w-full text-xs"
-                                  onClick={() => setDisplayLimitMap((prev) => ({
-                                    ...prev,
-                                    [instance.id]: displayLimit + 50,
-                                  }))}
-                                >
-                                  Load more ({allFilteredEvents.length - displayLimit} remaining)
-                                </Button>
                               </div>
-                            )}
+                            ))}
                           </div>
-                        )}
+                          {hasMoreEvents && (
+                            <div className="p-2 border-t">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="w-full text-xs"
+                                onClick={() => setDisplayLimitMap((prev) => ({
+                                  ...prev,
+                                  [instance.id]: displayLimit + 50,
+                                }))}
+                              >
+                                Load more ({allFilteredEvents.length - displayLimit} remaining)
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </AccordionContent>
@@ -894,9 +1116,7 @@ export function WorkflowsOverview({
         open={!!enableConfirm}
         onOpenChange={(open) => !open && setEnableConfirm(null)}
         title={
-          enableConfirm && isCategoryRule(enableConfirm.rule)
-            ? `Enable Category Rule → ${enableConfirm.rule.conditions?.category?.category}`
-            : "Enable Delete Rule"
+          enableConfirm && isCategoryRule(enableConfirm.rule)? `Enable Category Rule → ${enableConfirm.rule.conditions?.category?.category}`: "Enable Delete Rule"
         }
         description={
           enableConfirm?.preview && enableConfirm.preview.totalMatches > 0 ? (
@@ -936,19 +1156,79 @@ export function WorkflowsOverview({
         destructive={enableConfirm ? isDeleteRule(enableConfirm.rule) : false}
         warning={enableConfirm ? isCategoryRule(enableConfirm.rule) : false}
       />
+
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Import Workflow</DialogTitle>
+            <DialogDescription>
+              Paste a workflow JSON to import. The workflow will be created disabled and appended to the end.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Textarea
+              placeholder='{"name": "My Workflow", "conditions": {...}}'
+              value={importJSON}
+              onChange={(e) => {
+                setImportJSON(e.target.value)
+                setImportError(null)
+              }}
+              className="min-h-[200px] font-mono text-sm"
+            />
+            {importError && (
+              <p className="text-sm text-destructive">{importError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleImport}
+              disabled={!importJSON.trim() || createWorkflow.isPending}
+            >
+              {createWorkflow.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Importing...
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Import
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }
 
 interface RulePreviewProps {
   rule: Automation
+  otherInstances: InstanceResponse[]
   onToggle: () => void
   isToggling: boolean
   onEdit: () => void
   onDelete: () => void
+  onDuplicate: () => void
+  onCopyToInstance: (targetInstanceId: number) => void
+  onExport: () => void
 }
 
-function RulePreview({ rule, onToggle, isToggling, onEdit, onDelete }: RulePreviewProps) {
+function RulePreview({
+  rule,
+  otherInstances,
+  onToggle,
+  isToggling,
+  onEdit,
+  onDelete,
+  onDuplicate,
+  onCopyToInstance,
+  onExport,
+}: RulePreviewProps) {
   const trackers = parseTrackerDomains(rule)
   const isAllTrackers = rule.trackerPattern === "*"
 
@@ -1021,11 +1301,7 @@ function RulePreview({ rule, onToggle, isToggling, onEdit, onDelete }: RulePrevi
         {rule.conditions?.delete?.enabled && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-destructive border-destructive/50">
             <Trash2 className="h-3 w-3" />
-            {rule.conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"
-              ? "XS safe"
-              : rule.conditions.delete.mode === "deleteWithFiles"
-                ? "+ files"
-                : ""}
+            {rule.conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"? "XS safe": rule.conditions.delete.mode === "deleteWithFiles"? "+ files": ""}
           </Badge>
         )}
         {rule.conditions?.tag?.enabled && (
@@ -1048,14 +1324,43 @@ function RulePreview({ rule, onToggle, isToggling, onEdit, onDelete }: RulePrevi
         >
           <Pencil className="h-3.5 w-3.5" />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onDelete}
-          className="h-7 w-7 text-destructive"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-7 w-7">
+              <MoreVertical className="h-3.5 w-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onDuplicate}>
+              <CopyPlus className="h-4 w-4 mr-2" />
+              Duplicate
+            </DropdownMenuItem>
+            {otherInstances.length > 0 && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <Send className="h-4 w-4 mr-2" />
+                  Copy to...
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {otherInstances.map(inst => (
+                    <DropdownMenuItem key={inst.id} onClick={() => onCopyToInstance(inst.id)}>
+                      {inst.name}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
+            <DropdownMenuItem onClick={onExport}>
+              <Download className="h-4 w-4 mr-2" />
+              Export JSON
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onDelete} className="text-destructive focus:text-destructive">
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   )

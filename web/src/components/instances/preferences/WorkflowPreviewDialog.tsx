@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { HARDLINK_SCOPE_VALUES, TORRENT_STATES } from "@/components/query-builder/constants"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,8 +20,17 @@ import { TruncatedText } from "@/components/ui/truncated-text"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { formatBytes, formatDurationCompact, getRatioColor } from "@/lib/utils"
-import type { AutomationPreviewResult } from "@/types"
+import type { AutomationPreviewResult, AutomationPreviewTorrent, RuleCondition } from "@/types"
 import { Loader2 } from "lucide-react"
+import { useMemo } from "react"
+
+// Helper to get human-readable label from value/label arrays
+function getLabelFromValues(values: Array<{ value: string; label: string }>, value: string): string {
+  const found = values.find(v => v.value === value)
+  if (found) return found.label
+  // Fallback: capitalize and humanize
+  return value.charAt(0).toUpperCase() + value.slice(1).replace(/_/g, " ")
+}
 
 interface WorkflowPreviewDialogProps {
   open: boolean
@@ -28,6 +38,8 @@ interface WorkflowPreviewDialogProps {
   title: string
   description: React.ReactNode
   preview: AutomationPreviewResult | null
+  /** Condition used to filter - used to show relevant columns */
+  condition?: RuleCondition | null
   onConfirm: () => void
   confirmLabel: string
   isConfirming: boolean
@@ -39,12 +51,177 @@ interface WorkflowPreviewDialogProps {
   warning?: boolean
 }
 
+// Extract all field names from a condition tree
+function extractConditionFields(cond: RuleCondition | null | undefined): Set<string> {
+  const fields = new Set<string>()
+  if (!cond) return fields
+
+  if (cond.field) {
+    fields.add(cond.field)
+  }
+
+  if (cond.conditions) {
+    for (const child of cond.conditions) {
+      for (const f of extractConditionFields(child)) {
+        fields.add(f)
+      }
+    }
+  }
+
+  return fields
+}
+
+// Column definitions for dynamic columns
+type ColumnDef = {
+  key: string
+  header: string
+  align: "left" | "right" | "center"
+  // Fields that trigger this column to appear
+  triggerFields: string[]
+  render: (t: AutomationPreviewTorrent) => React.ReactNode
+}
+
+const DYNAMIC_COLUMNS: ColumnDef[] = [
+  {
+    key: "numComplete",
+    header: "Seeders",
+    align: "right",
+    triggerFields: ["NUM_COMPLETE", "NUM_SEEDS"],
+    render: (t) => (
+      <span className="font-mono text-muted-foreground">
+        {t.numComplete}
+        {t.numSeeds > 0 && <span className="text-xs ml-1">({t.numSeeds})</span>}
+      </span>
+    ),
+  },
+  {
+    key: "numIncomplete",
+    header: "Leechers",
+    align: "right",
+    triggerFields: ["NUM_INCOMPLETE", "NUM_LEECHS"],
+    render: (t) => (
+      <span className="font-mono text-muted-foreground">
+        {t.numIncomplete}
+        {t.numLeechs > 0 && <span className="text-xs ml-1">({t.numLeechs})</span>}
+      </span>
+    ),
+  },
+  {
+    key: "progress",
+    header: "Progress",
+    align: "right",
+    triggerFields: ["PROGRESS"],
+    render: (t) => (
+      <span className="font-mono text-muted-foreground">
+        {(t.progress * 100).toFixed(1)}%
+      </span>
+    ),
+  },
+  {
+    key: "availability",
+    header: "Avail",
+    align: "right",
+    triggerFields: ["AVAILABILITY"],
+    render: (t) => (
+      <span className="font-mono text-muted-foreground">
+        {t.availability.toFixed(2)}
+      </span>
+    ),
+  },
+  {
+    key: "addedAge",
+    header: "Added",
+    align: "right",
+    triggerFields: ["ADDED_ON_AGE"],
+    render: (t) => (
+      <span className="font-mono text-muted-foreground whitespace-nowrap">
+        {formatDurationCompact(Math.floor(Date.now() / 1000) - t.addedOn)}
+      </span>
+    ),
+  },
+  {
+    key: "completedAge",
+    header: "Completed",
+    align: "right",
+    triggerFields: ["COMPLETION_ON_AGE"],
+    render: (t) => (
+      <span className="font-mono text-muted-foreground whitespace-nowrap">
+        {t.completionOn > 0
+          ? formatDurationCompact(Math.floor(Date.now() / 1000) - t.completionOn)
+          : "-"}
+      </span>
+    ),
+  },
+  {
+    key: "lastActivityAge",
+    header: "Inactive",
+    align: "right",
+    triggerFields: ["LAST_ACTIVITY_AGE"],
+    render: (t) => (
+      <span className="font-mono text-muted-foreground whitespace-nowrap">
+        {t.lastActivity > 0
+          ? formatDurationCompact(Math.floor(Date.now() / 1000) - t.lastActivity)
+          : "-"}
+      </span>
+    ),
+  },
+  {
+    key: "timeActive",
+    header: "Active",
+    align: "right",
+    triggerFields: ["TIME_ACTIVE"],
+    render: (t) => (
+      <span className="font-mono text-muted-foreground whitespace-nowrap">
+        {formatDurationCompact(t.timeActive)}
+      </span>
+    ),
+  },
+  {
+    key: "state",
+    header: "State",
+    align: "center",
+    triggerFields: ["STATE"],
+    render: (t) => (
+      <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+        {getLabelFromValues(TORRENT_STATES, t.state)}
+      </span>
+    ),
+  },
+  {
+    key: "hardlinkScope",
+    header: "Hardlinks",
+    align: "center",
+    triggerFields: ["HARDLINK_SCOPE"],
+    render: (t) => (
+      t.hardlinkScope ? (
+        <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+          {getLabelFromValues(HARDLINK_SCOPE_VALUES, t.hardlinkScope)}
+        </span>
+      ) : null
+    ),
+  },
+  {
+    key: "status",
+    header: "Status",
+    align: "center",
+    triggerFields: ["IS_UNREGISTERED"],
+    render: (t) => (
+      t.isUnregistered ? (
+        <span className="text-xs px-1.5 py-0.5 rounded bg-destructive/10 text-destructive">
+          Unregistered
+        </span>
+      ) : null
+    ),
+  },
+]
+
 export function WorkflowPreviewDialog({
   open,
   onOpenChange,
   title,
   description,
   preview,
+  condition,
   onConfirm,
   confirmLabel,
   isConfirming,
@@ -57,9 +234,17 @@ export function WorkflowPreviewDialog({
   const { data: trackerIcons } = useTrackerIcons()
   const hasMore = !!preview && preview.examples.length < preview.totalMatches
 
+  // Determine which dynamic columns to show based on condition fields
+  const visibleDynamicColumns = useMemo(() => {
+    const fields = extractConditionFields(condition)
+    return DYNAMIC_COLUMNS.filter(col =>
+      col.triggerFields.some(f => fields.has(f))
+    )
+  }, [condition])
+
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="sm:max-w-4xl max-h-[85dvh] flex flex-col">
+      <AlertDialogContent className="sm:max-w-5xl max-h-[85dvh] flex flex-col">
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription asChild>
@@ -80,8 +265,15 @@ export function WorkflowPreviewDialog({
                     <th className="text-right p-2 font-medium bg-muted">Size</th>
                     <th className="text-right p-2 font-medium bg-muted">Ratio</th>
                     <th className="text-right p-2 font-medium bg-muted">Seed Time</th>
+                    {visibleDynamicColumns.map(col => (
+                      <th
+                        key={col.key}
+                        className={`p-2 font-medium bg-muted text-${col.align}`}
+                      >
+                        {col.header}
+                      </th>
+                    ))}
                     <th className="text-left p-2 font-medium bg-muted">Category</th>
-                    <th className="text-center p-2 font-medium bg-muted">Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -119,24 +311,15 @@ export function WorkflowPreviewDialog({
                         <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
                           {formatDurationCompact(t.seedingTime)}
                         </td>
+                        {visibleDynamicColumns.map(col => (
+                          <td key={col.key} className={`p-2 text-${col.align}`}>
+                            {col.render(t)}
+                          </td>
+                        ))}
                         <td className="p-2">
                           <TruncatedText className="block max-w-[80px] text-muted-foreground">
                             {t.category || "-"}
                           </TruncatedText>
-                        </td>
-                        <td className="p-2 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            {t.isCrossSeed && (
-                              <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500">
-                                Cross-seed
-                              </span>
-                            )}
-                            {t.isUnregistered && (
-                              <span className="text-xs px-1.5 py-0.5 rounded bg-destructive/10 text-destructive">
-                                Unregistered
-                              </span>
-                            )}
-                          </div>
                         </td>
                       </tr>
                     )
