@@ -2985,6 +2985,38 @@ paths:
         '400':
           description: Invalid settings or attempting to modify locked fields
 
+  /api/log-exclusions:
+    get:
+      tags:
+        - System
+      summary: Get log exclusions
+      description: Get the list of muted log message patterns
+      responses:
+        '200':
+          description: Current log exclusions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogExclusions'
+    put:
+      tags:
+        - System
+      summary: Update log exclusions
+      description: Replace the list of muted log message patterns
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogExclusionsInput'
+      responses:
+        '200':
+          description: Updated log exclusions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogExclusions'
+
   /api/logs/stream:
     get:
       tags:
@@ -3790,6 +3822,44 @@ components:
           type: integer
           description: Number of backup files to keep
           example: 5
+
+    LogExclusions:
+      type: object
+      description: Muted log message patterns
+      required:
+        - id
+        - patterns
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          description: Record ID
+        patterns:
+          type: array
+          items:
+            type: string
+          description: List of log message patterns to hide
+        createdAt:
+          type: string
+          format: date-time
+          description: When the record was created
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the record was last updated
+
+    LogExclusionsInput:
+      type: object
+      description: Request to update log exclusions
+      required:
+        - patterns
+      properties:
+        patterns:
+          type: array
+          items:
+            type: string
+          description: List of log message patterns to hide
 
     LatestVersionResponse:
       type: object
