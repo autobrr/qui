@@ -32,6 +32,7 @@ type Config struct {
 	SkipWithin            time.Duration
 	MaxBatchHashes        int
 	ActivityRetentionDays int
+	ApplyTimeout          time.Duration // timeout for applying all actions per instance
 }
 
 // DefaultRuleInterval is the cadence for rules that don't specify their own interval.
@@ -49,6 +50,7 @@ func DefaultConfig() Config {
 		SkipWithin:            2 * time.Minute,
 		MaxBatchHashes:        50, // matches qBittorrent's max_concurrent_http_announces default
 		ActivityRetentionDays: 7,
+		ApplyTimeout:          60 * time.Second,
 	}
 }
 
@@ -863,7 +865,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		s.mu.Unlock()
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, s.cfg.ApplyTimeout)
 	defer cancel()
 
 	// Apply speed limits and track success
