@@ -1373,6 +1373,8 @@ func (s *Service) automationLoop(ctx context.Context) {
 					log.Debug().Msg("Cross-seed automation run canceled (context canceled)")
 				} else {
 					log.Warn().Err(err).Msg("Cross-seed automation run failed")
+					// Prevent tight loop on unexpected errors
+					s.waitTimer(ctx, timer, time.Minute)
 				}
 			}
 			continue
