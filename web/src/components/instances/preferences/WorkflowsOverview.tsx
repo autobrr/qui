@@ -208,7 +208,7 @@ export function WorkflowsOverview({
 
   // Activity-related state
   const { formatISOTimestamp } = useDateTimeFormatters()
-  const [activityFilterMap, setActivityFilterMap] = useState<Record<number, "all" | "deletions" | "errors">>({})
+  const [activityFilterMap, setActivityFilterMap] = useState<Record<number, "all" | "success" | "errors">>({})
   const [activitySearchMap, setActivitySearchMap] = useState<Record<number, string>>({})
   const [clearDaysMap, setClearDaysMap] = useState<Record<number, string>>({})
   const [displayLimitMap, setDisplayLimitMap] = useState<Record<number, number>>({})
@@ -552,7 +552,7 @@ export function WorkflowsOverview({
 
             // Filter events
             const allFilteredEvents = events.filter((e) => {
-              if (activityFilter === "deletions" && e.outcome !== "success") return false
+              if (activityFilter === "success" && e.outcome !== "success") return false
               if (activityFilter === "errors" && e.outcome !== "failed") return false
               if (activitySearchTerm) {
                 const nameMatch = e.torrentName?.toLowerCase().includes(activitySearchTerm)
@@ -681,7 +681,7 @@ export function WorkflowsOverview({
                         <div className="flex items-center gap-2">
                           <Select
                             value={activityFilter}
-                            onValueChange={(value: "all" | "deletions" | "errors") =>
+                            onValueChange={(value: "all" | "success" | "errors") =>
                               setActivityFilterMap((prev) => ({ ...prev, [instance.id]: value }))
                             }
                           >
@@ -690,7 +690,7 @@ export function WorkflowsOverview({
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="all">All</SelectItem>
-                              <SelectItem value="deletions">Deletions</SelectItem>
+                              <SelectItem value="success">Success</SelectItem>
                               <SelectItem value="errors">Errors</SelectItem>
                             </SelectContent>
                           </Select>
