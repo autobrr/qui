@@ -64,7 +64,7 @@ func TestQueueRunCleansPendingRunOnContextCancel(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
 	svc.jobs = make(chan job)
 	svc.now = func() time.Time { return time.Unix(0, 0) }
 
@@ -125,7 +125,8 @@ func TestStartBlocksWhileRecoveringMissedBackups(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
+	t.Cleanup(svc.Stop)
 
 	instanceNames := []string{"instance-a", "instance-b", "instance-c"}
 	for _, name := range instanceNames {
@@ -189,7 +190,7 @@ func TestUpdateSettingsNormalizesRetention(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "retention-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
 	svc.jobs = make(chan job)
 	svc.now = func() time.Time { return time.Unix(0, 0).UTC() }
 
@@ -238,7 +239,7 @@ func TestNormalizeAndPersistSettingsRepairsLegacyValues(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "legacy-retention")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
 
 	legacy := &models.BackupSettings{
 		InstanceID:     instanceID,
@@ -278,7 +279,7 @@ func TestUpdateSettingsClearsCustomPath(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "custom-path")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
 
 	custom := "snapshots/daily"
 	settings := &models.BackupSettings{
@@ -305,7 +306,7 @@ func TestRecoverIncompleteRuns(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
 	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixedTime }
 
@@ -388,7 +389,7 @@ func TestCheckMissedBackups(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
 	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixedTime }
 
@@ -477,7 +478,7 @@ func TestCheckMissedBackupsMultipleMissed(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
 	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixedTime }
 
@@ -543,7 +544,7 @@ func TestCheckMissedBackupsNoneMissed(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
 	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixedTime }
 
@@ -625,7 +626,7 @@ func TestCheckMissedBackupsFirstRun(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
 	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixedTime }
 
@@ -670,7 +671,7 @@ func TestIsBackupMissedIgnoresFailedRuns(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
 	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixedTime }
 
@@ -710,7 +711,7 @@ func TestIsBackupMissedFailedRunsOnly(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
 	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixedTime }
 
@@ -749,7 +750,7 @@ func TestIsBackupMissedMixedStatusRuns(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
 	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixedTime }
 
@@ -809,7 +810,7 @@ func TestIsBackupMissedOverdueWithFailedRunsAfterSuccess(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
-	svc := NewService(store, nil, Config{WorkerCount: 1})
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1})
 	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return fixedTime }
 

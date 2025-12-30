@@ -3,21 +3,23 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { getColumnType } from "@/lib/column-filter-utils"
+import { getColumnType, type ColumnFilter } from "@/lib/column-filter-utils"
 import type { Torrent } from "@/types"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { flexRender, type Header } from "@tanstack/react-table"
 import { ChevronDown, ChevronUp } from "lucide-react"
-import { type ColumnFilter, ColumnFilterPopover } from "./ColumnFilterPopover"
+import { ColumnFilterPopover } from "./ColumnFilterPopover"
+import type { ViewMode } from "@/hooks/usePersistedCompactViewState"
 
 interface DraggableTableHeaderProps {
   header: Header<Torrent, unknown>
   columnFilters?: ColumnFilter[]
+  viewMode?: ViewMode
   onFilterChange?: (columnId: string, filter: ColumnFilter | null) => void
 }
 
-export function DraggableTableHeader({ header, columnFilters = [], onFilterChange }: DraggableTableHeaderProps) {
+export function DraggableTableHeader({ header, columnFilters = [], viewMode = "normal", onFilterChange }: DraggableTableHeaderProps) {
   const { column } = header
 
   const isSelectHeader = column.id === "select"
@@ -25,7 +27,8 @@ export function DraggableTableHeader({ header, columnFilters = [], onFilterChang
   const isTrackerIconHeader = column.id === "tracker_icon"
   const isStatusIconHeader = column.id === "status_icon"
   const isCompactHeader = isTrackerIconHeader || isStatusIconHeader
-  const headerPadding = isCompactHeader ? "px-0" : "px-3"
+  // Match cell padding: compact columns use px-0, others use px-2 (dense) or px-3 (normal)
+  const headerPadding = isCompactHeader ? "px-0" : (viewMode === "dense" ? "px-2" : "px-3")
 
   const {
     attributes,
@@ -64,11 +67,9 @@ export function DraggableTableHeader({ header, columnFilters = [], onFilterChang
       className="group overflow-hidden"
     >
       <div
-        className={`${headerPadding} h-10 text-left text-sm font-medium text-muted-foreground flex items-center ${
-          canSort ? "cursor-pointer select-none" : ""
-        } ${
-          column.id !== "select" ? "cursor-grab active:cursor-grabbing" : ""
-        }`}
+        className={`${headerPadding} ${viewMode === "dense" ? "h-7 text-xs" : "h-10 text-sm"} text-left font-medium text-muted-foreground flex items-center ${canSort ? "cursor-pointer select-none" : ""
+          } ${column.id !== "select" ? "cursor-grab active:cursor-grabbing" : ""
+          }`}
         onClick={event => {
           if (column.id === "select" || !canSort) {
             return
@@ -88,16 +89,13 @@ export function DraggableTableHeader({ header, columnFilters = [], onFilterChang
       >
         {/* Header content */}
         <div
-          className={`flex items-center ${isCompactHeader ? "gap-0" : "gap-1"} flex-1 min-w-0 ${
-            isSelectHeader || isCompactHeader ? "justify-center" : ""
-          }`}
+          className={`flex items-center ${isCompactHeader ? "gap-0" : "gap-1"} flex-1 min-w-0 ${isSelectHeader || isCompactHeader ? "justify-center" : ""
+            }`}
         >
           <span
-            className={`whitespace-nowrap ${
-              !isPriorityHeader && !isCompactHeader ? "overflow-hidden flex-1 min-w-0" : ""
-            } ${
-              isCompactHeader ? "flex items-center w-full justify-center" : ""
-            } ${isSelectHeader ? "flex items-center justify-center" : ""}`}
+            className={`whitespace-nowrap ${!isPriorityHeader && !isCompactHeader ? "overflow-hidden flex-1 min-w-0" : ""
+              } ${isCompactHeader ? "flex items-center w-full justify-center" : ""
+              } ${isSelectHeader ? "flex items-center justify-center" : ""}`}
           >
             {header.isPlaceholder ? null : flexRender(
               column.columnDef.header,
@@ -106,9 +104,9 @@ export function DraggableTableHeader({ header, columnFilters = [], onFilterChang
           </span>
           {shouldShowSortIndicator && (
             column.getIsSorted() === "asc" ? (
-              <ChevronUp className={`h-4 w-4 flex-shrink-0${isPriorityHeader ? " ml-1 mr-1" : ""}`}/>
+              <ChevronUp className={`h-4 w-4 flex-shrink-0${isPriorityHeader ? " ml-1 mr-1" : ""}`} />
             ) : (
-              <ChevronDown className={`h-4 w-4 flex-shrink-0${isPriorityHeader ? " ml-1 mr-1" : ""}`}/>
+              <ChevronDown className={`h-4 w-4 flex-shrink-0${isPriorityHeader ? " ml-1 mr-1" : ""}`} />
             )
           )}
           {/* Column filter button - only show for filterable columns */}
@@ -130,14 +128,12 @@ export function DraggableTableHeader({ header, columnFilters = [], onFilterChang
         <div
           onMouseDown={canResize ? header.getResizeHandler() : undefined}
           onTouchStart={canResize ? header.getResizeHandler() : undefined}
-          className={`absolute right-0 top-0 h-full w-2 select-none group/resize flex justify-end ${
-            canResize ? "cursor-col-resize touch-none" : "pointer-events-none"
-          }`}
+          className={`absolute right-0 top-0 h-full w-2 select-none group/resize flex justify-end ${canResize ? "cursor-col-resize touch-none" : "pointer-events-none"
+            }`}
         >
           <div
-            className={`h-full w-px ${
-              canResize && column.getIsResizing()? "bg-primary": canResize? "bg-border group-hover/resize:bg-primary/50": "bg-border"
-            }`}
+            className={`h-full w-px ${canResize && column.getIsResizing() ? "bg-primary" : canResize ? "bg-border group-hover/resize:bg-primary/50" : "bg-border"
+              }`}
           />
         </div>
       )}

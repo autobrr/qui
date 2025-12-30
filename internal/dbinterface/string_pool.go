@@ -76,6 +76,10 @@ func InternStrings(ctx context.Context, tx TxQuerier, values ...string) ([]int64
 	// SQLite has SQLITE_MAX_VARIABLE_NUMBER limit (default 999)
 	// Process in chunks to avoid hitting this limit
 
+	// Pre-build the query template for full chunks to avoid repeated string building in hot path
+	queryTemplate := "INSERT OR IGNORE INTO string_pool (value) VALUES %s"
+	fullQuery := BuildQueryWithPlaceholders(queryTemplate, 1, maxParams)
+
 	for i := 0; i < len(valuesList); i += maxParams {
 		end := i + maxParams
 		if end > len(valuesList) {
@@ -89,19 +93,13 @@ func InternStrings(ctx context.Context, tx TxQuerier, values ...string) ([]int64
 			args[j] = v
 		}
 
-		// Build placeholder patterns once
-		var sb strings.Builder
-		const queryPrefix = "INSERT OR IGNORE INTO string_pool (value) VALUES "
-		sb.Grow(len(queryPrefix) + (len(chunk) * 4) + 1) // preallocate
-		sb.WriteString(queryPrefix)
-		for j := range chunk {
-			if j > 0 {
-				sb.WriteString(",")
-			}
-			sb.WriteString("(?)")
+		// Use pre-built query for full chunks, build new one only for smaller final chunk
+		query := fullQuery
+		if len(chunk) < maxParams {
+			query = BuildQueryWithPlaceholders(queryTemplate, 1, len(chunk))
 		}
 
-		_, err := tx.ExecContext(ctx, sb.String(), args...)
+		_, err := tx.ExecContext(ctx, query, args...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to batch insert strings: %w", err)
 		}
@@ -263,6 +261,29 @@ func GetString(ctx context.Context, tx TxQuerier, ids ...int64) ([]string, error
 	}
 
 	return results, nil
+}
+
+// InternEmptyString ensures the empty string exists in string_pool and returns its ID.
+// This is needed for special cases like localhost bypass auth where an empty username
+// is a valid, intentional value (not NULL). The empty string is created if it doesn't exist.
+//
+// Unlike InternStrings which rejects empty strings (treating them as invalid input),
+// this function specifically handles the case where empty string is a meaningful value.
+func InternEmptyString(ctx context.Context, tx TxQuerier) (int64, error) {
+	// Ensure empty string exists
+	_, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO string_pool (value) VALUES ('')")
+	if err != nil {
+		return 0, fmt.Errorf("failed to ensure empty string in string_pool: %w", err)
+	}
+
+	// Get the ID
+	var id int64
+	err = tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ''").Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get empty string ID: %w", err)
+	}
+
+	return id, nil
 }
 
 // GetStringID retrieves the IDs of string values from the string_pool without creating them.

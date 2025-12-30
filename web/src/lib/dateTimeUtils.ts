@@ -261,3 +261,74 @@ export function formatDate(date: Date, preferences?: DateTimePreferences): strin
 export function formatAddedOn(addedOn: number, preferences?: DateTimePreferences): string {
   return formatTimestamp(addedOn, preferences)
 }
+
+/**
+ * Format an ISO 8601 timestamp string using user preferences
+ * Useful for activity logs and event timestamps from APIs
+ * @param isoTimestamp ISO 8601 timestamp string (e.g., "2025-01-15T10:30:00Z")
+ * @param preferences Optional preferences (will use stored if not provided)
+ * @returns Formatted date/time string or the original string if parsing fails
+ */
+export function formatISOTimestamp(isoTimestamp: string, preferences?: DateTimePreferences): string {
+  if (!isoTimestamp) return "N/A"
+
+  try {
+    const date = new Date(isoTimestamp)
+    if (isNaN(date.getTime())) return isoTimestamp
+
+    const timestamp = Math.floor(date.getTime() / 1000)
+    return formatTimestamp(timestamp, preferences)
+  } catch {
+    return isoTimestamp
+  }
+}
+
+/**
+ * Format relative time from a date (e.g., "5 minutes ago" or "3 minutes")
+ * Always returns relative time, independent of user preferences.
+ * Use this for status displays where relative time is always appropriate.
+ * @param date Date to format
+ * @param addSuffix Whether to add "ago" suffix (default: true)
+ * @returns Relative time string
+ */
+export function formatRelativeTime(date: Date, addSuffix = true): string {
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const isFuture = diffMs < 0
+  const absDiffMs = Math.abs(diffMs)
+
+  const diffSec = Math.floor(absDiffMs / 1000)
+  const diffMin = Math.floor(diffSec / 60)
+  const diffHour = Math.floor(diffMin / 60)
+  const diffDay = Math.floor(diffHour / 24)
+  const diffWeek = Math.floor(diffDay / 7)
+  const diffMonth = Math.floor(diffDay / 30)
+  const diffYear = Math.floor(diffDay / 365)
+
+  let value: string
+  if (diffSec < 60) value = "just now"
+  else if (diffMin < 60) value = `${diffMin} minute${diffMin !== 1 ? "s" : ""}`
+  else if (diffHour < 24) value = `${diffHour} hour${diffHour !== 1 ? "s" : ""}`
+  else if (diffDay < 7) value = `${diffDay} day${diffDay !== 1 ? "s" : ""}`
+  else if (diffWeek < 4) value = `${diffWeek} week${diffWeek !== 1 ? "s" : ""}`
+  else if (diffMonth < 12 && diffMonth > 0) value = `${diffMonth} month${diffMonth !== 1 ? "s" : ""}`
+  else if (diffYear > 0) value = `${diffYear} year${diffYear !== 1 ? "s" : ""}`
+  else if (diffWeek > 0) value = `${diffWeek} week${diffWeek !== 1 ? "s" : ""}`
+  else if (diffDay > 0) value = `${diffDay} day${diffDay !== 1 ? "s" : ""}`
+  else value = "just now"
+
+  if (!addSuffix || value === "just now") return value
+  return isFuture ? `in ${value}` : `${value} ago`
+}
+
+/**
+ * Format time as HH:mm:ss
+ * @param date Date to format
+ * @returns Time string in HH:mm:ss format
+ */
+export function formatTimeHMS(date: Date): string {
+  const hours = date.getHours().toString().padStart(2, "0")
+  const minutes = date.getMinutes().toString().padStart(2, "0")
+  const seconds = date.getSeconds().toString().padStart(2, "0")
+  return `${hours}:${minutes}:${seconds}`
+}

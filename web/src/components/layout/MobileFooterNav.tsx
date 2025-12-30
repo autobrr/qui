@@ -18,21 +18,24 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { isThemePremium, themes } from "@/config/themes"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
+import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useHasPremiumAccess } from "@/hooks/useLicense"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
 import { cn } from "@/lib/utils"
+import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
 import {
   getCurrentTheme,
   getCurrentThemeMode,
+  getThemeColors,
+  getThemeVariation,
   setTheme,
   setThemeMode,
   setThemeVariation,
-  getThemeColors,
-  getThemeVariation,
   type ThemeMode
 } from "@/utils/theme"
 import { useQuery } from "@tanstack/react-query"
@@ -40,20 +43,24 @@ import { Link, useLocation } from "@tanstack/react-router"
 import {
   Archive,
   Check,
-  CornerDownRight,
   Copyright,
+  CornerDownRight,
   Download,
   GitBranch,
   Github,
   HardDrive,
   Home,
+  Loader2,
   LogOut,
   Monitor,
   Moon,
   Palette,
+  Rss,
+  SearchCode,
   Search as SearchIcon,
   Server,
   Settings,
+  Wrench,
   Sun
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
@@ -89,7 +96,8 @@ export function MobileFooterNav() {
   const { logout } = useAuth()
   const { isSelectionMode } = useTorrentSelection()
   const { currentMode, currentTheme } = useThemeChange()
-  const { hasPremiumAccess } = useHasPremiumAccess()
+  const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess()
+  const canSwitchPremium = canSwitchToPremiumTheme({ hasPremiumAccess, isLoading, isError })
   const [showThemeDialog, setShowThemeDialog] = useState(false)
   const appVersion = getAppVersion()
 
@@ -112,6 +120,8 @@ export function MobileFooterNav() {
     }
     return instances.filter(instance => instance.isActive)
   }, [instances])
+
+  const { state: crossSeedInstanceState } = useCrossSeedInstanceState()
   const isOnInstancePage = location.pathname.startsWith("/instances/")
   const hasMultipleActiveInstances = activeInstances.length > 1
   const singleActiveInstance = activeInstances.length === 1 ? activeInstances[0] : null
@@ -127,20 +137,32 @@ export function MobileFooterNav() {
 
   const handleThemeSelect = useCallback(async (themeId: string) => {
     const isPremium = isThemePremium(themeId)
-    if (isPremium && !hasPremiumAccess) {
-      toast.error("This is a premium theme. Please purchase a license to use it.")
+    if (isPremium && !canSwitchPremium) {
+      if (isError) {
+        toast.error("Unable to verify license", {
+          description: "License check failed. Premium theme switching is temporarily unavailable.",
+        })
+      } else {
+        toast.error("This is a premium theme. Open Settings → Themes to activate a license.")
+      }
       return
     }
 
     await setTheme(themeId)
     const theme = themes.find(t => t.id === themeId)
     toast.success(`Switched to ${theme?.name || themeId} theme`)
-  }, [hasPremiumAccess])
+  }, [canSwitchPremium, isError])
 
   const handleVariationSelect = useCallback(async (themeId: string, variationId: string): Promise<boolean> => {
     const isPremium = isThemePremium(themeId)
-    if (isPremium && !hasPremiumAccess) {
-      toast.error("This is a premium theme. Please purchase a license to use it.")
+    if (isPremium && !canSwitchPremium) {
+      if (isError) {
+        toast.error("Unable to verify license", {
+          description: "License check failed. Premium theme switching is temporarily unavailable.",
+        })
+      } else {
+        toast.error("This is a premium theme. Open Settings → Themes to activate a license.")
+      }
       return false
     }
 
@@ -149,7 +171,7 @@ export function MobileFooterNav() {
     const theme = themes.find(t => t.id === themeId)
     toast.success(`Switched to ${theme?.name || themeId} theme (${variationId})`)
     return true
-  }, [hasPremiumAccess])
+  }, [canSwitchPremium, isError])
 
   if (isSelectionMode) {
     return null
@@ -213,29 +235,65 @@ export function MobileFooterNav() {
             <DropdownMenuContent align="center" side="top" className="w-56 mb-2">
               <DropdownMenuLabel>qBittorrent Clients</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {activeInstances.map((instance) => (
-                <DropdownMenuItem key={instance.id} asChild>
-                  <Link
-                    to="/instances/$instanceId"
-                    params={{ instanceId: instance.id.toString() }}
-                    className="flex items-center gap-2 min-w-0"
-                  >
-                    <HardDrive className="h-4 w-4" />
-                    <span
-                      className="flex-1 min-w-0 truncate"
-                      title={instance.name}
+              {activeInstances.map((instance) => {
+                const csState = crossSeedInstanceState[instance.id]
+                const hasRss = csState?.rssEnabled || csState?.rssRunning
+                const hasSearch = csState?.searchRunning
+
+                return (
+                  <DropdownMenuItem key={instance.id} asChild>
+                    <Link
+                      to="/instances/$instanceId"
+                      params={{ instanceId: instance.id.toString() }}
+                      className="flex items-center gap-2 min-w-0"
                     >
-                      {instance.name}
-                    </span>
-                    <span
-                      className={cn(
-                        "h-2 w-2 rounded-full",
-                        instance.connected ? "bg-green-500" : "bg-red-500"
-                      )}
-                    />
-                  </Link>
-                </DropdownMenuItem>
-              ))}
+                      <HardDrive className="h-4 w-4" />
+                      <span
+                        className="flex-1 min-w-0 truncate"
+                        title={instance.name}
+                      >
+                        {instance.name}
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        {hasRss && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="flex items-center">
+                                {csState?.rssRunning ? (
+                                  <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                                ) : (
+                                  <Rss className="h-3 w-3 text-muted-foreground" />
+                                )}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="left" className="text-xs">
+                              RSS {csState?.rssRunning ? "running" : "enabled"}
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                        {hasSearch && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="flex items-center">
+                                <SearchCode className="h-3 w-3 text-muted-foreground" />
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="left" className="text-xs">
+                              Seeded search running
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                        <span
+                          className={cn(
+                            "h-2 w-2 rounded-full",
+                            instance.connected ? "bg-green-500" : "bg-red-500"
+                          )}
+                        />
+                      </span>
+                    </Link>
+                  </DropdownMenuItem>
+                )
+              })}
             </DropdownMenuContent>
           </DropdownMenu>
         ) : singleActiveInstance ? (
@@ -343,6 +401,15 @@ export function MobileFooterNav() {
               >
                 <GitBranch className="h-4 w-4" />
                 Cross-Seed
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link
+                to="/services"
+                className="flex items-center gap-2"
+              >
+                <Wrench className="h-4 w-4" />
+                Services
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>

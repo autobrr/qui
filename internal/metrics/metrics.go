@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/metrics/collector"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
@@ -27,6 +28,7 @@ func NewMetricsManager(syncManager *qbittorrent.SyncManager, clientPool *qbittor
 	// Register custom collectors
 	torrentCollector := collector.NewTorrentCollector(syncManager, clientPool)
 	registry.MustRegister(torrentCollector)
+	registry.MustRegister(database.NewMetricsCollector())
 
 	log.Info().Msg("Metrics manager initialized with collectors")
 

@@ -59,7 +59,7 @@ export function ScrollToTopButton({
       variant="outline"
       size="icon"
       className={cn(
-        "fixed z-40 shadow-lg bg-background/80 backdrop-blur-sm transition-all duration-200",
+        "absolute z-10 shadow-lg bg-background/80 backdrop-blur-sm transition-all duration-200",
         isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none",
         className
       )}

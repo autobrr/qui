@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 
 const STORAGE_KEY = "qui-torrent-view-mode"
-const ALL_VIEW_MODES = ["normal", "compact", "ultra-compact"] as const
+const ALL_VIEW_MODES = ["normal", "dense", "compact", "ultra-compact"] as const
 
 export type ViewMode = typeof ALL_VIEW_MODES[number]
 

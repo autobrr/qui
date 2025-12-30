@@ -16,7 +16,10 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 		RunIntervalMinutes:           120,
 		StartPaused:                  true,
 		Category:                     stringPtr("tv"),
-		Tags:                         []string{"old"},
+		RSSAutomationTags:            []string{"old"},
+		SeededSearchTags:             []string{"old"},
+		CompletionSearchTags:         []string{"old"},
+		WebhookTags:                  []string{"old"},
 		IgnorePatterns:               []string{".nfo"},
 		TargetInstanceIDs:            []int{1},
 		TargetIndexerIDs:             []int{2},
@@ -25,13 +28,6 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 		SizeMismatchTolerancePercent: 5.0,
 		UseCategoryFromIndexer:       false,
 		RunExternalProgramID:         ptrInt(42),
-		Completion: models.CrossSeedCompletionSettings{
-			Enabled:           false,
-			Categories:        []string{"tv"},
-			Tags:              []string{"cross-seed"},
-			ExcludeCategories: []string{"anime"},
-			ExcludeTags:       []string{"skip"},
-		},
 	}
 
 	newCategory := " movies "
@@ -40,7 +36,8 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 		RunIntervalMinutes:           ptrInt(45),
 		StartPaused:                  ptrBool(false),
 		Category:                     optionalString{Set: true, Value: &newCategory},
-		Tags:                         &[]string{"new"},
+		RSSAutomationTags:            &[]string{"new"},
+		SeededSearchTags:             &[]string{"new-seeded"},
 		IgnorePatterns:               &[]string{"*.srr"},
 		TargetInstanceIDs:            &[]int{3, 4},
 		TargetIndexerIDs:             &[]int{7},
@@ -49,13 +46,6 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 		SizeMismatchTolerancePercent: ptrFloat(12.5),
 		UseCategoryFromIndexer:       ptrBool(true),
 		RunExternalProgramID:         optionalInt{Set: true, Value: nil},
-		Completion: &completionSettingsPatchRequest{
-			Enabled:           ptrBool(true),
-			Categories:        &[]string{"movies"},
-			Tags:              &[]string{"cross"},
-			ExcludeCategories: &[]string{"music"},
-			ExcludeTags:       &[]string{"x265"},
-		},
 	}
 
 	applyAutomationSettingsPatch(&existing, patch)
@@ -72,8 +62,18 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 	if existing.Category == nil || *existing.Category != "movies" {
 		t.Fatalf("expected category 'movies', got %#v", existing.Category)
 	}
-	if len(existing.Tags) != 1 || existing.Tags[0] != "new" {
-		t.Fatalf("unexpected tags: %#v", existing.Tags)
+	if len(existing.RSSAutomationTags) != 1 || existing.RSSAutomationTags[0] != "new" {
+		t.Fatalf("unexpected rss automation tags: %#v", existing.RSSAutomationTags)
+	}
+	if len(existing.SeededSearchTags) != 1 || existing.SeededSearchTags[0] != "new-seeded" {
+		t.Fatalf("unexpected seeded search tags: %#v", existing.SeededSearchTags)
+	}
+	// CompletionSearchTags and WebhookTags were not patched, should remain unchanged
+	if len(existing.CompletionSearchTags) != 1 || existing.CompletionSearchTags[0] != "old" {
+		t.Fatalf("unexpected completion search tags: %#v", existing.CompletionSearchTags)
+	}
+	if len(existing.WebhookTags) != 1 || existing.WebhookTags[0] != "old" {
+		t.Fatalf("unexpected webhook tags: %#v", existing.WebhookTags)
 	}
 	if len(existing.IgnorePatterns) != 1 || existing.IgnorePatterns[0] != "*.srr" {
 		t.Fatalf("unexpected ignore patterns: %#v", existing.IgnorePatterns)
@@ -99,32 +99,17 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 	if existing.RunExternalProgramID != nil {
 		t.Fatalf("expected runExternalProgramID to be nil")
 	}
-	if existing.Completion.Enabled != true ||
-		len(existing.Completion.Categories) != 1 ||
-		existing.Completion.Categories[0] != "movies" {
-		t.Fatalf("unexpected completion categories: %#v", existing.Completion)
-	}
-	if existing.Completion.Tags[0] != "cross" {
-		t.Fatalf("unexpected completion tags: %#v", existing.Completion.Tags)
-	}
-	if existing.Completion.ExcludeCategories[0] != "music" {
-		t.Fatalf("unexpected completion exclude categories: %#v", existing.Completion.ExcludeCategories)
-	}
-	if existing.Completion.ExcludeTags[0] != "x265" {
-		t.Fatalf("unexpected completion exclude tags: %#v", existing.Completion.ExcludeTags)
-	}
 }
 
 func TestApplyAutomationSettingsPatch_PreservesUnspecifiedFields(t *testing.T) {
 	existing := models.CrossSeedAutomationSettings{
-		Enabled:            true,
-		RunIntervalMinutes: 60,
-		Category:           stringPtr("tv"),
-		Tags:               []string{"keep"},
-		Completion: models.CrossSeedCompletionSettings{
-			Enabled: true,
-			Tags:    []string{"keep-tag"},
-		},
+		Enabled:              true,
+		RunIntervalMinutes:   60,
+		Category:             stringPtr("tv"),
+		RSSAutomationTags:    []string{"keep"},
+		SeededSearchTags:     []string{"keep-seeded"},
+		CompletionSearchTags: []string{"keep-completion"},
+		WebhookTags:          []string{"keep-webhook"},
 	}
 
 	patch := automationSettingsPatchRequest{
@@ -143,11 +128,11 @@ func TestApplyAutomationSettingsPatch_PreservesUnspecifiedFields(t *testing.T) {
 	if existing.Category != nil {
 		t.Fatalf("expected category to be cleared")
 	}
-	if len(existing.Tags) != 1 || existing.Tags[0] != "keep" {
-		t.Fatalf("expected tags to stay unchanged, got %#v", existing.Tags)
+	if len(existing.RSSAutomationTags) != 1 || existing.RSSAutomationTags[0] != "keep" {
+		t.Fatalf("expected rss automation tags to stay unchanged, got %#v", existing.RSSAutomationTags)
 	}
-	if !existing.Completion.Enabled || existing.Completion.Tags[0] != "keep-tag" {
-		t.Fatalf("expected completion to stay unchanged, got %#v", existing.Completion)
+	if len(existing.SeededSearchTags) != 1 || existing.SeededSearchTags[0] != "keep-seeded" {
+		t.Fatalf("expected seeded search tags to stay unchanged, got %#v", existing.SeededSearchTags)
 	}
 	if existing.SizeMismatchTolerancePercent != 20 {
 		t.Fatalf("expected updated tolerance to be 20, got %.2f", existing.SizeMismatchTolerancePercent)

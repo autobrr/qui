@@ -23,11 +23,28 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/torrentname"
 )
 
+// torrentAdder is the interface for adding torrents (used for testing)
+type torrentAdder interface {
+	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error
+	AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) error
+	GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
+}
+
+// torrentDownloader is the interface for downloading torrents from indexers (used for testing)
+type torrentDownloader interface {
+	DownloadTorrent(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
+}
+
 type TorrentsHandler struct {
-	syncManager *qbittorrent.SyncManager
+	syncManager    *qbittorrent.SyncManager
+	jackettService *jackett.Service
+	// Testing interfaces - when set, these are used instead of the concrete types
+	torrentAdder      torrentAdder
+	torrentDownloader torrentDownloader
 }
 
 // truncateExpr truncates long filter expressions for cleaner logging
@@ -52,10 +69,56 @@ type SortedPeersResponse struct {
 	SortedPeers []SortedPeer `json:"sorted_peers,omitempty"`
 }
 
-func NewTorrentsHandler(syncManager *qbittorrent.SyncManager) *TorrentsHandler {
+func NewTorrentsHandler(syncManager *qbittorrent.SyncManager, jackettService *jackett.Service) *TorrentsHandler {
 	return &TorrentsHandler{
-		syncManager: syncManager,
+		syncManager:    syncManager,
+		jackettService: jackettService,
 	}
+}
+
+// NewTorrentsHandlerForTesting creates a TorrentsHandler with mock interfaces for testing
+func NewTorrentsHandlerForTesting(adder torrentAdder, downloader torrentDownloader) *TorrentsHandler {
+	return &TorrentsHandler{
+		torrentAdder:      adder,
+		torrentDownloader: downloader,
+	}
+}
+
+// addTorrent wraps the torrent addition to support both production and test modes
+func (h *TorrentsHandler) addTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error {
+	if h.torrentAdder != nil {
+		return h.torrentAdder.AddTorrent(ctx, instanceID, fileContent, options)
+	}
+	return h.syncManager.AddTorrent(ctx, instanceID, fileContent, options)
+}
+
+// addTorrentFromURLs wraps URL-based torrent addition to support both production and test modes
+func (h *TorrentsHandler) addTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) error {
+	if h.torrentAdder != nil {
+		return h.torrentAdder.AddTorrentFromURLs(ctx, instanceID, urls, options)
+	}
+	return h.syncManager.AddTorrentFromURLs(ctx, instanceID, urls, options)
+}
+
+// getAppPreferences wraps preferences retrieval to support both production and test modes
+func (h *TorrentsHandler) getAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error) {
+	if h.torrentAdder != nil {
+		return h.torrentAdder.GetAppPreferences(ctx, instanceID)
+	}
+	return h.syncManager.GetAppPreferences(ctx, instanceID)
+}
+
+// downloadTorrent wraps torrent download to support both production and test modes
+func (h *TorrentsHandler) downloadTorrent(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error) {
+	if h.torrentDownloader != nil {
+		return h.torrentDownloader.DownloadTorrent(ctx, req)
+	}
+	return h.jackettService.DownloadTorrent(ctx, req)
+}
+
+// hasJackettService checks if jackett service is available (either real or mock)
+func (h *TorrentsHandler) hasJackettService() bool {
+	return h.jackettService != nil || h.torrentDownloader != nil
 }
 
 // ListTorrents returns paginated torrents for an instance with enhanced metadata
@@ -218,15 +281,6 @@ func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request
 	}{Duplicates: matches})
 }
 
-// AddTorrentRequest represents a request to add a torrent
-type AddTorrentRequest struct {
-	Category     string   `json:"category,omitempty"`
-	Tags         []string `json:"tags,omitempty"`
-	StartPaused  bool     `json:"start_paused,omitempty"`
-	SkipChecking bool     `json:"skip_checking,omitempty"`
-	SavePath     string   `json:"save_path,omitempty"`
-}
-
 // AddTorrent adds a new torrent
 func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	// Set a reasonable timeout for the entire operation
@@ -255,6 +309,13 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	var torrentFiles [][]byte
 	var urls []string
 
+	// Track file processing failures for response
+	type fileReadFailure struct {
+		filename string
+		err      string
+	}
+	var fileReadFailures []fileReadFailure
+
 	// Check for torrent files (multiple files supported)
 	if r.MultipartForm != nil && r.MultipartForm.File != nil {
 		fileHeaders := r.MultipartForm.File["torrent"]
@@ -262,14 +323,16 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 			for _, fileHeader := range fileHeaders {
 				file, err := fileHeader.Open()
 				if err != nil {
-					log.Error().Err(err).Str("filename", fileHeader.Filename).Msg("Failed to open torrent file")
+					log.Warn().Err(err).Str("filename", fileHeader.Filename).Msg("Failed to open torrent file")
+					fileReadFailures = append(fileReadFailures, fileReadFailure{filename: fileHeader.Filename, err: "Failed to open file"})
 					continue
 				}
 				defer file.Close()
 
 				fileContent, err := io.ReadAll(file)
 				if err != nil {
-					log.Error().Err(err).Str("filename", fileHeader.Filename).Msg("Failed to read torrent file")
+					log.Warn().Err(err).Str("filename", fileHeader.Filename).Msg("Failed to read torrent file")
+					fileReadFailures = append(fileReadFailures, fileReadFailure{filename: fileHeader.Filename, err: "Failed to read file"})
 					continue
 				}
 				torrentFiles = append(torrentFiles, fileContent)
@@ -278,6 +341,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check for URLs/magnet links if no files
+	var indexerID int
 	if len(torrentFiles) == 0 {
 		urlsParam := r.FormValue("urls")
 		if urlsParam != "" {
@@ -287,6 +351,22 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		} else {
 			RespondError(w, http.StatusBadRequest, "Either torrent files or URLs are required")
 			return
+		}
+
+		// Parse indexer_id if provided (for downloading torrent from indexer)
+		if indexerIDStr := r.FormValue("indexer_id"); indexerIDStr != "" {
+			var err error
+			indexerID, err = strconv.Atoi(indexerIDStr)
+			if err != nil {
+				log.Error().Err(err).Str("indexer_id", indexerIDStr).Msg("Invalid indexer_id provided")
+				RespondError(w, http.StatusBadRequest, fmt.Sprintf("Invalid indexer_id: %q is not a valid integer", indexerIDStr))
+				return
+			}
+			if indexerID <= 0 {
+				log.Error().Int("indexer_id", indexerID).Msg("Invalid indexer_id: must be positive")
+				RespondError(w, http.StatusBadRequest, "Invalid indexer_id: must be a positive integer")
+				return
+			}
 		}
 	}
 
@@ -310,7 +390,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		requestedPaused := pausedStr == "true"
 
 		// Get current preferences to check start_paused_enabled
-		prefs, err := h.syncManager.GetAppPreferences(ctx, instanceID)
+		prefs, err := h.getAppPreferences(ctx, instanceID)
 		if err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get preferences for paused check, defaulting to explicit paused setting")
 			// If we can't get preferences, apply the requested paused state explicitly
@@ -386,19 +466,41 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		options["autoTMM"] = "false"
 	}
 
+	// useDownloadPath and downloadPath are not officially documented by the qBittorrent API, but are defined here:
+	// https://github.com/qbittorrent/qBittorrent/blob/f68bc3fef9a64e2fa81225c4661b713a10017dee/src/webui/api/torrentscontroller.cpp#L1019-L1020
+	if useDownloadPath := r.FormValue("useDownloadPath"); useDownloadPath != "" {
+		options["useDownloadPath"] = useDownloadPath
+	}
+
+	if downloadPath := r.FormValue("downloadPath"); downloadPath != "" {
+		options["downloadPath"] = downloadPath
+	}
+
 	// Handle autoTMM explicitly if provided
 	if autoTMM := r.FormValue("autoTMM"); autoTMM != "" {
 		options["autoTMM"] = autoTMM
 		// If autoTMM is true, remove savepath to let qBittorrent handle it
 		if autoTMM == "true" {
 			delete(options, "savepath")
+			delete(options, "useDownloadPath")
+			delete(options, "downloadPath")
 		}
 	}
 
-	// Track results for multiple files
+	// Track results for multiple files/URLs
 	var addedCount int
 	var failedCount int
 	var lastError error
+	type failedURL struct {
+		URL   string `json:"url"`
+		Error string `json:"error"`
+	}
+	var failedURLs []failedURL
+	type failedFile struct {
+		Filename string `json:"filename"`
+		Error    string `json:"error"`
+	}
+	var failedFiles []failedFile
 
 	// Add torrent(s)
 	if len(torrentFiles) > 0 {
@@ -410,28 +512,108 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 
-			if err := h.syncManager.AddTorrent(ctx, instanceID, fileContent, options); err != nil {
+			if err := h.addTorrent(ctx, instanceID, fileContent, options); err != nil {
 				if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
 					return
 				}
 				log.Error().Err(err).Int("instanceID", instanceID).Int("fileIndex", i).Msg("Failed to add torrent file")
+				failedFiles = append(failedFiles, failedFile{Filename: fmt.Sprintf("file_%d", i), Error: err.Error()})
 				failedCount++
 				lastError = err
 			} else {
 				addedCount++
 			}
 		}
+		// Include file read failures in the count and response
+		for _, f := range fileReadFailures {
+			failedFiles = append(failedFiles, failedFile{Filename: f.filename, Error: f.err})
+			failedCount++
+		}
 	} else if len(urls) > 0 {
 		// Add from URLs
-		if err := h.syncManager.AddTorrentFromURLs(ctx, instanceID, urls, options); err != nil {
-			if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
+		// If indexer_id is provided, download torrent files from the indexer first
+		// (needed for remote qBittorrent instances that can't reach the indexer)
+		if indexerID > 0 {
+			if !h.hasJackettService() {
+				log.Error().Int("indexerID", indexerID).Int("instanceID", instanceID).
+					Msg("Indexer download requested but jackett service is not available")
+				RespondError(w, http.StatusServiceUnavailable,
+					"Indexer service is not available. Configure an indexer or remove indexer_id to use direct URL method.")
 				return
 			}
-			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to add torrent from URLs")
-			RespondError(w, http.StatusInternalServerError, "Failed to add torrent")
-			return
+			var skippedEmpty int
+			for _, url := range urls {
+				url = strings.TrimSpace(url)
+				if url == "" {
+					skippedEmpty++
+					continue
+				}
+
+				// Check if context is already cancelled
+				if ctx.Err() != nil {
+					log.Warn().Int("instanceID", instanceID).Msg("Request cancelled, stopping torrent additions")
+					break
+				}
+
+				// Magnet links can be added directly to qBittorrent
+				if strings.HasPrefix(strings.ToLower(url), "magnet:") {
+					if err := h.addTorrentFromURLs(ctx, instanceID, []string{url}, options); err != nil {
+						if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
+							return
+						}
+						log.Error().Err(err).Int("instanceID", instanceID).Str("url", url).Msg("Failed to add magnet link")
+						failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
+						failedCount++
+						lastError = err
+					} else {
+						addedCount++
+					}
+					continue
+				}
+
+				// Download torrent file from indexer
+				torrentBytes, err := h.downloadTorrent(ctx, jackett.TorrentDownloadRequest{
+					IndexerID:   indexerID,
+					DownloadURL: url,
+				})
+				if err != nil {
+					log.Error().Err(err).Int("indexerID", indexerID).Int("instanceID", instanceID).Str("url", url).Msg("Failed to download torrent from indexer")
+					failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
+					failedCount++
+					lastError = err
+					continue
+				}
+
+				// Add torrent from downloaded file content
+				if err := h.addTorrent(ctx, instanceID, torrentBytes, options); err != nil {
+					if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
+						return
+					}
+					log.Error().Err(err).Int("instanceID", instanceID).Int("indexerID", indexerID).Str("url", url).Msg("Failed to add downloaded torrent")
+					failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
+					failedCount++
+					lastError = err
+				} else {
+					addedCount++
+				}
+			}
+			if skippedEmpty > 0 {
+				log.Debug().Int("skippedEmpty", skippedEmpty).Int("instanceID", instanceID).
+					Msg("Skipped empty URLs in add torrent request")
+			}
+		} else {
+			// No indexer_id - use URL method directly
+			// (works for local qBittorrent instances or magnet links)
+			if err := h.addTorrentFromURLs(ctx, instanceID, urls, options); err != nil {
+				if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
+					return
+				}
+				log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to add torrent from URLs")
+				RespondError(w, http.StatusInternalServerError, "Failed to add torrent")
+				return
+			}
+			addedCount = len(urls) // Assume all URLs succeeded for simplicity
 		}
-		addedCount = len(urls) // Assume all URLs succeeded for simplicity
 	}
 
 	// Check if any torrents failed
@@ -454,11 +636,18 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		message = "Torrent added successfully"
 	}
 
-	RespondJSON(w, http.StatusCreated, map[string]any{
+	response := map[string]any{
 		"message": message,
 		"added":   addedCount,
 		"failed":  failedCount,
-	})
+	}
+	if len(failedURLs) > 0 {
+		response["failedURLs"] = failedURLs
+	}
+	if len(failedFiles) > 0 {
+		response["failedFiles"] = failedFiles
+	}
+	RespondJSON(w, http.StatusCreated, response)
 }
 
 // BulkActionRequest represents a bulk action request
@@ -515,7 +704,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		"recheck", "reannounce", "increasePriority", "decreasePriority",
 		"topPriority", "bottomPriority", "addTags", "removeTags", "setTags", "setCategory",
 		"toggleAutoTMM", "forceStart", "setShareLimit", "setUploadLimit", "setDownloadLimit", "setLocation",
-		"editTrackers", "addTrackers", "removeTrackers",
+		"editTrackers", "addTrackers", "removeTrackers", "toggleSequentialDownload",
 	}
 
 	valid := slices.Contains(validActions, req.Action)
@@ -963,6 +1152,33 @@ func (h *TorrentsHandler) GetTorrentTrackers(w http.ResponseWriter, r *http.Requ
 	RespondJSON(w, http.StatusOK, trackers)
 }
 
+// GetTorrentWebSeeds returns the web seeds (HTTP sources) for a torrent
+func (h *TorrentsHandler) GetTorrentWebSeeds(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+		return
+	}
+
+	webseeds, err := h.syncManager.GetTorrentWebSeeds(r.Context(), instanceID, hash)
+	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getWebSeeds") {
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent web seeds")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrent web seeds")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, webseeds)
+}
+
 // EditTrackerRequest represents a tracker edit request
 type EditTrackerRequest struct {
 	OldURL string `json:"oldURL"`
@@ -1315,14 +1531,27 @@ func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Optional cache bypass for callers that need the freshest file list (e.g., rename dialogs)
+	refreshParam := strings.TrimSpace(r.URL.Query().Get("refresh"))
+	forceRefresh := refreshParam != "" && refreshParam != "0" && !strings.EqualFold(refreshParam, "false")
+	ctx := r.Context()
+	if forceRefresh {
+		ctx = qbittorrent.WithForceFilesRefresh(ctx)
+	}
+
 	// Get files
-	files, err := h.syncManager.GetTorrentFiles(r.Context(), instanceID, hash)
+	files, err := h.syncManager.GetTorrentFiles(ctx, instanceID, hash)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getFiles") {
 			return
 		}
 		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent files")
 		RespondError(w, http.StatusInternalServerError, "Failed to get torrent files")
+		return
+	}
+
+	if files == nil {
+		RespondError(w, http.StatusNotFound, "Torrent files not found")
 		return
 	}
 
@@ -1763,5 +1992,41 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 	}
 
 	w.Header().Set("X-Data-Source", "fresh")
+	RespondJSON(w, http.StatusOK, response)
+}
+
+func (h *TorrentsHandler) GetDirectoryContent(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	dirPath := strings.TrimSpace(r.URL.Query().Get("dirPath"))
+	if dirPath == "" {
+		RespondError(w, http.StatusBadRequest, "Invalid directory path")
+		return
+	}
+
+	withMetadata := false
+	if raw := strings.TrimSpace(r.URL.Query().Get("withMetadata")); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			RespondError(w, http.StatusBadRequest, "Invalid withMetadata")
+			return
+		}
+		withMetadata = parsed
+	}
+
+	response, err := h.syncManager.GetDirectoryContentCtx(r.Context(), instanceID, dirPath, withMetadata)
+	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getDirectoryContent") {
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get directory contents")
+		RespondError(w, http.StatusInternalServerError, "Failed to get directory contents")
+		return
+	}
+
 	RespondJSON(w, http.StatusOK, response)
 }

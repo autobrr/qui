@@ -235,6 +235,7 @@ func (s *TorznabSearchCacheStore) RecentSearches(ctx context.Context, scope stri
 		       total_results, cached_at, last_used_at, expires_at, hit_count
 		FROM torznab_search_cache
 		WHERE TRIM(COALESCE(query, '')) != ''
+		  AND LOWER(TRIM(COALESCE(query, ''))) != 'test'
 	`
 
 	var args []any
@@ -549,6 +550,47 @@ func (s *TorznabSearchCacheStore) UpdateSettings(ctx context.Context, ttlMinutes
 	}
 
 	return s.GetSettings(ctx)
+}
+
+// RebaseTTL recalculates expires_at for all cached entries using the provided TTL minutes.
+func (s *TorznabSearchCacheStore) RebaseTTL(ctx context.Context, ttlMinutes int) (int64, error) {
+	if ttlMinutes <= 0 {
+		return 0, fmt.Errorf("ttlMinutes must be positive")
+	}
+
+	rows, err := s.db.QueryContext(ctx, `SELECT cache_key, cached_at FROM torznab_search_cache`)
+	if err != nil {
+		return 0, fmt.Errorf("load torznab search cache rows for ttl rebase: %w", err)
+	}
+	defer rows.Close()
+
+	var (
+		totalUpdated int64
+		cacheKey     string
+		cachedAt     time.Time
+		newExpires   time.Time
+	)
+
+	for rows.Next() {
+		if err := rows.Scan(&cacheKey, &cachedAt); err != nil {
+			return 0, fmt.Errorf("scan torznab search cache row for ttl rebase: %w", err)
+		}
+
+		newExpires = cachedAt.Add(time.Duration(ttlMinutes) * time.Minute)
+		res, err := s.db.ExecContext(ctx, `UPDATE torznab_search_cache SET expires_at = ? WHERE cache_key = ?`, newExpires, cacheKey)
+		if err != nil {
+			return 0, fmt.Errorf("rebase torznab search cache ttl: %w", err)
+		}
+		if n, err := res.RowsAffected(); err == nil {
+			totalUpdated += n
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("iterate torznab search cache rows for ttl rebase: %w", err)
+	}
+
+	return totalUpdated, nil
 }
 
 func (s *TorznabSearchCacheStore) touchEntry(ctx context.Context, id int64) {

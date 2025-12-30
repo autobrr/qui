@@ -30,15 +30,14 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
-import { formatBytes } from "@/lib/utils"
+import { formatBytes, formatRelativeTime } from "@/lib/utils"
 import type {
   CrossSeedApplyResponse,
   CrossSeedTorrentSearchResponse,
   Torrent
 } from "@/types"
-import { ChevronDown, ChevronRight, Loader2, RefreshCw, SlidersHorizontal } from "lucide-react"
-import { memo, useCallback, useMemo, useState } from "react"
-import { formatRelativeTime } from "@/lib/utils"
+import { ChevronDown, ChevronRight, ExternalLink, Loader2, RefreshCw, SlidersHorizontal } from "lucide-react"
+import { memo, useCallback, useEffect, useMemo, useState } from "react"
 
 type CrossSeedSearchResult = CrossSeedTorrentSearchResponse["results"][number]
 type CrossSeedIndexerOption = {
@@ -138,8 +137,32 @@ const CrossSeedDialogComponent = ({
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [indexerNameMap, sourceTorrent?.excludedIndexers])
 
+  const capabilityFilteredIndexerEntries = useMemo(() => {
+    const available = sourceTorrent?.availableIndexers
+    if (!available || available.length === 0) {
+      return []
+    }
+    const supported = new Set(available)
+    return Object.keys(indexerNameMap)
+      .map(id => Number(id))
+      .filter(id => !Number.isNaN(id) && !supported.has(id))
+      .map(id => ({
+        id,
+        name: indexerNameMap[id] ?? `Indexer ${id}`,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [indexerNameMap, sourceTorrent?.availableIndexers])
+
   const [excludedOpen, setExcludedOpen] = useState(false)
   const [applyResultOpen, setApplyResultOpen] = useState(true)
+
+  // Auto-expand results when there are failures
+  const hasFailures = applyResult?.results.some(r => !r.success || r.instanceResults?.some(ir => !ir.success))
+  useEffect(() => {
+    if (hasFailures) {
+      setApplyResultOpen(true)
+    }
+  }, [hasFailures])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -209,13 +232,25 @@ const CrossSeedDialogComponent = ({
                 onScopeSearch={onScopeSearch}
                 isSearching={isLoading}
               />
-            ) : sourceTorrent && (
+            ) : (
               <div className="space-y-1.5 text-sm text-muted-foreground">
-                <p className="font-medium">No compatible indexers found</p>
+                <p className="font-medium">No Torznab indexers available</p>
                 <p className="text-xs">
-                  None of your enabled indexers support the required capabilities ({sourceTorrent.requiredCaps?.join(", ")})
-                  or categories ({sourceTorrent.searchCategories?.join(", ")}) for this {sourceTorrent.contentType} content.
+                  Add or enable Torznab indexers in Settings to search for cross-seeds.
                 </p>
+              </div>
+            )}
+            {(capabilityFilteredIndexerEntries.length > 0 && indexerOptions.length > 0) && (
+              <div className="mt-2 rounded-md border border-dashed border-border/60 bg-muted/30 p-2 text-xs text-muted-foreground">
+                <p className="font-medium text-[11px] text-foreground">Capability note</p>
+                <p>
+                  These indexers lack the required capabilities/categories for this torrent and will be skipped by the server:
+                </p>
+                <ul className="mt-1.5 ml-4 space-y-0.5">
+                  {capabilityFilteredIndexerEntries.map(entry => (
+                    <li key={entry.id} className="break-words">• {entry.name}</li>
+                  ))}
+                </ul>
               </div>
             )}
           </div>
@@ -308,7 +343,7 @@ const CrossSeedDialogComponent = ({
             <>
               {results.length === 0 ? (
                 <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
-                  No matches found across the enabled indexers.
+                  No matches found in your search.
                 </div>
               ) : (
                 <>
@@ -345,10 +380,11 @@ const CrossSeedDialogComponent = ({
                                   href={result.infoUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="min-w-0 flex-1 truncate font-medium text-sm leading-tight text-primary hover:underline"
+                                  className="min-w-0 flex-1 font-medium text-sm leading-tight text-primary hover:underline inline-flex items-center gap-1"
                                   title={result.title}
                                 >
-                                  {result.title}
+                                  <span className="truncate">{result.title}</span>
+                                  <ExternalLink className="h-3 w-3 shrink-0 opacity-50" />
                                 </a>
                               ) : (
                                 <span className="min-w-0 flex-1 truncate font-medium text-sm leading-tight" title={result.title}>{result.title}</span>
@@ -415,13 +451,28 @@ const CrossSeedDialogComponent = ({
                             <p className="truncate text-xs text-muted-foreground" title={result.torrentName ?? result.title}>{result.torrentName ?? result.title}</p>
                             {result.error && <p className="break-words text-xs text-destructive">{result.error}</p>}
                             {result.instanceResults && result.instanceResults.length > 0 && (
-                              <ul className="mt-1.5 space-y-0.5 text-xs text-muted-foreground">
-                                {result.instanceResults.map(instance => (
-                                  <li key={`${result.indexer}-${instance.instanceId}-${instance.status}`} className="break-words">
-                                    <span className="font-medium">{instance.instanceName}</span>:{" "}
-                                    {instance.message ?? instance.status}
-                                  </li>
-                                ))}
+                              <ul className="mt-1.5 space-y-1 text-xs">
+                                {result.instanceResults.map(instance => {
+                                  const statusDisplay = getInstanceStatusDisplay(instance.status, instance.success)
+                                  return (
+                                    <li key={`${result.indexer}-${instance.instanceId}-${instance.status}`} className="flex flex-col gap-0.5">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="font-medium">{instance.instanceName}</span>
+                                        <Badge
+                                          variant={statusDisplay.variant === "success" ? "outline" : statusDisplay.variant === "warning" ? "secondary" : "destructive"}
+                                          className="text-[10px] h-4 px-1"
+                                        >
+                                          {statusDisplay.text}
+                                        </Badge>
+                                      </div>
+                                      {instance.message && instance.message !== instance.status && (
+                                        <span className={`break-words pl-0.5 ${instance.success ? "text-muted-foreground" : "text-destructive/80"}`}>
+                                          {instance.message}
+                                        </span>
+                                      )}
+                                    </li>
+                                  )
+                                })}
                               </ul>
                             )}
                           </div>
@@ -473,6 +524,29 @@ function formatCrossSeedPublishDate(value: string): string {
   return parsed.toLocaleString()
 }
 
+// Maps instance status codes to user-friendly display information
+function getInstanceStatusDisplay(status: string, success: boolean): { text: string; variant: "default" | "success" | "warning" | "destructive" } {
+  switch (status) {
+    case "added":
+      return { text: "Added", variant: "success" }
+    case "exists":
+      return { text: "Already exists", variant: "warning" }
+    case "no_match":
+      return { text: "No match", variant: "destructive" }
+    case "no_save_path":
+      return { text: "No save path", variant: "destructive" }
+    case "invalid_content_path":
+      return { text: "Invalid path", variant: "destructive" }
+    case "skipped_recheck":
+      return { text: "Skipped - recheck required", variant: "destructive" }
+    case "error":
+      return { text: "Error", variant: "destructive" }
+    default:
+      // For unknown status, use success flag to determine variant
+      return { text: status, variant: success ? "success" : "destructive" }
+  }
+}
+
 interface CrossSeedScopeSelectorProps {
   indexerOptions: CrossSeedIndexerOption[]
   indexerMode: "all" | "custom"
@@ -506,6 +580,7 @@ const IndexerCheckboxItem = memo(({
       key={option.id}
       checked={isChecked}
       onCheckedChange={handleChange}
+      onSelect={(event) => event.preventDefault()} // keep menu open for multi-select
     >
       {option.name}
     </DropdownMenuCheckboxItem>
@@ -536,17 +611,15 @@ const CrossSeedScopeSelector = memo(({
   // Calculate the actual count of indexers that will be used for search
   const searchIndexerCount = useMemo(() => {
     if (indexerMode === "all") {
-      return Math.max(0, total - excludedCount)
+      return total
     }
-    // For custom mode, exclude any selected indexers that are also excluded
-    const availableSelected = selectedIndexerIds.filter(id => !excludedIndexerIds.includes(id))
-    return availableSelected.length
-  }, [indexerMode, total, excludedCount, selectedIndexerIds, excludedIndexerIds])
+    return selectedCount
+  }, [indexerMode, total, selectedCount])
 
   const statusText = useMemo(() => {
     const suffix = total === 1 ? "indexer" : "indexers"
     if (indexerMode === "all") {
-      return `${total} compatible ${suffix}`
+      return `${total} enabled ${suffix}`
     }
     if (selectedCount === 0) {
       return "None selected"
@@ -613,7 +686,7 @@ const CrossSeedScopeSelector = memo(({
             disabled={isSearching}
             className="h-7 flex-1 sm:flex-initial text-xs"
           >
-            All Compatible
+            All indexers
           </Button>
           <Button
             size="sm"
@@ -646,8 +719,20 @@ const CrossSeedScopeSelector = memo(({
                 <DropdownMenuSeparator />
                 {indexerItems}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={onSelectAllIndexers} className="text-xs">Select all</DropdownMenuItem>
-                <DropdownMenuItem onClick={onClearIndexerSelection} className="text-xs">Clear selection</DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={(event) => event.preventDefault()}
+                  onClick={onSelectAllIndexers}
+                  className="text-xs"
+                >
+                  Select all
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={(event) => event.preventDefault()}
+                  onClick={onClearIndexerSelection}
+                  className="text-xs"
+                >
+                  Clear selection
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )}

@@ -26,6 +26,7 @@ var defaultUnregisteredStatuses = []string{
 	"torrent existiert nicht",
 	"torrent has been deleted",
 	"torrent has been nuked",
+	"torrent introuvable",
 	"torrent is not authorized for use on this tracker",
 	"torrent is not found",
 	"torrent nicht gefunden",
@@ -34,6 +35,7 @@ var defaultUnregisteredStatuses = []string{
 	"trump",
 	"unknown",
 	"unregistered",
+	"não registrado",
 	"upgraded",
 	"uploaded",
 }

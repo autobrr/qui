@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,61 +18,69 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/jackett"
 )
 
 // CrossSeedHandler handles cross-seed API endpoints
 type CrossSeedHandler struct {
-	service *crossseed.Service
+	service         *crossseed.Service
+	completionStore *models.InstanceCrossSeedCompletionStore
+	instanceStore   *models.InstanceStore
 }
 
 type automationSettingsRequest struct {
-	Enabled                      bool                       `json:"enabled"`
-	RunIntervalMinutes           int                        `json:"runIntervalMinutes"`
-	StartPaused                  bool                       `json:"startPaused"`
-	Category                     *string                    `json:"category"`
-	Tags                         []string                   `json:"tags"`
-	IgnorePatterns               []string                   `json:"ignorePatterns"`
-	TargetInstanceIDs            []int                      `json:"targetInstanceIds"`
-	TargetIndexerIDs             []int                      `json:"targetIndexerIds"`
-	MaxResultsPerRun             int                        `json:"maxResultsPerRun"`
-	FindIndividualEpisodes       bool                       `json:"findIndividualEpisodes"`
-	SizeMismatchTolerancePercent float64                    `json:"sizeMismatchTolerancePercent"`
-	UseCategoryFromIndexer       bool                       `json:"useCategoryFromIndexer"`
-	RunExternalProgramID         *int                       `json:"runExternalProgramId"`
-	Completion                   *completionSettingsRequest `json:"completion"`
-}
-
-type completionSettingsRequest struct {
-	Enabled           bool     `json:"enabled"`
-	Categories        []string `json:"categories"`
-	Tags              []string `json:"tags"`
-	ExcludeCategories []string `json:"excludeCategories"`
-	ExcludeTags       []string `json:"excludeTags"`
+	Enabled                      bool     `json:"enabled"`
+	RunIntervalMinutes           int      `json:"runIntervalMinutes"`
+	StartPaused                  bool     `json:"startPaused"`
+	Category                     *string  `json:"category"`
+	IgnorePatterns               []string `json:"ignorePatterns"`
+	TargetInstanceIDs            []int    `json:"targetInstanceIds"`
+	TargetIndexerIDs             []int    `json:"targetIndexerIds"`
+	MaxResultsPerRun             int      `json:"maxResultsPerRun"` // Deprecated: automation now processes full feeds and ignores this value
+	FindIndividualEpisodes       bool     `json:"findIndividualEpisodes"`
+	SizeMismatchTolerancePercent float64  `json:"sizeMismatchTolerancePercent"`
+	UseCategoryFromIndexer       bool     `json:"useCategoryFromIndexer"`
+	UseCrossCategorySuffix       bool     `json:"useCrossCategorySuffix"`
+	RunExternalProgramID         *int     `json:"runExternalProgramId"`
+	SkipRecheck                  bool     `json:"skipRecheck"`
 }
 
 type automationSettingsPatchRequest struct {
-	Enabled                      *bool                           `json:"enabled,omitempty"`
-	RunIntervalMinutes           *int                            `json:"runIntervalMinutes,omitempty"`
-	StartPaused                  *bool                           `json:"startPaused,omitempty"`
-	Category                     optionalString                  `json:"category"`
-	Tags                         *[]string                       `json:"tags,omitempty"`
-	IgnorePatterns               *[]string                       `json:"ignorePatterns,omitempty"`
-	TargetInstanceIDs            *[]int                          `json:"targetInstanceIds,omitempty"`
-	TargetIndexerIDs             *[]int                          `json:"targetIndexerIds,omitempty"`
-	MaxResultsPerRun             *int                            `json:"maxResultsPerRun,omitempty"`
-	FindIndividualEpisodes       *bool                           `json:"findIndividualEpisodes,omitempty"`
-	SizeMismatchTolerancePercent *float64                        `json:"sizeMismatchTolerancePercent,omitempty"`
-	UseCategoryFromIndexer       *bool                           `json:"useCategoryFromIndexer,omitempty"`
-	RunExternalProgramID         optionalInt                     `json:"runExternalProgramId"`
-	Completion                   *completionSettingsPatchRequest `json:"completion,omitempty"`
-}
-
-type completionSettingsPatchRequest struct {
-	Enabled           *bool     `json:"enabled,omitempty"`
-	Categories        *[]string `json:"categories,omitempty"`
-	Tags              *[]string `json:"tags,omitempty"`
-	ExcludeCategories *[]string `json:"excludeCategories,omitempty"`
-	ExcludeTags       *[]string `json:"excludeTags,omitempty"`
+	Enabled            *bool          `json:"enabled,omitempty"`
+	RunIntervalMinutes *int           `json:"runIntervalMinutes,omitempty"`
+	StartPaused        *bool          `json:"startPaused,omitempty"`
+	Category           optionalString `json:"category"`
+	IgnorePatterns     *[]string      `json:"ignorePatterns,omitempty"`
+	TargetInstanceIDs  *[]int         `json:"targetInstanceIds,omitempty"`
+	TargetIndexerIDs   *[]int         `json:"targetIndexerIds,omitempty"`
+	MaxResultsPerRun   *int           `json:"maxResultsPerRun,omitempty"` // Deprecated: automation now processes full feeds and ignores this value
+	// RSS source filtering: filter which local torrents to search when checking RSS feeds
+	RSSSourceCategories        *[]string `json:"rssSourceCategories,omitempty"`
+	RSSSourceTags              *[]string `json:"rssSourceTags,omitempty"`
+	RSSSourceExcludeCategories *[]string `json:"rssSourceExcludeCategories,omitempty"`
+	RSSSourceExcludeTags       *[]string `json:"rssSourceExcludeTags,omitempty"`
+	// Webhook source filtering: filter which local torrents to search when checking webhook requests
+	WebhookSourceCategories        *[]string   `json:"webhookSourceCategories,omitempty"`
+	WebhookSourceTags              *[]string   `json:"webhookSourceTags,omitempty"`
+	WebhookSourceExcludeCategories *[]string   `json:"webhookSourceExcludeCategories,omitempty"`
+	WebhookSourceExcludeTags       *[]string   `json:"webhookSourceExcludeTags,omitempty"`
+	FindIndividualEpisodes         *bool       `json:"findIndividualEpisodes,omitempty"`
+	SizeMismatchTolerancePercent   *float64    `json:"sizeMismatchTolerancePercent,omitempty"`
+	UseCategoryFromIndexer         *bool       `json:"useCategoryFromIndexer,omitempty"`
+	UseCrossCategorySuffix         *bool       `json:"useCrossCategorySuffix,omitempty"`
+	RunExternalProgramID           optionalInt `json:"runExternalProgramId"`
+	// Source-specific tagging
+	RSSAutomationTags    *[]string `json:"rssAutomationTags,omitempty"`
+	SeededSearchTags     *[]string `json:"seededSearchTags,omitempty"`
+	CompletionSearchTags *[]string `json:"completionSearchTags,omitempty"`
+	WebhookTags          *[]string `json:"webhookTags,omitempty"`
+	InheritSourceTags    *bool     `json:"inheritSourceTags,omitempty"`
+	// Skip auto-resume settings per source mode
+	SkipAutoResumeRSS          *bool `json:"skipAutoResumeRss,omitempty"`
+	SkipAutoResumeSeededSearch *bool `json:"skipAutoResumeSeededSearch,omitempty"`
+	SkipAutoResumeCompletion   *bool `json:"skipAutoResumeCompletion,omitempty"`
+	SkipAutoResumeWebhook      *bool `json:"skipAutoResumeWebhook,omitempty"`
+	SkipRecheck                *bool `json:"skipRecheck,omitempty"`
 }
 
 type optionalString struct {
@@ -112,29 +121,56 @@ func (o *optionalInt) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type searchSettingsPatchRequest struct {
+	InstanceID      optionalInt `json:"instanceId"`
+	Categories      *[]string   `json:"categories,omitempty"`
+	Tags            *[]string   `json:"tags,omitempty"`
+	IndexerIDs      *[]int      `json:"indexerIds,omitempty"`
+	IntervalSeconds *int        `json:"intervalSeconds,omitempty"`
+	CooldownMinutes *int        `json:"cooldownMinutes,omitempty"`
+}
+
+func (r searchSettingsPatchRequest) isEmpty() bool {
+	return !r.InstanceID.Set &&
+		r.Categories == nil &&
+		r.Tags == nil &&
+		r.IndexerIDs == nil &&
+		r.IntervalSeconds == nil &&
+		r.CooldownMinutes == nil
+}
+
 func (r automationSettingsPatchRequest) isEmpty() bool {
 	return r.Enabled == nil &&
 		r.RunIntervalMinutes == nil &&
 		r.StartPaused == nil &&
 		!r.Category.Set &&
-		r.Tags == nil &&
 		r.IgnorePatterns == nil &&
 		r.TargetInstanceIDs == nil &&
 		r.TargetIndexerIDs == nil &&
 		r.MaxResultsPerRun == nil &&
+		r.RSSSourceCategories == nil &&
+		r.RSSSourceTags == nil &&
+		r.RSSSourceExcludeCategories == nil &&
+		r.RSSSourceExcludeTags == nil &&
+		r.WebhookSourceCategories == nil &&
+		r.WebhookSourceTags == nil &&
+		r.WebhookSourceExcludeCategories == nil &&
+		r.WebhookSourceExcludeTags == nil &&
 		r.FindIndividualEpisodes == nil &&
 		r.SizeMismatchTolerancePercent == nil &&
 		r.UseCategoryFromIndexer == nil &&
+		r.UseCrossCategorySuffix == nil &&
 		!r.RunExternalProgramID.Set &&
-		(r.Completion == nil || r.Completion.isEmpty())
-}
-
-func (r completionSettingsPatchRequest) isEmpty() bool {
-	return r.Enabled == nil &&
-		r.Categories == nil &&
-		r.Tags == nil &&
-		r.ExcludeCategories == nil &&
-		r.ExcludeTags == nil
+		r.RSSAutomationTags == nil &&
+		r.SeededSearchTags == nil &&
+		r.CompletionSearchTags == nil &&
+		r.WebhookTags == nil &&
+		r.InheritSourceTags == nil &&
+		r.SkipAutoResumeRSS == nil &&
+		r.SkipAutoResumeSeededSearch == nil &&
+		r.SkipAutoResumeCompletion == nil &&
+		r.SkipAutoResumeWebhook == nil &&
+		r.SkipRecheck == nil
 }
 
 func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, patch automationSettingsPatchRequest) {
@@ -159,9 +195,6 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 			}
 		}
 	}
-	if patch.Tags != nil {
-		settings.Tags = *patch.Tags
-	}
 	if patch.IgnorePatterns != nil {
 		settings.IgnorePatterns = *patch.IgnorePatterns
 	}
@@ -174,6 +207,32 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	if patch.MaxResultsPerRun != nil {
 		settings.MaxResultsPerRun = *patch.MaxResultsPerRun
 	}
+	// RSS source filtering
+	if patch.RSSSourceCategories != nil {
+		settings.RSSSourceCategories = *patch.RSSSourceCategories
+	}
+	if patch.RSSSourceTags != nil {
+		settings.RSSSourceTags = *patch.RSSSourceTags
+	}
+	if patch.RSSSourceExcludeCategories != nil {
+		settings.RSSSourceExcludeCategories = *patch.RSSSourceExcludeCategories
+	}
+	if patch.RSSSourceExcludeTags != nil {
+		settings.RSSSourceExcludeTags = *patch.RSSSourceExcludeTags
+	}
+	// Webhook source filtering
+	if patch.WebhookSourceCategories != nil {
+		settings.WebhookSourceCategories = *patch.WebhookSourceCategories
+	}
+	if patch.WebhookSourceTags != nil {
+		settings.WebhookSourceTags = *patch.WebhookSourceTags
+	}
+	if patch.WebhookSourceExcludeCategories != nil {
+		settings.WebhookSourceExcludeCategories = *patch.WebhookSourceExcludeCategories
+	}
+	if patch.WebhookSourceExcludeTags != nil {
+		settings.WebhookSourceExcludeTags = *patch.WebhookSourceExcludeTags
+	}
 	if patch.FindIndividualEpisodes != nil {
 		settings.FindIndividualEpisodes = *patch.FindIndividualEpisodes
 	}
@@ -183,34 +242,47 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	if patch.UseCategoryFromIndexer != nil {
 		settings.UseCategoryFromIndexer = *patch.UseCategoryFromIndexer
 	}
+	if patch.UseCrossCategorySuffix != nil {
+		settings.UseCrossCategorySuffix = *patch.UseCrossCategorySuffix
+	}
 	if patch.RunExternalProgramID.Set {
 		settings.RunExternalProgramID = patch.RunExternalProgramID.Value
 	}
-	if patch.Completion != nil {
-		applyCompletionSettingsPatch(&settings.Completion, patch.Completion)
+	// Source-specific tagging
+	if patch.RSSAutomationTags != nil {
+		settings.RSSAutomationTags = *patch.RSSAutomationTags
 	}
-}
-
-func applyCompletionSettingsPatch(dest *models.CrossSeedCompletionSettings, patch *completionSettingsPatchRequest) {
-	if patch.Enabled != nil {
-		dest.Enabled = *patch.Enabled
+	if patch.SeededSearchTags != nil {
+		settings.SeededSearchTags = *patch.SeededSearchTags
 	}
-	if patch.Categories != nil {
-		dest.Categories = *patch.Categories
+	if patch.CompletionSearchTags != nil {
+		settings.CompletionSearchTags = *patch.CompletionSearchTags
 	}
-	if patch.Tags != nil {
-		dest.Tags = *patch.Tags
+	if patch.WebhookTags != nil {
+		settings.WebhookTags = *patch.WebhookTags
 	}
-	if patch.ExcludeCategories != nil {
-		dest.ExcludeCategories = *patch.ExcludeCategories
+	if patch.InheritSourceTags != nil {
+		settings.InheritSourceTags = *patch.InheritSourceTags
 	}
-	if patch.ExcludeTags != nil {
-		dest.ExcludeTags = *patch.ExcludeTags
+	// Skip auto-resume settings
+	if patch.SkipAutoResumeRSS != nil {
+		settings.SkipAutoResumeRSS = *patch.SkipAutoResumeRSS
+	}
+	if patch.SkipAutoResumeSeededSearch != nil {
+		settings.SkipAutoResumeSeededSearch = *patch.SkipAutoResumeSeededSearch
+	}
+	if patch.SkipAutoResumeCompletion != nil {
+		settings.SkipAutoResumeCompletion = *patch.SkipAutoResumeCompletion
+	}
+	if patch.SkipAutoResumeWebhook != nil {
+		settings.SkipAutoResumeWebhook = *patch.SkipAutoResumeWebhook
+	}
+	if patch.SkipRecheck != nil {
+		settings.SkipRecheck = *patch.SkipRecheck
 	}
 }
 
 type automationRunRequest struct {
-	Limit  int  `json:"limit"`
 	DryRun bool `json:"dryRun"`
 }
 
@@ -227,9 +299,11 @@ type searchRunRequest struct {
 }
 
 // NewCrossSeedHandler creates a new cross-seed handler
-func NewCrossSeedHandler(service *crossseed.Service) *CrossSeedHandler {
+func NewCrossSeedHandler(service *crossseed.Service, completionStore *models.InstanceCrossSeedCompletionStore, instanceStore *models.InstanceStore) *CrossSeedHandler {
 	return &CrossSeedHandler{
-		service: service,
+		service:         service,
+		completionStore: completionStore,
+		instanceStore:   instanceStore,
 	}
 }
 
@@ -253,10 +327,16 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 		r.Get("/runs", h.ListAutomationRuns)
 		r.Post("/run", h.TriggerAutomationRun)
 		r.Route("/search", func(r chi.Router) {
+			r.Get("/settings", h.GetSearchSettings)
+			r.Patch("/settings", h.PatchSearchSettings)
 			r.Get("/status", h.GetSearchRunStatus)
 			r.Post("/run", h.StartSearchRun)
 			r.Post("/run/cancel", h.CancelSearchRun)
 			r.Get("/runs", h.ListSearchRunHistory)
+		})
+		r.Route("/completion", func(r chi.Router) {
+			r.Get("/{instanceID}", h.GetInstanceCompletionSettings)
+			r.Put("/{instanceID}", h.UpdateInstanceCompletionSettings)
 		})
 		r.Route("/webhook", func(r chi.Router) {
 			r.Post("/check", h.WebhookCheck)
@@ -387,7 +467,8 @@ func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	response, err := h.service.SearchTorrentMatches(r.Context(), instanceID, hash, opts)
+	ctx := jackett.WithSearchPriority(r.Context(), jackett.RateLimitPriorityInteractive)
+	response, err := h.service.SearchTorrentMatches(ctx, instanceID, hash, opts)
 	if err != nil {
 		status := mapCrossSeedErrorStatus(err)
 		log.Error().
@@ -422,7 +503,7 @@ func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	response, err := h.service.AutobrrApply(r.Context(), &req)
+	response, err := h.service.AutobrrApply(context.WithoutCancel(r.Context()), &req)
 	if err != nil {
 		status := mapCrossSeedErrorStatus(err)
 		log.Error().Err(err).Msg("Failed to apply autobrr torrent")
@@ -477,7 +558,7 @@ func (h *CrossSeedHandler) ApplyTorrentSearchResults(w http.ResponseWriter, r *h
 		return
 	}
 
-	response, err := h.service.ApplyTorrentSearchResults(r.Context(), instanceID, hash, &req)
+	response, err := h.service.ApplyTorrentSearchResults(context.WithoutCancel(r.Context()), instanceID, hash, &req)
 	if err != nil {
 		status := mapCrossSeedErrorStatus(err)
 		log.Error().
@@ -557,15 +638,10 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		}
 	}
 
-	completion := models.DefaultCrossSeedCompletionSettings()
-	if req.Completion != nil {
-		completion = models.CrossSeedCompletionSettings{
-			Enabled:           req.Completion.Enabled,
-			Categories:        req.Completion.Categories,
-			Tags:              req.Completion.Tags,
-			ExcludeCategories: req.Completion.ExcludeCategories,
-			ExcludeTags:       req.Completion.ExcludeTags,
-		}
+	// Validate mutual exclusivity: cannot use both indexer category and .cross suffix
+	if req.UseCategoryFromIndexer && req.UseCrossCategorySuffix {
+		RespondError(w, http.StatusBadRequest, "Cannot enable both 'Use indexer name as category' and 'Add .cross category suffix'. These settings are mutually exclusive.")
+		return
 	}
 
 	settings := &models.CrossSeedAutomationSettings{
@@ -573,7 +649,6 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		RunIntervalMinutes:           req.RunIntervalMinutes,
 		StartPaused:                  req.StartPaused,
 		Category:                     category,
-		Tags:                         req.Tags,
 		IgnorePatterns:               req.IgnorePatterns,
 		TargetInstanceIDs:            req.TargetInstanceIDs,
 		TargetIndexerIDs:             req.TargetIndexerIDs,
@@ -581,8 +656,9 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		FindIndividualEpisodes:       req.FindIndividualEpisodes,
 		SizeMismatchTolerancePercent: req.SizeMismatchTolerancePercent,
 		UseCategoryFromIndexer:       req.UseCategoryFromIndexer,
+		UseCrossCategorySuffix:       req.UseCrossCategorySuffix,
 		RunExternalProgramID:         req.RunExternalProgramID,
-		Completion:                   completion,
+		SkipRecheck:                  req.SkipRecheck,
 	}
 
 	updated, err := h.service.UpdateAutomationSettings(r.Context(), settings)
@@ -624,6 +700,19 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 		return
 	}
 
+	// Log what the API received for debugging source filter issues
+	if req.RSSSourceCategories != nil || req.RSSSourceExcludeCategories != nil ||
+		req.WebhookSourceCategories != nil || req.WebhookSourceExcludeCategories != nil {
+		log.Debug().
+			Interface("rssSourceCategories", req.RSSSourceCategories).
+			Interface("rssSourceExcludeCategories", req.RSSSourceExcludeCategories).
+			Interface("rssSourceTags", req.RSSSourceTags).
+			Interface("rssSourceExcludeTags", req.RSSSourceExcludeTags).
+			Interface("webhookSourceCategories", req.WebhookSourceCategories).
+			Interface("webhookSourceExcludeCategories", req.WebhookSourceExcludeCategories).
+			Msg("[API] Received source filter patch request")
+	}
+
 	current, err := h.service.GetAutomationSettings(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to load cross-seed automation settings for patch")
@@ -633,6 +722,12 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 
 	merged := *current
 	applyAutomationSettingsPatch(&merged, req)
+
+	// Validate mutual exclusivity: cannot use both indexer category and .cross suffix
+	if merged.UseCategoryFromIndexer && merged.UseCrossCategorySuffix {
+		RespondError(w, http.StatusBadRequest, "Cannot enable both 'Use indexer name as category' and 'Add .cross category suffix'. These settings are mutually exclusive.")
+		return
+	}
 
 	updated, err := h.service.UpdateAutomationSettings(r.Context(), &merged)
 	if err != nil {
@@ -728,11 +823,10 @@ func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	run, err := h.service.RunAutomation(r.Context(), crossseed.AutomationRunOptions{
+	run, err := h.service.RunAutomation(context.WithoutCancel(r.Context()), crossseed.AutomationRunOptions{
 		RequestedBy: "api",
 		Mode:        models.CrossSeedRunModeManual,
 		DryRun:      req.DryRun,
-		Limit:       req.Limit,
 	})
 	if err != nil {
 		if errors.Is(err, crossseed.ErrAutomationRunning) {
@@ -747,12 +841,78 @@ func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.R
 			RespondError(w, http.StatusBadRequest, "No Torznab indexers configured. Add at least one enabled indexer before running automation.")
 			return
 		}
+		if errors.Is(err, crossseed.ErrNoTargetInstancesConfigured) {
+			RespondError(w, http.StatusBadRequest, "Select at least one target instance before running automation.")
+			return
+		}
 		log.Error().Err(err).Msg("Failed to trigger cross-seed automation run")
 		RespondError(w, http.StatusInternalServerError, "Failed to start automation run")
 		return
 	}
 
 	RespondJSON(w, http.StatusAccepted, run)
+}
+
+// GetSearchSettings godoc
+// @Summary Get seeded torrent search settings
+// @Description Returns the persisted defaults used by Seeded Torrent Search runs.
+// @Tags cross-seed
+// @Produce json
+// @Success 200 {object} models.CrossSeedSearchSettings
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/search/settings [get]
+func (h *CrossSeedHandler) GetSearchSettings(w http.ResponseWriter, r *http.Request) {
+	settings, err := h.service.GetSearchSettings(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load cross-seed search settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to load search settings")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, settings)
+}
+
+// PatchSearchSettings godoc
+// @Summary Update seeded torrent search settings
+// @Description Persists default filters and timing for Seeded Torrent Search runs.
+// @Tags cross-seed
+// @Accept json
+// @Produce json
+// @Param request body searchSettingsPatchRequest true "Search settings patch"
+// @Success 200 {object} models.CrossSeedSearchSettings
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/search/settings [patch]
+func (h *CrossSeedHandler) PatchSearchSettings(w http.ResponseWriter, r *http.Request) {
+	var patch searchSettingsPatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if patch.isEmpty() {
+		RespondError(w, http.StatusBadRequest, "No settings provided")
+		return
+	}
+
+	updated, err := h.service.PatchSearchSettings(r.Context(), crossseed.SearchSettingsPatch{
+		InstanceIDSet:   patch.InstanceID.Set,
+		InstanceID:      patch.InstanceID.Value,
+		Categories:      patch.Categories,
+		Tags:            patch.Tags,
+		IndexerIDs:      patch.IndexerIDs,
+		IntervalSeconds: patch.IntervalSeconds,
+		CooldownMinutes: patch.CooldownMinutes,
+	})
+	if err != nil {
+		status := mapCrossSeedErrorStatus(err)
+		log.Error().Err(err).Msg("Failed to update cross-seed search settings")
+		RespondError(w, status, err.Error())
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, updated)
 }
 
 // StartSearchRun godoc
@@ -779,7 +939,7 @@ func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	run, err := h.service.StartSearchRun(r.Context(), crossseed.SearchRunOptions{
+	run, err := h.service.StartSearchRun(context.WithoutCancel(r.Context()), crossseed.SearchRunOptions{
 		InstanceID:      req.InstanceID,
 		Categories:      req.Categories,
 		Tags:            req.Tags,
@@ -965,4 +1125,131 @@ func webhookResponseStatus(response *crossseed.WebhookCheckResponse) int {
 	default:
 		return http.StatusNotFound
 	}
+}
+
+// instanceCompletionSettingsResponse is the API response for per-instance completion settings.
+type instanceCompletionSettingsResponse struct {
+	InstanceID        int      `json:"instanceId"`
+	Enabled           bool     `json:"enabled"`
+	Categories        []string `json:"categories"`
+	Tags              []string `json:"tags"`
+	ExcludeCategories []string `json:"excludeCategories"`
+	ExcludeTags       []string `json:"excludeTags"`
+}
+
+// toInstanceCompletionSettingsResponse converts model to API response.
+func toInstanceCompletionSettingsResponse(s *models.InstanceCrossSeedCompletionSettings) instanceCompletionSettingsResponse {
+	return instanceCompletionSettingsResponse{
+		InstanceID:        s.InstanceID,
+		Enabled:           s.Enabled,
+		Categories:        s.Categories,
+		Tags:              s.Tags,
+		ExcludeCategories: s.ExcludeCategories,
+		ExcludeTags:       s.ExcludeTags,
+	}
+}
+
+// instanceCompletionSettingsRequest is the API request for updating per-instance completion settings.
+type instanceCompletionSettingsRequest struct {
+	Enabled           bool     `json:"enabled"`
+	Categories        []string `json:"categories"`
+	Tags              []string `json:"tags"`
+	ExcludeCategories []string `json:"excludeCategories"`
+	ExcludeTags       []string `json:"excludeTags"`
+}
+
+// GetInstanceCompletionSettings returns the completion settings for a specific instance.
+func (h *CrossSeedHandler) GetInstanceCompletionSettings(w http.ResponseWriter, r *http.Request) {
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	instanceID, err := strconv.Atoi(instanceIDStr)
+	if err != nil || instanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+		return
+	}
+
+	if h.completionStore == nil {
+		log.Error().Int("instanceID", instanceID).Msg("Completion store not configured")
+		RespondError(w, http.StatusServiceUnavailable, "Completion settings not available")
+		return
+	}
+
+	// Validate instance exists
+	if h.instanceStore != nil {
+		_, err := h.instanceStore.Get(r.Context(), instanceID)
+		if err != nil {
+			if errors.Is(err, models.ErrInstanceNotFound) {
+				log.Warn().Int("instanceID", instanceID).Msg("Instance not found for completion settings")
+				RespondError(w, http.StatusNotFound, "Instance not found")
+				return
+			}
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to validate instance for completion settings")
+			RespondError(w, http.StatusInternalServerError, "Failed to validate instance")
+			return
+		}
+	}
+
+	settings, err := h.completionStore.Get(r.Context(), instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get instance completion settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to load completion settings")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, toInstanceCompletionSettingsResponse(settings))
+}
+
+// UpdateInstanceCompletionSettings updates the completion settings for a specific instance.
+func (h *CrossSeedHandler) UpdateInstanceCompletionSettings(w http.ResponseWriter, r *http.Request) {
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	instanceID, err := strconv.Atoi(instanceIDStr)
+	if err != nil || instanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+		return
+	}
+
+	if h.completionStore == nil {
+		log.Error().Int("instanceID", instanceID).Msg("Completion store not configured")
+		RespondError(w, http.StatusServiceUnavailable, "Completion settings not available")
+		return
+	}
+
+	// Validate instance exists
+	if h.instanceStore != nil {
+		_, err := h.instanceStore.Get(r.Context(), instanceID)
+		if err != nil {
+			if errors.Is(err, models.ErrInstanceNotFound) {
+				log.Warn().Int("instanceID", instanceID).Msg("Instance not found for completion settings")
+				RespondError(w, http.StatusNotFound, "Instance not found")
+				return
+			}
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to validate instance for completion settings")
+			RespondError(w, http.StatusInternalServerError, "Failed to validate instance")
+			return
+		}
+	}
+
+	var req instanceCompletionSettingsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode instance completion settings request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	settings := &models.InstanceCrossSeedCompletionSettings{
+		InstanceID:        instanceID,
+		Enabled:           req.Enabled,
+		Categories:        req.Categories,
+		Tags:              req.Tags,
+		ExcludeCategories: req.ExcludeCategories,
+		ExcludeTags:       req.ExcludeTags,
+	}
+
+	saved, err := h.completionStore.Upsert(r.Context(), settings)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to save instance completion settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to save completion settings")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, toInstanceCompletionSettingsResponse(saved))
 }

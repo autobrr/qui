@@ -109,6 +109,26 @@ func TestTorrentMeetsCriteria_IncludeExcludeLogic(t *testing.T) {
 			want:    false,
 		},
 		{
+			name: "Initial Wait Not Met",
+			settings: models.InstanceReannounceSettings{
+				Enabled:            true,
+				MonitorAll:         true,
+				InitialWaitSeconds: 15,
+			},
+			torrent: qbt.Torrent{TimeActive: 10, State: qbt.TorrentStateStalledUp},
+			want:    false,
+		},
+		{
+			name: "Initial Wait Met",
+			settings: models.InstanceReannounceSettings{
+				Enabled:            true,
+				MonitorAll:         true,
+				InitialWaitSeconds: 15,
+			},
+			torrent: qbt.Torrent{TimeActive: 20, State: qbt.TorrentStateStalledUp},
+			want:    true,
+		},
+		{
 			name: "Monitor All - No Exclusions",
 			settings: models.InstanceReannounceSettings{
 				Enabled:    true,
@@ -250,29 +270,46 @@ func TestTorrentMeetsCriteria_IncludeExcludeLogic(t *testing.T) {
 	}
 }
 
-func TestTrackerProblemDetected_BasicCases(t *testing.T) {
+func TestHasHealthyTracker_BasicCases(t *testing.T) {
 	service := &Service{}
 
-	require.False(t, service.trackerProblemDetected(nil))
+	// nil trackers = no healthy tracker
+	require.False(t, service.hasHealthyTracker(nil))
 
-	// Working tracker only
+	// Working tracker only = healthy
 	okTrackers := []qbt.TorrentTracker{{Status: qbt.TrackerStatusOK, Message: ""}}
-	require.False(t, service.trackerProblemDetected(okTrackers))
+	require.True(t, service.hasHealthyTracker(okTrackers))
 
-	// Not working with outage message
+	// Not working (any message) = not healthy
 	downTrackers := []qbt.TorrentTracker{{Status: qbt.TrackerStatusNotWorking, Message: "tracker is down for maintenance"}}
-	require.True(t, service.trackerProblemDetected(downTrackers))
+	require.False(t, service.hasHealthyTracker(downTrackers))
+
+	// Not working with unknown message = still not healthy (this is the key fix!)
+	unknownMsgTrackers := []qbt.TorrentTracker{{Status: qbt.TrackerStatusNotWorking, Message: "some unknown error"}}
+	require.False(t, service.hasHealthyTracker(unknownMsgTrackers))
 
 	// OK tracker plus problematic one – overall should be considered healthy due to working tracker
 	mixed := []qbt.TorrentTracker{
 		{Status: qbt.TrackerStatusNotWorking, Message: "tracker is down"},
 		{Status: qbt.TrackerStatusOK, Message: ""},
 	}
-	require.False(t, service.trackerProblemDetected(mixed))
+	require.True(t, service.hasHealthyTracker(mixed))
 
-	// OK tracker with unregistered message should be treated as problematic
+	// OK tracker with unregistered message should NOT be treated as healthy
 	unregistered := []qbt.TorrentTracker{{Status: qbt.TrackerStatusOK, Message: "Torrent not registered"}}
-	require.True(t, service.trackerProblemDetected(unregistered))
+	require.False(t, service.hasHealthyTracker(unregistered))
+
+	// Disabled trackers should be ignored
+	disabledOnly := []qbt.TorrentTracker{{Status: qbt.TrackerStatusDisabled, Message: ""}}
+	require.False(t, service.hasHealthyTracker(disabledOnly))
+
+	// Updating trackers = not healthy yet
+	updatingTrackers := []qbt.TorrentTracker{{Status: qbt.TrackerStatusUpdating, Message: ""}}
+	require.False(t, service.hasHealthyTracker(updatingTrackers))
+
+	// Not contacted (common state for newly-added torrents) = not healthy
+	notContactedTrackers := []qbt.TorrentTracker{{Status: qbt.TrackerStatusNotContacted, Message: ""}}
+	require.False(t, service.hasHealthyTracker(notContactedTrackers))
 }
 
 func TestTrackersUpdating(t *testing.T) {
@@ -393,10 +430,15 @@ func TestServiceEnqueue_AggressiveModeSkipsDebounce(t *testing.T) {
 	require.True(t, svc.enqueue(1, "ABC", "Test", "tracker"))
 	require.Equal(t, 1, started, "should NOT start new job in conservative mode")
 
-	// 4. Try enqueue with Aggressive=True
-	svc.settingsCache.Replace(&models.InstanceReannounceSettings{InstanceID: 1, Aggressive: true, Enabled: true})
+	// 4. Try enqueue with Aggressive=True, retry interval governs cooldown
+	svc.settingsCache.Replace(&models.InstanceReannounceSettings{InstanceID: 1, Aggressive: true, Enabled: true, ReannounceIntervalSeconds: 7})
 	require.True(t, svc.enqueue(1, "ABC", "Test", "tracker"))
-	require.Equal(t, 2, started, "should start new job immediately in aggressive mode")
+	require.Equal(t, 1, started, "should respect retry interval cooldown in aggressive mode")
+
+	// 5. Advance past retry interval and ensure job starts
+	now = now.Add(10 * time.Second)
+	require.True(t, svc.enqueue(1, "ABC", "Test", "tracker"))
+	require.Equal(t, 2, started, "should start new job after retry interval in aggressive mode")
 }
 
 func newTestServiceForDebounce(window time.Duration, now func() time.Time) *Service {
@@ -411,31 +453,73 @@ func newTestServiceForDebounce(window time.Duration, now func() time.Time) *Serv
 			DebounceWindow: window,
 			ScanInterval:   time.Second,
 		},
-		j:          make(map[int]map[string]*reannounceJob),
-		now:        now,
-		spawn:      func(fn func()) { fn() },
-		history:    make(map[int][]ActivityEvent),
-		historyCap: defaultHistorySize,
-		baseCtx:    context.Background(),
+		j:                make(map[int]map[string]*reannounceJob),
+		now:              now,
+		spawn:            func(fn func()) { fn() },
+		historySucceeded: make(map[int][]ActivityEvent),
+		historyFailed:    make(map[int][]ActivityEvent),
+		historySkipped:   make(map[int][]ActivityEvent),
+		historyCap:       defaultHistorySize,
+		baseCtx:          context.Background(),
 	}
 }
 
 func TestServiceRecordActivityLimit(t *testing.T) {
 	now := time.Unix(0, 0)
 	svc := newTestServiceForDebounce(time.Minute, func() time.Time { return now })
-	svc.historyCap = 3
+	svc.historyCap = 2 // succeeded/failed keep limit*2=4, skipped keeps limit=2
 
-	for i := 0; i < 5; i++ {
+	// Add 6 succeeded events - should keep last 4 (limit*2)
+	for i := range 6 {
 		now = now.Add(time.Second)
 		svc.recordActivity(1, fmt.Sprintf("hash%d", i), fmt.Sprintf("Torrent %d", i), "tracker.example.com", ActivityOutcomeSucceeded, "ok")
 	}
 
 	events := svc.GetActivity(1, 0)
-	require.Len(t, events, 3)
-	require.Equal(t, "HASH2", events[0].Hash)
-	require.Equal(t, "HASH4", events[2].Hash)
+	require.Len(t, events, 4)
+	require.Equal(t, "HASH2", events[0].Hash) // oldest kept
+	require.Equal(t, "HASH5", events[3].Hash) // newest
 
+	// Test GetActivity limit parameter
 	limited := svc.GetActivity(1, 2)
 	require.Len(t, limited, 2)
-	require.Equal(t, events[1:], limited)
+	require.Equal(t, events[2:], limited) // last 2 events
+
+	// Add 4 skipped events - should keep last 2 (limit)
+	for i := range 4 {
+		now = now.Add(time.Second)
+		svc.recordActivity(1, fmt.Sprintf("skipped%d", i), fmt.Sprintf("Skipped %d", i), "tracker.example.com", ActivityOutcomeSkipped, "healthy")
+	}
+
+	allEvents := svc.GetActivity(1, 0)
+	// 4 succeeded + 2 skipped = 6 total
+	require.Len(t, allEvents, 6)
+
+	// Verify skipped only kept 2
+	skippedCount := 0
+	for _, e := range allEvents {
+		if e.Outcome == ActivityOutcomeSkipped {
+			skippedCount++
+		}
+	}
+	require.Equal(t, 2, skippedCount)
+
+	// Add 6 failed events - should keep last 4 (limit*2)
+	for i := range 6 {
+		now = now.Add(time.Second)
+		svc.recordActivity(1, fmt.Sprintf("failed%d", i), fmt.Sprintf("Failed %d", i), "tracker.example.com", ActivityOutcomeFailed, "error")
+	}
+
+	allEvents = svc.GetActivity(1, 0)
+	// 4 succeeded + 2 skipped + 4 failed = 10 total
+	require.Len(t, allEvents, 10)
+
+	// Verify failed only kept 4
+	failedCount := 0
+	for _, e := range allEvents {
+		if e.Outcome == ActivityOutcomeFailed {
+			failedCount++
+		}
+	}
+	require.Equal(t, 4, failedCount)
 }

@@ -33,6 +33,7 @@ import (
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/services/trackerrules"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
 	"github.com/autobrr/qui/internal/web/swagger"
@@ -45,48 +46,58 @@ type Server struct {
 	config  *config.AppConfig
 	version string
 
-	authService          *auth.Service
-	sessionManager       *scs.SessionManager
-	instanceStore        *models.InstanceStore
-	instanceReannounce   *models.InstanceReannounceStore
-	reannounceCache      *reannounce.SettingsCache
-	reannounceService    *reannounce.Service
-	clientAPIKeyStore    *models.ClientAPIKeyStore
-	externalProgramStore *models.ExternalProgramStore
-	clientPool           *qbittorrent.ClientPool
-	syncManager          *qbittorrent.SyncManager
-	licenseService       *license.Service
-	updateService        *update.Service
-	trackerIconService   *trackericons.Service
-	backupService        *backups.Service
-	filesManager         *filesmanager.Service
-	crossSeedService     *crossseed.Service
-	jackettService       *jackett.Service
-	torznabIndexerStore  *models.TorznabIndexerStore
+	authService                      *auth.Service
+	sessionManager                   *scs.SessionManager
+	instanceStore                    *models.InstanceStore
+	instanceReannounce               *models.InstanceReannounceStore
+	reannounceCache                  *reannounce.SettingsCache
+	reannounceService                *reannounce.Service
+	clientAPIKeyStore                *models.ClientAPIKeyStore
+	externalProgramStore             *models.ExternalProgramStore
+	clientPool                       *qbittorrent.ClientPool
+	syncManager                      *qbittorrent.SyncManager
+	licenseService                   *license.Service
+	updateService                    *update.Service
+	trackerIconService               *trackericons.Service
+	backupService                    *backups.Service
+	filesManager                     *filesmanager.Service
+	crossSeedService                 *crossseed.Service
+	jackettService                   *jackett.Service
+	torznabIndexerStore              *models.TorznabIndexerStore
+	trackerRuleStore                 *models.TrackerRuleStore
+	trackerRuleService               *trackerrules.Service
+	trackerCustomizationStore        *models.TrackerCustomizationStore
+	dashboardSettingsStore           *models.DashboardSettingsStore
+	instanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
 }
 
 type Dependencies struct {
-	Config               *config.AppConfig
-	Version              string
-	AuthService          *auth.Service
-	SessionManager       *scs.SessionManager
-	InstanceStore        *models.InstanceStore
-	InstanceReannounce   *models.InstanceReannounceStore
-	ReannounceCache      *reannounce.SettingsCache
-	ReannounceService    *reannounce.Service
-	ClientAPIKeyStore    *models.ClientAPIKeyStore
-	ExternalProgramStore *models.ExternalProgramStore
-	ClientPool           *qbittorrent.ClientPool
-	SyncManager          *qbittorrent.SyncManager
-	WebHandler           *web.Handler
-	LicenseService       *license.Service
-	UpdateService        *update.Service
-	TrackerIconService   *trackericons.Service
-	BackupService        *backups.Service
-	FilesManager         *filesmanager.Service
-	CrossSeedService     *crossseed.Service
-	JackettService       *jackett.Service
-	TorznabIndexerStore  *models.TorznabIndexerStore
+	Config                           *config.AppConfig
+	Version                          string
+	AuthService                      *auth.Service
+	SessionManager                   *scs.SessionManager
+	InstanceStore                    *models.InstanceStore
+	InstanceReannounce               *models.InstanceReannounceStore
+	ReannounceCache                  *reannounce.SettingsCache
+	ReannounceService                *reannounce.Service
+	ClientAPIKeyStore                *models.ClientAPIKeyStore
+	ExternalProgramStore             *models.ExternalProgramStore
+	ClientPool                       *qbittorrent.ClientPool
+	SyncManager                      *qbittorrent.SyncManager
+	WebHandler                       *web.Handler
+	LicenseService                   *license.Service
+	UpdateService                    *update.Service
+	TrackerIconService               *trackericons.Service
+	BackupService                    *backups.Service
+	FilesManager                     *filesmanager.Service
+	CrossSeedService                 *crossseed.Service
+	JackettService                   *jackett.Service
+	TorznabIndexerStore              *models.TorznabIndexerStore
+	TrackerRuleStore                 *models.TrackerRuleStore
+	TrackerRuleService               *trackerrules.Service
+	TrackerCustomizationStore        *models.TrackerCustomizationStore
+	DashboardSettingsStore           *models.DashboardSettingsStore
+	InstanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -97,27 +108,32 @@ func NewServer(deps *Dependencies) *Server {
 			WriteTimeout:      120 * time.Second,
 			IdleTimeout:       180 * time.Second,
 		},
-		logger:               log.Logger.With().Str("module", "api").Logger(),
-		config:               deps.Config,
-		version:              deps.Version,
-		authService:          deps.AuthService,
-		sessionManager:       deps.SessionManager,
-		instanceStore:        deps.InstanceStore,
-		instanceReannounce:   deps.InstanceReannounce,
-		clientAPIKeyStore:    deps.ClientAPIKeyStore,
-		externalProgramStore: deps.ExternalProgramStore,
-		reannounceCache:      deps.ReannounceCache,
-		clientPool:           deps.ClientPool,
-		syncManager:          deps.SyncManager,
-		licenseService:       deps.LicenseService,
-		updateService:        deps.UpdateService,
-		trackerIconService:   deps.TrackerIconService,
-		backupService:        deps.BackupService,
-		filesManager:         deps.FilesManager,
-		crossSeedService:     deps.CrossSeedService,
-		reannounceService:    deps.ReannounceService,
-		jackettService:       deps.JackettService,
-		torznabIndexerStore:  deps.TorznabIndexerStore,
+		logger:                           log.Logger.With().Str("module", "api").Logger(),
+		config:                           deps.Config,
+		version:                          deps.Version,
+		authService:                      deps.AuthService,
+		sessionManager:                   deps.SessionManager,
+		instanceStore:                    deps.InstanceStore,
+		instanceReannounce:               deps.InstanceReannounce,
+		clientAPIKeyStore:                deps.ClientAPIKeyStore,
+		externalProgramStore:             deps.ExternalProgramStore,
+		reannounceCache:                  deps.ReannounceCache,
+		clientPool:                       deps.ClientPool,
+		syncManager:                      deps.SyncManager,
+		licenseService:                   deps.LicenseService,
+		updateService:                    deps.UpdateService,
+		trackerIconService:               deps.TrackerIconService,
+		backupService:                    deps.BackupService,
+		filesManager:                     deps.FilesManager,
+		crossSeedService:                 deps.CrossSeedService,
+		reannounceService:                deps.ReannounceService,
+		jackettService:                   deps.JackettService,
+		torznabIndexerStore:              deps.TorznabIndexerStore,
+		trackerRuleStore:                 deps.TrackerRuleStore,
+		trackerRuleService:               deps.TrackerRuleService,
+		trackerCustomizationStore:        deps.TrackerCustomizationStore,
+		dashboardSettingsStore:           deps.DashboardSettingsStore,
+		instanceCrossSeedCompletionStore: deps.InstanceCrossSeedCompletionStore,
 	}
 
 	return &s
@@ -242,7 +258,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		return nil, err
 	}
 	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.instanceReannounce, s.reannounceCache, s.clientPool, s.syncManager, s.reannounceService)
-	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager)
+	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
 	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.clientPool, s.config.Config)
@@ -252,7 +268,10 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	trackerIconHandler := handlers.NewTrackerIconHandler(s.trackerIconService)
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.reannounceCache, s.reannounceService, s.config.Config.BaseURL)
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
-	crossSeedHandler := handlers.NewCrossSeedHandler(s.crossSeedService)
+	crossSeedHandler := handlers.NewCrossSeedHandler(s.crossSeedService, s.instanceCrossSeedCompletionStore, s.instanceStore)
+	trackerRulesHandler := handlers.NewTrackerRuleHandler(s.trackerRuleStore, s.trackerRuleService)
+	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore)
+	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
 
 	// Torznab/Jackett handler
 	var jackettHandler *handlers.JackettHandler
@@ -329,6 +348,18 @@ func (s *Server) Handler() (*chi.Mux, error) {
 				r.Post("/execute", externalProgramsHandler.ExecuteExternalProgram)
 			})
 
+			// Tracker customizations (nicknames and merged domains)
+			r.Route("/tracker-customizations", func(r chi.Router) {
+				r.Get("/", trackerCustomizationHandler.List)
+				r.Post("/", trackerCustomizationHandler.Create)
+				r.Put("/{id}", trackerCustomizationHandler.Update)
+				r.Delete("/{id}", trackerCustomizationHandler.Delete)
+			})
+
+			// Dashboard settings (per-user layout preferences)
+			r.Get("/dashboard-settings", dashboardSettingsHandler.Get)
+			r.Put("/dashboard-settings", dashboardSettingsHandler.Update)
+
 			// Version endpoint for update checks
 			r.Get("/version/latest", versionHandler.GetLatestVersion)
 
@@ -362,6 +393,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Post("/trackers", torrentsHandler.AddTorrentTrackers)
 							r.Delete("/trackers", torrentsHandler.RemoveTorrentTrackers)
 							r.Get("/peers", torrentsHandler.GetTorrentPeers)
+							r.Get("/webseeds", torrentsHandler.GetTorrentWebSeeds)
 							r.Get("/files", torrentsHandler.GetTorrentFiles)
 							r.Put("/files", torrentsHandler.SetTorrentFilePriority)
 							r.Put("/rename", torrentsHandler.RenameTorrent)
@@ -396,6 +428,19 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					// Trackers
 					r.Get("/trackers", torrentsHandler.GetActiveTrackers)
 
+					// Tracker rules
+					r.Route("/tracker-rules", func(r chi.Router) {
+						r.Get("/", trackerRulesHandler.List)
+						r.Post("/", trackerRulesHandler.Create)
+						r.Put("/order", trackerRulesHandler.Reorder)
+						r.Post("/apply", trackerRulesHandler.ApplyNow)
+
+						r.Route("/{ruleID}", func(r chi.Router) {
+							r.Put("/", trackerRulesHandler.Update)
+							r.Delete("/", trackerRulesHandler.Delete)
+						})
+					})
+
 					// Preferences
 					r.Get("/preferences", preferencesHandler.GetPreferences)
 					r.Patch("/preferences", preferencesHandler.UpdatePreferences)
@@ -407,9 +452,13 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					// qBittorrent application info
 					r.Get("/app-info", qbittorrentInfoHandler.GetQBittorrentAppInfo)
 
+					// Path autocomplete
+					r.Get("/getDirectoryContent", torrentsHandler.GetDirectoryContent)
+
 					r.Route("/backups", func(r chi.Router) {
 						r.Get("/settings", backupsHandler.GetSettings)
 						r.Put("/settings", backupsHandler.UpdateSettings)
+						r.Post("/import", backupsHandler.ImportManifest)
 						r.Post("/run", backupsHandler.TriggerBackup)
 						r.Get("/runs", backupsHandler.ListRuns)
 						r.Delete("/runs", backupsHandler.DeleteAllRuns)

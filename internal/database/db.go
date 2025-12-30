@@ -53,6 +53,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -76,6 +77,7 @@ type DB struct {
 	readerPool  *sql.DB                            // Read-only connection pool for concurrent reads
 	writerStmts *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for writer connection
 	readerStmts *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for reader pool
+	stmtMu      sync.RWMutex                       // Protects stmt caches during Close and cache ops
 
 	// Write transaction serialization
 	// Even though writerConn has SetMaxOpenConns=1, BeginTx doesn't queue properly
@@ -92,17 +94,22 @@ type DB struct {
 	// Cleanup cancellation
 	cleanupCancel context.CancelFunc
 
+	closing atomic.Bool
+
+	lastBeginTxRecoveryStackLogUnixNano atomic.Int64
+
 	closeOnce sync.Once
 	closeErr  error
 }
 
 // Tx wraps sql.Tx to provide prepared statement caching for transaction queries
 type Tx struct {
-	tx        *sql.Tx
-	db        *DB
-	ctx       context.Context // context from BeginTx, used for commit/rollback
-	isWriteTx bool            // true if this is a write transaction that needs serialized commit
-	unlockFn  func()          // function to unlock writerMu when transaction completes (write tx only)
+	tx         *sql.Tx
+	db         *DB
+	ctx        context.Context // context from BeginTx, used for commit/rollback
+	isWriteTx  bool            // true if this is a write transaction that needs serialized commit
+	unlockFn   func()          // function to unlock writerMu when transaction completes (write tx only)
+	unlockOnce sync.Once       // ensures unlock happens only once
 
 	// Track statements prepared during this transaction for promotion to DB cache after commit
 	txStmts map[string]struct{} // query -> struct{} (used as set to track which queries to cache)
@@ -182,11 +189,7 @@ func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sq
 	}
 
 	// Statement was evicted and closed between prepare and exec; drop from cache and retry
-	if t.isWriteTx {
-		t.db.writerStmts.Delete(query)
-	} else {
-		t.db.readerStmts.Delete(query)
-	}
+	t.db.deleteStmt(query, t.isWriteTx)
 
 	stmt, err = t.db.getStmt(ctx, query, t)
 	if err != nil {
@@ -198,31 +201,30 @@ func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sq
 
 // Commit commits the transaction and releases the writer mutex if this is a write transaction.
 // Also promotes any transaction-prepared statements to the DB cache for future use.
+// On failure, the transaction remains active - caller must call Rollback() to release the mutex.
 func (t *Tx) Commit() error {
 	err := t.tx.Commit()
-	// Release mutex after commit completes (for write transactions)
-	if t.unlockFn != nil {
-		t.unlockFn()
-		t.unlockFn = nil // Prevent double-unlock
+	if err == nil {
+		// Commit succeeded - promote statements to cache
+		t.promoteStatementsToCache()
+		// Release mutex only on successful commit (for write transactions)
+		if t.unlockFn != nil {
+			t.unlockOnce.Do(t.unlockFn)
+		}
 	}
-	if err != nil {
-		return err
-	}
-	// Promote only on successful commit
-	t.promoteStatementsToCache()
-	return nil
+	return err
 }
 
 // Rollback rolls back the transaction and releases the writer mutex if this is a write transaction.
+// Always releases the mutex since the transaction is done (either rolled back successfully,
+// or already closed from a prior failed commit returning ErrTxDone).
 // Does NOT promote statements to cache since the transaction failed.
 func (t *Tx) Rollback() error {
 	err := t.tx.Rollback()
-	// Release mutex after rollback completes (for write transactions)
+	// Always release mutex - transaction is done regardless of rollback result
 	if t.unlockFn != nil {
-		t.unlockFn()
-		t.unlockFn = nil // Prevent double-unlock
+		t.unlockOnce.Do(t.unlockFn)
 	}
-	// Do NOT promote on rollback
 	return err
 }
 
@@ -238,37 +240,52 @@ func (t *Tx) promoteStatementsToCache() {
 		return
 	}
 
-	// Determine which cache and connection to use based on transaction type
-	var stmts *ttlcache.Cache[string, *sql.Stmt]
-	var conn *sql.DB
-	if t.isWriteTx {
-		stmts = t.db.writerStmts
-		conn = t.db.writerConn
-	} else {
-		stmts = t.db.readerStmts
-		conn = t.db.readerPool
-	}
-
 	// Prepare statements on the appropriate connection and add to cache
 	// Use a background context since transaction is already committed
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	for query := range queries {
+		// Skip promotion during shutdown
+		if t.db.closing.Load() {
+			return
+		}
+
+		t.db.stmtMu.RLock()
+
+		// Determine which cache and connection to use based on transaction type
+		var stmts *ttlcache.Cache[string, *sql.Stmt]
+		var conn *sql.DB
+		if t.isWriteTx {
+			stmts = t.db.writerStmts
+			conn = t.db.writerConn
+		} else {
+			stmts = t.db.readerStmts
+			conn = t.db.readerPool
+		}
+
+		if stmts == nil || conn == nil {
+			t.db.stmtMu.RUnlock()
+			return
+		}
+
 		// Double-check it's not already cached (race condition protection)
 		if _, found := stmts.Get(query); found {
+			t.db.stmtMu.RUnlock()
 			continue
 		}
 
 		// Prepare and cache the statement
 		stmt, err := conn.PrepareContext(ctx, query)
 		if err != nil {
+			t.db.stmtMu.RUnlock()
 			// Log but don't fail - caching is an optimization
 			log.Debug().Err(err).Str("query", query).Msg("failed to promote transaction statement to cache")
 			continue
 		}
 
 		stmts.Set(query, stmt, ttlcache.DefaultTTL)
+		t.db.stmtMu.RUnlock()
 	}
 }
 
@@ -467,6 +484,13 @@ func New(databasePath string) (*DB, error) {
 // When tx is provided, only cached statements are returned - no preparation
 // is done to avoid conflicts with active transactions.
 func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, error) {
+	if db.closing.Load() {
+		return nil, sql.ErrConnDone
+	}
+
+	db.stmtMu.RLock()
+	defer db.stmtMu.RUnlock()
+
 	// Determine which cache to use
 	var stmts *ttlcache.Cache[string, *sql.Stmt]
 	var conn *sql.DB
@@ -528,6 +552,22 @@ func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, err
 	return s, nil
 }
 
+func (db *DB) deleteStmt(query string, isWrite bool) {
+	db.stmtMu.RLock()
+	defer db.stmtMu.RUnlock()
+
+	var stmts *ttlcache.Cache[string, *sql.Stmt]
+	if isWrite {
+		stmts = db.writerStmts
+	} else {
+		stmts = db.readerStmts
+	}
+	if stmts == nil {
+		return
+	}
+	stmts.Delete(query)
+}
+
 // isWriteQuery efficiently determines if a query is a write operation.
 // This uses a fast byte-level check to avoid string allocation and case conversion.
 func isWriteQuery(query string) bool {
@@ -553,6 +593,24 @@ func isWriteQuery(query string) bool {
 		strings.HasPrefix(upper, "ALTER") ||
 		strings.HasPrefix(upper, "DROP") ||
 		strings.HasPrefix(upper, "VACUUM")
+}
+
+const sqliteNestedTxErrSubstring = "cannot start a transaction within a transaction"
+
+func isSQLiteNestedTxErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), sqliteNestedTxErrSubstring)
+}
+
+func (db *DB) rollbackWriterConn(ctx context.Context) {
+	if db.writerConn == nil {
+		return
+	}
+	if _, err := db.writerConn.ExecContext(ctx, "ROLLBACK"); err != nil {
+		log.Warn().Err(err).Msg("failed to rollback SQLite writer connection during recovery")
+	}
 }
 
 const stmtClosedErrMsg = "statement is closed"
@@ -613,9 +671,9 @@ func execWithRetry[T any, E stmtExecutor[T]](db *DB, ctx context.Context, query 
 
 	// Statement was evicted and closed between prepare and exec; drop from cache and retry
 	if isWriteQuery(query) {
-		db.writerStmts.Delete(query)
+		db.deleteStmt(query, true)
 	} else {
-		db.readerStmts.Delete(query)
+		db.deleteStmt(query, false)
 	}
 
 	stmt, err = db.getStmt(ctx, query, executor.getTx())
@@ -634,18 +692,42 @@ func execWithRetry[T any, E stmtExecutor[T]](db *DB, ctx context.Context, query 
 // read queries to the reader pool. Uses prepared statements when possible.
 // Do NOT use this for queries with RETURNING clauses - use QueryRowContext or QueryContext instead.
 func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	if !isWriteQuery(query) {
+		return execWithRetry(db, ctx, query, args, execResult{})
+	}
+
+	db.writerMu.Lock()
+	defer db.writerMu.Unlock()
+
 	return execWithRetry(db, ctx, query, args, execResult{})
 }
 
 // QueryContext routes write queries to the single writer connection and
 // read queries to the reader pool. Uses prepared statements when possible.
 func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	if !isWriteQuery(query) {
+		return execWithRetry(db, ctx, query, args, queryRows{})
+	}
+
+	db.writerMu.Lock()
+	defer db.writerMu.Unlock()
+
 	return execWithRetry(db, ctx, query, args, queryRows{})
 }
 
 // QueryRowContext routes write queries to the single writer connection and
 // read queries to the reader pool. Uses prepared statements when possible.
 func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	if isWriteQuery(query) {
+		db.writerMu.Lock()
+		row := db.queryRowUnlocked(ctx, query, args...)
+		db.writerMu.Unlock()
+		return row
+	}
+	return db.queryRowUnlocked(ctx, query, args...)
+}
+
+func (db *DB) queryRowUnlocked(ctx context.Context, query string, args ...any) *sql.Row {
 	stmt, err := db.getStmt(ctx, query, nil)
 	if err != nil {
 		if isWriteQuery(query) {
@@ -661,9 +743,9 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 
 	// Statement was evicted and closed between prepare and exec; drop from cache and retry
 	if isWriteQuery(query) {
-		db.writerStmts.Delete(query)
+		db.deleteStmt(query, true)
 	} else {
-		db.readerStmts.Delete(query)
+		db.deleteStmt(query, false)
 	}
 
 	stmt, err = db.getStmt(ctx, query, nil)
@@ -801,8 +883,33 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 
 	tx, err := db.writerConn.BeginTx(ctx, opts)
 	if err != nil {
-		db.writerMu.Unlock() // Unlock on error
-		return nil, err
+		if isSQLiteNestedTxErr(err) {
+			recordBeginTxRecovery()
+			// This error means the underlying SQLite connection believes it's still inside
+			// a transaction. We should not be holding an active write transaction while
+			// holding writerMu, so attempt to rollback and retry once to self-heal.
+			now := time.Now().UnixNano()
+			last := db.lastBeginTxRecoveryStackLogUnixNano.Load()
+			if last == 0 || now-last >= int64(time.Minute) {
+				db.lastBeginTxRecoveryStackLogUnixNano.Store(now)
+				log.Error().
+					Err(err).
+					Str("stack", string(debug.Stack())).
+					Msg("SQLite writer connection appears wedged in a transaction; attempting rollback and retry")
+			} else {
+				log.Error().
+					Err(err).
+					Msg("SQLite writer connection appears wedged in a transaction; attempting rollback and retry (stack suppressed)")
+			}
+			rollbackCtx, rollbackCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			db.rollbackWriterConn(rollbackCtx)
+			rollbackCancel()
+			tx, err = db.writerConn.BeginTx(ctx, opts)
+		}
+		if err != nil {
+			db.writerMu.Unlock() // Unlock on error
+			return nil, err
+		}
 	}
 
 	// Pass unlock function to Tx so it can release the mutex on Commit/Rollback
@@ -817,6 +924,8 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 
 func (db *DB) Close() error {
 	db.closeOnce.Do(func() {
+		db.closing.Store(true)
+
 		// Cancel cleanup goroutine
 		if db.cleanupCancel != nil {
 			db.cleanupCancel()
@@ -828,6 +937,8 @@ func (db *DB) Close() error {
 		if _, err := db.writerConn.ExecContext(ctx, "PRAGMA optimize"); err != nil {
 			log.Warn().Err(err).Msg("failed to run PRAGMA optimize during close")
 		}
+
+		db.stmtMu.Lock()
 
 		// Close statement caches (will close all prepared statements)
 		// Track closed caches to avoid double-closing the same cache instance
@@ -843,6 +954,8 @@ func (db *DB) Close() error {
 			closedCaches[db.readerStmts] = true
 			db.readerStmts = nil
 		}
+
+		db.stmtMu.Unlock()
 
 		// Close both connections
 		if err := db.writerConn.Close(); err != nil {
@@ -1174,7 +1287,7 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	// All string_pool references use ON DELETE RESTRICT which would prevent deletion
 	// even when there are no actual references. Deferring allows the transaction to
 	// complete and verify constraints at commit time rather than immediately.
-	if _, err := tx.ExecContext(ctx, "PRAGMA defer_foreign_keys = ON"); err != nil {
+	if err := dbinterface.DeferForeignKeyChecks(tx); err != nil {
 		return 0, fmt.Errorf("failed to defer foreign keys: %w", err)
 	}
 

@@ -13,14 +13,17 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger
 } from "@/components/ui/context-menu"
+import { useCrossSeedFilter } from "@/hooks/useCrossSeedFilter"
 import type { TorrentAction } from "@/hooks/useTorrentActions"
 import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
-import { useCrossSeedFilter } from "@/hooks/useCrossSeedFilter"
+import { api } from "@/lib/api"
 import { getLinuxIsoName, getLinuxSavePath, useIncognitoMode } from "@/lib/incognito"
 import { getTorrentDisplayHash } from "@/lib/torrent-utils"
 import { copyTextToClipboard } from "@/lib/utils"
-import type { Category, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
+import type { Category, ExternalProgram, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import {
+  Blocks,
   CheckCircle,
   Copy,
   Download,
@@ -41,9 +44,6 @@ import {
 } from "lucide-react"
 import { memo, useCallback, useMemo } from "react"
 import { toast } from "sonner"
-import { useQuery, useMutation } from "@tanstack/react-query"
-import { api } from "@/lib/api"
-import type { ExternalProgram } from "@/types"
 import { CategorySubmenu } from "./CategorySubmenu"
 import { QueueSubmenu } from "./QueueSubmenu"
 import { RenameSubmenu } from "./RenameSubmenu"
@@ -57,7 +57,7 @@ interface TorrentContextMenuProps {
   selectedHashes: string[]
   selectedTorrents: Torrent[]
   effectiveSelectionCount: number
-  onTorrentSelect?: (torrent: Torrent | null) => void
+  onTorrentSelect?: (torrent: Torrent | null, initialTab?: string) => void
   onAction: (action: TorrentAction, hashes: string[], options?: { enable?: boolean }) => void
   onPrepareDelete: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareTags: (action: "add" | "set" | "remove", hashes: string[], torrents?: Torrent[]) => void
@@ -67,7 +67,8 @@ interface TorrentContextMenuProps {
   onPrepareSpeedLimits: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareRecheck: (hashes: string[], count?: number) => void
   onPrepareReannounce: (hashes: string[], count?: number) => void
-  onPrepareLocation: (hashes: string[], torrents?: Torrent[]) => void
+  onPrepareLocation: (hashes: string[], torrents?: Torrent[], count?: number) => void
+  onPrepareTmm?: (hashes: string[], count: number, enable: boolean) => void
   onPrepareRenameTorrent: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareRenameFile: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareRenameFolder: (hashes: string[], torrents?: Torrent[]) => void
@@ -103,8 +104,9 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   onPrepareReannounce,
   onPrepareLocation,
   onPrepareRenameTorrent,
-  onPrepareRenameFile,
-  onPrepareRenameFolder,
+  onPrepareRenameFile: _onPrepareRenameFile,
+  onPrepareRenameFolder: _onPrepareRenameFolder,
+  onPrepareTmm,
   availableCategories = {},
   onSetCategory,
   isPending = false,
@@ -125,12 +127,12 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   // Memoize hashes and torrents to avoid re-creating arrays on every render
   const hashes = useMemo(() =>
     useSelection ? selectedHashes : [torrent.hash],
-  [useSelection, selectedHashes, torrent.hash]
+    [useSelection, selectedHashes, torrent.hash]
   )
 
   const torrents = useMemo(() =>
     useSelection ? selectedTorrents : [torrent],
-  [useSelection, selectedTorrents, torrent]
+    [useSelection, selectedTorrents, torrent]
   )
 
   const count = isAllSelected ? effectiveSelectionCount : hashes.length
@@ -226,6 +228,12 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   const allDisabled = tmmStates.length > 0 && tmmStates.every(state => state === false)
   const mixed = tmmStates.length > 0 && !allEnabled && !allDisabled
 
+  // Sequential download state calculation
+  const seqDlStates = torrents.map(t => t.seq_dl)
+  const allSeqDlEnabled = seqDlStates.length > 0 && seqDlStates.every(state => state === true)
+  const allSeqDlDisabled = seqDlStates.length > 0 && seqDlStates.every(state => state === false)
+  const seqDlMixed = seqDlStates.length > 0 && !allSeqDlEnabled && !allSeqDlDisabled
+
   const handleQueueAction = useCallback((action: "topPriority" | "increasePriority" | "decreasePriority" | "bottomPriority") => {
     onAction(action as TorrentAction, hashes)
   }, [onAction, hashes])
@@ -234,11 +242,27 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     onAction(TORRENT_ACTIONS.FORCE_START, hashes, { enable })
   }, [onAction, hashes])
 
+  const handleSeqDlToggle = useCallback((enable: boolean) => {
+    onAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, hashes, { enable })
+  }, [onAction, hashes])
+
   const handleSetCategory = useCallback((category: string) => {
     if (onSetCategory) {
       onSetCategory(category, hashes)
     }
   }, [onSetCategory, hashes])
+
+  const handleTmmToggle = useCallback((enable: boolean) => {
+    if (onPrepareTmm) {
+      onPrepareTmm(hashes, count, enable)
+    } else {
+      onAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, hashes, { enable })
+    }
+  }, [onPrepareTmm, onAction, hashes, count])
+
+  const handleLocationClick = useCallback(() => {
+    onPrepareLocation(hashes, torrents, count)
+  }, [onPrepareLocation, hashes, torrents, count])
 
   const supportsTorrentExport = capabilities?.supportsTorrentExport ?? true
 
@@ -255,21 +279,6 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
         <ContextMenuItem onClick={() => onTorrentSelect?.(torrent)}>
           View Details
         </ContextMenuItem>
-        {onFilterChange && (
-          <ContextMenuItem
-            onClick={handleFilterCrossSeeds}
-            disabled={isPending || isFilteringCrossSeeds || count > 1}
-            title={count > 1 ? "Cross-seed filtering only works with a single selected torrent" : undefined}
-          >
-            <GitBranch className="mr-2 h-4 w-4" />
-            {count > 1 ? (
-              <span className="text-muted-foreground">Filter Cross-Seeds (single selection only)</span>
-            ) : (
-              <>Filter Cross-Seeds</>
-            )}
-            {isFilteringCrossSeeds && <span className="ml-1 text-xs text-muted-foreground">...</span>}
-          </ContextMenuItem>
-        )}
         <ContextMenuSeparator />
         <ContextMenuItem
           onClick={() => onAction(TORRENT_ACTIONS.RESUME, hashes)}
@@ -327,6 +336,34 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           <Radio className="mr-2 h-4 w-4" />
           Reannounce {count > 1 ? `(${count})` : ""}
         </ContextMenuItem>
+        {seqDlMixed ? (
+          <>
+            <ContextMenuItem
+              onClick={() => handleSeqDlToggle(true)}
+              disabled={isPending}
+            >
+              <Blocks className="mr-2 h-4 w-4" />
+              Enable Sequential Download {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
+            </ContextMenuItem>
+            <ContextMenuItem
+              onClick={() => handleSeqDlToggle(false)}
+              disabled={isPending}
+            >
+              <Blocks className="mr-2 h-4 w-4" />
+              Disable Sequential Download {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
+            </ContextMenuItem>
+          </>
+        ) : (
+          <ContextMenuItem
+            onClick={() => handleSeqDlToggle(!allSeqDlEnabled)}
+            disabled={isPending}
+          >
+            <Blocks className="mr-2 h-4 w-4" />
+            {allSeqDlEnabled
+              ? `Disable Sequential Download ${count > 1 ? `(${count})` : ""}`
+              : `Enable Sequential Download ${count > 1 ? `(${count})` : ""}`}
+          </ContextMenuItem>
+        )}
         <ContextMenuSeparator />
         <QueueSubmenu
           type="context"
@@ -344,7 +381,22 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
             Search Cross-Seeds
           </ContextMenuItem>
         )}
-        {canCrossSeedSearch && <ContextMenuSeparator />}
+        {onFilterChange && (
+          <ContextMenuItem
+            onClick={handleFilterCrossSeeds}
+            disabled={isPending || isFilteringCrossSeeds || count > 1}
+            title={count > 1 ? "Cross-seed filtering only works with a single selected torrent" : undefined}
+          >
+            <GitBranch className="mr-2 h-4 w-4" />
+            {count > 1 ? (
+              <span className="text-muted-foreground">Filter Cross-Seeds (single selection only)</span>
+            ) : (
+              <>Filter Cross-Seeds</>
+            )}
+            {isFilteringCrossSeeds && <span className="ml-1 text-xs text-muted-foreground">...</span>}
+          </ContextMenuItem>
+        )}
+        {(canCrossSeedSearch || onFilterChange) && <ContextMenuSeparator />}
         <ContextMenuItem
           onClick={() => onPrepareTags("add", hashes, torrents)}
           disabled={isPending}
@@ -369,7 +421,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           useSubcategories={useSubcategories}
         />
         <ContextMenuItem
-          onClick={() => onPrepareLocation(hashes, torrents)}
+          onClick={handleLocationClick}
           disabled={isPending}
         >
           <FolderOpen className="mr-2 h-4 w-4" />
@@ -379,8 +431,8 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           type="context"
           hashCount={count}
           onRenameTorrent={() => onPrepareRenameTorrent(hashes, torrents)}
-          onRenameFile={() => onPrepareRenameFile(hashes, torrents)}
-          onRenameFolder={() => onPrepareRenameFolder(hashes, torrents)}
+          onRenameFile={() => onTorrentSelect?.(torrent, "content")}
+          onRenameFolder={() => onTorrentSelect?.(torrent, "content")}
           isPending={isPending}
           capabilities={capabilities}
         />
@@ -403,14 +455,14 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
         {mixed ? (
           <>
             <ContextMenuItem
-              onClick={() => onAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, hashes, { enable: true })}
+              onClick={() => handleTmmToggle(true)}
               disabled={isPending}
             >
               <Sparkles className="mr-2 h-4 w-4" />
               Enable TMM {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
             </ContextMenuItem>
             <ContextMenuItem
-              onClick={() => onAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, hashes, { enable: false })}
+              onClick={() => handleTmmToggle(false)}
               disabled={isPending}
             >
               <Settings2 className="mr-2 h-4 w-4" />
@@ -419,7 +471,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           </>
         ) : (
           <ContextMenuItem
-            onClick={() => onAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, hashes, { enable: !allEnabled })}
+            onClick={() => handleTmmToggle(!allEnabled)}
             disabled={isPending}
           >
             {allEnabled ? (

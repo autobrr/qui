@@ -100,6 +100,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("logMaxBackups", 3)
 	c.viper.SetDefault("dataDir", "") // Empty means auto-detect (next to config file)
 	c.viper.SetDefault("checkForUpdates", true)
+	c.viper.SetDefault("trackerIconsFetchEnabled", true)
 	c.viper.SetDefault("pprofEnabled", false)
 	c.viper.SetDefault("metricsEnabled", false)
 	c.viper.SetDefault("metricsHost", "127.0.0.1")
@@ -179,13 +180,14 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("host", envPrefix+"HOST")
 	c.viper.BindEnv("port", envPrefix+"PORT")
 	c.viper.BindEnv("baseUrl", envPrefix+"BASE_URL")
-	c.viper.BindEnv("sessionSecret", envPrefix+"SESSION_SECRET")
+	c.bindOrReadFromFile("sessionSecret", envPrefix+"SESSION_SECRET")
 	c.viper.BindEnv("logLevel", envPrefix+"LOG_LEVEL")
 	c.viper.BindEnv("logPath", envPrefix+"LOG_PATH")
 	c.viper.BindEnv("logMaxSize", envPrefix+"LOG_MAX_SIZE")
 	c.viper.BindEnv("logMaxBackups", envPrefix+"LOG_MAX_BACKUPS")
 	c.viper.BindEnv("dataDir", envPrefix+"DATA_DIR")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
+	c.viper.BindEnv("trackerIconsFetchEnabled", envPrefix+"TRACKER_ICONS_FETCH_ENABLED")
 	c.viper.BindEnv("pprofEnabled", envPrefix+"PPROF_ENABLED")
 	c.viper.BindEnv("metricsEnabled", envPrefix+"METRICS_ENABLED")
 	c.viper.BindEnv("metricsHost", envPrefix+"METRICS_HOST")
@@ -196,7 +198,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("oidcEnabled", envPrefix+"OIDC_ENABLED")
 	c.viper.BindEnv("oidcIssuer", envPrefix+"OIDC_ISSUER")
 	c.viper.BindEnv("oidcClientId", envPrefix+"OIDC_CLIENT_ID")
-	c.viper.BindEnv("oidcClientSecret", envPrefix+"OIDC_CLIENT_SECRET")
+	c.bindOrReadFromFile("oidcClientSecret", envPrefix+"OIDC_CLIENT_SECRET")
 	c.viper.BindEnv("oidcRedirectUrl", envPrefix+"OIDC_REDIRECT_URL")
 	c.viper.BindEnv("oidcDisableBuiltInLogin", envPrefix+"OIDC_DISABLE_BUILT_IN_LOGIN")
 
@@ -308,6 +310,11 @@ sessionSecret = "{{ .sessionSecret }}"
 # Check for new releases via api.autobrr.com
 # Default: true
 #checkForUpdates = true
+
+# Tracker icon fetching
+# Disable to prevent qui from requesting tracker favicons from remote trackers.
+# Default: true
+#trackerIconsFetchEnabled = true
 
 # Log level
 # Default: "INFO"
@@ -623,4 +630,27 @@ func (c *AppConfig) GetEncryptionKey() []byte {
 	padded := make([]byte, encryptionKeySize)
 	copy(padded, []byte(secret))
 	return padded
+}
+
+// bindOrReadFromFile sets the viper variable from a file if the _FILE suffixed
+// environment variable is present, otherwise it binds to the regular env var.
+func (c *AppConfig) bindOrReadFromFile(viperVar string, envVar string) {
+	envVarFile := envVar + "_FILE"
+	filePath := os.Getenv(envVarFile)
+	if filePath == "" {
+		c.viper.BindEnv(viperVar, envVar)
+		return
+	}
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		log.Fatal().Err(err).Str("path", filePath).Msg("Could not read " + envVarFile)
+	}
+
+	secret := strings.TrimSpace(string(content))
+	if secret == "" {
+		log.Fatal().Str("path", filePath).Msg(envVarFile + " file is empty")
+	}
+
+	c.viper.Set(viperVar, secret)
 }

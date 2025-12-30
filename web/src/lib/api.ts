@@ -4,6 +4,7 @@
  */
 
 import type {
+  AddTorrentResponse,
   AppPreferences,
   AsyncIndexerFilteringState,
   AuthResponse,
@@ -12,35 +13,41 @@ import type {
   BackupRunsResponse,
   BackupSettings,
   Category,
+  CrossInstanceTorrent,
   CrossSeedApplyResponse,
   CrossSeedAutomationSettings,
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
-  CrossInstanceTorrent,
   CrossSeedInstanceResult,
   CrossSeedRun,
+  CrossSeedSearchRun,
+  CrossSeedSearchSettings,
+  CrossSeedSearchSettingsPatch,
+  CrossSeedSearchStatus,
   CrossSeedTorrentInfo,
   CrossSeedTorrentSearchResponse,
   CrossSeedTorrentSearchSelection,
-  CrossSeedSearchRun,
-  CrossSeedSearchStatus,
+  DiscoverJackettResponse,
   DuplicateTorrentMatch,
   ExternalProgram,
   ExternalProgramCreate,
   ExternalProgramExecute,
   ExternalProgramExecuteResponse,
   ExternalProgramUpdate,
+  IndexerActivityStatus,
   InstanceCapabilities,
+  InstanceCrossSeedCompletionSettings,
   InstanceFormData,
   InstanceReannounceActivity,
   InstanceReannounceCandidate,
   InstanceResponse,
-  JackettIndexer,
   QBittorrentAppInfo,
   RestoreMode,
   RestorePlan,
   RestoreResult,
+  SearchHistoryResponse,
   SortedPeersResponse,
+  WebSeed,
   TorrentCreationParams,
   TorrentCreationTask,
   TorrentCreationTaskResponse,
@@ -49,18 +56,25 @@ import type {
   TorrentProperties,
   TorrentResponse,
   TorrentTracker,
+  IndexerResponse,
   TorznabIndexer,
   TorznabIndexerError,
   TorznabIndexerFormData,
   TorznabIndexerHealth,
   TorznabIndexerLatencyStats,
-  TorznabSearchRequest,
-  TorznabSearchResult,
-  TorznabSearchResponse,
+  TorznabRecentSearch,
   TorznabSearchCacheMetadata,
   TorznabSearchCacheStats,
-  TorznabRecentSearch,
-  User
+  TorznabSearchRequest,
+  TorznabSearchResponse,
+  TorznabSearchResult,
+  TrackerCustomization,
+  TrackerCustomizationInput,
+  TrackerRule,
+  TrackerRuleInput,
+  User,
+  DashboardSettings,
+  DashboardSettingsInput
 } from "@/types"
 import { getApiBaseUrl, withBasePath } from "./base-url"
 
@@ -369,6 +383,25 @@ class ApiClient {
     })
   }
 
+  async importBackupManifest(instanceId: number, manifestFile: File): Promise<BackupRun> {
+    const formData = new FormData()
+    formData.append("archive", manifestFile)
+
+    const response = await fetch(`${API_BASE}/instances/${instanceId}/backups/import`, {
+      method: "POST",
+      body: formData,
+      credentials: "include",
+    })
+
+    if (!response.ok) {
+      const errorMessage = await this.extractErrorMessage(response)
+      this.handleAuthError(response.status, `/instances/${instanceId}/backups/import`, errorMessage)
+      throw new Error(errorMessage)
+    }
+
+    return response.json()
+  }
+
   async previewRestore(
     instanceId: number,
     runId: number,
@@ -398,8 +431,12 @@ class ApiClient {
     })
   }
 
-  getBackupDownloadUrl(instanceId: number, runId: number): string {
-    return withBasePath(`/api/instances/${instanceId}/backups/runs/${runId}/download`)
+  getBackupDownloadUrl(instanceId: number, runId: number, format?: string): string {
+    const url = new URL(withBasePath(`/api/instances/${instanceId}/backups/runs/${runId}/download`), window.location.origin)
+    if (format && format !== 'zip') {
+      url.searchParams.set('format', format)
+    }
+    return url.toString()
   }
 
   getBackupTorrentDownloadUrl(instanceId: number, runId: number, torrentHash: string): string {
@@ -524,6 +561,8 @@ class ApiClient {
       tags?: string[]
       startPaused?: boolean
       savePath?: string
+      useDownloadPath?: boolean
+      downloadPath?: string
       autoTMM?: boolean
       skipHashCheck?: boolean
       sequentialDownload?: boolean
@@ -534,8 +573,9 @@ class ApiClient {
       limitSeedTime?: number
       contentLayout?: string
       rename?: string
+      indexerId?: number
     }
-  ): Promise<{ success: boolean; message?: string }> {
+  ): Promise<AddTorrentResponse> {
     const formData = new FormData()
     // Append each file with the same field name "torrent"
     if (data.torrentFiles) {
@@ -557,6 +597,9 @@ class ApiClient {
     if (data.rename) formData.append("rename", data.rename)
     // Only send savePath if autoTMM is false or undefined
     if (data.savePath && !data.autoTMM) formData.append("savepath", data.savePath)
+    if (data.useDownloadPath !== undefined) formData.append("useDownloadPath", data.useDownloadPath.toString())
+    if (data.downloadPath) formData.append("downloadPath", data.downloadPath)
+    if (data.indexerId) formData.append("indexer_id", data.indexerId.toString())
 
     const response = await fetch(`${API_BASE}/instances/${instanceId}/torrents`, {
       method: "POST",
@@ -595,7 +638,7 @@ class ApiClient {
     instanceId: number,
     data: {
       hashes: string[]
-      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "toggleAutoTMM" | "forceStart" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation" | "editTrackers" | "addTrackers" | "removeTrackers"
+      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "toggleAutoTMM" | "forceStart" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation" | "editTrackers" | "addTrackers" | "removeTrackers" | "toggleSequentialDownload"
       deleteFiles?: boolean
       category?: string
       tags?: string  // Comma-separated tags string
@@ -947,6 +990,31 @@ class ApiClient {
     })
   }
 
+  async getInstanceCompletionSettings(instanceId: number): Promise<InstanceCrossSeedCompletionSettings> {
+    return this.request<InstanceCrossSeedCompletionSettings>(`/cross-seed/completion/${instanceId}`)
+  }
+
+  async updateInstanceCompletionSettings(
+    instanceId: number,
+    payload: Omit<InstanceCrossSeedCompletionSettings, "instanceId">
+  ): Promise<InstanceCrossSeedCompletionSettings> {
+    return this.request<InstanceCrossSeedCompletionSettings>(`/cross-seed/completion/${instanceId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async getCrossSeedSearchSettings(): Promise<CrossSeedSearchSettings> {
+    return this.request<CrossSeedSearchSettings>("/cross-seed/search/settings")
+  }
+
+  async patchCrossSeedSearchSettings(payload: CrossSeedSearchSettingsPatch): Promise<CrossSeedSearchSettings> {
+    return this.request<CrossSeedSearchSettings>("/cross-seed/search/settings", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    })
+  }
+
   async getCrossSeedStatus(): Promise<CrossSeedAutomationStatus> {
     return this.request<CrossSeedAutomationStatus>("/cross-seed/status")
   }
@@ -989,7 +1057,7 @@ class ApiClient {
     return this.request<CrossSeedSearchRun[]>(`/cross-seed/search/runs?${search.toString()}`)
   }
 
-  async triggerCrossSeedRun(payload: { limit?: number; dryRun?: boolean } = {}): Promise<CrossSeedRun> {
+  async triggerCrossSeedRun(payload: { dryRun?: boolean } = {}): Promise<CrossSeedRun> {
     return this.request<CrossSeedRun>("/cross-seed/run", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -1047,8 +1115,9 @@ class ApiClient {
     })
   }
 
-  async getTorrentFiles(instanceId: number, hash: string): Promise<TorrentFile[]> {
-    return this.request<TorrentFile[]>(`/instances/${instanceId}/torrents/${hash}/files`)
+  async getTorrentFiles(instanceId: number, hash: string, options?: { refresh?: boolean }): Promise<TorrentFile[]> {
+    const query = options?.refresh ? "?refresh=1" : ""
+    return this.request<TorrentFile[]>(`/instances/${instanceId}/torrents/${hash}/files${query}`)
   }
 
   async setTorrentFilePriority(instanceId: number, hash: string, indices: number[], priority: number): Promise<void> {
@@ -1080,6 +1149,10 @@ class ApiClient {
 
   async getTorrentPeers(instanceId: number, hash: string): Promise<SortedPeersResponse> {
     return this.request<SortedPeersResponse>(`/instances/${instanceId}/torrents/${hash}/peers`)
+  }
+
+  async getTorrentWebSeeds(instanceId: number, hash: string): Promise<WebSeed[]> {
+    return this.request<WebSeed[]>(`/instances/${instanceId}/torrents/${hash}/webseeds`)
   }
 
   async addPeersToTorrents(instanceId: number, hashes: string[], peers: string[]): Promise<void> {
@@ -1201,6 +1274,43 @@ class ApiClient {
 
   async getActiveTrackers(instanceId: number): Promise<Record<string, string>> {
     return this.request(`/instances/${instanceId}/trackers`)
+  }
+
+  async listTrackerRules(instanceId: number): Promise<TrackerRule[]> {
+    return this.request(`/instances/${instanceId}/tracker-rules`)
+  }
+
+  async createTrackerRule(instanceId: number, payload: TrackerRuleInput): Promise<TrackerRule> {
+    return this.request(`/instances/${instanceId}/tracker-rules`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async updateTrackerRule(instanceId: number, ruleId: number, payload: TrackerRuleInput): Promise<TrackerRule> {
+    return this.request(`/instances/${instanceId}/tracker-rules/${ruleId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async deleteTrackerRule(instanceId: number, ruleId: number): Promise<void> {
+    return this.request(`/instances/${instanceId}/tracker-rules/${ruleId}`, {
+      method: "DELETE",
+    })
+  }
+
+  async reorderTrackerRules(instanceId: number, orderedIds: number[]): Promise<void> {
+    return this.request(`/instances/${instanceId}/tracker-rules/order`, {
+      method: "PUT",
+      body: JSON.stringify({ orderedIds }),
+    })
+  }
+
+  async applyTrackerRules(instanceId: number): Promise<void> {
+    return this.request(`/instances/${instanceId}/tracker-rules/apply`, {
+      method: "POST",
+    })
   }
 
   // User endpoints
@@ -1412,6 +1522,43 @@ class ApiClient {
     })
   }
 
+  // Tracker Customization endpoints
+  async listTrackerCustomizations(): Promise<TrackerCustomization[]> {
+    return this.request<TrackerCustomization[]>("/tracker-customizations")
+  }
+
+  async createTrackerCustomization(data: TrackerCustomizationInput): Promise<TrackerCustomization> {
+    return this.request<TrackerCustomization>("/tracker-customizations", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateTrackerCustomization(id: number, data: TrackerCustomizationInput): Promise<TrackerCustomization> {
+    return this.request<TrackerCustomization>(`/tracker-customizations/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteTrackerCustomization(id: number): Promise<void> {
+    return this.request(`/tracker-customizations/${id}`, {
+      method: "DELETE",
+    })
+  }
+
+  // Dashboard Settings endpoints
+  async getDashboardSettings(): Promise<DashboardSettings> {
+    return this.request<DashboardSettings>("/dashboard-settings")
+  }
+
+  async updateDashboardSettings(data: DashboardSettingsInput): Promise<DashboardSettings> {
+    return this.request<DashboardSettings>("/dashboard-settings", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
   // Torznab Indexer endpoints
   async listTorznabIndexers(): Promise<TorznabIndexer[]> {
     return this.request<TorznabIndexer[]>("/torznab/indexers")
@@ -1421,15 +1568,15 @@ class ApiClient {
     return this.request<TorznabIndexer>(`/torznab/indexers/${id}`)
   }
 
-  async createTorznabIndexer(data: TorznabIndexerFormData): Promise<TorznabIndexer> {
-    return this.request<TorznabIndexer>("/torznab/indexers", {
+  async createTorznabIndexer(data: TorznabIndexerFormData): Promise<IndexerResponse> {
+    return this.request<IndexerResponse>("/torznab/indexers", {
       method: "POST",
       body: JSON.stringify(data),
     })
   }
 
-  async updateTorznabIndexer(id: number, data: Partial<TorznabIndexerFormData>): Promise<TorznabIndexer> {
-    return this.request<TorznabIndexer>(`/torznab/indexers/${id}`, {
+  async updateTorznabIndexer(id: number, data: Partial<TorznabIndexerFormData>): Promise<IndexerResponse> {
+    return this.request<IndexerResponse>(`/torznab/indexers/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     })
@@ -1453,8 +1600,17 @@ class ApiClient {
     })
   }
 
-  async discoverJackettIndexers(baseUrl: string, apiKey: string): Promise<JackettIndexer[]> {
-    return this.request<JackettIndexer[]>("/torznab/indexers/discover", {
+  async getIndexerActivityStatus(): Promise<IndexerActivityStatus> {
+    return this.request<IndexerActivityStatus>("/torznab/activity")
+  }
+
+  async getSearchHistory(limit?: number): Promise<SearchHistoryResponse> {
+    const params = limit ? `?limit=${limit}` : ""
+    return this.request<SearchHistoryResponse>(`/torznab/search/history${params}`)
+  }
+
+  async discoverJackettIndexers(baseUrl: string, apiKey: string): Promise<DiscoverJackettResponse> {
+    return this.request<DiscoverJackettResponse>("/torznab/indexers/discover", {
       method: "POST",
       body: JSON.stringify({ base_url: baseUrl, api_key: apiKey }),
     })

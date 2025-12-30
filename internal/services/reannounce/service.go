@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -40,9 +41,12 @@ type Service struct {
 	now           func() time.Time
 	runJob        func(context.Context, int, string, string, string)
 	spawn         func(func())
-	history       map[int][]ActivityEvent
-	historyMu     sync.RWMutex
-	historyCap    int
+	// Separate history buffers per outcome type to prevent skipped events from pushing out succeeded/failed
+	historySucceeded map[int][]ActivityEvent
+	historyFailed    map[int][]ActivityEvent
+	historySkipped   map[int][]ActivityEvent
+	historyMu        sync.RWMutex
+	historyCap       int
 }
 
 type reannounceJob struct {
@@ -118,15 +122,17 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, settingsStore *
 		cfg.HistorySize = DefaultConfig().HistorySize
 	}
 	svc := &Service{
-		cfg:           cfg,
-		instanceStore: instanceStore,
-		settingsStore: settingsStore,
-		settingsCache: cache,
-		clientPool:    clientPool,
-		syncManager:   syncManager,
-		j:             make(map[int]map[string]*reannounceJob),
-		history:       make(map[int][]ActivityEvent),
-		historyCap:    cfg.HistorySize,
+		cfg:              cfg,
+		instanceStore:    instanceStore,
+		settingsStore:    settingsStore,
+		settingsCache:    cache,
+		clientPool:       clientPool,
+		syncManager:      syncManager,
+		j:                make(map[int]map[string]*reannounceJob),
+		historySucceeded: make(map[int][]ActivityEvent),
+		historyFailed:    make(map[int][]ActivityEvent),
+		historySkipped:   make(map[int][]ActivityEvent),
+		historyCap:       cfg.HistorySize,
 	}
 	svc.now = time.Now
 	svc.runJob = svc.executeJob
@@ -165,7 +171,7 @@ func (s *Service) RequestReannounce(ctx context.Context, instanceID int, hashes 
 		if !s.torrentMeetsCriteria(torrent, settings) {
 			continue
 		}
-		if !s.trackerProblemDetected(torrent.Trackers) {
+		if s.hasHealthyTracker(torrent.Trackers) {
 			continue
 		}
 		trackers := s.getProblematicTrackers(torrent.Trackers)
@@ -214,16 +220,40 @@ func (s *Service) scanInstances(ctx context.Context) {
 }
 
 func (s *Service) scanInstance(ctx context.Context, instanceID int, settings *models.InstanceReannounceSettings) {
-	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
+	client, err := s.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("reannounce: client unavailable for scan")
+		return
+	}
+
+	var torrents []qbt.Torrent
+
+	// For qBittorrent 5.1+ (WebAPI >= 2.11.4), fetch torrents with tracker data in one call.
+	// For older versions, use the sync manager cache (trackers fetched separately in executeJob).
+	if client.SupportsTrackerHealth() {
+		torrents, err = client.GetTorrentsCtx(ctx, qbt.TorrentFilterOptions{
+			Filter:          qbt.TorrentFilterStalled,
+			IncludeTrackers: true,
+		})
+	} else {
+		// Older qBittorrent - use cached torrents; executeJob will fetch fresh trackers
+		torrents, err = s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{
+			Filter: qbt.TorrentFilterStalled,
+		})
+	}
 	if err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Msg("reannounce: failed to fetch torrents")
 		return
 	}
+
 	for _, torrent := range torrents {
 		if !s.torrentMeetsCriteria(torrent, settings) {
 			continue
 		}
-		if !s.trackerProblemDetected(torrent.Trackers) {
+		// Skip if we have tracker data and it shows healthy.
+		// For older qBittorrent without IncludeTrackers, Trackers will be empty
+		// and we'll enqueue the torrent - executeJob will check fresh tracker status.
+		if len(torrent.Trackers) > 0 && s.hasHealthyTracker(torrent.Trackers) {
 			continue
 		}
 		trackers := s.getProblematicTrackers(torrent.Trackers)
@@ -247,7 +277,9 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 		return nil
 	}
 
-	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
+	torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{
+		Filter: qbt.TorrentFilterStalled,
+	})
 	if err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Msg("reannounce: failed to fetch torrents for snapshot")
 		return nil
@@ -258,16 +290,26 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 
 	now := s.currentTime()
 	instJobs := s.j[instanceID]
+	debounceWindow := s.effectiveDebounceWindow(settings)
 
 	var result []MonitoredTorrent
 	for _, torrent := range torrents {
-		if !s.torrentMeetsCriteria(torrent, settings) {
+		// Use torrentMatchesFilters (not torrentMeetsCriteria) so we can show
+		// torrents still in their initial wait period
+		if !s.torrentMatchesFilters(torrent, settings) {
 			continue
 		}
 
-		hasProblem := s.trackerProblemDetected(torrent.Trackers)
-		waiting := s.trackersUpdating(torrent.Trackers) && !hasProblem
-		if !hasProblem && !waiting {
+		// Check if torrent is still in initial wait period
+		inInitialWait := settings.InitialWaitSeconds > 0 && torrent.TimeActive < int64(settings.InitialWaitSeconds)
+
+		healthy := s.hasHealthyTracker(torrent.Trackers)
+		updating := s.trackersUpdating(torrent.Trackers)
+		hasProblem := !healthy && !updating
+		waitingForTrackers := updating && !healthy
+
+		// Show torrent if: has problem, waiting for trackers, OR in initial wait
+		if !hasProblem && !waitingForTrackers && !inInitialWait {
 			continue
 		}
 
@@ -281,7 +323,7 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 			if job, ok := instJobs[hashUpper]; ok {
 				if job.isRunning {
 					state = MonitoredTorrentStateReannouncing
-				} else if !job.lastCompleted.IsZero() && now.Sub(job.lastCompleted) < s.cfg.DebounceWindow {
+				} else if !job.lastCompleted.IsZero() && now.Sub(job.lastCompleted) < debounceWindow {
 					state = MonitoredTorrentStateCooldown
 				}
 			}
@@ -291,7 +333,7 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 
 		result = append(result, MonitoredTorrent{
 			InstanceID:        instanceID,
-			Hash:              strings.ToLower(hashUpper),
+			Hash:              hashUpper,
 			TorrentName:       torrent.Name,
 			Trackers:          trackers,
 			TimeActiveSeconds: torrent.TimeActive,
@@ -299,7 +341,7 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 			Tags:              torrent.Tags,
 			State:             state,
 			HasTrackerProblem: hasProblem,
-			WaitingForInitial: waiting,
+			WaitingForInitial: inInitialWait || waitingForTrackers,
 		})
 	}
 
@@ -336,13 +378,17 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 		return true
 	}
 
-	// Check debounce window if Aggressive mode is disabled
 	settings := s.getSettings(baseCtx, instanceID)
 	isAggressive := settings != nil && settings.Aggressive
+	debounceWindow := s.effectiveDebounceWindow(settings)
 
-	if !isAggressive && !job.lastCompleted.IsZero() {
-		if elapsed := now.Sub(job.lastCompleted); elapsed < s.cfg.DebounceWindow {
-			s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, "debounced during cooldown window")
+	if !job.lastCompleted.IsZero() && debounceWindow > 0 {
+		if elapsed := now.Sub(job.lastCompleted); elapsed < debounceWindow {
+			reason := "debounced during cooldown window"
+			if isAggressive {
+				reason = "debounced during retry interval window"
+			}
+			s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, reason)
 			return true
 		}
 	}
@@ -383,23 +429,19 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeFailed, fmt.Sprintf("failed to load trackers: %v", err))
 		return
 	}
+	if s.hasHealthyTracker(trackerList) {
+		healthyTrackers := s.getHealthyTrackers(trackerList)
+		s.recordActivity(instanceID, hash, torrentName, healthyTrackers, ActivityOutcomeSkipped, "tracker healthy")
+		return
+	}
+	// No healthy tracker - proceed with reannounce (trackers may be updating or have errors)
 	freshTrackers := s.getProblematicTrackers(trackerList)
 	if freshTrackers == "" {
 		freshTrackers = initialTrackers
 	}
-	if !s.trackerProblemDetected(trackerList) {
-		s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeSkipped, "tracker healthy")
-		return
-	}
-	if s.trackersUpdating(trackerList) {
-		if ok := s.waitForInitialContact(ctx, client, hash, settings.InitialWaitSeconds); ok {
-			s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeSkipped, "tracker healthy after initial wait")
-			return
-		}
-	}
 	opts := &qbt.ReannounceOptions{
 		Interval:        settings.ReannounceIntervalSeconds,
-		MaxAttempts:     3,
+		MaxAttempts:     settings.MaxRetries,
 		DeleteOnFailure: false,
 	}
 	if err := client.ReannounceTorrentWithRetry(ctx, hash, opts); err != nil {
@@ -445,31 +487,6 @@ func (s *Service) baseContext() context.Context {
 	return s.baseCtx
 }
 
-func (s *Service) waitForInitialContact(ctx context.Context, client *qbittorrent.Client, hash string, waitSeconds int) bool {
-	if waitSeconds <= 0 {
-		waitSeconds = 10
-	}
-	deadlineCtx, cancel := context.WithTimeout(ctx, time.Duration(waitSeconds)*time.Second)
-	defer cancel()
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-deadlineCtx.Done():
-			return false
-		case <-ticker.C:
-			trackers, err := client.GetTorrentTrackersCtx(deadlineCtx, hash)
-			if err != nil {
-				return false
-			}
-			if s.trackersUpdating(trackers) {
-				continue
-			}
-			return !s.trackerProblemDetected(trackers)
-		}
-	}
-}
-
 func (s *Service) lookupTorrents(ctx context.Context, instanceID int, hashes []string) map[string]qbt.Torrent {
 	result := make(map[string]qbt.Torrent)
 	if len(hashes) == 0 {
@@ -503,12 +520,28 @@ func (s *Service) getSettings(ctx context.Context, instanceID int) *models.Insta
 			}
 			return settings
 		}
-		log.Debug().Err(err).Int("instanceID", instanceID).Msg("reannounce: falling back to defaults")
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("reannounce: database error loading settings, using defaults")
 	}
 	return models.DefaultInstanceReannounceSettings(instanceID)
 }
 
+// torrentMeetsCriteria checks if a torrent is ready for reannounce consideration.
+// This includes filter matching AND the initial wait period.
 func (s *Service) torrentMeetsCriteria(torrent qbt.Torrent, settings *models.InstanceReannounceSettings) bool {
+	if !s.torrentMatchesFilters(torrent, settings) {
+		return false
+	}
+	// Check initial wait - torrent must be old enough
+	if settings.InitialWaitSeconds > 0 && torrent.TimeActive < int64(settings.InitialWaitSeconds) {
+		return false
+	}
+	return true
+}
+
+// torrentMatchesFilters checks if a torrent matches the monitoring scope (state, age,
+// category/tag/tracker filters) WITHOUT checking the initial wait period. Used by
+// GetMonitoredTorrents to show new torrents that are still in their initial wait.
+func (s *Service) torrentMatchesFilters(torrent qbt.Torrent, settings *models.InstanceReannounceSettings) bool {
 	if settings == nil || !settings.Enabled {
 		return false
 	}
@@ -617,35 +650,30 @@ func (s *Service) torrentMeetsCriteria(torrent qbt.Torrent, settings *models.Ins
 	return false
 }
 
-func (s *Service) trackerProblemDetected(trackers []qbt.TorrentTracker) bool {
-	if len(trackers) == 0 {
-		return false
-	}
-	var hasWorking bool
-	var hasProblem bool
+// hasHealthyTracker returns true if at least one tracker is working
+// (TrackerStatusOK without an unregistered message). This matches qbrr's
+// lenient approach: unregistered trackers are skipped, and we check if any
+// other tracker is healthy. For multi-tracker torrents, if one tracker is
+// working, reannouncing won't help.
+func (s *Service) hasHealthyTracker(trackers []qbt.TorrentTracker) bool {
 	for _, tracker := range trackers {
-		switch tracker.Status {
-		case qbt.TrackerStatusDisabled:
+		if tracker.Status == qbt.TrackerStatusDisabled {
 			continue
-		case qbt.TrackerStatusOK:
-			if qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message) {
-				hasProblem = true
-			} else {
-				hasWorking = true
-			}
-		case qbt.TrackerStatusNotWorking:
-			if qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message) || qbittorrent.TrackerMessageMatchesDown(tracker.Message) {
-				hasProblem = true
-			}
-		case qbt.TrackerStatusUpdating, qbt.TrackerStatusNotContacted:
-			if qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message) {
-				hasProblem = true
-			}
+		}
+		// Check message first to catch OK status with unregistered msg
+		if qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message) {
+			continue
+		}
+		if tracker.Status == qbt.TrackerStatusOK {
+			return true
 		}
 	}
-	return hasProblem && !hasWorking
+	return false
 }
 
+// getProblematicTrackers returns a comma-separated list of tracker domains
+// that are not healthy (anything other than TrackerStatusOK without an
+// unregistered message).
 func (s *Service) getProblematicTrackers(trackers []qbt.TorrentTracker) string {
 	if len(trackers) == 0 {
 		return ""
@@ -656,22 +684,11 @@ func (s *Service) getProblematicTrackers(trackers []qbt.TorrentTracker) string {
 		if tracker.Status == qbt.TrackerStatusDisabled {
 			continue
 		}
-		var isProblematic bool
-		switch tracker.Status {
-		case qbt.TrackerStatusOK:
-			if qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message) {
-				isProblematic = true
-			}
-		case qbt.TrackerStatusNotWorking:
-			if qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message) || qbittorrent.TrackerMessageMatchesDown(tracker.Message) {
-				isProblematic = true
-			}
-		case qbt.TrackerStatusUpdating, qbt.TrackerStatusNotContacted:
-			if qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message) {
-				isProblematic = true
-			}
-		}
-		if isProblematic {
+		// A tracker is problematic if it's not healthy
+		// (i.e., not TrackerStatusOK, or OK but with unregistered message)
+		isHealthy := tracker.Status == qbt.TrackerStatusOK &&
+			!qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message)
+		if !isHealthy {
 			domain := s.extractTrackerDomain(tracker.Url)
 			if domain != "" {
 				domainLower := strings.ToLower(domain)
@@ -683,6 +700,35 @@ func (s *Service) getProblematicTrackers(trackers []qbt.TorrentTracker) string {
 		}
 	}
 	return strings.Join(problematicDomains, ", ")
+}
+
+// getHealthyTrackers returns a comma-separated list of tracker domains that are
+// healthy (TrackerStatusOK without an unregistered message). Used for logging
+// when skipping a torrent because it has working trackers.
+func (s *Service) getHealthyTrackers(trackers []qbt.TorrentTracker) string {
+	if len(trackers) == 0 {
+		return ""
+	}
+	var healthyDomains []string
+	seenDomains := make(map[string]struct{})
+	for _, tracker := range trackers {
+		if tracker.Status == qbt.TrackerStatusDisabled {
+			continue
+		}
+		isHealthy := tracker.Status == qbt.TrackerStatusOK &&
+			!qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message)
+		if isHealthy {
+			domain := s.extractTrackerDomain(tracker.Url)
+			if domain != "" {
+				domainLower := strings.ToLower(domain)
+				if _, exists := seenDomains[domainLower]; !exists {
+					seenDomains[domainLower] = struct{}{}
+					healthyDomains = append(healthyDomains, domain)
+				}
+			}
+		}
+	}
+	return strings.Join(healthyDomains, ", ")
 }
 
 func (s *Service) trackersUpdating(trackers []qbt.TorrentTracker) bool {
@@ -749,13 +795,23 @@ func (s *Service) recordActivity(instanceID int, hash string, torrentName string
 	}
 	s.historyMu.Lock()
 	defer s.historyMu.Unlock()
-	if s.history == nil {
-		s.history = make(map[int][]ActivityEvent)
+
+	// Initialize maps if needed
+	if s.historySucceeded == nil {
+		s.historySucceeded = make(map[int][]ActivityEvent)
 	}
+	if s.historyFailed == nil {
+		s.historyFailed = make(map[int][]ActivityEvent)
+	}
+	if s.historySkipped == nil {
+		s.historySkipped = make(map[int][]ActivityEvent)
+	}
+
 	limit := s.historyCap
 	if limit <= 0 {
 		limit = defaultHistorySize
 	}
+
 	event := ActivityEvent{
 		InstanceID:  instanceID,
 		Hash:        strings.ToUpper(strings.TrimSpace(hash)),
@@ -765,28 +821,60 @@ func (s *Service) recordActivity(instanceID int, hash string, torrentName string
 		Reason:      strings.TrimSpace(reason),
 		Timestamp:   s.currentTime(),
 	}
-	s.history[instanceID] = append(s.history[instanceID], event)
-	if len(s.history[instanceID]) > limit {
-		s.history[instanceID] = s.history[instanceID][len(s.history[instanceID])-limit:]
+
+	// Store in the appropriate buffer based on outcome.
+	// Succeeded/failed keep 2x limit entries, skipped keeps 1x limit.
+	switch outcome {
+	case ActivityOutcomeSucceeded:
+		s.historySucceeded[instanceID] = append(s.historySucceeded[instanceID], event)
+		if len(s.historySucceeded[instanceID]) > limit*2 {
+			s.historySucceeded[instanceID] = s.historySucceeded[instanceID][len(s.historySucceeded[instanceID])-limit*2:]
+		}
+	case ActivityOutcomeFailed:
+		s.historyFailed[instanceID] = append(s.historyFailed[instanceID], event)
+		if len(s.historyFailed[instanceID]) > limit*2 {
+			s.historyFailed[instanceID] = s.historyFailed[instanceID][len(s.historyFailed[instanceID])-limit*2:]
+		}
+	case ActivityOutcomeSkipped:
+		s.historySkipped[instanceID] = append(s.historySkipped[instanceID], event)
+		if len(s.historySkipped[instanceID]) > limit {
+			s.historySkipped[instanceID] = s.historySkipped[instanceID][len(s.historySkipped[instanceID])-limit:]
+		}
 	}
 }
 
 // GetActivity returns the most recent activity events for an instance, newest last.
+// Events from all outcome types are merged and sorted by timestamp.
 func (s *Service) GetActivity(instanceID int, limit int) []ActivityEvent {
 	if s == nil || instanceID == 0 {
 		return nil
 	}
 	s.historyMu.RLock()
 	defer s.historyMu.RUnlock()
-	events := s.history[instanceID]
-	if len(events) == 0 {
+
+	// Merge all three buffers
+	var all []ActivityEvent
+	all = append(all, s.historySucceeded[instanceID]...)
+	all = append(all, s.historyFailed[instanceID]...)
+	all = append(all, s.historySkipped[instanceID]...)
+
+	if len(all) == 0 {
 		return nil
 	}
-	if limit > 0 && len(events) > limit {
-		events = events[len(events)-limit:]
+
+	// Sort by timestamp ascending (oldest first, newest last)
+	sort.Slice(all, func(i, j int) bool {
+		return all[i].Timestamp.Before(all[j].Timestamp)
+	})
+
+	// Apply limit (take the most recent)
+	if limit > 0 && len(all) > limit {
+		all = all[len(all)-limit:]
 	}
-	out := make([]ActivityEvent, len(events))
-	copy(out, events)
+
+	// Return a copy
+	out := make([]ActivityEvent, len(all))
+	copy(out, all)
 	return out
 }
 
@@ -795,6 +883,17 @@ func (s *Service) currentTime() time.Time {
 		return s.now()
 	}
 	return time.Now()
+}
+
+// effectiveDebounceWindow returns the debounce duration to use for cooldown checks.
+// aggressive mode uses the retry interval; otherwise the global debounce window applies.
+func (s *Service) effectiveDebounceWindow(settings *models.InstanceReannounceSettings) time.Duration {
+	if settings != nil && settings.Aggressive {
+		if interval := time.Duration(settings.ReannounceIntervalSeconds) * time.Second; interval > 0 {
+			return interval
+		}
+	}
+	return s.cfg.DebounceWindow
 }
 
 func (s *Service) extractTrackerDomain(trackerURL string) string {

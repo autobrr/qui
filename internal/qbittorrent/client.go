@@ -18,34 +18,38 @@ import (
 )
 
 var (
-	setTagsMinVersion         = semver.MustParse("2.11.4")
-	torrentCreationMinVersion = semver.MustParse("2.11.2")
-	exportTorrentMinVersion   = semver.MustParse("2.8.11")
-	trackerEditingMinVersion  = semver.MustParse("2.2.0")
-	filePriorityMinVersion    = semver.MustParse("2.2.0")
-	renameTorrentMinVersion   = semver.MustParse("2.0.0")
-	renameFileMinVersion      = semver.MustParse("2.4.0")
-	renameFolderMinVersion    = semver.MustParse("2.7.0")
-	subcategoriesMinVersion   = semver.MustParse("2.9.0")
+	setTagsMinVersion          = semver.MustParse("2.11.4")
+	torrentCreationMinVersion  = semver.MustParse("2.11.2")
+	exportTorrentMinVersion    = semver.MustParse("2.8.11")
+	trackerEditingMinVersion   = semver.MustParse("2.2.0")
+	filePriorityMinVersion     = semver.MustParse("2.2.0")
+	renameTorrentMinVersion    = semver.MustParse("2.0.0")
+	renameFileMinVersion       = semver.MustParse("2.4.0")
+	renameFolderMinVersion     = semver.MustParse("2.7.0")
+	subcategoriesMinVersion    = semver.MustParse("2.9.0")
+	torrentTmpPathMinVersion   = semver.MustParse("2.8.4")
+	pathAutocompleteMinVersion = semver.MustParse("2.11.2")
 )
 
 type Client struct {
 	*qbt.Client
-	instanceID              int
-	webAPIVersion           string
-	supportsSetTags         bool
-	supportsTorrentCreation bool
-	supportsTorrentExport   bool
-	supportsTrackerEditing  bool
-	supportsRenameTorrent   bool
-	supportsRenameFile      bool
-	supportsRenameFolder    bool
-	supportsFilePriority    bool
-	supportsSubcategories   bool
-	lastHealthCheck         time.Time
-	isHealthy               bool
-	syncManager             *qbt.SyncManager
-	peerSyncManager         map[string]*qbt.PeerSyncManager // Map of torrent hash to PeerSyncManager
+	instanceID               int
+	webAPIVersion            string
+	supportsSetTags          bool
+	supportsTorrentCreation  bool
+	supportsTorrentExport    bool
+	supportsTrackerEditing   bool
+	supportsRenameTorrent    bool
+	supportsRenameFile       bool
+	supportsRenameFolder     bool
+	supportsFilePriority     bool
+	supportsSubcategories    bool
+	supportsTorrentTmpPath   bool
+	supportsPathAutocomplete bool
+	lastHealthCheck          time.Time
+	isHealthy                bool
+	syncManager              *qbt.SyncManager
+	peerSyncManager          map[string]*qbt.PeerSyncManager // Map of torrent hash to PeerSyncManager
 	// optimisticUpdates stores temporary optimistic state changes for this instance
 	optimisticUpdates *ttlcache.Cache[string, *OptimisticTorrentUpdate]
 	trackerExclusions map[string]map[string]struct{} // Domains to hide hashes from until fresh sync arrives
@@ -120,7 +124,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		client.updateHealthStatus(true)
 		client.updateServerState(data)
 		client.handleCompletionUpdates(data)
-		log.Debug().Int("instanceID", instanceID).Int("torrentCount", len(data.Torrents)).Msg("Sync manager update received, marking client as healthy")
+		log.Trace().Int("instanceID", instanceID).Int("torrentCount", len(data.Torrents)).Msg("Sync manager update received, marking client as healthy")
 	}
 
 	syncOpts.OnError = func(err error) {
@@ -247,6 +251,8 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 	c.supportsRenameFile = !v.LessThan(renameFileMinVersion)
 	c.supportsRenameFolder = !v.LessThan(renameFolderMinVersion)
 	c.supportsSubcategories = !v.LessThan(subcategoriesMinVersion)
+	c.supportsTorrentTmpPath = !v.LessThan(torrentTmpPathMinVersion)
+	c.supportsPathAutocomplete = !v.LessThan(pathAutocompleteMinVersion)
 }
 
 func (c *Client) updateServerState(data *qbt.MainData) {
@@ -359,6 +365,18 @@ func (c *Client) SupportsSubcategories() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsSubcategories
+}
+
+func (c *Client) SupportsTorrentTmpPath() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsTorrentTmpPath
+}
+
+func (c *Client) SupportsPathAutocomplete() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsPathAutocomplete
 }
 
 // getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)
