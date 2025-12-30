@@ -30,6 +30,7 @@ import {
   SelectValue
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { usePersistedLogExclusions } from "@/hooks/usePersistedLogExclusions"
 import { api } from "@/lib/api"
 import { copyTextToClipboard } from "@/lib/utils"
 import type { LogSettingsUpdate } from "@/types"
@@ -325,7 +326,15 @@ function formatTime(isoTime: string): string {
   }
 }
 
-function LogEntry({ entry, onSelect }: { entry: ParsedLogEntry; onSelect?: () => void }) {
+function LogEntry({
+  entry,
+  onSelect,
+  onMute,
+}: {
+  entry: ParsedLogEntry
+  onSelect?: () => void
+  onMute?: () => void
+}) {
   const extraKeys = Object.keys(entry.extra)
   const isClickable = onSelect && entry.isJson
 
@@ -336,20 +345,30 @@ function LogEntry({ entry, onSelect }: { entry: ParsedLogEntry; onSelect?: () =>
     }
   }
 
+  const handleMute = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onMute?.()
+  }
+
   return (
     <div
-      className={`flex gap-2 py-0.5 whitespace-nowrap hover:bg-muted/50 ${isClickable ? "cursor-pointer focus:outline-none focus:bg-muted/50" : ""}`}
+      className={`group flex gap-2 py-0.5 whitespace-nowrap hover:bg-muted/50 ${isClickable ? "cursor-pointer focus:outline-none focus:bg-muted/50" : ""}`}
       onClick={isClickable ? onSelect : undefined}
       onKeyDown={handleKeyDown}
       role={isClickable ? "button" : undefined}
       tabIndex={isClickable ? 0 : undefined}
     >
       <span className="shrink-0 text-muted-foreground/60">{formatTime(entry.time)}</span>
-      <span
-        className={`shrink-0 w-12 inline-flex items-center justify-center text-[10px] font-medium uppercase rounded py-0.5 ${LEVEL_BADGE_COLORS[entry.level]}`}
+      <button
+        type="button"
+        onClick={onMute ? handleMute : undefined}
+        disabled={!onMute}
+        title={onMute ? "Mute similar entries" : undefined}
+        className={`group/mute shrink-0 w-12 h-4 inline-flex items-center justify-center text-[10px] font-medium uppercase rounded ${LEVEL_BADGE_COLORS[entry.level]} ${onMute ? "cursor-pointer" : ""}`}
       >
-        {entry.level}
-      </span>
+        <span className={onMute ? "group-hover/mute:hidden" : ""}>{entry.level}</span>
+        {onMute && <X className="hidden group-hover/mute:block size-2.5" />}
+      </button>
       <span className={LEVEL_COLORS[entry.level]}>{entry.message}</span>
       {extraKeys.length > 0 && (
         <span className="text-muted-foreground/50">
@@ -522,6 +541,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
   const [searchQuery, setSearchQuery] = useState("")
   const [droppedWhilePaused, setDroppedWhilePaused] = useState(false)
   const [selectedEntry, setSelectedEntry] = useState<ParsedLogEntry | null>(null)
+  const [logExclusions, setLogExclusions] = usePersistedLogExclusions()
   const scrollRef = useRef<HTMLDivElement>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
   const reconnectTimeoutRef = useRef<number | null>(null)
@@ -605,6 +625,9 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
       // Filter by level
       if (!selectedLevels.has(e.level)) return false
 
+      // Filter by muted messages
+      if (logExclusions.includes(e.message)) return false
+
       // Filter by search query
       if (query) {
         const matchesMessage = e.message.toLowerCase().includes(query)
@@ -617,7 +640,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
 
       return true
     })
-  }, [parsedEntries, selectedLevels, searchQuery])
+  }, [parsedEntries, selectedLevels, searchQuery, logExclusions])
 
   const toggleLevel = (level: LogLevel) => {
     setSelectedLevels((prev) => {
@@ -643,6 +666,16 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
 
   const handleClear = () => {
     setLines([])
+  }
+
+  const handleMuteMessage = (message: string) => {
+    if (!logExclusions.includes(message)) {
+      setLogExclusions([...logExclusions, message])
+    }
+  }
+
+  const handleUnmuteMessage = (message: string) => {
+    setLogExclusions(logExclusions.filter((m) => m !== message))
   }
 
   return (
@@ -735,6 +768,48 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
               </div>
             </PopoverContent>
           </Popover>
+          {logExclusions.length > 0 && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 gap-1">
+                  <span className="text-xs">{logExclusions.length} Muted</span>
+                  <ChevronDown className="h-3.5 w-3.5 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-72 p-2" align="start">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-xs font-medium">Muted Messages</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => setLogExclusions([])}
+                  >
+                    Clear all
+                  </Button>
+                </div>
+                <div className="space-y-1 max-h-48 overflow-auto">
+                  {logExclusions.map((message) => (
+                    <div
+                      key={message}
+                      className="flex items-center justify-between gap-2 px-2 py-1 rounded hover:bg-muted group"
+                    >
+                      <span className="text-xs truncate" title={message}>
+                        {message}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleUnmuteMessage(message)}
+                        className="shrink-0 text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
           <Button variant="outline" size="sm" onClick={handleClear}>
             Clear
           </Button>
@@ -763,6 +838,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
                 key={entry.id}
                 entry={entry}
                 onSelect={() => setSelectedEntry(entry)}
+                onMute={() => handleMuteMessage(entry.message)}
               />
             ))
           ) : (
@@ -815,7 +891,7 @@ export function LogSettingsPanel() {
           <div className="space-y-1">
             <CardTitle>Logs</CardTitle>
             <CardDescription>
-              Real-time application logs. Disable auto-scroll to browse history.
+              Real-time application logs. Click a level badge to mute similar entries.
             </CardDescription>
           </div>
           <Popover>
