@@ -72,15 +72,17 @@ ENV HOME="/config" \
     XDG_DATA_HOME="/config"
 
 # Install runtime dependencies
-RUN apk --no-cache add ca-certificates curl tzdata
+RUN apk --no-cache add ca-certificates curl tzdata su-exec
 
 WORKDIR /config
 
 # Declare volume for persistent data
 VOLUME /config
 
-# Copy binary
+# Copy binary and entrypoint
 COPY --from=go-builder /app/qui /usr/local/bin/
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 7476
 
@@ -88,5 +90,5 @@ EXPOSE 7476
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:7476/health || exit 1
 
-ENTRYPOINT ["/usr/local/bin/qui"]
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["serve"]

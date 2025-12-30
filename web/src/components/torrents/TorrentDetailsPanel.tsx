@@ -20,7 +20,7 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePersistedTabState } from "@/hooks/usePersistedTabState"
 import { api } from "@/lib/api"
-import { useCrossSeedMatches } from "@/lib/cross-seed-utils"
+import { isHardlinkManaged, useCrossSeedMatches } from "@/lib/cross-seed-utils"
 import { getLinuxCategory, getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxSavePath, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
@@ -139,7 +139,13 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
 
   // Use the cross-seed hook to find matching torrents
-  const { matchingTorrents, isLoadingMatches } = useCrossSeedMatches(instanceId, torrent, isCrossSeedTabActive)
+  const { matchingTorrents, isLoadingMatches, allInstances } = useCrossSeedMatches(instanceId, torrent, isCrossSeedTabActive)
+
+  // Build instance lookup map for CrossSeedTable
+  const instanceById = useMemo(
+    () => new Map(allInstances.map(i => [i.id, i])),
+    [allInstances]
+  )
 
   // Create a stable key string for detecting changes in matching torrents
   const matchingTorrentsKeys = useMemo(() => {
@@ -1555,6 +1561,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 onDeselectAll={handleDeselectAllCrossSeed}
                 onDeleteMatches={() => setShowDeleteCrossSeedDialog(true)}
                 onDeleteCurrent={() => setShowDeleteCurrentDialog(true)}
+                instanceById={instanceById}
               />
             ) : (
               <ScrollArea className="h-full">
@@ -1692,7 +1699,21 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                     aria-label={`Select ${displayName}`}
                                   />
                                   <div className="flex-1 min-w-0 space-y-1">
-                                    <p className="text-sm font-medium break-words" title={displayName}>{displayName}</p>
+                                    <div className="flex items-start gap-2">
+                                      <p className="text-sm font-medium break-words" title={displayName}>{displayName}</p>
+                                      {isHardlinkManaged(match, instanceById.get(match.instanceId)) && (
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0 text-blue-500 border-blue-500/40">
+                                              Hardlink
+                                            </Badge>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p className="text-xs">Files stored in hardlink directory (separate from source)</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      )}
+                                    </div>
                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                                       <span className="shrink-0">Instance: {match.instanceName}</span>
                                       <span className="shrink-0">•</span>

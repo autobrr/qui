@@ -22,6 +22,8 @@ import { toast } from "sonner"
 
 interface ReannounceOverviewProps {
   onConfigureInstance?: (instanceId: number) => void
+  expandedInstances?: string[]
+  onExpandedInstancesChange?: (values: string[]) => void
 }
 
 interface InstanceStats {
@@ -55,11 +57,21 @@ function computeStats(events: InstanceReannounceActivity[]): InstanceStats {
   return { successToday, failedToday, lastActivity }
 }
 
-export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewProps) {
+export function ReannounceOverview({
+  onConfigureInstance,
+  expandedInstances: controlledExpanded,
+  onExpandedInstancesChange,
+}: ReannounceOverviewProps) {
   const { instances, updateInstance, isUpdating } = useInstances()
   const queryClient = useQueryClient()
   const { formatISOTimestamp } = useDateTimeFormatters()
-  const [expandedInstances, setExpandedInstances] = useState<string[]>([])
+
+  // Internal state for standalone usage
+  const [internalExpanded, setInternalExpanded] = useState<string[]>([])
+
+  // Use controlled props if provided, otherwise internal state
+  const expandedInstances = controlledExpanded ?? internalExpanded
+  const setExpandedInstances = onExpandedInstancesChange ?? setInternalExpanded
   const [hideSkippedMap, setHideSkippedMap] = useState<Record<number, boolean>>({})
   const [searchMap, setSearchMap] = useState<Record<number, string>>({})
 
@@ -132,7 +144,7 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">Automatic Tracker Reannounce</CardTitle>
+          <CardTitle className="text-lg font-semibold">Reannounce</CardTitle>
           <CardDescription>
             No instances configured. Add one in Settings to use this service.
           </CardDescription>
@@ -145,7 +157,7 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
     <Card>
       <CardHeader className="space-y-2">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-lg font-semibold">Automatic Tracker Reannounce</CardTitle>
+          <CardTitle className="text-lg font-semibold">Reannounce</CardTitle>
           <Tooltip>
             <TooltipTrigger asChild>
               <Info className="h-4 w-4 text-muted-foreground cursor-help" />
@@ -241,7 +253,7 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
                 <AccordionContent className="px-6 pb-4">
                   <div className="space-y-4">
                     {/* Settings summary */}
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border/40">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40 border">
                       <div className="space-y-0.5">
                         <p className="text-sm text-muted-foreground">
                           {getSettingsSummary(settings)}
@@ -345,11 +357,11 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
                             </p>
                           </div>
                         ) : activityQuery?.isLoading ? (
-                          <div className="h-[150px] flex items-center justify-center border rounded-lg bg-muted/10">
+                          <div className="h-[150px] flex items-center justify-center border rounded-lg bg-muted/30">
                             <p className="text-sm text-muted-foreground">Loading activity...</p>
                           </div>
                         ) : filteredEvents.length === 0 ? (
-                          <div className="h-[100px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/10 text-center p-4">
+                          <div className="h-[100px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/30 text-center p-4">
                             <p className="text-sm text-muted-foreground">
                               {searchTerm ? "No matching events found." : "No activity recorded yet."}
                             </p>
@@ -360,12 +372,12 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
                             </p>
                           </div>
                         ) : (
-                          <div className="max-h-[350px] overflow-auto rounded-md border">
-                            <div className="divide-y divide-border/40">
+                          <div className="max-h-[350px] overflow-auto rounded-md border bg-muted/20">
+                            <div className="divide-y divide-border">
                               {filteredEvents.map((event, eventIndex) => (
                                 <div
                                   key={`${event.hash}-${eventIndex}-${event.timestamp}`}
-                                  className="p-3 hover:bg-muted/20 transition-colors"
+                                  className="p-3 hover:bg-muted/30 transition-colors"
                                 >
                                   <div className="flex flex-col gap-2">
                                     <div className="flex items-center gap-2 flex-wrap">
@@ -391,7 +403,7 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
                                     </div>
 
                                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                      <div className="flex items-center gap-1 bg-muted/50 px-1.5 py-0.5 rounded">
+                                      <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
                                         <span className="font-mono">{event.hash.substring(0, 7)}</span>
                                         <button
                                           type="button"
@@ -410,7 +422,7 @@ export function ReannounceOverview({ onConfigureInstance }: ReannounceOverviewPr
                                     </div>
 
                                     {event.reason && (
-                                      <div className="text-xs bg-muted/30 p-2 rounded">
+                                      <div className="text-xs bg-muted/40 p-2 rounded">
                                         {formatErrorReason(event.reason) !== event.reason ? (
                                           <Tooltip>
                                             <TooltipTrigger asChild>

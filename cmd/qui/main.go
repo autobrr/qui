@@ -32,13 +32,14 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
-	"github.com/autobrr/qui/internal/services/trackerrules"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/pkg/sqlite3store"
 )
@@ -482,7 +483,7 @@ func (app *Application) runServer() {
 		log.Warn().Err(err).Msg("Failed to preload reannounce settings cache")
 	}
 
-	trackerRuleStore := models.NewTrackerRuleStore(db)
+	automationStore := models.NewAutomationStore(db)
 	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
 	dashboardSettingsStore := models.NewDashboardSettingsStore(db)
 
@@ -554,9 +555,13 @@ func (app *Application) runServer() {
 	// Initialize cross-seed automation store and service
 	crossSeedStore := models.NewCrossSeedStore(db)
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
-	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore, instanceCrossSeedCompletionStore)
+	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService, externalProgramStore, instanceCrossSeedCompletionStore, trackerCustomizationStore)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
-	trackerRuleService := trackerrules.NewService(trackerrules.DefaultConfig(), instanceStore, trackerRuleStore, syncManager)
+	automationActivityStore := models.NewAutomationActivityStore(db)
+	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, syncManager)
+
+	orphanScanStore := models.NewOrphanScanStore(db)
+	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager)
 
 	syncManager.SetTorrentCompletionHandler(crossSeedService.HandleTorrentCompletion)
 
@@ -570,9 +575,13 @@ func (app *Application) runServer() {
 	defer reannounceCancel()
 	reannounceService.Start(reannounceCtx)
 
-	trackerRulesCtx, trackerRulesCancel := context.WithCancel(context.Background())
-	defer trackerRulesCancel()
-	trackerRuleService.Start(trackerRulesCtx)
+	automationsCtx, automationsCancel := context.WithCancel(context.Background())
+	defer automationsCancel()
+	automationService.Start(automationsCtx)
+
+	orphanScanCtx, orphanScanCancel := context.WithCancel(context.Background())
+	defer orphanScanCancel()
+	orphanScanService.Start(orphanScanCtx)
 
 	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir()})
@@ -657,11 +666,14 @@ func (app *Application) runServer() {
 		CrossSeedService:                 crossSeedService,
 		JackettService:                   jackettService,
 		TorznabIndexerStore:              torznabIndexerStore,
-		TrackerRuleStore:                 trackerRuleStore,
-		TrackerRuleService:               trackerRuleService,
+		AutomationStore:                  automationStore,
+		AutomationActivityStore:          automationActivityStore,
+		AutomationService:                automationService,
 		TrackerCustomizationStore:        trackerCustomizationStore,
 		DashboardSettingsStore:           dashboardSettingsStore,
 		InstanceCrossSeedCompletionStore: instanceCrossSeedCompletionStore,
+		OrphanScanStore:                  orphanScanStore,
+		OrphanScanService:                orphanScanService,
 	})
 
 	errorChannel := make(chan error)

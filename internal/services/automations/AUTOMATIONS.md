@@ -1,20 +1,20 @@
-# Tracker Rules
+# Automations
 
-Tracker Rules automatically apply speed limits, ratio caps, and seeding time limits to torrents based on their tracker domain.
+Automations automatically apply speed limits, ratio caps, and seeding time limits to torrents based on their tracker domain.
 
-## How Rules Work
+## How Automations Work
 
-Rules are evaluated in **sort order** (first match wins). Each rule can match torrents by:
+Automations are evaluated in **sort order** (first match wins). Each automation can match torrents by:
 
 1. **Tracker domain** (required) - The tracker's hostname
 2. **Category** (optional) - The torrent's category in qBittorrent
 3. **Tag** (optional) - A tag assigned to the torrent
 
-Torrents that don't match any rule are left untouched. Disabled rules are skipped entirely.
+Torrents that don't match any automation are left untouched. Disabled automations are skipped entirely.
 
 ## Settings Applied
 
-When a rule matches a torrent, it can apply any combination of:
+When an automation matches a torrent, it can apply any combination of:
 
 | Setting | Description |
 |---------|-------------|
@@ -23,9 +23,9 @@ When a rule matches a torrent, it can apply any combination of:
 | Ratio limit | Stop seeding when this ratio is reached |
 | Seeding time limit | Stop seeding after this many minutes |
 
-## When Rules Run
+## When Automations Run
 
-Rules are applied in two ways:
+Automations are applied in two ways:
 
 - **Automatically** - A background service scans all torrents every 20 seconds
 - **Manually** - Click "Apply Now" in the UI to trigger immediately
@@ -56,13 +56,13 @@ All matching is **case-insensitive**.
 
 ## Important Behavior
 
-### Rules Only Set Values
+### Automations Only Set Values
 
-Rules apply settings to torrents - they **do not revert** settings when the rule is disabled or deleted. If you disable a rule that set upload limit to 1000 KiB/s, affected torrents keep that limit until you manually change it or another rule applies a different value.
+Automations apply settings to torrents - they **do not revert** settings when the automation is disabled or deleted. If you disable an automation that set upload limit to 1000 KiB/s, affected torrents keep that limit until you manually change it or another automation applies a different value.
 
 ### Efficient Updates
 
-The service only sends API calls to qBittorrent when the torrent's current setting differs from what the rule specifies. If a torrent already has the correct limits, it's skipped.
+The service only sends API calls to qBittorrent when the torrent's current setting differs from what the automation specifies. If a torrent already has the correct limits, it's skipped.
 
 ### Existing vs New Torrents
 

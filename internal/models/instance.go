@@ -25,69 +25,86 @@ import (
 var ErrInstanceNotFound = errors.New("instance not found")
 
 type Instance struct {
-	ID                     int     `json:"id"`
-	Name                   string  `json:"name"`
-	Host                   string  `json:"host"`
-	Username               string  `json:"username"`
-	PasswordEncrypted      string  `json:"-"`
-	BasicUsername          *string `json:"basic_username,omitempty"`
-	BasicPasswordEncrypted *string `json:"-"`
-	TLSSkipVerify          bool    `json:"tlsSkipVerify"`
-	SortOrder              int     `json:"sortOrder"`
-	IsActive               bool    `json:"isActive"`
+	ID                       int     `json:"id"`
+	Name                     string  `json:"name"`
+	Host                     string  `json:"host"`
+	Username                 string  `json:"username"`
+	PasswordEncrypted        string  `json:"-"`
+	BasicUsername            *string `json:"basic_username,omitempty"`
+	BasicPasswordEncrypted   *string `json:"-"`
+	TLSSkipVerify            bool    `json:"tlsSkipVerify"`
+	SortOrder                int     `json:"sortOrder"`
+	IsActive                 bool    `json:"isActive"`
+	HasLocalFilesystemAccess bool    `json:"hasLocalFilesystemAccess"`
+	// Hardlink mode settings (per-instance)
+	UseHardlinks      bool   `json:"useHardlinks"`
+	HardlinkBaseDir   string `json:"hardlinkBaseDir"`
+	HardlinkDirPreset string `json:"hardlinkDirPreset"` // "flat", "by-tracker", "by-instance"
 }
 
 func (i Instance) MarshalJSON() ([]byte, error) {
 	// Create the JSON structure with redacted password fields
 	return json.Marshal(&struct {
-		ID              int        `json:"id"`
-		Name            string     `json:"name"`
-		Host            string     `json:"host"`
-		Username        string     `json:"username"`
-		Password        string     `json:"password,omitempty"`
-		BasicUsername   *string    `json:"basic_username,omitempty"`
-		BasicPassword   string     `json:"basic_password,omitempty"`
-		TLSSkipVerify   bool       `json:"tlsSkipVerify"`
-		IsActive        bool       `json:"isActive"`
-		LastConnectedAt *time.Time `json:"last_connected_at,omitempty"`
-		CreatedAt       time.Time  `json:"created_at"`
-		UpdatedAt       time.Time  `json:"updated_at"`
-		SortOrder       int        `json:"sortOrder"`
+		ID                       int        `json:"id"`
+		Name                     string     `json:"name"`
+		Host                     string     `json:"host"`
+		Username                 string     `json:"username"`
+		Password                 string     `json:"password,omitempty"`
+		BasicUsername            *string    `json:"basic_username,omitempty"`
+		BasicPassword            string     `json:"basic_password,omitempty"`
+		TLSSkipVerify            bool       `json:"tlsSkipVerify"`
+		IsActive                 bool       `json:"isActive"`
+		HasLocalFilesystemAccess bool       `json:"hasLocalFilesystemAccess"`
+		UseHardlinks             bool       `json:"useHardlinks"`
+		HardlinkBaseDir          string     `json:"hardlinkBaseDir"`
+		HardlinkDirPreset        string     `json:"hardlinkDirPreset"`
+		LastConnectedAt          *time.Time `json:"last_connected_at,omitempty"`
+		CreatedAt                time.Time  `json:"created_at"`
+		UpdatedAt                time.Time  `json:"updated_at"`
+		SortOrder                int        `json:"sortOrder"`
 	}{
-		ID:            i.ID,
-		Name:          i.Name,
-		Host:          i.Host,
-		Username:      i.Username,
-		Password:      domain.RedactString(i.PasswordEncrypted),
-		BasicUsername: i.BasicUsername,
+		ID:                       i.ID,
+		Name:                     i.Name,
+		Host:                     i.Host,
+		Username:                 i.Username,
+		Password:                 domain.RedactString(i.PasswordEncrypted),
+		BasicUsername:            i.BasicUsername,
 		BasicPassword: func() string {
 			if i.BasicPasswordEncrypted != nil {
 				return domain.RedactString(*i.BasicPasswordEncrypted)
 			}
 			return ""
 		}(),
-		TLSSkipVerify: i.TLSSkipVerify,
-		SortOrder:     i.SortOrder,
-		IsActive:      i.IsActive,
+		TLSSkipVerify:            i.TLSSkipVerify,
+		SortOrder:                i.SortOrder,
+		IsActive:                 i.IsActive,
+		HasLocalFilesystemAccess: i.HasLocalFilesystemAccess,
+		UseHardlinks:             i.UseHardlinks,
+		HardlinkBaseDir:          i.HardlinkBaseDir,
+		HardlinkDirPreset:        i.HardlinkDirPreset,
 	})
 }
 
 func (i *Instance) UnmarshalJSON(data []byte) error {
 	// Temporary struct for unmarshaling
 	var temp struct {
-		ID              int        `json:"id"`
-		Name            string     `json:"name"`
-		Host            string     `json:"host"`
-		Username        string     `json:"username"`
-		Password        string     `json:"password,omitempty"`
-		BasicUsername   *string    `json:"basic_username,omitempty"`
-		BasicPassword   string     `json:"basic_password,omitempty"`
-		TLSSkipVerify   *bool      `json:"tlsSkipVerify,omitempty"`
-		IsActive        bool       `json:"isActive"`
-		LastConnectedAt *time.Time `json:"last_connected_at,omitempty"`
-		CreatedAt       time.Time  `json:"created_at"`
-		UpdatedAt       time.Time  `json:"updated_at"`
-		SortOrder       *int       `json:"sortOrder,omitempty"`
+		ID                       int        `json:"id"`
+		Name                     string     `json:"name"`
+		Host                     string     `json:"host"`
+		Username                 string     `json:"username"`
+		Password                 string     `json:"password,omitempty"`
+		BasicUsername            *string    `json:"basic_username,omitempty"`
+		BasicPassword            string     `json:"basic_password,omitempty"`
+		TLSSkipVerify            *bool      `json:"tlsSkipVerify,omitempty"`
+		IsActive                 bool       `json:"isActive"`
+		HasLocalFilesystemAccess *bool      `json:"hasLocalFilesystemAccess,omitempty"`
+		UseHardlinks             *bool      `json:"useHardlinks,omitempty"`
+		HardlinkBaseDir          *string    `json:"hardlinkBaseDir,omitempty"`
+		HardlinkDirPreset        *string    `json:"hardlinkDirPreset,omitempty"`
+		LastConnectedAt          *time.Time `json:"last_connected_at,omitempty"`
+		CreatedAt                time.Time  `json:"created_at"`
+		UpdatedAt                time.Time  `json:"updated_at"`
+		SortOrder                *int       `json:"sortOrder,omitempty"`
 	}
 
 	if err := json.Unmarshal(data, &temp); err != nil {
@@ -110,6 +127,22 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 	}
 
 	i.IsActive = temp.IsActive
+
+	// HasLocalFilesystemAccess defaults to false if not provided (opt-in feature)
+	if temp.HasLocalFilesystemAccess != nil {
+		i.HasLocalFilesystemAccess = *temp.HasLocalFilesystemAccess
+	}
+
+	// Hardlink settings (all default to false/empty if not provided)
+	if temp.UseHardlinks != nil {
+		i.UseHardlinks = *temp.UseHardlinks
+	}
+	if temp.HardlinkBaseDir != nil {
+		i.HardlinkBaseDir = *temp.HardlinkBaseDir
+	}
+	if temp.HardlinkDirPreset != nil {
+		i.HardlinkDirPreset = *temp.HardlinkDirPreset
+	}
 
 	// Handle password - don't overwrite if redacted
 	if temp.Password != "" && !domain.IsRedactedString(temp.Password) {
@@ -226,7 +259,7 @@ func validateAndNormalizeHost(rawHost string) (string, error) {
 	return u.String(), nil
 }
 
-func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool) (*Instance, error) {
+func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool, hasLocalFilesystemAccess *bool) (*Instance, error) {
 	// Validate and normalize the host
 	normalizedHost, err := validateAndNormalizeHost(rawHost)
 	if err != nil {
@@ -282,8 +315,15 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	var passwordEncrypted sql.NullString
 	var basicPasswordEncrypted sql.NullString
 	var tlsSkipVerifyResult bool
+	var hasLocalFilesystemAccessResult bool
 	var sortOrder int
 	var isActive bool
+
+	// Default hasLocalFilesystemAccess to false if not provided (opt-in feature)
+	localAccess := false
+	if hasLocalFilesystemAccess != nil {
+		localAccess = *hasLocalFilesystemAccess
+	}
 
 	err = tx.QueryRowContext(ctx, `
 		WITH next_sort AS (
@@ -297,10 +337,11 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 			basic_username_id,
 			basic_password_encrypted,
 			tls_skip_verify,
+			has_local_filesystem_access,
 			sort_order
 		)
-		SELECT ?, ?, ?, ?, ?, ?, ?, next_order FROM next_sort
-		RETURNING id, password_encrypted, basic_password_encrypted, tls_skip_verify, sort_order, is_active
+		SELECT ?, ?, ?, ?, ?, ?, ?, ?, next_order FROM next_sort
+		RETURNING id, password_encrypted, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access
 	`,
 		nameID,
 		hostID,
@@ -309,6 +350,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		allIDs[3],
 		encryptedBasicPassword,
 		tlsSkipVerify,
+		localAccess,
 	).Scan(
 		&instanceID,
 		&passwordEncrypted,
@@ -316,6 +358,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		&tlsSkipVerifyResult,
 		&sortOrder,
 		&isActive,
+		&hasLocalFilesystemAccessResult,
 	)
 
 	if err != nil {
@@ -323,14 +366,15 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	}
 
 	instance := &Instance{
-		ID:                instanceID,
-		Name:              name,
-		Host:              normalizedHost,
-		Username:          username,
-		PasswordEncrypted: passwordEncrypted.String,
-		TLSSkipVerify:     tlsSkipVerifyResult,
-		SortOrder:         sortOrder,
-		IsActive:          isActive,
+		ID:                       instanceID,
+		Name:                     name,
+		Host:                     normalizedHost,
+		Username:                 username,
+		PasswordEncrypted:        passwordEncrypted.String,
+		TLSSkipVerify:            tlsSkipVerifyResult,
+		HasLocalFilesystemAccess: hasLocalFilesystemAccessResult,
+		SortOrder:                sortOrder,
+		IsActive:                 isActive,
 	}
 
 	if basicUsername != nil {
@@ -349,8 +393,8 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 
 func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	query := `
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active
-		FROM instances_view 
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset
+		FROM instances_view
 		WHERE id = ?
 	`
 
@@ -360,6 +404,9 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	var tlsSkipVerify bool
 	var sortOrder int
 	var isActive bool
+	var hasLocalFilesystemAccess bool
+	var useHardlinks bool
+	var hardlinkBaseDir, hardlinkDirPreset string
 
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&instanceID,
@@ -372,6 +419,10 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		&tlsSkipVerify,
 		&sortOrder,
 		&isActive,
+		&hasLocalFilesystemAccess,
+		&useHardlinks,
+		&hardlinkBaseDir,
+		&hardlinkDirPreset,
 	)
 
 	if err != nil {
@@ -382,14 +433,18 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	}
 
 	instance := &Instance{
-		ID:                instanceID,
-		Name:              name,
-		Host:              host,
-		Username:          username,
-		PasswordEncrypted: passwordEncrypted,
-		TLSSkipVerify:     tlsSkipVerify,
-		SortOrder:         sortOrder,
-		IsActive:          isActive,
+		ID:                       instanceID,
+		Name:                     name,
+		Host:                     host,
+		Username:                 username,
+		PasswordEncrypted:        passwordEncrypted,
+		TLSSkipVerify:            tlsSkipVerify,
+		SortOrder:                sortOrder,
+		IsActive:                 isActive,
+		HasLocalFilesystemAccess: hasLocalFilesystemAccess,
+		UseHardlinks:             useHardlinks,
+		HardlinkBaseDir:          hardlinkBaseDir,
+		HardlinkDirPreset:        hardlinkDirPreset,
 	}
 
 	if basicUsername.Valid {
@@ -404,7 +459,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 
 func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	query := `
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset
 		FROM instances_view
 		ORDER BY sort_order ASC, name COLLATE NOCASE ASC, id ASC
 	`
@@ -423,6 +478,9 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 		var tlsSkipVerify bool
 		var sortOrder int
 		var isActive bool
+		var hasLocalFilesystemAccess bool
+		var useHardlinks bool
+		var hardlinkBaseDir, hardlinkDirPreset string
 
 		err := rows.Scan(
 			&id,
@@ -435,20 +493,28 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 			&tlsSkipVerify,
 			&sortOrder,
 			&isActive,
+			&hasLocalFilesystemAccess,
+			&useHardlinks,
+			&hardlinkBaseDir,
+			&hardlinkDirPreset,
 		)
 		if err != nil {
 			return nil, err
 		}
 
 		instance := &Instance{
-			ID:                id,
-			Name:              name,
-			Host:              host,
-			Username:          username,
-			PasswordEncrypted: passwordEncrypted,
-			TLSSkipVerify:     tlsSkipVerify,
-			SortOrder:         sortOrder,
-			IsActive:          isActive,
+			ID:                       id,
+			Name:                     name,
+			Host:                     host,
+			Username:                 username,
+			PasswordEncrypted:        passwordEncrypted,
+			TLSSkipVerify:            tlsSkipVerify,
+			SortOrder:                sortOrder,
+			IsActive:                 isActive,
+			HasLocalFilesystemAccess: hasLocalFilesystemAccess,
+			UseHardlinks:             useHardlinks,
+			HardlinkBaseDir:          hardlinkBaseDir,
+			HardlinkDirPreset:        hardlinkDirPreset,
 		}
 
 		if basicUsername.Valid {
@@ -468,7 +534,16 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	return instances, nil
 }
 
-func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify *bool) (*Instance, error) {
+// InstanceUpdateParams contains optional fields for updating an instance.
+type InstanceUpdateParams struct {
+	TLSSkipVerify            *bool
+	HasLocalFilesystemAccess *bool
+	UseHardlinks             *bool
+	HardlinkBaseDir          *string
+	HardlinkDirPreset        *string
+}
+
+func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, username, password string, basicUsername, basicPassword *string, params *InstanceUpdateParams) (*Instance, error) {
 	// Validate and normalize the host
 	normalizedHost, err := validateAndNormalizeHost(rawHost)
 	if err != nil {
@@ -553,9 +628,31 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		}
 	}
 
-	if tlsSkipVerify != nil {
-		query += ", tls_skip_verify = ?"
-		args = append(args, *tlsSkipVerify)
+	if params != nil {
+		if params.TLSSkipVerify != nil {
+			query += ", tls_skip_verify = ?"
+			args = append(args, *params.TLSSkipVerify)
+		}
+
+		if params.HasLocalFilesystemAccess != nil {
+			query += ", has_local_filesystem_access = ?"
+			args = append(args, *params.HasLocalFilesystemAccess)
+		}
+
+		if params.UseHardlinks != nil {
+			query += ", use_hardlinks = ?"
+			args = append(args, *params.UseHardlinks)
+		}
+
+		if params.HardlinkBaseDir != nil {
+			query += ", hardlink_base_dir = ?"
+			args = append(args, *params.HardlinkBaseDir)
+		}
+
+		if params.HardlinkDirPreset != nil {
+			query += ", hardlink_dir_preset = ?"
+			args = append(args, *params.HardlinkDirPreset)
+		}
 	}
 
 	query += " WHERE id = ?"
