@@ -25,11 +25,6 @@ export const CONDITION_FIELDS = {
   COMPLETION_ON_AGE: { label: "Completed Age", type: "duration" as const, description: "Time since download completed" },
   LAST_ACTIVITY_AGE: { label: "Inactive Time", type: "duration" as const, description: "Time since last activity" },
 
-  // Timestamp fields (unix)
-  ADDED_ON: { label: "Added On", type: "timestamp" as const, description: "When torrent was added" },
-  COMPLETION_ON: { label: "Completed On", type: "timestamp" as const, description: "When download completed" },
-  LAST_ACTIVITY: { label: "Last Activity", type: "timestamp" as const, description: "Last activity timestamp" },
-
   // Float fields
   RATIO: { label: "Ratio", type: "float" as const, description: "Upload/download ratio" },
   PROGRESS: { label: "Progress", type: "float" as const, description: "Download progress (0-1)" },
@@ -54,7 +49,7 @@ export const CONDITION_FIELDS = {
   HARDLINK_SCOPE: { label: "Hardlink scope", type: "hardlinkScope" as const, description: "Where hardlinks for this torrent's files exist. Requires Local Filesystem Access." },
 } as const;
 
-export type FieldType = "string" | "state" | "bytes" | "duration" | "timestamp" | "float" | "speed" | "integer" | "boolean" | "hardlinkScope";
+export type FieldType = "string" | "state" | "bytes" | "duration" | "float" | "speed" | "integer" | "boolean" | "hardlinkScope";
 
 // Operators available per field type
 export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string }[]> = {
@@ -87,15 +82,6 @@ export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string
     { value: "GREATER_THAN_OR_EQUAL", label: ">=" },
     { value: "LESS_THAN", label: "<" },
     { value: "LESS_THAN_OR_EQUAL", label: "<=" },
-    { value: "BETWEEN", label: "between" },
-  ],
-  timestamp: [
-    { value: "EQUAL", label: "=" },
-    { value: "NOT_EQUAL", label: "!=" },
-    { value: "GREATER_THAN", label: "after" },
-    { value: "GREATER_THAN_OR_EQUAL", label: "on or after" },
-    { value: "LESS_THAN", label: "before" },
-    { value: "LESS_THAN_OR_EQUAL", label: "on or before" },
     { value: "BETWEEN", label: "between" },
   ],
   float: [
@@ -187,7 +173,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Time",
-    fields: ["SEEDING_TIME", "TIME_ACTIVE", "ADDED_ON_AGE", "COMPLETION_ON_AGE", "LAST_ACTIVITY_AGE", "ADDED_ON", "COMPLETION_ON", "LAST_ACTIVITY"],
+    fields: ["SEEDING_TIME", "TIME_ACTIVE", "ADDED_ON_AGE", "COMPLETION_ON_AGE", "LAST_ACTIVITY_AGE"],
   },
   {
     label: "Progress",
