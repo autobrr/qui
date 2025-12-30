@@ -801,7 +801,7 @@ QUI__METRICS_BASIC_AUTH_USERS="user:$2y$10$hash"  # Optional: basic auth
 
 ### Available Metrics
 - **Torrent counts** by status (downloading, seeding, paused, error)
-- **Transfer speeds** (upload/download bytes per second)
+- **Transferred Data** (uploaded/downloaded bytes)
 - **Instance connection status**
 
 ### Prometheus Configuration
