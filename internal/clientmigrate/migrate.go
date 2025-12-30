@@ -2,7 +2,6 @@ package clientmigrate
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -26,26 +25,26 @@ type ClientMigrater interface {
 }
 
 type Migrater struct {
+	imp  ClientMigrater
 	opts Options
 }
 
 func New(opts Options) Migrater {
-	return Migrater{opts: opts}
+	m := Migrater{opts: opts}
+
+	switch m.opts.Source {
+	case "deluge":
+		m.imp = NewDelugeImporter(m.opts)
+	case "rtorrent":
+		m.imp = NewRTorrentImporter(m.opts)
+	case "transmission":
+		m.imp = NewTransmissionImporter(m.opts)
+	}
+
+	return m
 }
 
 func (m Migrater) Migrate(ctx context.Context) error {
-	var imp ClientMigrater
-	switch m.opts.Source {
-	case "rtorrent":
-		imp = NewRTorrentImporter(m.opts)
-
-	case "deluge":
-		imp = NewDelugeImporter(m.opts)
-
-	default:
-		return fmt.Errorf("unsupported source client: %s", m.opts.Source)
-	}
-
 	var (
 		dryRun     = m.opts.DryRun
 		qbitDir    = m.opts.QbitDir
@@ -139,7 +138,7 @@ func (m Migrater) Migrate(ctx context.Context) error {
 		log.Info().Msgf("preparing to import torrents from: %s dir: %s", source, sourceDir)
 	}
 
-	if err := imp.Migrate(); err != nil {
+	if err := m.imp.Migrate(); err != nil {
 		return errors.Wrapf(err, "could not import from %s", source)
 	}
 

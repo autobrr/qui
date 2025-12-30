@@ -399,19 +399,21 @@ Flags:
 
 func RunMigrateCommand() *cobra.Command {
 	var command = &cobra.Command{
-		Use:   "migrate {rtorrent | deluge} --source-dir dir --qbit-dir dir2 [--skip-backup] [--dry-run]",
-		Short: "Migrate deluge and rtorrent to qBittorrent",
-		Long:  `Migrate torrents with state from other clients [rtorrent, deluge]`,
+		Use:   "migrate {deluge | rtorrent | transmission} --source-dir dir --qbit-dir dir2 [--skip-backup] [--dry-run]",
+		Short: "Migrate from deluge,rtorrent or transmission to qBittorrent",
+		Long:  `Migrate torrents with state from other clients [deluge,rtorrent,transmission]`,
 		Example: `  qui migrate deluge --source-dir ~/.config/deluge/state/ --qbit-dir ~/.local/share/qBittorrent/BT_backup --dry-run
-  qui migrate rtorrent --source-dir ~/.sessions --qbit-dir ~/.local/share/qBittorrent/BT_backup --dry-run`,
+  qui migrate rtorrent --source-dir ~/.sessions --qbit-dir ~/.local/share/qBittorrent/BT_backup --dry-run
+  qui migrate transmission --source-dir ~/data --qbit-dir ~/.local/share/qBittorrent/BT_backup --dry-run
+`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) < 1 {
-				return errors.New("requires a source client [rtorrent, deluge] as first argument")
+				return errors.New("requires a source client [deluge, rtorrent, transmission] as first argument")
 			}
 
 			return cobra.OnlyValidArgs(cmd, args)
 		},
-		ValidArgs: []string{"rtorrent", "deluge"},
+		ValidArgs: []string{"deluge", "rtorrent", "transmission"},
 	}
 
 	var (
