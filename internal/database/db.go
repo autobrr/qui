@@ -53,6 +53,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -94,6 +95,8 @@ type DB struct {
 	cleanupCancel context.CancelFunc
 
 	closing atomic.Bool
+
+	lastBeginTxRecoveryStackLogUnixNano atomic.Int64
 
 	closeOnce sync.Once
 	closeErr  error
@@ -592,6 +595,24 @@ func isWriteQuery(query string) bool {
 		strings.HasPrefix(upper, "VACUUM")
 }
 
+const sqliteNestedTxErrSubstring = "cannot start a transaction within a transaction"
+
+func isSQLiteNestedTxErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), sqliteNestedTxErrSubstring)
+}
+
+func (db *DB) rollbackWriterConn(ctx context.Context) {
+	if db.writerConn == nil {
+		return
+	}
+	if _, err := db.writerConn.ExecContext(ctx, "ROLLBACK"); err != nil {
+		log.Warn().Err(err).Msg("failed to rollback SQLite writer connection during recovery")
+	}
+}
+
 const stmtClosedErrMsg = "statement is closed"
 
 type stmtExecutor[T any] interface {
@@ -671,18 +692,42 @@ func execWithRetry[T any, E stmtExecutor[T]](db *DB, ctx context.Context, query 
 // read queries to the reader pool. Uses prepared statements when possible.
 // Do NOT use this for queries with RETURNING clauses - use QueryRowContext or QueryContext instead.
 func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	if !isWriteQuery(query) {
+		return execWithRetry(db, ctx, query, args, execResult{})
+	}
+
+	db.writerMu.Lock()
+	defer db.writerMu.Unlock()
+
 	return execWithRetry(db, ctx, query, args, execResult{})
 }
 
 // QueryContext routes write queries to the single writer connection and
 // read queries to the reader pool. Uses prepared statements when possible.
 func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	if !isWriteQuery(query) {
+		return execWithRetry(db, ctx, query, args, queryRows{})
+	}
+
+	db.writerMu.Lock()
+	defer db.writerMu.Unlock()
+
 	return execWithRetry(db, ctx, query, args, queryRows{})
 }
 
 // QueryRowContext routes write queries to the single writer connection and
 // read queries to the reader pool. Uses prepared statements when possible.
 func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	if isWriteQuery(query) {
+		db.writerMu.Lock()
+		row := db.queryRowUnlocked(ctx, query, args...)
+		db.writerMu.Unlock()
+		return row
+	}
+	return db.queryRowUnlocked(ctx, query, args...)
+}
+
+func (db *DB) queryRowUnlocked(ctx context.Context, query string, args ...any) *sql.Row {
 	stmt, err := db.getStmt(ctx, query, nil)
 	if err != nil {
 		if isWriteQuery(query) {
@@ -838,8 +883,31 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 
 	tx, err := db.writerConn.BeginTx(ctx, opts)
 	if err != nil {
-		db.writerMu.Unlock() // Unlock on error
-		return nil, err
+		if isSQLiteNestedTxErr(err) {
+			recordBeginTxRecovery()
+			// This error means the underlying SQLite connection believes it's still inside
+			// a transaction. We should not be holding an active write transaction while
+			// holding writerMu, so attempt to rollback and retry once to self-heal.
+			now := time.Now().UnixNano()
+			last := db.lastBeginTxRecoveryStackLogUnixNano.Load()
+			if last == 0 || now-last >= int64(time.Minute) {
+				db.lastBeginTxRecoveryStackLogUnixNano.Store(now)
+				log.Error().
+					Err(err).
+					Str("stack", string(debug.Stack())).
+					Msg("SQLite writer connection appears wedged in a transaction; attempting rollback and retry")
+			} else {
+				log.Error().
+					Err(err).
+					Msg("SQLite writer connection appears wedged in a transaction; attempting rollback and retry (stack suppressed)")
+			}
+			db.rollbackWriterConn(context.Background())
+			tx, err = db.writerConn.BeginTx(ctx, opts)
+		}
+		if err != nil {
+			db.writerMu.Unlock() // Unlock on error
+			return nil, err
+		}
 	}
 
 	// Pass unlock function to Tx so it can release the mutex on Commit/Rollback
