@@ -185,10 +185,11 @@ func checkEnvLock(locked map[string]string, key, envVar string) {
 }
 
 // GetLogSettings returns the current log settings with locked field information.
+// The Path field is resolved to an absolute path (relative paths are resolved against the config directory).
 func (c *AppConfig) GetLogSettings() LogSettingsResponse {
 	c.configMu.Lock()
 	level := canonicalizeLogLevel(c.Config.LogLevel)
-	path := c.Config.LogPath
+	path := c.ResolveLogPath(c.Config.LogPath)
 	maxSize := c.Config.LogMaxSize
 	maxBackups := c.Config.LogMaxBackups
 	configPath := c.viper.ConfigFileUsed()
@@ -293,5 +294,13 @@ func (c *AppConfig) UpdateLogSettings(update LogSettingsUpdate) (LogSettingsResp
 	}
 
 	committed = true
-	return c.GetLogSettings(), nil
+	// Construct response inline to avoid deadlock (we already hold configMu)
+	return LogSettingsResponse{
+		Level:      canonicalizeLogLevel(c.Config.LogLevel),
+		Path:       c.ResolveLogPath(c.Config.LogPath),
+		MaxSize:    c.Config.LogMaxSize,
+		MaxBackups: c.Config.LogMaxBackups,
+		ConfigPath: c.viper.ConfigFileUsed(),
+		Locked:     c.GetLockedLogSettings(),
+	}, nil
 }

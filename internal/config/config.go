@@ -500,8 +500,11 @@ func (c *AppConfig) ApplyLogConfig() error {
 	// Initialize the log manager on first call (sets up switchable writer)
 	c.logManager.Initialize()
 
+	// Resolve relative log paths to config directory
+	resolvedPath := c.ResolveLogPath(c.Config.LogPath)
+
 	// Apply configuration through the log manager
-	return c.logManager.Apply(c.Config.LogLevel, c.Config.LogPath, c.Config.LogMaxSize, c.Config.LogMaxBackups)
+	return c.logManager.Apply(c.Config.LogLevel, resolvedPath, c.Config.LogMaxSize, c.Config.LogMaxBackups)
 }
 
 // GetLogManager returns the LogManager for log streaming.
@@ -609,6 +612,18 @@ func (c *AppConfig) GetConfigDir() string {
 	}
 	// Fallback to default config directory when no config file is explicitly used
 	return GetDefaultConfigDir()
+}
+
+// ResolveLogPath resolves a log path, making relative paths relative to the config directory.
+// Returns empty string if logPath is empty (stdout only).
+func (c *AppConfig) ResolveLogPath(logPath string) string {
+	if logPath == "" {
+		return ""
+	}
+	if filepath.IsAbs(logPath) {
+		return logPath
+	}
+	return filepath.Join(c.GetConfigDir(), logPath)
 }
 
 const encryptionKeySize = 32
