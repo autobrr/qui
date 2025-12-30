@@ -27,6 +27,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/proxy"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/filesmanager"
@@ -73,6 +74,8 @@ type Server struct {
 	instanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
 	orphanScanStore                  *models.OrphanScanStore
 	orphanScanService                *orphanscan.Service
+	arrInstanceStore                 *models.ArrInstanceStore
+	arrService                       *arr.Service
 }
 
 type Dependencies struct {
@@ -105,6 +108,8 @@ type Dependencies struct {
 	InstanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
 	OrphanScanStore                  *models.OrphanScanStore
 	OrphanScanService                *orphanscan.Service
+	ArrInstanceStore                 *models.ArrInstanceStore
+	ArrService                       *arr.Service
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -144,6 +149,8 @@ func NewServer(deps *Dependencies) *Server {
 		instanceCrossSeedCompletionStore: deps.InstanceCrossSeedCompletionStore,
 		orphanScanStore:                  deps.OrphanScanStore,
 		orphanScanService:                deps.OrphanScanService,
+		arrInstanceStore:                 deps.ArrInstanceStore,
+		arrService:                       deps.ArrService,
 	}
 
 	return &s
@@ -272,6 +279,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
 	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.clientPool, s.config.Config)
+	arrHandler := handlers.NewArrHandler(s.arrInstanceStore, s.arrService)
 	versionHandler := handlers.NewVersionHandler(s.updateService)
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 	backupsHandler := handlers.NewBackupsHandler(s.backupService)
@@ -357,6 +365,18 @@ func (s *Server) Handler() (*chi.Mux, error) {
 				r.Put("/{id}", externalProgramsHandler.UpdateExternalProgram)
 				r.Delete("/{id}", externalProgramsHandler.DeleteExternalProgram)
 				r.Post("/execute", externalProgramsHandler.ExecuteExternalProgram)
+			})
+
+			// ARR (Sonarr/Radarr) instance management
+			r.Route("/arr", func(r chi.Router) {
+				r.Get("/instances", arrHandler.ListInstances)
+				r.Post("/instances", arrHandler.CreateInstance)
+				r.Get("/instances/{id}", arrHandler.GetInstance)
+				r.Put("/instances/{id}", arrHandler.UpdateInstance)
+				r.Delete("/instances/{id}", arrHandler.DeleteInstance)
+				r.Post("/instances/{id}/test", arrHandler.TestInstance)
+				r.Post("/test", arrHandler.TestConnection)
+				r.Post("/resolve", arrHandler.Resolve)
 			})
 
 			// Tracker customizations (nicknames and merged domains)
