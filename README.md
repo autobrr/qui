@@ -367,11 +367,9 @@ Downloaded backups can be imported into any qui instance. Useful for migrating t
 qui includes intelligent cross-seeding capabilities that help you automatically find and add matching torrents across different trackers. This allows you to seed the same content on multiple trackers.
 
 > [!NOTE]
-> qui adds cross-seeded torrents by inheriting the **Automatic Torrent Management (AutoTMM)** state from the matched torrent. If the matched torrent uses AutoTMM, the cross-seed will too; if the matched torrent has a custom save path (AutoTMM disabled), the cross-seed will use the same explicit path. This reuses existing files directly without creating hardlinks (unless [hardlink mode](#hardlink-mode-optional) is enabled).
+> For detailed information about category behavior, save paths, AutoTMM handling, hardlink mode, and best practices, see the [Cross-Seeding Guide](docs/CROSS_SEEDING.md).
 >
-> For detailed information about category behavior, save paths, hardlink mode, and best practices, see the [Cross-Seeding Guide](docs/CROSS_SEEDING.md).
->
-> If you see a cross-seed skipped with “extra files share pieces with content”, see the explanation and options in the guide.
+> If you see a cross-seed skipped with "extra files share pieces with content", see the explanation and options in the guide.
 
 ### Prerequisites
 
@@ -419,16 +417,6 @@ Right-click any torrent in the list to access cross-seed actions:
 - **Search Cross-Seeds** - Query indexers for matching torrents on other trackers
 - **Filter Cross-Seeds** - Show torrents in your library that share content with the selected torrent (useful for identifying existing cross-seeds)
 
-### How qui Differs from cross-seed
-
-qui takes a different approach than the [cross-seed](https://github.com/cross-seed/cross-seed) project:
-
-| Aspect | cross-seed | qui |
-|--------|-----------|-----|
-| **File handling** | Creates hardlinks/symlinks to a separate directory | Reuse mode (default) + optional hardlink mode |
-| **AutoTMM** | Disabled (uses explicit save paths) | Inherits from matched torrent (unless "Use indexer name as category" is enabled) |
-| **Category** | Uses dedicated `linkCategory` (e.g., "cross-seed-link") | Uses matched torrent's category with `.cross` suffix (configurable) |
-
 ### Rules
 
 Configure matching behavior in the **Rules** tab on the Cross-Seed page.
@@ -441,8 +429,11 @@ Configure matching behavior in the **Rules** tab on the Cross-Seed page.
 
 #### Categories
 
-- **Add .cross category suffix** (default: enabled) - Appends `.cross` to cross-seed categories (e.g., `movies` → `movies.cross`). This prevents Sonarr/Radarr from importing cross-seeded files as duplicates, since *arr apps typically monitor specific categories. Disable this for full Automatic Torrent Management (AutoTMM) support where cross-seeds should use identical categories and save paths as the source torrent.
-- **Use indexer name as category** - Set the qBittorrent category to the indexer name instead of inheriting from the matched torrent. Uses explicit save paths, so AutoTMM is always disabled for these cross-seeds regardless of the source torrent's AutoTMM state (see [how qui differs from cross-seed](#how-qui-differs-from-cross-seed)). Mutually exclusive with `.cross` suffix.
+Choose one of three mutually exclusive category modes:
+
+- **Add .cross category suffix** (default) - Appends `.cross` to cross-seed categories (e.g., `movies` → `movies.cross`). Prevents Sonarr/Radarr from importing cross-seeded files as duplicates. AutoTMM is inherited from the matched torrent.
+- **Use indexer name as category** - Sets category to the indexer name (e.g., `TorrentDB`). AutoTMM is always disabled; uses explicit save paths.
+- **Custom category** - Uses a fixed category name for all cross-seeds (e.g., `cross-seed`). AutoTMM is always disabled; uses explicit save paths.
 
 #### Source Tagging
 

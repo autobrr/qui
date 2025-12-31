@@ -1664,6 +1664,8 @@ export interface CrossSeedAutomationSettings {
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
   useCrossCategorySuffix: boolean
+  useCustomCategory: boolean
+  customCategory: string
   runExternalProgramId?: number | null
   // Source-specific tagging
   rssAutomationTags: string[]
@@ -1708,6 +1710,8 @@ export interface CrossSeedAutomationSettingsPatch {
   sizeMismatchTolerancePercent?: number
   useCategoryFromIndexer?: boolean
   useCrossCategorySuffix?: boolean
+  useCustomCategory?: boolean
+  customCategory?: string
   runExternalProgramId?: number | null
   // Source-specific tagging
   rssAutomationTags?: string[]

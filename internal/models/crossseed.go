@@ -59,6 +59,10 @@ type CrossSeedAutomationSettings struct {
 	// Category isolation: add .cross suffix to prevent *arr import loops
 	UseCrossCategorySuffix bool `json:"useCrossCategorySuffix"` // Add .cross suffix to categories (e.g., movies → movies.cross)
 
+	// Custom category: use exact user-specified category without any suffixing
+	UseCustomCategory bool   `json:"useCustomCategory"` // Use custom category instead of suffix or indexer name
+	CustomCategory    string `json:"customCategory"`    // Custom category name when UseCustomCategory is true
+
 	// Skip auto-resume settings per source mode.
 	// When enabled, torrents remain paused after hash check instead of auto-resuming.
 	SkipAutoResumeRSS            bool `json:"skipAutoResumeRss"`            // Skip auto-resume for RSS automation results
@@ -115,6 +119,9 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		InheritSourceTags:    false, // Don't copy source torrent tags by default
 		// Category isolation - default to true for backwards compatibility
 		UseCrossCategorySuffix: true,
+		// Custom category - default to false (use suffix mode by default)
+		UseCustomCategory: false,
+		CustomCategory:    "",
 		// Skip auto-resume - default to false to preserve existing behavior
 		SkipAutoResumeRSS:            false,
 		SkipAutoResumeSeededSearch:   false,
@@ -299,6 +306,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		       use_category_from_indexer, run_external_program_id,
 		       rss_automation_tags, seeded_search_tags, completion_search_tags,
 		       webhook_tags, inherit_source_tags, use_cross_category_suffix,
+		       use_custom_category, custom_category,
 		       skip_auto_resume_rss, skip_auto_resume_seeded_search,
 		       skip_auto_resume_completion, skip_auto_resume_webhook,
 		       skip_recheck, skip_piece_boundary_safety_check,
@@ -349,6 +357,8 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&webhookTags,
 		&settings.InheritSourceTags,
 		&settings.UseCrossCategorySuffix,
+		&settings.UseCustomCategory,
+		&settings.CustomCategory,
 		&settings.SkipAutoResumeRSS,
 		&settings.SkipAutoResumeSeededSearch,
 		&settings.SkipAutoResumeCompletion,
@@ -526,12 +536,13 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			use_category_from_indexer, run_external_program_id,
 			rss_automation_tags, seeded_search_tags, completion_search_tags,
 			webhook_tags, inherit_source_tags, use_cross_category_suffix,
+			use_custom_category, custom_category,
 			skip_auto_resume_rss, skip_auto_resume_seeded_search,
 			skip_auto_resume_completion, skip_auto_resume_webhook,
 			skip_recheck, skip_piece_boundary_safety_check,
 			use_hardlinks, hardlink_base_dir, hardlink_dir_preset
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -560,6 +571,8 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			webhook_tags = excluded.webhook_tags,
 			inherit_source_tags = excluded.inherit_source_tags,
 			use_cross_category_suffix = excluded.use_cross_category_suffix,
+			use_custom_category = excluded.use_custom_category,
+			custom_category = excluded.custom_category,
 			skip_auto_resume_rss = excluded.skip_auto_resume_rss,
 			skip_auto_resume_seeded_search = excluded.skip_auto_resume_seeded_search,
 			skip_auto_resume_completion = excluded.skip_auto_resume_completion,
@@ -615,6 +628,8 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		webhookTags,
 		settings.InheritSourceTags,
 		settings.UseCrossCategorySuffix,
+		settings.UseCustomCategory,
+		settings.CustomCategory,
 		settings.SkipAutoResumeRSS,
 		settings.SkipAutoResumeSeededSearch,
 		settings.SkipAutoResumeCompletion,

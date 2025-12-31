@@ -20,6 +20,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MultiSelect } from "@/components/ui/multi-select"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
@@ -73,6 +74,8 @@ interface GlobalCrossSeedSettings {
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
   useCrossCategorySuffix: boolean
+  useCustomCategory: boolean
+  customCategory: string
   runExternalProgramId?: number | null
   ignorePatterns: string
   // Source-specific tagging
@@ -95,6 +98,9 @@ interface GlobalCrossSeedSettings {
   webhookSourceExcludeTags: string[]
   // Note: Hardlink mode settings have been moved to per-instance configuration
 }
+
+// Category mode type for type-safe radio group
+type CategoryMode = "suffix" | "indexer" | "custom"
 
 // RSS Automation constants
 const MIN_RSS_INTERVAL_MINUTES = 30   // RSS: minimum interval between RSS feed polls
@@ -119,6 +125,8 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   sizeMismatchTolerancePercent: 5.0,
   useCategoryFromIndexer: false,
   useCrossCategorySuffix: true,
+  useCustomCategory: false,
+  customCategory: "",
   runExternalProgramId: null,
   ignorePatterns: "",
   // Source-specific tagging defaults
@@ -780,6 +788,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent ?? 5.0,
         useCategoryFromIndexer: settings.useCategoryFromIndexer ?? false,
         useCrossCategorySuffix: settings.useCrossCategorySuffix ?? true,
+        useCustomCategory: settings.useCustomCategory ?? false,
+        customCategory: settings.customCategory ?? "",
         runExternalProgramId: settings.runExternalProgramId ?? null,
         ignorePatterns: Array.isArray(settings.ignorePatterns)
           ? settings.ignorePatterns.join("\n")
@@ -882,6 +892,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent,
         useCategoryFromIndexer: settings.useCategoryFromIndexer,
         useCrossCategorySuffix: settings.useCrossCategorySuffix ?? true,
+        useCustomCategory: settings.useCustomCategory ?? false,
+        customCategory: settings.customCategory ?? "",
         runExternalProgramId: settings.runExternalProgramId ?? null,
         ignorePatterns: ignorePatterns.length > 0 ? ignorePatterns.join(", ") : "",
         rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
@@ -907,6 +919,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       sizeMismatchTolerancePercent: globalSource.sizeMismatchTolerancePercent,
       useCategoryFromIndexer: globalSource.useCategoryFromIndexer,
       useCrossCategorySuffix: globalSource.useCrossCategorySuffix,
+      useCustomCategory: globalSource.useCustomCategory,
+      customCategory: globalSource.customCategory,
       runExternalProgramId: globalSource.runExternalProgramId,
       ignorePatterns: normalizeIgnorePatterns(globalSource.ignorePatterns),
       // Source-specific tagging
@@ -1190,6 +1204,32 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     ),
     [webhookSourceTagNames, globalSettings.webhookSourceTags, globalSettings.webhookSourceExcludeTags]
   )
+
+  // Custom category select options (uses all active instance categories for suggestions)
+  const customCategorySelectOptions = useMemo(
+    () => buildCategorySelectOptions(
+      webhookSourceMetadata?.categories ?? {},
+      globalSettings.customCategory ? [globalSettings.customCategory] : []
+    ),
+    [globalSettings.customCategory, webhookSourceMetadata?.categories]
+  )
+
+  // Helper to get current category mode from boolean flags
+  const getCategoryMode = (): CategoryMode => {
+    if (globalSettings.useCustomCategory) return "custom"
+    if (globalSettings.useCategoryFromIndexer) return "indexer"
+    return "suffix"
+  }
+
+  // Helper to set category mode (updates all three boolean flags)
+  const setCategoryMode = (mode: CategoryMode) => {
+    setGlobalSettings(prev => ({
+      ...prev,
+      useCrossCategorySuffix: mode === "suffix",
+      useCategoryFromIndexer: mode === "indexer",
+      useCustomCategory: mode === "custom",
+    }))
+  }
 
   const handleStartSearchRun = () => {
     // Clear previous validation errors
@@ -2379,54 +2419,80 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   <p className="text-sm font-medium leading-none">Categories</p>
                   <p className="text-xs text-muted-foreground">Control how cross-seeds are categorized in qBittorrent.</p>
                 </div>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-1.5">
-                      <Label htmlFor="global-use-cross-category-suffix" className="font-medium">Add .cross category suffix</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Category suffix help">
-                            <Info className="h-3.5 w-3.5" />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent align="start" className="max-w-xs text-xs">
-                          Creates isolated categories (e.g., tv.cross) with the same save path as the base category. Cross-seeds inherit autoTMM from the matched torrent and are saved to the same location as the original files.
-                        </TooltipContent>
-                      </Tooltip>
+                <RadioGroup
+                  value={getCategoryMode()}
+                  onValueChange={(value) => setCategoryMode(value as CategoryMode)}
+                  className="space-y-3"
+                >
+                  <div className="flex items-start gap-3">
+                    <RadioGroupItem value="suffix" id="category-suffix" className="mt-0.5" />
+                    <div className="space-y-0.5 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <Label htmlFor="category-suffix" className="font-medium cursor-pointer">Add .cross category suffix</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Category suffix help">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent align="start" className="max-w-xs text-xs">
+                            Creates isolated categories (e.g., tv.cross) with the same save path as the base category. Cross-seeds inherit autoTMM from the matched torrent and are saved to the same location as the original files.
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Keeps cross-seeds separate from *arr applications to prevent import loops.</p>
                     </div>
-                    <p className="text-xs text-muted-foreground">Keeps cross-seeds separate from *arr applications to prevent import loops.</p>
                   </div>
-                  <Switch
-                    id="global-use-cross-category-suffix"
-                    checked={globalSettings.useCrossCategorySuffix}
-                    disabled={globalSettings.useCategoryFromIndexer}
-                    onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, useCrossCategorySuffix: !!value }))}
-                  />
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-1.5">
-                      <Label htmlFor="global-use-category-from-indexer" className="font-medium">Use indexer name as category</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Indexer category help">
-                            <Info className="h-3.5 w-3.5" />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent align="start" className="max-w-xs text-xs">
-                          Creates a category named after the indexer. Save path and autoTMM are inherited from the matched torrent. Useful for tracking which indexer provided each cross-seed.
-                        </TooltipContent>
-                      </Tooltip>
+                  <div className="flex items-start gap-3">
+                    <RadioGroupItem value="indexer" id="category-indexer" className="mt-0.5" />
+                    <div className="space-y-0.5 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <Label htmlFor="category-indexer" className="font-medium cursor-pointer">Use indexer name as category</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Indexer category help">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent align="start" className="max-w-xs text-xs">
+                            Creates a category named after the indexer. Save path and autoTMM are inherited from the matched torrent. Useful for tracking which indexer provided each cross-seed.
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Set category to the indexer name (e.g., TorrentDB, BroadcasTheNet).</p>
                     </div>
-                    <p className="text-xs text-muted-foreground">Set category to indexer name. Cannot be used with .cross suffix.</p>
                   </div>
-                  <Switch
-                    id="global-use-category-from-indexer"
-                    checked={globalSettings.useCategoryFromIndexer}
-                    disabled={globalSettings.useCrossCategorySuffix}
-                    onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, useCategoryFromIndexer: !!value }))}
-                  />
-                </div>
+                  <div className="flex items-start gap-3">
+                    <RadioGroupItem value="custom" id="category-custom" className="mt-0.5" />
+                    <div className="space-y-0.5 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <Label htmlFor="category-custom" className="font-medium cursor-pointer">Custom category</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Custom category help">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent align="start" className="max-w-xs text-xs">
+                            All cross-seeds will be placed in a single custom category. Save path and autoTMM are inherited from the matched torrent.
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Use a fixed category name for all cross-seeds.</p>
+                      {globalSettings.useCustomCategory && (
+                        <MultiSelect
+                          options={customCategorySelectOptions}
+                          selected={globalSettings.customCategory ? [globalSettings.customCategory] : []}
+                          onChange={values => setGlobalSettings(prev => ({ ...prev, customCategory: values[0] ?? "" }))}
+                          placeholder="Select or type a category..."
+                          className="mt-2 max-w-xs"
+                          creatable
+                          onCreateOption={value => setGlobalSettings(prev => ({ ...prev, customCategory: value }))}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </RadioGroup>
               </div>
 
               {/* Tagging */}
