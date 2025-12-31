@@ -80,14 +80,7 @@ function SpeedLimitInput({
               onChange(mibToBytes(mibValue))
             }
           }}
-          onBlur={() => {
-            setIsFocused(false)
-            // Reformat on blur
-            const mibValue = localValue === "" ? 0 : parseFloat(localValue)
-            if (!isNaN(mibValue) && mibValue >= 0) {
-              setLocalValue(mibValue === 0 ? "" : mibValue.toFixed(1))
-            }
-          }}
+          onBlur={() => setIsFocused(false)}
           placeholder="0 (Unlimited)"
           className="flex-1"
         />
