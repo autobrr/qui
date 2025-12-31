@@ -158,7 +158,10 @@ export function OrphanScanSettingsForm({
                 </div>
                 <Select
                   value={String(settings.scanIntervalHours)}
-                  onValueChange={(value) => setSettings(prev => ({ ...prev, scanIntervalHours: Number(value) }))}
+                  onValueChange={(value) => {
+                    if (!value) return // Ignore empty values from Radix Select quirk
+                    setSettings(prev => ({ ...prev, scanIntervalHours: Number(value) }))
+                  }}
                 >
                   <SelectTrigger id="scan-interval" className="h-9">
                     <SelectValue />
