@@ -2958,10 +2958,11 @@ func (s *Service) processCrossSeedCandidate(
 		options["contentLayout"] = "Original"
 	}
 
-	// Check if UseCategoryFromIndexer is enabled (affects TMM decision)
-	var useCategoryFromIndexer bool
+	// Check if UseCategoryFromIndexer or UseCustomCategory is enabled (affects TMM decision)
+	var useCategoryFromIndexer, useCustomCategory bool
 	if settings, err := s.GetAutomationSettings(ctx); err == nil && settings != nil {
 		useCategoryFromIndexer = settings.UseCategoryFromIndexer
+		useCustomCategory = settings.UseCustomCategory
 	}
 
 	// Determine save path strategy:
@@ -3015,7 +3016,7 @@ func (s *Service) processCrossSeedCandidate(
 		}
 
 		// Evaluate whether autoTMM should be enabled
-		tmmDecision := shouldEnableAutoTMM(crossCategory, matchedTorrent.AutoManaged, useCategoryFromIndexer, actualCategorySavePath, props.SavePath)
+		tmmDecision := shouldEnableAutoTMM(crossCategory, matchedTorrent.AutoManaged, useCategoryFromIndexer, useCustomCategory, actualCategorySavePath, props.SavePath)
 		if forceManualSavePath {
 			tmmDecision.Enabled = false
 		}
@@ -3025,6 +3026,7 @@ func (s *Service) processCrossSeedCandidate(
 			Str("crossCategory", tmmDecision.CrossCategory).
 			Bool("matchedAutoManaged", tmmDecision.MatchedAutoManaged).
 			Bool("useIndexerCategory", tmmDecision.UseIndexerCategory).
+			Bool("useCustomCategory", tmmDecision.UseCustomCategory).
 			Str("categorySavePath", tmmDecision.CategorySavePath).
 			Str("matchedSavePath", tmmDecision.MatchedSavePath).
 			Bool("pathsMatch", tmmDecision.PathsMatch).
@@ -7148,6 +7150,7 @@ type autoTMMDecision struct {
 	CrossCategory      string
 	MatchedAutoManaged bool
 	UseIndexerCategory bool
+	UseCustomCategory  bool
 	CategorySavePath   string
 	MatchedSavePath    string
 	PathsMatch         bool
@@ -7157,29 +7160,31 @@ type autoTMMDecision struct {
 // autoTMM can only be enabled when:
 // - A cross-seed category was successfully created (crossCategory != "")
 // - The matched torrent uses autoTMM
-// - Not using indexer categories (which may have different paths)
+// - Not using indexer categories or custom categories (which may have different paths)
 //
 // We trust qBittorrent's implicit path calculation when categories don't have explicit
 // save paths configured. If the matched torrent is using autoTMM successfully, the
 // cross-seed should inherit that setting.
 //
 // Returns the decision struct for logging and whether autoTMM should be enabled.
-func shouldEnableAutoTMM(crossCategory string, matchedAutoManaged bool, useCategoryFromIndexer bool, actualCategorySavePath string, matchedSavePath string) autoTMMDecision {
+func shouldEnableAutoTMM(crossCategory string, matchedAutoManaged bool, useCategoryFromIndexer bool, useCustomCategory bool, actualCategorySavePath string, matchedSavePath string) autoTMMDecision {
 	// Check if explicit category save path matches the matched torrent's path (informational).
 	pathsMatch := actualCategorySavePath != "" && matchedSavePath != "" &&
 		normalizePath(actualCategorySavePath) == normalizePath(matchedSavePath)
 
-	// Enable autoTMM if the matched torrent uses autoTMM and we're not using indexer categories.
+	// Enable autoTMM if the matched torrent uses autoTMM and we're not using indexer or custom categories.
 	// When a category has no explicit save path, qBittorrent uses an implicit path:
 	// <default_save_path>/<category_name>. Since the matched torrent is already using
 	// autoTMM successfully at its current path, the cross-seed should too.
-	enabled := crossCategory != "" && matchedAutoManaged && !useCategoryFromIndexer
+	// Custom categories disable autoTMM like indexer categories for safety.
+	enabled := crossCategory != "" && matchedAutoManaged && !useCategoryFromIndexer && !useCustomCategory
 
 	return autoTMMDecision{
 		Enabled:            enabled,
 		CrossCategory:      crossCategory,
 		MatchedAutoManaged: matchedAutoManaged,
 		UseIndexerCategory: useCategoryFromIndexer,
+		UseCustomCategory:  useCustomCategory,
 		CategorySavePath:   actualCategorySavePath,
 		MatchedSavePath:    matchedSavePath,
 		PathsMatch:         pathsMatch,
@@ -7315,6 +7320,11 @@ func (s *Service) determineCrossSeedCategory(ctx context.Context, req *CrossSeed
 	// Load settings if not provided by caller
 	if settings == nil && s != nil {
 		settings, _ = s.GetAutomationSettings(ctx)
+	}
+
+	// Custom category takes priority - use exact category without any suffix
+	if settings != nil && settings.UseCustomCategory && settings.CustomCategory != "" {
+		return settings.CustomCategory, settings.CustomCategory
 	}
 
 	// Helper to apply .cross suffix only if enabled in settings
