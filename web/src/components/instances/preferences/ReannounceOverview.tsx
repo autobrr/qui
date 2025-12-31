@@ -7,16 +7,16 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
-import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { cn, copyTextToClipboard, formatErrorReason, formatRelativeTime } from "@/lib/utils"
 import type { Instance, InstanceFormData, InstanceReannounceActivity, InstanceReannounceSettings } from "@/types"
 import { useQueries, useQueryClient } from "@tanstack/react-query"
-import { Input } from "@/components/ui/input"
-import { Copy, Info, RefreshCcw, Search, Settings2 } from "lucide-react"
+import { ChevronDown, Copy, Info, RefreshCcw, Search, Settings2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 
@@ -206,49 +206,52 @@ export function ReannounceOverview({
               .reverse()
 
             return (
-              <AccordionItem key={instance.id} value={String(instance.id)}>
-                <AccordionTrigger className="px-6 py-4 hover:no-underline group">
-                  <div className="flex items-center justify-between w-full pr-4">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className="font-medium truncate">{instance.name}</span>
-                      {isEnabled && stats.successToday > 0 && (
-                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">
-                          {stats.successToday} today
-                        </Badge>
-                      )}
-                      {isEnabled && stats.failedToday > 0 && (
-                        <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">
-                          {stats.failedToday} failed
-                        </Badge>
-                      )}
-                    </div>
+              <AccordionItem key={instance.id} value={String(instance.id)} className="group/item">
+                <div className="grid grid-cols-[1fr_auto] items-center px-6">
+                  <AccordionTrigger className="py-4 pr-4 hover:no-underline [&>svg]:hidden">
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="font-medium truncate">{instance.name}</span>
+                        {isEnabled && stats.successToday > 0 && (
+                          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">
+                            {stats.successToday} today
+                          </Badge>
+                        )}
+                        {isEnabled && stats.failedToday > 0 && (
+                          <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">
+                            {stats.failedToday} failed
+                          </Badge>
+                        )}
+                      </div>
 
-                    <div className="flex items-center gap-4">
                       {isEnabled && stats.lastActivity && (
                         <span className="text-xs text-muted-foreground hidden sm:block">
                           {formatRelativeTime(stats.lastActivity)}
                         </span>
                       )}
-                      <div
-                        className="flex items-center gap-2"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <span className={cn(
-                          "text-xs font-medium",
-                          isEnabled ? "text-emerald-500" : "text-muted-foreground"
-                        )}>
-                          {isEnabled ? "On" : "Off"}
-                        </span>
-                        <Switch
-                          checked={isEnabled}
-                          onCheckedChange={(enabled) => handleToggleEnabled(instance, enabled)}
-                          disabled={isUpdating}
-                          className="scale-90"
-                        />
-                      </div>
                     </div>
+                  </AccordionTrigger>
+                  <div className="flex items-center gap-4 py-4">
+                    <div
+                      className="flex items-center gap-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <span className={cn(
+                        "text-xs font-medium",
+                        isEnabled ? "text-emerald-500" : "text-muted-foreground"
+                      )}>
+                        {isEnabled ? "On" : "Off"}
+                      </span>
+                      <Switch
+                        checked={isEnabled}
+                        onCheckedChange={(enabled) => handleToggleEnabled(instance, enabled)}
+                        disabled={isUpdating}
+                        className="scale-90"
+                      />
+                    </div>
+                    <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/item:rotate-180" />
                   </div>
-                </AccordionTrigger>
+                </div>
 
                 <AccordionContent className="px-6 pb-4">
                   <div className="space-y-4">
