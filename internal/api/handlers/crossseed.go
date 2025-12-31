@@ -41,6 +41,8 @@ type automationSettingsRequest struct {
 	SizeMismatchTolerancePercent float64  `json:"sizeMismatchTolerancePercent"`
 	UseCategoryFromIndexer       bool     `json:"useCategoryFromIndexer"`
 	UseCrossCategorySuffix       bool     `json:"useCrossCategorySuffix"`
+	UseCustomCategory            bool     `json:"useCustomCategory"`
+	CustomCategory               string   `json:"customCategory"`
 	RunExternalProgramID         *int     `json:"runExternalProgramId"`
 	SkipRecheck                  bool     `json:"skipRecheck"`
 }
@@ -653,9 +655,19 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		}
 	}
 
-	// Validate mutual exclusivity: cannot use both indexer category and .cross suffix
-	if req.UseCategoryFromIndexer && req.UseCrossCategorySuffix {
-		RespondError(w, http.StatusBadRequest, "Cannot enable both 'Use indexer name as category' and 'Add .cross category suffix'. These settings are mutually exclusive.")
+	// Validate mutual exclusivity: category modes are mutually exclusive
+	enabledModes := 0
+	if req.UseCategoryFromIndexer {
+		enabledModes++
+	}
+	if req.UseCrossCategorySuffix {
+		enabledModes++
+	}
+	if req.UseCustomCategory {
+		enabledModes++
+	}
+	if enabledModes > 1 {
+		RespondError(w, http.StatusBadRequest, "Category modes are mutually exclusive. Enable only one of: indexer name, .cross suffix, or custom category.")
 		return
 	}
 
@@ -672,6 +684,8 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		SizeMismatchTolerancePercent: req.SizeMismatchTolerancePercent,
 		UseCategoryFromIndexer:       req.UseCategoryFromIndexer,
 		UseCrossCategorySuffix:       req.UseCrossCategorySuffix,
+		UseCustomCategory:            req.UseCustomCategory,
+		CustomCategory:               req.CustomCategory,
 		RunExternalProgramID:         req.RunExternalProgramID,
 		SkipRecheck:                  req.SkipRecheck,
 	}
