@@ -68,6 +68,8 @@ type automationSettingsPatchRequest struct {
 	SizeMismatchTolerancePercent   *float64    `json:"sizeMismatchTolerancePercent,omitempty"`
 	UseCategoryFromIndexer         *bool       `json:"useCategoryFromIndexer,omitempty"`
 	UseCrossCategorySuffix         *bool       `json:"useCrossCategorySuffix,omitempty"`
+	UseCustomCategory              *bool       `json:"useCustomCategory,omitempty"`
+	CustomCategory                 *string     `json:"customCategory,omitempty"`
 	RunExternalProgramID           optionalInt `json:"runExternalProgramId"`
 	// Source-specific tagging
 	RSSAutomationTags    *[]string `json:"rssAutomationTags,omitempty"`
@@ -161,6 +163,8 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.SizeMismatchTolerancePercent == nil &&
 		r.UseCategoryFromIndexer == nil &&
 		r.UseCrossCategorySuffix == nil &&
+		r.UseCustomCategory == nil &&
+		r.CustomCategory == nil &&
 		!r.RunExternalProgramID.Set &&
 		r.RSSAutomationTags == nil &&
 		r.SeededSearchTags == nil &&
@@ -246,6 +250,12 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	}
 	if patch.UseCrossCategorySuffix != nil {
 		settings.UseCrossCategorySuffix = *patch.UseCrossCategorySuffix
+	}
+	if patch.UseCustomCategory != nil {
+		settings.UseCustomCategory = *patch.UseCustomCategory
+	}
+	if patch.CustomCategory != nil {
+		settings.CustomCategory = *patch.CustomCategory
 	}
 	if patch.RunExternalProgramID.Set {
 		settings.RunExternalProgramID = patch.RunExternalProgramID.Value
@@ -728,9 +738,19 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 	merged := *current
 	applyAutomationSettingsPatch(&merged, req)
 
-	// Validate mutual exclusivity: cannot use both indexer category and .cross suffix
-	if merged.UseCategoryFromIndexer && merged.UseCrossCategorySuffix {
-		RespondError(w, http.StatusBadRequest, "Cannot enable both 'Use indexer name as category' and 'Add .cross category suffix'. These settings are mutually exclusive.")
+	// Validate mutual exclusivity: category modes are mutually exclusive
+	enabledModes := 0
+	if merged.UseCategoryFromIndexer {
+		enabledModes++
+	}
+	if merged.UseCrossCategorySuffix {
+		enabledModes++
+	}
+	if merged.UseCustomCategory {
+		enabledModes++
+	}
+	if enabledModes > 1 {
+		RespondError(w, http.StatusBadRequest, "Category modes are mutually exclusive. Enable only one of: indexer name, .cross suffix, or custom category.")
 		return
 	}
 

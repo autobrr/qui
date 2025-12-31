@@ -140,3 +140,31 @@ func TestApplyAutomationSettingsPatch_PreservesUnspecifiedFields(t *testing.T) {
 }
 
 func stringPtr(value string) *string { return &value }
+
+func TestApplyAutomationSettingsPatch_CustomCategory(t *testing.T) {
+	existing := models.CrossSeedAutomationSettings{
+		UseCrossCategorySuffix: true,
+		UseCategoryFromIndexer: false,
+		UseCustomCategory:      false,
+		CustomCategory:         "",
+	}
+
+	customCat := "cross-seed"
+	patch := automationSettingsPatchRequest{
+		UseCrossCategorySuffix: ptrBool(false),
+		UseCustomCategory:      ptrBool(true),
+		CustomCategory:         &customCat,
+	}
+
+	applyAutomationSettingsPatch(&existing, patch)
+
+	if existing.UseCrossCategorySuffix {
+		t.Fatalf("expected useCrossCategorySuffix to be false")
+	}
+	if !existing.UseCustomCategory {
+		t.Fatalf("expected useCustomCategory to be true")
+	}
+	if existing.CustomCategory != "cross-seed" {
+		t.Fatalf("expected customCategory to be 'cross-seed', got %q", existing.CustomCategory)
+	}
+}
