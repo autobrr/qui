@@ -96,8 +96,6 @@ type DB struct {
 
 	closing atomic.Bool
 
-	lastBeginTxRecoveryStackLogUnixNano atomic.Int64
-
 	closeOnce sync.Once
 	closeErr  error
 }
@@ -604,15 +602,6 @@ func isSQLiteNestedTxErr(err error) bool {
 	return strings.Contains(err.Error(), sqliteNestedTxErrSubstring)
 }
 
-func (db *DB) rollbackWriterConn(ctx context.Context) {
-	if db.writerConn == nil {
-		return
-	}
-	if _, err := db.writerConn.ExecContext(ctx, "ROLLBACK"); err != nil {
-		log.Warn().Err(err).Msg("failed to rollback SQLite writer connection during recovery")
-	}
-}
-
 const stmtClosedErrMsg = "statement is closed"
 
 type stmtExecutor[T any] interface {
@@ -883,33 +872,18 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 
 	tx, err := db.writerConn.BeginTx(ctx, opts)
 	if err != nil {
+		db.writerMu.Unlock()
 		if isSQLiteNestedTxErr(err) {
-			recordBeginTxRecovery()
-			// This error means the underlying SQLite connection believes it's still inside
-			// a transaction. We should not be holding an active write transaction while
-			// holding writerMu, so attempt to rollback and retry once to self-heal.
-			now := time.Now().UnixNano()
-			last := db.lastBeginTxRecoveryStackLogUnixNano.Load()
-			if last == 0 || now-last >= int64(time.Minute) {
-				db.lastBeginTxRecoveryStackLogUnixNano.Store(now)
-				log.Error().
-					Err(err).
-					Str("stack", string(debug.Stack())).
-					Msg("SQLite writer connection appears wedged in a transaction; attempting rollback and retry")
-			} else {
-				log.Error().
-					Err(err).
-					Msg("SQLite writer connection appears wedged in a transaction; attempting rollback and retry (stack suppressed)")
-			}
-			rollbackCtx, rollbackCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			db.rollbackWriterConn(rollbackCtx)
-			rollbackCancel()
-			tx, err = db.writerConn.BeginTx(ctx, opts)
+			// This indicates a bug: a previous transaction failed to rollback properly,
+			// leaving the connection wedged. Log with stack trace to help diagnose.
+			recordWedgedTransaction()
+			log.Error().
+				Err(err).
+				Str("stack", string(debug.Stack())).
+				Msg("SQLite writer connection is wedged in a transaction - this indicates a bug where a previous transaction failed to rollback properly")
+			return nil, fmt.Errorf("database connection wedged: %w", err)
 		}
-		if err != nil {
-			db.writerMu.Unlock() // Unlock on error
-			return nil, err
-		}
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
 	// Pass unlock function to Tx so it can release the mutex on Commit/Rollback
@@ -1248,6 +1222,10 @@ const referencedStringsInsertQuery = `
 	SELECT category_name_id AS string_id FROM torznab_indexer_categories WHERE category_name_id IS NOT NULL
 	UNION ALL
 	SELECT error_message_id AS string_id FROM torznab_indexer_errors WHERE error_message_id IS NOT NULL
+	UNION ALL
+	SELECT name_id AS string_id FROM arr_instances WHERE name_id IS NOT NULL
+	UNION ALL
+	SELECT base_url_id AS string_id FROM arr_instances WHERE base_url_id IS NOT NULL
 `
 
 func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
