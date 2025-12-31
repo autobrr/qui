@@ -235,12 +235,13 @@ function HardlinkModeSettings() {
   const { instances, updateInstance, isUpdating } = useInstances()
   const [expandedInstances, setExpandedInstances] = useState<string[]>([])
   const [dirtyMap, setDirtyMap] = useState<Record<number, boolean>>({})
-  const [formMap, setFormMap] = useState<Record<number, {
+  type InstanceFormState = {
     useHardlinks: boolean
     useReflinks: boolean
     hardlinkBaseDir: string
     hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
-  }>>({})
+  }
+  const [formMap, setFormMap] = useState<Record<number, InstanceFormState>>({})
   const [isOpen, setIsOpen] = useState<boolean | undefined>(undefined)
 
   const activeInstances = useMemo(
@@ -265,115 +266,11 @@ function HardlinkModeSettings() {
     }
   }, [formMap])
 
-  const handleToggleHardlink = (instance: Instance, enabled: boolean) => {
-    if (!instance.hasLocalFilesystemAccess && enabled) {
-      toast.error("Cannot enable hardlink mode", {
-        description: `Instance "${instance.name}" does not have local filesystem access enabled.`,
-      })
-      return
-    }
-
-    const form = getForm(instance)
-
-    // Block enabling with empty base directory
-    if (enabled && !form.hardlinkBaseDir.trim()) {
-      toast.error("Cannot enable hardlink mode", {
-        description: "Base directory must be set first.",
-      })
-      return
-    }
-
-    // Mutual exclusivity: disable reflink when enabling hardlink
-    const newReflinks = enabled ? false : form.useReflinks
-
-    updateInstance({
-      id: instance.id,
-      data: {
-        name: instance.name,
-        host: instance.host,
-        username: instance.username,
-        useHardlinks: enabled,
-        useReflinks: newReflinks,
-        hardlinkBaseDir: form.hardlinkBaseDir,
-        hardlinkDirPreset: form.hardlinkDirPreset,
-      },
-    }, {
-      onSuccess: () => {
-        toast.success(`Hardlink mode ${enabled ? "enabled" : "disabled"}`, {
-          description: instance.name,
-        })
-        // Sync formMap with server state to prevent visual snap-back
-        setFormMap((prev) => ({
-          ...prev,
-          [instance.id]: { ...form, useHardlinks: enabled, useReflinks: newReflinks },
-        }))
-        setDirtyMap((prev) => ({ ...prev, [instance.id]: false }))
-      },
-      onError: (error) => {
-        toast.error("Failed to update settings", {
-          description: error instanceof Error ? error.message : "Unknown error",
-        })
-      },
-    })
-  }
-
-  const handleToggleReflink = (instance: Instance, enabled: boolean) => {
-    if (!instance.hasLocalFilesystemAccess && enabled) {
-      toast.error("Cannot enable reflink mode", {
-        description: `Instance "${instance.name}" does not have local filesystem access enabled.`,
-      })
-      return
-    }
-
-    const form = getForm(instance)
-
-    // Block enabling with empty base directory
-    if (enabled && !form.hardlinkBaseDir.trim()) {
-      toast.error("Cannot enable reflink mode", {
-        description: "Base directory must be set first.",
-      })
-      return
-    }
-
-    // Mutual exclusivity: disable hardlink when enabling reflink
-    const newHardlinks = enabled ? false : form.useHardlinks
-
-    updateInstance({
-      id: instance.id,
-      data: {
-        name: instance.name,
-        host: instance.host,
-        username: instance.username,
-        useHardlinks: newHardlinks,
-        useReflinks: enabled,
-        hardlinkBaseDir: form.hardlinkBaseDir,
-        hardlinkDirPreset: form.hardlinkDirPreset,
-      },
-    }, {
-      onSuccess: () => {
-        toast.success(`Reflink mode ${enabled ? "enabled" : "disabled"}`, {
-          description: instance.name,
-        })
-        // Sync formMap with server state to prevent visual snap-back
-        setFormMap((prev) => ({
-          ...prev,
-          [instance.id]: { ...form, useHardlinks: newHardlinks, useReflinks: enabled },
-        }))
-        setDirtyMap((prev) => ({ ...prev, [instance.id]: false }))
-      },
-      onError: (error) => {
-        toast.error("Failed to update settings", {
-          description: error instanceof Error ? error.message : "Unknown error",
-        })
-      },
-    })
-  }
-
-  const handleFormChange = (
+  const handleFormChange = <K extends keyof InstanceFormState>(
     instanceId: number,
-    field: "hardlinkBaseDir" | "hardlinkDirPreset",
-    value: string,
-    currentForm: { useHardlinks: boolean; useReflinks: boolean; hardlinkBaseDir: string; hardlinkDirPreset: "flat" | "by-tracker" | "by-instance" }
+    field: K,
+    value: InstanceFormState[K],
+    currentForm: InstanceFormState
   ) => {
     setFormMap((prev) => ({
       ...prev,
@@ -385,8 +282,42 @@ function HardlinkModeSettings() {
     setDirtyMap((prev) => ({ ...prev, [instanceId]: true }))
   }
 
+  const handleModeChange = (
+    instanceId: number,
+    mode: "regular" | "hardlink" | "reflink",
+    currentForm: InstanceFormState
+  ) => {
+    setFormMap((prev) => ({
+      ...prev,
+      [instanceId]: {
+        ...currentForm,
+        useHardlinks: mode === "hardlink",
+        useReflinks: mode === "reflink",
+      },
+    }))
+    setDirtyMap((prev) => ({ ...prev, [instanceId]: true }))
+  }
+
   const handleSave = (instance: Instance) => {
     const form = getForm(instance)
+
+    // Validate before saving
+    if ((form.useHardlinks || form.useReflinks) && !instance.hasLocalFilesystemAccess) {
+      const mode = form.useReflinks ? "reflink" : "hardlink"
+      toast.error(`Cannot enable ${mode} mode`, {
+        description: `Instance "${instance.name}" does not have local filesystem access enabled.`,
+      })
+      return
+    }
+
+    if ((form.useHardlinks || form.useReflinks) && !form.hardlinkBaseDir.trim()) {
+      const mode = form.useReflinks ? "reflink" : "hardlink"
+      toast.error(`Cannot enable ${mode} mode`, {
+        description: "Base directory must be set first.",
+      })
+      return
+    }
+
     updateInstance({
       id: instance.id,
       data: {
@@ -483,96 +414,103 @@ function HardlinkModeSettings() {
                   </AccordionTrigger>
                   <AccordionContent className="px-4 pb-4">
                     <div className="space-y-4 pt-2">
-                      {/* Hardlink mode toggle */}
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="space-y-0.5">
-                          <Label className="font-medium">Hardlink mode</Label>
+                      {/* Link mode selection */}
+                      <div className="space-y-2">
+                        <Label className="font-medium">Cross-seed mode</Label>
+                        {!canEnableModes && (
                           <p className="text-xs text-muted-foreground">
-                            {canEnableModes
-                              ? "Create hardlinked file trees (strict piece-boundary check)"
-                              : "Enable \"Local filesystem access\" in Instance Settings first"}
+                            Enable "Local filesystem access" in Instance Settings to use hardlink or reflink modes.
                           </p>
-                        </div>
-                        <Switch
-                          checked={form.useHardlinks}
-                          onCheckedChange={(value) => handleToggleHardlink(instance, !!value)}
-                          disabled={!canEnableModes || isUpdating}
-                        />
+                        )}
+                        <RadioGroup
+                          value={form.useReflinks ? "reflink" : form.useHardlinks ? "hardlink" : "regular"}
+                          onValueChange={(value) => handleModeChange(instance.id, value as "regular" | "hardlink" | "reflink", form)}
+                          disabled={isUpdating}
+                          className="space-y-2"
+                        >
+                          <div className="flex items-start gap-3">
+                            <RadioGroupItem value="regular" id={`mode-regular-${instance.id}`} className="mt-0.5" />
+                            <div className="space-y-0.5 flex-1">
+                              <Label htmlFor={`mode-regular-${instance.id}`} className="font-medium cursor-pointer">Regular</Label>
+                              <p className="text-xs text-muted-foreground">Reuse existing files in place. Fast, no extra disk space.</p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-3">
+                            <RadioGroupItem
+                              value="hardlink"
+                              id={`mode-hardlink-${instance.id}`}
+                              className="mt-0.5"
+                              disabled={!canEnableModes}
+                            />
+                            <div className="space-y-0.5 flex-1">
+                              <Label htmlFor={`mode-hardlink-${instance.id}`} className={`font-medium cursor-pointer ${!canEnableModes ? "text-muted-foreground" : ""}`}>Hardlink</Label>
+                              <p className="text-xs text-muted-foreground">Create hardlinked file trees. No extra disk space, strict piece-boundary check.</p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-3">
+                            <RadioGroupItem
+                              value="reflink"
+                              id={`mode-reflink-${instance.id}`}
+                              className="mt-0.5"
+                              disabled={!canEnableModes}
+                            />
+                            <div className="space-y-0.5 flex-1">
+                              <Label htmlFor={`mode-reflink-${instance.id}`} className={`font-medium cursor-pointer ${!canEnableModes ? "text-muted-foreground" : ""}`}>Reflink (copy-on-write)</Label>
+                              <p className="text-xs text-muted-foreground">Create reflinked clones. Safer for extra/missing files, mitigates corruption best.</p>
+                            </div>
+                          </div>
+                        </RadioGroup>
                       </div>
 
-                      {/* Reflink mode toggle */}
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="space-y-0.5">
-                          <Label className="font-medium">Reflink mode (copy-on-write)</Label>
-                          <p className="text-xs text-muted-foreground">
-                            {canEnableModes
-                              ? "Create reflinked clones. Safer for extra/missing files. Mitigates corruption best. Rechecks when needed"
-                              : "Enable \"Local filesystem access\" in Instance Settings first"}
-                          </p>
-                        </div>
-                        <Switch
-                          checked={form.useReflinks}
-                          onCheckedChange={(value) => handleToggleReflink(instance, !!value)}
-                          disabled={!canEnableModes || isUpdating}
-                        />
-                      </div>
+                      {(form.useHardlinks || form.useReflinks) && (
+                        <>
+                          <Separator />
 
-                      {form.useReflinks && (
-                        <Alert className="bg-blue-500/5 border-blue-500/30">
-                          <Info className="h-4 w-4 text-blue-500" />
-                          <AlertDescription className="text-xs">
-                            Reflink mode triggers recheck when extra files are present so qBittorrent can download
-                            missing pieces. If completion is below threshold, the torrent remains paused for manual
-                            review. Disk usage starts near-zero but grows as blocks are modified.
-                          </AlertDescription>
-                        </Alert>
+                          <div className="space-y-4">
+                            <div className="space-y-2">
+                              <Label>Base directory</Label>
+                              <Input
+                                placeholder="/path/to/crossseed-data"
+                                value={form.hardlinkBaseDir}
+                                onChange={(e) => handleFormChange(instance.id, "hardlinkBaseDir", e.target.value, form)}
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Must be on the same filesystem as download paths.
+                              </p>
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label>Directory organization</Label>
+                              <Select
+                                value={form.hardlinkDirPreset}
+                                onValueChange={(value: "flat" | "by-tracker" | "by-instance") =>
+                                  handleFormChange(instance.id, "hardlinkDirPreset", value, form)
+                                }
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="flat">Flat (all in base directory)</SelectItem>
+                                  <SelectItem value="by-tracker">By Tracker</SelectItem>
+                                  <SelectItem value="by-instance">By Instance</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </>
                       )}
 
-                      <Separator />
-
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label>Base directory</Label>
-                          <Input
-                            placeholder="/path/to/crossseed-data"
-                            value={form.hardlinkBaseDir}
-                            onChange={(e) => handleFormChange(instance.id, "hardlinkBaseDir", e.target.value, form)}
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            Must be on the same filesystem as download paths. Used by both hardlink and reflink modes.
-                          </p>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label>Directory organization</Label>
-                          <Select
-                            value={form.hardlinkDirPreset}
-                            onValueChange={(value: "flat" | "by-tracker" | "by-instance") =>
-                              handleFormChange(instance.id, "hardlinkDirPreset", value, form)
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="flat">Flat (all in base directory)</SelectItem>
-                              <SelectItem value="by-tracker">By Tracker</SelectItem>
-                              <SelectItem value="by-instance">By Instance</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        {isDirty && (
-                          <Button
-                            size="sm"
-                            onClick={() => handleSave(instance)}
-                            disabled={isUpdating}
-                          >
-                            {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Save Changes
-                          </Button>
-                        )}
-                      </div>
+                      {isDirty && (
+                        <Button
+                          size="sm"
+                          onClick={() => handleSave(instance)}
+                          disabled={isUpdating}
+                        >
+                          {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          Save Changes
+                        </Button>
+                      )}
                     </div>
                   </AccordionContent>
                 </AccordionItem>
@@ -2455,7 +2393,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                             </button>
                           </TooltipTrigger>
                           <TooltipContent align="start" className="max-w-xs text-xs">
-                            Creates a category named after the indexer. Save path and autoTMM are inherited from the matched torrent. Useful for tracking which indexer provided each cross-seed.
+                            Creates a category named after the indexer. AutoTMM is disabled; save path is set to match the original torrent. Useful for tracking which indexer provided each cross-seed.
                           </TooltipContent>
                         </Tooltip>
                       </div>
@@ -2474,7 +2412,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                             </button>
                           </TooltipTrigger>
                           <TooltipContent align="start" className="max-w-xs text-xs">
-                            All cross-seeds will be placed in a single custom category. Save path and autoTMM are inherited from the matched torrent.
+                            All cross-seeds will be placed in a single custom category. AutoTMM is disabled; save path is set to match the original torrent.
                           </TooltipContent>
                         </Tooltip>
                       </div>
