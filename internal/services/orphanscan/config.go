@@ -29,10 +29,12 @@ func DefaultConfig() Config {
 // DefaultSettings returns default settings for a new instance.
 func DefaultSettings() Settings {
 	return Settings{
-		Enabled:            false,
-		GracePeriodMinutes: 10,
-		IgnorePaths:        []string{},
-		ScanIntervalHours:  24,
-		MaxFilesPerRun:     10000,
+		Enabled:             false,
+		GracePeriodMinutes:  10,
+		IgnorePaths:         []string{},
+		ScanIntervalHours:   24,
+		MaxFilesPerRun:      10000,
+		AutoCleanupEnabled:  false,
+		AutoCleanupMaxFiles: 100,
 	}
 }

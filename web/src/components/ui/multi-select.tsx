@@ -23,6 +23,8 @@ interface MultiSelectProps {
   creatable?: boolean
   onCreateOption?: (inputValue: string) => void
   disabled?: boolean
+  /** Hide the check icon in dropdown items (useful when options have icons) */
+  hideCheckIcon?: boolean
 }
 
 export function MultiSelect({
@@ -34,6 +36,7 @@ export function MultiSelect({
   creatable = false,
   onCreateOption,
   disabled = false,
+  hideCheckIcon = false,
 }: MultiSelectProps) {
   const [open, setOpen] = React.useState(false)
   const [inputValue, setInputValue] = React.useState("")
@@ -152,12 +155,14 @@ export function MultiSelect({
                   }}
                   className="truncate"
                 >
-                  <Check
-                    className={cn(
-                      "mr-2 h-4 w-4 shrink-0",
-                      selected.includes(option.value) ? "opacity-100" : "opacity-0"
-                    )}
-                  />
+                  {!hideCheckIcon && (
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4 shrink-0",
+                        selected.includes(option.value) ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                  )}
                   {option.icon && <span className="mr-1.5 shrink-0">{option.icon}</span>}
                   <span
                     className="truncate"

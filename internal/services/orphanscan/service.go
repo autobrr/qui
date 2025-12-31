@@ -317,12 +317,14 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	if settings == nil {
 		defaults := DefaultSettings()
 		settings = &models.OrphanScanSettings{
-			InstanceID:         instanceID,
-			Enabled:            defaults.Enabled,
-			GracePeriodMinutes: defaults.GracePeriodMinutes,
-			IgnorePaths:        defaults.IgnorePaths,
-			ScanIntervalHours:  defaults.ScanIntervalHours,
-			MaxFilesPerRun:     defaults.MaxFilesPerRun,
+			InstanceID:          instanceID,
+			Enabled:             defaults.Enabled,
+			GracePeriodMinutes:  defaults.GracePeriodMinutes,
+			IgnorePaths:         defaults.IgnorePaths,
+			ScanIntervalHours:   defaults.ScanIntervalHours,
+			MaxFilesPerRun:      defaults.MaxFilesPerRun,
+			AutoCleanupEnabled:  defaults.AutoCleanupEnabled,
+			AutoCleanupMaxFiles: defaults.AutoCleanupMaxFiles,
 		}
 	}
 
@@ -469,6 +471,57 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	}
 
 	log.Info().Int64("run", runID).Int("files", len(allOrphans)).Msg("orphanscan: preview ready")
+
+	// Check if auto-cleanup should be triggered for scheduled scans
+	s.maybeAutoCleanup(ctx, instanceID, runID, settings, len(allOrphans))
+}
+
+// maybeAutoCleanup checks if auto-cleanup should be triggered for a scheduled scan.
+// Auto-cleanup is only performed when:
+// 1. The scan was triggered by the scheduler (not manual)
+// 2. AutoCleanupEnabled is true in settings
+// 3. The number of files found is <= AutoCleanupMaxFiles threshold
+func (s *Service) maybeAutoCleanup(ctx context.Context, instanceID int, runID int64, settings *models.OrphanScanSettings, filesFound int) {
+	// Get the run to check how it was triggered
+	run, err := s.store.GetRun(ctx, runID)
+	if err != nil || run == nil {
+		log.Error().Err(err).Int64("run", runID).Msg("orphanscan: failed to get run for auto-cleanup check")
+		return
+	}
+
+	// Only auto-cleanup for scheduled scans (manual scans always show preview)
+	if run.TriggeredBy != "scheduled" {
+		return
+	}
+
+	// Check if auto-cleanup is enabled
+	if settings == nil || !settings.AutoCleanupEnabled {
+		return
+	}
+
+	// Check file count threshold (safety check for anomalies)
+	maxFiles := settings.AutoCleanupMaxFiles
+	if maxFiles <= 0 {
+		maxFiles = 100 // Default threshold
+	}
+	if filesFound > maxFiles {
+		log.Info().
+			Int64("run", runID).
+			Int("filesFound", filesFound).
+			Int("threshold", maxFiles).
+			Msg("orphanscan: skipping auto-cleanup (file count exceeds threshold)")
+		return
+	}
+
+	log.Info().
+		Int64("run", runID).
+		Int("filesFound", filesFound).
+		Msg("orphanscan: triggering auto-cleanup for scheduled scan")
+
+	// Trigger deletion - ConfirmDeletion runs in a goroutine
+	if err := s.ConfirmDeletion(ctx, instanceID, runID); err != nil {
+		log.Error().Err(err).Int64("run", runID).Msg("orphanscan: auto-cleanup failed to start deletion")
+	}
 }
 
 func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int64) {

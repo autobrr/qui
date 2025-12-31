@@ -1831,6 +1831,8 @@ export interface OrphanScanSettings {
   ignorePaths: string[]
   scanIntervalHours: number
   maxFilesPerRun: number
+  autoCleanupEnabled: boolean
+  autoCleanupMaxFiles: number
   createdAt?: string
   updatedAt?: string
 }
@@ -1841,6 +1843,8 @@ export interface OrphanScanSettingsUpdate {
   ignorePaths?: string[]
   scanIntervalHours?: number
   maxFilesPerRun?: number
+  autoCleanupEnabled?: boolean
+  autoCleanupMaxFiles?: number
 }
 
 export interface OrphanScanRun {

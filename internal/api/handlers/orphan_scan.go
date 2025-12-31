@@ -53,11 +53,13 @@ func (h *OrphanScanHandler) requireLocalAccess(w http.ResponseWriter, r *http.Re
 
 // OrphanScanSettingsPayload is the request body for creating/updating orphan scan settings.
 type OrphanScanSettingsPayload struct {
-	Enabled            *bool    `json:"enabled"`
-	GracePeriodMinutes *int     `json:"gracePeriodMinutes"`
-	IgnorePaths        []string `json:"ignorePaths"`
-	ScanIntervalHours  *int     `json:"scanIntervalHours"`
-	MaxFilesPerRun     *int     `json:"maxFilesPerRun"`
+	Enabled             *bool    `json:"enabled"`
+	GracePeriodMinutes  *int     `json:"gracePeriodMinutes"`
+	IgnorePaths         []string `json:"ignorePaths"`
+	ScanIntervalHours   *int     `json:"scanIntervalHours"`
+	MaxFilesPerRun      *int     `json:"maxFilesPerRun"`
+	AutoCleanupEnabled  *bool    `json:"autoCleanupEnabled"`
+	AutoCleanupMaxFiles *int     `json:"autoCleanupMaxFiles"`
 }
 
 // GetSettings returns the orphan scan settings for an instance.
@@ -82,12 +84,14 @@ func (h *OrphanScanHandler) GetSettings(w http.ResponseWriter, r *http.Request) 
 	if settings == nil {
 		defaults := orphanscan.DefaultSettings()
 		settings = &models.OrphanScanSettings{
-			InstanceID:         instanceID,
-			Enabled:            defaults.Enabled,
-			GracePeriodMinutes: defaults.GracePeriodMinutes,
-			IgnorePaths:        defaults.IgnorePaths,
-			ScanIntervalHours:  defaults.ScanIntervalHours,
-			MaxFilesPerRun:     defaults.MaxFilesPerRun,
+			InstanceID:          instanceID,
+			Enabled:             defaults.Enabled,
+			GracePeriodMinutes:  defaults.GracePeriodMinutes,
+			IgnorePaths:         defaults.IgnorePaths,
+			ScanIntervalHours:   defaults.ScanIntervalHours,
+			MaxFilesPerRun:      defaults.MaxFilesPerRun,
+			AutoCleanupEnabled:  defaults.AutoCleanupEnabled,
+			AutoCleanupMaxFiles: defaults.AutoCleanupMaxFiles,
 		}
 	}
 
@@ -123,12 +127,14 @@ func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Reques
 	if settings == nil {
 		defaults := orphanscan.DefaultSettings()
 		settings = &models.OrphanScanSettings{
-			InstanceID:         instanceID,
-			Enabled:            defaults.Enabled,
-			GracePeriodMinutes: defaults.GracePeriodMinutes,
-			IgnorePaths:        defaults.IgnorePaths,
-			ScanIntervalHours:  defaults.ScanIntervalHours,
-			MaxFilesPerRun:     defaults.MaxFilesPerRun,
+			InstanceID:          instanceID,
+			Enabled:             defaults.Enabled,
+			GracePeriodMinutes:  defaults.GracePeriodMinutes,
+			IgnorePaths:         defaults.IgnorePaths,
+			ScanIntervalHours:   defaults.ScanIntervalHours,
+			MaxFilesPerRun:      defaults.MaxFilesPerRun,
+			AutoCleanupEnabled:  defaults.AutoCleanupEnabled,
+			AutoCleanupMaxFiles: defaults.AutoCleanupMaxFiles,
 		}
 	}
 
@@ -159,6 +165,16 @@ func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		settings.MaxFilesPerRun = *payload.MaxFilesPerRun
+	}
+	if payload.AutoCleanupEnabled != nil {
+		settings.AutoCleanupEnabled = *payload.AutoCleanupEnabled
+	}
+	if payload.AutoCleanupMaxFiles != nil {
+		if *payload.AutoCleanupMaxFiles < 1 {
+			RespondError(w, http.StatusBadRequest, "Auto-cleanup max files threshold must be at least 1")
+			return
+		}
+		settings.AutoCleanupMaxFiles = *payload.AutoCleanupMaxFiles
 	}
 
 	// Validate and normalize ignore paths
