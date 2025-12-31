@@ -32,8 +32,8 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
@@ -266,7 +266,7 @@ function InstanceCard({
               </CardTitle>
               <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             </Link>
-            <div className="flex items-center gap-1 justify-end shrink-0 basis-full sm:basis-auto sm:min-w-[4.5rem]">
+            <div className="flex items-center gap-1.5 justify-end shrink-0 basis-full sm:basis-auto sm:min-w-[4.5rem]">
               {instance.reannounceSettings?.enabled && (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -280,26 +280,41 @@ function InstanceCard({
               {instance.connected && !isFirstLoad && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                    <span
+                      role="button"
+                      tabIndex={0}
                       onClick={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
-                        setShowSpeedLimitDialog(true)
+                        if (!isToggling) setShowSpeedLimitDialog(true)
                       }}
-                      disabled={isToggling}
-                      className="h-8 w-8 p-0 shrink-0"
+                      onKeyDown={(e) => {
+                        if ((e.key === "Enter" || e.key === " ") && !isToggling) {
+                          e.preventDefault()
+                          setShowSpeedLimitDialog(true)
+                        }
+                      }}
+                      className={`cursor-pointer ${isToggling ? "opacity-50" : ""}`}
                     >
                       {altSpeedEnabled ? (
                         <Turtle className="h-4 w-4 text-orange-600" />
                       ) : (
                         <Rabbit className="h-4 w-4 text-green-600" />
                       )}
-                    </Button>
+                    </span>
                   </TooltipTrigger>
                   <TooltipContent>
                     Alternative speed limits: {altSpeedEnabled ? "On" : "Off"}
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {instance.hasLocalFilesystemAccess && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HardDrive className="h-4 w-4 text-primary" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Local file access enabled
                   </TooltipContent>
                 </Tooltip>
               )}
