@@ -679,6 +679,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     creatable
                     onCreateOption={(value) => setFormState(prev => ({ ...prev, trackerDomains: [...prev.trackerDomains, value] }))}
                     disabled={trackersQuery.isLoading}
+                    hideCheckIcon
                   />
                 </div>
               )}

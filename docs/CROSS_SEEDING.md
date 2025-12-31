@@ -191,7 +191,9 @@ The piece-boundary safety check (if enabled) applies here too: if extra files sh
 
 ## Category Behavior
 
-### The .cross Suffix
+Cross-seeds can be assigned a category using one of three modes:
+
+### 1. Category Suffix (default)
 
 When enabled, cross-seeded torrents get a `.cross` suffix on their category:
 - Original torrent: `tv` category
@@ -201,15 +203,29 @@ When enabled, cross-seeded torrents get a `.cross` suffix on their category:
 
 The `.cross` category is created automatically with the same save path as the base category.
 
+### 2. Indexer Name as Category
+
+Uses the indexer name (from the search source) as the category. Useful for organizing cross-seeds by tracker.
+
+### 3. Custom Category
+
+Uses a user-specified static category name for all cross-seeds. No suffix is applied—the exact category name you enter is used.
+
 ### autoTMM (Auto Torrent Management)
 
-Cross-seeds inherit the autoTMM setting from the matched torrent:
+autoTMM behavior depends on which category mode is active:
+
+| Category Mode | autoTMM Behavior |
+|---------------|------------------|
+| **Suffix** (`.cross`) | Inherited from matched torrent |
+| **Indexer name** | Always disabled (explicit save paths) |
+| **Custom** | Always disabled (explicit save paths) |
+
+When autoTMM is inherited (suffix mode):
 - If matched torrent uses autoTMM, cross-seed uses autoTMM
 - If matched torrent has manual path, cross-seed uses same manual path
 
-This ensures files are always saved to the correct location.
-
-**Note:** When "Use indexer name as category" is enabled, autoTMM is always disabled for cross-seeds (explicit save paths are used instead).
+When autoTMM is disabled (indexer/custom modes), cross-seeds always use explicit save paths derived from the matched torrent's location.
 
 ## Save Path Determination
 
@@ -284,9 +300,9 @@ The incoming torrent has files not present in your matched torrent, and those fi
 
 ### autoTMM unexpectedly enabled/disabled
 
-- This mirrors the matched torrent's setting (intentional)
+- In suffix mode, autoTMM mirrors the matched torrent's setting (intentional)
+- In indexer name or custom category mode, autoTMM is always disabled
 - Check the original torrent's autoTMM status in qBittorrent
-- Note: "Use indexer name as category" always disables autoTMM
 
 ## ARR Integration (Sonarr/Radarr)
 

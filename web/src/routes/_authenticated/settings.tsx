@@ -19,6 +19,7 @@ const settingsSearchSchema = z.object({
     "datetime",
     "themes",
     "security",
+    "logs",
   ]).optional().catch(undefined),
   modal: z.enum(["add-instance"]).optional().catch(undefined),
 })

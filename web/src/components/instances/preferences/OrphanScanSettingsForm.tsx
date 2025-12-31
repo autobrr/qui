@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useOrphanScanSettings, useUpdateOrphanScanSettings } from "@/hooks/useOrphanScan"
 import type { OrphanScanSettings, OrphanScanSettingsUpdate } from "@/types"
-import { Files, Info, Loader2 } from "lucide-react"
+import { Info, Loader2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
@@ -30,6 +30,8 @@ const DEFAULT_SETTINGS: Omit<OrphanScanSettings, "id" | "instanceId" | "createdA
   scanIntervalHours: 6,
   maxFilesPerRun: 100,
   ignorePaths: [],
+  autoCleanupEnabled: false,
+  autoCleanupMaxFiles: 100,
 }
 
 export function OrphanScanSettingsForm({
@@ -52,6 +54,8 @@ export function OrphanScanSettingsForm({
         scanIntervalHours: settingsQuery.data.scanIntervalHours,
         maxFilesPerRun: settingsQuery.data.maxFilesPerRun,
         ignorePaths: [...settingsQuery.data.ignorePaths],
+        autoCleanupEnabled: settingsQuery.data.autoCleanupEnabled,
+        autoCleanupMaxFiles: settingsQuery.data.autoCleanupMaxFiles,
       })
       setIgnorePathsText(settingsQuery.data.ignorePaths.join("\n"))
     }
@@ -64,6 +68,8 @@ export function OrphanScanSettingsForm({
       scanIntervalHours: Math.max(1, nextSettings.scanIntervalHours),
       maxFilesPerRun: Math.max(1, Math.min(1000, nextSettings.maxFilesPerRun)),
       ignorePaths: nextSettings.ignorePaths.map(p => p.trim()).filter(Boolean),
+      autoCleanupEnabled: nextSettings.autoCleanupEnabled,
+      autoCleanupMaxFiles: Math.max(1, nextSettings.autoCleanupMaxFiles),
     }
 
     updateMutation.mutate(payload, {
@@ -86,13 +92,7 @@ export function OrphanScanSettingsForm({
   }
 
   const handleToggleEnabled = (enabled: boolean) => {
-    const nextSettings = { ...settings, enabled }
-    setSettings(nextSettings)
-
-    if (!enabled) {
-      const ignorePaths = ignorePathsText.split("\n").map(p => p.trim()).filter(Boolean)
-      persistSettings({ ...nextSettings, ignorePaths }, "Scheduled scanning disabled")
-    }
+    setSettings(prev => ({ ...prev, enabled }))
   }
 
   if (settingsQuery.isLoading) {
@@ -137,9 +137,7 @@ export function OrphanScanSettingsForm({
 
   const settingsContent = (
     <div className="space-y-6">
-      {settings.enabled ? (
-        <>
-          <div className="space-y-4">
+      <div className="space-y-4">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Schedule</h3>
               <Separator className="flex-1" />
@@ -160,7 +158,10 @@ export function OrphanScanSettingsForm({
                 </div>
                 <Select
                   value={String(settings.scanIntervalHours)}
-                  onValueChange={(value) => setSettings(prev => ({ ...prev, scanIntervalHours: Number(value) }))}
+                  onValueChange={(value) => {
+                    if (!value) return // Ignore empty values from Radix Select quirk
+                    setSettings(prev => ({ ...prev, scanIntervalHours: Number(value) }))
+                  }}
                 >
                   <SelectTrigger id="scan-interval" className="h-9">
                     <SelectValue />
@@ -230,6 +231,71 @@ export function OrphanScanSettingsForm({
 
           <div className="space-y-4">
             <div className="flex items-center gap-2">
+              <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Auto-Cleanup</h3>
+              <Separator className="flex-1" />
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="auto-cleanup-enabled" className="text-sm font-medium cursor-pointer">
+                      Auto-Cleanup for Scheduled Scans
+                    </Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-[300px]">
+                        <p>When enabled, scheduled scans will automatically delete orphan files without requiring manual confirmation. Manual scans will always show a preview first.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Automatically delete orphan files after scheduled scans complete
+                  </p>
+                </div>
+                <Switch
+                  id="auto-cleanup-enabled"
+                  checked={settings.autoCleanupEnabled}
+                  onCheckedChange={(checked) => setSettings(prev => ({ ...prev, autoCleanupEnabled: checked }))}
+                />
+              </div>
+
+              {settings.autoCleanupEnabled && (
+                <div className="space-y-2 pl-3 border-l-2 border-muted">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="auto-cleanup-max-files" className="text-sm font-medium">Max Files Threshold</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-[300px]">
+                        <p>Safety limit: if a scan finds more files than this threshold, it will skip auto-cleanup and require manual review. This catches anomalies like misconfigured ignore paths.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="auto-cleanup-max-files"
+                      type="number"
+                      min={1}
+                      value={settings.autoCleanupMaxFiles}
+                      onChange={(e) => setSettings(prev => ({ ...prev, autoCleanupMaxFiles: Number(e.target.value) || 1 }))}
+                      className="h-9 w-24"
+                    />
+                    <span className="text-sm text-muted-foreground">files</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    If more files are found, manual review will be required instead
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
               <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Exclusions</h3>
               <Separator className="flex-1" />
             </div>
@@ -260,27 +326,10 @@ export function OrphanScanSettingsForm({
             </div>
           </div>
 
-          {!formId && (
-            <div className="flex justify-end pt-4">
-              <Button type="submit" disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? "Saving..." : "Save Changes"}
-              </Button>
-            </div>
-          )}
-        </>
-      ) : (
-        <div className="flex flex-col items-center justify-center py-12 text-center space-y-3 border-2 border-dashed rounded-lg">
-          <div className="p-3 rounded-full bg-muted/50">
-            <Files className="h-6 w-6 text-muted-foreground/50" />
-          </div>
-          <div className="space-y-1">
-            <h3 className="font-medium text-muted-foreground">Scheduled Scanning Disabled</h3>
-            <p className="text-sm text-muted-foreground/60 max-w-xs mx-auto">
-              Enable scheduled scanning to automatically find and clean up orphan files at regular intervals.
-            </p>
-          </div>
-          <Button variant="outline" onClick={() => setSettings(prev => ({ ...prev, enabled: true }))}>
-            Enable Scanning
+      {!formId && (
+        <div className="flex justify-end pt-4">
+          <Button type="submit" disabled={updateMutation.isPending}>
+            {updateMutation.isPending ? "Saving..." : "Save Changes"}
           </Button>
         </div>
       )}

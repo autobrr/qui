@@ -20,6 +20,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MultiSelect } from "@/components/ui/multi-select"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
@@ -73,6 +74,8 @@ interface GlobalCrossSeedSettings {
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
   useCrossCategorySuffix: boolean
+  useCustomCategory: boolean
+  customCategory: string
   runExternalProgramId?: number | null
   ignorePatterns: string
   // Source-specific tagging
@@ -95,6 +98,9 @@ interface GlobalCrossSeedSettings {
   webhookSourceExcludeTags: string[]
   // Note: Hardlink mode settings have been moved to per-instance configuration
 }
+
+// Category mode type for type-safe radio group
+type CategoryMode = "suffix" | "indexer" | "custom"
 
 // RSS Automation constants
 const MIN_RSS_INTERVAL_MINUTES = 30   // RSS: minimum interval between RSS feed polls
@@ -119,6 +125,8 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   sizeMismatchTolerancePercent: 5.0,
   useCategoryFromIndexer: false,
   useCrossCategorySuffix: true,
+  useCustomCategory: false,
+  customCategory: "",
   runExternalProgramId: null,
   ignorePatterns: "",
   // Source-specific tagging defaults
@@ -227,12 +235,13 @@ function HardlinkModeSettings() {
   const { instances, updateInstance, isUpdating } = useInstances()
   const [expandedInstances, setExpandedInstances] = useState<string[]>([])
   const [dirtyMap, setDirtyMap] = useState<Record<number, boolean>>({})
-  const [formMap, setFormMap] = useState<Record<number, {
+  type InstanceFormState = {
     useHardlinks: boolean
     useReflinks: boolean
     hardlinkBaseDir: string
     hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
-  }>>({})
+  }
+  const [formMap, setFormMap] = useState<Record<number, InstanceFormState>>({})
   const [isOpen, setIsOpen] = useState<boolean | undefined>(undefined)
 
   const activeInstances = useMemo(
@@ -257,115 +266,11 @@ function HardlinkModeSettings() {
     }
   }, [formMap])
 
-  const handleToggleHardlink = (instance: Instance, enabled: boolean) => {
-    if (!instance.hasLocalFilesystemAccess && enabled) {
-      toast.error("Cannot enable hardlink mode", {
-        description: `Instance "${instance.name}" does not have local filesystem access enabled.`,
-      })
-      return
-    }
-
-    const form = getForm(instance)
-
-    // Block enabling with empty base directory
-    if (enabled && !form.hardlinkBaseDir.trim()) {
-      toast.error("Cannot enable hardlink mode", {
-        description: "Base directory must be set first.",
-      })
-      return
-    }
-
-    // Mutual exclusivity: disable reflink when enabling hardlink
-    const newReflinks = enabled ? false : form.useReflinks
-
-    updateInstance({
-      id: instance.id,
-      data: {
-        name: instance.name,
-        host: instance.host,
-        username: instance.username,
-        useHardlinks: enabled,
-        useReflinks: newReflinks,
-        hardlinkBaseDir: form.hardlinkBaseDir,
-        hardlinkDirPreset: form.hardlinkDirPreset,
-      },
-    }, {
-      onSuccess: () => {
-        toast.success(`Hardlink mode ${enabled ? "enabled" : "disabled"}`, {
-          description: instance.name,
-        })
-        // Sync formMap with server state to prevent visual snap-back
-        setFormMap((prev) => ({
-          ...prev,
-          [instance.id]: { ...form, useHardlinks: enabled, useReflinks: newReflinks },
-        }))
-        setDirtyMap((prev) => ({ ...prev, [instance.id]: false }))
-      },
-      onError: (error) => {
-        toast.error("Failed to update settings", {
-          description: error instanceof Error ? error.message : "Unknown error",
-        })
-      },
-    })
-  }
-
-  const handleToggleReflink = (instance: Instance, enabled: boolean) => {
-    if (!instance.hasLocalFilesystemAccess && enabled) {
-      toast.error("Cannot enable reflink mode", {
-        description: `Instance "${instance.name}" does not have local filesystem access enabled.`,
-      })
-      return
-    }
-
-    const form = getForm(instance)
-
-    // Block enabling with empty base directory
-    if (enabled && !form.hardlinkBaseDir.trim()) {
-      toast.error("Cannot enable reflink mode", {
-        description: "Base directory must be set first.",
-      })
-      return
-    }
-
-    // Mutual exclusivity: disable hardlink when enabling reflink
-    const newHardlinks = enabled ? false : form.useHardlinks
-
-    updateInstance({
-      id: instance.id,
-      data: {
-        name: instance.name,
-        host: instance.host,
-        username: instance.username,
-        useHardlinks: newHardlinks,
-        useReflinks: enabled,
-        hardlinkBaseDir: form.hardlinkBaseDir,
-        hardlinkDirPreset: form.hardlinkDirPreset,
-      },
-    }, {
-      onSuccess: () => {
-        toast.success(`Reflink mode ${enabled ? "enabled" : "disabled"}`, {
-          description: instance.name,
-        })
-        // Sync formMap with server state to prevent visual snap-back
-        setFormMap((prev) => ({
-          ...prev,
-          [instance.id]: { ...form, useHardlinks: newHardlinks, useReflinks: enabled },
-        }))
-        setDirtyMap((prev) => ({ ...prev, [instance.id]: false }))
-      },
-      onError: (error) => {
-        toast.error("Failed to update settings", {
-          description: error instanceof Error ? error.message : "Unknown error",
-        })
-      },
-    })
-  }
-
-  const handleFormChange = (
+  const handleFormChange = <K extends keyof InstanceFormState>(
     instanceId: number,
-    field: "hardlinkBaseDir" | "hardlinkDirPreset",
-    value: string,
-    currentForm: { useHardlinks: boolean; useReflinks: boolean; hardlinkBaseDir: string; hardlinkDirPreset: "flat" | "by-tracker" | "by-instance" }
+    field: K,
+    value: InstanceFormState[K],
+    currentForm: InstanceFormState
   ) => {
     setFormMap((prev) => ({
       ...prev,
@@ -377,8 +282,42 @@ function HardlinkModeSettings() {
     setDirtyMap((prev) => ({ ...prev, [instanceId]: true }))
   }
 
+  const handleModeChange = (
+    instanceId: number,
+    mode: "regular" | "hardlink" | "reflink",
+    currentForm: InstanceFormState
+  ) => {
+    setFormMap((prev) => ({
+      ...prev,
+      [instanceId]: {
+        ...currentForm,
+        useHardlinks: mode === "hardlink",
+        useReflinks: mode === "reflink",
+      },
+    }))
+    setDirtyMap((prev) => ({ ...prev, [instanceId]: true }))
+  }
+
   const handleSave = (instance: Instance) => {
     const form = getForm(instance)
+
+    // Validate before saving
+    if ((form.useHardlinks || form.useReflinks) && !instance.hasLocalFilesystemAccess) {
+      const mode = form.useReflinks ? "reflink" : "hardlink"
+      toast.error(`Cannot enable ${mode} mode`, {
+        description: `Instance "${instance.name}" does not have local filesystem access enabled.`,
+      })
+      return
+    }
+
+    if ((form.useHardlinks || form.useReflinks) && !form.hardlinkBaseDir.trim()) {
+      const mode = form.useReflinks ? "reflink" : "hardlink"
+      toast.error(`Cannot enable ${mode} mode`, {
+        description: "Base directory must be set first.",
+      })
+      return
+    }
+
     updateInstance({
       id: instance.id,
       data: {
@@ -475,96 +414,103 @@ function HardlinkModeSettings() {
                   </AccordionTrigger>
                   <AccordionContent className="px-4 pb-4">
                     <div className="space-y-4 pt-2">
-                      {/* Hardlink mode toggle */}
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="space-y-0.5">
-                          <Label className="font-medium">Hardlink mode</Label>
+                      {/* Link mode selection */}
+                      <div className="space-y-2">
+                        <Label className="font-medium">Cross-seed mode</Label>
+                        {!canEnableModes && (
                           <p className="text-xs text-muted-foreground">
-                            {canEnableModes
-                              ? "Create hardlinked file trees (strict piece-boundary check)"
-                              : "Enable \"Local filesystem access\" in Instance Settings first"}
+                            Enable "Local filesystem access" in Instance Settings to use hardlink or reflink modes.
                           </p>
-                        </div>
-                        <Switch
-                          checked={form.useHardlinks}
-                          onCheckedChange={(value) => handleToggleHardlink(instance, !!value)}
-                          disabled={!canEnableModes || isUpdating}
-                        />
+                        )}
+                        <RadioGroup
+                          value={form.useReflinks ? "reflink" : form.useHardlinks ? "hardlink" : "regular"}
+                          onValueChange={(value) => handleModeChange(instance.id, value as "regular" | "hardlink" | "reflink", form)}
+                          disabled={isUpdating}
+                          className="space-y-2"
+                        >
+                          <div className="flex items-start gap-3">
+                            <RadioGroupItem value="regular" id={`mode-regular-${instance.id}`} className="mt-0.5" />
+                            <div className="space-y-0.5 flex-1">
+                              <Label htmlFor={`mode-regular-${instance.id}`} className="font-medium cursor-pointer">Regular</Label>
+                              <p className="text-xs text-muted-foreground">Reuse existing files in place. Fast, no extra disk space.</p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-3">
+                            <RadioGroupItem
+                              value="hardlink"
+                              id={`mode-hardlink-${instance.id}`}
+                              className="mt-0.5"
+                              disabled={!canEnableModes}
+                            />
+                            <div className="space-y-0.5 flex-1">
+                              <Label htmlFor={`mode-hardlink-${instance.id}`} className={`font-medium cursor-pointer ${!canEnableModes ? "text-muted-foreground" : ""}`}>Hardlink</Label>
+                              <p className="text-xs text-muted-foreground">Create hardlinked file trees. No extra disk space, strict piece-boundary check.</p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-3">
+                            <RadioGroupItem
+                              value="reflink"
+                              id={`mode-reflink-${instance.id}`}
+                              className="mt-0.5"
+                              disabled={!canEnableModes}
+                            />
+                            <div className="space-y-0.5 flex-1">
+                              <Label htmlFor={`mode-reflink-${instance.id}`} className={`font-medium cursor-pointer ${!canEnableModes ? "text-muted-foreground" : ""}`}>Reflink (copy-on-write)</Label>
+                              <p className="text-xs text-muted-foreground">Create reflinked clones. Safer for extra/missing files, mitigates corruption best.</p>
+                            </div>
+                          </div>
+                        </RadioGroup>
                       </div>
 
-                      {/* Reflink mode toggle */}
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="space-y-0.5">
-                          <Label className="font-medium">Reflink mode (copy-on-write)</Label>
-                          <p className="text-xs text-muted-foreground">
-                            {canEnableModes
-                              ? "Create reflinked clones. Safer for extra/missing files. Mitigates corruption best. Rechecks when needed"
-                              : "Enable \"Local filesystem access\" in Instance Settings first"}
-                          </p>
-                        </div>
-                        <Switch
-                          checked={form.useReflinks}
-                          onCheckedChange={(value) => handleToggleReflink(instance, !!value)}
-                          disabled={!canEnableModes || isUpdating}
-                        />
-                      </div>
+                      {(form.useHardlinks || form.useReflinks) && (
+                        <>
+                          <Separator />
 
-                      {form.useReflinks && (
-                        <Alert className="bg-blue-500/5 border-blue-500/30">
-                          <Info className="h-4 w-4 text-blue-500" />
-                          <AlertDescription className="text-xs">
-                            Reflink mode triggers recheck when extra files are present so qBittorrent can download
-                            missing pieces. If completion is below threshold, the torrent remains paused for manual
-                            review. Disk usage starts near-zero but grows as blocks are modified.
-                          </AlertDescription>
-                        </Alert>
+                          <div className="space-y-4">
+                            <div className="space-y-2">
+                              <Label>Base directory</Label>
+                              <Input
+                                placeholder="/path/to/crossseed-data"
+                                value={form.hardlinkBaseDir}
+                                onChange={(e) => handleFormChange(instance.id, "hardlinkBaseDir", e.target.value, form)}
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Must be on the same filesystem as download paths.
+                              </p>
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label>Directory organization</Label>
+                              <Select
+                                value={form.hardlinkDirPreset}
+                                onValueChange={(value: "flat" | "by-tracker" | "by-instance") =>
+                                  handleFormChange(instance.id, "hardlinkDirPreset", value, form)
+                                }
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="flat">Flat (all in base directory)</SelectItem>
+                                  <SelectItem value="by-tracker">By Tracker</SelectItem>
+                                  <SelectItem value="by-instance">By Instance</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </>
                       )}
 
-                      <Separator />
-
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label>Base directory</Label>
-                          <Input
-                            placeholder="/path/to/crossseed-data"
-                            value={form.hardlinkBaseDir}
-                            onChange={(e) => handleFormChange(instance.id, "hardlinkBaseDir", e.target.value, form)}
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            Must be on the same filesystem as download paths. Used by both hardlink and reflink modes.
-                          </p>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label>Directory organization</Label>
-                          <Select
-                            value={form.hardlinkDirPreset}
-                            onValueChange={(value: "flat" | "by-tracker" | "by-instance") =>
-                              handleFormChange(instance.id, "hardlinkDirPreset", value, form)
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="flat">Flat (all in base directory)</SelectItem>
-                              <SelectItem value="by-tracker">By Tracker</SelectItem>
-                              <SelectItem value="by-instance">By Instance</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        {isDirty && (
-                          <Button
-                            size="sm"
-                            onClick={() => handleSave(instance)}
-                            disabled={isUpdating}
-                          >
-                            {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Save Changes
-                          </Button>
-                        )}
-                      </div>
+                      {isDirty && (
+                        <Button
+                          size="sm"
+                          onClick={() => handleSave(instance)}
+                          disabled={isUpdating}
+                        >
+                          {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          Save Changes
+                        </Button>
+                      )}
                     </div>
                   </AccordionContent>
                 </AccordionItem>
@@ -780,6 +726,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent ?? 5.0,
         useCategoryFromIndexer: settings.useCategoryFromIndexer ?? false,
         useCrossCategorySuffix: settings.useCrossCategorySuffix ?? true,
+        useCustomCategory: settings.useCustomCategory ?? false,
+        customCategory: settings.customCategory ?? "",
         runExternalProgramId: settings.runExternalProgramId ?? null,
         ignorePatterns: Array.isArray(settings.ignorePatterns)
           ? settings.ignorePatterns.join("\n")
@@ -882,6 +830,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent,
         useCategoryFromIndexer: settings.useCategoryFromIndexer,
         useCrossCategorySuffix: settings.useCrossCategorySuffix ?? true,
+        useCustomCategory: settings.useCustomCategory ?? false,
+        customCategory: settings.customCategory ?? "",
         runExternalProgramId: settings.runExternalProgramId ?? null,
         ignorePatterns: ignorePatterns.length > 0 ? ignorePatterns.join(", ") : "",
         rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
@@ -907,6 +857,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       sizeMismatchTolerancePercent: globalSource.sizeMismatchTolerancePercent,
       useCategoryFromIndexer: globalSource.useCategoryFromIndexer,
       useCrossCategorySuffix: globalSource.useCrossCategorySuffix,
+      useCustomCategory: globalSource.useCustomCategory,
+      customCategory: globalSource.customCategory,
       runExternalProgramId: globalSource.runExternalProgramId,
       ignorePatterns: normalizeIgnorePatterns(globalSource.ignorePatterns),
       // Source-specific tagging
@@ -1190,6 +1142,32 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     ),
     [webhookSourceTagNames, globalSettings.webhookSourceTags, globalSettings.webhookSourceExcludeTags]
   )
+
+  // Custom category select options (uses all active instance categories for suggestions)
+  const customCategorySelectOptions = useMemo(
+    () => buildCategorySelectOptions(
+      webhookSourceMetadata?.categories ?? {},
+      globalSettings.customCategory ? [globalSettings.customCategory] : []
+    ),
+    [globalSettings.customCategory, webhookSourceMetadata?.categories]
+  )
+
+  // Helper to get current category mode from boolean flags
+  const getCategoryMode = (): CategoryMode => {
+    if (globalSettings.useCustomCategory) return "custom"
+    if (globalSettings.useCategoryFromIndexer) return "indexer"
+    return "suffix"
+  }
+
+  // Helper to set category mode (updates all three boolean flags)
+  const setCategoryMode = (mode: CategoryMode) => {
+    setGlobalSettings(prev => ({
+      ...prev,
+      useCrossCategorySuffix: mode === "suffix",
+      useCategoryFromIndexer: mode === "indexer",
+      useCustomCategory: mode === "custom",
+    }))
+  }
 
   const handleStartSearchRun = () => {
     // Clear previous validation errors
@@ -2379,54 +2357,80 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   <p className="text-sm font-medium leading-none">Categories</p>
                   <p className="text-xs text-muted-foreground">Control how cross-seeds are categorized in qBittorrent.</p>
                 </div>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-1.5">
-                      <Label htmlFor="global-use-cross-category-suffix" className="font-medium">Add .cross category suffix</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Category suffix help">
-                            <Info className="h-3.5 w-3.5" />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent align="start" className="max-w-xs text-xs">
-                          Creates isolated categories (e.g., tv.cross) with the same save path as the base category. Cross-seeds inherit autoTMM from the matched torrent and are saved to the same location as the original files.
-                        </TooltipContent>
-                      </Tooltip>
+                <RadioGroup
+                  value={getCategoryMode()}
+                  onValueChange={(value) => setCategoryMode(value as CategoryMode)}
+                  className="space-y-3"
+                >
+                  <div className="flex items-start gap-3">
+                    <RadioGroupItem value="suffix" id="category-suffix" className="mt-0.5" />
+                    <div className="space-y-0.5 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <Label htmlFor="category-suffix" className="font-medium cursor-pointer">Add .cross category suffix</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Category suffix help">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent align="start" className="max-w-xs text-xs">
+                            Creates isolated categories (e.g., tv.cross) with the same save path as the base category. Cross-seeds inherit autoTMM from the matched torrent and are saved to the same location as the original files.
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Keeps cross-seeds separate from *arr applications to prevent import loops.</p>
                     </div>
-                    <p className="text-xs text-muted-foreground">Keeps cross-seeds separate from *arr applications to prevent import loops.</p>
                   </div>
-                  <Switch
-                    id="global-use-cross-category-suffix"
-                    checked={globalSettings.useCrossCategorySuffix}
-                    disabled={globalSettings.useCategoryFromIndexer}
-                    onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, useCrossCategorySuffix: !!value }))}
-                  />
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-1.5">
-                      <Label htmlFor="global-use-category-from-indexer" className="font-medium">Use indexer name as category</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Indexer category help">
-                            <Info className="h-3.5 w-3.5" />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent align="start" className="max-w-xs text-xs">
-                          Creates a category named after the indexer. Save path and autoTMM are inherited from the matched torrent. Useful for tracking which indexer provided each cross-seed.
-                        </TooltipContent>
-                      </Tooltip>
+                  <div className="flex items-start gap-3">
+                    <RadioGroupItem value="indexer" id="category-indexer" className="mt-0.5" />
+                    <div className="space-y-0.5 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <Label htmlFor="category-indexer" className="font-medium cursor-pointer">Use indexer name as category</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Indexer category help">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent align="start" className="max-w-xs text-xs">
+                            Creates a category named after the indexer. AutoTMM is disabled; save path is set to match the original torrent. Useful for tracking which indexer provided each cross-seed.
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Set category to the indexer name (e.g., TorrentDB, BroadcasTheNet).</p>
                     </div>
-                    <p className="text-xs text-muted-foreground">Set category to indexer name. Cannot be used with .cross suffix.</p>
                   </div>
-                  <Switch
-                    id="global-use-category-from-indexer"
-                    checked={globalSettings.useCategoryFromIndexer}
-                    disabled={globalSettings.useCrossCategorySuffix}
-                    onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, useCategoryFromIndexer: !!value }))}
-                  />
-                </div>
+                  <div className="flex items-start gap-3">
+                    <RadioGroupItem value="custom" id="category-custom" className="mt-0.5" />
+                    <div className="space-y-0.5 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <Label htmlFor="category-custom" className="font-medium cursor-pointer">Custom category</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Custom category help">
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent align="start" className="max-w-xs text-xs">
+                            All cross-seeds will be placed in a single custom category. AutoTMM is disabled; save path is set to match the original torrent.
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Use a fixed category name for all cross-seeds.</p>
+                      {globalSettings.useCustomCategory && (
+                        <MultiSelect
+                          options={customCategorySelectOptions}
+                          selected={globalSettings.customCategory ? [globalSettings.customCategory] : []}
+                          onChange={values => setGlobalSettings(prev => ({ ...prev, customCategory: values[0] ?? "" }))}
+                          placeholder="Select or type a category..."
+                          className="mt-2 max-w-xs"
+                          creatable
+                          onCreateOption={value => setGlobalSettings(prev => ({ ...prev, customCategory: value }))}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </RadioGroup>
               </div>
 
               {/* Tagging */}

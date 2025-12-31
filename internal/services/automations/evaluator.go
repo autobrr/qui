@@ -281,7 +281,7 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldCategory:
 		return compareString(torrent.Category, cond)
 	case FieldTags:
-		return compareString(torrent.Tags, cond)
+		return compareTags(torrent.Tags, cond)
 	case FieldSavePath:
 		return compareString(torrent.SavePath, cond)
 	case FieldContentPath:
@@ -534,6 +534,64 @@ func compareString(value string, cond *RuleCondition) bool {
 	}
 }
 
+// compareTags compares tags against the condition, treating tags as a set.
+// For string operators, checks individual tags rather than the full comma-separated string.
+// Regex matching still operates on the full string for flexibility.
+func compareTags(tagsRaw string, cond *RuleCondition) bool {
+	// Regex matching operates on full string for flexibility
+	if cond.Regex || cond.Operator == OperatorMatches {
+		if cond.Compiled == nil {
+			return false
+		}
+		return cond.Compiled.MatchString(tagsRaw)
+	}
+
+	tags := splitTags(tagsRaw)
+	condValue := strings.ToLower(strings.TrimSpace(cond.Value))
+
+	switch cond.Operator {
+	case OperatorEqual:
+		return anyTagMatches(tags, condValue, strings.EqualFold)
+	case OperatorNotEqual:
+		return !anyTagMatches(tags, condValue, strings.EqualFold)
+	case OperatorContains:
+		return anyTagMatches(tags, condValue, tagContains)
+	case OperatorNotContains:
+		return !anyTagMatches(tags, condValue, tagContains)
+	case OperatorStartsWith:
+		return anyTagMatches(tags, condValue, tagStartsWith)
+	case OperatorEndsWith:
+		return anyTagMatches(tags, condValue, tagEndsWith)
+	default:
+		return false
+	}
+}
+
+// anyTagMatches returns true if any tag in the slice satisfies the match function.
+func anyTagMatches(tags []string, condValue string, match func(string, string) bool) bool {
+	for _, tag := range tags {
+		if match(tag, condValue) {
+			return true
+		}
+	}
+	return false
+}
+
+// tagContains checks if tag contains condValue (case-insensitive).
+func tagContains(tag, condValue string) bool {
+	return strings.Contains(strings.ToLower(tag), condValue)
+}
+
+// tagStartsWith checks if tag starts with condValue (case-insensitive).
+func tagStartsWith(tag, condValue string) bool {
+	return strings.HasPrefix(strings.ToLower(tag), condValue)
+}
+
+// tagEndsWith checks if tag ends with condValue (case-insensitive).
+func tagEndsWith(tag, condValue string) bool {
+	return strings.HasSuffix(strings.ToLower(tag), condValue)
+}
+
 // compareInt64 compares an int64 value against the condition.
 func compareInt64(value int64, cond *RuleCondition) bool {
 	// Parse the condition value as int64
@@ -635,4 +693,20 @@ func compareAge(timestamp int64, cond *RuleCondition, ctx *EvalContext) bool {
 	ageSeconds := max(nowUnix-timestamp, 0)
 
 	return compareInt64(ageSeconds, cond)
+}
+
+// splitTags splits a comma-separated tag string into individual tags.
+// Returns nil for empty input.
+func splitTags(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
