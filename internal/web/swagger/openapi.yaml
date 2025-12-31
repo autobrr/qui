@@ -4551,6 +4551,9 @@ components:
         customCategory:
           type: string
           description: Custom category name when useCustomCategory is true
+        prefixOriginalCategory:
+          type: boolean
+          description: Prepend custom category to original category (e.g., cross-seed/movies)
         runExternalProgramId:
           type: integer
           nullable: true
@@ -4636,6 +4639,9 @@ components:
         customCategory:
           type: string
           description: Custom category name when useCustomCategory is true
+        prefixOriginalCategory:
+          type: boolean
+          description: Prepend custom category to original category (e.g., cross-seed/movies)
         runExternalProgramId:
           type: integer
           nullable: true

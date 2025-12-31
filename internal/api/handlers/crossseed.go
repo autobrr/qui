@@ -43,6 +43,7 @@ type automationSettingsRequest struct {
 	UseCrossCategorySuffix       bool     `json:"useCrossCategorySuffix"`
 	UseCustomCategory            bool     `json:"useCustomCategory"`
 	CustomCategory               string   `json:"customCategory"`
+	PrefixOriginalCategory       bool     `json:"prefixOriginalCategory"`
 	RunExternalProgramID         *int     `json:"runExternalProgramId"`
 	SkipRecheck                  bool     `json:"skipRecheck"`
 }
@@ -72,6 +73,7 @@ type automationSettingsPatchRequest struct {
 	UseCrossCategorySuffix         *bool       `json:"useCrossCategorySuffix,omitempty"`
 	UseCustomCategory              *bool       `json:"useCustomCategory,omitempty"`
 	CustomCategory                 *string     `json:"customCategory,omitempty"`
+	PrefixOriginalCategory         *bool       `json:"prefixOriginalCategory,omitempty"`
 	RunExternalProgramID           optionalInt `json:"runExternalProgramId"`
 	// Source-specific tagging
 	RSSAutomationTags    *[]string `json:"rssAutomationTags,omitempty"`
@@ -167,6 +169,7 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.UseCrossCategorySuffix == nil &&
 		r.UseCustomCategory == nil &&
 		r.CustomCategory == nil &&
+		r.PrefixOriginalCategory == nil &&
 		!r.RunExternalProgramID.Set &&
 		r.RSSAutomationTags == nil &&
 		r.SeededSearchTags == nil &&
@@ -258,6 +261,9 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	}
 	if patch.CustomCategory != nil {
 		settings.CustomCategory = *patch.CustomCategory
+	}
+	if patch.PrefixOriginalCategory != nil {
+		settings.PrefixOriginalCategory = *patch.PrefixOriginalCategory
 	}
 	if patch.RunExternalProgramID.Set {
 		settings.RunExternalProgramID = patch.RunExternalProgramID.Value
@@ -686,6 +692,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		UseCrossCategorySuffix:       req.UseCrossCategorySuffix,
 		UseCustomCategory:            req.UseCustomCategory,
 		CustomCategory:               req.CustomCategory,
+		PrefixOriginalCategory:       req.PrefixOriginalCategory,
 		RunExternalProgramID:         req.RunExternalProgramID,
 		SkipRecheck:                  req.SkipRecheck,
 	}

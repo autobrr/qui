@@ -76,6 +76,7 @@ interface GlobalCrossSeedSettings {
   useCrossCategorySuffix: boolean
   useCustomCategory: boolean
   customCategory: string
+  prefixOriginalCategory: boolean
   runExternalProgramId?: number | null
   ignorePatterns: string
   // Source-specific tagging
@@ -127,6 +128,7 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   useCrossCategorySuffix: true,
   useCustomCategory: false,
   customCategory: "",
+  prefixOriginalCategory: false,
   runExternalProgramId: null,
   ignorePatterns: "",
   // Source-specific tagging defaults
@@ -728,6 +730,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         useCrossCategorySuffix: settings.useCrossCategorySuffix ?? true,
         useCustomCategory: settings.useCustomCategory ?? false,
         customCategory: settings.customCategory ?? "",
+        prefixOriginalCategory: settings.prefixOriginalCategory ?? false,
         runExternalProgramId: settings.runExternalProgramId ?? null,
         ignorePatterns: Array.isArray(settings.ignorePatterns)
           ? settings.ignorePatterns.join("\n")
@@ -832,6 +835,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         useCrossCategorySuffix: settings.useCrossCategorySuffix ?? true,
         useCustomCategory: settings.useCustomCategory ?? false,
         customCategory: settings.customCategory ?? "",
+        prefixOriginalCategory: settings.prefixOriginalCategory ?? false,
         runExternalProgramId: settings.runExternalProgramId ?? null,
         ignorePatterns: ignorePatterns.length > 0 ? ignorePatterns.join(", ") : "",
         rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
@@ -859,6 +863,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       useCrossCategorySuffix: globalSource.useCrossCategorySuffix,
       useCustomCategory: globalSource.useCustomCategory,
       customCategory: globalSource.customCategory,
+      prefixOriginalCategory: globalSource.prefixOriginalCategory,
       runExternalProgramId: globalSource.runExternalProgramId,
       ignorePatterns: normalizeIgnorePatterns(globalSource.ignorePatterns),
       // Source-specific tagging
@@ -2418,15 +2423,39 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       </div>
                       <p className="text-xs text-muted-foreground">Use a fixed category name for all cross-seeds.</p>
                       {globalSettings.useCustomCategory && (
-                        <MultiSelect
-                          options={customCategorySelectOptions}
-                          selected={globalSettings.customCategory ? [globalSettings.customCategory] : []}
-                          onChange={values => setGlobalSettings(prev => ({ ...prev, customCategory: values[0] ?? "" }))}
-                          placeholder="Select or type a category..."
-                          className="mt-2 max-w-xs"
-                          creatable
-                          onCreateOption={value => setGlobalSettings(prev => ({ ...prev, customCategory: value }))}
-                        />
+                        <>
+                          <MultiSelect
+                            options={customCategorySelectOptions}
+                            selected={globalSettings.customCategory ? [globalSettings.customCategory] : []}
+                            onChange={values => setGlobalSettings(prev => ({ ...prev, customCategory: values[0] ?? "" }))}
+                            placeholder="Select or type a category..."
+                            className="mt-2 max-w-xs"
+                            creatable
+                            onCreateOption={value => setGlobalSettings(prev => ({ ...prev, customCategory: value }))}
+                          />
+                          <div className="flex items-center gap-2 mt-3">
+                            <Switch
+                              id="prefix-original-category"
+                              checked={globalSettings.prefixOriginalCategory}
+                              onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, prefixOriginalCategory: !!value }))}
+                            />
+                            <div className="flex items-center gap-1.5">
+                              <Label htmlFor="prefix-original-category" className="cursor-pointer">
+                                Include original category
+                              </Label>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Include original category help">
+                                    <Info className="h-3.5 w-3.5" />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent align="start" className="max-w-sm text-xs">
+                                  All cross-seeds will be placed in a subcategory using the original torrents category. For example, if the custom category is "cross-seed" and the original torrent is in "movies", the cross-seed will be placed in "cross-seed/movies". Also works with nested categories like "movies/1080p" to "cross-seed/movies/1080p".
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
+                          </div>
+                        </>
                       )}
                     </div>
                   </div>

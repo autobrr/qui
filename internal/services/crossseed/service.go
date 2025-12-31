@@ -7242,6 +7242,22 @@ func appendCrossSuffix(category string) string {
 	return category + ".cross"
 }
 
+// prependCustomCategoryPrefix prepends a custom category prefix to a category name.
+// Returns empty string if both are empty, just the prefix if category is empty and avoids double-prefixing.
+func prependCustomCategoryPrefix(prefix, category string) string {
+	if prefix == "" {
+		return category
+	}
+	if category == "" {
+		return prefix
+	}
+	expectedPrefix := prefix + "/"
+	if strings.HasPrefix(category, expectedPrefix) || category == prefix {
+		return category
+	}
+	return prefix + "/" + category
+}
+
 // ensureCrossCategory ensures a .cross suffixed category exists with the correct save_path.
 // If the category already exists, it verifies the save_path matches (logs warning if different).
 // If it doesn't exist, it creates it with the provided save_path.
@@ -7324,6 +7340,10 @@ func (s *Service) determineCrossSeedCategory(ctx context.Context, req *CrossSeed
 
 	// Custom category takes priority - use exact category without any suffix
 	if settings != nil && settings.UseCustomCategory && settings.CustomCategory != "" {
+		if settings.PrefixOriginalCategory {
+			// Prepend custom category to matched torrents category
+			return settings.CustomCategory, prependCustomCategoryPrefix(settings.CustomCategory, matchedCategory)
+		}
 		return settings.CustomCategory, settings.CustomCategory
 	}
 

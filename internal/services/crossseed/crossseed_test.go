@@ -1469,6 +1469,86 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 			expectedCrossCategory: "movies.cross",
 			expectedTags:          []string{},
 		},
+		{
+			name: "custom category with prefix prepends to original category",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "movies",
+				Tags:     "",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCustomCategory:      true,
+				CustomCategory:         "cross-seed",
+				PrefixOriginalCategory: true,
+			},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "cross-seed",
+			expectedCrossCategory: "cross-seed/movies",
+			expectedTags:          []string{},
+		},
+		{
+			name: "custom category with prefix and nested original category",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "movies/1080p",
+				Tags:     "",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCustomCategory:      true,
+				CustomCategory:         "cross-seed",
+				PrefixOriginalCategory: true,
+			},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "cross-seed",
+			expectedCrossCategory: "cross-seed/movies/1080p",
+			expectedTags:          []string{},
+		},
+		{
+			name: "custom category with prefix and empty original category",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "",
+				Tags:     "",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCustomCategory:      true,
+				CustomCategory:         "cross-seed",
+				PrefixOriginalCategory: true,
+			},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "cross-seed",
+			expectedCrossCategory: "cross-seed",
+			expectedTags:          []string{},
+		},
+		{
+			name: "no double prefix for already prefixed category",
+			request: &CrossSeedRequest{
+				Category: "",
+				Tags:     []string{},
+			},
+			matched: qbt.Torrent{
+				Category: "cross-seed/movies",
+				Tags:     "",
+			},
+			settings: &models.CrossSeedAutomationSettings{
+				UseCustomCategory:      true,
+				CustomCategory:         "cross-seed",
+				PrefixOriginalCategory: true,
+			},
+			inheritSourceTags:     false,
+			expectedBaseCategory:  "cross-seed",
+			expectedCrossCategory: "cross-seed/movies",
+			expectedTags:          []string{},
+		},
 	}
 
 	for _, tt := range tests {

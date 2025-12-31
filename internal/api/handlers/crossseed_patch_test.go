@@ -147,6 +147,7 @@ func TestApplyAutomationSettingsPatch_CustomCategory(t *testing.T) {
 		UseCategoryFromIndexer: false,
 		UseCustomCategory:      false,
 		CustomCategory:         "",
+		PrefixOriginalCategory: false,
 	}
 
 	customCat := "cross-seed"
@@ -154,6 +155,7 @@ func TestApplyAutomationSettingsPatch_CustomCategory(t *testing.T) {
 		UseCrossCategorySuffix: ptrBool(false),
 		UseCustomCategory:      ptrBool(true),
 		CustomCategory:         &customCat,
+		PrefixOriginalCategory: ptrBool(true),
 	}
 
 	applyAutomationSettingsPatch(&existing, patch)
@@ -166,5 +168,8 @@ func TestApplyAutomationSettingsPatch_CustomCategory(t *testing.T) {
 	}
 	if existing.CustomCategory != "cross-seed" {
 		t.Fatalf("expected customCategory to be 'cross-seed', got %q", existing.CustomCategory)
+	}
+	if !existing.PrefixOriginalCategory {
+		t.Fatalf("expected prefixOriginalCategory to be true")
 	}
 }
