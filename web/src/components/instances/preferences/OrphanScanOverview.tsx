@@ -215,11 +215,14 @@ function InstanceOrphanScanItem({
                   ? `Grace ${settings.gracePeriodMinutes}min · Interval ${settings.scanIntervalHours}h · Max ${settings.maxFilesPerRun} files`
                   : "Loading..."}
               </p>
-              {settings?.ignorePaths && settings.ignorePaths.length > 0 && (
-                <p className="text-xs text-muted-foreground/70">
-                  {settings.ignorePaths.length} path{settings.ignorePaths.length !== 1 ? "s" : ""} ignored
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground/70">
+                {settings?.autoCleanupEnabled
+                  ? `Auto-cleanup enabled (≤${settings.autoCleanupMaxFiles} files)`
+                  : "Auto-cleanup disabled"}
+                {settings?.ignorePaths && settings.ignorePaths.length > 0 && (
+                  <> · {settings.ignorePaths.length} path{settings.ignorePaths.length !== 1 ? "s" : ""} ignored</>
+                )}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <Button
