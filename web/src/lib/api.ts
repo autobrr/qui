@@ -8,6 +8,11 @@ import type {
   AppPreferences,
   AsyncIndexerFilteringState,
   AuthResponse,
+  Automation,
+  AutomationActivity,
+  AutomationInput,
+  AutomationPreviewInput,
+  AutomationPreviewResult,
   BackupManifest,
   BackupRun,
   BackupRunsResponse,
@@ -27,6 +32,8 @@ import type {
   CrossSeedTorrentInfo,
   CrossSeedTorrentSearchResponse,
   CrossSeedTorrentSearchSelection,
+  DashboardSettings,
+  DashboardSettingsInput,
   DiscoverJackettResponse,
   DuplicateTorrentMatch,
   ExternalProgram,
@@ -35,23 +42,28 @@ import type {
   ExternalProgramExecuteResponse,
   ExternalProgramUpdate,
   IndexerActivityStatus,
+  IndexerResponse,
   InstanceCapabilities,
   InstanceCrossSeedCompletionSettings,
   InstanceFormData,
   InstanceReannounceActivity,
   InstanceReannounceCandidate,
   InstanceResponse,
+  LogExclusions,
+  LogExclusionsInput,
+  LogSettings,
+  LogSettingsUpdate,
   OrphanScanRun,
   OrphanScanRunWithFiles,
   OrphanScanSettings,
   OrphanScanSettingsUpdate,
   QBittorrentAppInfo,
+  RegexValidationResult,
   RestoreMode,
   RestorePlan,
   RestoreResult,
   SearchHistoryResponse,
   SortedPeersResponse,
-  WebSeed,
   TorrentCreationParams,
   TorrentCreationTask,
   TorrentCreationTaskResponse,
@@ -60,7 +72,6 @@ import type {
   TorrentProperties,
   TorrentResponse,
   TorrentTracker,
-  IndexerResponse,
   TorznabIndexer,
   TorznabIndexerError,
   TorznabIndexerFormData,
@@ -74,24 +85,17 @@ import type {
   TorznabSearchResult,
   TrackerCustomization,
   TrackerCustomizationInput,
-  Automation,
-  AutomationActivity,
-  AutomationInput,
-  AutomationPreviewInput,
-  AutomationPreviewResult,
-  RegexValidationResult,
   User,
-  DashboardSettings,
-  DashboardSettingsInput
+  WebSeed
 } from "@/types"
 import type {
   ArrInstance,
   ArrInstanceFormData,
   ArrInstanceUpdateData,
-  ArrTestConnectionRequest,
-  ArrTestResponse,
   ArrResolveRequest,
   ArrResolveResponse,
+  ArrTestConnectionRequest,
+  ArrTestResponse,
 } from "@/types/arr"
 import { getApiBaseUrl, withBasePath } from "./base-url"
 
@@ -1601,6 +1605,18 @@ class ApiClient {
     })
   }
 
+  // Log Exclusions endpoints
+  async getLogExclusions(): Promise<LogExclusions> {
+    return this.request<LogExclusions>("/log-exclusions")
+  }
+
+  async updateLogExclusions(data: LogExclusionsInput): Promise<LogExclusions> {
+    return this.request<LogExclusions>("/log-exclusions", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
   // Torznab Indexer endpoints
   async listTorznabIndexers(): Promise<TorznabIndexer[]> {
     return this.request<TorznabIndexer[]>("/torznab/indexers")
@@ -1868,6 +1884,23 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify(data),
     })
+  }
+
+  // Log Settings endpoints
+  async getLogSettings(): Promise<LogSettings> {
+    return this.request<LogSettings>("/log-settings")
+  }
+
+  async updateLogSettings(settings: LogSettingsUpdate): Promise<LogSettings> {
+    return this.request<LogSettings>("/log-settings", {
+      method: "PUT",
+      body: JSON.stringify(settings),
+    })
+  }
+
+  // Get the SSE log stream URL for EventSource
+  getLogStreamUrl(limit = 1000): string {
+    return `${API_BASE}/logs/stream?limit=${limit}`
   }
 }
 

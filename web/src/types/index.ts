@@ -578,6 +578,17 @@ export interface DashboardSettingsInput {
   trackerBreakdownItemsPerPage?: number
 }
 
+export interface LogExclusions {
+  id: number
+  patterns: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface LogExclusionsInput {
+  patterns: string[]
+}
+
 export interface TorrentCounts {
   status: Record<string, number>
   categories: Record<string, number>
@@ -1856,4 +1867,21 @@ export interface OrphanScanFile {
 
 export interface OrphanScanRunWithFiles extends OrphanScanRun {
   files: OrphanScanFile[]
+}
+
+// Log Settings Types
+export interface LogSettings {
+  level: string
+  path: string
+  maxSize: number
+  maxBackups: number
+  configPath?: string
+  locked?: Record<string, string>
+}
+
+export interface LogSettingsUpdate {
+  level?: string
+  path?: string
+  maxSize?: number
+  maxBackups?: number
 }

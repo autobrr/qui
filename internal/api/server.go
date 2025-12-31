@@ -71,6 +71,7 @@ type Server struct {
 	automationService                *automations.Service
 	trackerCustomizationStore        *models.TrackerCustomizationStore
 	dashboardSettingsStore           *models.DashboardSettingsStore
+	logExclusionsStore               *models.LogExclusionsStore
 	instanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
 	orphanScanStore                  *models.OrphanScanStore
 	orphanScanService                *orphanscan.Service
@@ -105,6 +106,7 @@ type Dependencies struct {
 	AutomationService                *automations.Service
 	TrackerCustomizationStore        *models.TrackerCustomizationStore
 	DashboardSettingsStore           *models.DashboardSettingsStore
+	LogExclusionsStore               *models.LogExclusionsStore
 	InstanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
 	OrphanScanStore                  *models.OrphanScanStore
 	OrphanScanService                *orphanscan.Service
@@ -146,6 +148,7 @@ func NewServer(deps *Dependencies) *Server {
 		automationService:                deps.AutomationService,
 		trackerCustomizationStore:        deps.TrackerCustomizationStore,
 		dashboardSettingsStore:           deps.DashboardSettingsStore,
+		logExclusionsStore:               deps.LogExclusionsStore,
 		instanceCrossSeedCompletionStore: deps.InstanceCrossSeedCompletionStore,
 		orphanScanStore:                  deps.OrphanScanStore,
 		orphanScanService:                deps.OrphanScanService,
@@ -291,6 +294,8 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	orphanScanHandler := handlers.NewOrphanScanHandler(s.orphanScanStore, s.instanceStore, s.orphanScanService)
 	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
+	logExclusionsHandler := handlers.NewLogExclusionsHandler(s.logExclusionsStore)
+	logsHandler := handlers.NewLogsHandler(s.config)
 
 	// Torznab/Jackett handler
 	var jackettHandler *handlers.JackettHandler
@@ -390,6 +395,13 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			// Dashboard settings (per-user layout preferences)
 			r.Get("/dashboard-settings", dashboardSettingsHandler.Get)
 			r.Put("/dashboard-settings", dashboardSettingsHandler.Update)
+
+			// Log exclusions (muted log message patterns)
+			r.Get("/log-exclusions", logExclusionsHandler.Get)
+			r.Put("/log-exclusions", logExclusionsHandler.Update)
+
+			// Log settings and streaming
+			logsHandler.Routes(r)
 
 			// Version endpoint for update checks
 			r.Get("/version/latest", versionHandler.GetLatestVersion)
