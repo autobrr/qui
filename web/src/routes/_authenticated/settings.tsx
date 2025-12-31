@@ -12,6 +12,7 @@ const settingsSearchSchema = z.object({
     "instances",
     "indexers",
     "search-cache",
+    "integrations",
     "client-api",
     "api",
     "external-programs",

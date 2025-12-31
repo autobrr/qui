@@ -180,3 +180,33 @@ func joinDomains(domains []string) string {
 	}
 	return strings.Join(cleaned, ",")
 }
+
+// ResolveTrackerDisplayName resolves a tracker domain to its display name using customizations.
+// Fallback chain: customization display name → indexerName → domain.
+//
+// The domain should be extracted from the tracker announce URL (lowercase, no port).
+// indexerName is typically from the cross-seed request and serves as a fallback.
+func ResolveTrackerDisplayName(domain string, indexerName string, customizations []*TrackerCustomization) string {
+	domain = strings.ToLower(strings.TrimSpace(domain))
+
+	// Look for a matching customization
+	for _, c := range customizations {
+		for _, d := range c.Domains {
+			if strings.ToLower(d) == domain {
+				return c.DisplayName
+			}
+		}
+	}
+
+	// Fall back to indexer name if provided
+	if indexerName != "" {
+		return indexerName
+	}
+
+	// Fall back to domain itself
+	if domain != "" && domain != "unknown" {
+		return domain
+	}
+
+	return "Unknown"
+}

@@ -4,13 +4,14 @@
  */
 
 import { IndexersPage } from "@/components/indexers/IndexersPage"
-import { LogSettingsPanel } from "@/components/settings/LogSettingsPanel"
 import { InstanceCard } from "@/components/instances/InstanceCard"
 import { InstanceForm } from "@/components/instances/InstanceForm"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
+import { ArrInstancesManager } from "@/components/settings/ArrInstancesManager"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
 import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
 import { ExternalProgramsManager } from "@/components/settings/ExternalProgramsManager"
+import { LogSettingsPanel } from "@/components/settings/LogSettingsPanel"
 import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
 import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import {
@@ -48,11 +49,11 @@ import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
 import { copyTextToClipboard, formatBytes } from "@/lib/utils"
+import type { SettingsSearch } from "@/routes/_authenticated/settings"
 import type { Instance, TorznabSearchCacheStats } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import type { SettingsSearch } from "@/routes/_authenticated/settings"
-import { Clock, Copy, Database, ExternalLink, FileText, Key, Layers, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
+import { Clock, Copy, Database, ExternalLink, FileText, Key, Layers, Link2, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
 import type { FormEvent } from "react"
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -738,6 +739,12 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                 Search Cache
               </div>
             </SelectItem>
+            <SelectItem value="integrations">
+              <div className="flex items-center">
+                <Link2 className="w-4 h-4 mr-2" />
+                Integrations
+              </div>
+            </SelectItem>
             <SelectItem value="client-api">
               <div className="flex items-center">
                 <Share2 className="w-4 h-4 mr-2" />
@@ -814,6 +821,15 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             >
               <Layers className="w-4 h-4 mr-2" />
               Search Cache
+            </button>
+            <button
+              onClick={() => handleTabChange("integrations")}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === "integrations"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+              }`}
+            >
+              <Link2 className="w-4 h-4 mr-2" />
+              Integrations
             </button>
             <button
               onClick={() => handleTabChange("client-api")}
@@ -909,6 +925,22 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
           {activeTab === "search-cache" && (
             <div className="space-y-4">
               <TorznabSearchCachePanel />
+            </div>
+          )}
+
+          {activeTab === "integrations" && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>ARR Integrations</CardTitle>
+                  <CardDescription>
+                    Configure Sonarr and Radarr instances for enhanced cross-seed searches using external IDs
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ArrInstancesManager />
+                </CardContent>
+              </Card>
             </div>
           )}
 
