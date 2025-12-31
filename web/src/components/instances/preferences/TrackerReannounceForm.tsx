@@ -16,10 +16,13 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TrackerIconImage } from "@/components/ui/tracker-icon"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
+import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
+import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
-import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { cn, copyTextToClipboard, formatErrorReason } from "@/lib/utils"
 import { REANNOUNCE_CONSTRAINTS, type InstanceFormData, type InstanceReannounceActivity, type InstanceReannounceSettings } from "@/types"
 import { useQuery } from "@tanstack/react-query"
@@ -75,6 +78,8 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
   }, [instanceId, instance?.reannounceSettings])
 
   const trackersQuery = useInstanceTrackers(instanceId, { enabled: !!instance })
+  const { data: trackerCustomizations } = useTrackerCustomizations()
+  const { data: trackerIcons } = useTrackerIcons()
 
   const categoriesQuery = useQuery({
     queryKey: ["instance-categories", instanceId],
@@ -90,16 +95,76 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     staleTime: 1000 * 60 * 5,
   })
 
+  // Build lookup maps from tracker customizations for merging and nicknames
+  const trackerCustomizationMaps = useMemo(() => {
+    const domainToCustomization = new Map<string, { displayName: string; domains: string[]; id: number }>()
+    const secondaryDomains = new Set<string>()
+
+    for (const custom of trackerCustomizations ?? []) {
+      const domains = custom.domains
+      if (domains.length === 0) continue
+
+      for (let i = 0; i < domains.length; i++) {
+        const domain = domains[i].toLowerCase()
+        domainToCustomization.set(domain, {
+          displayName: custom.displayName,
+          domains: custom.domains,
+          id: custom.id,
+        })
+        if (i > 0) {
+          secondaryDomains.add(domain)
+        }
+      }
+    }
+
+    return { domainToCustomization, secondaryDomains }
+  }, [trackerCustomizations])
+
+  // Process trackers to apply customizations (nicknames and merged domains)
   const trackerOptions: Option[] = useMemo(() => {
     if (!trackersQuery.data) return []
-    
-    // The API returns Record<string, string> where key is domain, value is full URL or similar.
-    // We're interested in the domains (keys).
-    return Object.keys(trackersQuery.data).map((domain) => ({
-      label: domain,
-      value: domain,
-    })).sort((a, b) => a.label.localeCompare(b.label))
-  }, [trackersQuery.data])
+
+    const { domainToCustomization, secondaryDomains } = trackerCustomizationMaps
+    const trackers = Object.keys(trackersQuery.data)
+    const processed: Option[] = []
+    const seenDisplayNames = new Set<string>()
+
+    for (const tracker of trackers) {
+      const lowerTracker = tracker.toLowerCase()
+
+      if (secondaryDomains.has(lowerTracker)) {
+        continue
+      }
+
+      const customization = domainToCustomization.get(lowerTracker)
+
+      if (customization) {
+        const displayKey = customization.displayName.toLowerCase()
+        if (seenDisplayNames.has(displayKey)) continue
+        seenDisplayNames.add(displayKey)
+
+        const primaryDomain = customization.domains[0]
+        processed.push({
+          label: customization.displayName,
+          value: customization.domains.join(","),
+          icon: <TrackerIconImage tracker={primaryDomain} trackerIcons={trackerIcons} />,
+        })
+      } else {
+        if (seenDisplayNames.has(lowerTracker)) continue
+        seenDisplayNames.add(lowerTracker)
+
+        processed.push({
+          label: tracker,
+          value: tracker,
+          icon: <TrackerIconImage tracker={tracker} trackerIcons={trackerIcons} />,
+        })
+      }
+    }
+
+    processed.sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }))
+
+    return processed
+  }, [trackersQuery.data, trackerCustomizationMaps, trackerIcons])
 
   const categoryOptions: Option[] = useMemo(() => {
     if (!categoriesQuery.data) return []
@@ -290,8 +355,6 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
 
   const settingsContent = (
     <div className="space-y-6">
-              {settings.enabled ? (
-                <>
                   <div className="space-y-4">
                     <div className="flex items-center gap-2">
                       <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Timing & Behavior</h3>
@@ -488,36 +551,20 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                             placeholder="Select tracker domains..."
                             creatable
                             onCreateOption={(value) => appendUniqueValue("trackers", value)}
+                            hideCheckIcon
                           />
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  {!formId && (
-                    <div className="flex justify-end pt-4">
-                      <Button type="submit" disabled={isUpdating}>
-                        {isUpdating ? "Saving..." : "Save Changes"}
-                      </Button>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-12 text-center space-y-3 border-2 border-dashed rounded-lg">
-                  <div className="p-3 rounded-full bg-muted/50">
-                    <RefreshCcw className="h-6 w-6 text-muted-foreground/50" />
-                  </div>
-                  <div className="space-y-1">
-                    <h3 className="font-medium text-muted-foreground">Monitoring Disabled</h3>
-                    <p className="text-sm text-muted-foreground/60 max-w-xs mx-auto">
-                      Enable automatic reannouncing to configure settings and start monitoring stalled torrents.
-                    </p>
-                  </div>
-                  <Button variant="outline" onClick={() => setSettings((prev) => ({ ...prev, enabled: true }))}>
-                    Enable Monitoring
-                  </Button>
-                </div>
-              )}
+      {!formId && (
+        <div className="flex justify-end pt-4">
+          <Button type="submit" disabled={isUpdating}>
+            {isUpdating ? "Saving..." : "Save Changes"}
+          </Button>
+        </div>
+      )}
     </div>
   )
 
