@@ -22,7 +22,7 @@ export function useInstanceCapabilities(
     queryKey: ["instance-capabilities", instanceId],
     queryFn: () => api.getInstanceCapabilities(instanceId!),
     enabled: shouldEnable && instanceId !== null && instanceId !== undefined,
-    staleTime: 300000,
+    staleTime: 60_000,
     refetchInterval: (query) => {
       const data = query.state.data as InstanceCapabilities | undefined
       if (!data?.webAPIVersion) {
