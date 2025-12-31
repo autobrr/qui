@@ -40,6 +40,7 @@ import {
   Edit,
   Eye,
   EyeOff,
+  HardDrive,
   MoreVertical,
   Power,
   RefreshCw,
@@ -310,6 +311,16 @@ export function InstanceCard({
             <span className="text-muted-foreground">TLS Verification:</span>
             <span className={instance.tlsSkipVerify ? "text-amber-500" : ""}>
               {instance.tlsSkipVerify ? "Skipped" : "Strict"}
+            </span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-muted-foreground">Local File Access:</span>
+            <span className={cn(
+              "flex items-center gap-1",
+              instance.hasLocalFilesystemAccess ? "text-primary" : "text-muted-foreground"
+            )}>
+              <HardDrive className="h-3 w-3" />
+              {instance.hasLocalFilesystemAccess ? "Enabled" : "Disabled"}
             </span>
           </div>
         </div>
