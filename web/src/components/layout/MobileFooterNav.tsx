@@ -26,8 +26,8 @@ import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useHasPremiumAccess } from "@/hooks/useLicense"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
-import { cn } from "@/lib/utils"
 import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
+import { cn } from "@/lib/utils"
 import {
   getCurrentTheme,
   getCurrentThemeMode,
@@ -60,8 +60,8 @@ import {
   Search as SearchIcon,
   Server,
   Settings,
-  Wrench,
-  Sun
+  Sun,
+  Zap
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -143,7 +143,7 @@ export function MobileFooterNav() {
           description: "License check failed. Premium theme switching is temporarily unavailable.",
         })
       } else {
-        toast.error("This is a premium theme. Please purchase a license to use it.")
+        toast.error("This is a premium theme. Open Settings → Themes to activate a license.")
       }
       return
     }
@@ -161,7 +161,7 @@ export function MobileFooterNav() {
           description: "License check failed. Premium theme switching is temporarily unavailable.",
         })
       } else {
-        toast.error("This is a premium theme. Please purchase a license to use it.")
+        toast.error("This is a premium theme. Open Settings → Themes to activate a license.")
       }
       return false
     }
@@ -279,7 +279,7 @@ export function MobileFooterNav() {
                               </span>
                             </TooltipTrigger>
                             <TooltipContent side="left" className="text-xs">
-                              Seeded search running
+                              Scan running
                             </TooltipContent>
                           </Tooltip>
                         )}
@@ -405,11 +405,11 @@ export function MobileFooterNav() {
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link
-                to="/services"
+                to="/automations"
                 className="flex items-center gap-2"
               >
-                <Wrench className="h-4 w-4" />
-                Services
+                <Zap className="h-4 w-4" />
+                Automations
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>

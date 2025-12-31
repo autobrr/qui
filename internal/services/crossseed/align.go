@@ -45,6 +45,19 @@ func (s *Service) alignCrossSeedContentPaths(
 	sourceRelease := s.releaseCache.Parse(sourceTorrentName)
 	matchedRelease := s.releaseCache.Parse(matchedTorrent.Name)
 
+	// Safety check: reject forbidden pairing (season pack from episode) at alignment stage.
+	// This should have been caught earlier, but serves as a defense-in-depth guard.
+	// Returns false so callers know alignment did not succeed (prevents recheck/resume logic).
+	if reject, _ := rejectSeasonPackFromEpisode(sourceRelease, matchedRelease, true); reject {
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("torrentHash", torrentHash).
+			Str("sourceName", sourceTorrentName).
+			Str("matchedName", matchedTorrent.Name).
+			Msg("Skipping alignment: season pack cannot use single-episode files")
+		return false
+	}
+
 	if len(expectedSourceFiles) == 0 || len(candidateFiles) == 0 {
 		log.Debug().
 			Int("instanceID", instanceID).
@@ -510,17 +523,21 @@ func adjustPathForRootRename(path, oldRoot, newRoot string) string {
 }
 
 func shouldRenameTorrentDisplay(newRelease, matchedRelease *rls.Release) bool {
-	// Keep episode torrents named after the episode even when pointing at season pack files
-	if newRelease.Series > 0 && newRelease.Episode > 0 &&
-		matchedRelease.Series > 0 && matchedRelease.Episode == 0 {
+	// Keep episode torrents named after the episode even when pointing at season pack files.
+	if isTVEpisode(newRelease) && isTVSeasonPack(matchedRelease) {
+		return false
+	}
+	// Keep season pack torrents named as season packs; never rename a season pack to an episode.
+	// This is the forbidden pairing (season pack from episode) - also reject rename.
+	if reject, _ := rejectSeasonPackFromEpisode(newRelease, matchedRelease, true); reject {
 		return false
 	}
 	return true
 }
 
 func shouldAlignFilesWithCandidate(newRelease, matchedRelease *rls.Release) bool {
-	if newRelease.Series > 0 && newRelease.Episode > 0 &&
-		matchedRelease.Series > 0 && matchedRelease.Episode == 0 {
+	// Episode pointing at season pack files: don't align files (episode uses subset of pack).
+	if isTVEpisode(newRelease) && isTVSeasonPack(matchedRelease) {
 		return false
 	}
 	return true
@@ -600,28 +617,38 @@ func hasContentFileSizeMismatch(sourceFiles, candidateFiles qbt.TorrentFiles, ig
 	return len(mismatchedFiles) > 0, mismatchedFiles
 }
 
+// fileKeySize is a composite key for matching files by normalized name + size.
+// This prevents mismatches when different files happen to have the same size
+// (e.g., source has english.srt, candidate has spanish.srt, same size → should NOT match).
+type fileKeySize struct {
+	key  string
+	size int64
+}
+
 // hasExtraSourceFiles checks if source torrent has files that don't exist in the candidate.
 // This happens when source has extra sidecar files (NFO, SRT, etc.) that weren't filtered
-// by ignorePatterns. Returns true if source has files with sizes not present in candidate.
+// by ignorePatterns. Returns true if source has files with (normalizedKey, size) not present in candidate.
 // This includes cases where source and candidate have the same file count but different files
 // (e.g., source has mkv+srt, candidate has mkv+nfo - the srt won't exist on disk).
 func hasExtraSourceFiles(sourceFiles, candidateFiles qbt.TorrentFiles) bool {
-	// Build size buckets for candidate files
-	candidateSizes := make(map[int64]int)
+	// Build (normalizedKey, size) multiset for candidate files
+	candidateKeys := make(map[fileKeySize]int)
 	for _, cf := range candidateFiles {
-		candidateSizes[cf.Size]++
+		key := fileKeySize{key: normalizeFileKey(cf.Name), size: cf.Size}
+		candidateKeys[key]++
 	}
 
-	// Count how many source files can be matched by size
+	// Count how many source files can be matched by (normalizedKey, size)
 	matched := 0
 	for _, sf := range sourceFiles {
-		if count := candidateSizes[sf.Size]; count > 0 {
-			candidateSizes[sf.Size]--
+		key := fileKeySize{key: normalizeFileKey(sf.Name), size: sf.Size}
+		if count := candidateKeys[key]; count > 0 {
+			candidateKeys[key]--
 			matched++
 		}
 	}
 
-	// If we couldn't match all source files by size, there are extras/mismatches
+	// If we couldn't match all source files, there are extras/mismatches
 	return matched < len(sourceFiles)
 }
 

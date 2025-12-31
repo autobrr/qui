@@ -53,6 +53,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -592,6 +593,15 @@ func isWriteQuery(query string) bool {
 		strings.HasPrefix(upper, "VACUUM")
 }
 
+const sqliteNestedTxErrSubstring = "cannot start a transaction within a transaction"
+
+func isSQLiteNestedTxErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), sqliteNestedTxErrSubstring)
+}
+
 const stmtClosedErrMsg = "statement is closed"
 
 type stmtExecutor[T any] interface {
@@ -671,18 +681,42 @@ func execWithRetry[T any, E stmtExecutor[T]](db *DB, ctx context.Context, query 
 // read queries to the reader pool. Uses prepared statements when possible.
 // Do NOT use this for queries with RETURNING clauses - use QueryRowContext or QueryContext instead.
 func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	if !isWriteQuery(query) {
+		return execWithRetry(db, ctx, query, args, execResult{})
+	}
+
+	db.writerMu.Lock()
+	defer db.writerMu.Unlock()
+
 	return execWithRetry(db, ctx, query, args, execResult{})
 }
 
 // QueryContext routes write queries to the single writer connection and
 // read queries to the reader pool. Uses prepared statements when possible.
 func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	if !isWriteQuery(query) {
+		return execWithRetry(db, ctx, query, args, queryRows{})
+	}
+
+	db.writerMu.Lock()
+	defer db.writerMu.Unlock()
+
 	return execWithRetry(db, ctx, query, args, queryRows{})
 }
 
 // QueryRowContext routes write queries to the single writer connection and
 // read queries to the reader pool. Uses prepared statements when possible.
 func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	if isWriteQuery(query) {
+		db.writerMu.Lock()
+		row := db.queryRowUnlocked(ctx, query, args...)
+		db.writerMu.Unlock()
+		return row
+	}
+	return db.queryRowUnlocked(ctx, query, args...)
+}
+
+func (db *DB) queryRowUnlocked(ctx context.Context, query string, args ...any) *sql.Row {
 	stmt, err := db.getStmt(ctx, query, nil)
 	if err != nil {
 		if isWriteQuery(query) {
@@ -838,8 +872,18 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 
 	tx, err := db.writerConn.BeginTx(ctx, opts)
 	if err != nil {
-		db.writerMu.Unlock() // Unlock on error
-		return nil, err
+		db.writerMu.Unlock()
+		if isSQLiteNestedTxErr(err) {
+			// This indicates a bug: a previous transaction failed to rollback properly,
+			// leaving the connection wedged. Log with stack trace to help diagnose.
+			recordWedgedTransaction()
+			log.Error().
+				Err(err).
+				Str("stack", string(debug.Stack())).
+				Msg("SQLite writer connection is wedged in a transaction - this indicates a bug where a previous transaction failed to rollback properly")
+			return nil, fmt.Errorf("database connection wedged: %w", err)
+		}
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
 	// Pass unlock function to Tx so it can release the mutex on Commit/Rollback
@@ -1178,6 +1222,10 @@ const referencedStringsInsertQuery = `
 	SELECT category_name_id AS string_id FROM torznab_indexer_categories WHERE category_name_id IS NOT NULL
 	UNION ALL
 	SELECT error_message_id AS string_id FROM torznab_indexer_errors WHERE error_message_id IS NOT NULL
+	UNION ALL
+	SELECT name_id AS string_id FROM arr_instances WHERE name_id IS NOT NULL
+	UNION ALL
+	SELECT base_url_id AS string_id FROM arr_instances WHERE base_url_id IS NOT NULL
 `
 
 func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {

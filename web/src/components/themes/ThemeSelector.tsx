@@ -166,7 +166,7 @@ export function ThemeSelector() {
     }
 
     toast.error("This theme requires a premium license", {
-      description: "Please purchase a license to access premium themes",
+      description: "Open Settings → Themes to see payment options and redeem your discount code.",
     })
   }
 

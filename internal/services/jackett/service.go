@@ -157,6 +157,7 @@ type searchContext struct {
 	requireSuccess bool
 	releaseName    string // Original full release name for debugging/history
 	skipHistory    bool   // Skip recording this search in history buffer
+	originalQuery  string // Original query for fallback when ID params are pruned per-indexer
 }
 
 type searchPriorityKey struct{}
@@ -238,6 +239,8 @@ type searchCacheKeyPayload struct {
 	IndexerIDs  []int       `json:"indexer_ids,omitempty"`
 	IMDbID      string      `json:"imdb_id,omitempty"`
 	TVDbID      string      `json:"tvdb_id,omitempty"`
+	TMDbID      int         `json:"tmdb_id,omitempty"`
+	TVMazeID    int         `json:"tvmaze_id,omitempty"`
 	Year        int         `json:"year,omitempty"`
 	Season      *int        `json:"season,omitempty"`
 	Episode     *int        `json:"episode,omitempty"`
@@ -548,11 +551,11 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 // performSearch is the shared implementation for Search and SearchGeneric
 func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, cacheScope string) error {
 	// Validate request - require either query or advanced parameters
-	hasAdvancedParams := req.IMDbID != "" || req.TVDbID != "" || req.Artist != "" || req.Album != "" ||
-		req.Year > 0 || req.Season != nil || req.Episode != nil
+	hasAdvancedParams := req.IMDbID != "" || req.TVDbID != "" || req.TMDbID > 0 || req.TVMazeID > 0 ||
+		req.Artist != "" || req.Album != "" || req.Year > 0 || req.Season != nil || req.Episode != nil
 
 	if req.Query == "" && !hasAdvancedParams {
-		return fmt.Errorf("query or advanced parameters (imdb_id, tvdb_id, artist, album, year, season, episode) are required")
+		return fmt.Errorf("query or advanced parameters (imdb_id, tvdb_id, tmdb_id, tvmaze_id, artist, album, year, season, episode) are required")
 	}
 
 	var detectedType contentType
@@ -596,6 +599,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 		requireSuccess: len(req.IndexerIDs) > 0,
 		releaseName:    req.ReleaseName,
 		skipHistory:    req.SkipHistory,
+		originalQuery:  req.Query,
 	}, RateLimitPriorityInteractive)
 
 	cacheEnabled := s.shouldUseSearchCache()
@@ -1119,6 +1123,8 @@ func (s *Service) buildSearchCacheSignature(scope string, req *TorznabSearchRequ
 		IndexerIDs:  normalizedIndexerIDs,
 		IMDbID:      strings.TrimSpace(req.IMDbID),
 		TVDbID:      strings.TrimSpace(req.TVDbID),
+		TMDbID:      req.TMDbID,
+		TVMazeID:    req.TVMazeID,
 		Year:        req.Year,
 		Season:      req.Season,
 		Episode:     req.Episode,
@@ -2136,6 +2142,16 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 			if tvdbid, exists := params["tvdbid"]; exists {
 				searchReq.TVDbID = tvdbid
 			}
+			if tmdbidStr, exists := params["tmdbid"]; exists {
+				if tmdbid, err := strconv.Atoi(tmdbidStr); err == nil {
+					searchReq.TMDbID = tmdbid
+				}
+			}
+			if tvmazeidStr, exists := params["tvmazeid"]; exists {
+				if tvmazeid, err := strconv.Atoi(tvmazeidStr); err == nil {
+					searchReq.TVMazeID = tvmazeid
+				}
+			}
 			if yearStr, exists := params["year"]; exists {
 				if year, err := strconv.Atoi(yearStr); err == nil {
 					searchReq.Year = year
@@ -2244,6 +2260,88 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 func (s *Service) applyCapabilitySpecificParams(idx *models.TorznabIndexer, meta *searchContext, params map[string]string) {
 	if meta == nil || len(idx.Capabilities) == 0 || len(params) == 0 {
 		return
+	}
+
+	// Define ID parameters and their corresponding capabilities by search mode
+	type idParamDef struct {
+		param    string
+		movieCap string
+		tvCap    string
+	}
+
+	idParams := []idParamDef{
+		{"imdbid", "movie-search-imdbid", "tv-search-imdbid"},
+		{"tvdbid", "", "tv-search-tvdbid"},                    // tvdbid only for tv
+		{"tmdbid", "movie-search-tmdbid", "tv-search-tmdbid"}, // tmdbid for both
+		{"tvmazeid", "", "tv-search-tvmazeid"},                // tvmazeid only for tv
+	}
+
+	// Track what IDs we started with and what we have after pruning
+	hadIDs := false
+	hasIDsAfterPruning := false
+
+	for _, def := range idParams {
+		// Check if this param is in the request
+		if _, exists := params[def.param]; !exists {
+			continue
+		}
+		hadIDs = true
+
+		// Determine which capability to check based on search mode
+		var capToCheck string
+		switch meta.searchMode {
+		case "movie":
+			capToCheck = def.movieCap
+		case "tvsearch":
+			capToCheck = def.tvCap
+		default:
+			// For other modes, leave the param as-is
+			hasIDsAfterPruning = true
+			continue
+		}
+
+		// If no capability defined for this mode (e.g., tvdbid for movies), prune it
+		if capToCheck == "" {
+			delete(params, def.param)
+			log.Debug().
+				Int("indexer_id", idx.ID).
+				Str("indexer", idx.Name).
+				Str("param", def.param).
+				Str("searchMode", meta.searchMode).
+				Msg("Pruned ID parameter not applicable for search mode")
+			continue
+		}
+
+		// Check if indexer supports this capability (case-insensitive)
+		hasCapability := slices.ContainsFunc(idx.Capabilities, func(cap string) bool {
+			return strings.EqualFold(strings.TrimSpace(cap), capToCheck)
+		})
+		if hasCapability {
+			hasIDsAfterPruning = true
+			// Indexer supports it, keep the param
+		} else {
+			// Indexer doesn't support it, prune the param
+			delete(params, def.param)
+			log.Debug().
+				Int("indexer_id", idx.ID).
+				Str("indexer", idx.Name).
+				Str("param", def.param).
+				Str("capability", capToCheck).
+				Msg("Pruned unsupported ID parameter for indexer")
+		}
+	}
+
+	// If we had IDs but they were all pruned, restore q param for this indexer
+	if hadIDs && !hasIDsAfterPruning && meta.originalQuery != "" {
+		// Check if q is already present (shouldn't be if OmitQueryForIDs was used)
+		if _, exists := params["q"]; !exists {
+			params["q"] = meta.originalQuery
+			log.Debug().
+				Int("indexer_id", idx.ID).
+				Str("indexer", idx.Name).
+				Str("query", meta.originalQuery).
+				Msg("Restored q parameter after all ID params were pruned for indexer")
+		}
 	}
 }
 
@@ -2451,6 +2549,22 @@ func (s *Service) buildSearchParams(req *TorznabSearchRequest, searchMode string
 			Msg("Adding TVDb ID parameter to torznab search")
 	}
 
+	if req.TMDbID > 0 {
+		params.Set("tmdbid", strconv.Itoa(req.TMDbID))
+		log.Debug().
+			Str("search_mode", mode).
+			Int("tmdb_id", req.TMDbID).
+			Msg("Adding TMDb ID parameter to torznab search")
+	}
+
+	if req.TVMazeID > 0 {
+		params.Set("tvmazeid", strconv.Itoa(req.TVMazeID))
+		log.Debug().
+			Str("search_mode", mode).
+			Int("tvmaze_id", req.TVMazeID).
+			Msg("Adding TVMaze ID parameter to torznab search")
+	}
+
 	if req.Season != nil {
 		params.Set("season", strconv.Itoa(*req.Season))
 		log.Debug().
@@ -2495,6 +2609,18 @@ func (s *Service) buildSearchParams(req *TorznabSearchRequest, searchMode string
 
 	if req.Limit > 0 {
 		params.Set("limit", strconv.Itoa(req.Limit))
+	}
+
+	// Omit q parameter when doing ID-driven search (for cross-seed)
+	// This lets IDs drive matching instead of query string
+	if req.OmitQueryForIDs {
+		hasIDs := req.IMDbID != "" || req.TVDbID != "" || req.TMDbID > 0 || req.TVMazeID > 0
+		if hasIDs && (mode == "movie" || mode == "tvsearch") {
+			params.Del("q")
+			log.Debug().
+				Str("search_mode", mode).
+				Msg("Omitting q parameter for ID-driven search")
+		}
 	}
 
 	return params
@@ -2782,7 +2908,7 @@ func getPreferredCapabilities(req *TorznabSearchRequest, searchMode string) []st
 		if req.IMDbID != "" {
 			preferred = append(preferred, "movie-search-imdbid")
 		}
-		if req.TVDbID != "" { // Some indexers use TMDB for movies
+		if req.TMDbID > 0 {
 			preferred = append(preferred, "movie-search-tmdbid")
 		}
 		if req.Year > 0 {
@@ -2791,6 +2917,12 @@ func getPreferredCapabilities(req *TorznabSearchRequest, searchMode string) []st
 	case "tvsearch":
 		if req.TVDbID != "" {
 			preferred = append(preferred, "tv-search-tvdbid")
+		}
+		if req.TVMazeID > 0 {
+			preferred = append(preferred, "tv-search-tvmazeid")
+		}
+		if req.IMDbID != "" {
+			preferred = append(preferred, "tv-search-imdbid")
 		}
 		if req.Season != nil && *req.Season > 0 {
 			preferred = append(preferred, "tv-search-season")

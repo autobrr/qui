@@ -20,6 +20,37 @@ import (
 // matching.go groups all heuristics and helpers that decide whether two torrents
 // describe the same underlying content.
 
+// isTVEpisode returns true if the release is a TV episode (has series and episode number).
+func isTVEpisode(r *rls.Release) bool {
+	return r != nil && r.Series > 0 && r.Episode > 0
+}
+
+// isTVSeasonPack returns true if the release is a TV season pack (has series but no episode number).
+func isTVSeasonPack(r *rls.Release) bool {
+	return r != nil && r.Series > 0 && r.Episode == 0
+}
+
+// rejectReasonSeasonPackFromEpisode is the reason returned when rejecting a season pack
+// cross-seed attempt against a single-episode torrent.
+const rejectReasonSeasonPackFromEpisode = "Season packs cannot be cross-seeded against single-episode torrents"
+
+// rejectSeasonPackFromEpisode checks if a cross-seed should be rejected because it would
+// apply a season pack based on a single-episode torrent's files. This is a forbidden pairing
+// that leads to incomplete/incorrect cross-seeds.
+//
+// Parameters:
+//   - newR: the incoming/source release (the torrent being added)
+//   - existingR: the candidate/matched release (the existing torrent with files)
+//   - episodeMatching: whether episode-aware matching mode is enabled
+//
+// Returns (reject=true, reason) if the pairing should be rejected, (false, "") otherwise.
+func rejectSeasonPackFromEpisode(newR, existingR *rls.Release, episodeMatching bool) (reject bool, reason string) {
+	if episodeMatching && isTVSeasonPack(newR) && isTVEpisode(existingR) {
+		return true, rejectReasonSeasonPackFromEpisode
+	}
+	return false, ""
+}
+
 // releaseKey is a comparable struct for matching releases across different torrents.
 // It uses parsed metadata from rls.Release to avoid brittle filename string compares.
 type releaseKey struct {
@@ -226,18 +257,36 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		}
 	}
 
-	// Source must match if both are present (WEB-DL vs BluRay produce different files)
-	sourceSource := s.stringNormalizer.Normalize((source.Source))
-	candidateSource := s.stringNormalizer.Normalize((candidate.Source))
-	if sourceSource != "" && candidateSource != "" && sourceSource != candidateSource {
+	// Source must be compatible if both are present.
+	// WEB is ambiguous and matches both WEB-DL and WEBRip.
+	// WEB-DL and WEBRip are explicitly different and do not match.
+	// Other sources (BluRay, HDTV, etc.) must match exactly.
+	sourceSource := normalizeSource(source.Source)
+	candidateSource := normalizeSource(candidate.Source)
+	if !sourcesCompatible(sourceSource, candidateSource) {
 		return false
 	}
 
-	// Resolution must match if both are present (1080p vs 2160p are different files)
+	// Resolution must match (1080p vs 2160p are different files).
+	// Exception: empty resolution is allowed to match SD resolutions (480p, 576p, SD).
 	sourceRes := s.stringNormalizer.Normalize((source.Resolution))
 	candidateRes := s.stringNormalizer.Normalize((candidate.Resolution))
-	if sourceRes != "" && candidateRes != "" && sourceRes != candidateRes {
-		return false
+	if sourceRes != candidateRes {
+		// rls omits resolution for many SD releases (e.g. "WEB" without "480p"), so
+		// treat an empty resolution as a match only when the other side is clearly SD.
+		isKnownSD := func(res string) bool {
+			switch strings.ToUpper(strings.TrimSpace(res)) {
+			case "480P", "576P", "SD":
+				return true
+			default:
+				return false
+			}
+		}
+
+		sdFallbackAllowed := (sourceRes == "" && isKnownSD(candidateRes)) || (candidateRes == "" && isKnownSD(sourceRes))
+		if !sdFallbackAllowed {
+			return false
+		}
 	}
 
 	// Collection must match if either is present (NF vs AMZN vs Criterion are different sources)
@@ -290,11 +339,17 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		}
 	}
 
-	// Language must match if both are present (FRENCH vs ENGLISH are different audio/subs)
-	if len(source.Language) > 0 && len(candidate.Language) > 0 {
-		sourceLanguage := joinNormalizedSlice(source.Language)
-		candidateLanguage := joinNormalizedSlice(candidate.Language)
-		if sourceLanguage != candidateLanguage {
+	// Language must match (FRENCH vs ENGLISH are different audio/subs).
+	// Exception: empty language is treated as equivalent to ENGLISH since most
+	// English releases omit the language tag entirely.
+	sourceLanguage := joinNormalizedSlice(source.Language)
+	candidateLanguage := joinNormalizedSlice(candidate.Language)
+	if sourceLanguage != candidateLanguage {
+		// Allow empty-vs-ENGLISH since unlabeled releases are typically English.
+		isEnglishOrEmpty := func(lang string) bool {
+			return lang == "" || lang == "ENGLISH"
+		}
+		if !(isEnglishOrEmpty(sourceLanguage) && isEnglishOrEmpty(candidateLanguage)) {
 			return false
 		}
 	}
@@ -374,6 +429,58 @@ func normalizeVideoCodec(codec string) string {
 		return canonical
 	}
 	return upper
+}
+
+// sourceAliases maps source names to a canonical form for comparison.
+// WEB-DL variants normalize to WEBDL, WEBRip variants to WEBRIP.
+// Plain "WEB" stays as "WEB" and is treated as ambiguous (matches both).
+var sourceAliases = map[string]string{
+	"WEB-DL": "WEBDL",
+	"WEBDL":  "WEBDL",
+	"WEBRIP": "WEBRIP",
+	"WEB":    "WEB",
+}
+
+// normalizeSource converts a source string to its canonical form.
+// Returns the original (uppercased) string if no alias mapping exists.
+func normalizeSource(source string) string {
+	upper := strings.ToUpper(strings.TrimSpace(source))
+	if canonical, ok := sourceAliases[upper]; ok {
+		return canonical
+	}
+	return upper
+}
+
+// sourcesCompatible checks if two sources are compatible for cross-seed precheck.
+// Plain "WEB" is ambiguous and matches both WEBDL and WEBRIP.
+// WEBDL and WEBRIP are explicitly different and do not match each other.
+// The final apply stage trusts file verification, so this is just for precheck gating.
+func sourcesCompatible(source, candidate string) bool {
+	if source == "" || candidate == "" {
+		return true
+	}
+	if source == candidate {
+		return true
+	}
+
+	// WEB is ambiguous: treat it as compatible with both WEBDL and WEBRIP.
+	// It must not match non-web sources (BLURAY, HDTV, etc.).
+	isWebSource := func(s string) bool {
+		switch s {
+		case "WEB", "WEBDL", "WEBRIP":
+			return true
+		default:
+			return false
+		}
+	}
+
+	if !isWebSource(source) || !isWebSource(candidate) {
+		return false
+	}
+
+	// At this point both are web sources, but they differ.
+	// WEBDL and WEBRIP are explicitly different and do not match each other.
+	return source == "WEB" || candidate == "WEB"
 }
 
 // joinNormalizedCodecSlice converts a codec slice to a normalized string for comparison.
