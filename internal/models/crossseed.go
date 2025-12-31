@@ -310,7 +310,6 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		       skip_auto_resume_rss, skip_auto_resume_seeded_search,
 		       skip_auto_resume_completion, skip_auto_resume_webhook,
 		       skip_recheck, skip_piece_boundary_safety_check,
-		       use_hardlinks, hardlink_base_dir, hardlink_dir_preset,
 		       created_at, updated_at
 		FROM cross_seed_settings
 		WHERE id = 1
@@ -326,9 +325,6 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	var rssAutomationTags, seededSearchTags, completionSearchTags, webhookTags sql.NullString
 	var runExternalProgramID sql.NullInt64
 	var createdAt, updatedAt sql.NullTime
-	// Hardlink settings are now per-instance; absorb DB values into dummy vars for backwards compatibility
-	var unusedUseHardlinks bool
-	var unusedHardlinkBaseDir, unusedHardlinkDirPreset string
 
 	err := row.Scan(
 		&settings.Enabled,
@@ -365,9 +361,6 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&settings.SkipAutoResumeWebhook,
 		&settings.SkipRecheck,
 		&settings.SkipPieceBoundarySafetyCheck,
-		&unusedUseHardlinks,      // Hardlink settings moved to per-instance
-		&unusedHardlinkBaseDir,   // Hardlink settings moved to per-instance
-		&unusedHardlinkDirPreset, // Hardlink settings moved to per-instance
 		&createdAt,
 		&updatedAt,
 	)
@@ -539,10 +532,9 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			use_custom_category, custom_category,
 			skip_auto_resume_rss, skip_auto_resume_seeded_search,
 			skip_auto_resume_completion, skip_auto_resume_webhook,
-			skip_recheck, skip_piece_boundary_safety_check,
-			use_hardlinks, hardlink_base_dir, hardlink_dir_preset
+			skip_recheck, skip_piece_boundary_safety_check
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -578,10 +570,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			skip_auto_resume_completion = excluded.skip_auto_resume_completion,
 			skip_auto_resume_webhook = excluded.skip_auto_resume_webhook,
 			skip_recheck = excluded.skip_recheck,
-			skip_piece_boundary_safety_check = excluded.skip_piece_boundary_safety_check,
-			use_hardlinks = excluded.use_hardlinks,
-			hardlink_base_dir = excluded.hardlink_base_dir,
-			hardlink_dir_preset = excluded.hardlink_dir_preset
+			skip_piece_boundary_safety_check = excluded.skip_piece_boundary_safety_check
 	`
 
 	// Convert *int to any for proper SQL handling
@@ -594,11 +583,6 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 	if settings.Category != nil {
 		category = *settings.Category
 	}
-
-	// Hardlink settings are now per-instance; write defaults to maintain DB schema compatibility
-	const unusedHardlinkUse = false
-	const unusedHardlinkBaseDir = ""
-	const unusedHardlinkDirPreset = "flat"
 
 	_, err = s.db.ExecContext(ctx, query,
 		1,
@@ -636,9 +620,6 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		settings.SkipAutoResumeWebhook,
 		settings.SkipRecheck,
 		settings.SkipPieceBoundarySafetyCheck,
-		unusedHardlinkUse,       // Hardlink settings moved to per-instance
-		unusedHardlinkBaseDir,   // Hardlink settings moved to per-instance
-		unusedHardlinkDirPreset, // Hardlink settings moved to per-instance
 	)
 	if err != nil {
 		return nil, fmt.Errorf("upsert settings: %w", err)
