@@ -1215,8 +1215,8 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldAddedOnAge,
 				Operator: OperatorBetween,
-				MinValue: float64Ptr(3600),  // 1 hour
-				MaxValue: float64Ptr(7200),  // 2 hours
+				MinValue: float64Ptr(3600), // 1 hour
+				MaxValue: float64Ptr(7200), // 2 hours
 			},
 			torrent:  qbt.Torrent{AddedOn: nowUnix - 5400}, // added 1.5 hours ago
 			ctx:      &EvalContext{NowUnix: nowUnix},
@@ -1227,8 +1227,8 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldAddedOnAge,
 				Operator: OperatorBetween,
-				MinValue: float64Ptr(3600),  // 1 hour
-				MaxValue: float64Ptr(7200),  // 2 hours
+				MinValue: float64Ptr(3600), // 1 hour
+				MaxValue: float64Ptr(7200), // 2 hours
 			},
 			torrent:  qbt.Torrent{AddedOn: nowUnix - 10800}, // added 3 hours ago
 			ctx:      &EvalContext{NowUnix: nowUnix},
@@ -1554,3 +1554,315 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 	}
 }
 
+func TestEvaluateCondition_Tags(t *testing.T) {
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		torrent  qbt.Torrent
+		expected bool
+	}{
+		// EQUAL operator - tag-aware
+		{
+			name: "tags equals - single tag match in list",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorEqual,
+				Value:    "noHL",
+			},
+			torrent:  qbt.Torrent{Tags: "cross-seed, noHL, racing"},
+			expected: true,
+		},
+		{
+			name: "tags equals - case insensitive",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorEqual,
+				Value:    "NOHL",
+			},
+			torrent:  qbt.Torrent{Tags: "cross-seed, noHL, racing"},
+			expected: true,
+		},
+		{
+			name: "tags equals - no match",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorEqual,
+				Value:    "missing",
+			},
+			torrent:  qbt.Torrent{Tags: "cross-seed, noHL, racing"},
+			expected: false,
+		},
+		{
+			name: "tags equals - partial tag name does not match",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorEqual,
+				Value:    "cross",
+			},
+			torrent:  qbt.Torrent{Tags: "cross-seed, noHL"},
+			expected: false,
+		},
+		{
+			name: "tags equals - only tag",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorEqual,
+				Value:    "sonarr",
+			},
+			torrent:  qbt.Torrent{Tags: "sonarr"},
+			expected: true,
+		},
+		{
+			name: "tags equals - empty tags",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorEqual,
+				Value:    "noHL",
+			},
+			torrent:  qbt.Torrent{Tags: ""},
+			expected: false,
+		},
+		{
+			name: "tags equals - whitespace only tags",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorEqual,
+				Value:    "noHL",
+			},
+			torrent:  qbt.Torrent{Tags: "   "},
+			expected: false,
+		},
+		{
+			name: "tags equals - tag with spaces",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorEqual,
+				Value:    "my tag",
+			},
+			torrent:  qbt.Torrent{Tags: "other, my tag, another"},
+			expected: true,
+		},
+		{
+			name: "tags equals - empty condition value",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorEqual,
+				Value:    "",
+			},
+			torrent:  qbt.Torrent{Tags: "noHL"},
+			expected: false,
+		},
+		{
+			name: "tags equals - whitespace condition value",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorEqual,
+				Value:    "   ",
+			},
+			torrent:  qbt.Torrent{Tags: "noHL"},
+			expected: false,
+		},
+		{
+			name: "tags equals - tag with leading/trailing spaces trimmed",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorEqual,
+				Value:    "noHL",
+			},
+			torrent:  qbt.Torrent{Tags: "  noHL  , other"},
+			expected: true,
+		},
+
+		// NOT_EQUAL operator - tag-aware
+		{
+			name: "tags not equals - tag not present",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorNotEqual,
+				Value:    "noHL",
+			},
+			torrent:  qbt.Torrent{Tags: "cross-seed, racing"},
+			expected: true,
+		},
+		{
+			name: "tags not equals - tag present",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorNotEqual,
+				Value:    "noHL",
+			},
+			torrent:  qbt.Torrent{Tags: "cross-seed, noHL, racing"},
+			expected: false,
+		},
+		{
+			name: "tags not equals - empty tags",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorNotEqual,
+				Value:    "noHL",
+			},
+			torrent:  qbt.Torrent{Tags: ""},
+			expected: true,
+		},
+		{
+			name: "tags not equals - case insensitive",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorNotEqual,
+				Value:    "NOHL",
+			},
+			torrent:  qbt.Torrent{Tags: "noHL"},
+			expected: false,
+		},
+
+		// CONTAINS operator - tag-aware (any tag contains substring)
+		{
+			name: "tags contains - any tag contains substring",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorContains,
+				Value:    "seed",
+			},
+			torrent:  qbt.Torrent{Tags: "cross-seed, noHL, racing"},
+			expected: true,
+		},
+		{
+			name: "tags contains - no tag contains substring",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorContains,
+				Value:    "missing",
+			},
+			torrent:  qbt.Torrent{Tags: "cross-seed, noHL"},
+			expected: false,
+		},
+		{
+			name: "tags contains - case insensitive",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorContains,
+				Value:    "SEED",
+			},
+			torrent:  qbt.Torrent{Tags: "cross-seed, noHL"},
+			expected: true,
+		},
+
+		// NOT_CONTAINS operator - tag-aware (no tag contains substring)
+		{
+			name: "tags not contains - no tag contains substring",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorNotContains,
+				Value:    "missing",
+			},
+			torrent:  qbt.Torrent{Tags: "cross-seed, noHL"},
+			expected: true,
+		},
+		{
+			name: "tags not contains - some tag contains substring",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorNotContains,
+				Value:    "seed",
+			},
+			torrent:  qbt.Torrent{Tags: "cross-seed, noHL"},
+			expected: false,
+		},
+
+		// STARTS_WITH operator - tag-aware (any tag starts with)
+		{
+			name: "tags starts with - any tag starts with value",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorStartsWith,
+				Value:    "cross",
+			},
+			torrent:  qbt.Torrent{Tags: "cross-seed, noHL"},
+			expected: true,
+		},
+		{
+			name: "tags starts with - no tag starts with value",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorStartsWith,
+				Value:    "seed",
+			},
+			torrent:  qbt.Torrent{Tags: "cross-seed, noHL"},
+			expected: false,
+		},
+		{
+			name: "tags starts with - case insensitive",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorStartsWith,
+				Value:    "CROSS",
+			},
+			torrent:  qbt.Torrent{Tags: "cross-seed, noHL"},
+			expected: true,
+		},
+
+		// ENDS_WITH operator - tag-aware (any tag ends with)
+		{
+			name: "tags ends with - any tag ends with value",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorEndsWith,
+				Value:    "seed",
+			},
+			torrent:  qbt.Torrent{Tags: "cross-seed, noHL"},
+			expected: true,
+		},
+		{
+			name: "tags ends with - no tag ends with value",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorEndsWith,
+				Value:    "cross",
+			},
+			torrent:  qbt.Torrent{Tags: "cross-seed, noHL"},
+			expected: false,
+		},
+
+		// MATCHES (regex) operator - operates on full string
+		{
+			name: "tags regex - word boundary match",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorMatches,
+				Value:    `\bnoHL\b`,
+			},
+			torrent:  qbt.Torrent{Tags: "cross-seed, noHL, racing"},
+			expected: true,
+		},
+		{
+			name: "tags regex - full string anchored no match",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorMatches,
+				Value:    `^noHL$`,
+			},
+			torrent:  qbt.Torrent{Tags: "cross-seed, noHL, racing"},
+			expected: false,
+		},
+		{
+			name: "tags regex flag - operates on full string",
+			cond: &RuleCondition{
+				Field:    FieldTags,
+				Operator: OperatorEqual,
+				Value:    `.*noHL.*`,
+				Regex:    true,
+			},
+			torrent:  qbt.Torrent{Tags: "cross-seed, noHL, racing"},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := EvaluateCondition(tt.cond, tt.torrent, 0)
+			if result != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
