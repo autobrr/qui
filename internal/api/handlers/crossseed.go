@@ -76,11 +76,12 @@ type automationSettingsPatchRequest struct {
 	WebhookTags          *[]string `json:"webhookTags,omitempty"`
 	InheritSourceTags    *bool     `json:"inheritSourceTags,omitempty"`
 	// Skip auto-resume settings per source mode
-	SkipAutoResumeRSS          *bool `json:"skipAutoResumeRss,omitempty"`
-	SkipAutoResumeSeededSearch *bool `json:"skipAutoResumeSeededSearch,omitempty"`
-	SkipAutoResumeCompletion   *bool `json:"skipAutoResumeCompletion,omitempty"`
-	SkipAutoResumeWebhook      *bool `json:"skipAutoResumeWebhook,omitempty"`
-	SkipRecheck                *bool `json:"skipRecheck,omitempty"`
+	SkipAutoResumeRSS            *bool `json:"skipAutoResumeRss,omitempty"`
+	SkipAutoResumeSeededSearch   *bool `json:"skipAutoResumeSeededSearch,omitempty"`
+	SkipAutoResumeCompletion     *bool `json:"skipAutoResumeCompletion,omitempty"`
+	SkipAutoResumeWebhook        *bool `json:"skipAutoResumeWebhook,omitempty"`
+	SkipRecheck                  *bool `json:"skipRecheck,omitempty"`
+	SkipPieceBoundarySafetyCheck *bool `json:"skipPieceBoundarySafetyCheck,omitempty"`
 }
 
 type optionalString struct {
@@ -170,7 +171,8 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.SkipAutoResumeSeededSearch == nil &&
 		r.SkipAutoResumeCompletion == nil &&
 		r.SkipAutoResumeWebhook == nil &&
-		r.SkipRecheck == nil
+		r.SkipRecheck == nil &&
+		r.SkipPieceBoundarySafetyCheck == nil
 }
 
 func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, patch automationSettingsPatchRequest) {
@@ -279,6 +281,9 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	}
 	if patch.SkipRecheck != nil {
 		settings.SkipRecheck = *patch.SkipRecheck
+	}
+	if patch.SkipPieceBoundarySafetyCheck != nil {
+		settings.SkipPieceBoundarySafetyCheck = *patch.SkipPieceBoundarySafetyCheck
 	}
 }
 
