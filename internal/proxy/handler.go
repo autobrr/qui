@@ -150,7 +150,7 @@ func (h *Handler) rewriteRequest(pr *httputil.ProxyRequest) {
 	log.Debug().
 		Str("client", clientAPIKey.ClientName).
 		Int("instanceId", instanceID).
-		Str("strippedPath", strippedPath).
+		Str("strippedPath", redact.ProxyPath(strippedPath)).
 		Str("targetHost", instanceURL.Host).
 		Msg("Rewriting proxy request")
 
