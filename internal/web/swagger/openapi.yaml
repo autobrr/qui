@@ -4542,6 +4542,15 @@ components:
           format: float
         useCategoryFromIndexer:
           type: boolean
+        useCrossCategorySuffix:
+          type: boolean
+          description: Add .cross suffix to cross-seeded torrent categories
+        useCustomCategory:
+          type: boolean
+          description: Use a custom category for all cross-seeds
+        customCategory:
+          type: string
+          description: Custom category name when useCustomCategory is true
         runExternalProgramId:
           type: integer
           nullable: true
@@ -4618,6 +4627,15 @@ components:
           format: float
         useCategoryFromIndexer:
           type: boolean
+        useCrossCategorySuffix:
+          type: boolean
+          description: Add .cross suffix to cross-seeded torrent categories
+        useCustomCategory:
+          type: boolean
+          description: Use a custom category for all cross-seeds
+        customCategory:
+          type: string
+          description: Custom category name when useCustomCategory is true
         runExternalProgramId:
           type: integer
           nullable: true
