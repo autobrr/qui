@@ -579,7 +579,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
   const { data: runs, refetch: refetchRuns } = useQuery({
     queryKey: ["cross-seed", "runs"],
-    queryFn: () => api.listCrossSeedRuns({ limit: 20 }),
+    queryFn: () => api.listCrossSeedRuns({ limit: 10 }),
   })
 
   const { data: instances } = useQuery({
