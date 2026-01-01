@@ -9,7 +9,7 @@ services:
       - "7476:7476"
     volumes:
       - ./qui:/config
-    environment:
+    #environment:
       # Server configuration
       # Default: 0.0.0.0 in containers
       #QUI__HOST: "0.0.0.0"

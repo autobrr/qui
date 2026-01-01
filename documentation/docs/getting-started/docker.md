@@ -2,9 +2,14 @@
 sidebar_position: 3
 ---
 
+import CodeBlock from '@theme/CodeBlock';
+import DockerCompose from '!!raw-loader!@site/../docker-compose.yml';
+
 # Docker
 
 ## Docker Compose
+
+<CodeBlock language="yaml" title="docker-compose.yml">{DockerCompose}</CodeBlock>
 
 ```bash
 docker compose up -d
@@ -45,16 +50,6 @@ If the app logs to stdout, check logs via Docker → qui → Logs; if it writes 
 - Restart the container if needed after the image update so the new binary is loaded
 
 ## Updating
-
-qui includes a built-in update command that automatically downloads and installs the latest release:
-
-```bash
-./qui update
-```
-
-:::note
-This feature is for standalone binary installations only. Docker users should pull the latest image instead:
-:::
 
 ```bash
 docker compose pull && docker compose up -d

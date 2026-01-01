@@ -37,9 +37,17 @@ chmod +x qui
 
 The web interface will be available at http://localhost:7476
 
+## Updating
+
+qui includes a built-in update command that automatically downloads and installs the latest release:
+
+```bash
+./qui update
+```
+
 ## First Setup
 
 1. Open your browser to http://localhost:7476
-2. Create your admin account
+2. Create your account
 3. Add your qBittorrent instance(s)
 4. Start managing your torrents
