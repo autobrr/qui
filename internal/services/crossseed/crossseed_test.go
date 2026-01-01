@@ -3561,7 +3561,6 @@ func TestProcessAutomationCandidate_SkipsWhenInfohashExistsOnAllInstances(t *tes
 	settings := &models.CrossSeedAutomationSettings{
 		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
-		IgnorePatterns:    []string{},
 		TargetInstanceIDs: []int{instance1ID, instance2ID},
 	}
 
@@ -3662,7 +3661,6 @@ func TestProcessAutomationCandidate_ProceedsWhenInfohashExistsOnSomeInstances(t 
 	settings := &models.CrossSeedAutomationSettings{
 		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
-		IgnorePatterns:    []string{},
 		TargetInstanceIDs: []int{instance1ID, instance2ID},
 	}
 
@@ -3747,7 +3745,6 @@ func TestProcessAutomationCandidate_ProceedsOnHashCheckError(t *testing.T) {
 	settings := &models.CrossSeedAutomationSettings{
 		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
-		IgnorePatterns:    []string{},
 		TargetInstanceIDs: []int{instance1ID},
 	}
 
@@ -3822,7 +3819,6 @@ func TestProcessAutomationCandidate_PropagatesContextCancellation(t *testing.T) 
 	settings := &models.CrossSeedAutomationSettings{
 		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
-		IgnorePatterns:    []string{},
 		TargetInstanceIDs: []int{instance1ID},
 	}
 
@@ -3900,7 +3896,6 @@ func TestProcessAutomationCandidate_PropagatesContextDeadlineExceeded(t *testing
 	settings := &models.CrossSeedAutomationSettings{
 		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
-		IgnorePatterns:    []string{},
 		TargetInstanceIDs: []int{instance1ID},
 	}
 
@@ -3977,7 +3972,6 @@ func TestProcessAutomationCandidate_SkipsWhenCommentURLMatches(t *testing.T) {
 	settings := &models.CrossSeedAutomationSettings{
 		StartPaused:       true,
 		RSSAutomationTags: []string{"cross-seed"},
-		IgnorePatterns:    []string{},
 		TargetInstanceIDs: []int{instance1ID},
 	}
 

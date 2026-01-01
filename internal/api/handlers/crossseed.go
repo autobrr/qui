@@ -31,10 +31,9 @@ type CrossSeedHandler struct {
 type automationSettingsRequest struct {
 	Enabled                      bool     `json:"enabled"`
 	RunIntervalMinutes           int      `json:"runIntervalMinutes"`
-	StartPaused                  bool     `json:"startPaused"`
-	Category                     *string  `json:"category"`
-	IgnorePatterns               []string `json:"ignorePatterns"`
-	TargetInstanceIDs            []int    `json:"targetInstanceIds"`
+	StartPaused       bool    `json:"startPaused"`
+	Category          *string `json:"category"`
+	TargetInstanceIDs []int   `json:"targetInstanceIds"`
 	TargetIndexerIDs             []int    `json:"targetIndexerIds"`
 	MaxResultsPerRun             int      `json:"maxResultsPerRun"` // Deprecated: automation now processes full feeds and ignores this value
 	FindIndividualEpisodes       bool     `json:"findIndividualEpisodes"`
@@ -51,9 +50,8 @@ type automationSettingsPatchRequest struct {
 	Enabled            *bool          `json:"enabled,omitempty"`
 	RunIntervalMinutes *int           `json:"runIntervalMinutes,omitempty"`
 	StartPaused        *bool          `json:"startPaused,omitempty"`
-	Category           optionalString `json:"category"`
-	IgnorePatterns     *[]string      `json:"ignorePatterns,omitempty"`
-	TargetInstanceIDs  *[]int         `json:"targetInstanceIds,omitempty"`
+	Category          optionalString `json:"category"`
+	TargetInstanceIDs *[]int         `json:"targetInstanceIds,omitempty"`
 	TargetIndexerIDs   *[]int         `json:"targetIndexerIds,omitempty"`
 	MaxResultsPerRun   *int           `json:"maxResultsPerRun,omitempty"` // Deprecated: automation now processes full feeds and ignores this value
 	// RSS source filtering: filter which local torrents to search when checking RSS feeds
@@ -149,7 +147,6 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.RunIntervalMinutes == nil &&
 		r.StartPaused == nil &&
 		!r.Category.Set &&
-		r.IgnorePatterns == nil &&
 		r.TargetInstanceIDs == nil &&
 		r.TargetIndexerIDs == nil &&
 		r.MaxResultsPerRun == nil &&
@@ -202,9 +199,6 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 				settings.Category = &trimmed
 			}
 		}
-	}
-	if patch.IgnorePatterns != nil {
-		settings.IgnorePatterns = *patch.IgnorePatterns
 	}
 	if patch.TargetInstanceIDs != nil {
 		settings.TargetInstanceIDs = *patch.TargetInstanceIDs
@@ -675,9 +669,8 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		Enabled:                      req.Enabled,
 		RunIntervalMinutes:           req.RunIntervalMinutes,
 		StartPaused:                  req.StartPaused,
-		Category:                     category,
-		IgnorePatterns:               req.IgnorePatterns,
-		TargetInstanceIDs:            req.TargetInstanceIDs,
+		Category:          category,
+		TargetInstanceIDs: req.TargetInstanceIDs,
 		TargetIndexerIDs:             req.TargetIndexerIDs,
 		MaxResultsPerRun:             req.MaxResultsPerRun,
 		FindIndividualEpisodes:       req.FindIndividualEpisodes,

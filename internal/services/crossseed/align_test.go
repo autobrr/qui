@@ -709,17 +709,17 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 			expectedFiles:    nil,
 		},
 		{
-			name: "extra NFO in source NOT filtered - mismatch",
+			name: "extra ZIP in source NOT filtered - mismatch",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "Movie/movie.mkv", Size: 4000000000},
-				{Name: "Movie/movie.nfo", Size: 1024},
+				{Name: "Movie/archive.zip", Size: 1024}, // .zip is not in hardcoded ignore list
 			},
 			candidateFiles: qbt.TorrentFiles{
 				{Name: "Movie/movie.mkv", Size: 4000000000},
 			},
-			ignorePatterns:   nil, // No ignore patterns
+			ignorePatterns:   nil,
 			expectedMismatch: true,
-			expectedFiles:    []string{"Movie/movie.nfo"},
+			expectedFiles:    []string{"Movie/archive.zip"},
 		},
 		{
 			name: "multiple files all match",
@@ -762,15 +762,15 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 			expectedFiles:    nil,
 		},
 		{
-			name: "all source files filtered - no mismatch",
+			name: "all source files filtered by hardcoded patterns - no mismatch",
 			sourceFiles: qbt.TorrentFiles{
-				{Name: "movie.nfo", Size: 1024},
-				{Name: "movie.sfv", Size: 512},
+				{Name: "movie.nfo", Size: 1024},  // .nfo is hardcoded
+				{Name: "movie.srt", Size: 50000}, // .srt is hardcoded
 			},
 			candidateFiles: qbt.TorrentFiles{
 				{Name: "movie.mkv", Size: 4000000000},
 			},
-			ignorePatterns:   []string{".nfo", ".sfv"},
+			ignorePatterns:   nil, // hardcoded patterns apply
 			expectedMismatch: false,
 			expectedFiles:    nil,
 		},
@@ -803,16 +803,15 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 			expectedFiles:    nil,
 		},
 		{
-			name: "folder path with ignore pattern for screens directory",
+			name: "folder path with hardcoded sample keyword",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "Movie/movie.mkv", Size: 4000000000},
-				{Name: "Movie/Screens/screen1.jpg", Size: 50000},
-				{Name: "Movie/Screens/screen2.jpg", Size: 60000},
+				{Name: "Movie/Sample/sample.mkv", Size: 50000}, // sample is hardcoded keyword
 			},
 			candidateFiles: qbt.TorrentFiles{
 				{Name: "Movie/movie.mkv", Size: 4000000000},
 			},
-			ignorePatterns:   []string{"/screens/", ".jpg"},
+			ignorePatterns:   nil, // hardcoded patterns apply
 			expectedMismatch: false,
 			expectedFiles:    nil,
 		},

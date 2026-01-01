@@ -1156,9 +1156,8 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 			SkipRecheck:                  settings.SkipRecheck,
 			SkipPieceBoundarySafetyCheck: settings.SkipPieceBoundarySafetyCheck,
 			CategoryOverride:             settings.Category,
-			TagsOverride:                 append([]string(nil), settings.CompletionSearchTags...),
-			InheritSourceTags:            settings.InheritSourceTags,
-			IgnorePatterns:               append([]string(nil), settings.IgnorePatterns...),
+			TagsOverride:      append([]string(nil), settings.CompletionSearchTags...),
+			InheritSourceTags: settings.InheritSourceTags,
 		},
 	}
 	// Pass completion source filters to ensure CrossSeed respects them when finding candidates
@@ -1231,9 +1230,6 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 			opts.TagsOverride = append([]string(nil), settings.SeededSearchTags...)
 		}
 		opts.InheritSourceTags = settings.InheritSourceTags
-		if len(settings.IgnorePatterns) > 0 {
-			opts.IgnorePatterns = append([]string(nil), settings.IgnorePatterns...)
-		}
 		opts.StartPaused = settings.StartPaused
 		opts.SkipAutoResume = settings.SkipAutoResumeSeededSearch
 		opts.SkipRecheck = settings.SkipRecheck
@@ -1666,7 +1662,6 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 
 	findReq := &FindCandidatesRequest{
 		TorrentName:            result.Title,
-		IgnorePatterns:         append([]string(nil), settings.IgnorePatterns...),
 		SourceIndexer:          sourceIndexer,
 		FindIndividualEpisodes: settings.FindIndividualEpisodes,
 	}
@@ -1841,10 +1836,9 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	req := &CrossSeedRequest{
 		TorrentData:                  encodedTorrent,
 		TargetInstanceIDs:            append([]int(nil), settings.TargetInstanceIDs...),
-		Tags:                         append([]string(nil), settings.RSSAutomationTags...),
-		InheritSourceTags:            settings.InheritSourceTags,
-		IgnorePatterns:               append([]string(nil), settings.IgnorePatterns...),
-		SkipIfExists:                 &skipIfExists,
+		Tags:              append([]string(nil), settings.RSSAutomationTags...),
+		InheritSourceTags: settings.InheritSourceTags,
+		SkipIfExists:      &skipIfExists,
 		IndexerName:                  sourceIndexer,
 		FindIndividualEpisodes:       settings.FindIndividualEpisodes,
 		SizeMismatchTolerancePercent: settings.SizeMismatchTolerancePercent,
@@ -2492,11 +2486,6 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		findIndividualEpisodes = settings.FindIndividualEpisodes
 	}
 
-	ignorePatterns := req.IgnorePatterns
-	if len(ignorePatterns) == 0 && settings != nil {
-		ignorePatterns = append([]string(nil), settings.IgnorePatterns...)
-	}
-
 	// Use request tags if provided, otherwise fall back to webhook tags from settings
 	tags := req.Tags
 	if len(tags) == 0 && settings != nil {
@@ -2532,10 +2521,9 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		TorrentData:                  req.TorrentData,
 		TargetInstanceIDs:            targetInstanceIDs,
 		Category:                     req.Category,
-		Tags:                         tags,
-		InheritSourceTags:            inheritSourceTags,
-		IgnorePatterns:               ignorePatterns,
-		StartPaused:                  req.StartPaused,
+		Tags:              tags,
+		InheritSourceTags: inheritSourceTags,
+		StartPaused:       req.StartPaused,
 		SkipIfExists:                 req.SkipIfExists,
 		FindIndividualEpisodes:       findIndividualEpisodes,
 		SizeMismatchTolerancePercent: sizeTolerance,
@@ -2759,7 +2747,7 @@ func (s *Service) processCrossSeedCandidate(
 			unsafe, safetyResult := HasUnsafeIgnoredExtras(torrentInfo, isMissingOnDisk)
 			if unsafe {
 				result.Status = "skipped_unsafe_pieces"
-				result.Message = "Skipped: extra files share pieces with content (could corrupt data)"
+				result.Message = "Skipped: extra files share pieces with content. Disable 'Piece boundary safety check' in Cross-Seed settings to allow"
 				log.Warn().
 					Int("instanceID", candidate.InstanceID).
 					Str("torrentHash", torrentHash).
@@ -2790,7 +2778,7 @@ func (s *Service) processCrossSeedCandidate(
 
 	if req.SkipRecheck && (requiresAlignment || hasExtraFiles) {
 		result.Status = "skipped_recheck"
-		result.Message = "Skipped cross-seed: requires recheck and skip recheck is enabled"
+		result.Message = "Skipped: requires recheck. Disable 'Skip recheck' in Cross-Seed settings to allow"
 		log.Info().
 			Int("instanceID", candidate.InstanceID).
 			Str("torrentHash", torrentHash).
@@ -5048,9 +5036,6 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				SkipAutoResume:               skipAutoResume,
 				SkipRecheck:                  skipRecheck,
 				SkipPieceBoundarySafetyCheck: skipPieceBoundarySafetyCheck,
-			}
-			if settings != nil && len(settings.IgnorePatterns) > 0 {
-				payload.IgnorePatterns = append([]string(nil), settings.IgnorePatterns...)
 			}
 
 			resp, err := s.invokeCrossSeed(ctx, payload)

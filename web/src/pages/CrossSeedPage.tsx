@@ -25,7 +25,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
@@ -173,18 +172,6 @@ function normalizeIgnorePatterns(patterns: string): string[] {
   return parseList(patterns.replace(/\r/g, ""))
 }
 
-function validateIgnorePatterns(raw: string): string {
-  const text = raw.replace(/\r/g, "")
-  const parts = text.split(/\n|,/)
-  for (const part of parts) {
-    const pattern = part.trim()
-    if (!pattern) continue
-    if (pattern.length > 256) {
-      return "Ignore patterns must be shorter than 256 characters"
-    }
-  }
-  return ""
-}
 
 function getDurationParts(ms: number): { hours: number; minutes: number; seconds: number } {
   if (ms <= 0) {
@@ -769,21 +756,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     setSearchSettingsInitialized(true)
   }, [searchSettings, searchSettingsInitialized])
 
-  const ignorePatternError = useMemo(
-    () => validateIgnorePatterns(globalSettings.ignorePatterns),
-    [globalSettings.ignorePatterns]
-  )
-
-  useEffect(() => {
-    setValidationErrors(prev => {
-      const current = prev.ignorePatterns ?? ""
-      if (current === ignorePatternError) {
-        return prev
-      }
-      return { ...prev, ignorePatterns: ignorePatternError }
-    })
-  }, [ignorePatternError])
-
   useEffect(() => {
     if (!searchInstanceId && instances && instances.length > 0) {
       setSearchInstanceId(instances[0].id)
@@ -960,15 +932,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   }
 
   const handleSaveGlobal = () => {
-    if (ignorePatternError) {
-      setValidationErrors(prev => ({ ...prev, ignorePatterns: ignorePatternError }))
-      return
-    }
-
-    if (validationErrors.ignorePatterns) {
-      setValidationErrors(prev => ({ ...prev, ignorePatterns: "" }))
-    }
-
     const payload = buildGlobalPatch()
     if (!payload) return
 
@@ -1239,11 +1202,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       return searchInstanceName
     },
     [instances, searchInstanceId, searchRunning, activeSearchRun]
-  )
-
-  const ignorePatternCount = useMemo(
-    () => normalizeIgnorePatterns(globalSettings.ignorePatterns).length,
-    [globalSettings.ignorePatterns]
   )
 
   const automationStatusLabel = automationRunning ? "RUNNING" : automationEnabled ? "SCHEDULED" : "DISABLED"
@@ -2258,47 +2216,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     Maximum size difference for matching. Also sets auto-resume threshold (e.g., 5% = resume at ≥95%).
                   </p>
                 </div>
-                <div className="space-y-3 pt-3 border-t border-border/50">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor="global-ignore-patterns">Allowed extra files</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            className="text-muted-foreground hover:text-foreground transition-colors"
-                            aria-label="How allowed extra files work"
-                          >
-                            <Info className="h-4 w-4" aria-hidden="true" />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs text-xs">
-                          Plain strings act as suffix matches (e.g., <code>.nfo</code> matches any path ending in <code>.nfo</code>). Globs treat <code>/</code> as a folder separator, so <code>*.nfo</code> only matches files in the top-level folder. To match sample folders use <code>*/*sample/*</code>. Separate entries with commas or new lines.
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Badge variant="outline" className="text-xs">{ignorePatternCount} pattern{ignorePatternCount === 1 ? "" : "s"}</Badge>
-                  </div>
-                  <Textarea
-                    id="global-ignore-patterns"
-                    placeholder={".nfo, .srt, */*sample/*\nor one per line"}
-                    rows={4}
-                    value={globalSettings.ignorePatterns}
-                    onChange={event => {
-                      const value = event.target.value
-                      setGlobalSettings(prev => ({ ...prev, ignorePatterns: value }))
-                      const error = validateIgnorePatterns(value)
-                      setValidationErrors(prev => ({ ...prev, ignorePatterns: error }))
-                    }}
-                    className={validationErrors.ignorePatterns ? "border-destructive" : ""}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Files matching these patterns are excluded from comparison, allowing matches between torrents that differ only in these files. Adding patterns here increases matches.
-                  </p>
-                  {validationErrors.ignorePatterns && (
-                    <p className="text-sm text-destructive">{validationErrors.ignorePatterns}</p>
-                  )}
-                </div>
                 <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/50">
                   <div className="space-y-0.5">
                     <Label htmlFor="global-find-individual-episodes" className="font-medium">Cross-seed episodes from packs</Label>
@@ -2638,7 +2555,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
             <CardFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
               <Button
                 onClick={handleSaveGlobal}
-                disabled={patchSettingsMutation.isPending || Boolean(ignorePatternError)}
+                disabled={patchSettingsMutation.isPending}
               >
                 {patchSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save global cross-seed settings

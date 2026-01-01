@@ -1046,30 +1046,23 @@ func enrichReleaseFromTorrent(fileRelease *rls.Release, torrentRelease *rls.Rele
 	return &enriched
 }
 
-// shouldIgnoreFile checks if a file should be ignored based on patterns.
-func shouldIgnoreFile(filename string, patterns []string, normalizer *stringutils.Normalizer[string, string]) bool {
+// shouldIgnoreFile checks if a file should be ignored during matching.
+// Uses hardcoded lists of extensions and path keywords to filter out scene
+// metadata files, subtitles, samples, and other non-content files.
+// The patterns parameter is kept for backwards compatibility but is ignored.
+func shouldIgnoreFile(filename string, _ []string, normalizer *stringutils.Normalizer[string, string]) bool {
 	lower := normalizer.Normalize(filename)
 
-	for _, pattern := range patterns {
-		pattern = normalizer.Normalize(pattern)
-		if pattern == "" {
-			continue
+	// Check extension matches
+	for _, ext := range DefaultIgnoredExtensions {
+		if strings.HasSuffix(lower, ext) {
+			return true
 		}
+	}
 
-		// Backwards compatibility: treat plain strings as suffix matches (".nfo", "sample", etc.).
-		if !strings.ContainsAny(pattern, "*?[") {
-			if strings.HasSuffix(lower, pattern) {
-				return true
-			}
-			continue
-		}
-
-		matches, err := filepath.Match(pattern, lower)
-		if err != nil {
-			log.Debug().Err(err).Str("pattern", pattern).Msg("Invalid ignore pattern skipped")
-			continue
-		}
-		if matches {
+	// Check path keyword matches (e.g., "sample", "proof", "extras")
+	for _, keyword := range DefaultIgnoredPathKeywords {
+		if strings.Contains(lower, keyword) {
 			return true
 		}
 	}
