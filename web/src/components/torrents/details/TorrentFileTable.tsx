@@ -426,6 +426,7 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                             const fullPath = savePath ? joinPath(savePath, node.id) : node.id
                             try {
                               await copyTextToClipboard(fullPath)
+                              toast.success(`${isFile ? "File" : "Folder"} path copied to clipboard`)
                             } catch {
                               toast.error("Failed to copy path to clipboard")
                             }

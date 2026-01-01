@@ -234,6 +234,7 @@ const FileRow = memo(function FileRow({
             const fullPath = savePath ? joinPath(savePath, file.name) : file.name
             try {
               await copyTextToClipboard(fullPath)
+              toast.success("File path copied to clipboard")
             } catch {
               toast.error("Failed to copy path to clipboard")
             }
@@ -357,6 +358,7 @@ const FolderRow = memo(function FolderRow({
             const fullPath = savePath ? joinPath(savePath, node.id) : node.id
             try {
               await copyTextToClipboard(fullPath)
+              toast.success("Folder path copied to clipboard")
             } catch {
               toast.error("Failed to copy path to clipboard")
             }
