@@ -343,6 +343,7 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 		r.Get("/status", h.GetAutomationStatus)
 		r.Get("/runs", h.ListAutomationRuns)
 		r.Post("/run", h.TriggerAutomationRun)
+		r.Post("/run/cancel", h.CancelAutomationRun)
 		r.Route("/search", func(r chi.Router) {
 			r.Get("/settings", h.GetSearchSettings)
 			r.Patch("/settings", h.PatchSearchSettings)
@@ -890,6 +891,23 @@ func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.R
 	}
 
 	RespondJSON(w, http.StatusAccepted, run)
+}
+
+// CancelAutomationRun godoc
+// @Summary Cancel RSS automation run
+// @Description Stops the currently running RSS automation run, if any.
+// @Tags cross-seed
+// @Success 204
+// @Failure 409 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/run/cancel [post]
+func (h *CrossSeedHandler) CancelAutomationRun(w http.ResponseWriter, r *http.Request) {
+	canceled := h.service.CancelAutomationRun()
+	if !canceled {
+		RespondError(w, http.StatusConflict, "No automation run is currently active")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // GetSearchSettings godoc

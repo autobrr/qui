@@ -274,6 +274,7 @@ type Service struct {
 	automationCancel context.CancelFunc
 	automationWake   chan struct{}
 	runActive        atomic.Bool
+	runCancel        context.CancelFunc // cancel func for the current automation run
 
 	// categoryCreationGroup deduplicates concurrent category creation calls.
 	// Key format: "instanceID:categoryName"
@@ -766,6 +767,24 @@ func (s *Service) StopAutomation() {
 	}
 }
 
+// CancelAutomationRun cancels the currently running automation run, if any.
+// Returns true if a run was canceled, false if no run was active.
+func (s *Service) CancelAutomationRun() bool {
+	if !s.runActive.Load() {
+		return false
+	}
+
+	s.automationMu.Lock()
+	cancel := s.runCancel
+	s.automationMu.Unlock()
+
+	if cancel != nil {
+		cancel()
+		return true
+	}
+	return false
+}
+
 // RunAutomation executes a cross-seed automation cycle immediately.
 func (s *Service) RunAutomation(ctx context.Context, opts AutomationRunOptions) (*models.CrossSeedRun, error) {
 	if s.automationStore == nil || s.jackettService == nil {
@@ -775,7 +794,20 @@ func (s *Service) RunAutomation(ctx context.Context, opts AutomationRunOptions) 
 	if !s.runActive.CompareAndSwap(false, true) {
 		return nil, ErrAutomationRunning
 	}
-	defer s.runActive.Store(false)
+
+	// Create cancellable context for this run
+	runCtx, cancel := context.WithCancel(ctx)
+	s.automationMu.Lock()
+	s.runCancel = cancel
+	s.automationMu.Unlock()
+
+	defer func() {
+		s.automationMu.Lock()
+		s.runCancel = nil
+		s.automationMu.Unlock()
+		cancel()
+		s.runActive.Store(false)
+	}()
 
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
@@ -848,7 +880,7 @@ func (s *Service) RunAutomation(ctx context.Context, opts AutomationRunOptions) 
 		return nil, err
 	}
 
-	finalRun, execErr := s.executeAutomationRun(ctx, storedRun, settings, opts)
+	finalRun, execErr := s.executeAutomationRun(runCtx, storedRun, settings, opts)
 	if execErr != nil {
 		return finalRun, execErr
 	}
@@ -1560,12 +1592,12 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		}
 		return run, errors.New("recent search timed out")
 	case <-ctx.Done():
-		msg := "Context cancelled"
+		msg := "canceled by user"
 		run.ErrorMessage = &msg
 		run.Status = models.CrossSeedRunStatusFailed
 		completed := time.Now().UTC()
 		run.CompletedAt = &completed
-		if updated, updateErr := s.updateAutomationRunWithRetry(ctx, run); updateErr == nil {
+		if updated, updateErr := s.updateAutomationRunWithRetry(context.WithoutCancel(ctx), run); updateErr == nil {
 			run = updated
 		}
 		return run, ctx.Err()
@@ -1640,13 +1672,16 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 	summary := fmt.Sprintf("processed=%d candidates=%d added=%d skipped=%d failed=%d", processed, run.CandidatesFound, run.TorrentsAdded, run.TorrentsSkipped, run.TorrentsFailed)
 	run.Message = &summary
 
+	// Use context.WithoutCancel to ensure DB update succeeds even on cancellation
+	updateCtx := ctx
 	if ctx.Err() != nil {
-		run.Status = models.CrossSeedRunStatusPartial
-		cancelMsg := "automation cancelled"
+		run.Status = models.CrossSeedRunStatusFailed
+		cancelMsg := "canceled by user"
 		run.ErrorMessage = &cancelMsg
+		updateCtx = context.WithoutCancel(ctx)
 	}
 
-	if updated, updateErr := s.updateAutomationRunWithRetry(ctx, run); updateErr == nil {
+	if updated, updateErr := s.updateAutomationRunWithRetry(updateCtx, run); updateErr == nil {
 		run = updated
 	} else {
 		log.Warn().Err(updateErr).Msg("Failed to persist automation run update")
