@@ -14,8 +14,9 @@ import (
 )
 
 type MetricsManager struct {
-	registry         *prometheus.Registry
-	torrentCollector *collector.TorrentCollector
+	registry            *prometheus.Registry
+	torrentCollector    *collector.TorrentCollector
+	automationCollector *collector.AutomationCollector
 }
 
 func NewMetricsManager(syncManager *qbittorrent.SyncManager, clientPool *qbittorrent.ClientPool) *MetricsManager {
@@ -28,16 +29,22 @@ func NewMetricsManager(syncManager *qbittorrent.SyncManager, clientPool *qbittor
 	// Register custom collectors
 	torrentCollector := collector.NewTorrentCollector(syncManager, clientPool)
 	registry.MustRegister(torrentCollector)
+	automationCollector := collector.NewAutomationCollector(registry)
 	registry.MustRegister(database.NewMetricsCollector())
 
 	log.Info().Msg("Metrics manager initialized with collectors")
 
 	return &MetricsManager{
-		registry:         registry,
-		torrentCollector: torrentCollector,
+		registry:            registry,
+		torrentCollector:    torrentCollector,
+		automationCollector: automationCollector,
 	}
 }
 
 func (m *MetricsManager) GetRegistry() *prometheus.Registry {
 	return m.registry
+}
+
+func (m *MetricsManager) GetAutomationCollector() *collector.AutomationCollector {
+	return m.automationCollector
 }

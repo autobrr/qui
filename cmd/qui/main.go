@@ -708,6 +708,9 @@ func (app *Application) runServer() {
 	if cfg.Config.MetricsEnabled {
 		metricsManager := metrics.NewMetricsManager(syncManager, clientPool)
 
+		// Set metrics collector for automation service
+		automationService.SetMetricsCollector(metricsManager.GetAutomationCollector())
+
 		// Start metrics server on separate port
 		go func() {
 			metricsServer := metrics.NewMetricsServer(

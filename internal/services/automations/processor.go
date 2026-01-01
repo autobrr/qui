@@ -8,6 +8,7 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
+	"github.com/autobrr/qui/internal/metrics/collector"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
@@ -61,6 +62,26 @@ type ruleRunStats struct {
 	DeleteApplied                    int
 	DeleteConditionNotMet            int
 	DeleteNotCompleted               int
+}
+
+func (s *ruleRunStats) CollectMetrics(rule *models.Automation, metricsCollector *collector.AutomationCollector) {
+	labels := collector.GetAutomationRuleRunLabels(rule.InstanceID, rule.ID, rule.Name)
+	metricsCollector.RuleRunTotal.WithLabelValues(labels...).Inc()
+	metricsCollector.RuleRunMatchedTrackers.WithLabelValues(labels...).Add(float64(s.MatchedTrackers))
+	metricsCollector.RuleRunSpeedApplied.WithLabelValues(labels...).Add(float64(s.SpeedApplied))
+	metricsCollector.RuleRunSpeedConditionNotMet.WithLabelValues(labels...).Add(float64(s.SpeedConditionNotMet))
+	metricsCollector.RuleRunShareApplied.WithLabelValues(labels...).Add(float64(s.ShareApplied))
+	metricsCollector.RuleRunShareConditionNotMet.WithLabelValues(labels...).Add(float64(s.ShareConditionNotMet))
+	metricsCollector.RuleRunPauseApplied.WithLabelValues(labels...).Add(float64(s.PauseApplied))
+	metricsCollector.RuleRunPauseConditionNotMet.WithLabelValues(labels...).Add(float64(s.PauseConditionNotMet))
+	metricsCollector.RuleRunTagConditionMet.WithLabelValues(labels...).Add(float64(s.TagConditionMet))
+	metricsCollector.RuleRunTagConditionNotMet.WithLabelValues(labels...).Add(float64(s.TagConditionNotMet))
+	metricsCollector.RuleRunTagSkippedMissingUnregisteredSet.WithLabelValues(labels...).Add(float64(s.TagSkippedMissingUnregisteredSet))
+	metricsCollector.RuleRunCategoryApplied.WithLabelValues(labels...).Add(float64(s.CategoryApplied))
+	metricsCollector.RuleRunCategoryConditionNotMetOrBlocked.WithLabelValues(labels...).Add(float64(s.CategoryConditionNotMetOrBlocked))
+	metricsCollector.RuleRunDeleteApplied.WithLabelValues(labels...).Add(float64(s.DeleteApplied))
+	metricsCollector.RuleRunDeleteConditionNotMet.WithLabelValues(labels...).Add(float64(s.DeleteConditionNotMet))
+	metricsCollector.RuleRunDeleteNotCompleted.WithLabelValues(labels...).Add(float64(s.DeleteNotCompleted))
 }
 
 func (s *ruleRunStats) totalApplied() int {
