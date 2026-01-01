@@ -207,6 +207,15 @@ The `.cross` category is created automatically with the same save path as the ba
 
 Uses the indexer name (from the search source) as the category. Useful for organizing cross-seeds by tracker.
 
+**Note for webhook applies:** When using the `/api/cross-seed/apply` endpoint (autobrr webhook), the indexer name cannot be derived from the torrent file. To use this mode with webhook applies, include the `indexerName` field in your payload (ignored if this mode is not enabled):
+
+```json
+{
+  "torrentData": "{{ .TorrentDataRawBytes | toString | b64enc }}",
+  "indexerName": {{ toRawJson .IndexerName }}
+}
+```
+
 ### 3. Custom Category
 
 Uses a user-specified static category name for all cross-seeds. No suffix is applied—the exact category name you enter is used.
@@ -292,6 +301,33 @@ The incoming torrent has files not present in your matched torrent, and those fi
 - Check if the source torrent has extra files (NFO, samples) not present on disk
 - Verify the "Size mismatch tolerance" setting in Rules
 - Torrents below the auto-resume threshold stay paused for manual review
+
+### Webhook returns HTTP 400 "invalid character" error
+
+This typically means the torrent name contains special characters (like double quotes `"`) that break JSON encoding. The error often looks like:
+
+```
+{"level":"error","error":"invalid character 'V' after object key:value pair","time":"...","message":"Failed to decode webhook check request"}
+```
+
+**Solution:** In your autobrr webhook configuration, use `toRawJson` instead of quoting the template variable directly:
+
+```json
+{
+  "torrentName": {{ toRawJson .TorrentName }},
+  "instanceIds": [1]
+}
+```
+
+**Not:**
+```json
+{
+  "torrentName": "{{ .TorrentName }}",
+  "instanceIds": [1]
+}
+```
+
+The `toRawJson` function (from Sprig) properly escapes special characters and outputs a valid JSON string including the quotes.
 
 ### Cross-seed in wrong category
 

@@ -2542,6 +2542,7 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		SkipAutoResume:               skipAutoResume,
 		SkipRecheck:                  skipRecheck,
 		SkipPieceBoundarySafetyCheck: skipPieceBoundarySafetyCheck,
+		IndexerName:                  req.IndexerName,
 	}
 	// Pass webhook source filters so CrossSeed respects them when finding candidates
 	if settings != nil {
