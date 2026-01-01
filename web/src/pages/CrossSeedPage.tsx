@@ -76,7 +76,6 @@ interface GlobalCrossSeedSettings {
   useCustomCategory: boolean
   customCategory: string
   runExternalProgramId?: number | null
-  ignorePatterns: string
   // Source-specific tagging
   rssAutomationTags: string[]
   seededSearchTags: string[]
@@ -127,7 +126,6 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   useCustomCategory: false,
   customCategory: "",
   runExternalProgramId: null,
-  ignorePatterns: "",
   // Source-specific tagging defaults
   rssAutomationTags: ["cross-seed"],
   seededSearchTags: ["cross-seed"],
@@ -167,11 +165,6 @@ function normalizeNumberList(values: Array<string | number>): number[] {
       .filter(value => !Number.isNaN(value) && value > 0)
   ))
 }
-
-function normalizeIgnorePatterns(patterns: string): string[] {
-  return parseList(patterns.replace(/\r/g, ""))
-}
-
 
 function getDurationParts(ms: number): { hours: number; minutes: number; seconds: number } {
   if (ms <= 0) {
@@ -716,9 +709,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         useCustomCategory: settings.useCustomCategory ?? false,
         customCategory: settings.customCategory ?? "",
         runExternalProgramId: settings.runExternalProgramId ?? null,
-        ignorePatterns: Array.isArray(settings.ignorePatterns)
-          ? settings.ignorePatterns.join("\n")
-          : "",
         // Source-specific tagging
         rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
         seededSearchTags: settings.seededSearchTags ?? ["cross-seed"],
@@ -793,8 +783,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const buildGlobalPatch = useCallback((): CrossSeedAutomationSettingsPatch | null => {
     if (!settings) return null
 
-    const ignorePatterns = Array.isArray(settings.ignorePatterns) ? settings.ignorePatterns : []
-
     const globalSource = globalSettingsInitialized
       ? globalSettings
       : {
@@ -805,7 +793,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         useCustomCategory: settings.useCustomCategory ?? false,
         customCategory: settings.customCategory ?? "",
         runExternalProgramId: settings.runExternalProgramId ?? null,
-        ignorePatterns: ignorePatterns.length > 0 ? ignorePatterns.join(", ") : "",
         rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
         seededSearchTags: settings.seededSearchTags ?? ["cross-seed"],
         completionSearchTags: settings.completionSearchTags ?? ["cross-seed"],
@@ -832,7 +819,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       useCustomCategory: globalSource.useCustomCategory,
       customCategory: globalSource.customCategory,
       runExternalProgramId: globalSource.runExternalProgramId,
-      ignorePatterns: normalizeIgnorePatterns(globalSource.ignorePatterns),
       // Source-specific tagging
       rssAutomationTags: globalSource.rssAutomationTags,
       seededSearchTags: globalSource.seededSearchTags,
