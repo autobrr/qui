@@ -7,9 +7,10 @@ import (
 )
 
 type AutomationCollector struct {
-	RuleRunTotal                *prometheus.CounterVec
-	RuleRunTorrentsMatchedTotal *prometheus.CounterVec
-	RuleRunActionTotal          *prometheus.CounterVec
+	RuleRunTotal                   *prometheus.CounterVec
+	RuleRunTorrentsMatchedTotal    *prometheus.CounterVec
+	RuleRunActionTotal             *prometheus.CounterVec
+	RuleRunActionNotPerformedTotal *prometheus.CounterVec
 }
 
 func NewAutomationCollector(r *prometheus.Registry) *AutomationCollector {
@@ -32,11 +33,18 @@ func NewAutomationCollector(r *prometheus.Registry) *AutomationCollector {
 			Name:      "rule_run_action_total",
 			Help:      "Total number of automation rule actions",
 		}, []string{"instance_id", "instance_name", "rule_id", "rule_name", "action"}),
+		RuleRunActionNotPerformedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "qui",
+			Subsystem: "automation",
+			Name:      "rule_run_action_not_performed_total",
+			Help:      "Total number of automation rule actions where conditions were met but the action was not performed",
+		}, []string{"instance_id", "instance_name", "rule_id", "rule_name", "action"}),
 	}
 
 	r.MustRegister(m.RuleRunTotal)
 	r.MustRegister(m.RuleRunTorrentsMatchedTotal)
 	r.MustRegister(m.RuleRunActionTotal)
+	r.MustRegister(m.RuleRunActionNotPerformedTotal)
 	return m
 }
 
@@ -60,6 +68,15 @@ func (m *AutomationCollector) GetAutomationRuleRunTorrentsMatchedTotal(instanceI
 
 func (m *AutomationCollector) GetAutomationRuleRunActionTotal(instanceID int, instanceName string, ruleID int, ruleName string) *prometheus.CounterVec {
 	return m.RuleRunActionTotal.MustCurryWith(prometheus.Labels{
+		"instance_id":   strconv.Itoa(instanceID),
+		"instance_name": instanceName,
+		"rule_id":       strconv.Itoa(ruleID),
+		"rule_name":     ruleName,
+	})
+}
+
+func (m *AutomationCollector) GetAutomationRuleRunActionNotPerformedTotal(instanceID int, instanceName string, ruleID int, ruleName string) *prometheus.CounterVec {
+	return m.RuleRunActionNotPerformedTotal.MustCurryWith(prometheus.Labels{
 		"instance_id":   strconv.Itoa(instanceID),
 		"instance_name": instanceName,
 		"rule_id":       strconv.Itoa(ruleID),

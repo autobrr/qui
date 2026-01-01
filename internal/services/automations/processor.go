@@ -68,13 +68,17 @@ func (s *ruleRunStats) CollectMetrics(rule *models.Automation, metricsCollector 
 	metricsCollector.GetAutomationRuleRunTotal(rule.InstanceID, instanceName, rule.ID, rule.Name).Inc()
 	metricsCollector.GetAutomationRuleRunTorrentsMatchedTotal(rule.InstanceID, instanceName, rule.ID, rule.Name).Add(float64(s.MatchedTrackers))
 
-	m := metricsCollector.GetAutomationRuleRunActionTotal(rule.InstanceID, instanceName, rule.ID, rule.Name)
-	m.WithLabelValues("speed_applied").Add(float64(s.SpeedApplied))
-	m.WithLabelValues("share_applied").Add(float64(s.ShareApplied))
-	m.WithLabelValues("pause_applied").Add(float64(s.PauseApplied))
-	m.WithLabelValues("tag_condition_met").Add(float64(s.TagConditionMet))
-	m.WithLabelValues("category_applied").Add(float64(s.CategoryApplied))
-	m.WithLabelValues("delete_applied").Add(float64(s.DeleteApplied))
+	actionPerformedMetric := metricsCollector.GetAutomationRuleRunActionTotal(rule.InstanceID, instanceName, rule.ID, rule.Name)
+	actionPerformedMetric.WithLabelValues("speed_applied").Add(float64(s.SpeedApplied))
+	actionPerformedMetric.WithLabelValues("share_applied").Add(float64(s.ShareApplied))
+	actionPerformedMetric.WithLabelValues("pause_applied").Add(float64(s.PauseApplied))
+	actionPerformedMetric.WithLabelValues("tag_condition_met").Add(float64(s.TagConditionMet))
+	actionPerformedMetric.WithLabelValues("category_applied").Add(float64(s.CategoryApplied))
+	actionPerformedMetric.WithLabelValues("delete_applied").Add(float64(s.DeleteApplied))
+
+	actionNotPerformedMetric := metricsCollector.GetAutomationRuleRunActionNotPerformedTotal(rule.InstanceID, instanceName, rule.ID, rule.Name)
+	actionNotPerformedMetric.WithLabelValues("tag_skipped_missing_unregistered_set").Add(float64(s.TagSkippedMissingUnregisteredSet))
+	actionNotPerformedMetric.WithLabelValues("category_blocked").Add(float64(s.CategoryBlocked))
 }
 
 func (s *ruleRunStats) totalApplied() int {
