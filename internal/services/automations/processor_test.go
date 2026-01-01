@@ -157,7 +157,6 @@ func TestRuleRunStats_CollectMetrics(t *testing.T) {
 		CategoryConditionNotMetOrBlocked: 13,
 		DeleteApplied:                    14,
 		DeleteConditionNotMet:            15,
-		DeleteNotCompleted:               16,
 	}
 	rule := &models.Automation{
 		ID:         1,
@@ -175,19 +174,11 @@ func TestRuleRunStats_CollectMetrics(t *testing.T) {
 
 	m := metricsCollector.GetAutomationRuleRunActionTotal(1, "test_instance", 1, "test")
 	assert.Equal(t, 3.0, testutil.ToFloat64(m.WithLabelValues("speed_applied")))
-	assert.Equal(t, 4.0, testutil.ToFloat64(m.WithLabelValues("speed_condition_not_met")))
 	assert.Equal(t, 5.0, testutil.ToFloat64(m.WithLabelValues("share_applied")))
-	assert.Equal(t, 6.0, testutil.ToFloat64(m.WithLabelValues("share_condition_not_met")))
 	assert.Equal(t, 7.0, testutil.ToFloat64(m.WithLabelValues("pause_applied")))
-	assert.Equal(t, 8.0, testutil.ToFloat64(m.WithLabelValues("pause_condition_not_met")))
 	assert.Equal(t, 9.0, testutil.ToFloat64(m.WithLabelValues("tag_condition_met")))
-	assert.Equal(t, 10.0, testutil.ToFloat64(m.WithLabelValues("tag_condition_not_met")))
-	assert.Equal(t, 11.0, testutil.ToFloat64(m.WithLabelValues("tag_skipped_missing_unregistered_set")))
 	assert.Equal(t, 12.0, testutil.ToFloat64(m.WithLabelValues("category_applied")))
-	assert.Equal(t, 13.0, testutil.ToFloat64(m.WithLabelValues("category_condition_not_met_or_blocked")))
 	assert.Equal(t, 14.0, testutil.ToFloat64(m.WithLabelValues("delete_applied")))
-	assert.Equal(t, 15.0, testutil.ToFloat64(m.WithLabelValues("delete_condition_not_met")))
-	assert.Equal(t, 16.0, testutil.ToFloat64(m.WithLabelValues("delete_not_completed")))
 }
 
 func TestProcessTorrents_Metrics(t *testing.T) {
@@ -231,21 +222,16 @@ func TestProcessTorrents_Metrics(t *testing.T) {
 	totalRunsMetric := metricsCollector.GetAutomationRuleRunTotal(rules[0].InstanceID, "test_instance", rules[0].ID, rules[0].Name)
 	assert.Equal(t, 1.0, testutil.ToFloat64(totalRunsMetric))
 
+	totalTorrentsMatchedMetric := metricsCollector.GetAutomationRuleRunTorrentsMatchedTotal(rules[0].InstanceID, "test_instance", rules[0].ID, rules[0].Name)
+	assert.Equal(t, 1.0, testutil.ToFloat64(totalTorrentsMatchedMetric))
+
 	m := metricsCollector.GetAutomationRuleRunActionTotal(rules[0].InstanceID, "test_instance", rules[0].ID, rules[0].Name)
 	assert.Equal(t, 1.0, testutil.ToFloat64(m.WithLabelValues("category_applied")))
 
 	// Verify the metrics that should not change did not get changed
 	assert.Equal(t, 0.0, testutil.ToFloat64(m.WithLabelValues("speed_applied")))
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.WithLabelValues("speed_condition_not_met")))
 	assert.Equal(t, 0.0, testutil.ToFloat64(m.WithLabelValues("share_applied")))
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.WithLabelValues("share_condition_not_met")))
 	assert.Equal(t, 0.0, testutil.ToFloat64(m.WithLabelValues("pause_applied")))
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.WithLabelValues("pause_condition_not_met")))
 	assert.Equal(t, 0.0, testutil.ToFloat64(m.WithLabelValues("tag_condition_met")))
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.WithLabelValues("tag_condition_not_met")))
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.WithLabelValues("tag_skipped_missing_unregistered_set")))
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.WithLabelValues("category_condition_not_met_or_blocked")))
 	assert.Equal(t, 0.0, testutil.ToFloat64(m.WithLabelValues("delete_applied")))
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.WithLabelValues("delete_condition_not_met")))
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.WithLabelValues("delete_not_completed")))
 }
