@@ -306,7 +306,7 @@ The incoming torrent has files not present in your matched torrent, and those fi
 
 This typically means the torrent name contains special characters (like double quotes `"`) that break JSON encoding. The error often looks like:
 
-```
+```json
 {"level":"error","error":"invalid character 'V' after object key:value pair","time":"...","message":"Failed to decode webhook check request"}
 ```
 
