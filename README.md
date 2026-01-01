@@ -16,6 +16,7 @@ A fast, modern web interface for qBittorrent. Supports managing multiple qBittor
 - [Features](#features)
 - [Installation](#installation)
 - [Docker](#docker)
+  - [Permissions (PUID/PGID/UMASK)](#permissions-puidpgidumask)
 - [Updating](#updating)
 - [Configuration](#configuration)
   - [Base URL](#base-url-configuration)
@@ -167,6 +168,50 @@ If the app logs to stdout, check logs via Docker → qui → Logs; if it writes 
 - Use Unraid's **Check for Updates** action to pull a newer `latest` image
 - If you pinned a specific version tag, edit the repository field to the new tag when you're ready to upgrade
 - Restart the container if needed after the image update so the new binary is loaded
+
+### Permissions (PUID/PGID/UMASK)
+
+By default the container runs as root. To run as a specific user and ensure files in `/config` have correct ownership, set both `PUID` and `PGID` environment variables (required together).
+
+When both are set, the entrypoint will:
+1. Create a user/group with the specified IDs
+2. Recursively `chown -R` the `/config` directory
+3. Run qui as that user
+
+This ensures the database, logs, and any directories created by cross-seed hardlink mode inherit the expected ownership.
+
+Optional: `UMASK` controls default permissions for files and directories qui creates (database, logs, backups, hardlink-mode directories). Common values:
+- `022` - owner read/write, group/others read-only (typical default)
+- `002` - owner and group read/write, others read-only (group-writable)
+- `077` - owner only, no group/others access (private)
+
+**Docker Compose:**
+```yaml
+services:
+  qui:
+    image: ghcr.io/autobrr/qui:latest
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      UMASK: "002"  # optional
+    volumes:
+      - ./qui:/config
+    ports:
+      - "7476:7476"
+```
+
+**Docker Run:**
+```bash
+docker run -d \
+  -e PUID=1000 \
+  -e PGID=1000 \
+  -e UMASK=002 \
+  -p 7476:7476 \
+  -v $(pwd)/config:/config \
+  ghcr.io/autobrr/qui:latest
+```
+
+> **Note:** Using `user:` in compose or `--user` in docker run bypasses the entrypoint's chown and privilege-drop behavior. Use `PUID`/`PGID` instead for proper `/config` ownership handling.
 
 ## Updating
 
