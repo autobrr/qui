@@ -5,7 +5,7 @@ import type * as Preset from "@docusaurus/preset-classic";
 const config: Config = {
   title: "qui",
   tagline: "Modern web interface for qBittorrent",
-  favicon: "img/favicon.ico",
+  favicon: "img/favicon.png",
 
   url: "https://getqui.com",
   baseUrl: "/",
