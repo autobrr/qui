@@ -38,7 +38,7 @@ func NewAutomationCollector(r *prometheus.Registry) *AutomationCollector {
 			Subsystem: "automation",
 			Name:      "rule_run_action_not_performed_total",
 			Help:      "Total number of automation rule actions where conditions were met but the action was not performed",
-		}, []string{"instance_id", "instance_name", "rule_id", "rule_name", "action"}),
+		}, []string{"instance_id", "instance_name", "rule_id", "rule_name", "reason"}),
 	}
 
 	r.MustRegister(m.RuleRunTotal)
