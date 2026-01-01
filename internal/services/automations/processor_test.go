@@ -232,7 +232,7 @@ func TestProcessTorrents_Metrics(t *testing.T) {
 	assert.Equal(t, 1.0, testutil.ToFloat64(totalRunsMetric))
 
 	m := metricsCollector.GetAutomationRuleRunActionTotal(rules[0].InstanceID, "test_instance", rules[0].ID, rules[0].Name)
-	m.WithLabelValues("speed_applied").Add(float64(stats[1].SpeedApplied))
+	assert.Equal(t, 1.0, testutil.ToFloat64(m.WithLabelValues("category_applied")))
 
 	// Verify the metrics that should not change did not get changed
 	assert.Equal(t, 0.0, testutil.ToFloat64(m.WithLabelValues("speed_applied")))
