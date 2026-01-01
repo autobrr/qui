@@ -520,6 +520,12 @@ func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	log.Debug().
+		Ints("instanceIds", req.InstanceIDs).
+		Str("indexerName", req.IndexerName).
+		Str("category", req.Category).
+		Msg("Received autobrr apply request")
+
 	response, err := h.service.AutobrrApply(context.WithoutCancel(r.Context()), &req)
 	if err != nil {
 		status := mapCrossSeedErrorStatus(err)
