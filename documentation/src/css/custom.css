@@ -295,7 +295,7 @@ html {
 /* Selection color */
 ::selection {
   background-color: var(--ifm-color-primary);
-  color: white;
+  color: #ffffff;
 }
 
 [data-theme='dark'] ::selection {

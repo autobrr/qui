@@ -7,10 +7,6 @@ const config: Config = {
   tagline: "Modern web interface for qBittorrent",
   favicon: "img/favicon.ico",
 
-  future: {
-    v4: true,
-  },
-
   url: "https://getqui.com",
   baseUrl: "/",
 
@@ -57,7 +53,7 @@ const config: Config = {
       title: "qui",
       logo: {
         alt: "qui Logo",
-        src: "img/logo.svg",
+        src: "img/qui.png",
       },
       items: [
         {
