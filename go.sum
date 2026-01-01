@@ -59,8 +59,8 @@ github.com/andybalholm/brotli v1.2.0/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUS
 github.com/apache/thrift v0.12.0/go.mod h1:cp2SuWMxlEZw2r+iP2GNCdIi4C1qmUzdZFSVb+bacwQ=
 github.com/autobrr/autobrr v1.70.0 h1:N3NxMuiu6uQ500N9nPxDWXlBtlQx2QlkkGnU/JPcLwk=
 github.com/autobrr/autobrr v1.70.0/go.mod h1:sCMO8xAaZLLA4H1qbKRiSTZnPsY/stvTngHF9o2F8pI=
-github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251209201933-62cc902b8602 h1:RyJtQJGklw0kJ3Ec5kHakQArHXuXb7EodudkUVGwsDk=
-github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251209201933-62cc902b8602/go.mod h1:mGH+UlSzkZOpTx9hezpL9dnKakskLzOsNfngl2E1ZE0=
+github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251229150025-9477b4e75669 h1:YQ4P6P3WF/SnTFhhOhjHA1ZBCk5mDItudlH4aOHm9JA=
+github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251229150025-9477b4e75669/go.mod h1:mGH+UlSzkZOpTx9hezpL9dnKakskLzOsNfngl2E1ZE0=
 github.com/autobrr/rls v0.7.1-0.20251216090501-a93fa08d24d2 h1:BKYdKcK64fnbm8EoTsWcBOXU/syjVJap6eOD2NUa3b8=
 github.com/autobrr/rls v0.7.1-0.20251216090501-a93fa08d24d2/go.mod h1:11YJWgNe5H+UQrfFaNGjnkEy0OEsMFnmV4IL2tRKpPk=
 github.com/avast/retry-go v3.0.0+incompatible h1:4SOWQ7Qs+oroOTQOYnAHqelpCO0biHSxpiH9JdtuBj0=

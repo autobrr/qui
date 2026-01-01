@@ -876,9 +876,17 @@ func TestAddTorrentHandler_InvalidInstanceID_Returns400(t *testing.T) {
 // fullMockSyncManager implements torrentAdder interface for full handler testing
 type fullMockSyncManager struct {
 	addTorrentCalls         []addTorrentCall
+	addTorrentsCalls        []addTorrentsCall
 	addTorrentFromURLsCalls []addTorrentFromURLsCall
 	addTorrentErr           error
+	addTorrentsErr          error
 	addTorrentFromURLsErr   error
+}
+
+type addTorrentsCall struct {
+	instanceID int
+	files      [][]byte
+	options    map[string]string
 }
 
 func (m *fullMockSyncManager) AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error {
@@ -888,6 +896,15 @@ func (m *fullMockSyncManager) AddTorrent(ctx context.Context, instanceID int, fi
 		options:     options,
 	})
 	return m.addTorrentErr
+}
+
+func (m *fullMockSyncManager) AddTorrents(ctx context.Context, instanceID int, files [][]byte, options map[string]string) error {
+	m.addTorrentsCalls = append(m.addTorrentsCalls, addTorrentsCall{
+		instanceID: instanceID,
+		files:      files,
+		options:    options,
+	})
+	return m.addTorrentsErr
 }
 
 func (m *fullMockSyncManager) AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) error {
