@@ -6,11 +6,12 @@
 import { Checkbox } from "@/components/ui/checkbox"
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
 import { getLinuxFileName } from "@/lib/incognito"
-import { cn, formatBytes } from "@/lib/utils"
+import { cn, copyTextToClipboard, formatBytes, joinPath } from "@/lib/utils"
 import type { TorrentFile } from "@/types"
 import * as AccordionPrimitive from "@radix-ui/react-accordion"
-import { ChevronRight, FilePen, FolderPen, Loader2 } from "lucide-react"
+import { ChevronRight, Copy, FilePen, FolderPen, Loader2 } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
+import { toast } from "sonner"
 
 interface TorrentFileTreeProps {
   files: TorrentFile[]
@@ -18,6 +19,7 @@ interface TorrentFileTreeProps {
   pendingFileIndices: Set<number>
   incognitoMode: boolean
   torrentHash: string
+  savePath?: string
   onToggleFile: (file: TorrentFile, selected: boolean) => void
   onToggleFolder: (folderPath: string, selected: boolean) => void
   onRenameFile: (filePath: string) => void
@@ -147,6 +149,7 @@ interface FileRowProps {
   supportsFilePriority: boolean
   isPending: boolean
   incognitoMode: boolean
+  savePath?: string
   onToggle: (file: TorrentFile, selected: boolean) => void
   onRename: (filePath: string) => void
 }
@@ -157,6 +160,7 @@ const FileRow = memo(function FileRow({
   supportsFilePriority,
   isPending,
   incognitoMode,
+  savePath,
   onToggle,
   onRename,
 }: FileRowProps) {
@@ -226,11 +230,24 @@ const FileRow = memo(function FileRow({
       </ContextMenuTrigger>
       <ContextMenuContent>
         <ContextMenuItem
+          onClick={async () => {
+            const fullPath = savePath ? joinPath(savePath, file.name) : file.name
+            try {
+              await copyTextToClipboard(fullPath)
+            } catch {
+              toast.error("Failed to copy path to clipboard")
+            }
+          }}
+        >
+          <Copy className="h-4 w-4 mr-2" />
+          Copy Path
+        </ContextMenuItem>
+        <ContextMenuItem
           onClick={() => onRename(file.name)}
           disabled={incognitoMode}
         >
           <FilePen className="h-4 w-4 mr-2" />
-          Rename
+          Rename File
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
@@ -243,6 +260,7 @@ interface FolderRowProps {
   isExpanded: boolean
   supportsFilePriority: boolean
   incognitoMode: boolean
+  savePath?: string
   onToggle: (folderPath: string, selected: boolean) => void
   onRename: (folderPath: string) => void
 }
@@ -253,6 +271,7 @@ const FolderRow = memo(function FolderRow({
   isExpanded,
   supportsFilePriority,
   incognitoMode,
+  savePath,
   onToggle,
   onRename,
 }: FolderRowProps) {
@@ -333,6 +352,20 @@ const FolderRow = memo(function FolderRow({
       </ContextMenuTrigger>
       <ContextMenuContent>
         <ContextMenuItem
+          onClick={async (e) => {
+            e.stopPropagation()
+            const fullPath = savePath ? joinPath(savePath, node.id) : node.id
+            try {
+              await copyTextToClipboard(fullPath)
+            } catch {
+              toast.error("Failed to copy path to clipboard")
+            }
+          }}
+        >
+          <Copy className="h-4 w-4 mr-2" />
+          Copy Path
+        </ContextMenuItem>
+        <ContextMenuItem
           onClick={(e) => {
             e.stopPropagation()
             onRename(node.id)
@@ -340,7 +373,7 @@ const FolderRow = memo(function FolderRow({
           disabled={incognitoMode}
         >
           <FolderPen className="h-4 w-4 mr-2" />
-          Rename
+          Rename Folder
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
@@ -353,6 +386,7 @@ interface TreeNodeProps {
   supportsFilePriority: boolean
   pendingFileIndices: Set<number>
   incognitoMode: boolean
+  savePath?: string
   folderState: Map<string, boolean>
   onToggleFile: (file: TorrentFile, selected: boolean) => void
   onToggleFolder: (folderPath: string, selected: boolean) => void
@@ -366,6 +400,7 @@ const TreeNode = memo(function TreeNode({
   supportsFilePriority,
   pendingFileIndices,
   incognitoMode,
+  savePath,
   folderState,
   onToggleFile,
   onToggleFolder,
@@ -380,6 +415,7 @@ const TreeNode = memo(function TreeNode({
         supportsFilePriority={supportsFilePriority}
         isPending={pendingFileIndices.has(node.file.index)}
         incognitoMode={incognitoMode}
+        savePath={savePath}
         onToggle={onToggleFile}
         onRename={onRenameFile}
       />
@@ -399,6 +435,7 @@ const TreeNode = memo(function TreeNode({
               isExpanded={isExpanded}
               supportsFilePriority={supportsFilePriority}
               incognitoMode={incognitoMode}
+              savePath={savePath}
               onToggle={onToggleFolder}
               onRename={onRenameFolder}
             />
@@ -414,6 +451,7 @@ const TreeNode = memo(function TreeNode({
             supportsFilePriority={supportsFilePriority}
             pendingFileIndices={pendingFileIndices}
             incognitoMode={incognitoMode}
+            savePath={savePath}
             folderState={folderState}
             onToggleFile={onToggleFile}
             onToggleFolder={onToggleFolder}
@@ -432,6 +470,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
   pendingFileIndices,
   incognitoMode,
   torrentHash,
+  savePath,
   onToggleFile,
   onToggleFolder,
   onRenameFile,
@@ -494,6 +533,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
           supportsFilePriority={supportsFilePriority}
           isPending={pendingFileIndices.has(nodes[0].file!.index)}
           incognitoMode={incognitoMode}
+          savePath={savePath}
           onToggle={onToggleFile}
           onRename={onRenameFile}
         />
@@ -514,6 +554,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
             supportsFilePriority={supportsFilePriority}
             isPending={node.file ? pendingFileIndices.has(node.file.index) : false}
             incognitoMode={incognitoMode}
+            savePath={savePath}
             onToggle={onToggleFile}
             onRename={onRenameFile}
           />
@@ -547,6 +588,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
             supportsFilePriority={supportsFilePriority}
             pendingFileIndices={pendingFileIndices}
             incognitoMode={incognitoMode}
+            savePath={savePath}
             folderState={folderState}
             onToggleFile={onToggleFile}
             onToggleFolder={onToggleFolder}

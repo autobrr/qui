@@ -301,3 +301,17 @@ export function parseTrackerDomains(rule: Automation): string[] {
     .map((item) => item.trim())
     .filter(Boolean)
 }
+
+/**
+ * Join a base path with a relative path, handling both Unix and Windows separators.
+ * Detects the separator from the base path and uses it for joining.
+ * @param basePath - The base directory path (e.g., "/data/torrents" or "C:\data\torrents")
+ * @param relativePath - The relative path to append
+ * @returns The joined full path
+ */
+export function joinPath(basePath: string, relativePath: string): string {
+  if (!basePath) return relativePath
+  const separator = basePath.includes("\\") ? "\\" : "/"
+  const cleanBase = basePath.replace(/[\\/]$/, "")
+  return `${cleanBase}${separator}${relativePath}`
+}
