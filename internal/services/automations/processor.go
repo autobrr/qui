@@ -58,7 +58,8 @@ type ruleRunStats struct {
 	TagConditionNotMet               int
 	TagSkippedMissingUnregisteredSet int
 	CategoryApplied                  int
-	CategoryConditionNotMetOrBlocked int
+	CategoryConditionNotMet          int
+	CategoryBlocked                  int
 	DeleteApplied                    int
 	DeleteConditionNotMet            int
 }
@@ -270,7 +271,11 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			state.category = &conditions.Category.Category
 			state.categoryIncludeCrossSeeds = conditions.Category.IncludeCrossSeeds
 		} else if stats != nil {
-			stats.CategoryConditionNotMetOrBlocked++
+			if shouldApply {
+				stats.CategoryConditionNotMet++
+			} else {
+				stats.CategoryBlocked++
+			}
 		}
 	}
 
