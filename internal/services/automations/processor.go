@@ -61,7 +61,6 @@ type ruleRunStats struct {
 	CategoryConditionNotMetOrBlocked int
 	DeleteApplied                    int
 	DeleteConditionNotMet            int
-	DeleteNotCompleted               int
 }
 
 func (s *ruleRunStats) CollectMetrics(rule *models.Automation, metricsCollector *collector.AutomationCollector, instanceName string) {
@@ -284,14 +283,6 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 
 	// Delete
 	if conditions.Delete != nil && conditions.Delete.Enabled {
-		// Only delete completed torrents
-		if torrent.Progress < 1.0 {
-			if stats != nil {
-				stats.DeleteNotCompleted++
-			}
-			return
-		}
-
 		shouldApply := conditions.Delete.Condition == nil ||
 			EvaluateConditionWithContext(conditions.Delete.Condition, torrent, evalCtx, 0)
 
