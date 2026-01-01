@@ -1,0 +1,7 @@
+[build]
+  base = "documentation"
+  publish = "build"
+  command = "pnpm build"
+
+[build.environment]
+  NODE_VERSION = "20"

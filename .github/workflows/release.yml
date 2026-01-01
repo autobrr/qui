@@ -14,6 +14,7 @@ on:
       - "docker-compose.yml"
       - "Makefile"
       - "**.md"
+      - "documentation/**"
   pull_request:
     paths-ignore:
       - ".github/ISSUE_TEMPLATE/**"
@@ -22,6 +23,7 @@ on:
       - "docker-compose.yml"
       - "Makefile"
       - "**.md"
+      - "documentation/**"
 
 env:
   REGISTRY: ghcr.io

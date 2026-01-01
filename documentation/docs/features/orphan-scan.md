@@ -1,3 +1,7 @@
+---
+sidebar_position: 4
+---
+
 # Orphan Scan
 
 Finds and removes files in your download directories that aren't associated with any torrent.
@@ -13,16 +17,16 @@ Finds and removes files in your download directories that aren't associated with
 
 Directories are only scanned if at least one torrent points to them. If you delete all torrents from a directory, that directory is no longer a scan root and any leftover files there won't be detected.
 
-Example: You have torrents in `/downloads/old-stuff/`. You delete all those torrents. Orphan scan no longer knows about `/downloads/old-stuff/` and won't clean it up.
+**Example:** You have torrents in `/downloads/old-stuff/`. You delete all those torrents. Orphan scan no longer knows about `/downloads/old-stuff/` and won't clean it up.
 
 ## Settings
 
-| Setting | Description |
-|---------|-------------|
-| **Grace period** | Skip files modified within this window (default: 10 minutes) |
-| **Ignore paths** | Directories to exclude from scanning |
-| **Scan interval** | How often scheduled scans run (default: 24 hours) |
-| **Max files per run** | Limit results to prevent overwhelming large scans (default: 10,000) |
+| Setting | Description | Default |
+|---------|-------------|---------|
+| Grace period | Skip files modified within this window | 10 minutes |
+| Ignore paths | Directories to exclude from scanning | - |
+| Scan interval | How often scheduled scans run | 24 hours |
+| Max files per run | Limit results to prevent overwhelming large scans | 10,000 |
 
 ## Workflow
 
