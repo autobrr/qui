@@ -6166,7 +6166,17 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 	}
 
 	result.Added = false
-	result.Message = "no instances accepted torrent via " + match.Indexer
+	// Try to extract the actual reason from instance results
+	if len(resp.Results) > 0 {
+		// Use the first instance's message as it contains the specific reason
+		if msg := resp.Results[0].Message; msg != "" {
+			result.Message = msg
+		} else {
+			result.Message = resp.Results[0].Status
+		}
+	} else {
+		result.Message = "no instances accepted torrent via " + match.Indexer
+	}
 	return result, nil
 }
 
