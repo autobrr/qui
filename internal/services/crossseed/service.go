@@ -3116,9 +3116,10 @@ func (s *Service) processCrossSeedCandidate(
 		} else {
 			result.Message = fmt.Sprintf("Added torrent with recheck (match: %s, category: %s)", matchType, crossCategory)
 		}
-		log.Debug().
+		log.Info().
 			Int("instanceID", candidate.InstanceID).
 			Str("instanceName", candidate.InstanceName).
+			Str("torrentName", torrentName).
 			Msg("Successfully added cross-seed torrent with recheck")
 	} else {
 		if categoryCreationFailed {
@@ -3216,9 +3217,10 @@ func (s *Service) processCrossSeedCandidate(
 	// Execute external program if configured (async, non-blocking)
 	s.executeExternalProgram(ctx, candidate.InstanceID, torrentHash)
 
-	logEvent := log.Debug().
+	logEvent := log.Info().
 		Int("instanceID", candidate.InstanceID).
 		Str("instanceName", candidate.InstanceName).
+		Str("torrentName", torrentName).
 		Str("torrentHash", torrentHash).
 		Str("matchedHash", matchedTorrent.Hash).
 		Str("matchType", matchType).
