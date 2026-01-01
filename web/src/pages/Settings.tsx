@@ -46,6 +46,7 @@ import {
 } from "@/components/ui/select"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
+import { usePublicTrackerSettings, useUpdatePublicTrackerSettings, useRefreshPublicTrackerList } from "@/hooks/usePublicTrackers"
 import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
 import { copyTextToClipboard, formatBytes } from "@/lib/utils"
@@ -53,7 +54,7 @@ import type { SettingsSearch } from "@/routes/_authenticated/settings"
 import type { Instance, TorznabSearchCacheStats } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Clock, Copy, Database, ExternalLink, FileText, Key, Layers, Link2, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
+import { Clock, Copy, Database, ExternalLink, FileText, Globe, Key, Layers, Link2, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
 import type { FormEvent } from "react"
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -690,6 +691,128 @@ function TorznabSearchCachePanel() {
   )
 }
 
+function PublicTrackerSettingsPanel() {
+  const { data: settings, isLoading } = usePublicTrackerSettings()
+  const updateMutation = useUpdatePublicTrackerSettings()
+  const refreshMutation = useRefreshPublicTrackerList()
+  const { formatDate } = useDateTimeFormatters()
+  const [urlInput, setUrlInput] = useState("")
+
+  useEffect(() => {
+    if (settings?.trackerListUrl) {
+      setUrlInput(settings.trackerListUrl)
+    }
+  }, [settings?.trackerListUrl])
+
+  const handleUpdateUrl = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const trimmed = urlInput.trim()
+    if (!trimmed) {
+      toast.error("URL cannot be empty")
+      return
+    }
+    try {
+      await updateMutation.mutateAsync({ trackerListUrl: trimmed })
+      toast.success("Tracker list URL updated")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error"
+      toast.error(`Failed to update URL: ${message}`)
+    }
+  }
+
+  const handleRefresh = async () => {
+    try {
+      await refreshMutation.mutateAsync()
+      toast.success("Tracker list refreshed")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error"
+      toast.error(`Failed to refresh tracker list: ${message}`)
+    }
+  }
+
+  const trackerCount = settings?.cachedTrackers?.length ?? 0
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>Public Tracker List</CardTitle>
+            <CardDescription>
+              Configure the source URL for public trackers. These trackers can be added to public torrents via the context menu.
+            </CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={refreshMutation.isPending}
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${refreshMutation.isPending ? "animate-spin" : ""}`} />
+            Refresh List
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <form onSubmit={handleUpdateUrl} className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="tracker-list-url">Tracker List URL</Label>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  id="tracker-list-url"
+                  type="url"
+                  placeholder="https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt"
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                  disabled={updateMutation.isPending || isLoading}
+                  className="flex-1"
+                />
+                <Button type="submit" disabled={updateMutation.isPending || isLoading}>
+                  {updateMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Save"
+                  )}
+                </Button>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              The URL should point to a plain text file with one tracker URL per line. Popular lists include ngosang/trackerslist.
+            </p>
+          </form>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1 rounded-lg border p-3 bg-muted/40">
+              <p className="text-xs uppercase text-muted-foreground">Cached Trackers</p>
+              <p className="text-lg font-semibold">{isLoading ? "..." : trackerCount}</p>
+            </div>
+            <div className="space-y-1 rounded-lg border p-3 bg-muted/40">
+              <p className="text-xs uppercase text-muted-foreground">Last Fetched</p>
+              <p className="text-lg font-semibold">
+                {isLoading ? "..." : settings?.lastFetchedAt ? formatDate(new Date(settings.lastFetchedAt)) : "Never"}
+              </p>
+            </div>
+          </div>
+
+          {trackerCount > 0 && (
+            <div className="space-y-2">
+              <Label>Cached Trackers Preview</Label>
+              <div className="max-h-48 overflow-y-auto rounded-lg border bg-muted/20 p-3">
+                <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-all">
+                  {settings?.cachedTrackers?.slice(0, 20).join("\n")}
+                  {(settings?.cachedTrackers?.length ?? 0) > 20 && `\n... and ${(settings?.cachedTrackers?.length ?? 0) - 20} more`}
+                </pre>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
 interface SettingsProps {
   search: SettingsSearch
   onSearchChange: (search: SettingsSearch) => void
@@ -761,6 +884,12 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
               <div className="flex items-center">
                 <Terminal className="w-4 h-4 mr-2" />
                 External Programs
+              </div>
+            </SelectItem>
+            <SelectItem value="public-trackers">
+              <div className="flex items-center">
+                <Globe className="w-4 h-4 mr-2" />
+                Public Trackers
               </div>
             </SelectItem>
             <SelectItem value="datetime">
@@ -857,6 +986,15 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             >
               <Terminal className="w-4 h-4 mr-2" />
               External Programs
+            </button>
+            <button
+              onClick={() => handleTabChange("public-trackers")}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === "public-trackers"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+              }`}
+            >
+              <Globe className="w-4 h-4 mr-2" />
+              Public Trackers
             </button>
             <button
               onClick={() => handleTabChange("datetime")}
@@ -1004,6 +1142,10 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                 </CardContent>
               </Card>
             </div>
+          )}
+
+          {activeTab === "public-trackers" && (
+            <PublicTrackerSettingsPanel />
           )}
 
           {activeTab === "datetime" && (

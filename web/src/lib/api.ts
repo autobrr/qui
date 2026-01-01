@@ -54,6 +54,10 @@ import type {
   LogSettings,
   LogSettingsUpdate,
   OrphanScanRun,
+  PruneMode,
+  PublicTrackerActionResult,
+  PublicTrackerSettings,
+  PublicTrackerSettingsInput,
   OrphanScanRunWithFiles,
   OrphanScanSettings,
   OrphanScanSettingsUpdate,
@@ -1602,6 +1606,31 @@ class ApiClient {
     return this.request<DashboardSettings>("/dashboard-settings", {
       method: "PUT",
       body: JSON.stringify(data),
+    })
+  }
+
+  // Public Trackers endpoints
+  async getPublicTrackerSettings(): Promise<PublicTrackerSettings> {
+    return this.request<PublicTrackerSettings>("/public-trackers/settings")
+  }
+
+  async updatePublicTrackerSettings(data: PublicTrackerSettingsInput): Promise<PublicTrackerSettings> {
+    return this.request<PublicTrackerSettings>("/public-trackers/settings", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async refreshPublicTrackerList(): Promise<PublicTrackerSettings> {
+    return this.request<PublicTrackerSettings>("/public-trackers/refresh", {
+      method: "POST",
+    })
+  }
+
+  async executePublicTrackerAction(instanceId: number, hashes: string[], pruneMode: PruneMode): Promise<PublicTrackerActionResult> {
+    return this.request<PublicTrackerActionResult>(`/instances/${instanceId}/torrents/public-tracker-action`, {
+      method: "POST",
+      body: JSON.stringify({ hashes, pruneMode }),
     })
   }
 

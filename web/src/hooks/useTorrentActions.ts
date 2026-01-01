@@ -103,6 +103,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
   const [showTmmDialog, setShowTmmDialog] = useState(false)
   const [pendingTmmEnable, setPendingTmmEnable] = useState(false)
   const [showLocationWarningDialog, setShowLocationWarningDialog] = useState(false)
+  const [showPublicTrackerDialog, setShowPublicTrackerDialog] = useState(false)
 
   // Context state for dialogs
   const [contextHashes, setContextHashes] = useState<string[]>([])
@@ -861,6 +862,13 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setShowRenameFolderDialog(true)
   }, [])
 
+  const preparePublicTrackerAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
+    if (hashes.length === 0) return
+    setContextHashes(hashes)
+    if (torrents) setContextTorrents(torrents)
+    setShowPublicTrackerDialog(true)
+  }, [])
+
   const isPending = mutation.isPending || renameTorrentMutation.isPending || renameFileMutation.isPending || renameFolderMutation.isPending
 
 
@@ -906,6 +914,8 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     pendingTmmEnable,
     showLocationWarningDialog,
     setShowLocationWarningDialog,
+    showPublicTrackerDialog,
+    setShowPublicTrackerDialog,
     contextHashes,
     contextTorrents,
 
@@ -944,6 +954,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     prepareTmmAction,
     handleTmmConfirm,
     proceedToLocationDialog,
+    preparePublicTrackerAction,
   }
 }
 
