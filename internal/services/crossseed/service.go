@@ -8285,7 +8285,21 @@ func (s *Service) processHardlinkMode(
 		return notUsed
 	}
 
-	// From here on, hardlink mode is ENABLED - failures must return errors (no fallback)
+	// From here on, hardlink mode is ENABLED
+	// Check if fallback is enabled - if so, errors return notUsed instead of hardlink_error
+	fallbackEnabled := instance.FallbackToRegularMode
+
+	// Helper to handle errors based on fallback setting
+	handleError := func(message string) hardlinkModeResult {
+		if fallbackEnabled {
+			log.Info().
+				Int("instanceID", candidate.InstanceID).
+				Str("reason", message).
+				Msg("[CROSSSEED] Hardlink mode failed, falling back to regular mode")
+			return notUsed // Allow regular mode to proceed with piece boundary check
+		}
+		return hardlinkError(message)
+	}
 
 	// Check if source has extra files (files not present in candidate).
 	// If extras exist and piece-boundary check passed (checked earlier in processCrossSeedCandidate),
@@ -8297,7 +8311,7 @@ func (s *Service) processHardlinkMode(
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
 			Msg("[CROSSSEED] Hardlink mode enabled but base directory is empty")
-		return hardlinkError("Hardlink mode enabled but base directory is not configured")
+		return handleError("Hardlink mode enabled but base directory is not configured")
 	}
 
 	// Verify instance has local filesystem access (required for hardlinks)
@@ -8306,12 +8320,12 @@ func (s *Service) processHardlinkMode(
 			Int("instanceID", candidate.InstanceID).
 			Str("instanceName", candidate.InstanceName).
 			Msg("[CROSSSEED] Hardlink mode enabled but instance lacks local filesystem access")
-		return hardlinkError(fmt.Sprintf("Instance '%s' does not have local filesystem access enabled", candidate.InstanceName))
+		return handleError(fmt.Sprintf("Instance '%s' does not have local filesystem access enabled", candidate.InstanceName))
 	}
 
 	// Need a valid file path from matched torrent to check filesystem
 	if len(candidateFiles) == 0 {
-		return hardlinkError("No candidate files available for hardlink matching")
+		return handleError("No candidate files available for hardlink matching")
 	}
 
 	// Build path to existing file (matched torrent's content)
@@ -8325,7 +8339,7 @@ func (s *Service) processHardlinkMode(
 			Int("instanceID", candidate.InstanceID).
 			Str("matchedHash", matchedTorrent.Hash).
 			Msg("[CROSSSEED] Hardlink mode: no content path or save path available")
-		return hardlinkError("No content path or save path available for matched torrent")
+		return handleError("No content path or save path available for matched torrent")
 	}
 
 	// Ensure hardlink base directory exists before checking filesystem
@@ -8334,7 +8348,7 @@ func (s *Service) processHardlinkMode(
 			Err(err).
 			Str("hardlinkBaseDir", instance.HardlinkBaseDir).
 			Msg("[CROSSSEED] Hardlink mode: failed to create base directory")
-		return hardlinkError(fmt.Sprintf("Failed to create hardlink base directory: %v", err))
+		return handleError(fmt.Sprintf("Failed to create hardlink base directory: %v", err))
 	}
 
 	// Validate same filesystem
@@ -8345,34 +8359,14 @@ func (s *Service) processHardlinkMode(
 			Str("existingPath", existingFilePath).
 			Str("hardlinkBaseDir", instance.HardlinkBaseDir).
 			Msg("[CROSSSEED] Hardlink mode: failed to check filesystem, aborting")
-		return hardlinkModeResult{
-			Used:    true,
-			Success: false,
-			Result: InstanceCrossSeedResult{
-				InstanceID:   candidate.InstanceID,
-				InstanceName: candidate.InstanceName,
-				Success:      false,
-				Status:       "hardlink_error",
-				Message:      fmt.Sprintf("Failed to verify same filesystem: %v", err),
-			},
-		}
+		return handleError(fmt.Sprintf("Failed to verify same filesystem: %v", err))
 	}
 	if !sameFS {
 		log.Warn().
 			Str("existingPath", existingFilePath).
 			Str("hardlinkBaseDir", instance.HardlinkBaseDir).
 			Msg("[CROSSSEED] Hardlink mode: different filesystems, aborting")
-		return hardlinkModeResult{
-			Used:    true,
-			Success: false,
-			Result: InstanceCrossSeedResult{
-				InstanceID:   candidate.InstanceID,
-				InstanceName: candidate.InstanceName,
-				Success:      false,
-				Status:       "hardlink_error",
-				Message:      "Hardlink mode enabled but source and destination are on different filesystems",
-			},
-		}
+		return handleError("Hardlink mode enabled but source and destination are on different filesystems")
 	}
 
 	// Hardlink mode always uses Original layout to match the incoming torrent's structure exactly.
@@ -8437,7 +8431,7 @@ func (s *Service) processHardlinkMode(
 	}
 
 	if len(candidateTorrentFilesToLink) == 0 {
-		return hardlinkError("No linkable files found (all source files are extras)")
+		return handleError("No linkable files found (all source files are extras)")
 	}
 
 	// Build hardlink tree plan with only the linkable files
@@ -8449,17 +8443,7 @@ func (s *Service) processHardlinkMode(
 			Str("torrentName", torrentName).
 			Str("destDir", destDir).
 			Msg("[CROSSSEED] Hardlink mode: failed to build plan, aborting")
-		return hardlinkModeResult{
-			Used:    true,
-			Success: false,
-			Result: InstanceCrossSeedResult{
-				InstanceID:   candidate.InstanceID,
-				InstanceName: candidate.InstanceName,
-				Success:      false,
-				Status:       "hardlink_error",
-				Message:      fmt.Sprintf("Failed to build hardlink plan: %v", err),
-			},
-		}
+		return handleError(fmt.Sprintf("Failed to build hardlink plan: %v", err))
 	}
 
 	// Create hardlink tree on disk
@@ -8470,17 +8454,7 @@ func (s *Service) processHardlinkMode(
 			Str("torrentName", torrentName).
 			Str("destDir", destDir).
 			Msg("[CROSSSEED] Hardlink mode: failed to create hardlink tree, aborting")
-		return hardlinkModeResult{
-			Used:    true,
-			Success: false,
-			Result: InstanceCrossSeedResult{
-				InstanceID:   candidate.InstanceID,
-				InstanceName: candidate.InstanceName,
-				Success:      false,
-				Status:       "hardlink_error",
-				Message:      fmt.Sprintf("Failed to create hardlink tree: %v", err),
-			},
-		}
+		return handleError(fmt.Sprintf("Failed to create hardlink tree: %v", err))
 	}
 
 	log.Info().
@@ -8555,17 +8529,7 @@ func (s *Service) processHardlinkMode(
 			Int("instanceID", candidate.InstanceID).
 			Str("torrentName", torrentName).
 			Msg("[CROSSSEED] Hardlink mode: failed to add torrent, aborting")
-		return hardlinkModeResult{
-			Used:    true,
-			Success: false,
-			Result: InstanceCrossSeedResult{
-				InstanceID:   candidate.InstanceID,
-				InstanceName: candidate.InstanceName,
-				Success:      false,
-				Status:       "hardlink_error",
-				Message:      fmt.Sprintf("Failed to add torrent: %v", err),
-			},
-		}
+		return handleError(fmt.Sprintf("Failed to add torrent: %v", err))
 	}
 
 	// Build result message
@@ -8760,7 +8724,21 @@ func (s *Service) processReflinkMode(
 		return notUsed
 	}
 
-	// From here on, reflink mode is ENABLED - failures must return errors (no fallback)
+	// From here on, reflink mode is ENABLED
+	// Check if fallback is enabled - if so, errors return notUsed instead of reflink_error
+	fallbackEnabled := instance.FallbackToRegularMode
+
+	// Helper to handle errors based on fallback setting
+	handleError := func(message string) reflinkModeResult {
+		if fallbackEnabled {
+			log.Info().
+				Int("instanceID", candidate.InstanceID).
+				Str("reason", message).
+				Msg("[CROSSSEED] Reflink mode failed, falling back to regular mode")
+			return notUsed // Allow regular mode to proceed with piece boundary check
+		}
+		return reflinkError(message)
+	}
 
 	// Reflink mode only requires recheck when the incoming torrent has extra files
 	// (files not present in the matched torrent).
@@ -8784,7 +8762,7 @@ func (s *Service) processReflinkMode(
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
 			Msg("[CROSSSEED] Reflink mode enabled but base directory is empty")
-		return reflinkError("Reflink mode enabled but base directory is not configured")
+		return handleError("Reflink mode enabled but base directory is not configured")
 	}
 
 	// Verify instance has local filesystem access (required for reflinks)
@@ -8793,12 +8771,12 @@ func (s *Service) processReflinkMode(
 			Int("instanceID", candidate.InstanceID).
 			Str("instanceName", candidate.InstanceName).
 			Msg("[CROSSSEED] Reflink mode enabled but instance lacks local filesystem access")
-		return reflinkError(fmt.Sprintf("Instance '%s' does not have local filesystem access enabled", candidate.InstanceName))
+		return handleError(fmt.Sprintf("Instance '%s' does not have local filesystem access enabled", candidate.InstanceName))
 	}
 
 	// Need a valid file path from matched torrent to check filesystem
 	if len(candidateFiles) == 0 {
-		return reflinkError("No candidate files available for reflink matching")
+		return handleError("No candidate files available for reflink matching")
 	}
 
 	// Build path to existing file (matched torrent's content)
@@ -8812,7 +8790,7 @@ func (s *Service) processReflinkMode(
 			Int("instanceID", candidate.InstanceID).
 			Str("matchedHash", matchedTorrent.Hash).
 			Msg("[CROSSSEED] Reflink mode: no content path or save path available")
-		return reflinkError("No content path or save path available for matched torrent")
+		return handleError("No content path or save path available for matched torrent")
 	}
 
 	// Ensure base directory exists before checking filesystem
@@ -8821,7 +8799,7 @@ func (s *Service) processReflinkMode(
 			Err(err).
 			Str("hardlinkBaseDir", instance.HardlinkBaseDir).
 			Msg("[CROSSSEED] Reflink mode: failed to create base directory")
-		return reflinkError(fmt.Sprintf("Failed to create reflink base directory: %v", err))
+		return handleError(fmt.Sprintf("Failed to create reflink base directory: %v", err))
 	}
 
 	// Validate same filesystem (required for reflinks on Linux)
@@ -8832,14 +8810,14 @@ func (s *Service) processReflinkMode(
 			Str("existingPath", existingFilePath).
 			Str("hardlinkBaseDir", instance.HardlinkBaseDir).
 			Msg("[CROSSSEED] Reflink mode: failed to check filesystem, aborting")
-		return reflinkError(fmt.Sprintf("Failed to verify same filesystem: %v", err))
+		return handleError(fmt.Sprintf("Failed to verify same filesystem: %v", err))
 	}
 	if !sameFS {
 		log.Warn().
 			Str("existingPath", existingFilePath).
 			Str("hardlinkBaseDir", instance.HardlinkBaseDir).
 			Msg("[CROSSSEED] Reflink mode: different filesystems, aborting")
-		return reflinkError("Reflink mode enabled but source and destination are on different filesystems")
+		return handleError("Reflink mode enabled but source and destination are on different filesystems")
 	}
 
 	// Check reflink support
@@ -8849,7 +8827,7 @@ func (s *Service) processReflinkMode(
 			Str("reason", reason).
 			Str("hardlinkBaseDir", instance.HardlinkBaseDir).
 			Msg("[CROSSSEED] Reflink mode: filesystem does not support reflinks")
-		return reflinkError("Reflink not supported: " + reason)
+		return handleError("Reflink not supported: " + reason)
 	}
 
 	// Reflink mode always uses Original layout to match the incoming torrent's structure exactly.
@@ -8908,7 +8886,7 @@ func (s *Service) processReflinkMode(
 	}
 
 	if len(candidateTorrentFilesToClone) == 0 {
-		return reflinkError("No cloneable files found (all source files would need to be downloaded)")
+		return handleError("No cloneable files found (all source files would need to be downloaded)")
 	}
 
 	// Build reflink tree plan with only the cloneable files
@@ -8920,7 +8898,7 @@ func (s *Service) processReflinkMode(
 			Str("torrentName", torrentName).
 			Str("destDir", destDir).
 			Msg("[CROSSSEED] Reflink mode: failed to build plan, aborting")
-		return reflinkError(fmt.Sprintf("Failed to build reflink plan: %v", err))
+		return handleError(fmt.Sprintf("Failed to build reflink plan: %v", err))
 	}
 
 	// Create reflink tree on disk
@@ -8931,7 +8909,7 @@ func (s *Service) processReflinkMode(
 			Str("torrentName", torrentName).
 			Str("destDir", destDir).
 			Msg("[CROSSSEED] Reflink mode: failed to create reflink tree, aborting")
-		return reflinkError(fmt.Sprintf("Failed to create reflink tree: %v", err))
+		return handleError(fmt.Sprintf("Failed to create reflink tree: %v", err))
 	}
 
 	log.Info().

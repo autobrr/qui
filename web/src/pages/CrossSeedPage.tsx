@@ -16,6 +16,7 @@ import {
   CardHeader,
   CardTitle
 } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -89,6 +90,7 @@ interface GlobalCrossSeedSettings {
   skipAutoResumeWebhook: boolean
   skipRecheck: boolean
   skipPieceBoundarySafetyCheck: boolean
+  fallbackToRegularMode: boolean
   // Webhook source filtering: filter which local torrents to search when checking webhook requests
   webhookSourceCategories: string[]
   webhookSourceTags: string[]
@@ -139,6 +141,7 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   skipAutoResumeWebhook: false,
   skipRecheck: false,
   skipPieceBoundarySafetyCheck: true,
+  fallbackToRegularMode: false,
   // Webhook source filtering defaults - empty means no filtering (all torrents)
   webhookSourceCategories: [],
   webhookSourceTags: [],
@@ -213,6 +216,7 @@ function HardlinkModeSettings() {
     useReflinks: boolean
     hardlinkBaseDir: string
     hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
+    fallbackToRegularMode: boolean
   }
   const [formMap, setFormMap] = useState<Record<number, InstanceFormState>>({})
   const [isOpen, setIsOpen] = useState<boolean | undefined>(undefined)
@@ -236,6 +240,7 @@ function HardlinkModeSettings() {
       useReflinks: instance.useReflinks,
       hardlinkBaseDir: instance.hardlinkBaseDir || "",
       hardlinkDirPreset: instance.hardlinkDirPreset || "flat",
+      fallbackToRegularMode: instance.fallbackToRegularMode ?? false,
     }
   }, [formMap])
 
@@ -301,6 +306,7 @@ function HardlinkModeSettings() {
         useReflinks: form.useReflinks,
         hardlinkBaseDir: form.hardlinkBaseDir,
         hardlinkDirPreset: form.hardlinkDirPreset,
+        fallbackToRegularMode: form.fallbackToRegularMode,
       },
     }, {
       onSuccess: () => {
@@ -469,6 +475,24 @@ function HardlinkModeSettings() {
                                   <SelectItem value="by-instance">By Instance</SelectItem>
                                 </SelectContent>
                               </Select>
+                            </div>
+
+                            <div className="flex items-start gap-3">
+                              <Checkbox
+                                id={`fallback-${instance.id}`}
+                                checked={form.fallbackToRegularMode}
+                                onCheckedChange={(checked) =>
+                                  handleFormChange(instance.id, "fallbackToRegularMode", checked === true, form)
+                                }
+                              />
+                              <div className="space-y-0.5 flex-1">
+                                <Label htmlFor={`fallback-${instance.id}`} className="font-medium cursor-pointer">
+                                  Fallback to regular mode on error
+                                </Label>
+                                <p className="text-xs text-muted-foreground">
+                                  If {form.useReflinks ? "reflink" : "hardlink"} fails (e.g., different filesystems), fall back to regular mode with piece boundary safety check.
+                                </p>
+                              </div>
                             </div>
                           </div>
                         </>
@@ -715,6 +739,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
         skipRecheck: settings.skipRecheck ?? false,
         skipPieceBoundarySafetyCheck: settings.skipPieceBoundarySafetyCheck ?? true,
+        fallbackToRegularMode: settings.fallbackToRegularMode ?? false,
         // Webhook source filtering
         webhookSourceCategories: settings.webhookSourceCategories ?? [],
         webhookSourceTags: settings.webhookSourceTags ?? [],
@@ -797,6 +822,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
         skipRecheck: settings.skipRecheck ?? false,
         skipPieceBoundarySafetyCheck: settings.skipPieceBoundarySafetyCheck ?? true,
+        fallbackToRegularMode: settings.fallbackToRegularMode ?? false,
         webhookSourceCategories: settings.webhookSourceCategories ?? [],
         webhookSourceTags: settings.webhookSourceTags ?? [],
         webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
@@ -825,6 +851,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       skipAutoResumeWebhook: globalSource.skipAutoResumeWebhook,
       skipRecheck: globalSource.skipRecheck,
       skipPieceBoundarySafetyCheck: globalSource.skipPieceBoundarySafetyCheck,
+      fallbackToRegularMode: globalSource.fallbackToRegularMode,
       // Webhook source filtering
       webhookSourceCategories: globalSource.webhookSourceCategories,
       webhookSourceTags: globalSource.webhookSourceTags,

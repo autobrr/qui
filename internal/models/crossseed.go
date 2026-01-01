@@ -70,6 +70,7 @@ type CrossSeedAutomationSettings struct {
 	SkipAutoResumeWebhook        bool `json:"skipAutoResumeWebhook"`        // Skip auto-resume for /apply webhook results
 	SkipRecheck                  bool `json:"skipRecheck"`                  // Skip cross-seed matches that require a recheck
 	SkipPieceBoundarySafetyCheck bool `json:"skipPieceBoundarySafetyCheck"` // Skip piece boundary safety check (risky: may corrupt existing seeded data)
+	FallbackToRegularMode        bool `json:"fallbackToRegularMode"`        // Fallback to regular mode when reflink/hardlink fails (piece boundary check enforced)
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -126,7 +127,8 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		SkipAutoResumeCompletion:     false,
 		SkipAutoResumeWebhook:        false,
 		SkipRecheck:                  false,
-		SkipPieceBoundarySafetyCheck: true, // Skip by default to maximize matches
+		SkipPieceBoundarySafetyCheck: true,  // Skip by default to maximize matches
+		FallbackToRegularMode:        false, // Default to false - fail hard on reflink/hardlink errors
 		CreatedAt:                    time.Now().UTC(),
 		UpdatedAt:                    time.Now().UTC(),
 	}

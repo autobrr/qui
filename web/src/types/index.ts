@@ -30,6 +30,8 @@ export interface Instance {
   hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
   // Reflink mode (copy-on-write) - mutually exclusive with hardlink mode
   useReflinks: boolean
+  // Fallback to regular mode when reflink/hardlink fails
+  fallbackToRegularMode: boolean
   sortOrder: number
   isActive: boolean
   reannounceSettings: InstanceReannounceSettings
@@ -50,6 +52,8 @@ export interface InstanceFormData {
   hardlinkDirPreset?: "flat" | "by-tracker" | "by-instance"
   // Reflink mode (copy-on-write) - mutually exclusive with hardlink mode
   useReflinks?: boolean
+  // Fallback to regular mode when reflink/hardlink fails
+  fallbackToRegularMode?: boolean
   reannounceSettings: InstanceReannounceSettings
 }
 
@@ -1679,6 +1683,7 @@ export interface CrossSeedAutomationSettings {
   skipAutoResumeWebhook: boolean
   skipRecheck: boolean
   skipPieceBoundarySafetyCheck: boolean
+  fallbackToRegularMode: boolean
   // Hardlink mode settings
   useHardlinks: boolean
   hardlinkBaseDir: string
@@ -1724,6 +1729,7 @@ export interface CrossSeedAutomationSettingsPatch {
   skipAutoResumeWebhook?: boolean
   skipRecheck?: boolean
   skipPieceBoundarySafetyCheck?: boolean
+  fallbackToRegularMode?: boolean
   // Hardlink mode settings
   useHardlinks?: boolean
   hardlinkBaseDir?: string
