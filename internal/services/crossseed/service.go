@@ -1583,6 +1583,11 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		candidateCache: make(map[string]*FindCandidatesResponse),
 	}
 
+	log.Debug().
+		Int("feedItems", len(searchResp.Results)).
+		Bool("contextCancelled", ctx.Err() != nil).
+		Msg("[RSS] Starting feed item processing")
+
 	processed := 0
 	var runErr error
 
