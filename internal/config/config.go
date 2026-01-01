@@ -108,6 +108,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("dataDir", "") // Empty means auto-detect (next to config file)
 	c.viper.SetDefault("checkForUpdates", true)
 	c.viper.SetDefault("trackerIconsFetchEnabled", true)
+	c.viper.SetDefault("crossSeedRecoverErroredTorrents", false)
 	c.viper.SetDefault("pprofEnabled", false)
 	c.viper.SetDefault("metricsEnabled", false)
 	c.viper.SetDefault("metricsHost", "127.0.0.1")
@@ -192,6 +193,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("dataDir", envPrefix+"DATA_DIR")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
 	c.viper.BindEnv("trackerIconsFetchEnabled", envPrefix+"TRACKER_ICONS_FETCH_ENABLED")
+	c.viper.BindEnv("crossSeedRecoverErroredTorrents", envPrefix+"CROSS_SEED_RECOVER_ERRORED_TORRENTS")
 	c.viper.BindEnv("pprofEnabled", envPrefix+"PPROF_ENABLED")
 	c.viper.BindEnv("metricsEnabled", envPrefix+"METRICS_ENABLED")
 	c.viper.BindEnv("metricsHost", envPrefix+"METRICS_HOST")
@@ -250,6 +252,7 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.DataDir = c.viper.GetString("dataDir")
 	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
 	c.Config.TrackerIconsFetchEnabled = c.viper.GetBool("trackerIconsFetchEnabled")
+	c.Config.CrossSeedRecoverErroredTorrents = c.viper.GetBool("crossSeedRecoverErroredTorrents")
 	c.Config.PprofEnabled = c.viper.GetBool("pprofEnabled")
 
 	c.Config.MetricsEnabled = c.viper.GetBool("metricsEnabled")
@@ -353,6 +356,13 @@ sessionSecret = "{{ .sessionSecret }}"
 # Disable to prevent qui from requesting tracker favicons from remote trackers.
 # Default: true
 #trackerIconsFetchEnabled = true
+
+# Cross-seed errored torrent recovery (requires restart)
+# When enabled, cross-seed automation will attempt to recover torrents in error/missingFiles state
+# by triggering recheck and waiting for completion. This can cause runs to take 25+ minutes.
+# When disabled (default), errored torrents are simply excluded from candidate selection.
+# Default: false
+#crossSeedRecoverErroredTorrents = false
 
 # Log level
 # Default: "INFO"

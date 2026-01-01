@@ -270,6 +270,11 @@ type Service struct {
 	// Per-instance completion settings
 	completionStore *models.InstanceCrossSeedCompletionStore
 
+	// recoverErroredTorrentsEnabled controls whether to attempt recovery of errored/missingFiles
+	// torrents before candidate selection. When false (default), errored torrents are simply
+	// excluded from matching. Set at startup via config.
+	recoverErroredTorrentsEnabled bool
+
 	automationMu     sync.Mutex
 	automationCancel context.CancelFunc
 	automationWake   chan struct{}
@@ -330,6 +335,7 @@ func NewService(
 	externalProgramStore *models.ExternalProgramStore,
 	completionStore *models.InstanceCrossSeedCompletionStore,
 	trackerCustomizationStore *models.TrackerCustomizationStore,
+	recoverErroredTorrents bool,
 ) *Service {
 	searchCache := ttlcache.New(ttlcache.Options[string, []TorrentSearchResult]{}.
 		SetDefaultTTL(searchResultCacheTTL))
@@ -358,9 +364,10 @@ func NewService(
 		automationStore:           automationStore,
 		jackettService:            jackettService,
 		arrService:                arrService,
-		externalProgramStore:      externalProgramStore,
-		completionStore:           completionStore,
-		automationWake:            make(chan struct{}, 1),
+		externalProgramStore:          externalProgramStore,
+		completionStore:               completionStore,
+		recoverErroredTorrentsEnabled: recoverErroredTorrents,
+		automationWake:                make(chan struct{}, 1),
 		domainMappings:            initializeDomainMappings(),
 		torrentFilesCache:         contentFilesCache,
 		dedupCache:                dedupCache,
@@ -512,6 +519,16 @@ type searchRunState struct {
 	recentResults    []models.CrossSeedSearchResult
 	nextWake         time.Time
 	lastError        error
+}
+
+// shouldSkipErroredTorrent returns true if the torrent should be excluded from
+// candidate selection due to its error state. When recovery is disabled (default),
+// errored/missingFiles torrents are skipped since they can't provide data.
+func (s *Service) shouldSkipErroredTorrent(state qbt.TorrentState) bool {
+	if s.recoverErroredTorrentsEnabled {
+		return false
+	}
+	return state == qbt.TorrentStateError || state == qbt.TorrentStateMissingFiles
 }
 
 func (s *Service) ensureIndexersConfigured(ctx context.Context) error {
@@ -2254,20 +2271,22 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 				continue
 			}
 
-			// Recover errored torrents that might be actually complete
-			if err := s.recoverErroredTorrents(ctx, instanceID, torrents); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to recover errored torrents")
-			}
+			// Recover errored torrents that might be actually complete (if enabled)
+			if s.recoverErroredTorrentsEnabled {
+				if recoverErr := s.recoverErroredTorrents(ctx, instanceID, torrents); recoverErr != nil {
+					log.Warn().Err(recoverErr).Int("instanceID", instanceID).Msg("Failed to recover errored torrents")
+				}
 
-			// Re-fetch torrents after recovery to get updated states
-			torrents, err = s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterCompleted})
-			if err != nil {
-				log.Warn().
-					Int("instanceID", instanceID).
-					Str("instanceName", instance.Name).
-					Err(err).
-					Msg("Failed to re-get torrents from instance after recovery, skipping")
-				continue
+				// Re-fetch torrents after recovery to get updated states
+				torrents, err = s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterCompleted})
+				if err != nil {
+					log.Warn().
+						Int("instanceID", instanceID).
+						Str("instanceName", instance.Name).
+						Err(err).
+						Msg("Failed to re-get torrents from instance after recovery, skipping")
+					continue
+				}
 			}
 		}
 
@@ -2278,6 +2297,11 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 		for _, torrent := range torrents {
 			// Only complete torrents can provide data
 			if torrent.Progress < 1.0 {
+				continue
+			}
+
+			// Skip errored torrents when recovery is disabled
+			if s.shouldSkipErroredTorrent(torrent.State) {
 				continue
 			}
 
@@ -5614,13 +5638,19 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 		return fmt.Errorf("list torrents: %w", err)
 	}
 
-	// Recover errored torrents by performing recheck
-	if err := s.recoverErroredTorrents(ctx, state.opts.InstanceID, torrents); err != nil {
-		log.Warn().Err(err).Int("instanceID", state.opts.InstanceID).Msg("Failed to recover some errored torrents")
+	// Recover errored torrents by performing recheck (if enabled)
+	if s.recoverErroredTorrentsEnabled {
+		if err := s.recoverErroredTorrents(ctx, state.opts.InstanceID, torrents); err != nil {
+			log.Warn().Err(err).Int("instanceID", state.opts.InstanceID).Msg("Failed to recover some errored torrents")
+		}
 	}
 
 	filtered := make([]qbt.Torrent, 0, len(torrents))
 	for _, torrent := range torrents {
+		// Skip errored torrents when recovery is disabled
+		if s.shouldSkipErroredTorrent(torrent.State) {
+			continue
+		}
 		if matchesSearchFilters(&torrent, state.opts) {
 			filtered = append(filtered, torrent)
 		}

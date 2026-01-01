@@ -203,6 +203,9 @@ QUI__DATA_DIR=...        # Optional: custom data directory (default: next to con
 # Tracker Icons
 QUI__TRACKER_ICONS_FETCH_ENABLED=false  # Optional: set to false to disable remote tracker icon fetching (default: true)
 
+# Cross-Seed Automation
+QUI__CROSS_SEED_RECOVER_ERRORED_TORRENTS=true  # Optional: attempt recovery of errored torrents before cross-seed matching (default: false, requires restart)
+
 # Metrics
 QUI__METRICS_ENABLED=true   # Optional: enable Prometheus metrics (default: false)
 QUI__METRICS_HOST=127.0.0.1  # Optional: metrics server bind address (default: 127.0.0.1)
