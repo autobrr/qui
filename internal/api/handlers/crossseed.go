@@ -5,6 +5,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -519,6 +520,29 @@ func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) 
 		RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
+
+	// Parse torrent for logging (cheap operation, also done in service)
+	var torrentName, torrentHash string
+	var totalSize int64
+	var fileCount int
+	if torrentBytes, err := base64.StdEncoding.DecodeString(req.TorrentData); err == nil {
+		if name, hash, files, info, err := crossseed.ParseTorrentMetadataWithInfo(torrentBytes); err == nil {
+			torrentName, torrentHash = name, hash
+			totalSize = info.TotalLength()
+			fileCount = len(files)
+		}
+	}
+
+	log.Debug().
+		Str("source", "cross-seed.webhook").
+		Str("torrentName", torrentName).
+		Str("torrentHash", torrentHash).
+		Int64("size", totalSize).
+		Int("fileCount", fileCount).
+		Ints("instanceIds", req.InstanceIDs).
+		Str("indexerName", req.IndexerName).
+		Str("category", req.Category).
+		Msg("Webhook apply: received request")
 
 	response, err := h.service.AutobrrApply(context.WithoutCancel(r.Context()), &req)
 	if err != nil {
