@@ -1,6 +1,42 @@
-import { themes as prismThemes } from "prism-react-renderer";
-import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
+import type { Config } from "@docusaurus/types";
+import type { PrismTheme } from "prism-react-renderer";
+
+// Custom minimal light theme
+const minimalLightTheme: PrismTheme = {
+  plain: {
+    color: "#1a1a1a",
+    backgroundColor: "#f5f5f5",
+  },
+  styles: [
+    { types: ["comment", "prolog", "doctype", "cdata"], style: { color: "#6b7280" } },
+    { types: ["punctuation"], style: { color: "#525252" } },
+    { types: ["property", "tag", "boolean", "number", "constant", "symbol"], style: { color: "#0f766e" } },
+    { types: ["selector", "attr-name", "string", "char", "builtin"], style: { color: "#4f46e5" } },
+    { types: ["operator", "entity", "url"], style: { color: "#525252" } },
+    { types: ["atrule", "attr-value", "keyword"], style: { color: "#7c3aed" } },
+    { types: ["function", "class-name"], style: { color: "#dc2626" } },
+    { types: ["regex", "important", "variable"], style: { color: "#ea580c" } },
+  ],
+};
+
+// Custom minimal dark theme
+const minimalDarkTheme: PrismTheme = {
+  plain: {
+    color: "#e5e5e5",
+    backgroundColor: "#2a2a2a",
+  },
+  styles: [
+    { types: ["comment", "prolog", "doctype", "cdata"], style: { color: "#737373" } },
+    { types: ["punctuation"], style: { color: "#a3a3a3" } },
+    { types: ["property", "tag", "boolean", "number", "constant", "symbol"], style: { color: "#5eead4" } },
+    { types: ["selector", "attr-name", "string", "char", "builtin"], style: { color: "#a5b4fc" } },
+    { types: ["operator", "entity", "url"], style: { color: "#a3a3a3" } },
+    { types: ["atrule", "attr-value", "keyword"], style: { color: "#c4b5fd" } },
+    { types: ["function", "class-name"], style: { color: "#fca5a5" } },
+    { types: ["regex", "important", "variable"], style: { color: "#fdba74" } },
+  ],
+};
 
 const config: Config = {
   title: "qui",
@@ -33,7 +69,7 @@ const config: Config = {
         docs: {
           sidebarPath: "./sidebars.ts",
           editUrl: "https://github.com/autobrr/qui/tree/main/documentation/",
-          routeBasePath: "/",
+          routeBasePath: "docs",
         },
         blog: false,
         theme: {
@@ -77,15 +113,15 @@ const config: Config = {
           items: [
             {
               label: "Getting Started",
-              to: "/getting-started/installation",
+              to: "/docs/getting-started/installation",
             },
             {
               label: "Configuration",
-              to: "/configuration/environment",
+              to: "/docs/configuration/environment",
             },
             {
               label: "Features",
-              to: "/features/backups",
+              to: "/docs/features/backups",
             },
           ],
         },
@@ -116,11 +152,11 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `Copyright ${new Date().getFullYear()} autobrr. Built with Docusaurus.`,
+      copyright: `Copyright ${new Date().getFullYear()} autobrr.`,
     },
     prism: {
-      theme: prismThemes.github,
-      darkTheme: prismThemes.dracula,
+      theme: minimalLightTheme,
+      darkTheme: minimalDarkTheme,
       additionalLanguages: ["bash", "toml", "nginx", "yaml", "json"],
     },
   } satisfies Preset.ThemeConfig,

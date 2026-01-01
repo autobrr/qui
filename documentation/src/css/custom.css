@@ -213,14 +213,15 @@
 }
 
 /* Code blocks */
-.prism-code {
-  border-radius: var(--ifm-code-border-radius);
+pre {
+  padding: 1rem;
+  border-radius: 0.5rem;
 }
 
 /* Inline code */
 code {
-  border: 1px solid var(--ifm-toc-border-color);
-  padding: 0.1rem 0.3rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 0.25rem;
 }
 
 /* Tables */
@@ -237,10 +238,41 @@ th {
   background-color: #3a3a3a;
 }
 
-/* Admonitions */
-.admonition {
-  border-radius: var(--ifm-alert-border-radius);
-  border-left-width: 4px;
+/* Admonitions - minimal style with neutral backgrounds */
+[class*='theme-admonition'] {
+  --ifm-alert-background-color: #f5f5f5;
+  border-radius: 0.5rem;
+  border: none;
+  border-left: 3px solid;
+}
+
+[data-theme='dark'] [class*='theme-admonition'] {
+  --ifm-alert-background-color: #262626;
+}
+
+/* Note - neutral gray */
+.alert--secondary {
+  border-left-color: #737373;
+}
+
+/* Tip - muted green */
+.alert--success {
+  border-left-color: var(--ifm-color-success);
+}
+
+/* Info - muted slate */
+.alert--info {
+  border-left-color: #64748b;
+}
+
+/* Warning - muted amber */
+.alert--warning {
+  border-left-color: var(--ifm-color-warning);
+}
+
+/* Danger - muted red */
+.alert--danger {
+  border-left-color: var(--ifm-color-danger);
 }
 
 /* Search */

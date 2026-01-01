@@ -54,7 +54,7 @@ http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz
 4. Leave username/password blank and press **Test**
 5. Leave basic auth blank since qui handles that
 
-For cross-seed integration with autobrr, see the [Cross-Seed](/features/cross-seed/autobrr) section.
+For cross-seed integration with autobrr, see the [Cross-Seed](/docs/features/cross-seed/autobrr) section.
 
 ### cross-seed
 
