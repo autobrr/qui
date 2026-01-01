@@ -276,9 +276,9 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			state.categoryIncludeCrossSeeds = conditions.Category.IncludeCrossSeeds
 		} else if stats != nil {
 			if shouldApply {
-				stats.CategoryConditionNotMet++
-			} else {
 				stats.CategoryBlocked++
+			} else {
+				stats.CategoryConditionNotMet++
 			}
 		}
 	}
