@@ -185,5 +185,5 @@ func TestAutomationCollector_Describe(t *testing.T) {
 	}
 
 	// Should have all expected metrics descriptors
-	assert.Len(t, descs, 16, "Should have 16 metric descriptors")
+	assert.Len(t, descs, 2, "Should have 2 metric descriptors")
 }

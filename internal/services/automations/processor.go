@@ -64,24 +64,24 @@ type ruleRunStats struct {
 	DeleteNotCompleted               int
 }
 
-func (s *ruleRunStats) CollectMetrics(rule *models.Automation, metricsCollector *collector.AutomationCollector) {
-	labels := collector.GetAutomationRuleRunLabels(rule.InstanceID, rule.ID, rule.Name)
-	metricsCollector.RuleRunTotal.WithLabelValues(labels...).Inc()
-	metricsCollector.RuleRunMatchedTrackers.WithLabelValues(labels...).Add(float64(s.MatchedTrackers))
-	metricsCollector.RuleRunSpeedApplied.WithLabelValues(labels...).Add(float64(s.SpeedApplied))
-	metricsCollector.RuleRunSpeedConditionNotMet.WithLabelValues(labels...).Add(float64(s.SpeedConditionNotMet))
-	metricsCollector.RuleRunShareApplied.WithLabelValues(labels...).Add(float64(s.ShareApplied))
-	metricsCollector.RuleRunShareConditionNotMet.WithLabelValues(labels...).Add(float64(s.ShareConditionNotMet))
-	metricsCollector.RuleRunPauseApplied.WithLabelValues(labels...).Add(float64(s.PauseApplied))
-	metricsCollector.RuleRunPauseConditionNotMet.WithLabelValues(labels...).Add(float64(s.PauseConditionNotMet))
-	metricsCollector.RuleRunTagConditionMet.WithLabelValues(labels...).Add(float64(s.TagConditionMet))
-	metricsCollector.RuleRunTagConditionNotMet.WithLabelValues(labels...).Add(float64(s.TagConditionNotMet))
-	metricsCollector.RuleRunTagSkippedMissingUnregisteredSet.WithLabelValues(labels...).Add(float64(s.TagSkippedMissingUnregisteredSet))
-	metricsCollector.RuleRunCategoryApplied.WithLabelValues(labels...).Add(float64(s.CategoryApplied))
-	metricsCollector.RuleRunCategoryConditionNotMetOrBlocked.WithLabelValues(labels...).Add(float64(s.CategoryConditionNotMetOrBlocked))
-	metricsCollector.RuleRunDeleteApplied.WithLabelValues(labels...).Add(float64(s.DeleteApplied))
-	metricsCollector.RuleRunDeleteConditionNotMet.WithLabelValues(labels...).Add(float64(s.DeleteConditionNotMet))
-	metricsCollector.RuleRunDeleteNotCompleted.WithLabelValues(labels...).Add(float64(s.DeleteNotCompleted))
+func (s *ruleRunStats) CollectMetrics(rule *models.Automation, metricsCollector *collector.AutomationCollector, instanceName string) {
+	metricsCollector.GetAutomationRuleRunTotal(rule.InstanceID, instanceName, rule.ID, rule.Name).Inc()
+
+	m := metricsCollector.GetAutomationRuleRunActionTotal(rule.InstanceID, instanceName, rule.ID, rule.Name)
+	m.WithLabelValues("speed_applied").Add(float64(s.SpeedApplied))
+	m.WithLabelValues("speed_condition_not_met").Add(float64(s.SpeedConditionNotMet))
+	m.WithLabelValues("share_applied").Add(float64(s.ShareApplied))
+	m.WithLabelValues("share_condition_not_met").Add(float64(s.ShareConditionNotMet))
+	m.WithLabelValues("pause_applied").Add(float64(s.PauseApplied))
+	m.WithLabelValues("pause_condition_not_met").Add(float64(s.PauseConditionNotMet))
+	m.WithLabelValues("tag_condition_met").Add(float64(s.TagConditionMet))
+	m.WithLabelValues("tag_condition_not_met").Add(float64(s.TagConditionNotMet))
+	m.WithLabelValues("tag_skipped_missing_unregistered_set").Add(float64(s.TagSkippedMissingUnregisteredSet))
+	m.WithLabelValues("category_applied").Add(float64(s.CategoryApplied))
+	m.WithLabelValues("category_condition_not_met_or_blocked").Add(float64(s.CategoryConditionNotMetOrBlocked))
+	m.WithLabelValues("delete_applied").Add(float64(s.DeleteApplied))
+	m.WithLabelValues("delete_condition_not_met").Add(float64(s.DeleteConditionNotMet))
+	m.WithLabelValues("delete_not_completed").Add(float64(s.DeleteNotCompleted))
 }
 
 func (s *ruleRunStats) totalApplied() int {

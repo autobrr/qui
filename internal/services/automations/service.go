@@ -532,7 +532,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	return result, nil
 }
 
-func (s *Service) collectRuleRunMetrics(rules []*models.Automation, ruleStats map[int]*ruleRunStats) {
+func (s *Service) collectRuleRunMetrics(rules []*models.Automation, ruleStats map[int]*ruleRunStats, instanceName string) {
 	if s.metricsCollector == nil {
 		return
 	}
@@ -542,7 +542,7 @@ func (s *Service) collectRuleRunMetrics(rules []*models.Automation, ruleStats ma
 		if stats == nil {
 			continue
 		}
-		stats.CollectMetrics(rule, s.metricsCollector)
+		stats.CollectMetrics(rule, s.metricsCollector, instanceName)
 	}
 }
 
@@ -661,7 +661,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 
 	// Process all torrents through all eligible rules
 	ruleStats := make(map[int]*ruleRunStats)
-	defer s.collectRuleRunMetrics(eligibleRules, ruleStats)
+	defer s.collectRuleRunMetrics(eligibleRules, ruleStats, instance.Name)
 
 	states := processTorrents(torrents, eligibleRules, evalCtx, s.syncManager, skipCheck, ruleStats)
 
