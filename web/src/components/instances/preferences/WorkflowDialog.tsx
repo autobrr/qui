@@ -216,37 +216,42 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   }, [trackerCustomizations])
 
   // Process trackers to apply customizations (nicknames and merged domains)
+  // Also includes trackers from the current workflow being edited, so they remain
+  // visible even if no torrents currently use them
   const trackerOptions: Option[] = useMemo(() => {
-    if (!trackersQuery.data) return []
-
     const { domainToCustomization, secondaryDomains } = trackerCustomizationMaps
-    const trackers = Object.keys(trackersQuery.data)
+    const trackers = trackersQuery.data ? Object.keys(trackersQuery.data) : []
     const processed: Option[] = []
     const seenDisplayNames = new Set<string>()
+    const seenValues = new Set<string>()
 
-    for (const tracker of trackers) {
+    // Helper to add a tracker option
+    const addTracker = (tracker: string) => {
       const lowerTracker = tracker.toLowerCase()
 
       if (secondaryDomains.has(lowerTracker)) {
-        continue
+        return
       }
 
       const customization = domainToCustomization.get(lowerTracker)
 
       if (customization) {
         const displayKey = customization.displayName.toLowerCase()
-        if (seenDisplayNames.has(displayKey)) continue
+        const mergedValue = customization.domains.join(",")
+        if (seenDisplayNames.has(displayKey) || seenValues.has(mergedValue)) return
         seenDisplayNames.add(displayKey)
+        seenValues.add(mergedValue)
 
         const primaryDomain = customization.domains[0]
         processed.push({
           label: customization.displayName,
-          value: customization.domains.join(","),
+          value: mergedValue,
           icon: <TrackerIconImage tracker={primaryDomain} trackerIcons={trackerIcons} />,
         })
       } else {
-        if (seenDisplayNames.has(lowerTracker)) continue
+        if (seenDisplayNames.has(lowerTracker) || seenValues.has(tracker)) return
         seenDisplayNames.add(lowerTracker)
+        seenValues.add(tracker)
 
         processed.push({
           label: tracker,
@@ -256,10 +261,23 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       }
     }
 
+    // Add trackers from current torrents
+    for (const tracker of trackers) {
+      addTracker(tracker)
+    }
+
+    // Add trackers from the workflow being edited (so they persist even if no torrents use them)
+    if (rule && rule.trackerPattern !== "*") {
+      const savedDomains = parseTrackerDomains(rule)
+      for (const domain of savedDomains) {
+        addTracker(domain)
+      }
+    }
+
     processed.sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }))
 
     return processed
-  }, [trackersQuery.data, trackerCustomizationMaps, trackerIcons])
+  }, [trackersQuery.data, trackerCustomizationMaps, trackerIcons, rule])
 
   // Map individual domains to merged option values
   const mapDomainsToOptionValues = useMemo(() => {
