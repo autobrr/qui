@@ -400,7 +400,7 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                       <div className="flex items-center gap-2">
                         <Progress value={progress} className="h-1.5 w-16" />
                         <span className="tabular-nums text-[10px] text-muted-foreground w-10">
-                          {progress.toFixed(1)}%
+                          {(Math.floor(progress * 10) / 10).toFixed(1)}%
                         </span>
                       </div>
                     </td>
