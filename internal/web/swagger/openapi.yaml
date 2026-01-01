@@ -3028,6 +3028,9 @@ paths:
                   type: boolean
                 findIndividualEpisodes:
                   type: boolean
+                indexerName:
+                  type: string
+                  description: Indexer display name (e.g., "TorrentDB"). Only used when "Use indexer name as category" mode is enabled; ignored otherwise. Webhook applies cannot derive the indexer from the torrent file, so this field is required for that mode.
       responses:
         '200':
           description: Torrent processed

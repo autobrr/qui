@@ -694,11 +694,16 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
   useEffect(() => {
     if (settings && !globalSettingsInitialized) {
+      // If all three category modes are false, default to suffix mode
+      // This handles legacy databases where none were explicitly set
+      const hasCategoryMode = settings.useCrossCategorySuffix || settings.useCategoryFromIndexer || settings.useCustomCategory
+      const useCrossCategorySuffix = hasCategoryMode ? (settings.useCrossCategorySuffix ?? false) : true
+
       setGlobalSettings({
         findIndividualEpisodes: settings.findIndividualEpisodes,
         sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent ?? 5.0,
         useCategoryFromIndexer: settings.useCategoryFromIndexer ?? false,
-        useCrossCategorySuffix: settings.useCrossCategorySuffix ?? true,
+        useCrossCategorySuffix,
         useCustomCategory: settings.useCustomCategory ?? false,
         customCategory: settings.customCategory ?? "",
         runExternalProgramId: settings.runExternalProgramId ?? null,
@@ -776,13 +781,17 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const buildGlobalPatch = useCallback((): CrossSeedAutomationSettingsPatch | null => {
     if (!settings) return null
 
+    // If all three category modes are false, default to suffix mode
+    const hasCategoryMode = settings.useCrossCategorySuffix || settings.useCategoryFromIndexer || settings.useCustomCategory
+    const defaultCrossCategorySuffix = hasCategoryMode ? (settings.useCrossCategorySuffix ?? false) : true
+
     const globalSource = globalSettingsInitialized
       ? globalSettings
       : {
         findIndividualEpisodes: settings.findIndividualEpisodes,
         sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent,
         useCategoryFromIndexer: settings.useCategoryFromIndexer,
-        useCrossCategorySuffix: settings.useCrossCategorySuffix ?? true,
+        useCrossCategorySuffix: defaultCrossCategorySuffix,
         useCustomCategory: settings.useCustomCategory ?? false,
         customCategory: settings.customCategory ?? "",
         runExternalProgramId: settings.runExternalProgramId ?? null,

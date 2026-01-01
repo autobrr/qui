@@ -384,4 +384,8 @@ type AutobrrApplyRequest struct {
 	SkipIfExists   *bool    `json:"skipIfExists,omitempty"`
 	// FindIndividualEpisodes overrides the automation-level episode matching behavior when set.
 	FindIndividualEpisodes *bool `json:"findIndividualEpisodes,omitempty"`
+	// IndexerName is the display name of the indexer (e.g., "TorrentDB") used when
+	// "Use indexer name as category" mode is enabled. Without this field, webhook applies
+	// cannot derive the indexer from the torrent file itself.
+	IndexerName string `json:"indexerName,omitempty"`
 }
