@@ -23,8 +23,6 @@ type CrossSeedRequest struct {
 	Category string `json:"category,omitempty"`
 	// Tags to apply to the cross-seeded torrent (source-specific tags from settings)
 	Tags []string `json:"tags,omitempty"`
-	// IgnorePatterns specify files to ignore when matching
-	IgnorePatterns []string `json:"ignore_patterns,omitempty"`
 	// SkipIfExists if true, skip cross-seeding if torrent already exists on target
 	SkipIfExists *bool `json:"skip_if_exists,omitempty"`
 	// StartPaused controls whether newly added torrents start paused
@@ -135,8 +133,6 @@ type TorrentFile struct {
 type FindCandidatesRequest struct {
 	// TorrentName is the title/name of the torrent you want to add (just a string, torrent doesn't exist yet)
 	TorrentName string `json:"torrent_name"`
-	// IgnorePatterns are file patterns to ignore when matching (e.g., "*.srt", "*sample*.mkv")
-	IgnorePatterns []string `json:"ignore_patterns,omitempty"`
 	// SourceIndexer optionally records where the request originated (e.g., automation feed indexer)
 	SourceIndexer string `json:"source_indexer,omitempty"`
 	// TargetInstanceIDs specifies which instances to search for EXISTING torrents with matching files
@@ -376,12 +372,11 @@ type WebhookCheckResponse struct {
 type AutobrrApplyRequest struct {
 	TorrentData string `json:"torrentData"`
 	// InstanceIDs optionally scopes the apply request to specific instances; omit or pass an empty array to target all matches.
-	InstanceIDs    []int    `json:"instanceIds,omitempty"`
-	Category       string   `json:"category,omitempty"`
-	Tags           []string `json:"tags,omitempty"`
-	IgnorePatterns []string `json:"ignorePatterns,omitempty"`
-	StartPaused    *bool    `json:"startPaused,omitempty"`
-	SkipIfExists   *bool    `json:"skipIfExists,omitempty"`
+	InstanceIDs  []int    `json:"instanceIds,omitempty"`
+	Category     string   `json:"category,omitempty"`
+	Tags         []string `json:"tags,omitempty"`
+	StartPaused  *bool    `json:"startPaused,omitempty"`
+	SkipIfExists *bool    `json:"skipIfExists,omitempty"`
 	// FindIndividualEpisodes overrides the automation-level episode matching behavior when set.
 	FindIndividualEpisodes *bool `json:"findIndividualEpisodes,omitempty"`
 	// IndexerName is the display name of the indexer (e.g., "TorrentDB") used when

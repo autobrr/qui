@@ -3034,10 +3034,6 @@ paths:
                   type: array
                   items:
                     type: string
-                ignorePatterns:
-                  type: array
-                  items:
-                    type: string
                 startPaused:
                   type: boolean
                 skipIfExists:
@@ -4534,10 +4530,6 @@ components:
           type: array
           items:
             type: string
-        ignorePatterns:
-          type: array
-          items:
-            type: string
         targetInstanceIds:
           type: array
           items:
@@ -4616,10 +4608,6 @@ components:
           type: string
           nullable: true
         tags:
-          type: array
-          items:
-            type: string
-        ignorePatterns:
           type: array
           items:
             type: string

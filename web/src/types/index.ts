@@ -1647,7 +1647,6 @@ export interface CrossSeedAutomationSettings {
   runIntervalMinutes: number
   startPaused: boolean
   category?: string | null
-  ignorePatterns: string[]
   targetInstanceIds: number[]
   targetIndexerIds: number[]
   // RSS source filtering: filter which local torrents to search when checking RSS feeds
@@ -1693,7 +1692,6 @@ export interface CrossSeedAutomationSettingsPatch {
   runIntervalMinutes?: number
   startPaused?: boolean
   category?: string | null
-  ignorePatterns?: string[]
   targetInstanceIds?: number[]
   targetIndexerIds?: number[]
   // RSS source filtering: filter which local torrents to search when checking RSS feeds
