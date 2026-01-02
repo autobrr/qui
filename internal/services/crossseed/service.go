@@ -6166,8 +6166,24 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 	}
 
 	result.Added = false
-	result.Message = "no instances accepted torrent via " + match.Indexer
+	result.Message = extractFailureMessage(resp.Results, match.Indexer)
 	return result, nil
+}
+
+// extractFailureMessage returns a descriptive message from instance results.
+// Prefers Message over Status, falls back to a generic message if both are empty.
+func extractFailureMessage(results []InstanceCrossSeedResult, indexer string) string {
+	fallback := "no instances accepted torrent via " + indexer
+	if len(results) == 0 {
+		return fallback
+	}
+	if msg := results[0].Message; msg != "" {
+		return msg
+	}
+	if status := results[0].Status; status != "" {
+		return status
+	}
+	return fallback
 }
 
 // filterIndexerIDsForTorrentAsync performs indexer filtering with async content filtering support.

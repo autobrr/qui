@@ -521,6 +521,14 @@ func (app *Application) runServer() {
 	filesManagerService := filesmanager.NewService(db) // implements qbittorrent.FilesManager
 	syncManager.SetFilesManager(filesManagerService)
 
+	// Start background orphan cleanup for torrent files cache
+	filesCleanupCtx, filesCleanupCancel := context.WithCancel(context.Background())
+	defer filesCleanupCancel()
+	filesManagerService.StartOrphanCleanup(filesCleanupCtx,
+		&instanceListerAdapter{store: instanceStore},
+		&torrentHashAdapter{syncManager: syncManager},
+	)
+
 	// Initialize Torznab indexer store
 	torznabIndexerStore, err := models.NewTorznabIndexerStore(db, cfg.GetEncryptionKey())
 	if err != nil {
@@ -777,4 +785,41 @@ func (app *Application) runServer() {
 	//}
 	//
 	//log.Info().Msg("Server stopped")
+}
+
+// instanceListerAdapter implements filesmanager.InstanceLister
+type instanceListerAdapter struct {
+	store *models.InstanceStore
+}
+
+func (a *instanceListerAdapter) ListInstanceIDs(ctx context.Context) ([]int, error) {
+	instances, err := a.store.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list instances: %w", err)
+	}
+	// Only return active instances - disabled ones can't be queried for current hashes
+	ids := make([]int, 0, len(instances))
+	for _, inst := range instances {
+		if inst.IsActive {
+			ids = append(ids, inst.ID)
+		}
+	}
+	return ids, nil
+}
+
+// torrentHashAdapter implements filesmanager.TorrentHashProvider
+type torrentHashAdapter struct {
+	syncManager *qbittorrent.SyncManager
+}
+
+func (a *torrentHashAdapter) GetAllTorrentHashes(ctx context.Context, instanceID int) ([]string, error) {
+	torrents, err := a.syncManager.GetAllTorrents(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("get torrents: %w", err)
+	}
+	hashes := make([]string, len(torrents))
+	for i := range torrents {
+		hashes[i] = torrents[i].Hash
+	}
+	return hashes, nil
 }
