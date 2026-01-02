@@ -1,5 +1,7 @@
 ---
 sidebar_position: 1
+title: Cross-Seed
+description: Automatically cross-seed torrents across trackers.
 ---
 
 # Cross-Seed Overview

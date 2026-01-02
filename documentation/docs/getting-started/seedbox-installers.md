@@ -1,5 +1,7 @@
 ---
 sidebar_position: 2
+title: Seedbox Installers
+description: One-line installers for popular seedbox providers.
 ---
 
 import Tabs from '@theme/Tabs';

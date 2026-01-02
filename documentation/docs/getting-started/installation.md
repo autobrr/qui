@@ -1,5 +1,7 @@
 ---
 sidebar_position: 1
+title: Installation
+description: Install qui on Linux with a single command.
 ---
 
 # Installation

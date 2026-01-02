@@ -1,5 +1,7 @@
 ---
 sidebar_position: 1
+title: Backups
+description: Schedule and restore qBittorrent instance backups.
 ---
 
 # Backups & Restore

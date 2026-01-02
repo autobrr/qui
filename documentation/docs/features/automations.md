@@ -1,10 +1,12 @@
 ---
 sidebar_position: 2
+title: Automations
+description: Rule-based automation for torrent management.
 ---
 
 # Automations
 
-Automations are a powerful rule-based engine that automatically applies actions to torrents based on conditions. Use them to manage speed limits, delete old torrents, organize with tags and categories, and more.
+Automations are a rule-based engine that automatically applies actions to torrents based on conditions. Use them to manage speed limits, delete old torrents, organize with tags and categories, and more.
 
 ## How Automations Work
 

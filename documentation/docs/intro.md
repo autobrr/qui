@@ -1,19 +1,19 @@
 ---
 sidebar_position: 1
 title: Introduction
+description: Fast, modern interface for qBittorrent with cross-seeding, automations, and backups.
 ---
 
 # qui
 
-A fast, modern web interface for qBittorrent. Supports managing multiple qBittorrent instances from a single, lightweight application.
+A web interface for qBittorrent. Manage multiple qBittorrent instances from a single application.
 
 ## Features
 
 - **Single Binary**: No dependencies, just download and run
 - **Multi-Instance Support**: Manage all your qBittorrent instances from one place
-- **Fast & Responsive**: Optimized for performance with large torrent collections
-- **Clean Interface**: Modern UI built with React and shadcn/ui components
-- **Multiple Themes**: Choose from various color themes
+- **Large Collections**: Handles thousands of torrents efficiently
+- **Themeable**: Multiple color themes available
 - **Base URL Support**: Serve from a subdirectory (e.g., `/qui/`) for reverse proxy setups
 - **OIDC Single Sign-On**: Authenticate through your OpenID Connect provider
 - **External Programs**: Launch custom scripts from the torrent context menu

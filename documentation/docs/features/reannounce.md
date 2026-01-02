@@ -1,5 +1,7 @@
 ---
 sidebar_position: 3
+title: Reannounce
+description: Automatically fix stalled torrents by reannouncing to trackers.
 ---
 
 # Tracker Reannounce
