@@ -2687,6 +2687,18 @@ paths:
         '500':
           description: Failed to trigger automation run
 
+  /api/cross-seed/run/cancel:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Cancel RSS automation run
+      description: Stops the currently running RSS automation run, if any.
+      responses:
+        '204':
+          description: RSS automation run cancelled successfully
+        '409':
+          description: No automation run is currently active
+
   /api/cross-seed/search/settings:
     get:
       tags:
