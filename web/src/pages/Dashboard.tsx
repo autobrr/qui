@@ -446,10 +446,14 @@ function InstanceCard({
                     to="/instances/$instanceId"
                     params={{ instanceId: instance.id.toString() }}
                     onClick={() => {
-                      localStorage.setItem("qui-filters-global", JSON.stringify({
-                        status: ["unregistered"],
-                        excludeStatus: []
-                      }))
+                      try {
+                        localStorage.setItem("qui-filters-global", JSON.stringify({
+                          status: ["unregistered"],
+                          excludeStatus: []
+                        }))
+                      } catch (error) {
+                        console.error("Failed to set filter state:", error)
+                      }
                     }}
                     className="flex items-center gap-2 text-xs w-full rounded px-1 -mx-1 hover:bg-destructive/10 transition-colors"
                   >
@@ -463,10 +467,14 @@ function InstanceCard({
                     to="/instances/$instanceId"
                     params={{ instanceId: instance.id.toString() }}
                     onClick={() => {
-                      localStorage.setItem("qui-filters-global", JSON.stringify({
-                        status: ["tracker_down"],
-                        excludeStatus: []
-                      }))
+                      try {
+                        localStorage.setItem("qui-filters-global", JSON.stringify({
+                          status: ["tracker_down"],
+                          excludeStatus: []
+                        }))
+                      } catch (error) {
+                        console.error("Failed to set filter state:", error)
+                      }
                     }}
                     className="flex items-center gap-2 text-xs w-full rounded px-1 -mx-1 hover:bg-yellow-500/10 transition-colors"
                   >
@@ -480,10 +488,14 @@ function InstanceCard({
                     to="/instances/$instanceId"
                     params={{ instanceId: instance.id.toString() }}
                     onClick={() => {
-                      localStorage.setItem("qui-filters-global", JSON.stringify({
-                        status: ["errored"],
-                        excludeStatus: []
-                      }))
+                      try {
+                        localStorage.setItem("qui-filters-global", JSON.stringify({
+                          status: ["errored"],
+                          excludeStatus: []
+                        }))
+                      } catch (error) {
+                        console.error("Failed to set filter state:", error)
+                      }
                     }}
                     className="flex items-center gap-2 text-xs w-full rounded px-1 -mx-1 hover:bg-destructive/10 transition-colors"
                   >
