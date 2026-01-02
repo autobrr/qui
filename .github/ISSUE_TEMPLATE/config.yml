@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Start a Discussion
+    url: https://github.com/autobrr/qui/discussions/new
+    about: Please use Discussions for questions, feature requests, and bug reports. Actionable issues will be converted by maintainers.
