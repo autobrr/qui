@@ -152,7 +152,7 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `Copyright ${new Date().getFullYear()} autobrr.`,
+      copyright: `Copyright ${new Date().getFullYear()} autobrr`,
     },
     prism: {
       theme: minimalLightTheme,

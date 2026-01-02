@@ -1,7 +1,7 @@
-import type { ReactNode } from "react";
 import Link from "@docusaurus/Link";
 import useDocusaurusContext from "@docusaurus/useDocusaurusContext";
 import Layout from "@theme/Layout";
+import type { ReactNode } from "react";
 import styles from "./index.module.css";
 
 function HeroSection() {

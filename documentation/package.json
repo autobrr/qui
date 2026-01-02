@@ -18,11 +18,14 @@
     "@docusaurus/core": "3.9.2",
     "@docusaurus/preset-classic": "3.9.2",
     "@mdx-js/react": "^3.0.0",
+    "@tailwindcss/postcss": "^4.1.18",
     "clsx": "^2.0.0",
+    "postcss": "^8.5.6",
     "prism-react-renderer": "^2.3.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "redoc": "^2.5.2"
+    "redoc": "^2.5.2",
+    "tailwindcss": "^4.1.18"
   },
   "devDependencies": {
     "@docusaurus/module-type-aliases": "3.9.2",
