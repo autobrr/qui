@@ -1666,6 +1666,7 @@ export interface CrossSeedAutomationSettings {
   useCrossCategorySuffix: boolean
   useCustomCategory: boolean
   customCategory: string
+  prefixOriginalCategory: boolean
   runExternalProgramId?: number | null
   // Source-specific tagging
   rssAutomationTags: string[]
@@ -1712,6 +1713,7 @@ export interface CrossSeedAutomationSettingsPatch {
   useCrossCategorySuffix?: boolean
   useCustomCategory?: boolean
   customCategory?: string
+  prefixOriginalCategory?: boolean
   runExternalProgramId?: number | null
   // Source-specific tagging
   rssAutomationTags?: string[]
