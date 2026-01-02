@@ -787,6 +787,19 @@ func (s *CrossSeedStore) CreateRun(ctx context.Context, run *CrossSeedRun) (*Cro
 		return nil, fmt.Errorf("get inserted run id: %w", err)
 	}
 
+	// Prune old runs, keeping only the 10 most recent
+	const pruneQuery = `
+		DELETE FROM cross_seed_runs
+		WHERE id NOT IN (
+			SELECT id FROM cross_seed_runs
+			ORDER BY started_at DESC
+			LIMIT 10
+		)
+	`
+	if _, err := s.db.ExecContext(ctx, pruneQuery); err != nil {
+		return nil, fmt.Errorf("prune old runs: %w", err)
+	}
+
 	return s.GetRun(ctx, runID)
 }
 
@@ -969,6 +982,20 @@ func (s *CrossSeedStore) CreateSearchRun(ctx context.Context, run *CrossSeedSear
 	insertedID, err := result.LastInsertId()
 	if err != nil {
 		return nil, fmt.Errorf("get inserted search run id: %w", err)
+	}
+
+	// Prune old runs for this instance, keeping only the 10 most recent
+	const pruneQuery = `
+		DELETE FROM cross_seed_search_runs
+		WHERE instance_id = ? AND id NOT IN (
+			SELECT id FROM cross_seed_search_runs
+			WHERE instance_id = ?
+			ORDER BY started_at DESC
+			LIMIT 10
+		)
+	`
+	if _, err := s.db.ExecContext(ctx, pruneQuery, run.InstanceID, run.InstanceID); err != nil {
+		return nil, fmt.Errorf("prune old search runs: %w", err)
 	}
 
 	return s.GetSearchRun(ctx, insertedID)
