@@ -25,6 +25,12 @@ type Config struct {
 
 	ExternalProgramAllowList []string `toml:"externalProgramAllowList" mapstructure:"externalProgramAllowList"`
 
+	// CrossSeedRecoverErroredTorrents enables recovery attempts for errored/missingFiles torrents
+	// in cross-seed automation. When enabled, qui will pause, recheck, and resume errored torrents
+	// before candidate selection. This can cause automation runs to take 25+ minutes per torrent.
+	// When disabled (default), errored torrents are simply excluded from candidate selection.
+	CrossSeedRecoverErroredTorrents bool `toml:"crossSeedRecoverErroredTorrents" mapstructure:"crossSeedRecoverErroredTorrents"`
+
 	// OIDC Configuration
 	OIDCEnabled             bool   `toml:"oidcEnabled" mapstructure:"oidcEnabled"`
 	OIDCIssuer              string `toml:"oidcIssuer" mapstructure:"oidcIssuer"`

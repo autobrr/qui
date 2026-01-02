@@ -9,7 +9,7 @@ import type {
   CrossSeedTorrentSearchResponse,
   CrossSeedTorrentSearchSelection,
   Torrent,
-  TorznabIndexer,
+  TorznabIndexer
 } from "@/types"
 
 const CROSS_SEED_REFRESH_COOLDOWN_MS = 30_000
@@ -78,13 +78,11 @@ export function useCrossSeedSearch(instanceId: number) {
       candidateIds = new Set(filteredIds)
     }
 
-    const excludedIdSet = excludedIds
-      ? new Set(
-          Object.keys(excludedIds)
-            .map(id => Number(id))
-            .filter(id => !Number.isNaN(id))
-        )
-      : null
+    const excludedIdSet = excludedIds? new Set(
+      Object.keys(excludedIds)
+        .map(id => Number(id))
+        .filter(id => !Number.isNaN(id))
+    ): null
 
     return sortedEnabledIndexers
       .filter(indexer => (!candidateIds || candidateIds.has(indexer.id)) && (!excludedIdSet || !excludedIdSet.has(indexer.id)))
@@ -405,7 +403,33 @@ export function useCrossSeedSearch(instanceId: number) {
 
       setCrossSeedApplyResult(response)
 
-      toast.success(`Submitted ${selections.length} cross-seed${selections.length > 1 ? "s" : ""}`)
+      // Count successes and failures from instance results
+      let addedCount = 0
+      let failedCount = 0
+      for (const result of response.results) {
+        if (result.instanceResults) {
+          for (const ir of result.instanceResults) {
+            if (ir.status === "added") {
+              addedCount++
+            } else if (!ir.success) {
+              failedCount++
+            }
+          }
+        } else if (!result.success) {
+          failedCount++
+        }
+      }
+
+      if (addedCount > 0 && failedCount === 0) {
+        toast.success(`Added ${addedCount} cross-seed${addedCount > 1 ? "s" : ""}`)
+      } else if (addedCount > 0 && failedCount > 0) {
+        toast.warning(`Added ${addedCount}, ${failedCount} failed - check results for details`)
+      } else if (failedCount > 0) {
+        toast.error(`Failed to add ${failedCount} cross-seed${failedCount > 1 ? "s" : ""} - check results for details`)
+      } else {
+        toast.info("No cross-seeds were added")
+      }
+
       queryClient.invalidateQueries({ queryKey: ["torrents-list", instanceId], exact: false })
       queryClient.invalidateQueries({ queryKey: ["torrent-counts", instanceId], exact: false })
     } catch (error) {

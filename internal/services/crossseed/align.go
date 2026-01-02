@@ -577,18 +577,18 @@ func namesMatchIgnoringExtension(name1, name2 string) bool {
 // the existing good data. Scene releases should be byte-for-byte identical across trackers.
 //
 // The function also returns a list of mismatched files for logging purposes.
-func hasContentFileSizeMismatch(sourceFiles, candidateFiles qbt.TorrentFiles, ignorePatterns []string, normalizer *stringutils.Normalizer[string, string]) (bool, []string) {
+func hasContentFileSizeMismatch(sourceFiles, candidateFiles qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string]) (bool, []string) {
 	// Filter files by ignore patterns
 	var filteredSource, filteredCandidate qbt.TorrentFiles
 
 	for _, sf := range sourceFiles {
-		if !shouldIgnoreFile(sf.Name, ignorePatterns, normalizer) {
+		if !shouldIgnoreFile(sf.Name, normalizer) {
 			filteredSource = append(filteredSource, sf)
 		}
 	}
 
 	for _, cf := range candidateFiles {
-		if !shouldIgnoreFile(cf.Name, ignorePatterns, normalizer) {
+		if !shouldIgnoreFile(cf.Name, normalizer) {
 			filteredCandidate = append(filteredCandidate, cf)
 		}
 	}
@@ -626,8 +626,8 @@ type fileKeySize struct {
 }
 
 // hasExtraSourceFiles checks if source torrent has files that don't exist in the candidate.
-// This happens when source has extra sidecar files (NFO, SRT, etc.) that weren't filtered
-// by ignorePatterns. Returns true if source has files with (normalizedKey, size) not present in candidate.
+// This happens when source has extra sidecar files (NFO, SRT, etc.) that aren't in the candidate.
+// Returns true if source has files with (normalizedKey, size) not present in candidate.
 // This includes cases where source and candidate have the same file count but different files
 // (e.g., source has mkv+srt, candidate has mkv+nfo - the srt won't exist on disk).
 func hasExtraSourceFiles(sourceFiles, candidateFiles qbt.TorrentFiles) bool {

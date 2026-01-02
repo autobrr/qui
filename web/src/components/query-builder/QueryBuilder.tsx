@@ -1,4 +1,5 @@
-import { useCallback, useMemo } from "react";
+import { Button } from "@/components/ui/button";
+import type { RuleCondition } from "@/types";
 import type { DragEndEvent } from "@dnd-kit/core";
 import {
   DndContext,
@@ -12,13 +13,15 @@ import {
   arrayMove,
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
-import type { RuleCondition } from "@/types";
+import { useCallback, useMemo } from "react";
 import { ConditionGroup } from "./ConditionGroup";
 
 interface QueryBuilderProps {
   condition: RuleCondition | null;
   onChange: (condition: RuleCondition | null) => void;
   className?: string;
+  /** Allow a truly empty condition (null) state instead of auto-inserting a placeholder rule. */
+  allowEmpty?: boolean;
   /** Optional category options for EXISTS_IN/CONTAINS_IN operators */
   categoryOptions?: Array<{ label: string; value: string }>;
   /** Optional list of fields to hide from the selector */
@@ -31,6 +34,7 @@ export function QueryBuilder({
   condition,
   onChange,
   className,
+  allowEmpty,
   categoryOptions,
   hiddenFields,
   hiddenStateValues,
@@ -47,8 +51,11 @@ export function QueryBuilder({
   );
 
   // Initialize with a default AND group if empty
-  const effectiveCondition = useMemo<RuleCondition>(() => {
+  const effectiveCondition = useMemo<RuleCondition | null>(() => {
     if (!condition) {
+      if (allowEmpty) {
+        return null;
+      }
       return ensureClientIdsDeep({
         clientId: generateClientId(),
         operator: "AND",
@@ -71,7 +78,7 @@ export function QueryBuilder({
       });
     }
     return ensureClientIdsDeep(condition);
-  }, [condition]);
+  }, [allowEmpty, condition]);
 
   const handleChange = useCallback(
     (updated: RuleCondition) => {
@@ -90,6 +97,7 @@ export function QueryBuilder({
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
+      if (!effectiveCondition) return;
       const { active, over } = event;
       if (!over || active.id === over.id) return;
 
@@ -122,6 +130,39 @@ export function QueryBuilder({
     [effectiveCondition, handleChange]
   );
 
+  const addFirstCondition = useCallback(() => {
+    onChange(ensureClientIdsDeep({
+      clientId: generateClientId(),
+      operator: "AND",
+      conditions: [
+        {
+          clientId: generateClientId(),
+          field: "NAME",
+          operator: "CONTAINS",
+          value: "",
+        },
+      ],
+    }));
+  }, [onChange]);
+
+  if (allowEmpty && !effectiveCondition) {
+    return (
+      <div className={className}>
+        <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-4 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">No conditions</p>
+            <p className="text-xs text-muted-foreground">
+              Matches all torrents (subject to tracker selection).
+            </p>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={addFirstCondition}>
+            Add condition
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <DndContext
       sensors={sensors}
@@ -130,9 +171,10 @@ export function QueryBuilder({
     >
       <div className={className}>
         <ConditionGroup
-          id={effectiveCondition.clientId ?? "root"}
-          condition={effectiveCondition}
+          id={effectiveCondition!.clientId ?? "root"}
+          condition={effectiveCondition!}
           onChange={handleChange}
+          onRemove={allowEmpty ? () => onChange(null) : undefined}
           isRoot
           categoryOptions={categoryOptions}
           hiddenFields={hiddenFields}

@@ -83,9 +83,8 @@ func TestCrossSeedStore_SettingsRoundTrip(t *testing.T) {
 		RSSAutomationTags:    []string{"cross-seed", "automation"},
 		SeededSearchTags:     []string{"seeded"},
 		CompletionSearchTags: []string{"completion"},
-		WebhookTags:          []string{"webhook"},
-		IgnorePatterns:       []string{"*.txt"},
-		TargetInstanceIDs:    []int{1, 2},
+		WebhookTags:       []string{"webhook"},
+		TargetInstanceIDs: []int{1, 2},
 		TargetIndexerIDs:     []int{11, 42},
 		MaxResultsPerRun:     25,
 	})
@@ -100,7 +99,6 @@ func TestCrossSeedStore_SettingsRoundTrip(t *testing.T) {
 	assert.ElementsMatch(t, []string{"seeded"}, updated.SeededSearchTags)
 	assert.ElementsMatch(t, []string{"completion"}, updated.CompletionSearchTags)
 	assert.ElementsMatch(t, []string{"webhook"}, updated.WebhookTags)
-	assert.ElementsMatch(t, []string{"*.txt"}, updated.IgnorePatterns)
 	assert.ElementsMatch(t, []int{1, 2}, updated.TargetInstanceIDs)
 	assert.ElementsMatch(t, []int{11, 42}, updated.TargetIndexerIDs)
 	assert.Equal(t, 25, updated.MaxResultsPerRun)
