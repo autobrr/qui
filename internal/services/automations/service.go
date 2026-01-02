@@ -343,14 +343,11 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		wouldDelete := false
 
 		if rule.Conditions != nil && rule.Conditions.Delete != nil && rule.Conditions.Delete.Enabled {
-			// Must be completed to delete
-			if torrent.Progress >= 1.0 {
-				// Evaluate condition (if no condition, match all completed)
-				if rule.Conditions.Delete.Condition == nil {
-					wouldDelete = true
-				} else {
-					wouldDelete = EvaluateConditionWithContext(rule.Conditions.Delete.Condition, torrent, evalCtx, 0)
-				}
+			// Evaluate condition (if no condition, match all)
+			if rule.Conditions.Delete.Condition == nil {
+				wouldDelete = true
+			} else {
+				wouldDelete = EvaluateConditionWithContext(rule.Conditions.Delete.Condition, torrent, evalCtx, 0)
 			}
 		}
 
@@ -671,7 +668,6 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 				Int("tagNoMatch", stats.TagConditionNotMet).
 				Int("tagMissingUnregisteredSet", stats.TagSkippedMissingUnregisteredSet).
 				Int("categoryNoMatchOrBlocked", stats.CategoryConditionNotMetOrBlocked).
-				Int("deleteNotCompleted", stats.DeleteNotCompleted).
 				Int("deleteNoMatch", stats.DeleteConditionNotMet).
 				Msg("automations: rule matched trackers but applied no actions")
 		}
