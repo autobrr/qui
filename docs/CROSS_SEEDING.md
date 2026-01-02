@@ -152,7 +152,7 @@ Check the torrent's progress and decide whether to:
 
 In default mode, qui points the cross-seed torrent at the matched torrent's existing files. If the incoming torrent has a different display name or folder structure, qui renames them to match. After rename-alignment, qBittorrent may need to recheck the torrent to verify files at the new paths.
 
-Rechecks are also required when the source torrent contains extra files not present on disk (NFO, SRT, samples not matching allowed extra file patterns).
+Rechecks are also required when the source torrent contains extra files not present on disk (NFO, SRT, samples, etc.).
 
 **Auto-resume behavior:**
 - Torrents that complete recheck at 95% or higher (configurable via "Size mismatch tolerance") auto-resume.
@@ -169,7 +169,7 @@ When the incoming torrent has extra files (files not present in the matched torr
 - If extra files share pieces with content files, the cross-seed is **skipped** with reason "extra files share pieces with content"
 - If extra files are safely isolated (piece-boundary aligned), the cross-seed proceeds normally
 
-This check applies regardless of whether the extra files match allowed extra file patterns. The piece-boundary constraint is fundamental to how BitTorrent works.
+This check applies to all extra files. The piece-boundary constraint is fundamental to how BitTorrent works.
 
 **Enabling this check:**
 - **Piece boundary safety check** (opt-in): Uncheck "Skip piece boundary safety check" in Rules to enable this protection. When enabled, qui will skip matches where extra files share pieces with content.

@@ -208,6 +208,9 @@ QUI__DATA_DIR=...        # Optional: custom data directory (default: next to con
 # Tracker Icons
 QUI__TRACKER_ICONS_FETCH_ENABLED=false  # Optional: set to false to disable remote tracker icon fetching (default: true)
 
+# Cross-Seed Automation
+QUI__CROSS_SEED_RECOVER_ERRORED_TORRENTS=true  # Optional: attempt recovery of errored torrents before cross-seed matching (default: false, requires restart)
+
 # Metrics
 QUI__METRICS_ENABLED=true   # Optional: enable Prometheus metrics (default: false)
 QUI__METRICS_HOST=127.0.0.1  # Optional: metrics server bind address (default: 127.0.0.1)
@@ -450,15 +453,6 @@ Configure tags applied to cross-seed torrents based on how they were discovered:
 - **Webhook Tags** - Torrents added via `/apply` webhook (default: `["cross-seed"]`)
 - **Inherit source torrent tags** - Also copy tags from the matched source torrent
 
-#### Allowed Extra Files
-
-File patterns excluded from comparison when matching torrents. Adding patterns here **increases matches** by allowing torrents to match even if they differ in these files (e.g., one has an NFO, the other doesn't).
-
-- Plain strings match any path ending in the text (e.g., `.nfo` matches all `.nfo` files)
-- Glob patterns treat `/` as a folder separator (e.g., `*/*sample/*` matches sample folders)
-
-**Note:** These patterns only apply to reuse mode. Hardlink mode requires a 1:1 file match and won't download extras—if the incoming torrent has files not present in the matched torrent, hardlink mode fails.
-
 #### External Program
 
 Optionally run an external program after successfully injecting a cross-seed torrent.
@@ -473,7 +467,7 @@ When the cross-seed torrent has a different display name or root folder, qui ren
 
 #### 2. Extra files in source torrent
 
-When the source torrent contains files not on disk (NFO, SRT, samples not matching allowed extra file patterns), a recheck determines actual progress.
+When the source torrent contains extra files not on disk (NFO, SRT, samples, etc.), a recheck determines actual progress.
 
 **Note:** In hardlink mode, missing or extra files cause the cross-seed to fail instead of triggering a recheck.
 

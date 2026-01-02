@@ -32,10 +32,9 @@ type CrossSeedHandler struct {
 type automationSettingsRequest struct {
 	Enabled                      bool     `json:"enabled"`
 	RunIntervalMinutes           int      `json:"runIntervalMinutes"`
-	StartPaused                  bool     `json:"startPaused"`
-	Category                     *string  `json:"category"`
-	IgnorePatterns               []string `json:"ignorePatterns"`
-	TargetInstanceIDs            []int    `json:"targetInstanceIds"`
+	StartPaused       bool    `json:"startPaused"`
+	Category          *string `json:"category"`
+	TargetInstanceIDs []int   `json:"targetInstanceIds"`
 	TargetIndexerIDs             []int    `json:"targetIndexerIds"`
 	MaxResultsPerRun             int      `json:"maxResultsPerRun"` // Deprecated: automation now processes full feeds and ignores this value
 	FindIndividualEpisodes       bool     `json:"findIndividualEpisodes"`
@@ -52,9 +51,8 @@ type automationSettingsPatchRequest struct {
 	Enabled            *bool          `json:"enabled,omitempty"`
 	RunIntervalMinutes *int           `json:"runIntervalMinutes,omitempty"`
 	StartPaused        *bool          `json:"startPaused,omitempty"`
-	Category           optionalString `json:"category"`
-	IgnorePatterns     *[]string      `json:"ignorePatterns,omitempty"`
-	TargetInstanceIDs  *[]int         `json:"targetInstanceIds,omitempty"`
+	Category          optionalString `json:"category"`
+	TargetInstanceIDs *[]int         `json:"targetInstanceIds,omitempty"`
 	TargetIndexerIDs   *[]int         `json:"targetIndexerIds,omitempty"`
 	MaxResultsPerRun   *int           `json:"maxResultsPerRun,omitempty"` // Deprecated: automation now processes full feeds and ignores this value
 	// RSS source filtering: filter which local torrents to search when checking RSS feeds
@@ -150,7 +148,6 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.RunIntervalMinutes == nil &&
 		r.StartPaused == nil &&
 		!r.Category.Set &&
-		r.IgnorePatterns == nil &&
 		r.TargetInstanceIDs == nil &&
 		r.TargetIndexerIDs == nil &&
 		r.MaxResultsPerRun == nil &&
@@ -203,9 +200,6 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 				settings.Category = &trimmed
 			}
 		}
-	}
-	if patch.IgnorePatterns != nil {
-		settings.IgnorePatterns = *patch.IgnorePatterns
 	}
 	if patch.TargetInstanceIDs != nil {
 		settings.TargetInstanceIDs = *patch.TargetInstanceIDs
@@ -344,6 +338,7 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 		r.Get("/status", h.GetAutomationStatus)
 		r.Get("/runs", h.ListAutomationRuns)
 		r.Post("/run", h.TriggerAutomationRun)
+		r.Post("/run/cancel", h.CancelAutomationRun)
 		r.Route("/search", func(r chi.Router) {
 			r.Get("/settings", h.GetSearchSettings)
 			r.Patch("/settings", h.PatchSearchSettings)
@@ -699,9 +694,8 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		Enabled:                      req.Enabled,
 		RunIntervalMinutes:           req.RunIntervalMinutes,
 		StartPaused:                  req.StartPaused,
-		Category:                     category,
-		IgnorePatterns:               req.IgnorePatterns,
-		TargetInstanceIDs:            req.TargetInstanceIDs,
+		Category:          category,
+		TargetInstanceIDs: req.TargetInstanceIDs,
 		TargetIndexerIDs:             req.TargetIndexerIDs,
 		MaxResultsPerRun:             req.MaxResultsPerRun,
 		FindIndividualEpisodes:       req.FindIndividualEpisodes,
@@ -914,6 +908,23 @@ func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.R
 	}
 
 	RespondJSON(w, http.StatusAccepted, run)
+}
+
+// CancelAutomationRun godoc
+// @Summary Cancel RSS automation run
+// @Description Stops the currently running RSS automation run, if any.
+// @Tags cross-seed
+// @Success 204
+// @Failure 409 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/run/cancel [post]
+func (h *CrossSeedHandler) CancelAutomationRun(w http.ResponseWriter, r *http.Request) {
+	canceled := h.service.CancelAutomationRun()
+	if !canceled {
+		RespondError(w, http.StatusConflict, "No automation run is currently active")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // GetSearchSettings godoc
