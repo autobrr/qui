@@ -1,4 +1,4 @@
-labels: ["needs-triage"]
+labels: ["needs-triage", "needs-confirmation"]
 body:
   - type: markdown
     attributes:
