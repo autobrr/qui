@@ -99,9 +99,16 @@ const config: Config = {
           label: "Docs",
         },
         {
-          href: "https://github.com/autobrr/qui",
-          label: "GitHub",
+          href: "https://discord.autobrr.com/qui",
           position: "right",
+          className: "header-discord-link",
+          "aria-label": "Discord",
+        },
+        {
+          href: "https://github.com/autobrr/qui",
+          position: "right",
+          className: "header-github-link",
+          "aria-label": "GitHub",
         },
       ],
     },
