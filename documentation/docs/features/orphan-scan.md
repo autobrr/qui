@@ -1,5 +1,7 @@
 ---
 sidebar_position: 4
+title: Orphan Scan
+description: Find and remove files not associated with any torrent.
 ---
 
 # Orphan Scan
@@ -12,6 +14,10 @@ Finds and removes files in your download directories that aren't associated with
 2. Files not referenced by any torrent are flagged as orphans
 3. You preview the list before confirming deletion
 4. Empty directories are cleaned up after file deletion
+
+:::warning
+If multiple qBittorrent instances share the same download directory, files from other instances will be flagged as orphans. Use separate directories per instance or add shared paths to ignore paths.
+:::
 
 ## Important: Abandoned Directories
 
@@ -27,6 +33,8 @@ Directories are only scanned if at least one torrent points to them. If you dele
 | Ignore paths | Directories to exclude from scanning | - |
 | Scan interval | How often scheduled scans run | 24 hours |
 | Max files per run | Limit results to prevent overwhelming large scans | 10,000 |
+| Auto-cleanup | Automatically delete orphans from scheduled scans | Disabled |
+| Auto-cleanup max files | Only auto-delete if orphan count is at or below this threshold | 100 |
 
 ## Workflow
 

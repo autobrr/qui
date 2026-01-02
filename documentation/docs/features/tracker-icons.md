@@ -1,12 +1,14 @@
 ---
 sidebar_position: 8
+title: Tracker Icons
+description: Automatic favicon caching for tracker hosts.
 ---
 
 # Tracker Icons
 
-Cached icons live in your data directory under `tracker-icons/` (next to `qui.db`). Icons are stored as normalised 16×16 PNGs; anything larger than 1024×1024 is rejected, so resize first if you are supplying files manually.
+Cached icons live in your data directory under `tracker-icons/` (next to `qui.db`). Icons are stored as 16×16 PNGs; anything larger than 1024×1024 is rejected.
 
-qui automatically attempts to download a favicon the first time it encounters a tracker host, caching the result for future sessions. After a failed download it waits 30 minutes before retrying the same host, and the next retry is triggered automatically the next time that host appears in your tracker list.
+qui automatically downloads a favicon the first time it encounters a tracker host and caches it for future sessions. Failed downloads are retried automatically.
 
 Set `trackerIconsFetchEnabled = false` in `config.toml` (or `QUI__TRACKER_ICONS_FETCH_ENABLED=false`) to disable these network fetches.
 
@@ -16,7 +18,7 @@ Copy PNGs named after each tracker host (e.g. `tracker.example.com.png`) into th
 
 ## Preload a Bundle of Icons
 
-If you already have a library of icons (for example, exported from another installation) you can preload them via a mapping file placed alongside the directory: `tracker-icons/preload.json`, `tracker-icons/preload.js`, `tracker-icons/tracker-icons.json`, `tracker-icons/tracker-icons.js`, or `tracker-icons/tracker-icons.txt`.
+If you have a library of icons, preload them via a mapping file: `tracker-icons/preload.json` (also accepts `.js` variants).
 
 ### Format
 

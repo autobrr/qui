@@ -1,18 +1,16 @@
 ---
 sidebar_position: 6
+title: Reverse Proxy
+description: Let external apps access qBittorrent through qui without credentials.
 ---
 
 # Reverse Proxy for External Applications
 
-qui includes a built-in reverse proxy that allows external applications like autobrr, Sonarr, Radarr, and other tools to connect to your qBittorrent instances **without needing qBittorrent credentials**. qui handles authentication transparently, making integration seamless.
+qui includes a built-in reverse proxy that allows external applications like autobrr, Sonarr, Radarr, and other tools to connect to your qBittorrent instances **without needing qBittorrent credentials**.
 
 ## How It Works
 
-The reverse proxy feature:
-- **Handles authentication automatically** - qui manages the qBittorrent login using your configured credentials
-- **Isolates clients** - Each client gets its own API key
-- **Provides transparent access** - Clients see qui as if it were qBittorrent directly
-- **Reduces login thrash** - qui maintains a shared cookie jar and session, so your automation tools stop racing to re-authenticate against qBittorrent. That means fewer failed logins, less load on qBittorrent, and faster announce races because downstream apps reuse the live session instead of waiting for new tokens.
+qui maintains a shared session with qBittorrent and proxies requests from your external apps. This eliminates login thrash - automation tools reuse the live session instead of racing to re-authenticate.
 
 ## Setup Instructions
 
@@ -86,19 +84,40 @@ This reverse proxy will work with any application that supports qBittorrent's We
 - **Revocation** - Disable access instantly by deleting the API key
 - **No Credential Exposure** - qBittorrent passwords never leave qui
 
-## Troubleshooting
+## Intercepted Endpoints
 
-### Connection Refused Error
+The proxy intercepts certain qBittorrent API endpoints to improve performance and enable qui-specific features. Most requests are forwarded transparently to qBittorrent.
 
-- Ensure qui is listening on all interfaces: `QUI__HOST=0.0.0.0 ./qui serve`
-- Check that the port is accessible from your external application
+### Read Operations (Served from qui)
 
-### Authentication Errors
+These endpoints are served directly from qui's sync manager for faster response times:
 
-- Verify the Client API Key is correct and hasn't been deleted
-- Ensure the key is mapped to the correct qBittorrent instance
+| Endpoint | Description |
+|----------|-------------|
+| `/api/v2/torrents/info` | Torrent list with standard qBittorrent filtering |
+| `/api/v2/torrents/search` | Enhanced torrent list with fuzzy search (qui-specific) |
+| `/api/v2/torrents/categories` | Category list from synchronized data |
+| `/api/v2/torrents/tags` | Tag list from synchronized data |
+| `/api/v2/torrents/properties` | Torrent properties |
+| `/api/v2/torrents/trackers` | Torrent trackers with icon discovery |
+| `/api/v2/torrents/files` | Torrent file list |
 
-### Version String Errors
+These endpoints proxy to qBittorrent and update qui's local state:
 
-- This was a common issue that's now resolved with the new proxy implementation
-- Try regenerating the Client API Key if you still see version parsing errors
+| Endpoint | Description |
+|----------|-------------|
+| `/api/v2/sync/maindata` | Full sync data (updates qui's cache) |
+| `/api/v2/sync/torrentPeers` | Peer data (updates qui's peer state) |
+
+### Write Operations
+
+| Endpoint | Behavior |
+|----------|----------|
+| `/api/v2/auth/login` | No-op, returns success if instance is healthy |
+| `/api/v2/torrents/reannounce` | Delegated to reannounce service when tracker monitoring is enabled |
+| `/api/v2/torrents/setLocation` | Forwards to qBittorrent, invalidates file cache |
+| `/api/v2/torrents/renameFile` | Forwards to qBittorrent, invalidates file cache |
+| `/api/v2/torrents/renameFolder` | Forwards to qBittorrent, invalidates file cache |
+| `/api/v2/torrents/delete` | Forwards to qBittorrent, invalidates file cache |
+
+All other endpoints are forwarded transparently to qBittorrent.
