@@ -2687,6 +2687,18 @@ paths:
         '500':
           description: Failed to trigger automation run
 
+  /api/cross-seed/run/cancel:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Cancel RSS automation run
+      description: Stops the currently running RSS automation run, if any.
+      responses:
+        '204':
+          description: RSS automation run cancelled successfully
+        '409':
+          description: No automation run is currently active
+
   /api/cross-seed/search/settings:
     get:
       tags:
@@ -3019,10 +3031,6 @@ paths:
                   type: string
                   description: Category to apply when adding the torrent
                 tags:
-                  type: array
-                  items:
-                    type: string
-                ignorePatterns:
                   type: array
                   items:
                     type: string
@@ -4522,10 +4530,6 @@ components:
           type: array
           items:
             type: string
-        ignorePatterns:
-          type: array
-          items:
-            type: string
         targetInstanceIds:
           type: array
           items:
@@ -4604,10 +4608,6 @@ components:
           type: string
           nullable: true
         tags:
-          type: array
-          items:
-            type: string
-        ignorePatterns:
           type: array
           items:
             type: string

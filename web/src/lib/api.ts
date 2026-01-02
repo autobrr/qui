@@ -1071,6 +1071,10 @@ class ApiClient {
     await this.request("/cross-seed/search/run/cancel", { method: "POST" })
   }
 
+  async cancelCrossSeedAutomationRun(): Promise<void> {
+    await this.request("/cross-seed/run/cancel", { method: "POST" })
+  }
+
   async listCrossSeedSearchRuns(instanceId: number, params?: { limit?: number; offset?: number }): Promise<CrossSeedSearchRun[]> {
     const search = new URLSearchParams({ instanceId: instanceId.toString() })
     if (params?.limit !== undefined) search.set("limit", params.limit.toString())

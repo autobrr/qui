@@ -6,6 +6,16 @@
 import { CompletionOverview } from "@/components/instances/preferences/CompletionOverview"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -25,7 +35,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
@@ -77,7 +86,6 @@ interface GlobalCrossSeedSettings {
   useCustomCategory: boolean
   customCategory: string
   runExternalProgramId?: number | null
-  ignorePatterns: string
   // Source-specific tagging
   rssAutomationTags: string[]
   seededSearchTags: string[]
@@ -128,7 +136,6 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   useCustomCategory: false,
   customCategory: "",
   runExternalProgramId: null,
-  ignorePatterns: "",
   // Source-specific tagging defaults
   rssAutomationTags: ["cross-seed"],
   seededSearchTags: ["cross-seed"],
@@ -150,13 +157,6 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   // Note: Hardlink mode is now per-instance (configured in Instance Settings)
 }
 
-function parseList(value: string): string[] {
-  return value
-    .split(/[\n,]/)
-    .map(item => item.trim())
-    .filter(Boolean)
-}
-
 function normalizeStringList(values: string[]): string[] {
   return Array.from(new Set(values.map(item => item.trim()).filter(Boolean)))
 }
@@ -167,23 +167,6 @@ function normalizeNumberList(values: Array<string | number>): number[] {
       .map(value => Number(value))
       .filter(value => !Number.isNaN(value) && value > 0)
   ))
-}
-
-function normalizeIgnorePatterns(patterns: string): string[] {
-  return parseList(patterns.replace(/\r/g, ""))
-}
-
-function validateIgnorePatterns(raw: string): string {
-  const text = raw.replace(/\r/g, "")
-  const parts = text.split(/\n|,/)
-  for (const part of parts) {
-    const pattern = part.trim()
-    if (!pattern) continue
-    if (pattern.length > 256) {
-      return "Ignore patterns must be shorter than 256 characters"
-    }
-  }
-  return ""
 }
 
 function getDurationParts(ms: number): { hours: number; minutes: number; seconds: number } {
@@ -811,9 +794,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         useCustomCategory: settings.useCustomCategory ?? false,
         customCategory: settings.customCategory ?? "",
         runExternalProgramId: settings.runExternalProgramId ?? null,
-        ignorePatterns: Array.isArray(settings.ignorePatterns)
-          ? settings.ignorePatterns.join("\n")
-          : "",
         // Source-specific tagging
         rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
         seededSearchTags: settings.seededSearchTags ?? ["cross-seed"],
@@ -850,21 +830,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     setSearchCooldownMinutes(searchSettings.cooldownMinutes ?? MIN_SEEDED_SEARCH_COOLDOWN_MINUTES)
     setSearchSettingsInitialized(true)
   }, [searchSettings, searchSettingsInitialized])
-
-  const ignorePatternError = useMemo(
-    () => validateIgnorePatterns(globalSettings.ignorePatterns),
-    [globalSettings.ignorePatterns]
-  )
-
-  useEffect(() => {
-    setValidationErrors(prev => {
-      const current = prev.ignorePatterns ?? ""
-      if (current === ignorePatternError) {
-        return prev
-      }
-      return { ...prev, ignorePatterns: ignorePatternError }
-    })
-  }, [ignorePatternError])
 
   useEffect(() => {
     if (!searchInstanceId && instances && instances.length > 0) {
@@ -903,8 +868,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const buildGlobalPatch = useCallback((): CrossSeedAutomationSettingsPatch | null => {
     if (!settings) return null
 
-    const ignorePatterns = Array.isArray(settings.ignorePatterns) ? settings.ignorePatterns : []
-
     // If all three category modes are false, default to suffix mode
     const hasCategoryMode = settings.useCrossCategorySuffix || settings.useCategoryFromIndexer || settings.useCustomCategory
     const defaultCrossCategorySuffix = hasCategoryMode ? (settings.useCrossCategorySuffix ?? false) : true
@@ -919,7 +882,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         useCustomCategory: settings.useCustomCategory ?? false,
         customCategory: settings.customCategory ?? "",
         runExternalProgramId: settings.runExternalProgramId ?? null,
-        ignorePatterns: ignorePatterns.length > 0 ? ignorePatterns.join(", ") : "",
         rssAutomationTags: settings.rssAutomationTags ?? ["cross-seed"],
         seededSearchTags: settings.seededSearchTags ?? ["cross-seed"],
         completionSearchTags: settings.completionSearchTags ?? ["cross-seed"],
@@ -946,7 +908,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       useCustomCategory: globalSource.useCustomCategory,
       customCategory: globalSource.customCategory,
       runExternalProgramId: globalSource.runExternalProgramId,
-      ignorePatterns: normalizeIgnorePatterns(globalSource.ignorePatterns),
       // Source-specific tagging
       rssAutomationTags: globalSource.rssAutomationTags,
       seededSearchTags: globalSource.seededSearchTags,
@@ -1028,6 +989,20 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     },
   })
 
+  const cancelAutomationRunMutation = useMutation({
+    mutationFn: () => api.cancelCrossSeedAutomationRun(),
+    onSuccess: () => {
+      toast.success("RSS automation run canceled")
+      refetchStatus()
+      refetchRuns()
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+
+  const [showCancelAutomationDialog, setShowCancelAutomationDialog] = useState(false)
+
   const handleSaveAutomation = () => {
     setValidationErrors(prev => ({ ...prev, runIntervalMinutes: "", targetInstanceIds: "" }))
 
@@ -1048,15 +1023,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   }
 
   const handleSaveGlobal = () => {
-    if (ignorePatternError) {
-      setValidationErrors(prev => ({ ...prev, ignorePatterns: ignorePatternError }))
-      return
-    }
-
-    if (validationErrors.ignorePatterns) {
-      setValidationErrors(prev => ({ ...prev, ignorePatterns: "" }))
-    }
-
     const payload = buildGlobalPatch()
     if (!payload) return
 
@@ -1322,11 +1288,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       return searchInstanceName
     },
     [instances, searchInstanceId, searchRunning, activeSearchRun]
-  )
-
-  const ignorePatternCount = useMemo(
-    () => normalizeIgnorePatterns(globalSettings.ignorePatterns).length,
-    [globalSettings.ignorePatterns]
   )
 
   const automationStatusLabel = automationRunning ? "RUNNING" : automationEnabled ? "SCHEDULED" : "DISABLED"
@@ -1785,24 +1746,44 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 <Label htmlFor="automation-dry-run">Dry run</Label>
               </div>
               <div className="flex flex-col gap-2 w-full md:w-auto md:flex-row">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      onClick={handleTriggerAutomationRun}
-                      disabled={runButtonDisabled}
-                      className="disabled:cursor-not-allowed disabled:pointer-events-auto"
-                    >
-                      {triggerRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
-                      Run now
-                    </Button>
-                  </TooltipTrigger>
-                  {runButtonDisabledReason && (
-                    <TooltipContent align="end" className="max-w-xs text-xs">
-                      {runButtonDisabledReason}
-                    </TooltipContent>
-                  )}
-                </Tooltip>
+                {automationRunning ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowCancelAutomationDialog(true)}
+                    disabled={cancelAutomationRunMutation.isPending}
+                  >
+                    {cancelAutomationRunMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Stopping...
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="mr-2 h-4 w-4" />
+                        Cancel
+                      </>
+                    )}
+                  </Button>
+                ) : (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        onClick={handleTriggerAutomationRun}
+                        disabled={runButtonDisabled}
+                        className="disabled:cursor-not-allowed disabled:pointer-events-auto"
+                      >
+                        {triggerRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+                        Run now
+                      </Button>
+                    </TooltipTrigger>
+                    {runButtonDisabledReason && (
+                      <TooltipContent align="end" className="max-w-xs text-xs">
+                        {runButtonDisabledReason}
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                )}
                 <Button
                   onClick={handleSaveAutomation}
                   disabled={patchSettingsMutation.isPending}
@@ -2283,47 +2264,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     Maximum size difference for matching. Also sets auto-resume threshold (e.g., 5% = resume at ≥95%).
                   </p>
                 </div>
-                <div className="space-y-3 pt-3 border-t border-border/50">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor="global-ignore-patterns">Allowed extra files</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            className="text-muted-foreground hover:text-foreground transition-colors"
-                            aria-label="How allowed extra files work"
-                          >
-                            <Info className="h-4 w-4" aria-hidden="true" />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs text-xs">
-                          Plain strings act as suffix matches (e.g., <code>.nfo</code> matches any path ending in <code>.nfo</code>). Globs treat <code>/</code> as a folder separator, so <code>*.nfo</code> only matches files in the top-level folder. To match sample folders use <code>*/*sample/*</code>. Separate entries with commas or new lines.
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Badge variant="outline" className="text-xs">{ignorePatternCount} pattern{ignorePatternCount === 1 ? "" : "s"}</Badge>
-                  </div>
-                  <Textarea
-                    id="global-ignore-patterns"
-                    placeholder={".nfo, .srt, */*sample/*\nor one per line"}
-                    rows={4}
-                    value={globalSettings.ignorePatterns}
-                    onChange={event => {
-                      const value = event.target.value
-                      setGlobalSettings(prev => ({ ...prev, ignorePatterns: value }))
-                      const error = validateIgnorePatterns(value)
-                      setValidationErrors(prev => ({ ...prev, ignorePatterns: error }))
-                    }}
-                    className={validationErrors.ignorePatterns ? "border-destructive" : ""}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Files matching these patterns are excluded from comparison, allowing matches between torrents that differ only in these files. Adding patterns here increases matches.
-                  </p>
-                  {validationErrors.ignorePatterns && (
-                    <p className="text-sm text-destructive">{validationErrors.ignorePatterns}</p>
-                  )}
-                </div>
                 <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/50">
                   <div className="space-y-0.5">
                     <Label htmlFor="global-find-individual-episodes" className="font-medium">Cross-seed episodes from packs</Label>
@@ -2364,7 +2304,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     </Label>
                     <p className="text-xs text-muted-foreground">
                       {globalSettings.skipPieceBoundarySafetyCheck
-                        ? "Allow matches even if extra files share pieces with content. May corrupt existing seeded files if content differs—consider reflink mode instead."
+                        ? "Allow matches even if extra files share pieces with content. May corrupt existing seeded files if content differs. Consider reflink mode instead."
                         : "Matches are blocked when extra files share pieces with content, protecting your existing seeded files."}
                     </p>
                   </div>
@@ -2663,7 +2603,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
             <CardFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
               <Button
                 onClick={handleSaveGlobal}
-                disabled={patchSettingsMutation.isPending || Boolean(ignorePatternError)}
+                disabled={patchSettingsMutation.isPending}
               >
                 {patchSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save global cross-seed settings
@@ -2673,6 +2613,26 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
         </TabsContent>
       </Tabs>
+
+      <AlertDialog open={showCancelAutomationDialog} onOpenChange={setShowCancelAutomationDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel RSS Automation Run?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will stop the current RSS automation run. Any torrents already added will remain, but processing of new items will stop.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Running</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => cancelAutomationRunMutation.mutate()}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Cancel Run
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

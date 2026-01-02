@@ -616,6 +616,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         return
       }
     }
+    if (formState.deleteEnabled && !formState.actionCondition) {
+      toast.error("Delete requires at least one condition")
+      return
+    }
 
     // Validate regex patterns before saving (only if enabling the workflow)
     const payload = buildPayload(formState)
@@ -706,17 +710,23 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
               <div className="space-y-3">
                 {/* Query Builder */}
                 <div className="space-y-1.5">
-                  <Label>When conditions match</Label>
+                  <Label>Conditions (optional)</Label>
                   <QueryBuilder
                     condition={formState.actionCondition}
                     onChange={(condition) => {
                       setFormState(prev => ({ ...prev, actionCondition: condition }))
                       setRegexErrors([]) // Clear errors when condition changes
                     }}
+                    allowEmpty
                     categoryOptions={categoryOptions}
                     hiddenFields={supportsTrackerHealth ? [] : ["IS_UNREGISTERED"]}
                     hiddenStateValues={supportsTrackerHealth ? [] : ["tracker_down"]}
                   />
+                  {formState.deleteEnabled && !formState.actionCondition && (
+                    <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
+                      <p className="font-medium text-destructive">Delete requires at least one condition.</p>
+                    </div>
+                  )}
                   {regexErrors.length > 0 && (
                     <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
                       <p className="font-medium text-destructive mb-1">Invalid regex pattern</p>
@@ -1200,6 +1210,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     id="rule-enabled"
                     checked={formState.enabled}
                     onCheckedChange={(checked) => {
+                      if (checked && isDeleteRule && !formState.actionCondition) {
+                        toast.error("Delete requires at least one condition")
+                        return
+                      }
                       // When enabling a delete or category rule, show preview first
                       if (checked && (isDeleteRule || isCategoryRule)) {
                         setEnabledBeforePreview(formState.enabled)

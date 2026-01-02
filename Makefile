@@ -18,7 +18,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags with Polar credentials
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X main.PolarOrgID=$(POLAR_ORG_ID)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt modern deps
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test help themes-fetch themes-clean lint lint-full lint-json fmt modern deps
 
 # Default target
 all: build
@@ -133,12 +133,6 @@ lint-json:
 	golangci-lint run --new-from-merge-base=main --output.json.path=./lint-report.json --timeout=5m || true
 	@echo "Lint report saved to lint-report.json"
 
-# Lint with auto-fix where possible
-lint-fix:
-	@echo "Running linters with auto-fix..."
-	golangci-lint run --fix --timeout=10m
-	cd $(WEB_DIR) && pnpm lint --fix
-
 # Modernize Go code (interface{} -> any, etc)
 modern:
 	@echo "Modernizing Go code..."
@@ -174,7 +168,6 @@ help:
 	@echo "  make lint           - Lint changed files only (fast, for iteration)"
 	@echo "  make lint-full      - Lint entire codebase"
 	@echo "  make lint-json      - Generate JSON lint report for AI agents"
-	@echo "  make lint-fix       - Auto-fix linting issues where possible"
 	@echo ""
 	@echo "Formatting:"
 	@echo "  make fmt            - Format Go and frontend code"

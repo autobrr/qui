@@ -285,23 +285,28 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 
 	// Delete
 	if conditions.Delete != nil && conditions.Delete.Enabled {
-		shouldApply := conditions.Delete.Condition == nil ||
-			EvaluateConditionWithContext(conditions.Delete.Condition, torrent, evalCtx, 0)
-
-		if shouldApply {
+		// Safety: delete must always have an explicit condition.
+		if conditions.Delete.Condition == nil {
 			if stats != nil {
-				stats.DeleteApplied++
+				stats.DeleteConditionNotMet++
 			}
-			state.shouldDelete = true
-			state.deleteMode = conditions.Delete.Mode
-			if state.deleteMode == "" {
-				state.deleteMode = DeleteModeKeepFiles
+		} else {
+			shouldApply := EvaluateConditionWithContext(conditions.Delete.Condition, torrent, evalCtx, 0)
+			if shouldApply {
+				if stats != nil {
+					stats.DeleteApplied++
+				}
+				state.shouldDelete = true
+				state.deleteMode = conditions.Delete.Mode
+				if state.deleteMode == "" {
+					state.deleteMode = DeleteModeKeepFiles
+				}
+				state.deleteRuleID = rule.ID
+				state.deleteRuleName = rule.Name
+				state.deleteReason = "condition matched"
+			} else if stats != nil {
+				stats.DeleteConditionNotMet++
 			}
-			state.deleteRuleID = rule.ID
-			state.deleteRuleName = rule.Name
-			state.deleteReason = "condition matched"
-		} else if stats != nil {
-			stats.DeleteConditionNotMet++
 		}
 	}
 }
