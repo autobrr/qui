@@ -52,9 +52,11 @@ export function PublicTrackerActionDialog({
       const result = await actionMutation.mutateAsync({ hashes, pruneMode })
 
       if (result.processedCount > 0) {
+        const added = result.trackersAdded > 0 ? `added ${result.trackersAdded} trackers` : ""
+        const removed = result.trackersRemoved > 0 ? `removed ${result.trackersRemoved} dead trackers` : ""
+        const actions = [added, removed].filter(Boolean).join(", ")
         toast.success(
-          `Updated ${result.processedCount} torrent(s): added ${result.trackersAdded} trackers` +
-          (result.trackersRemoved > 0 ? `, removed ${result.trackersRemoved} trackers` : "")
+          `Updated ${result.processedCount} torrent(s)` + (actions ? `: ${actions}` : "")
         )
       }
 
