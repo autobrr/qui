@@ -80,7 +80,7 @@ const config: Config = {
   ],
 
   themeConfig: {
-    image: "img/qui-social-card.png",
+    image: "img/qui-hero.png",
     colorMode: {
       defaultMode: "dark",
       respectPrefersColorScheme: true,
