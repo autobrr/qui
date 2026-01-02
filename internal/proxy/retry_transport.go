@@ -156,16 +156,27 @@ func isRetryableError(err error) bool {
 
 // isRetryableNetError checks if a net.Error or net.OpError indicates a retryable condition
 func isRetryableNetError(err error) bool {
-	// Check for timeout errors - don't retry as they might be legitimate slow responses
+	// Check OpError first - dial errors (including dial timeouts) are retryable
+	// since they indicate transient connection issues, not slow server responses
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		if opErr.Op == "dial" {
+			return true
+		}
+		// Read operations are retryable unless they're timeouts
+		if opErr.Op == "read" {
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
+				return false // Read timeout = slow server, don't retry
+			}
+			return true
+		}
+	}
+
+	// Non-dial/read timeouts shouldn't retry
 	var netErr net.Error
 	if errors.As(err, &netErr) && netErr.Timeout() {
 		return false
-	}
-
-	// Check for specific network operations that are retryable
-	var opErr *net.OpError
-	if errors.As(err, &opErr) {
-		return opErr.Op == "dial" || opErr.Op == "read"
 	}
 
 	return false
