@@ -52,14 +52,31 @@ import { cn, copyTextToClipboard, formatRelativeTime, parseTrackerDomains } from
 import {
   fromImportFormat,
   parseImportJSON,
+  toDuplicateInput,
   toExportFormat,
-  toExportJSON,
-  toDuplicateInput
+  toExportJSON
 } from "@/lib/workflow-utils"
 import type { Automation, AutomationActivity, AutomationPreviewResult, InstanceResponse } from "@/types"
+import type { DragEndEvent } from "@dnd-kit/core"
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Clock, Copy, CopyPlus, Download, Folder, Info, Loader2, MoreVertical, Pause, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Trash2, Upload } from "lucide-react"
-import { useCallback, useMemo, useState } from "react"
+import { ArrowDown, ArrowUp, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Pause, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Trash2, Upload } from "lucide-react"
+import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from "react"
 import { toast } from "sonner"
 import { WorkflowDialog } from "./WorkflowDialog"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
@@ -187,6 +204,15 @@ export function WorkflowsOverview({
   const { instances } = useInstances()
   const queryClient = useQueryClient()
 
+  const reorderSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
+
   // Internal state for standalone usage
   const [internalExpanded, setInternalExpanded] = useState<string[]>([])
 
@@ -199,6 +225,45 @@ export function WorkflowsOverview({
   const [deleteConfirm, setDeleteConfirm] = useState<{ instanceId: number; rule: Automation } | null>(null)
   const [enableConfirm, setEnableConfirm] = useState<{ instanceId: number; rule: Automation; preview: AutomationPreviewResult } | null>(null)
   const previewPageSize = 25
+
+  const reorderRules = useMutation<
+    void,
+    Error,
+    { instanceId: number; orderedIds: number[] },
+    { previousRules?: Automation[] }
+  >({
+    mutationFn: ({ instanceId, orderedIds }) => api.reorderAutomations(instanceId, orderedIds),
+    onMutate: async ({ instanceId, orderedIds }) => {
+      await queryClient.cancelQueries({ queryKey: ["automations", instanceId] })
+
+      const previousRules = queryClient.getQueryData<Automation[]>(["automations", instanceId])
+      if (!previousRules) {
+        return {}
+      }
+
+      const ruleByID = new Map(previousRules.map(r => [r.id, r]))
+      const nextRules: Automation[] = []
+      for (let i = 0; i < orderedIds.length; i++) {
+        const id = orderedIds[i]
+        const rule = ruleByID.get(id)
+        if (!rule) continue
+        nextRules.push({ ...rule, sortOrder: i + 1 })
+      }
+
+      queryClient.setQueryData<Automation[]>(["automations", instanceId], nextRules)
+
+      return { previousRules }
+    },
+    onError: (error, { instanceId }, context) => {
+      if (context?.previousRules) {
+        queryClient.setQueryData<Automation[]>(["automations", instanceId], context.previousRules)
+      }
+      toast.error(error instanceof Error ? error.message : "Failed to reorder workflows")
+    },
+    onSettled: (_, __, { instanceId }) => {
+      void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
+    },
+  })
 
   // Import dialog state
   const [importDialogOpen, setImportDialogOpen] = useState(false)
@@ -630,23 +695,46 @@ export function WorkflowsOverview({
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        {sortedRules.map((rule) => {
-                          const otherInstances = activeInstances.filter(i => i.id !== instance.id)
-                          return (
-                            <RulePreview
-                              key={rule.id}
-                              rule={rule}
-                              otherInstances={otherInstances}
-                              onToggle={() => handleToggle(instance.id, rule)}
-                              isToggling={toggleEnabled.isPending || previewRule.isPending}
-                              onEdit={() => openEditDialog(instance.id, rule)}
-                              onDelete={() => setDeleteConfirm({ instanceId: instance.id, rule })}
-                              onDuplicate={() => handleDuplicate(instance.id, rule)}
-                              onCopyToInstance={(targetId) => handleCopyToInstance(rule, targetId)}
-                              onExport={() => handleExport(rule)}
-                            />
-                          )
-                        })}
+                        <DndContext
+                          sensors={reorderSensors}
+                          collisionDetection={closestCenter}
+                          onDragEnd={(event: DragEndEvent) => {
+                            const { active, over } = event
+                            if (!over || active.id === over.id) return
+                            if (reorderRules.isPending) return
+
+                            const ids = sortedRules.map(r => r.id)
+                            const fromIndex = ids.indexOf(active.id as number)
+                            const toIndex = ids.indexOf(over.id as number)
+                            if (fromIndex === -1 || toIndex === -1) return
+
+                            const orderedIds = arrayMove(ids, fromIndex, toIndex)
+                            reorderRules.mutate({ instanceId: instance.id, orderedIds })
+                          }}
+                        >
+                          <SortableContext items={sortedRules.map(r => r.id)} strategy={verticalListSortingStrategy}>
+                            <div className="space-y-2">
+                              {sortedRules.map((rule) => {
+                                const otherInstances = activeInstances.filter(i => i.id !== instance.id)
+                                return (
+                                  <SortableRulePreview
+                                    key={rule.id}
+                                    rule={rule}
+                                    otherInstances={otherInstances}
+                                    onToggle={() => handleToggle(instance.id, rule)}
+                                    isToggling={toggleEnabled.isPending || previewRule.isPending}
+                                    onEdit={() => openEditDialog(instance.id, rule)}
+                                    onDelete={() => setDeleteConfirm({ instanceId: instance.id, rule })}
+                                    onDuplicate={() => handleDuplicate(instance.id, rule)}
+                                    onCopyToInstance={(targetId) => handleCopyToInstance(rule, targetId)}
+                                    onExport={() => handleExport(rule)}
+                                    disableDrag={sortedRules.length < 2 || reorderRules.isPending}
+                                  />
+                                )
+                              })}
+                            </div>
+                          </SortableContext>
+                        </DndContext>
                         <div className="flex gap-2">
                           <Button
                             variant="outline"
@@ -1211,6 +1299,7 @@ interface RulePreviewProps {
   otherInstances: InstanceResponse[]
   onToggle: () => void
   isToggling: boolean
+  dragHandle?: ReactNode
   onEdit: () => void
   onDelete: () => void
   onDuplicate: () => void
@@ -1218,7 +1307,11 @@ interface RulePreviewProps {
   onExport: () => void
 }
 
-function RulePreview({
+interface SortableRulePreviewProps extends Omit<RulePreviewProps, "dragHandle"> {
+  disableDrag: boolean
+}
+
+function SortableRulePreview({
   rule,
   otherInstances,
   onToggle,
@@ -1228,15 +1321,90 @@ function RulePreview({
   onDuplicate,
   onCopyToInstance,
   onExport,
+  disableDrag,
+}: SortableRulePreviewProps) {
+  const {
+    attributes,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: rule.id,
+    disabled: disableDrag,
+  })
+
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} className={cn(isDragging && "opacity-70")}>
+      <RulePreview
+        rule={rule}
+        otherInstances={otherInstances}
+        onToggle={onToggle}
+        isToggling={isToggling}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        onDuplicate={onDuplicate}
+        onCopyToInstance={onCopyToInstance}
+        onExport={onExport}
+        dragHandle={(
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            ref={setActivatorNodeRef}
+            disabled={disableDrag}
+            className={cn(
+              "h-7 w-7 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground",
+              disableDrag && "cursor-default"
+            )}
+            aria-label="Drag to reorder workflow"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="h-4 w-4" />
+          </Button>
+        )}
+      />
+    </div>
+  )
+}
+
+function RulePreview({
+  rule,
+  otherInstances,
+  onToggle,
+  isToggling,
+  dragHandle,
+  onEdit,
+  onDelete,
+  onDuplicate,
+  onCopyToInstance,
+  onExport,
 }: RulePreviewProps) {
   const trackers = parseTrackerDomains(rule)
   const isAllTrackers = rule.trackerPattern === "*"
+  const hasAnyCondition = Boolean(
+    (rule.conditions?.speedLimits?.enabled && rule.conditions.speedLimits.condition) ||
+    (rule.conditions?.shareLimits?.enabled && rule.conditions.shareLimits.condition) ||
+    (rule.conditions?.pause?.enabled && rule.conditions.pause.condition) ||
+    (rule.conditions?.delete?.enabled && rule.conditions.delete.condition) ||
+    (rule.conditions?.tag?.enabled && rule.conditions.tag.condition) ||
+    (rule.conditions?.category?.enabled && rule.conditions.category.condition)
+  )
 
   return (
     <div className={cn(
-      "rounded-lg border bg-muted/40 p-3 grid grid-cols-[auto_1fr_auto] items-center gap-3",
+      "rounded-lg border bg-muted/40 p-3 grid grid-cols-[auto_auto_1fr_auto] items-center gap-3",
       !rule.enabled && "opacity-60"
     )}>
+      {dragHandle ?? <div className="h-7 w-7" />}
       <Switch
         checked={rule.enabled}
         onCheckedChange={onToggle}
@@ -1267,6 +1435,11 @@ function RulePreview({
               <p className="break-all">{trackers.join(", ")}</p>
             </TooltipContent>
           </Tooltip>
+        )}
+        {!hasAnyCondition && (
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 cursor-default">
+            All torrents
+          </Badge>
         )}
         {rule.conditions?.speedLimits?.enabled && rule.conditions.speedLimits.uploadKiB !== undefined && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
