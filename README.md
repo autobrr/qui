@@ -156,6 +156,9 @@ Our release workflow builds multi-architecture images (`linux/amd64`, `linux/arm
 - Keep the default **Network Type** (`bridge` works for most setups)
 - Add a port mapping: **Host port** `7476` → **Container port** `7476`
 - Add a path mapping: **Container Path** `/config` → **Host Path** `/mnt/user/appdata/qui`
+- Enable Advanced View (top right)
+- Set Icon URL: `https://raw.githubusercontent.com/autobrr/qui/main/web/public/icon.png`
+- Set WebUI: `http://[IP]:[PORT:7476]`
 - (Optional) add environment variables for advanced settings (e.g., `QUI__BASE_URL`, `QUI__LOG_LEVEL`, `TZ`)
 - Click **Apply** to pull the image and start the container
 
