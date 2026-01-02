@@ -1,6 +1,10 @@
 ---
 sidebar_position: 3
+title: Hardlink Mode
+description: Cross-seed using hardlinks or reflinks instead of file renaming.
 ---
+
+import LocalFilesystemDocker from '@site/docs/_partials/_local-filesystem-docker.mdx';
 
 # Hardlink Mode
 
@@ -16,6 +20,8 @@ Hardlink mode is an opt-in cross-seeding strategy that creates a hardlinked copy
 - Requires **Local filesystem access** on the target qBittorrent instance.
 - Hardlink base directory must be on the **same filesystem/volume** as the instance's download paths (hardlinks can't cross filesystems).
 - qui must be able to read the instance's content paths and write to the hardlink base directory.
+
+<LocalFilesystemDocker />
 
 ## Behavior
 

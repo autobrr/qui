@@ -1,9 +1,12 @@
 ---
 sidebar_position: 3
+title: Docker
+description: Run qui in Docker with compose or standalone.
 ---
 
 import CodeBlock from '@theme/CodeBlock';
 import DockerCompose from '!!raw-loader!@site/../docker-compose.yml';
+import LocalFilesystemDocker from '@site/docs/_partials/_local-filesystem-docker.mdx';
 
 # Docker
 
@@ -23,6 +26,10 @@ docker run -d \
   -v $(pwd)/config:/config \
   ghcr.io/autobrr/qui:latest
 ```
+
+## Local Filesystem Access
+
+<LocalFilesystemDocker />
 
 ## Unraid
 
