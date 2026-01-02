@@ -2133,16 +2133,16 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
                   <CollapsibleContent>
                     <div className="px-4 pb-3 space-y-2">
-                      {searchRuns && searchRuns.length > 0 ? (
-                        <div className="space-y-1">
-                          {searchRuns.map(run => {
-                            const successResults = run.results?.filter(r => r.added) ?? []
-                            const failedResults = run.results?.filter(r => !r.added && r.message) ?? []
-                            const hasResults = successResults.length > 0 || failedResults.length > 0
-                            return (
-                              <Collapsible key={run.id}>
-                                <CollapsibleTrigger asChild disabled={!hasResults}>
-                                  <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
+	                      {searchRuns && searchRuns.length > 0 ? (
+	                        <div className="space-y-1">
+	                          {searchRuns.map(run => {
+	                            const successResults = run.results?.filter(r => r.added) ?? []
+	                            const failedResults = run.results?.filter(r => !r.added) ?? []
+	                            const hasResults = (run.results?.length ?? 0) > 0
+	                            return (
+	                              <Collapsible key={run.id}>
+	                                <CollapsibleTrigger asChild disabled={!hasResults}>
+	                                  <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
                                     <div className="flex items-center gap-2 min-w-0">
                                       {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
                                       {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
@@ -2162,31 +2162,34 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                                     </div>
                                   </div>
                                 </CollapsibleTrigger>
-                                {hasResults && (
-                                  <CollapsibleContent>
-                                    <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
-                                      {successResults.map((result, i) => (
-                                        <div key={`success-${result.torrentHash}-${i}`} className="flex items-center gap-2 text-xs">
-                                          <Badge variant="default" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || "Unknown"}</Badge>
-                                          <span className="truncate text-muted-foreground">{result.torrentName}</span>
-                                        </div>
-                                      ))}
-                                      {failedResults.length > 0 && (
-                                        <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
-                                          <span className="text-[10px] text-muted-foreground font-medium">Failed:</span>
-                                          {failedResults.map((result, i) => (
-                                            <div key={`failed-${result.torrentHash}-${i}`} className="flex flex-col gap-0.5 text-xs">
-                                              <div className="flex items-center gap-2">
-                                                <Badge variant="destructive" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || "Unknown"}</Badge>
-                                                <span className="truncate text-muted-foreground">{result.torrentName}</span>
-                                              </div>
-                                              <span className="text-muted-foreground/70 pl-[104px] text-[10px]">{result.message}</span>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </CollapsibleContent>
+	                                {hasResults && (
+	                                  <CollapsibleContent>
+	                                    <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
+	                                      {successResults.map((result, i) => (
+	                                        <div key={`success-${result.torrentHash}-${i}`} className="flex items-center gap-2 text-xs">
+	                                          <Badge variant="default" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || "Unknown"}</Badge>
+	                                          <span className="truncate text-muted-foreground">{result.torrentName}</span>
+	                                        </div>
+	                                      ))}
+	                                      {successResults.length === 0 && failedResults.length === 0 && run.results && run.results.length > 0 && (
+	                                        <span className="text-xs text-muted-foreground">No results with details</span>
+	                                      )}
+	                                      {failedResults.length > 0 && (
+	                                        <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
+	                                          <span className="text-[10px] text-muted-foreground font-medium">Failed:</span>
+	                                          {failedResults.map((result, i) => (
+	                                            <div key={`failed-${result.torrentHash}-${i}`} className="flex flex-col gap-0.5 text-xs">
+	                                              <div className="flex items-center gap-2">
+	                                                <Badge variant="destructive" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || "Unknown"}</Badge>
+	                                                <span className="truncate text-muted-foreground">{result.torrentName}</span>
+	                                              </div>
+	                                              <span className="text-muted-foreground/70 pl-[104px] text-[10px]">{result.message || "No message provided"}</span>
+	                                            </div>
+	                                          ))}
+	                                        </div>
+	                                      )}
+	                                    </div>
+	                                  </CollapsibleContent>
                                 )}
                               </Collapsible>
                             )
