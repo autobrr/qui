@@ -1,5 +1,10 @@
 # qui
 
+> [!WARNING]
+> **You're viewing the development branch — documentation here may describe unreleased features.**
+>
+> [![Stable Docs](https://img.shields.io/github/v/release/autobrr/qui?label=stable%20docs&style=for-the-badge)](https://github.com/autobrr/qui/blob/v1.11.0/README.md)
+
 A fast, modern web interface for qBittorrent. Supports managing multiple qBittorrent instances from a single, lightweight application.
 
 <div align="center">
@@ -564,7 +569,7 @@ In your autobrr filter, go to **External** tab → **Add new**:
 **Data (JSON):**
 ```json
 {
-  "torrentName": "{{ .TorrentName }}",
+  "torrentName": {{ toRawJson .TorrentName }},
   "instanceIds": [1]
 }
 ```
@@ -572,7 +577,7 @@ In your autobrr filter, go to **External** tab → **Add new**:
 To search all instances, omit `instanceIds`:
 ```json
 {
-  "torrentName": "{{ .TorrentName }}"
+  "torrentName": {{ toRawJson .TorrentName }}
 }
 ```
 
@@ -605,14 +610,16 @@ When `/check` returns `200 OK`, send the torrent to `/api/cross-seed/apply`:
 ```json
 {
   "torrentData": "{{ .TorrentDataRawBytes | toString | b64enc }}",
-  "instanceIds": [1]
+  "instanceIds": [1],
+  "indexerName": {{ toRawJson .IndexerName }}
 }
 ```
 
 - `torrentData` - Base64-encoded torrent file bytes
 - `instanceIds` - Target instances (omit to apply to any matching instance)
+- `indexerName` (optional) - Indexer display name (e.g., "TorrentDB"). Only used when "Use indexer name as category" mode is enabled; ignored otherwise
 - `tags` (optional) - Override webhook tags from settings
-- `category` (optional) - Override category (defaults to matched torrent's category)
+- `category` (optional) - Override category. Takes precedence over `indexerName`
 
 Cross-seeded torrents are added paused with `skip_checking=true`. qui polls the torrent state and auto-resumes if progress meets the size tolerance threshold. If progress is too low, it remains paused for manual review.
 

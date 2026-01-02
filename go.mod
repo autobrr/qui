@@ -45,7 +45,7 @@ require (
 	modernc.org/sqlite v1.40.1
 )
 
-replace github.com/moistari/rls => github.com/autobrr/rls v0.7.1-0.20251216090501-a93fa08d24d2
+replace github.com/moistari/rls => github.com/autobrr/rls v0.7.1-0.20260101090144-934fa1613435
 
 require (
 	code.gitea.io/sdk/gitea v0.22.0 // indirect
