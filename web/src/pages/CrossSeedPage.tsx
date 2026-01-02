@@ -2304,7 +2304,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     </Label>
                     <p className="text-xs text-muted-foreground">
                       {globalSettings.skipPieceBoundarySafetyCheck
-                        ? "Allow matches even if extra files share pieces with content. May corrupt existing seeded files if content differs—consider reflink mode instead."
+                        ? "Allow matches even if extra files share pieces with content. May corrupt existing seeded files if content differs. Consider reflink mode instead."
                         : "Matches are blocked when extra files share pieces with content, protecting your existing seeded files."}
                     </p>
                   </div>
