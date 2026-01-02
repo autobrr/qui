@@ -167,10 +167,6 @@ Remove torrents from qBittorrent. **Must be standalone** - cannot combine with o
 | `deleteWithFiles` | Remove with files |
 | `deleteWithFilesPreserveCrossSeeds` | Remove files but preserve if cross-seeds detected |
 
-:::tip
-Delete rules now match incomplete torrents too. Add explicit `Progress >= 1` or `State is completed` conditions if you only want to delete finished torrents.
-:::
-
 ### Tag
 
 Add or remove tags from torrents.

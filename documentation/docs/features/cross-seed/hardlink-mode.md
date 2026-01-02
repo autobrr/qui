@@ -91,7 +91,7 @@ Reflink mode creates copy-on-write clones of the matched files. Unlike hardlinks
   - **Windows/FreeBSD**: Not currently supported
 
 :::tip
-On Linux, check the filesystem type for a path with `stat -f -c %T /path` (you want `xfs`/`btrfs`, not `fuseblk`/`fuse.mergerfs`/`overlayfs`).
+On Linux, check the filesystem type with `df -T /path` (you want `xfs`/`btrfs`, not `fuseblk`/`fuse.mergerfs`/`overlayfs`).
 :::
 
 ### Behavior Differences
