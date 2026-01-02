@@ -2542,6 +2542,7 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		SkipAutoResume:               skipAutoResume,
 		SkipRecheck:                  skipRecheck,
 		SkipPieceBoundarySafetyCheck: skipPieceBoundarySafetyCheck,
+		IndexerName:                  req.IndexerName,
 	}
 	// Pass webhook source filters so CrossSeed respects them when finding candidates
 	if settings != nil {
@@ -3115,9 +3116,10 @@ func (s *Service) processCrossSeedCandidate(
 		} else {
 			result.Message = fmt.Sprintf("Added torrent with recheck (match: %s, category: %s)", matchType, crossCategory)
 		}
-		log.Debug().
+		log.Info().
 			Int("instanceID", candidate.InstanceID).
 			Str("instanceName", candidate.InstanceName).
+			Str("torrentName", torrentName).
 			Msg("Successfully added cross-seed torrent with recheck")
 	} else {
 		if categoryCreationFailed {
@@ -3215,9 +3217,10 @@ func (s *Service) processCrossSeedCandidate(
 	// Execute external program if configured (async, non-blocking)
 	s.executeExternalProgram(ctx, candidate.InstanceID, torrentHash)
 
-	logEvent := log.Debug().
+	logEvent := log.Info().
 		Int("instanceID", candidate.InstanceID).
 		Str("instanceName", candidate.InstanceName).
+		Str("torrentName", torrentName).
 		Str("torrentHash", torrentHash).
 		Str("matchedHash", matchedTorrent.Hash).
 		Str("matchType", matchType).
@@ -6163,8 +6166,24 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 	}
 
 	result.Added = false
-	result.Message = "no instances accepted torrent via " + match.Indexer
+	result.Message = extractFailureMessage(resp.Results, match.Indexer)
 	return result, nil
+}
+
+// extractFailureMessage returns a descriptive message from instance results.
+// Prefers Message over Status, falls back to a generic message if both are empty.
+func extractFailureMessage(results []InstanceCrossSeedResult, indexer string) string {
+	fallback := "no instances accepted torrent via " + indexer
+	if len(results) == 0 {
+		return fallback
+	}
+	if msg := results[0].Message; msg != "" {
+		return msg
+	}
+	if status := results[0].Status; status != "" {
+		return status
+	}
+	return fallback
 }
 
 // filterIndexerIDsForTorrentAsync performs indexer filtering with async content filtering support.
