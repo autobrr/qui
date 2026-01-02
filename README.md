@@ -1,5 +1,10 @@
 # qui
 
+> [!WARNING]
+> **You're viewing the development branch — documentation here may describe unreleased features.**
+>
+> [![Stable Docs](https://img.shields.io/github/v/release/autobrr/qui?label=stable%20docs&style=for-the-badge)](https://github.com/autobrr/qui/blob/v1.11.0/README.md)
+
 A fast, modern web interface for qBittorrent. Supports managing multiple qBittorrent instances from a single, lightweight application.
 
 <div align="center">
