@@ -498,11 +498,11 @@ func joinNormalizedCodecSlice(slice []string) string {
 }
 
 // getMatchTypeFromTitle checks if a candidate torrent has files matching what we want based on parsed title.
-func (s *Service) getMatchTypeFromTitle(targetName, candidateName string, targetRelease, candidateRelease *rls.Release, candidateFiles qbt.TorrentFiles, ignorePatterns []string) string {
+func (s *Service) getMatchTypeFromTitle(targetName, candidateName string, targetRelease, candidateRelease *rls.Release, candidateFiles qbt.TorrentFiles) string {
 	// Build candidate release keys from actual files with enrichment.
 	candidateReleases := make(map[releaseKey]int64)
 	for _, cf := range candidateFiles {
-		if !shouldIgnoreFile(cf.Name, ignorePatterns, s.stringNormalizer) {
+		if !shouldIgnoreFile(cf.Name, s.stringNormalizer) {
 			fileRelease := s.parseReleaseName(cf.Name)
 			enrichedRelease := enrichReleaseFromTorrent(fileRelease, candidateRelease)
 
@@ -616,7 +616,7 @@ type MatchResult struct {
 // getMatchTypeWithReason determines if files match for cross-seeding and provides
 // a detailed reason when they don't match.
 // tolerancePercent specifies the maximum size difference percentage for size matching (default 5%).
-func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Release, sourceFiles, candidateFiles qbt.TorrentFiles, ignorePatterns []string, tolerancePercent float64) MatchResult {
+func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Release, sourceFiles, candidateFiles qbt.TorrentFiles, tolerancePercent float64) MatchResult {
 	var timer *prometheus.Timer
 	if s.metrics != nil {
 		timer = prometheus.NewTimer(s.metrics.GetMatchTypeDuration)
@@ -625,8 +625,8 @@ func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Re
 	}
 
 	// Check layout compatibility first (RAR vs extracted files)
-	sourceLayout := classifyTorrentLayout(sourceFiles, ignorePatterns, s.stringNormalizer)
-	candidateLayout := classifyTorrentLayout(candidateFiles, ignorePatterns, s.stringNormalizer)
+	sourceLayout := classifyTorrentLayout(sourceFiles, s.stringNormalizer)
+	candidateLayout := classifyTorrentLayout(candidateFiles, s.stringNormalizer)
 	if sourceLayout != LayoutUnknown && candidateLayout != LayoutUnknown && sourceLayout != candidateLayout {
 		if s.metrics != nil {
 			s.metrics.GetMatchTypeNoMatch.Inc()
@@ -647,7 +647,7 @@ func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Re
 
 	// Process source files
 	for _, sf := range sourceFiles {
-		if !shouldIgnoreFile(sf.Name, ignorePatterns, s.stringNormalizer) {
+		if !shouldIgnoreFile(sf.Name, s.stringNormalizer) {
 			filteredSourceFiles = append(filteredSourceFiles, TorrentFile{
 				Name: sf.Name,
 				Size: sf.Size,
@@ -667,7 +667,7 @@ func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Re
 
 	// Process candidate files
 	for _, cf := range candidateFiles {
-		if !shouldIgnoreFile(cf.Name, ignorePatterns, s.stringNormalizer) {
+		if !shouldIgnoreFile(cf.Name, s.stringNormalizer) {
 			filteredCandidateFiles = append(filteredCandidateFiles, TorrentFile{
 				Name: cf.Name,
 				Size: cf.Size,
@@ -811,7 +811,7 @@ func buildNoMatchReason(
 // Returns "exact" for perfect match, "partial" for season pack partial matches,
 // "size" for total size match, or "" for no match.
 // Uses streaming file comparison to reduce memory usage.
-func (s *Service) getMatchType(sourceRelease, candidateRelease *rls.Release, sourceFiles, candidateFiles qbt.TorrentFiles, ignorePatterns []string) string {
+func (s *Service) getMatchType(sourceRelease, candidateRelease *rls.Release, sourceFiles, candidateFiles qbt.TorrentFiles) string {
 	var timer *prometheus.Timer
 	if s.metrics != nil {
 		timer = prometheus.NewTimer(s.metrics.GetMatchTypeDuration)
@@ -819,8 +819,8 @@ func (s *Service) getMatchType(sourceRelease, candidateRelease *rls.Release, sou
 		s.metrics.GetMatchTypeCalls.Inc()
 	}
 
-	sourceLayout := classifyTorrentLayout(sourceFiles, ignorePatterns, s.stringNormalizer)
-	candidateLayout := classifyTorrentLayout(candidateFiles, ignorePatterns, s.stringNormalizer)
+	sourceLayout := classifyTorrentLayout(sourceFiles, s.stringNormalizer)
+	candidateLayout := classifyTorrentLayout(candidateFiles, s.stringNormalizer)
 	if sourceLayout != LayoutUnknown && candidateLayout != LayoutUnknown && sourceLayout != candidateLayout {
 		if s.metrics != nil {
 			s.metrics.GetMatchTypeNoMatch.Inc()
@@ -840,7 +840,7 @@ func (s *Service) getMatchType(sourceRelease, candidateRelease *rls.Release, sou
 
 	// Process source files
 	for _, sf := range sourceFiles {
-		if !shouldIgnoreFile(sf.Name, ignorePatterns, s.stringNormalizer) {
+		if !shouldIgnoreFile(sf.Name, s.stringNormalizer) {
 			filteredSourceFiles = append(filteredSourceFiles, TorrentFile{
 				Name: sf.Name,
 				Size: sf.Size,
@@ -861,7 +861,7 @@ func (s *Service) getMatchType(sourceRelease, candidateRelease *rls.Release, sou
 
 	// Process candidate files
 	for _, cf := range candidateFiles {
-		if !shouldIgnoreFile(cf.Name, ignorePatterns, s.stringNormalizer) {
+		if !shouldIgnoreFile(cf.Name, s.stringNormalizer) {
 			filteredCandidateFiles = append(filteredCandidateFiles, TorrentFile{
 				Name: cf.Name,
 				Size: cf.Size,
@@ -1049,8 +1049,7 @@ func enrichReleaseFromTorrent(fileRelease *rls.Release, torrentRelease *rls.Rele
 // shouldIgnoreFile checks if a file should be ignored during matching.
 // Uses hardcoded lists of extensions and path keywords to filter out scene
 // metadata files, subtitles, samples, and other non-content files.
-// The patterns parameter is kept for backwards compatibility but is ignored.
-func shouldIgnoreFile(filename string, _ []string, normalizer *stringutils.Normalizer[string, string]) bool {
+func shouldIgnoreFile(filename string, normalizer *stringutils.Normalizer[string, string]) bool {
 	lower := normalizer.Normalize(filename)
 
 	// Check extension matches

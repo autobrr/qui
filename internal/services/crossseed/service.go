@@ -467,7 +467,6 @@ type SearchRunOptions struct {
 	CategoryOverride             *string
 	TagsOverride                 []string
 	InheritSourceTags            bool
-	IgnorePatterns               []string
 	SpecificHashes               []string
 	SizeMismatchTolerancePercent float64
 	SkipAutoResume               bool
@@ -1205,8 +1204,8 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 			SkipRecheck:                  settings.SkipRecheck,
 			SkipPieceBoundarySafetyCheck: settings.SkipPieceBoundarySafetyCheck,
 			CategoryOverride:             settings.Category,
-			TagsOverride:      append([]string(nil), settings.CompletionSearchTags...),
-			InheritSourceTags: settings.InheritSourceTags,
+			TagsOverride:                 append([]string(nil), settings.CompletionSearchTags...),
+			InheritSourceTags:            settings.InheritSourceTags,
 		},
 	}
 	// Pass completion source filters to ensure CrossSeed respects them when finding candidates
@@ -1893,9 +1892,9 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	req := &CrossSeedRequest{
 		TorrentData:                  encodedTorrent,
 		TargetInstanceIDs:            append([]int(nil), settings.TargetInstanceIDs...),
-		Tags:              append([]string(nil), settings.RSSAutomationTags...),
-		InheritSourceTags: settings.InheritSourceTags,
-		SkipIfExists:      &skipIfExists,
+		Tags:                         append([]string(nil), settings.RSSAutomationTags...),
+		InheritSourceTags:            settings.InheritSourceTags,
+		SkipIfExists:                 &skipIfExists,
 		IndexerName:                  sourceIndexer,
 		FindIndividualEpisodes:       settings.FindIndividualEpisodes,
 		SizeMismatchTolerancePercent: settings.SizeMismatchTolerancePercent,
@@ -2351,7 +2350,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			// Now check if this torrent actually has the files we need
 			// This handles: single episode in season pack, season pack containing episodes, etc.
 			candidateRelease := s.releaseCache.Parse(torrent.Name)
-			matchType := s.getMatchTypeFromTitle(req.TorrentName, torrent.Name, targetRelease, candidateRelease, candidateFiles, req.IgnorePatterns)
+			matchType := s.getMatchTypeFromTitle(req.TorrentName, torrent.Name, targetRelease, candidateRelease, candidateFiles)
 			if matchType == "" {
 				continue
 			}
@@ -2435,9 +2434,6 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 		TorrentName:            torrentName,
 		TargetInstanceIDs:      req.TargetInstanceIDs,
 		FindIndividualEpisodes: req.FindIndividualEpisodes,
-	}
-	if len(req.IgnorePatterns) > 0 {
-		findReq.IgnorePatterns = append([]string(nil), req.IgnorePatterns...)
 	}
 	// Pass through source filters for RSS automation
 	if len(req.SourceFilterCategories) > 0 {
@@ -2585,9 +2581,9 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		TorrentData:                  req.TorrentData,
 		TargetInstanceIDs:            targetInstanceIDs,
 		Category:                     req.Category,
-		Tags:              tags,
-		InheritSourceTags: inheritSourceTags,
-		StartPaused:       req.StartPaused,
+		Tags:                         tags,
+		InheritSourceTags:            inheritSourceTags,
+		StartPaused:                  req.StartPaused,
 		SkipIfExists:                 req.SkipIfExists,
 		FindIndividualEpisodes:       findIndividualEpisodes,
 		SizeMismatchTolerancePercent: sizeTolerance,
@@ -2699,7 +2695,7 @@ func (s *Service) processCrossSeedCandidate(
 	if tolerancePercent <= 0 {
 		tolerancePercent = 5.0 // Default to 5% tolerance
 	}
-	matchedTorrent, candidateFiles, matchType, rejectReason := s.findBestCandidateMatch(ctx, candidate, sourceRelease, sourceFiles, req.IgnorePatterns, candidateFilesByHash, tolerancePercent)
+	matchedTorrent, candidateFiles, matchType, rejectReason := s.findBestCandidateMatch(ctx, candidate, sourceRelease, sourceFiles, candidateFilesByHash, tolerancePercent)
 	if matchedTorrent == nil {
 		result.Status = "no_match"
 		result.Message = rejectReason
@@ -2739,7 +2735,7 @@ func (s *Service) processCrossSeedCandidate(
 	// Check if we need rename alignment (folder/file names differ)
 	requiresAlignment := needsRenameAlignment(torrentName, matchedTorrent.Name, sourceFiles, candidateFiles)
 
-	// Check if source has extra files that won't exist on disk (e.g., NFO files not filtered by ignorePatterns)
+	// Check if source has extra files that won't exist on disk (e.g., NFO files not in the candidate)
 	hasExtraFiles := hasExtraSourceFiles(sourceFiles, candidateFiles)
 
 	// Determine mode selection: reflink vs hardlink vs reuse.
@@ -2757,7 +2753,7 @@ func (s *Service) processCrossSeedCandidate(
 	// NOTE: Reflink mode bypasses this check because it is allowed to repair/overwrite
 	// the cloned files without risking corruption to the original seeded files.
 	if !useReflinkMode {
-		if hasMismatch, mismatchedFiles := hasContentFileSizeMismatch(sourceFiles, candidateFiles, req.IgnorePatterns, s.stringNormalizer); hasMismatch {
+		if hasMismatch, mismatchedFiles := hasContentFileSizeMismatch(sourceFiles, candidateFiles, s.stringNormalizer); hasMismatch {
 			result.Status = "rejected"
 			result.Message = "Content file sizes do not match - possible corruption or different release"
 			log.Warn().
@@ -3662,7 +3658,6 @@ func (s *Service) findBestCandidateMatch(
 	candidate CrossSeedCandidate,
 	sourceRelease *rls.Release,
 	sourceFiles qbt.TorrentFiles,
-	ignorePatterns []string,
 	filesByHash map[string]qbt.TorrentFiles,
 	tolerancePercent float64,
 ) (*qbt.Torrent, qbt.TorrentFiles, string, string) {
@@ -3707,7 +3702,7 @@ func (s *Service) findBestCandidateMatch(
 
 		// Swap parameter order: check if EXISTING files (files) are contained in NEW files (sourceFiles)
 		// This matches the search behavior where we found "partial-in-pack" (existing mkv in new mkv+nfo)
-		matchResult := s.getMatchTypeWithReason(candidateRelease, sourceRelease, files, sourceFiles, ignorePatterns, tolerancePercent)
+		matchResult := s.getMatchTypeWithReason(candidateRelease, sourceRelease, files, sourceFiles, tolerancePercent)
 		if matchResult.MatchType == "" {
 			// Track the rejection reason - prefer more specific reasons
 			if matchResult.Reason != "" && (bestRejectReason == "" || len(matchResult.Reason) > len(bestRejectReason)) {
@@ -6200,9 +6195,6 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		SourceFilterTags:              append([]string(nil), state.opts.Tags...),
 		SourceFilterExcludeCategories: append([]string(nil), state.opts.ExcludeCategories...),
 		SourceFilterExcludeTags:       append([]string(nil), state.opts.ExcludeTags...),
-	}
-	if len(state.opts.IgnorePatterns) > 0 {
-		request.IgnorePatterns = append([]string(nil), state.opts.IgnorePatterns...)
 	}
 	if state.opts.CategoryOverride != nil && strings.TrimSpace(*state.opts.CategoryOverride) != "" {
 		cat := *state.opts.CategoryOverride
