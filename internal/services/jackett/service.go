@@ -26,6 +26,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
 	"github.com/autobrr/qui/pkg/prowlarr"
+	"github.com/autobrr/qui/pkg/redact"
 	"github.com/autobrr/qui/pkg/releases"
 )
 
@@ -1809,7 +1810,7 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 			log.Debug().
 				Int("indexer_id", idx.ID).
 				Str("indexer_name", idx.Name).
-				Str("base_url", idx.BaseURL).
+				Str("base_url", redact.URLString(idx.BaseURL)).
 				Str("backend", string(idx.Backend)).
 				Msg("Searching native Torznab endpoint")
 		}
@@ -3993,7 +3994,7 @@ func (s *Service) getProwlarrTrackerDomains(ctx context.Context, prowlarrIndexer
 		// Use the first indexer's API key (all indexers in the same group should have the same API key)
 		apiKey, err := s.indexerStore.GetDecryptedAPIKey(indexers[0])
 		if err != nil {
-			log.Warn().Err(err).Str("baseURL", baseURL).Msg("Failed to decrypt API key for Prowlarr instance")
+			log.Warn().Err(err).Str("baseURL", redact.URLString(baseURL)).Msg("Failed to decrypt API key for Prowlarr instance")
 			continue
 		}
 
@@ -4004,7 +4005,7 @@ func (s *Service) getProwlarrTrackerDomains(ctx context.Context, prowlarrIndexer
 		}
 		client := NewClient(baseURL, apiKey, models.TorznabBackendProwlarr, timeout)
 		if client.prowlarr == nil {
-			log.Warn().Str("baseURL", baseURL).Msg("Failed to create Prowlarr client")
+			log.Warn().Str("baseURL", redact.URLString(baseURL)).Msg("Failed to create Prowlarr client")
 			continue
 		}
 
@@ -4033,7 +4034,7 @@ func (s *Service) getProwlarrTrackerDomains(ctx context.Context, prowlarrIndexer
 				log.Debug().
 					Err(err).
 					Int("indexer_id", indexer.ID).
-					Str("prowlarr_instance", baseURL).
+					Str("prowlarr_instance", redact.URLString(baseURL)).
 					Msg("Failed to get Prowlarr indexer details for domain mapping")
 				continue
 			}

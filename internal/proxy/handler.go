@@ -28,6 +28,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/pkg/httphelpers"
+	"github.com/autobrr/qui/pkg/redact"
 )
 
 // Handler manages reverse proxy requests to qBittorrent instances
@@ -149,8 +150,7 @@ func (h *Handler) rewriteRequest(pr *httputil.ProxyRequest) {
 	log.Debug().
 		Str("client", clientAPIKey.ClientName).
 		Int("instanceId", instanceID).
-		Str("originalPath", originalPath).
-		Str("strippedPath", strippedPath).
+		Str("strippedPath", redact.ProxyPath(strippedPath)).
 		Str("targetHost", instanceURL.Host).
 		Msg("Rewriting proxy request")
 
@@ -262,11 +262,10 @@ func (h *Handler) errorHandler(w http.ResponseWriter, r *http.Request, err error
 	}
 
 	log.Error().
-		Err(err).
+		Str("error", redact.String(err.Error())).
 		Str("client", clientName).
 		Int("instanceId", instanceID).
 		Str("method", r.Method).
-		Str("path", r.URL.Path).
 		Msg("Proxy request failed")
 
 	h.writeProxyError(w)
@@ -423,7 +422,6 @@ func (h *Handler) prepareProxyContext(r *http.Request) (*proxyContext, error) {
 	logger := log.With().
 		Int("instanceId", instanceID).
 		Str("method", r.Method).
-		Str("path", r.URL.Path).
 		Logger()
 
 	if clientAPIKey != nil {

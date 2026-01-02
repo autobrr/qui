@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/pkg/redact"
 )
 
 const (
@@ -36,6 +38,8 @@ func NewRetryTransport(base http.RoundTripper) *RetryTransport {
 }
 
 // RoundTrip implements http.RoundTripper with retry logic for transient errors
+//
+//nolint:wrapcheck // RoundTrip should not wrap errors - callers expect unwrapped transport errors
 func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	var lastErr error
 
@@ -50,7 +54,7 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			if attempt > 0 {
 				log.Debug().
 					Str("method", req.Method).
-					Str("url", req.URL.String()).
+					Str("url", redact.URLString(req.URL.String())).
 					Int("attempt", attempt+1).
 					Msg("Proxy request succeeded after retry")
 			}
@@ -62,9 +66,9 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		// Check if the error is retryable
 		if !isRetryableError(err) {
 			log.Debug().
-				Err(err).
+				Str("error", redact.String(err.Error())).
 				Str("method", req.Method).
-				Str("url", req.URL.String()).
+				Str("url", redact.URLString(req.URL.String())).
 				Msg("Proxy request failed with non-retryable error")
 			return nil, err
 		}
@@ -76,9 +80,9 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		// Check if the request method is safe to retry
 		if !isIdempotentMethod(req.Method) {
 			log.Debug().
-				Err(err).
+				Str("error", redact.String(err.Error())).
 				Str("method", req.Method).
-				Str("url", req.URL.String()).
+				Str("url", redact.URLString(req.URL.String())).
 				Msg("Proxy request failed but method is not idempotent, not retrying")
 			return nil, err
 		}
@@ -86,9 +90,9 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		// Don't retry if we've exhausted our attempts
 		if attempt >= maxRetries {
 			log.Warn().
-				Err(err).
+				Str("error", redact.String(err.Error())).
 				Str("method", req.Method).
-				Str("url", req.URL.String()).
+				Str("url", redact.URLString(req.URL.String())).
 				Int("attempts", attempt+1).
 				Msg("Proxy request failed after max retries")
 			return nil, err
@@ -98,9 +102,9 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		backoff := calculateBackoff(attempt, initialRetryWait, maxRetryWait)
 
 		log.Debug().
-			Err(err).
+			Str("error", redact.String(err.Error())).
 			Str("method", req.Method).
-			Str("url", req.URL.String()).
+			Str("url", redact.URLString(req.URL.String())).
 			Int("attempt", attempt+1).
 			Dur("backoff", backoff).
 			Msg("Proxy request failed with retryable error, retrying")
@@ -135,60 +139,65 @@ func isRetryableError(err error) bool {
 		return false
 	}
 
-	// Check for common transient network errors
-	var netErr net.Error
-	if errors.As(err, &netErr) {
-		// Retry on temporary network errors, but be careful with timeouts
-		// Only retry timeouts if they're connection timeouts, not long-running request timeouts
-		if netErr.Temporary() {
-			return true
-		}
-		// Don't retry on timeout errors as they might be legitimate slow responses
-		if netErr.Timeout() {
-			return false
-		}
-	}
-
-	// Check for specific network errors that are retryable
-	var opErr *net.OpError
-	if errors.As(err, &opErr) {
-		// Retry on connection refused, connection reset, etc.
-		if opErr.Op == "dial" || opErr.Op == "read" {
-			return true
-		}
-	}
-
-	// Check for URL errors
+	// Check for URL errors first - unwrap and check underlying error
 	var urlErr *url.Error
 	if errors.As(err, &urlErr) {
-		// Recursively check the underlying error
 		return isRetryableError(urlErr.Err)
 	}
 
-	// Check for syscall errors
-	if errors.Is(err, syscall.ECONNREFUSED) ||
-		errors.Is(err, syscall.ECONNRESET) ||
-		errors.Is(err, syscall.EPIPE) {
+	// Check typed errors
+	if isRetryableNetError(err) || isRetryableSyscallError(err) || errors.Is(err, io.EOF) {
 		return true
 	}
 
-	// Check for common error messages
+	// Check error message patterns as fallback
+	return isRetryableErrorMessage(err)
+}
+
+// isRetryableNetError checks if a net.Error or net.OpError indicates a retryable condition
+func isRetryableNetError(err error) bool {
+	// Check OpError first - dial errors (including dial timeouts) are retryable
+	// since they indicate transient connection issues, not slow server responses
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		if opErr.Op == "dial" {
+			return true
+		}
+		// Read operations are retryable unless they're timeouts
+		if opErr.Op == "read" {
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
+				return false // Read timeout = slow server, don't retry
+			}
+			return true
+		}
+	}
+
+	// Non-dial/read timeouts shouldn't retry
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return false
+	}
+
+	return false
+}
+
+// isRetryableSyscallError checks for retryable syscall errors
+func isRetryableSyscallError(err error) bool {
+	return errors.Is(err, syscall.ECONNREFUSED) ||
+		errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, syscall.EPIPE)
+}
+
+// isRetryableErrorMessage checks error message patterns for retryable conditions
+func isRetryableErrorMessage(err error) bool {
 	errStr := strings.ToLower(err.Error())
-	if strings.Contains(errStr, "connection refused") ||
+	return strings.Contains(errStr, "connection refused") ||
 		strings.Contains(errStr, "connection reset") ||
 		strings.Contains(errStr, "broken pipe") ||
 		strings.Contains(errStr, "no such host") ||
 		strings.Contains(errStr, "network is unreachable") ||
-		(strings.Contains(errStr, "eof") && !strings.Contains(errStr, "unexpected eof")) {
-		return true
-	}
-
-	// Check for io.EOF which can indicate connection pool issues
-	if errors.Is(err, io.EOF) {
-		return true
-	}
-
-	return false
+		(strings.Contains(errStr, "eof") && !strings.Contains(errStr, "unexpected eof"))
 }
 
 // isIdempotentMethod checks if the HTTP method is safe to retry
@@ -207,12 +216,12 @@ func isIdempotentMethod(method string) bool {
 }
 
 // calculateBackoff calculates exponential backoff duration with a cap
-func calculateBackoff(attempt int, initial, max time.Duration) time.Duration {
+func calculateBackoff(attempt int, initial, maxBackoff time.Duration) time.Duration {
 	backoff := initial
-	for i := 0; i < attempt; i++ {
+	for range attempt {
 		backoff *= 2
-		if backoff > max {
-			return max
+		if backoff > maxBackoff {
+			return maxBackoff
 		}
 	}
 	return backoff
