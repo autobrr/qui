@@ -174,12 +174,12 @@ func TestRuleRunStats_CollectMetrics(t *testing.T) {
 	assert.Equal(t, 1.0, testutil.ToFloat64(totalRunsMetric))
 
 	actionPerformedMetric := metricsCollector.GetAutomationRuleRunActionTotal(1, "test_instance", 1, "test")
-	assert.Equal(t, 3.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("speed_applied")))
-	assert.Equal(t, 5.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("share_applied")))
-	assert.Equal(t, 7.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("pause_applied")))
-	assert.Equal(t, 9.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("tag_condition_met")))
-	assert.Equal(t, 12.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("category_applied")))
-	assert.Equal(t, 15.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("delete_applied")))
+	assert.Equal(t, 3.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("speed_limit")))
+	assert.Equal(t, 5.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("share_limit")))
+	assert.Equal(t, 7.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("pause")))
+	assert.Equal(t, 9.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("tag")))
+	assert.Equal(t, 12.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("category")))
+	assert.Equal(t, 15.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("delete")))
 
 	actionNotPerformedMetric := metricsCollector.GetAutomationRuleRunActionNotPerformedTotal(1, "test_instance", 1, "test")
 	assert.Equal(t, 11.0, testutil.ToFloat64(actionNotPerformedMetric.WithLabelValues("tag_skipped_missing_unregistered_set")))
@@ -231,14 +231,14 @@ func TestProcessTorrents_Metrics(t *testing.T) {
 	assert.Equal(t, 1.0, testutil.ToFloat64(totalTorrentsMatchedMetric))
 
 	actionPerformedMetric := metricsCollector.GetAutomationRuleRunActionTotal(rules[0].InstanceID, "test_instance", rules[0].ID, rules[0].Name)
-	assert.Equal(t, 1.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("category_applied")))
+	assert.Equal(t, 1.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("category")))
 
 	// Verify the metrics that should not change did not get changed
-	assert.Equal(t, 0.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("speed_applied")))
-	assert.Equal(t, 0.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("share_applied")))
-	assert.Equal(t, 0.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("pause_applied")))
-	assert.Equal(t, 0.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("tag_condition_met")))
-	assert.Equal(t, 0.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("delete_applied")))
+	assert.Equal(t, 0.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("speed_limit")))
+	assert.Equal(t, 0.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("share_limit")))
+	assert.Equal(t, 0.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("pause")))
+	assert.Equal(t, 0.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("tag")))
+	assert.Equal(t, 0.0, testutil.ToFloat64(actionPerformedMetric.WithLabelValues("delete")))
 
 	actionNotPerformedMetric := metricsCollector.GetAutomationRuleRunActionNotPerformedTotal(rules[0].InstanceID, "test_instance", rules[0].ID, rules[0].Name)
 	assert.Equal(t, 0.0, testutil.ToFloat64(actionNotPerformedMetric.WithLabelValues("tag_skipped_missing_unregistered_set")))
