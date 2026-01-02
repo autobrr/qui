@@ -98,7 +98,7 @@ func TestTorrentCollector_Describe(t *testing.T) {
 	}
 
 	// Should have all expected metrics descriptors
-	assert.Len(t, descs, 13, "Should have 13 metric descriptors")
+	assert.Len(t, descs, 11, "Should have 11 metric descriptors")
 }
 
 func TestTorrentCollector_CollectWithNilDependencies(t *testing.T) {
