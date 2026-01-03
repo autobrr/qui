@@ -571,7 +571,7 @@ function HardlinkModeSettings() {
                                   Fallback to regular mode on error
                                 </Label>
                                 <p className="text-xs text-muted-foreground">
-                                  If {form.useReflinks ? "reflink" : "hardlink"} fails (e.g., different filesystems), fall back to regular mode with piece boundary safety check.
+                                  If {form.useReflinks ? "reflink" : "hardlink"} fails (e.g., different filesystems), fall back to regular mode using existing files.
                                 </p>
                               </div>
                             </div>

@@ -128,7 +128,7 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		SkipAutoResumeWebhook:        false,
 		SkipRecheck:                  false,
 		SkipPieceBoundarySafetyCheck: true,  // Skip by default to maximize matches
-		FallbackToRegularMode:        false, // Default to false - fail hard on reflink/hardlink errors
+		FallbackToRegularMode:        false, // Default to false
 		CreatedAt:                    time.Now().UTC(),
 		UpdatedAt:                    time.Now().UTC(),
 	}
