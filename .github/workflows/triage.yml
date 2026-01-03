@@ -142,6 +142,12 @@ jobs:
                - DO NOT communicate directly with users
                - If no labels are clearly applicable, do not apply any labels
 
+            6. After applying labels, remove the "needs-triage" label if present:
+               - Use the removeLabelsFromLabelable mutation:
+                 gh api graphql -f query='mutation { removeLabelsFromLabelable(input: {labelIds: ["NEEDS_TRIAGE_LABEL_ID"], labelableId: "DISCUSSION_NODE_ID"}) { clientMutationId } }'
+               - Get the "needs-triage" label ID from the label list in step 1
+               - Only remove it if you successfully applied at least one label
+
             IMPORTANT GUIDELINES:
             - Be thorough in your analysis
             - Only select labels from the repository's label list
