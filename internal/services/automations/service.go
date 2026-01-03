@@ -597,7 +597,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		freeSpace, err := s.syncManager.GetFreeSpace(ctx, instanceID)
 		if err != nil {
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get free space")
-			return err
+			return fmt.Errorf("failed to get free space: %w", err)
 		}
 		evalCtx.FreeSpace = freeSpace
 	}

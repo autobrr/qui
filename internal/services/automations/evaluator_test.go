@@ -270,6 +270,16 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 			expected: true,
 		},
 		{
+			name: "free space returns false with nil context",
+			cond: &RuleCondition{
+				Field:    FieldFreeSpace,
+				Operator: OperatorGreaterThan,
+				Value:    "1073741824",
+			},
+			evalCtx:  nil,
+			expected: false,
+		},
+		{
 			name: "ratio between values",
 			cond: &RuleCondition{
 				Field:    FieldRatio,
