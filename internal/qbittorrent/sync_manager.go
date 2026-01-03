@@ -215,13 +215,13 @@ type OptimisticTorrentUpdate struct {
 // NewSyncManager creates a new sync manager
 func NewSyncManager(clientPool *ClientPool) *SyncManager {
 	sm := &SyncManager{
-		clientPool:             clientPool,
-		exprCache:              ttlcache.New(ttlcache.Options[string, *vm.Program]{}.SetDefaultTTL(5 * time.Minute)),
-		debouncedSyncTimers:    make(map[int]*time.Timer),
-		syncDebounceDelay:      200 * time.Millisecond,
-		syncDebounceMinJitter:  10 * time.Millisecond,
-		fileFetchSem:           make(map[int]chan struct{}),
-		fileFetchMaxConcurrent: 16,
+		clientPool:              clientPool,
+		exprCache:               ttlcache.New(ttlcache.Options[string, *vm.Program]{}.SetDefaultTTL(5 * time.Minute)),
+		debouncedSyncTimers:     make(map[int]*time.Timer),
+		syncDebounceDelay:       200 * time.Millisecond,
+		syncDebounceMinJitter:   10 * time.Millisecond,
+		fileFetchSem:            make(map[int]chan struct{}),
+		fileFetchMaxConcurrent:  16,
 		trackerHealthCache:      make(map[int]*TrackerHealthCounts),
 		trackerHealthCancel:     make(map[int]context.CancelFunc),
 		trackerHealthRefresh:    60 * time.Second,
@@ -1170,12 +1170,25 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 		return nil, nil
 	}
 
+	// Get cached tracker health counts for this instance
+	cachedHealth := sm.GetTrackerHealthCounts(instanceID)
+
 	views := make([]CrossInstanceTorrentView, len(torrents))
 	for i, torrent := range torrents {
+		view := TorrentView{Torrent: torrent}
+		// First try to determine health from enriched tracker data
+		if health := sm.determineTrackerHealth(torrent); health != "" {
+			view.TrackerHealth = health
+		} else if cachedHealth != nil {
+			// Fall back to cached hash sets if torrent wasn't enriched
+			if _, ok := cachedHealth.UnregisteredSet[torrent.Hash]; ok {
+				view.TrackerHealth = TrackerHealthUnregistered
+			} else if _, ok := cachedHealth.TrackerDownSet[torrent.Hash]; ok {
+				view.TrackerHealth = TrackerHealthDown
+			}
+		}
 		views[i] = CrossInstanceTorrentView{
-			TorrentView: TorrentView{
-				Torrent: torrent,
-			},
+			TorrentView:  view,
 			InstanceID:   instance.ID,
 			InstanceName: instance.Name,
 		}
@@ -5353,4 +5366,15 @@ func (sm *SyncManager) DeleteTorrentCreationTask(ctx context.Context, instanceID
 	}
 
 	return client.DeleteTorrentCreationTaskCtx(ctx, taskID)
+}
+
+// GetFreeSpace returns the free space on the instance's filesystem.
+func (sm *SyncManager) GetFreeSpace(ctx context.Context, instanceID int) (int64, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	state := client.syncManager.GetServerState()
+	return state.FreeSpaceOnDisk, nil
 }

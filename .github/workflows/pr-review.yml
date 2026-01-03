@@ -1,0 +1,262 @@
+name: Claude PR Review
+on:
+  pull_request:
+    types: [opened, labeled]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to review'
+        required: true
+        type: number
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Trigger on:
+    # - PR opened (auto first review)
+    # - Label 'claude-review' added (manual re-review)
+    # - @claude mention in PR comment (conversation/re-review)
+    # - workflow_dispatch (testing)
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.action == 'opened') ||
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'claude-review') ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude'))
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup GitHub MCP Server
+        run: |
+          mkdir -p /tmp/mcp-config
+          cat > /tmp/mcp-config/mcp-servers.json << 'EOF'
+          {
+            "mcpServers": {
+              "github": {
+                "command": "docker",
+                "args": [
+                  "run",
+                  "-i",
+                  "--rm",
+                  "-e",
+                  "GITHUB_PERSONAL_ACCESS_TOKEN",
+                  "ghcr.io/github/github-mcp-server:v0.26.3"
+                ],
+                "env": {
+                  "GITHUB_PERSONAL_ACCESS_TOKEN": "${{ secrets.GITHUB_TOKEN }}"
+                }
+              }
+            }
+          }
+          EOF
+
+      - name: Get PR number
+        id: pr
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "number=${{ inputs.pr_number }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" == "issue_comment" ]; then
+            echo "number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" == "pull_request_review_comment" ]; then
+            echo "number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run Claude PR Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          prompt: |
+            You are a PR review assistant. Your role depends on the trigger:
+
+            **Context:**
+            - REPO: ${{ github.repository }}
+            - PR_NUMBER: ${{ steps.pr.outputs.number }}
+            - TRIGGER: ${{ github.event_name }}
+            - COMMENT_BODY: ${{ github.event.comment.body || 'N/A' }}
+
+            ## STEP 1: Understand the Context
+
+            First, fetch the PR details AND previous comments for context:
+            ```bash
+            gh pr view ${{ steps.pr.outputs.number }} --json title,body,files,additions,deletions,comments
+            ```
+
+            If this is a re-review (triggered by label or @claude mention), read the previous comments to:
+            - See what was flagged before
+            - See what the contributor replied
+            - Avoid repeating issues that were acknowledged or explained
+            - Focus on NEW changes if this is a re-review
+
+            ## STEP 2: Determine Your Task
+
+            **If triggered by `@claude` comment:**
+            - Read the comment to understand what the user is asking
+            - If they're asking a question → answer it
+            - If they're disagreeing with feedback → consider their explanation
+            - If they say `@claude review` → do a full re-review
+            - Reply conversationally using `gh pr comment`
+
+            **If triggered by PR opened or label:**
+            - Do a full code review (see Step 3)
+
+            ## STEP 3: Full Code Review (when applicable)
+
+            Fetch the diff:
+            ```bash
+            gh pr diff ${{ steps.pr.outputs.number }}
+            ```
+
+            Based on the files changed, analyze these areas:
+
+            **Security Review** - Invoke if ANY of these paths are touched:
+            - `internal/auth/**`
+            - `internal/api/middleware/auth.go`
+            - `internal/api/handlers/auth.go` or `oidc.go`
+            - `internal/proxy/**`
+            - `internal/services/license/**`
+            - `internal/polar/**`
+
+            **Performance Review** - Invoke if ANY of these paths are touched:
+            - `internal/qbittorrent/sync_manager.go`
+            - `internal/qbittorrent/pool.go`
+            - `internal/qbittorrent/client.go`
+            - `internal/database/**`
+            - Any file with new goroutine spawning (`go func`)
+
+            **Frontend Review** - Invoke if ANY of these paths are touched:
+            - `web/src/components/**`
+            - `web/src/hooks/**`
+            - `web/src/pages/**`
+            - `web/src/themes/**`
+            - `web/src/lib/**`
+
+            **Integration Review** - Invoke if ANY of these paths are touched:
+            - `internal/services/crossseed/**`
+            - `internal/services/jackett/**`
+            - `internal/services/arr/**`
+            - `internal/services/reannounce/**`
+            - `internal/services/trackericons/**`
+
+            **Documentation Review** - ALWAYS invoke this agent to check if docs need updating.
+
+            ### Step 3: Perform Reviews
+            For each relevant area, read the changed files and analyze:
+
+            **Security Checks:**
+            - Password/credential handling
+            - API key validation
+            - Input validation in handlers
+            - Secret exposure in logs/errors
+            - SQL injection vectors
+
+            **Performance Checks:**
+            - Goroutine leaks (missing context cancellation)
+            - N+1 query patterns
+            - Unbounded loops/allocations
+            - Missing timeouts
+            - Race condition potential
+
+            **Frontend Checks:**
+            - Theme color usage (use semantic classes like `bg-background`, not hardcoded `bg-gray-900`)
+            - React 19 patterns
+            - TypeScript `any` usage (should be avoided)
+            - useEffect cleanup
+
+            **Integration Checks:**
+            - Webhook payload validation
+            - External API error handling
+            - Timeout configuration
+            - Retry logic
+
+            **Documentation Checks:**
+            Map code changes to documentation files in `documentation/docs/`:
+            - New CLI flag in `cmd/qui/` → `configuration/cli-commands.md`
+            - New env var → `configuration/environment.md`
+            - New API endpoint → `api/overview.md`
+            - Automation condition change → `features/automations.md`
+            - Backup mode change → `features/backups.md`
+            - Cross-seed behavior → `features/cross-seed/*.md`
+            - New metric → `advanced/metrics.md`
+            - Docker setup change → `getting-started/docker.md`
+            - OIDC change → `configuration/oidc.md`
+
+            ## STEP 4: Post Your Response
+
+            Use `gh pr comment` to post your response:
+            ```bash
+            gh pr comment ${{ steps.pr.outputs.number }} --body "YOUR_RESPONSE"
+            ```
+
+            **For full reviews**, use this format:
+            ```markdown
+            ## PR Review Summary
+
+            **Reviewed areas:** [list which areas were reviewed]
+
+            ### Critical Issues
+            - [Category] **file:line** - Description...
+
+            ### Recommendations
+            - [Category] Suggestion...
+
+            ### Documentation Updates Needed
+            - Update `documentation/docs/path/to/file.md` - reason
+
+            ### Passed Checks
+            - [Category]: No issues detected
+
+            ---
+            *Automated review by Claude Code*
+            ```
+
+            **For conversational replies** (responding to @claude):
+            - Be concise and helpful
+            - If acknowledging feedback, be gracious
+            - If the contributor has a valid point, acknowledge it
+            - If you still think there's an issue, explain why respectfully
+
+            ## STEP 5: Apply Labels
+
+            After posting your review, apply appropriate labels to the PR:
+            ```bash
+            gh label list --json name --limit 100  # See available labels
+            gh pr edit ${{ steps.pr.outputs.number }} --add-label "label1,label2"
+            ```
+
+            **Label Guidelines:**
+            - Add area labels based on files changed (e.g., `area/frontend`, `area/backend`, `area/docs`)
+            - Add type labels (e.g., `type/feature`, `type/bugfix`, `type/refactor`, `type/chore`)
+            - Add `needs-docs` if documentation updates are needed
+            - Do NOT add priority labels unless there are critical security/performance issues
+            - Do NOT remove existing labels
+
+            ## IMPORTANT GUIDELINES
+            - DO NOT make any code changes - only post comments and apply labels
+            - Be specific with file paths and line numbers where possible
+            - Prioritize critical issues first
+            - For documentation, be specific about which doc file needs updating
+            - If no issues found in an area, mark it as "Passed"
+            - If an area wasn't reviewed (no relevant files changed), mark it as "Skipped"
+            - On re-reviews, acknowledge what was fixed and focus on remaining/new issues
+          # Available models: claude-sonnet-4-5-20250929 (default), claude-opus-4-5-20251101, claude-haiku-3-5-20241022
+          claude_args: |
+            --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr edit:*),Bash(gh label list:*),Read,Grep,Glob,Write,mcp__github__get_pull_request,mcp__github__get_pull_request_files"
+            --max-turns 25
+            --mcp-config /tmp/mcp-config/mcp-servers.json
+          settings: |
+            {"env": {"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}"}}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

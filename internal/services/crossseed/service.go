@@ -417,6 +417,111 @@ func (s *Service) HealthCheck(ctx context.Context) error {
 	return nil
 }
 
+// FindLocalMatches finds existing torrents across all instances that match a source torrent.
+// Uses proper release metadata parsing (rls library) for matching, not fuzzy string matching.
+func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, sourceHash string) (*LocalMatchesResponse, error) {
+	// Get all instances
+	instances, err := s.instanceStore.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list instances: %w", err)
+	}
+
+	// Find the source torrent
+	sourceTorrents, err := s.syncManager.GetTorrents(ctx, sourceInstanceID, qbt.TorrentFilterOptions{
+		Filter: "all",
+		Hashes: []string{sourceHash},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get source torrent: %w", err)
+	}
+	if len(sourceTorrents) == 0 {
+		return nil, ErrTorrentNotFound
+	}
+	sourceTorrent := sourceTorrents[0]
+
+	// Parse source release for matching
+	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
+
+	// Normalize content path for comparison (case-insensitive, cleaned)
+	normalizedContentPath := strings.ToLower(normalizePath(sourceTorrent.ContentPath))
+
+	var matches []LocalMatch
+
+	for _, instance := range instances {
+		// Get all torrents from this instance using cached data
+		cachedTorrents, err := s.syncManager.GetCachedInstanceTorrents(ctx, instance.ID)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instance.ID).Msg("Failed to get cached torrents for instance")
+			continue
+		}
+
+		for i := range cachedTorrents {
+			cached := &cachedTorrents[i]
+			// Skip the exact source torrent
+			if instance.ID == sourceInstanceID && normalizeHash(cached.Hash) == normalizeHash(sourceHash) {
+				continue
+			}
+
+			// Determine match type
+			matchType := s.determineLocalMatchType(
+				&sourceTorrent, sourceRelease,
+				cached, normalizedContentPath,
+			)
+
+			if matchType != "" {
+				matches = append(matches, LocalMatch{
+					InstanceID:    instance.ID,
+					InstanceName:  instance.Name,
+					Hash:          cached.Hash,
+					Name:          cached.Name,
+					Size:          cached.Size,
+					Progress:      cached.Progress,
+					SavePath:      cached.SavePath,
+					ContentPath:   cached.ContentPath,
+					Category:      cached.Category,
+					Tags:          cached.Tags,
+					State:         string(cached.State),
+					Tracker:       cached.Tracker,
+					TrackerHealth: string(cached.TrackerHealth),
+					MatchType:     matchType,
+				})
+			}
+		}
+	}
+
+	return &LocalMatchesResponse{Matches: matches}, nil
+}
+
+// determineLocalMatchType checks if a candidate torrent matches the source.
+// Returns the match type ("content_path", "name", "release") or empty string if no match.
+func (s *Service) determineLocalMatchType(
+	source *qbt.Torrent,
+	sourceRelease *rls.Release,
+	candidate *qbittorrent.CrossInstanceTorrentView,
+	normalizedContentPath string,
+) string {
+	// Strategy 1: Same content path (case-insensitive, cleaned)
+	candidateContentPath := strings.ToLower(normalizePath(candidate.ContentPath))
+	if normalizedContentPath != "" && candidateContentPath != "" && normalizedContentPath == candidateContentPath {
+		return matchTypeContentPath
+	}
+
+	// Strategy 2: Exact name match
+	sourceName := strings.ToLower(strings.TrimSpace(source.Name))
+	candidateName := strings.ToLower(strings.TrimSpace(candidate.Name))
+	if sourceName != "" && candidateName != "" && sourceName == candidateName {
+		return matchTypeName
+	}
+
+	// Strategy 3: Release metadata match using rls library
+	candidateRelease := s.releaseCache.Parse(candidate.Name)
+	if s.releasesMatch(sourceRelease, candidateRelease, false) {
+		return matchTypeRelease
+	}
+
+	return ""
+}
+
 // ErrAutomationRunning indicates a cross-seed automation run is already in progress.
 var ErrAutomationRunning = errors.New("cross-seed automation already running")
 

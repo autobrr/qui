@@ -39,6 +39,7 @@ const (
 	FieldDownloaded = models.FieldDownloaded
 	FieldUploaded   = models.FieldUploaded
 	FieldAmountLeft = models.FieldAmountLeft
+	FieldFreeSpace  = models.FieldFreeSpace
 
 	// Numeric fields (timestamps/seconds)
 	FieldAddedOn      = models.FieldAddedOn

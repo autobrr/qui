@@ -84,7 +84,13 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 	}
 
 	// Configure the reverse proxy with retry logic for transient network errors
-	retryTransport := NewRetryTransport(sharedhttp.Transport)
+	retryTransport := NewRetryTransportWithSelector(sharedhttp.Transport, func(req *http.Request) http.RoundTripper {
+		proxyCtx, ok := getProxyContext(req.Context())
+		if !ok || proxyCtx == nil || proxyCtx.httpClient == nil || proxyCtx.httpClient.Transport == nil {
+			return nil
+		}
+		return proxyCtx.httpClient.Transport
+	})
 	h.proxy = &httputil.ReverseProxy{
 		Rewrite:      h.rewriteRequest,
 		BufferPool:   bufferPool,
