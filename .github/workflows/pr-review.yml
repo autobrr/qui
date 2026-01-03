@@ -239,8 +239,8 @@ jobs:
             - On re-reviews, acknowledge what was fixed and focus on remaining/new issues
           # Available models: claude-sonnet-4-5-20250929 (default), claude-opus-4-5-20251101, claude-haiku-3-5-20241022
           claude_args: |
-            --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Read,Grep,Glob,mcp__github__get_pull_request,mcp__github__get_pull_request_files"
-            --max-turns 20
+            --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Read,Grep,Glob,Write,mcp__github__get_pull_request,mcp__github__get_pull_request_files"
+            --max-turns 25
             --mcp-config /tmp/mcp-config/mcp-servers.json
           settings: |
             {"env": {"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}"}}
