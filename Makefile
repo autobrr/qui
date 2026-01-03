@@ -18,7 +18,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags with Polar credentials
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X main.PolarOrgID=$(POLAR_ORG_ID)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt modern deps
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt modern deps docs-dev docs-build
 
 # Default target
 all: build
@@ -150,6 +150,16 @@ deps:
 	go mod download
 	cd $(WEB_DIR) && pnpm install
 
+# Documentation development server
+docs-dev:
+	@echo "Starting documentation development server..."
+	cd documentation && pnpm start
+
+# Build documentation
+docs-build:
+	@echo "Building documentation..."
+	cd documentation && pnpm build
+
 # Help
 help:
 	@echo "Available targets:"
@@ -179,6 +189,10 @@ help:
 	@echo "Formatting:"
 	@echo "  make fmt            - Format Go and frontend code"
 	@echo "  make modern         - Modernize Go code (interface{} -> any)"
+	@echo ""
+	@echo "Documentation:"
+	@echo "  make docs-dev       - Run documentation development server"
+	@echo "  make docs-build     - Build documentation for production"
 	@echo ""
 	@echo "Other:"
 	@echo "  make themes-fetch   - Fetch premium themes from private repository"

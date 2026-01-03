@@ -20,7 +20,7 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePersistedTabState } from "@/hooks/usePersistedTabState"
 import { api } from "@/lib/api"
-import { isHardlinkManaged, useCrossSeedMatches } from "@/lib/cross-seed-utils"
+import { isHardlinkManaged, useLocalCrossSeedMatches } from "@/lib/cross-seed-utils"
 import { getLinuxCategory, getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxSavePath, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
@@ -139,8 +139,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
 
 
-  // Use the cross-seed hook to find matching torrents
-  const { matchingTorrents, isLoadingMatches, allInstances } = useCrossSeedMatches(instanceId, torrent, isCrossSeedTabActive)
+  // Use the cross-seed hook to find matching torrents (uses backend API with rls library)
+  const { matchingTorrents, isLoadingMatches, allInstances } = useLocalCrossSeedMatches(instanceId, torrent, isCrossSeedTabActive)
 
   // Build instance lookup map for CrossSeedTable
   const instanceById = useMemo(
@@ -150,12 +150,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   // Create a stable key string for detecting changes in matching torrents
   const matchingTorrentsKeys = useMemo(() => {
-    return matchingTorrents.map(t => `${t.instanceId}-${t.hash}`).sort().join(',')
+    return matchingTorrents.map(t => `${t.instanceId}-${t.hash}`).sort().join(",")
   }, [matchingTorrents])
 
   // Prune stale selections when matching torrents change
   useEffect(() => {
-    const validKeysArray = matchingTorrentsKeys.split(',').filter(k => k)
+    const validKeysArray = matchingTorrentsKeys.split(",").filter(k => k)
 
     setSelectedCrossSeedTorrents(prev => {
       if (validKeysArray.length === 0 && prev.size === 0) {
@@ -350,7 +350,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     setFilePriorityMutation.mutate({
       indices,
       priority: selected ? 1 : 0,
-      hash: torrent.hash
+      hash: torrent.hash,
     })
   }, [files, setFilePriorityMutation, supportsFilePriority, torrent])
 
@@ -594,12 +594,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
           api.bulkAction(instId, {
             hashes,
             action: "delete",
-            deleteFiles: deleteCrossSeedFiles
+            deleteFiles: deleteCrossSeedFiles,
           })
         )
       )
 
-      toast.success(`Deleted ${torrentsToDelete.length} torrent${torrentsToDelete.length > 1 ? 's' : ''}`)
+      toast.success(`Deleted ${torrentsToDelete.length} torrent${torrentsToDelete.length > 1 ? "s" : ""}`)
 
       // Refresh all instances
       for (const instId of byInstance.keys()) {
@@ -609,7 +609,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       setSelectedCrossSeedTorrents(new Set())
       setShowDeleteCrossSeedDialog(false)
     } catch (error) {
-      toast.error(`Failed to delete: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      toast.error(`Failed to delete: ${error instanceof Error ? error.message : "Unknown error"}`)
     }
   }, [selectedCrossSeedTorrents, matchingTorrents, deleteCrossSeedFiles, queryClient])
 
@@ -620,7 +620,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       await api.bulkAction(instanceId, {
         hashes: [torrent.hash],
         action: "delete",
-        deleteFiles: deleteCurrentFiles
+        deleteFiles: deleteCurrentFiles,
       })
 
       toast.success(`Deleted torrent: ${torrent.name}`)
@@ -630,7 +630,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       // Close the details panel by clearing selection (parent component should handle this)
       // The user will be returned to the torrent list
     } catch (error) {
-      toast.error(`Failed to delete: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      toast.error(`Failed to delete: ${error instanceof Error ? error.message : "Unknown error"}`)
     }
   }, [torrent, instanceId, deleteCurrentFiles, queryClient])
 
@@ -670,11 +670,11 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     const folderSet = new Set<string>()
     if (files) {
       files.forEach(file => {
-        const parts = file.name.split('/').filter(Boolean)
+        const parts = file.name.split("/").filter(Boolean)
         if (parts.length <= 1) return
 
         // Build all folder paths progressively
-        let current = ''
+        let current = ""
         for (let i = 0; i < parts.length - 1; i++) {
           current = current ? `${current}/${parts[i]}` : parts[i]
           folderSet.add(current)
@@ -1025,30 +1025,30 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             {(metadata.preferences.max_active_downloads > 0 ||
                               metadata.preferences.max_active_uploads > 0 ||
                               metadata.preferences.max_active_torrents > 0) && (
-                                <>
-                                  <Separator className="opacity-50" />
-                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                                    {metadata.preferences.max_active_downloads > 0 && (
-                                      <div className="space-y-1">
-                                        <p className="text-muted-foreground">Max Downloads</p>
-                                        <p className="font-medium">{metadata.preferences.max_active_downloads}</p>
-                                      </div>
-                                    )}
-                                    {metadata.preferences.max_active_uploads > 0 && (
-                                      <div className="space-y-1">
-                                        <p className="text-muted-foreground">Max Uploads</p>
-                                        <p className="font-medium">{metadata.preferences.max_active_uploads}</p>
-                                      </div>
-                                    )}
-                                    {metadata.preferences.max_active_torrents > 0 && (
-                                      <div className="space-y-1">
-                                        <p className="text-muted-foreground">Max Active</p>
-                                        <p className="font-medium">{metadata.preferences.max_active_torrents}</p>
-                                      </div>
-                                    )}
-                                  </div>
-                                </>
-                              )}
+                              <>
+                                <Separator className="opacity-50" />
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                                  {metadata.preferences.max_active_downloads > 0 && (
+                                    <div className="space-y-1">
+                                      <p className="text-muted-foreground">Max Downloads</p>
+                                      <p className="font-medium">{metadata.preferences.max_active_downloads}</p>
+                                    </div>
+                                  )}
+                                  {metadata.preferences.max_active_uploads > 0 && (
+                                    <div className="space-y-1">
+                                      <p className="text-muted-foreground">Max Uploads</p>
+                                      <p className="font-medium">{metadata.preferences.max_active_uploads}</p>
+                                    </div>
+                                  )}
+                                  {metadata.preferences.max_active_torrents > 0 && (
+                                    <div className="space-y-1">
+                                      <p className="text-muted-foreground">Max Active</p>
+                                      <p className="font-medium">{metadata.preferences.max_active_torrents}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </>
+                            )}
                           </div>
                         </div>
                       )}
@@ -1516,9 +1516,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                   <div>
                     <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">File Contents</h3>
                     <span className="text-xs text-muted-foreground">
-                      {supportsFilePriority
-                        ? `${selectedFileCount} of ${totalFiles} selected`
-                        : `${files.length} file${files.length !== 1 ? "s" : ""}`}
+                      {supportsFilePriority? `${selectedFileCount} of ${totalFiles} selected`: `${files.length} file${files.length !== 1 ? "s" : ""}`}
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
@@ -1603,11 +1601,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             )}
                           </div>
                           <span className="text-xs text-muted-foreground">
-                            {selectedCrossSeedTorrents.size > 0
-                              ? `${selectedCrossSeedTorrents.size} of ${matchingTorrents.length} selected`
-                              : isLoadingMatches
-                                ? `${matchingTorrents.length} matching torrent${matchingTorrents.length !== 1 ? 's' : ''} found, checking more instances...`
-                                : `${matchingTorrents.length} matching torrent${matchingTorrents.length !== 1 ? 's' : ''} found across all instances`}
+                            {selectedCrossSeedTorrents.size > 0? `${selectedCrossSeedTorrents.size} of ${matchingTorrents.length} selected`: isLoadingMatches? `${matchingTorrents.length} matching torrent${matchingTorrents.length !== 1 ? "s" : ""} found, checking more instances...`: `${matchingTorrents.length} matching torrent${matchingTorrents.length !== 1 ? "s" : ""} found across all instances`}
                           </span>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -1700,15 +1694,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                           }
 
                           // Match type display
-                          const matchType = match.matchType as 'infohash' | 'content_path' | 'save_path' | 'name'
-                          const matchLabel = matchType === 'infohash' ? 'Info Hash'
-                            : matchType === 'content_path' ? 'Content Path'
-                              : matchType === 'save_path' ? 'Save Path'
-                                : 'Name'
-                          const matchDescription = matchType === 'infohash' ? 'Exact same torrent (same info hash)'
-                            : matchType === 'content_path' ? 'Same content location on disk'
-                              : matchType === 'save_path' ? 'Same save directory and filename'
-                                : 'Same torrent name'
+                          const matchType = match.matchType as "infohash" | "content_path" | "save_path" | "name"
+                          const matchLabel = matchType === "infohash" ? "Info Hash": matchType === "content_path" ? "Content Path": matchType === "save_path" ? "Save Path": "Name"
+                          const matchDescription = matchType === "infohash" ? "Exact same torrent (same info hash)": matchType === "content_path" ? "Same content location on disk": matchType === "save_path" ? "Same save directory and filename": "Same torrent name"
 
                           return (
                             <div
@@ -1719,7 +1707,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                               )}
                               onClick={(e) => {
                                 // Don't navigate if clicking checkbox
-                                if ((e.target as HTMLElement).closest('[role="checkbox"]')) return
+                                if ((e.target as HTMLElement).closest("[role=\"checkbox\"]")) return
                                 onNavigateToTorrent?.(match.instanceId, match.hash)
                               }}
                             >
@@ -1927,7 +1915,7 @@ tracker.example.com:8080
           <DialogHeader>
             <DialogTitle>Delete Selected Torrents</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete {selectedCrossSeedTorrents.size} torrent{selectedCrossSeedTorrents.size !== 1 ? 's' : ''}?
+              Are you sure you want to delete {selectedCrossSeedTorrents.size} torrent{selectedCrossSeedTorrents.size !== 1 ? "s" : ""}?
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1964,7 +1952,7 @@ tracker.example.com:8080
               onClick={handleDeleteCrossSeed}
             >
               <Trash2 className="h-4 w-4 mr-2" />
-              Delete {selectedCrossSeedTorrents.size} Torrent{selectedCrossSeedTorrents.size !== 1 ? 's' : ''}
+              Delete {selectedCrossSeedTorrents.size} Torrent{selectedCrossSeedTorrents.size !== 1 ? "s" : ""}
             </Button>
           </DialogFooter>
         </DialogContent>

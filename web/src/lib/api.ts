@@ -46,6 +46,7 @@ import type {
   InstanceCapabilities,
   InstanceCrossSeedCompletionSettings,
   InstanceFormData,
+  LocalCrossSeedMatch,
   InstanceReannounceActivity,
   InstanceReannounceCandidate,
   InstanceResponse,
@@ -95,7 +96,7 @@ import type {
   ArrResolveRequest,
   ArrResolveResponse,
   ArrTestConnectionRequest,
-  ArrTestResponse,
+  ArrTestResponse
 } from "@/types/arr"
 import { getApiBaseUrl, withBasePath } from "./base-url"
 
@@ -454,8 +455,8 @@ class ApiClient {
 
   getBackupDownloadUrl(instanceId: number, runId: number, format?: string): string {
     const url = new URL(withBasePath(`/api/instances/${instanceId}/backups/runs/${runId}/download`), window.location.origin)
-    if (format && format !== 'zip') {
-      url.searchParams.set('format', format)
+    if (format && format !== "zip") {
+      url.searchParams.set("format", format)
     }
     return url.toString()
   }
@@ -767,6 +768,58 @@ class ApiClient {
     }
   }
 
+  /**
+   * Get local cross-seed matches for a torrent across all instances.
+   * Uses proper release metadata parsing (rls library), not fuzzy string matching.
+   */
+  async getLocalCrossSeedMatches(
+    instanceId: number,
+    hash: string
+  ): Promise<LocalCrossSeedMatch[]> {
+    type RawLocalMatch = {
+      instance_id: number
+      instance_name: string
+      hash: string
+      name: string
+      size: number
+      progress: number
+      save_path: string
+      content_path: string
+      category: string
+      tags: string
+      state: string
+      tracker: string
+      tracker_health?: string
+      match_type: string
+    }
+
+    type RawResponse = {
+      matches: RawLocalMatch[]
+    }
+
+    const raw = await this.request<RawResponse>(
+      `/cross-seed/torrents/${instanceId}/${hash}/local-matches`,
+      { method: "GET" }
+    )
+
+    return (raw.matches || []).map((m) => ({
+      instanceId: m.instance_id,
+      instanceName: m.instance_name,
+      hash: m.hash,
+      name: m.name,
+      size: m.size,
+      progress: m.progress,
+      savePath: m.save_path,
+      contentPath: m.content_path,
+      category: m.category,
+      tags: m.tags,
+      state: m.state,
+      tracker: m.tracker,
+      trackerHealth: m.tracker_health,
+      matchType: m.match_type as LocalCrossSeedMatch["matchType"],
+    }))
+  }
+
   async searchCrossSeedTorrent(
     instanceId: number,
     hash: string,
@@ -979,14 +1032,12 @@ class ApiClient {
           success: instance.success,
           status: instance.status,
           message: instance.message,
-          matchedTorrent: instance.matched_torrent
-            ? {
-                hash: instance.matched_torrent.hash ?? "",
-                name: instance.matched_torrent.name ?? "",
-                progress: instance.matched_torrent.progress ?? 0,
-                size: instance.matched_torrent.size ?? 0,
-              }
-            : undefined,
+          matchedTorrent: instance.matched_torrent? {
+            hash: instance.matched_torrent.hash ?? "",
+            name: instance.matched_torrent.name ?? "",
+            progress: instance.matched_torrent.progress ?? 0,
+            size: instance.matched_torrent.size ?? 0,
+          }: undefined,
         })),
         error: result.error ?? undefined,
       })),
@@ -1069,6 +1120,10 @@ class ApiClient {
 
   async cancelCrossSeedSearchRun(): Promise<void> {
     await this.request("/cross-seed/search/run/cancel", { method: "POST" })
+  }
+
+  async cancelCrossSeedAutomationRun(): Promise<void> {
+    await this.request("/cross-seed/run/cancel", { method: "POST" })
   }
 
   async listCrossSeedSearchRuns(instanceId: number, params?: { limit?: number; offset?: number }): Promise<CrossSeedSearchRun[]> {
@@ -1726,7 +1781,7 @@ class ApiClient {
         source: result.source,
         collection: result.collection,
         group: result.group,
-      }))
+      })),
     }
   }
 

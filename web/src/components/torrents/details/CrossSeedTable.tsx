@@ -78,14 +78,12 @@ function getStatusInfo(match: CrossSeedTorrent): { label: string; variant: "defa
 
 function getMatchTypeLabel(matchType: string): { label: string; description: string } {
   switch (matchType) {
-    case "infohash":
-      return { label: "Info Hash", description: "Exact same torrent (same info hash)" }
     case "content_path":
       return { label: "Content", description: "Same content location on disk" }
-    case "save_path":
-      return { label: "Save Path", description: "Same save directory and filename" }
     case "name":
       return { label: "Name", description: "Same torrent name" }
+    case "release":
+      return { label: "Release", description: "Same release (matched by metadata)" }
     default:
       return { label: matchType, description: matchType }
   }

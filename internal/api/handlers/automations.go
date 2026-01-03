@@ -282,6 +282,9 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 	// Validate delete is standalone - it cannot be combined with any other action
 	hasDelete := payload.Conditions.Delete != nil && payload.Conditions.Delete.Enabled
 	if hasDelete {
+		if payload.Conditions.Delete.Condition == nil {
+			return http.StatusBadRequest, "Delete action requires at least one condition", errors.New("delete condition required")
+		}
 		hasOtherAction := (payload.Conditions.SpeedLimits != nil && payload.Conditions.SpeedLimits.Enabled) ||
 			(payload.Conditions.ShareLimits != nil && payload.Conditions.ShareLimits.Enabled) ||
 			(payload.Conditions.Pause != nil && payload.Conditions.Pause.Enabled) ||

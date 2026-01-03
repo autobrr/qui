@@ -655,7 +655,6 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 		name             string
 		sourceFiles      qbt.TorrentFiles
 		candidateFiles   qbt.TorrentFiles
-		ignorePatterns   []string
 		expectedMismatch bool
 		expectedFiles    []string
 	}{
@@ -667,7 +666,6 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 			candidateFiles: qbt.TorrentFiles{
 				{Name: "Show S01E08 720p WEB-DL DDP5 1 H 264-GRP.mkv", Size: 1000000000},
 			},
-			ignorePatterns:   nil,
 			expectedMismatch: false,
 			expectedFiles:    nil,
 		},
@@ -679,7 +677,6 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 			candidateFiles: qbt.TorrentFiles{
 				{Name: "movie.mkv", Size: 1000000001}, // 1 byte difference
 			},
-			ignorePatterns:   nil,
 			expectedMismatch: true,
 			expectedFiles:    []string{"movie.mkv"},
 		},
@@ -691,12 +688,11 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 			candidateFiles: qbt.TorrentFiles{
 				{Name: "Movie Title 2024 1080p BluRay x264-GROUP/Movie Title 2024 1080p BluRay x264-GROUP.mkv", Size: 4000000000},
 			},
-			ignorePatterns:   nil,
 			expectedMismatch: false,
 			expectedFiles:    nil,
 		},
 		{
-			name: "extra NFO in source filtered out - no mismatch",
+			name: "extra NFO in source filtered out by hardcoded patterns - no mismatch",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "Movie/movie.mkv", Size: 4000000000},
 				{Name: "Movie/movie.nfo", Size: 1024},
@@ -704,22 +700,20 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 			candidateFiles: qbt.TorrentFiles{
 				{Name: "Movie/movie.mkv", Size: 4000000000},
 			},
-			ignorePatterns:   []string{".nfo"},
 			expectedMismatch: false,
 			expectedFiles:    nil,
 		},
 		{
-			name: "extra NFO in source NOT filtered - mismatch",
+			name: "extra ZIP in source NOT filtered - mismatch",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "Movie/movie.mkv", Size: 4000000000},
-				{Name: "Movie/movie.nfo", Size: 1024},
+				{Name: "Movie/archive.zip", Size: 1024}, // .zip is not in hardcoded ignore list
 			},
 			candidateFiles: qbt.TorrentFiles{
 				{Name: "Movie/movie.mkv", Size: 4000000000},
 			},
-			ignorePatterns:   nil, // No ignore patterns
 			expectedMismatch: true,
-			expectedFiles:    []string{"Movie/movie.nfo"},
+			expectedFiles:    []string{"Movie/archive.zip"},
 		},
 		{
 			name: "multiple files all match",
@@ -733,7 +727,6 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 				{Name: "Show S01E02.mkv", Size: 600000000},
 				{Name: "Show S01E03.mkv", Size: 550000000},
 			},
-			ignorePatterns:   nil,
 			expectedMismatch: false,
 			expectedFiles:    nil,
 		},
@@ -749,7 +742,6 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 				{Name: "Show S01E02.mkv", Size: 600000000},
 				{Name: "Show S01E03.mkv", Size: 550000000},
 			},
-			ignorePatterns:   nil,
 			expectedMismatch: true,
 			expectedFiles:    []string{"Show.S01E02.mkv"},
 		},
@@ -757,20 +749,18 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 			name:             "empty source files - no mismatch",
 			sourceFiles:      qbt.TorrentFiles{},
 			candidateFiles:   qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000000000}},
-			ignorePatterns:   nil,
 			expectedMismatch: false,
 			expectedFiles:    nil,
 		},
 		{
-			name: "all source files filtered - no mismatch",
+			name: "all source files filtered by hardcoded patterns - no mismatch",
 			sourceFiles: qbt.TorrentFiles{
-				{Name: "movie.nfo", Size: 1024},
-				{Name: "movie.sfv", Size: 512},
+				{Name: "movie.nfo", Size: 1024},  // .nfo is hardcoded
+				{Name: "movie.srt", Size: 50000}, // .srt is hardcoded
 			},
 			candidateFiles: qbt.TorrentFiles{
 				{Name: "movie.mkv", Size: 4000000000},
 			},
-			ignorePatterns:   []string{".nfo", ".sfv"},
 			expectedMismatch: false,
 			expectedFiles:    nil,
 		},
@@ -783,12 +773,11 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 				{Name: "Show S01/Show S01E01.mkv", Size: 500000000},
 				{Name: "Show S01/Show S01E02.mkv", Size: 600000000}, // Extra file
 			},
-			ignorePatterns:   nil,
 			expectedMismatch: false,
 			expectedFiles:    nil,
 		},
 		{
-			name: "source has extra sidecars with ignore patterns - no mismatch",
+			name: "source has extra sidecars filtered by hardcoded patterns - no mismatch",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "Movie.2024.1080p.BluRay.x264-GRP/Movie.2024.1080p.BluRay.x264-GRP.mkv", Size: 8000000000},
 				{Name: "Movie.2024.1080p.BluRay.x264-GRP/Movie.2024.1080p.BluRay.x264-GRP.nfo", Size: 1024},
@@ -798,21 +787,18 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 				// Existing torrent only has the mkv
 				{Name: "Movie.2024.1080p.BluRay.x264-GRP/Movie.2024.1080p.BluRay.x264-GRP.mkv", Size: 8000000000},
 			},
-			ignorePatterns:   []string{".nfo", ".srt"},
 			expectedMismatch: false,
 			expectedFiles:    nil,
 		},
 		{
-			name: "folder path with ignore pattern for screens directory",
+			name: "folder path with hardcoded sample keyword",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "Movie/movie.mkv", Size: 4000000000},
-				{Name: "Movie/Screens/screen1.jpg", Size: 50000},
-				{Name: "Movie/Screens/screen2.jpg", Size: 60000},
+				{Name: "Movie/Sample/sample.mkv", Size: 50000}, // sample is hardcoded keyword
 			},
 			candidateFiles: qbt.TorrentFiles{
 				{Name: "Movie/movie.mkv", Size: 4000000000},
 			},
-			ignorePatterns:   []string{"/screens/", ".jpg"},
 			expectedMismatch: false,
 			expectedFiles:    nil,
 		},
@@ -824,20 +810,18 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 			candidateFiles: qbt.TorrentFiles{
 				{Name: "Show S01E08 Episode Title 720p WEB-DL DDP5 1 H 264-GRP/Show S01E08 Episode Title 720p WEB-DL DDP5 1 H 264-GRP.mkv", Size: 1234567891},
 			},
-			ignorePatterns:   []string{".nfo", ".srr", ".sfv", ".txt", ".jpg", ".jpeg", ".png"},
 			expectedMismatch: true,
 			expectedFiles:    []string{"Show.S01E08.Episode.Title.720p.WEB-DL.DDP5.1.H.264-GRP.mkv"},
 		},
 		{
-			name: "suffix ignore pattern for sample files",
+			name: "sample files filtered by hardcoded keyword",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "Movie/movie.mkv", Size: 4000000000},
-				{Name: "Movie/sample.mkv", Size: 50000000},
+				{Name: "Movie/sample.mkv", Size: 50000000}, // 'sample' keyword matches
 			},
 			candidateFiles: qbt.TorrentFiles{
 				{Name: "Movie/movie.mkv", Size: 4000000000},
 			},
-			ignorePatterns:   []string{"sample.mkv"}, // Suffix matching
 			expectedMismatch: false,
 			expectedFiles:    nil,
 		},
@@ -851,7 +835,6 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 				{Name: "Show S01E01.mkv", Size: 500000000},
 				{Name: "Show S01E02.mkv", Size: 600000000},
 			},
-			ignorePatterns:   nil,
 			expectedMismatch: true,
 			expectedFiles:    []string{"Show.S01E01.mkv", "Show.S01E02.mkv"},
 		},
@@ -866,7 +849,6 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 			candidateFiles: qbt.TorrentFiles{
 				{Name: "Show.S01E01.1080p.NF.WEB-DL.DDPA5.1.H.264-Btn.mkv", Size: 1600000000}, // DDPA (Atmos) file - larger
 			},
-			ignorePatterns:   nil,
 			expectedMismatch: true,
 			expectedFiles: []string{
 				"Show.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-Btn.mkv",
@@ -883,7 +865,6 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 				// Indexer says DDPA but actual file is same size as source (it's DDP really)
 				{Name: "Show.S01E01.1080p.NF.WEB-DL.DDPA5.1.H.264-Btn.mkv", Size: 1500000000},
 			},
-			ignorePatterns:   nil,
 			expectedMismatch: false,
 			expectedFiles:    nil,
 		},
@@ -907,7 +888,6 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 				// Only one episode exists - matched via partial-in-pack
 				{Name: "Fake.Show.S01E09.Episode.Title.1080p.WEB-DL.H.264-GRP.mkv", Size: 1340000000},
 			},
-			ignorePatterns:   nil,
 			expectedMismatch: true,
 			// 11 of 12 source files have no matching size in candidate
 			expectedFiles: []string{
@@ -928,7 +908,7 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			hasMismatch, mismatchedFiles := hasContentFileSizeMismatch(tt.sourceFiles, tt.candidateFiles, tt.ignorePatterns, normalizer)
+			hasMismatch, mismatchedFiles := hasContentFileSizeMismatch(tt.sourceFiles, tt.candidateFiles, normalizer)
 			require.Equal(t, tt.expectedMismatch, hasMismatch)
 			if tt.expectedFiles != nil {
 				require.ElementsMatch(t, tt.expectedFiles, mismatchedFiles)
