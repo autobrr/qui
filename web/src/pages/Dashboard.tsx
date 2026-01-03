@@ -891,6 +891,7 @@ interface ProcessedTrackerStats extends TrackerTransferStats {
   displayName: string
   originalDomains: string[]
   customizationId?: number
+  rowKey: string
 }
 
 interface TrackerBreakdownCardProps {
@@ -968,21 +969,25 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
       if (customization) {
         const isPrimary = customization.domains[0]?.toLowerCase() === domain.toLowerCase()
         if (isPrimary) {
-          processed.set(customization.displayName, {
+          const rowKey = `customization:${customization.id}`
+          processed.set(rowKey, {
             ...stats,
             domain,
             displayName: customization.displayName,
             originalDomains: customization.domains,
             customizationId: customization.id,
+            rowKey,
           })
         }
       } else {
         // No customization - use domain as-is
-        processed.set(domain, {
+        const rowKey = `domain:${domain.toLowerCase()}`
+        processed.set(rowKey, {
           ...stats,
           domain,
           displayName: domain,
           originalDomains: [domain],
+          rowKey,
         })
       }
     }
@@ -999,13 +1004,27 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
         // Secondary domains only contribute if explicitly in includedInStats
         if (!isPrimary && isIncluded) {
-          const existing = processed.get(customization.displayName)
-          if (existing) {
-            existing.uploaded += stats.uploaded
-            existing.downloaded += stats.downloaded
-            existing.totalSize += stats.totalSize
-            existing.count += stats.count
+          const rowKey = `customization:${customization.id}`
+          let existing = processed.get(rowKey)
+          if (!existing) {
+            existing = {
+              uploaded: 0,
+              downloaded: 0,
+              totalSize: 0,
+              count: 0,
+              domain,
+              displayName: customization.displayName,
+              originalDomains: customization.domains,
+              customizationId: customization.id,
+              rowKey,
+            }
+            processed.set(rowKey, existing)
           }
+
+          existing.uploaded += stats.uploaded
+          existing.downloaded += stats.downloaded
+          existing.totalSize += stats.totalSize
+          existing.count += stats.count
         }
       }
     }
@@ -1599,7 +1618,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
               const hasCustomization = Boolean(customizationId)
 
               return (
-                <Card key={displayName} className={`overflow-hidden ${isSelected ? "ring-2 ring-primary" : ""}`}>
+                <Card key={tracker.rowKey} className={`overflow-hidden ${isSelected ? "ring-2 ring-primary" : ""}`}>
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -1822,7 +1841,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
                 return (
                   <TableRow
-                    key={displayName}
+                    key={tracker.rowKey}
                     className={`group ${isSelected ? "bg-primary/5" : index % 2 === 1 ? "bg-muted/30" : ""} hover:bg-muted/50`}
                   >
                     <TableCell className="w-8 pl-4">
