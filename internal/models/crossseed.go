@@ -310,6 +310,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		       skip_auto_resume_rss, skip_auto_resume_seeded_search,
 		       skip_auto_resume_completion, skip_auto_resume_webhook,
 		       skip_recheck, skip_piece_boundary_safety_check,
+		       fallback_to_regular_mode,
 		       created_at, updated_at
 		FROM cross_seed_settings
 		WHERE id = 1
@@ -360,6 +361,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&settings.SkipAutoResumeWebhook,
 		&settings.SkipRecheck,
 		&settings.SkipPieceBoundarySafetyCheck,
+		&settings.FallbackToRegularMode,
 		&createdAt,
 		&updatedAt,
 	)
@@ -524,9 +526,10 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			use_custom_category, custom_category,
 			skip_auto_resume_rss, skip_auto_resume_seeded_search,
 			skip_auto_resume_completion, skip_auto_resume_webhook,
-			skip_recheck, skip_piece_boundary_safety_check
+			skip_recheck, skip_piece_boundary_safety_check,
+			fallback_to_regular_mode
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -561,7 +564,8 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			skip_auto_resume_completion = excluded.skip_auto_resume_completion,
 			skip_auto_resume_webhook = excluded.skip_auto_resume_webhook,
 			skip_recheck = excluded.skip_recheck,
-			skip_piece_boundary_safety_check = excluded.skip_piece_boundary_safety_check
+			skip_piece_boundary_safety_check = excluded.skip_piece_boundary_safety_check,
+			fallback_to_regular_mode = excluded.fallback_to_regular_mode
 	`
 
 	// Convert *int to any for proper SQL handling
@@ -610,6 +614,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		settings.SkipAutoResumeWebhook,
 		settings.SkipRecheck,
 		settings.SkipPieceBoundarySafetyCheck,
+		settings.FallbackToRegularMode,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("upsert settings: %w", err)
