@@ -14,7 +14,10 @@ jobs:
   # This job catches the discussion event and re-triggers via workflow_dispatch.
   dispatch:
     runs-on: ubuntu-latest
-    if: github.event_name == 'discussion' && github.event.discussion.category.slug == 'issue-triage'
+    if: >
+      github.event_name == 'discussion' &&
+      (github.event.discussion.category.slug == 'issue-triage' ||
+       github.event.discussion.category.slug == 'feature-requests-ideas')
     permissions:
       actions: write
     steps:
