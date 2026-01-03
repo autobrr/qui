@@ -102,7 +102,7 @@ jobs:
             - If unsure, err on the side of NOT marking as duplicate
             - Do not comment on unique discussions
           claude_args: |
-            --allowedTools "Bash(gh search),Bash(gh label list),Bash(gh api graphql),Bash(gh discussion comment),mcp__github__get_discussion,mcp__github__get_discussion_comments,mcp__github__list_discussions"
+            --allowedTools "Bash(gh search:*),Bash(gh label list:*),Bash(gh api graphql:*),Bash(gh discussion comment:*),mcp__github__get_discussion,mcp__github__get_discussion_comments,mcp__github__list_discussions"
             --max-turns 15
             --mcp-config /tmp/mcp-config/mcp-servers.json
           settings: |
