@@ -722,57 +722,59 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   return (
     <div className="h-full flex flex-col">
       <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
-        <TabsList className="w-full justify-start rounded-none border-b h-8 bg-background px-4 sm:px-6 py-0">
-          <TabsTrigger
-            value="general"
-            className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
-          >
-            General
-          </TabsTrigger>
-          <TabsTrigger
-            value="trackers"
-            className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
-          >
-            Trackers
-          </TabsTrigger>
-          <TabsTrigger
-            value="peers"
-            className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
-          >
-            Peers
-          </TabsTrigger>
-          {hasWebseeds && (
+        <div className="border-b overflow-x-auto scroll-smooth">
+          <TabsList className="w-fit sm:w-full justify-start rounded-none h-8 bg-background px-4 sm:px-6 py-0 flex-nowrap">
             <TabsTrigger
-              value="webseeds"
-              className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
+              value="general"
+              className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform shrink-0"
             >
-              HTTP Sources
+              General
             </TabsTrigger>
-          )}
-          <TabsTrigger
-            value="content"
-            className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
-          >
-            Content
-          </TabsTrigger>
-          <TabsTrigger
-            value="crossseed"
-            className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
-          >
-            Cross-Seed
-          </TabsTrigger>
-          {onClose && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-10 shrink-0"
-              onClick={onClose}
-              aria-label="Close details panel"
+            <TabsTrigger
+              value="trackers"
+              className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform shrink-0"
             >
-              <X className="h-3 w-3" />
-            </Button>
-          )}
-        </TabsList>
+              Trackers
+            </TabsTrigger>
+            <TabsTrigger
+              value="peers"
+              className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform shrink-0"
+            >
+              Peers
+            </TabsTrigger>
+            {hasWebseeds && (
+              <TabsTrigger
+                value="webseeds"
+                className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform shrink-0"
+              >
+                HTTP Sources
+              </TabsTrigger>
+            )}
+            <TabsTrigger
+              value="content"
+              className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform shrink-0"
+            >
+              Content
+            </TabsTrigger>
+            <TabsTrigger
+              value="crossseed"
+              className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform shrink-0"
+            >
+              Cross-Seed
+            </TabsTrigger>
+            {onClose && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-10 shrink-0"
+                onClick={onClose}
+                aria-label="Close details panel"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            )}
+          </TabsList>
+        </div>
 
 
         <div className="flex-1 min-h-0 overflow-hidden">
@@ -807,6 +809,122 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                     </div>
                   ) : properties ? (
                     <div className="space-y-6">
+                      {/* General Information */}
+                      <div className="space-y-3">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">General Information</h3>
+                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            {/* Torrent Name */}
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Torrent Name</p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs flex-1 break-all">{displayName || "N/A"}</p>
+                                {displayName && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 shrink-0"
+                                    onClick={() => copyToClipboard(displayName, "Torrent name")}
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Info Hash v1 */}
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Info Hash v1</p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs flex-1 break-all font-mono">{displayInfohashV1 || "N/A"}</p>
+                                {displayInfohashV1 && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 shrink-0"
+                                    onClick={() => copyToClipboard(displayInfohashV1, "Info Hash v1")}
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Info Hash v2 */}
+                            {displayInfohashV2 && (
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">Info Hash v2</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-xs flex-1 break-all font-mono">{displayInfohashV2}</p>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 shrink-0"
+                                    onClick={() => copyToClipboard(displayInfohashV2, "Info Hash v2")}
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Save Path */}
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Save Path</p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs flex-1 break-all font-mono">{displaySavePath || "N/A"}</p>
+                                {displaySavePath && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 shrink-0"
+                                    onClick={() => copyToClipboard(displaySavePath, "Save path")}
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Temporary Download Path */}
+                            {tempPathEnabled && displayTempPath && (
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">Download Path</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-xs flex-1 break-all font-mono">{displayTempPath || "N/A"}</p>
+                                  {displayTempPath && (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 shrink-0"
+                                      onClick={() => copyToClipboard(displayTempPath, "Temporary path")}
+                                    >
+                                      <Copy className="h-3.5 w-3.5" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Created By */}
+                            {displayCreatedBy && (
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">Created By</p>
+                                <div className="text-xs">{renderTextWithLinks(displayCreatedBy)}</div>
+                              </div>
+                            )}
+
+                            {/* Comment */}
+                            {displayComment && (
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">Comment</p>
+                                <div className="text-xs">{renderTextWithLinks(displayComment)}</div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Transfer Statistics Section */}
                       <div className="space-y-3">
                         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Transfer Statistics</h3>
@@ -950,98 +1068,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                         </div>
                       </div>
 
-                      {/* Save Path */}
-                      <div className="space-y-3">
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Save Path</h3>
-                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
-                          <div className="flex items-center gap-2">
-                            <div className="font-mono text-xs sm:text-sm break-all text-muted-foreground bg-background/50 rounded px-2.5 py-2 select-text flex-1">
-                              {displaySavePath || "N/A"}
-                            </div>
-                            {displaySavePath && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 shrink-0"
-                                onClick={() => copyToClipboard(displaySavePath, "File location")}
-                              >
-                                <Copy className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Temporary Download Path - shown if temp_path_enabled */}
-                      {tempPathEnabled && (
-                        <div className="space-y-3">
-                          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Download Path</h3>
-                          <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
-                            <div className="flex items-center gap-2">
-                              <div className="font-mono text-xs sm:text-sm break-all text-muted-foreground bg-background/50 rounded px-2.5 py-2 select-text flex-1">
-                                {displayTempPath || "N/A"}
-                              </div>
-                              {displayTempPath && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 shrink-0"
-                                  onClick={() => copyToClipboard(displayTempPath, "Temporary path")}
-                                >
-                                  <Copy className="h-3.5 w-3.5" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Info Hash Display */}
-                      <div className="space-y-3">
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Torrent Identifiers</h3>
-                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50 space-y-4">
-                          <div className="space-y-2">
-                            <p className="text-xs text-muted-foreground">Info Hash v1</p>
-                            <div className="flex items-center gap-2">
-                              <div className="text-xs font-mono bg-background/50 p-2.5 rounded flex-1 break-all select-text">
-                                {displayInfohashV1 || "N/A"}
-                              </div>
-                              {displayInfohashV1 && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 shrink-0"
-                                  onClick={() => copyToClipboard(displayInfohashV1, "Info Hash v1")}
-                                >
-                                  <Copy className="h-3.5 w-3.5" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                          {displayInfohashV2 && (
-                            <>
-                              <Separator className="opacity-50" />
-                              <div className="space-y-2">
-                                <p className="text-xs text-muted-foreground">Info Hash v2</p>
-                                <div className="flex items-center gap-2">
-                                  <div className="text-xs font-mono bg-background/50 p-2.5 rounded flex-1 break-all select-text">
-                                    {displayInfohashV2}
-                                  </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 shrink-0"
-                                    onClick={() => copyToClipboard(displayInfohashV2, "Info Hash v2")}
-                                  >
-                                    <Copy className="h-3.5 w-3.5" />
-                                  </Button>
-                                </div>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
-
                       {/* Timestamps */}
                       <div className="space-y-3">
                         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Timestamps</h3>
@@ -1066,32 +1092,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                           </div>
                         </div>
                       </div>
-
-                      {/* Additional Information */}
-                      {(displayComment || displayCreatedBy) && (
-                        <div className="space-y-3">
-                          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Additional Information</h3>
-                          <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50 space-y-3">
-                            {displayCreatedBy && (
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-1">Created By</p>
-                                <div className="text-sm">{renderTextWithLinks(displayCreatedBy)}</div>
-                              </div>
-                            )}
-                            {displayComment && (
-                              <>
-                                {displayCreatedBy && <Separator className="opacity-50" />}
-                                <div>
-                                  <p className="text-xs text-muted-foreground mb-2">Comment</p>
-                                  <div className="text-sm bg-background/50 p-3 rounded break-words">
-                                    {renderTextWithLinks(displayComment)}
-                                  </div>
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      )}
                     </div>
                   ) : null}
                 </div>
