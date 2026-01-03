@@ -17,6 +17,7 @@ export const CONDITION_FIELDS = {
   DOWNLOADED: { label: "Downloaded", type: "bytes" as const, description: "Total downloaded" },
   UPLOADED: { label: "Uploaded", type: "bytes" as const, description: "Total uploaded" },
   AMOUNT_LEFT: { label: "Amount Left", type: "bytes" as const, description: "Remaining to download" },
+  FREE_SPACE: { label: "Free Space", type: "bytes" as const, description: "Free space on the instance's filesystem" },
 
   // Duration fields (seconds)
   SEEDING_TIME: { label: "Seeding Time", type: "duration" as const, description: "Time spent seeding" },
@@ -169,7 +170,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Size",
-    fields: ["SIZE", "TOTAL_SIZE", "DOWNLOADED", "UPLOADED", "AMOUNT_LEFT"],
+    fields: ["SIZE", "TOTAL_SIZE", "DOWNLOADED", "UPLOADED", "AMOUNT_LEFT", "FREE_SPACE"],
   },
   {
     label: "Time",

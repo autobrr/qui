@@ -194,6 +194,7 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 		name     string
 		cond     *RuleCondition
 		torrent  qbt.Torrent
+		evalCtx  *EvalContext
 		expected bool
 	}{
 		{
@@ -257,6 +258,28 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 			expected: true,
 		},
 		{
+			name: "free space greater than 1GB",
+			cond: &RuleCondition{
+				Field:    FieldFreeSpace,
+				Operator: OperatorGreaterThan,
+				Value:    "1073741824",
+			},
+			evalCtx: &EvalContext{
+				FreeSpace: 2147483648,
+			},
+			expected: true,
+		},
+		{
+			name: "free space returns false with nil context",
+			cond: &RuleCondition{
+				Field:    FieldFreeSpace,
+				Operator: OperatorGreaterThan,
+				Value:    "1073741824",
+			},
+			evalCtx:  nil,
+			expected: false,
+		},
+		{
 			name: "ratio between values",
 			cond: &RuleCondition{
 				Field:    FieldRatio,
@@ -292,7 +315,7 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := EvaluateCondition(tt.cond, tt.torrent, 0)
+			result := EvaluateConditionWithContext(tt.cond, tt.torrent, tt.evalCtx, 0)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
