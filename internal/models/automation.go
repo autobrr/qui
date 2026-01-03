@@ -341,6 +341,7 @@ const (
 	FieldDownloaded ConditionField = "DOWNLOADED"
 	FieldUploaded   ConditionField = "UPLOADED"
 	FieldAmountLeft ConditionField = "AMOUNT_LEFT"
+	FieldFreeSpace  ConditionField = "FREE_SPACE"
 
 	// Numeric fields (timestamps/seconds)
 	FieldAddedOn      ConditionField = "ADDED_ON"
