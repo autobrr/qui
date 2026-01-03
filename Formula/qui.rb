@@ -27,6 +27,52 @@ class Qui < Formula
 
   def post_install
     (var/"qui").mkpath
+
+    # Generate default config if it doesn't exist
+    config_file = var/"qui/config.toml"
+    return if config_file.exist?
+
+    require "securerandom"
+    session_secret = SecureRandom.hex(32)
+
+    config_file.write <<~TOML
+      # qui configuration
+      # See https://github.com/autobrr/qui for documentation
+
+      host = "127.0.0.1"
+      port = 7476
+      logLevel = "INFO"
+      checkForUpdates = true
+
+      # Session secret for encryption (auto-generated during install)
+      # WARNING: Changing this will invalidate existing sessions and encrypted data
+      sessionSecret = "#{session_secret}"
+
+      # Log to file instead of stdout
+      logPath = "#{var}/log/qui.log"
+
+      # Data directory for database
+      dataDir = "#{var}/qui"
+    TOML
+  end
+
+  def caveats
+    <<~EOS
+      qui configuration is stored in:
+        #{var}/qui/config.toml
+
+      Database and data files are stored in:
+        #{var}/qui/
+
+      Logs are written to:
+        #{var}/log/qui.log
+
+      To start qui now and restart at login:
+        brew services start qui
+
+      Or run manually:
+        qui serve --config-dir #{var}/qui/
+    EOS
   end
 
   service do
