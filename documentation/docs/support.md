@@ -11,27 +11,25 @@ qui is developed and maintained by volunteers. Your support helps us continue im
 
 ## License Key
 
-Pay what you want (minimum $4.99) to unlock premium themes:
-- Use any payment method below (GitHub Sponsors, Buy Me a Coffee, or crypto)
-- After paying, DM soup/ze0s on Discord (depending on who you paid to)
+Donate what you want (minimum $4.99) to unlock premium themes:
+- Use any donation method below
+- After donating, DM soup or ze0s on Discord (whoever you donated to)
   - For crypto, include the transaction hash/link
 - You'll receive a 100% discount code
 - Redeem the code on [Polar](https://buy.polar.sh/polar_cl_yyXJesVM9pFVfAPIplspbfCukgVgXzXjXIc2N0I8WcL) (free order) to receive your license key
 - Enter the license key in Settings → Themes in your qui instance
 - License is lifetime
 
-## Other Methods
+## Donation Methods
 
 - **soup**
-  - [GitHub Sponsors](https://github.com/s0up4200)
+  - [GitHub Sponsors](https://github.com/sponsors/s0up4200)
   - [Buy Me a Coffee](https://buymeacoffee.com/s0up4200)
 - **zze0s**
-  - [GitHub Sponsors](https://github.com/zze0s)
+  - [GitHub Sponsors](https://github.com/sponsors/zze0s)
   - [Buy Me a Coffee](https://buymeacoffee.com/ze0s)
 
 ### Cryptocurrency
-
-To get a qui license with crypto, send the transaction link to soup or ze0s on Discord.
 
 #### Bitcoin (BTC)
 
@@ -55,4 +53,4 @@ To get a qui license with crypto, send the transaction link to soup or ze0s on D
 
 ---
 
-All methods unlock premium themes — use whichever works best for you. For other currencies or payment methods, [reach out on Discord](https://discord.autobrr.com/qui).
+All methods unlock premium themes — use whichever works best for you. For other currencies or donation methods, [reach out on Discord](https://discord.autobrr.com/qui).
