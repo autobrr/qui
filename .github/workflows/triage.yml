@@ -14,7 +14,10 @@ jobs:
   # This job catches the discussion event and re-triggers via workflow_dispatch.
   dispatch:
     runs-on: ubuntu-latest
-    if: github.event_name == 'discussion' && github.event.discussion.category.slug == 'issue-triage'
+    if: >
+      github.event_name == 'discussion' &&
+      (github.event.discussion.category.slug == 'issue-triage' ||
+       github.event.discussion.category.slug == 'feature-requests-ideas')
     permissions:
       actions: write
     steps:
@@ -156,7 +159,7 @@ jobs:
             - It's okay to not add any labels if none are clearly applicable
           claude_args: |
             --allowedTools "Bash(gh label list:*),Bash(gh api graphql:*),mcp__github__get_discussion,mcp__github__get_discussion_comments,mcp__github__list_discussions"
-            --max-turns 10
+            --max-turns 25
             --mcp-config /tmp/mcp-config/mcp-servers.json
           settings: |
             {"env": {"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}"}}

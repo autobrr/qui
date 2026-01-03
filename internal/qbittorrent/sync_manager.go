@@ -1170,12 +1170,25 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 		return nil, nil
 	}
 
+	// Get cached tracker health counts for this instance
+	cachedHealth := sm.GetTrackerHealthCounts(instanceID)
+
 	views := make([]CrossInstanceTorrentView, len(torrents))
 	for i, torrent := range torrents {
+		view := TorrentView{Torrent: torrent}
+		// First try to determine health from enriched tracker data
+		if health := sm.determineTrackerHealth(torrent); health != "" {
+			view.TrackerHealth = health
+		} else if cachedHealth != nil {
+			// Fall back to cached hash sets if torrent wasn't enriched
+			if _, ok := cachedHealth.UnregisteredSet[torrent.Hash]; ok {
+				view.TrackerHealth = TrackerHealthUnregistered
+			} else if _, ok := cachedHealth.TrackerDownSet[torrent.Hash]; ok {
+				view.TrackerHealth = TrackerHealthDown
+			}
+		}
 		views[i] = CrossInstanceTorrentView{
-			TorrentView: TorrentView{
-				Torrent: torrent,
-			},
+			TorrentView:  view,
 			InstanceID:   instance.ID,
 			InstanceName: instance.Name,
 		}

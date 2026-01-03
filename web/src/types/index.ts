@@ -88,6 +88,26 @@ export interface InstanceCrossSeedCompletionSettings {
   excludeTags: string[]
 }
 
+/**
+ * A torrent match found by the backend using proper release metadata parsing (rls library).
+ */
+export interface LocalCrossSeedMatch {
+  instanceId: number
+  instanceName: string
+  hash: string
+  name: string
+  size: number
+  progress: number
+  savePath: string
+  contentPath: string
+  category: string
+  tags: string
+  state: string
+  tracker: string
+  trackerHealth?: string
+  matchType: "content_path" | "name" | "release"
+}
+
 export interface InstanceReannounceActivity {
   instanceId: number
   hash: string
