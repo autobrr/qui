@@ -1180,6 +1180,11 @@ class ApiClient {
     return this.request<WebSeed[]>(`/instances/${instanceId}/torrents/${hash}/webseeds`)
   }
 
+  // Piece states: 0 = not downloaded, 1 = downloading, 2 = downloaded
+  async getTorrentPieceStates(instanceId: number, hash: string): Promise<number[]> {
+    return this.request<number[]>(`/instances/${instanceId}/torrents/${hash}/pieces`)
+  }
+
   async addPeersToTorrents(instanceId: number, hashes: string[], peers: string[]): Promise<void> {
     return this.request(`/instances/${instanceId}/torrents/add-peers`, {
       method: "POST",
