@@ -3165,7 +3165,7 @@ paths:
       tags:
         - Cross-Seed
       summary: Find local cross-seed matches
-      description: Find torrents across all qBittorrent instances that match the specified torrent (by infohash, content path, or release metadata)
+      description: Find torrents across all qBittorrent instances that match the specified torrent (by content path, name, or release metadata)
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
@@ -3175,9 +3175,14 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/LocalCrossSeedMatch'
+                type: object
+                properties:
+                  matches:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LocalCrossSeedMatch'
+                required:
+                  - matches
         '400':
           description: Invalid parameters
         '500':

@@ -309,7 +309,7 @@ type LocalMatch struct {
 	State         string  `json:"state"`
 	Tracker       string  `json:"tracker"`
 	TrackerHealth string  `json:"tracker_health,omitempty"`
-	MatchType     string  `json:"match_type"` // "infohash", "content_path", "name", "release"
+	MatchType     string  `json:"match_type"` // "content_path", "name", "release"
 }
 
 // AsyncIndexerFilteringState represents the state of async indexer filtering operations

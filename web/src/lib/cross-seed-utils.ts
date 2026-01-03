@@ -89,7 +89,7 @@ export const useLocalCrossSeedMatches = (
 /**
  * Convert LocalCrossSeedMatch to CrossSeedTorrent for backward compatibility.
  */
-function toCompatibleMatch(m: LocalCrossSeedMatch): CrossSeedTorrent {
+export function toCompatibleMatch(m: LocalCrossSeedMatch): CrossSeedTorrent {
   return {
     hash: m.hash,
     name: m.name,

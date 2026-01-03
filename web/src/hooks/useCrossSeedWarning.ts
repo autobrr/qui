@@ -7,8 +7,8 @@ import { useQuery } from "@tanstack/react-query"
 import { useCallback, useMemo, useState } from "react"
 
 import { api } from "@/lib/api"
-import { isInsideBase, normalizePath, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
-import type { LocalCrossSeedMatch, Torrent } from "@/types"
+import { isInsideBase, normalizePath, toCompatibleMatch, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
+import type { Torrent } from "@/types"
 
 interface UseCrossSeedWarningOptions {
   instanceId: number
@@ -33,71 +33,6 @@ export interface CrossSeedWarningResult {
   search: () => void
   /** Reset the search state */
   reset: () => void
-}
-
-/**
- * Convert LocalCrossSeedMatch to CrossSeedTorrent for backward compatibility.
- */
-function toCompatibleMatch(m: LocalCrossSeedMatch): CrossSeedTorrent {
-  return {
-    hash: m.hash,
-    name: m.name,
-    size: m.size,
-    progress: m.progress,
-    save_path: m.savePath,
-    content_path: m.contentPath,
-    category: m.category,
-    tags: m.tags,
-    state: m.state,
-    tracker: m.tracker,
-    tracker_health: m.trackerHealth as "unregistered" | "tracker_down" | undefined,
-    instanceId: m.instanceId,
-    instanceName: m.instanceName,
-    matchType: m.matchType,
-    // Default values for required Torrent fields
-    added_on: 0,
-    completion_on: 0,
-    dlspeed: 0,
-    downloaded: 0,
-    downloaded_session: 0,
-    eta: 0,
-    num_leechs: 0,
-    num_seeds: 0,
-    priority: 0,
-    seq_dl: false,
-    f_l_piece_prio: false,
-    super_seeding: false,
-    force_start: false,
-    auto_tmm: false,
-    seen_complete: 0,
-    time_active: 0,
-    num_complete: 0,
-    num_incomplete: 0,
-    amount_left: 0,
-    completed: 0,
-    last_activity: 0,
-    magnet_uri: "",
-    availability: 0,
-    dl_limit: 0,
-    download_path: "",
-    infohash_v1: "",
-    infohash_v2: "",
-    popularity: 0,
-    private: false,
-    max_ratio: 0,
-    max_seeding_time: 0,
-    seeding_time: 0,
-    ratio: 0,
-    ratio_limit: 0,
-    reannounce: 0,
-    seeding_time_limit: 0,
-    total_size: m.size,
-    trackers_count: 0,
-    up_limit: 0,
-    uploaded: 0,
-    uploaded_session: 0,
-    upspeed: 0,
-  }
 }
 
 /**

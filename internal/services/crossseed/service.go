@@ -493,7 +493,7 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 }
 
 // determineLocalMatchType checks if a candidate torrent matches the source.
-// Returns the match type ("infohash", "content_path", "name", "release") or empty string if no match.
+// Returns the match type ("content_path", "name", "release") or empty string if no match.
 func (s *Service) determineLocalMatchType(
 	source *qbt.Torrent,
 	sourceRelease *rls.Release,
