@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -167,14 +168,14 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 			wantContains:          []string{"/hardlinks/", "MyTracker", "My.Movie.2024--abcdef12"},
 		},
 		{
-			name:           "by-instance with root folder - no isolation",
-			preset:         "by-instance",
-			baseDir:        "/hardlinks",
-			torrentHash:    "abcdef1234567890",
-			torrentName:    "My.Movie.2024",
-			instanceName:   "qbt-main",
-			candidateFiles: filesWithRoot,
-			wantContains:   []string{"/hardlinks/", "qbt-main"},
+			name:            "by-instance with root folder - no isolation",
+			preset:          "by-instance",
+			baseDir:         "/hardlinks",
+			torrentHash:     "abcdef1234567890",
+			torrentName:     "My.Movie.2024",
+			instanceName:    "qbt-main",
+			candidateFiles:  filesWithRoot,
+			wantContains:    []string{"/hardlinks/", "qbt-main"},
 			wantNotContains: []string{"abcdef12", "My.Movie.2024--"},
 		},
 		{
@@ -238,11 +239,13 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 				tt.candidateFiles,
 			)
 
+			normalized := filepath.ToSlash(result)
+
 			for _, substr := range tt.wantContains {
-				assert.Contains(t, result, substr, "result should contain %q", substr)
+				assert.Contains(t, normalized, substr, "result should contain %q", substr)
 			}
 			for _, substr := range tt.wantNotContains {
-				assert.NotContains(t, result, substr, "result should NOT contain %q", substr)
+				assert.NotContains(t, normalized, substr, "result should NOT contain %q", substr)
 			}
 		})
 	}

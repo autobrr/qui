@@ -4,6 +4,11 @@
 // Package fsutil provides filesystem utilities for hardlink operations.
 package fsutil
 
+import (
+	"fmt"
+	"os"
+)
+
 // SameFilesystem checks if two paths are on the same filesystem.
 // This is required for hardlinks, which cannot span filesystems.
 // Returns true if both paths are on the same filesystem, false otherwise.
@@ -13,5 +18,14 @@ package fsutil
 //   - Unix: compares device IDs from stat(2)
 //   - Windows: compares volume serial numbers
 func SameFilesystem(path1, path2 string) (bool, error) {
+	if path1 == "" || path2 == "" {
+		return false, fmt.Errorf("path must not be empty")
+	}
+	if _, err := os.Stat(path1); err != nil {
+		return false, fmt.Errorf("path does not exist: %s: %w", path1, err)
+	}
+	if _, err := os.Stat(path2); err != nil {
+		return false, fmt.Errorf("path does not exist: %s: %w", path2, err)
+	}
 	return sameFilesystem(path1, path2)
 }
