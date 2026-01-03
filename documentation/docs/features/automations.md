@@ -46,6 +46,7 @@ The query builder supports complex nested conditions with AND/OR groups. Drag co
 | Downloaded | Bytes downloaded |
 | Uploaded | Bytes uploaded |
 | Amount Left | Remaining bytes |
+| Free Space | Free space on the instance's filesystem |
 
 #### Time Fields
 | Field | Description |
