@@ -24,8 +24,8 @@ type CrossSeedAutomationSettings struct {
 	StartPaused        bool    `json:"startPaused"`        // RSS: start added torrents paused
 	Category           *string `json:"category,omitempty"` // RSS: category for added torrents
 	TargetInstanceIDs  []int   `json:"targetInstanceIds"`  // RSS: instances to add cross-seeds to
-	TargetIndexerIDs   []int    `json:"targetIndexerIds"`   // RSS: indexers to poll for RSS feeds
-	MaxResultsPerRun   int      `json:"maxResultsPerRun"`   // Deprecated: automation processes full feeds; retained for backward compatibility
+	TargetIndexerIDs   []int   `json:"targetIndexerIds"`   // RSS: indexers to poll for RSS feeds
+	MaxResultsPerRun   int     `json:"maxResultsPerRun"`   // Deprecated: automation processes full feeds; retained for backward compatibility
 
 	// RSS source filtering: filter which LOCAL torrents are considered when checking RSS feeds.
 	// Empty arrays mean "all" (no filtering).
@@ -93,7 +93,7 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		RunIntervalMinutes: 120,   // RSS: default 2 hours between polls
 		StartPaused:        true,
 		Category:           nil,
-		TargetInstanceIDs: []int{},
+		TargetInstanceIDs:  []int{},
 		TargetIndexerIDs:   []int{},
 		MaxResultsPerRun:   50,
 		// RSS source filtering defaults - empty means no filtering (all torrents)

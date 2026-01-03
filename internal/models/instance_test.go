@@ -198,9 +198,9 @@ func TestInstanceStoreWithHost(t *testing.T) {
 			i.use_reflinks,
 			i.fallback_to_regular_mode
 		FROM instances i
-		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
-		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
-		INNER JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_name ON i.name_id = sp_name.id
+		LEFT JOIN string_pool sp_host ON i.host_id = sp_host.id
+		LEFT JOIN string_pool sp_username ON i.username_id = sp_username.id
 		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;
 	`)
 	require.NoError(t, err, "Failed to create test table")
@@ -318,9 +318,9 @@ func TestInstanceStoreWithEmptyUsername(t *testing.T) {
 			i.use_reflinks,
 			i.fallback_to_regular_mode
 		FROM instances i
-		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
-		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
-		INNER JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_name ON i.name_id = sp_name.id
+		LEFT JOIN string_pool sp_host ON i.host_id = sp_host.id
+		LEFT JOIN string_pool sp_username ON i.username_id = sp_username.id
 		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;
 	`)
 	require.NoError(t, err, "Failed to create test table")
@@ -418,9 +418,9 @@ func TestInstanceStoreEmptyUsernameSelfHealing(t *testing.T) {
 			i.use_reflinks,
 			i.fallback_to_regular_mode
 		FROM instances i
-		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
-		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
-		INNER JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_name ON i.name_id = sp_name.id
+		LEFT JOIN string_pool sp_host ON i.host_id = sp_host.id
+		LEFT JOIN string_pool sp_username ON i.username_id = sp_username.id
 		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;
 	`)
 	require.NoError(t, err, "Failed to create test table")
@@ -510,9 +510,9 @@ func TestInstanceStoreUpdateEmptyUsernameSelfHealing(t *testing.T) {
 			i.use_reflinks,
 			i.fallback_to_regular_mode
 		FROM instances i
-		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
-		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
-		INNER JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_name ON i.name_id = sp_name.id
+		LEFT JOIN string_pool sp_host ON i.host_id = sp_host.id
+		LEFT JOIN string_pool sp_username ON i.username_id = sp_username.id
 		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;
 	`)
 	require.NoError(t, err, "Failed to create test table")
@@ -605,9 +605,9 @@ func TestInstanceStoreUpdateOrder(t *testing.T) {
 			i.use_reflinks,
 			i.fallback_to_regular_mode
 		FROM instances i
-		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
-		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
-		INNER JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_name ON i.name_id = sp_name.id
+		LEFT JOIN string_pool sp_host ON i.host_id = sp_host.id
+		LEFT JOIN string_pool sp_username ON i.username_id = sp_username.id
 		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;
 	`)
 	require.NoError(t, err)
