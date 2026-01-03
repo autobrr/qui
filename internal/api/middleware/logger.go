@@ -10,6 +10,8 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/rs/zerolog"
+
+	"github.com/autobrr/qui/pkg/redact"
 )
 
 // Logger logs HTTP requests using a local zerolog logger
@@ -41,7 +43,7 @@ func Logger(logger zerolog.Logger) func(next http.Handler) http.Handler {
 					Timestamp().
 					Fields(map[string]any{
 						"remote_ip":  r.RemoteAddr,
-						"url":        r.URL.Path,
+						"url":        redact.ProxyPath(r.URL.Path),
 						"proto":      r.Proto,
 						"method":     r.Method,
 						"user_agent": r.Header.Get("User-Agent"),

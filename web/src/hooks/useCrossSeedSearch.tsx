@@ -9,7 +9,7 @@ import type {
   CrossSeedTorrentSearchResponse,
   CrossSeedTorrentSearchSelection,
   Torrent,
-  TorznabIndexer,
+  TorznabIndexer
 } from "@/types"
 
 const CROSS_SEED_REFRESH_COOLDOWN_MS = 30_000
@@ -49,6 +49,7 @@ export function useCrossSeedSearch(instanceId: number) {
   const [crossSeedSelectedKeys, setCrossSeedSelectedKeys] = useState<Set<string>>(new Set())
   const [crossSeedUseTag, setCrossSeedUseTag] = useState(true)
   const [crossSeedTagName, setCrossSeedTagName] = useState("cross-seed")
+  const [crossSeedStartPaused, setCrossSeedStartPaused] = useState(true)
   const [crossSeedSubmitting, setCrossSeedSubmitting] = useState(false)
   const [crossSeedApplyResult, setCrossSeedApplyResult] = useState<CrossSeedApplyResponse | null>(null)
   const [crossSeedIndexerMode, setCrossSeedIndexerMode] = useState<"all" | "custom">("all")
@@ -77,13 +78,11 @@ export function useCrossSeedSearch(instanceId: number) {
       candidateIds = new Set(filteredIds)
     }
 
-    const excludedIdSet = excludedIds
-      ? new Set(
-          Object.keys(excludedIds)
-            .map(id => Number(id))
-            .filter(id => !Number.isNaN(id))
-        )
-      : null
+    const excludedIdSet = excludedIds? new Set(
+      Object.keys(excludedIds)
+        .map(id => Number(id))
+        .filter(id => !Number.isNaN(id))
+    ): null
 
     return sortedEnabledIndexers
       .filter(indexer => (!candidateIds || candidateIds.has(indexer.id)) && (!excludedIdSet || !excludedIdSet.has(indexer.id)))
@@ -127,6 +126,7 @@ export function useCrossSeedSearch(instanceId: number) {
     setCrossSeedSelectedKeys(new Set())
     setCrossSeedUseTag(true)
     setCrossSeedTagName("cross-seed")
+    setCrossSeedStartPaused(true)
     setCrossSeedSubmitting(false)
     setCrossSeedApplyResult(null)
     setCrossSeedIndexerMode("all")
@@ -397,13 +397,39 @@ export function useCrossSeedSearch(instanceId: number) {
         selections,
         useTag: crossSeedUseTag,
         tagName: crossSeedUseTag ? (crossSeedTagName.trim() || "cross-seed") : undefined,
-        startPaused: true,
+        startPaused: crossSeedStartPaused,
         findIndividualEpisodes: crossSeedSettings?.findIndividualEpisodes ?? false,
       })
 
       setCrossSeedApplyResult(response)
 
-      toast.success(`Submitted ${selections.length} cross-seed${selections.length > 1 ? "s" : ""}`)
+      // Count successes and failures from instance results
+      let addedCount = 0
+      let failedCount = 0
+      for (const result of response.results) {
+        if (result.instanceResults) {
+          for (const ir of result.instanceResults) {
+            if (ir.status === "added") {
+              addedCount++
+            } else if (!ir.success) {
+              failedCount++
+            }
+          }
+        } else if (!result.success) {
+          failedCount++
+        }
+      }
+
+      if (addedCount > 0 && failedCount === 0) {
+        toast.success(`Added ${addedCount} cross-seed${addedCount > 1 ? "s" : ""}`)
+      } else if (addedCount > 0 && failedCount > 0) {
+        toast.warning(`Added ${addedCount}, ${failedCount} failed - check results for details`)
+      } else if (failedCount > 0) {
+        toast.error(`Failed to add ${failedCount} cross-seed${failedCount > 1 ? "s" : ""} - check results for details`)
+      } else {
+        toast.info("No cross-seeds were added")
+      }
+
       queryClient.invalidateQueries({ queryKey: ["torrents-list", instanceId], exact: false })
       queryClient.invalidateQueries({ queryKey: ["torrent-counts", instanceId], exact: false })
     } catch (error) {
@@ -415,6 +441,7 @@ export function useCrossSeedSearch(instanceId: number) {
   }, [
     crossSeedSearchResponse,
     crossSeedSelectedKeys,
+    crossSeedStartPaused,
     crossSeedTagName,
     crossSeedTorrent,
     crossSeedUseTag,
@@ -533,6 +560,8 @@ export function useCrossSeedSearch(instanceId: number) {
       onUseTagChange={setCrossSeedUseTag}
       tagName={crossSeedTagName}
       onTagNameChange={setCrossSeedTagName}
+      startPaused={crossSeedStartPaused}
+      onStartPausedChange={setCrossSeedStartPaused}
       hasSearched={crossSeedHasSearched}
       cacheMetadata={crossSeedSearchResponse?.cache ?? null}
       onForceRefresh={canForceCrossSeedRefresh ? handleCrossSeedForceRefresh : undefined}

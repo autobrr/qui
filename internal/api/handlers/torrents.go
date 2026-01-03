@@ -24,6 +24,7 @@ import (
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/redact"
 	"github.com/autobrr/qui/pkg/torrentname"
 )
 
@@ -561,7 +562,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 						if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
 							return
 						}
-						log.Error().Err(err).Int("instanceID", instanceID).Str("url", url).Msg("Failed to add magnet link")
+						log.Error().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(url)).Msg("Failed to add magnet link")
 						failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
 						failedCount++
 						lastError = err
@@ -577,7 +578,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					DownloadURL: url,
 				})
 				if err != nil {
-					log.Error().Err(err).Int("indexerID", indexerID).Int("instanceID", instanceID).Str("url", url).Msg("Failed to download torrent from indexer")
+					log.Error().Err(err).Int("indexerID", indexerID).Int("instanceID", instanceID).Str("url", redact.URLString(url)).Msg("Failed to download torrent from indexer")
 					failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
 					failedCount++
 					lastError = err
@@ -589,7 +590,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
 						return
 					}
-					log.Error().Err(err).Int("instanceID", instanceID).Int("indexerID", indexerID).Str("url", url).Msg("Failed to add downloaded torrent")
+					log.Error().Err(err).Int("instanceID", instanceID).Int("indexerID", indexerID).Str("url", redact.URLString(url)).Msg("Failed to add downloaded torrent")
 					failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
 					failedCount++
 					lastError = err
