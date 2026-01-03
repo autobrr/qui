@@ -70,7 +70,6 @@ type CrossSeedAutomationSettings struct {
 	SkipAutoResumeWebhook        bool `json:"skipAutoResumeWebhook"`        // Skip auto-resume for /apply webhook results
 	SkipRecheck                  bool `json:"skipRecheck"`                  // Skip cross-seed matches that require a recheck
 	SkipPieceBoundarySafetyCheck bool `json:"skipPieceBoundarySafetyCheck"` // Skip piece boundary safety check (risky: may corrupt existing seeded data)
-	FallbackToRegularMode        bool `json:"fallbackToRegularMode"`        // Fallback to regular mode when reflink/hardlink fails (piece boundary check enforced)
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -127,8 +126,7 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		SkipAutoResumeCompletion:     false,
 		SkipAutoResumeWebhook:        false,
 		SkipRecheck:                  false,
-		SkipPieceBoundarySafetyCheck: true,  // Skip by default to maximize matches
-		FallbackToRegularMode:        false, // Default to false
+		SkipPieceBoundarySafetyCheck: true, // Skip by default to maximize matches
 		CreatedAt:                    time.Now().UTC(),
 		UpdatedAt:                    time.Now().UTC(),
 	}
@@ -310,7 +308,6 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		       skip_auto_resume_rss, skip_auto_resume_seeded_search,
 		       skip_auto_resume_completion, skip_auto_resume_webhook,
 		       skip_recheck, skip_piece_boundary_safety_check,
-		       fallback_to_regular_mode,
 		       created_at, updated_at
 		FROM cross_seed_settings
 		WHERE id = 1
@@ -361,7 +358,6 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&settings.SkipAutoResumeWebhook,
 		&settings.SkipRecheck,
 		&settings.SkipPieceBoundarySafetyCheck,
-		&settings.FallbackToRegularMode,
 		&createdAt,
 		&updatedAt,
 	)
@@ -526,10 +522,9 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			use_custom_category, custom_category,
 			skip_auto_resume_rss, skip_auto_resume_seeded_search,
 			skip_auto_resume_completion, skip_auto_resume_webhook,
-			skip_recheck, skip_piece_boundary_safety_check,
-			fallback_to_regular_mode
+			skip_recheck, skip_piece_boundary_safety_check
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -564,8 +559,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			skip_auto_resume_completion = excluded.skip_auto_resume_completion,
 			skip_auto_resume_webhook = excluded.skip_auto_resume_webhook,
 			skip_recheck = excluded.skip_recheck,
-			skip_piece_boundary_safety_check = excluded.skip_piece_boundary_safety_check,
-			fallback_to_regular_mode = excluded.fallback_to_regular_mode
+			skip_piece_boundary_safety_check = excluded.skip_piece_boundary_safety_check
 	`
 
 	// Convert *int to any for proper SQL handling
@@ -614,7 +608,6 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		settings.SkipAutoResumeWebhook,
 		settings.SkipRecheck,
 		settings.SkipPieceBoundarySafetyCheck,
-		settings.FallbackToRegularMode,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("upsert settings: %w", err)

@@ -100,7 +100,6 @@ interface GlobalCrossSeedSettings {
   skipAutoResumeWebhook: boolean
   skipRecheck: boolean
   skipPieceBoundarySafetyCheck: boolean
-  fallbackToRegularMode: boolean
   // Webhook source filtering: filter which local torrents to search when checking webhook requests
   webhookSourceCategories: string[]
   webhookSourceTags: string[]
@@ -151,7 +150,6 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   skipAutoResumeWebhook: false,
   skipRecheck: false,
   skipPieceBoundarySafetyCheck: true,
-  fallbackToRegularMode: false,
   // Webhook source filtering defaults - empty means no filtering (all torrents)
   webhookSourceCategories: [],
   webhookSourceTags: [],
@@ -831,7 +829,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
         skipRecheck: settings.skipRecheck ?? false,
         skipPieceBoundarySafetyCheck: settings.skipPieceBoundarySafetyCheck ?? true,
-        fallbackToRegularMode: settings.fallbackToRegularMode ?? false,
         // Webhook source filtering
         webhookSourceCategories: settings.webhookSourceCategories ?? [],
         webhookSourceTags: settings.webhookSourceTags ?? [],
@@ -918,7 +915,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
         skipRecheck: settings.skipRecheck ?? false,
         skipPieceBoundarySafetyCheck: settings.skipPieceBoundarySafetyCheck ?? true,
-        fallbackToRegularMode: settings.fallbackToRegularMode ?? false,
         webhookSourceCategories: settings.webhookSourceCategories ?? [],
         webhookSourceTags: settings.webhookSourceTags ?? [],
         webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
@@ -947,7 +943,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       skipAutoResumeWebhook: globalSource.skipAutoResumeWebhook,
       skipRecheck: globalSource.skipRecheck,
       skipPieceBoundarySafetyCheck: globalSource.skipPieceBoundarySafetyCheck,
-      fallbackToRegularMode: globalSource.fallbackToRegularMode,
       // Webhook source filtering
       webhookSourceCategories: globalSource.webhookSourceCategories,
       webhookSourceTags: globalSource.webhookSourceTags,

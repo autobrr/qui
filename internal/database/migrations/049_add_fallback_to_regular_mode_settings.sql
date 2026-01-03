@@ -1,12 +1,11 @@
 -- Copyright (c) 2025, s0up and the autobrr contributors.
 -- SPDX-License-Identifier: GPL-2.0-or-later
 
--- Add fallback_to_regular_mode option for instances and global cross-seed settings.
+-- Add fallback_to_regular_mode option for instances.
 -- When enabled, hardlink/reflink mode failures will fall back to regular mode
 -- with piece boundary safety checks instead of failing completely.
 
 ALTER TABLE instances ADD COLUMN fallback_to_regular_mode BOOLEAN NOT NULL DEFAULT 0;
-ALTER TABLE cross_seed_settings ADD COLUMN fallback_to_regular_mode BOOLEAN NOT NULL DEFAULT 0;
 
 -- Update the instances_view to include the fallback_to_regular_mode column
 DROP VIEW IF EXISTS instances_view;

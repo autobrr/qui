@@ -1683,7 +1683,6 @@ export interface CrossSeedAutomationSettings {
   skipAutoResumeWebhook: boolean
   skipRecheck: boolean
   skipPieceBoundarySafetyCheck: boolean
-  fallbackToRegularMode: boolean
   // Hardlink mode settings
   useHardlinks: boolean
   hardlinkBaseDir: string
@@ -1729,7 +1728,6 @@ export interface CrossSeedAutomationSettingsPatch {
   skipAutoResumeWebhook?: boolean
   skipRecheck?: boolean
   skipPieceBoundarySafetyCheck?: boolean
-  fallbackToRegularMode?: boolean
   // Hardlink mode settings
   useHardlinks?: boolean
   hardlinkBaseDir?: string
