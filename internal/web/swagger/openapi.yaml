@@ -3160,6 +3160,29 @@ paths:
         '500':
           description: Failed to add torrents
 
+  /api/cross-seed/torrents/{instanceID}/{hash}/local-matches:
+    get:
+      tags:
+        - Cross-Seed
+      summary: Find local cross-seed matches
+      description: Find torrents across all qBittorrent instances that match the specified torrent (by infohash, content path, or release metadata)
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - $ref: '#/components/parameters/hash'
+      responses:
+        '200':
+          description: List of matching torrents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LocalCrossSeedMatch'
+        '400':
+          description: Invalid parameters
+        '500':
+          description: Failed to find matches
+
   /api/log-settings:
     get:
       tags:
@@ -4995,6 +5018,57 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CrossSeedApplyResult'
+
+    LocalCrossSeedMatch:
+      type: object
+      description: A torrent that matches another torrent for cross-seeding purposes
+      properties:
+        instanceId:
+          type: integer
+          description: The qBittorrent instance ID containing this torrent
+        instanceName:
+          type: string
+          description: The name of the qBittorrent instance
+        hash:
+          type: string
+          description: Torrent info hash
+        name:
+          type: string
+          description: Torrent name
+        size:
+          type: integer
+          format: int64
+          description: Total size in bytes
+        progress:
+          type: number
+          format: float
+          description: Download progress (0-1)
+        savePath:
+          type: string
+          description: Save path on disk
+        contentPath:
+          type: string
+          description: Content path on disk
+        category:
+          type: string
+          description: Torrent category
+        tags:
+          type: string
+          description: Comma-separated torrent tags
+        state:
+          type: string
+          description: Torrent state
+        tracker:
+          type: string
+          description: Primary tracker URL
+        trackerHealth:
+          type: string
+          enum: [unregistered, tracker_down]
+          description: Tracker health status (only present if unhealthy)
+        matchType:
+          type: string
+          enum: [content_path, name, release]
+          description: How this torrent was matched
 
     CrossInstanceFilterOptions:
       type: object
