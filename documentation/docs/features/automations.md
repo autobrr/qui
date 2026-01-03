@@ -249,10 +249,10 @@ Activity is retained for 7 days by default. View the log in the Automations sect
 
 ## Example Rules
 
-### Delete Old Completed Torrents
+### Delete Old Completed Torrents if low on disk space
 
-Match torrents completed over 30 days ago:
-- Condition: `Completion On Age > 30 days` AND `State is completed`
+Match torrents completed over 30 days ago when filesystem is lower than 500GB:
+- Condition: `Completion On Age > 30 days` AND `State is completed` AND `Free Space < 500GB`
 - Action: Delete with files
 
 ### Speed Limit Private Trackers
