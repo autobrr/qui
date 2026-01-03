@@ -10,11 +10,27 @@ on:
         type: number
 
 jobs:
+  # Workaround: claude-code-action doesn't support 'discussion' events directly.
+  # This job catches the discussion event and re-triggers via workflow_dispatch.
+  dispatch:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'discussion' && github.event.discussion.category.slug == 'issue-triage'
+    permissions:
+      actions: write
+    steps:
+      - name: Re-dispatch as workflow_dispatch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run triage.yml \
+            --repo ${{ github.repository }} \
+            --ref ${{ github.event.repository.default_branch }} \
+            -f discussion_number=${{ github.event.discussion.number }}
+
   triage-discussion:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Only triage discussions in the issue-triage category (skip for manual runs)
-    if: github.event_name == 'workflow_dispatch' || github.event.discussion.category.slug == 'issue-triage'
+    if: github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
       discussions: write
@@ -125,6 +141,12 @@ jobs:
                - DO NOT post any comments explaining your decision
                - DO NOT communicate directly with users
                - If no labels are clearly applicable, do not apply any labels
+
+            6. After applying labels, remove the "needs-triage" label if present:
+               - Use the removeLabelsFromLabelable mutation:
+                 gh api graphql -f query='mutation { removeLabelsFromLabelable(input: {labelIds: ["NEEDS_TRIAGE_LABEL_ID"], labelableId: "DISCUSSION_NODE_ID"}) { clientMutationId } }'
+               - Get the "needs-triage" label ID from the label list in step 1
+               - Only remove it if you successfully applied at least one label
 
             IMPORTANT GUIDELINES:
             - Be thorough in your analysis
