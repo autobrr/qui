@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useCallback, useMemo, useState } from "react"
 
 import { api } from "@/lib/api"
-import { isInsideBase, normalizePath, searchCrossSeedMatches, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
+import { isInsideBase, normalizePath, toCompatibleMatch, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
 import type { Torrent } from "@/types"
 
 interface UseCrossSeedWarningOptions {
@@ -82,7 +82,7 @@ export function useCrossSeedWarning({
     const hardlinkBase = normalizePath(instance.hardlinkBaseDir || "")
 
     try {
-      // Check each torrent for cross-seeds
+      // Check each torrent for cross-seeds using backend API
       for (let i = 0; i < torrents.length; i++) {
         const torrent = torrents[i]
 
@@ -96,23 +96,8 @@ export function useCrossSeedWarning({
           continue
         }
 
-        // Fetch files for this torrent
-        let torrentFiles: Awaited<ReturnType<typeof api.getTorrentFiles>> = []
-        try {
-          torrentFiles = await api.getTorrentFiles(instanceId, torrent.hash)
-        } catch {
-          // Continue without files - will use weaker matching
-        }
-
-        // Search for cross-seeds
-        const matches = await searchCrossSeedMatches(
-          torrent,
-          instance,
-          instanceId,
-          torrentFiles,
-          torrent.infohash_v1 || torrent.hash,
-          torrent.infohash_v2
-        )
+        // Use backend API for proper release matching (rls library)
+        const matches = await api.getLocalCrossSeedMatches(instanceId, torrent.hash)
 
         // Filter and dedupe matches - only include matches that share the same on-disk files
         for (const match of matches) {
@@ -124,8 +109,8 @@ export function useCrossSeedWarning({
           if (seenHashes.has(match.hash)) continue
 
           // Normalize match paths
-          const mSave = normalizePath(match.save_path || "")
-          const mContent = normalizePath(match.content_path || "")
+          const mSave = normalizePath(match.savePath || "")
+          const mContent = normalizePath(match.contentPath || "")
 
           // Skip matches inside hardlink base directory (hardlink-mode cross-seeds)
           if (isInsideBase(mSave, hardlinkBase)) continue
@@ -136,7 +121,7 @@ export function useCrossSeedWarning({
 
           seenHashes.add(match.hash)
           allMatches.push({
-            ...match,
+            ...toCompatibleMatch(match),
             instanceName,
           })
         }

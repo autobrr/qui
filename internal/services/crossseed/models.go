@@ -12,6 +12,13 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
+// Local match type constants for determineLocalMatchType.
+const (
+	matchTypeContentPath = "content_path"
+	matchTypeName        = "name"
+	matchTypeRelease     = "release"
+)
+
 // CrossSeedRequest represents a request to cross-seed a torrent
 type CrossSeedRequest struct {
 	// TorrentData is the base64-encoded torrent file
@@ -280,6 +287,29 @@ type TorrentSearchAddResult struct {
 // ApplyTorrentSearchResponse aggregates the results of adding multiple search selections.
 type ApplyTorrentSearchResponse struct {
 	Results []TorrentSearchAddResult `json:"results"`
+}
+
+// LocalMatchesResponse contains torrents from all instances that match a source torrent.
+type LocalMatchesResponse struct {
+	Matches []LocalMatch `json:"matches"`
+}
+
+// LocalMatch represents a torrent that matches the source across instances.
+type LocalMatch struct {
+	InstanceID    int     `json:"instance_id"`
+	InstanceName  string  `json:"instance_name"`
+	Hash          string  `json:"hash"`
+	Name          string  `json:"name"`
+	Size          int64   `json:"size"`
+	Progress      float64 `json:"progress"`
+	SavePath      string  `json:"save_path"`
+	ContentPath   string  `json:"content_path"`
+	Category      string  `json:"category"`
+	Tags          string  `json:"tags"`
+	State         string  `json:"state"`
+	Tracker       string  `json:"tracker"`
+	TrackerHealth string  `json:"tracker_health,omitempty"`
+	MatchType     string  `json:"match_type"` // "content_path", "name", "release"
 }
 
 // AsyncIndexerFilteringState represents the state of async indexer filtering operations
