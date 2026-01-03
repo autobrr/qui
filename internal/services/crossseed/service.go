@@ -442,8 +442,8 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 	// Parse source release for matching
 	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
 
-	// Normalize content path for comparison
-	normalizedContentPath := strings.ToLower(strings.ReplaceAll(sourceTorrent.ContentPath, "\\", "/"))
+	// Normalize content path for comparison (case-insensitive, cleaned)
+	normalizedContentPath := strings.ToLower(normalizePath(sourceTorrent.ContentPath))
 
 	var matches []LocalMatch
 
@@ -500,8 +500,8 @@ func (s *Service) determineLocalMatchType(
 	candidate *qbittorrent.CrossInstanceTorrentView,
 	normalizedContentPath string,
 ) string {
-	// Strategy 1: Same content path
-	candidateContentPath := strings.ToLower(strings.ReplaceAll(candidate.ContentPath, "\\", "/"))
+	// Strategy 1: Same content path (case-insensitive, cleaned)
+	candidateContentPath := strings.ToLower(normalizePath(candidate.ContentPath))
 	if normalizedContentPath != "" && candidateContentPath != "" && normalizedContentPath == candidateContentPath {
 		return matchTypeContentPath
 	}
