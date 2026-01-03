@@ -21,6 +21,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -7267,9 +7268,11 @@ func normalizePath(p string) string {
 	}
 	// Convert backslashes to forward slashes for cross-platform comparison
 	p = strings.ReplaceAll(p, "\\", "/")
-	// Clean the path and remove trailing slashes
-	p = filepath.Clean(p)
-	p = strings.TrimSuffix(p, "/")
+	// Clean the path and remove trailing slashes (keep root "/")
+	p = path.Clean(p)
+	if len(p) > 1 {
+		p = strings.TrimSuffix(p, "/")
+	}
 	return p
 }
 
@@ -7283,9 +7286,15 @@ func resolveRootlessContentDir(matchedTorrent *qbt.Torrent, candidateFiles qbt.T
 		return ""
 	}
 
+	// Rootless content dir logic expects an absolute storage path.
+	// Accept POSIX absolute (/downloads/...) and Windows drive paths (C:/...).
+	if !path.IsAbs(contentPath) && !strings.Contains(contentPath, ":/") {
+		return ""
+	}
+
 	// qBittorrent returns the full file path for single-file torrents.
 	if len(candidateFiles) == 1 {
-		dir := normalizePath(filepath.Dir(contentPath))
+		dir := normalizePath(path.Dir(contentPath))
 		if dir == "." {
 			return ""
 		}
