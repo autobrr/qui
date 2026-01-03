@@ -28,10 +28,10 @@ build: frontend backend
 
 build/docker:
 	@echo "Building docker image..."
-	docker build -t ghcr.io/autobrr/qui:dev -f Dockerfile . --build-arg  GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg POLAR_ORG_ID=$(POLAR_ORG_ID) --build-arg VERSION=$(VERSION)
+	docker build -t ghcr.io/autobrr/qui:dev -f distrib/docker/Dockerfile . --build-arg  GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg POLAR_ORG_ID=$(POLAR_ORG_ID) --build-arg VERSION=$(VERSION)
 
 build/dockerx:
-	docker buildx build -t ghcr.io/autobrr/qui:dev -f Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg VERSION=$(VERSION) --platform=linux/amd64,linux/arm64 --pull --load
+	docker buildx build -t ghcr.io/autobrr/qui:dev -f distrib/docker/Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg VERSION=$(VERSION) --platform=linux/amd64,linux/arm64 --pull --load
 
 # Fetch premium themes from private repository
 themes-fetch:

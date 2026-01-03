@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   qui:
     image: ghcr.io/autobrr/qui:latest
