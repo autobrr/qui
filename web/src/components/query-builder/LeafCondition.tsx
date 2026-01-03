@@ -19,7 +19,6 @@ import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, ToggleLeft, ToggleRight, X } from "lucide-react";
 import { useState } from "react";
 import {
-  BYTE_UNITS,
   getFieldType,
   getOperatorsForField,
   HARDLINK_SCOPE_VALUES,
@@ -45,6 +44,22 @@ const SPEED_INPUT_UNITS = [
   { value: 1024, label: "KiB/s" },
   { value: 1024 * 1024, label: "MiB/s" },
 ];
+
+const BYTES_INPUT_UNITS = [
+  { value: 1024 * 1024, label: "MiB" },
+  { value: 1024 * 1024 * 1024, label: "GiB" },
+  { value: 1024 * 1024 * 1024 * 1024, label: "TiB" },
+];
+
+// Detect best bytes unit from value
+function detectBytesUnit(bytes: number): number {
+  const tib = 1024 * 1024 * 1024 * 1024;
+  const gib = 1024 * 1024 * 1024;
+  const mib = 1024 * 1024;
+  if (bytes >= tib && bytes % tib === 0) return tib;
+  if (bytes >= gib && bytes % gib === 0) return gib;
+  return mib;
+}
 
 interface LeafConditionProps {
   id: string;
@@ -105,6 +120,16 @@ export function LeafCondition({
   // Track duration unit for BETWEEN operator (shared for min/max)
   const [betweenDurationUnit, setBetweenDurationUnit] = useState<number>(() =>
     detectDurationUnit(condition.minValue ?? 0)
+  );
+
+  // Track bytes unit separately so it persists when value is empty
+  const [bytesUnit, setBytesUnit] = useState<number>(() =>
+    detectBytesUnit(parseFloat(condition.value ?? "0") || 0)
+  );
+
+  // Track bytes unit for BETWEEN operator (shared for min/max)
+  const [betweenBytesUnit, setBetweenBytesUnit] = useState<number>(() =>
+    detectBytesUnit(condition.minValue ?? 0)
   );
 
   const handleFieldChange = (field: string) => {
@@ -221,7 +246,49 @@ export function LeafCondition({
     onChange({ ...condition, minValue: minNum, maxValue: maxNum });
   };
 
-  const betweenDurationDisplay = (fieldType === "duration" && condition.operator === "BETWEEN")? getBetweenDurationDisplay(): null;
+  const betweenDurationDisplay = (fieldType === "duration" && condition.operator === "BETWEEN") ? getBetweenDurationDisplay() : null;
+
+  // Bytes handling - parse bytes to display value using tracked unit
+  const getBytesDisplay = (): { value: string; unit: number } => {
+    const bytes = parseFloat(condition.value ?? "0") || 0;
+    if (bytes === 0) return { value: "", unit: bytesUnit };
+    return { value: String(bytes / bytesUnit), unit: bytesUnit };
+  };
+
+  const bytesDisplay = fieldType === "bytes" ? getBytesDisplay() : null;
+
+  const handleBytesChange = (value: string, unit: number) => {
+    // Always update the unit preference
+    setBytesUnit(unit);
+    // Only update condition value if there's an actual value
+    if (value === "") {
+      onChange({ ...condition, value: "" });
+    } else {
+      const numValue = parseFloat(value) || 0;
+      const bytes = Math.round(numValue * unit);
+      onChange({ ...condition, value: String(bytes) });
+    }
+  };
+
+  // BETWEEN bytes display - convert bytes to display unit
+  const getBetweenBytesDisplay = (): { minValue: string; maxValue: string; unit: number } => {
+    const minBytes = condition.minValue ?? 0;
+    const maxBytes = condition.maxValue ?? 0;
+    return {
+      minValue: minBytes === 0 ? "" : String(minBytes / betweenBytesUnit),
+      maxValue: maxBytes === 0 ? "" : String(maxBytes / betweenBytesUnit),
+      unit: betweenBytesUnit,
+    };
+  };
+
+  const handleBetweenBytesChange = (minVal: string, maxVal: string, unit: number) => {
+    setBetweenBytesUnit(unit);
+    const minNum = minVal === "" ? 0 : Math.round((parseFloat(minVal) || 0) * unit);
+    const maxNum = maxVal === "" ? 0 : Math.round((parseFloat(maxVal) || 0) * unit);
+    onChange({ ...condition, minValue: minNum, maxValue: maxNum });
+  };
+
+  const betweenBytesDisplay = (fieldType === "bytes" && condition.operator === "BETWEEN") ? getBetweenBytesDisplay() : null;
 
   return (
     <div
@@ -319,6 +386,39 @@ export function LeafCondition({
             </SelectContent>
           </Select>
         </div>
+      ) : condition.operator === "BETWEEN" && fieldType === "bytes" && betweenBytesDisplay ? (
+        <div className="flex items-center gap-1">
+          <Input
+            type="number"
+            className="h-8 w-20"
+            value={betweenBytesDisplay.minValue}
+            onChange={(e) => handleBetweenBytesChange(e.target.value, betweenBytesDisplay.maxValue, betweenBytesDisplay.unit)}
+            placeholder="Min"
+          />
+          <span className="text-muted-foreground">-</span>
+          <Input
+            type="number"
+            className="h-8 w-20"
+            value={betweenBytesDisplay.maxValue}
+            onChange={(e) => handleBetweenBytesChange(betweenBytesDisplay.minValue, e.target.value, betweenBytesDisplay.unit)}
+            placeholder="Max"
+          />
+          <Select
+            value={String(betweenBytesDisplay.unit)}
+            onValueChange={(unit) => handleBetweenBytesChange(betweenBytesDisplay.minValue, betweenBytesDisplay.maxValue, parseInt(unit, 10))}
+          >
+            <SelectTrigger className="h-8 w-fit">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {BYTES_INPUT_UNITS.map((u) => (
+                <SelectItem key={u.value} value={String(u.value)}>
+                  {u.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       ) : condition.operator === "BETWEEN" ? (
         <div className="flex items-center gap-1">
           <Input
@@ -336,7 +436,6 @@ export function LeafCondition({
             onChange={(e) => handleMaxValueChange(e.target.value)}
             placeholder="Max"
           />
-          {renderUnitHint(fieldType)}
         </div>
       ) : fieldType === "state" ? (
         <Select value={condition.value ?? ""} onValueChange={handleValueChange}>
@@ -424,6 +523,31 @@ export function LeafCondition({
             </SelectContent>
           </Select>
         </div>
+      ) : fieldType === "bytes" && bytesDisplay ? (
+        <div className="flex items-center gap-1">
+          <Input
+            type="number"
+            className="h-8 w-20"
+            value={bytesDisplay.value}
+            onChange={(e) => handleBytesChange(e.target.value, bytesDisplay.unit)}
+            placeholder="0"
+          />
+          <Select
+            value={String(bytesDisplay.unit)}
+            onValueChange={(unit) => handleBytesChange(bytesDisplay.value, parseInt(unit, 10))}
+          >
+            <SelectTrigger className="h-8 w-fit">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {BYTES_INPUT_UNITS.map((u) => (
+                <SelectItem key={u.value} value={String(u.value)}>
+                  {u.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       ) : (condition.operator === "EXISTS_IN" || condition.operator === "CONTAINS_IN" || (condition.field === "CATEGORY" && (condition.operator === "EQUAL" || condition.operator === "NOT_EQUAL"))) && categoryOptions && categoryOptions.length > 0 ? (
         // Category selector for category-related conditions when categories available
         <Select value={condition.value ?? ""} onValueChange={handleValueChange}>
@@ -447,7 +571,6 @@ export function LeafCondition({
             onChange={(e) => handleValueChange(e.target.value)}
             placeholder={getPlaceholder(fieldType)}
           />
-          {renderUnitHint(fieldType)}
           {/* Regex toggle for string fields - hide for EXISTS_IN/CONTAINS_IN */}
           {fieldType === "string" &&
             condition.operator !== "MATCHES" &&
@@ -514,39 +637,5 @@ function getPlaceholder(type: string): string {
       return "0";
     default:
       return "Value";
-  }
-}
-
-function renderUnitHint(type: string) {
-  const units = getUnitsForType(type);
-  if (!units) return null;
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="cursor-help text-xs text-muted-foreground">
-          {units[0].label}
-        </span>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-xs">
-        <div className="space-y-1">
-          <p className="font-medium">Unit conversions:</p>
-          {units.map((u: { value: number; label: string }) => (
-            <p key={u.label}>
-              1 {u.label} = {u.value.toLocaleString()} base units
-            </p>
-          ))}
-        </div>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-function getUnitsForType(type: string) {
-  switch (type) {
-    case "bytes":
-      return BYTE_UNITS;
-    default:
-      return null;
   }
 }
