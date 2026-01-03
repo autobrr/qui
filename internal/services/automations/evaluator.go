@@ -37,6 +37,8 @@ type EvalContext struct {
 	HardlinkScopeByHash map[string]string
 	// InstanceHasLocalAccess indicates whether the instance has local filesystem access
 	InstanceHasLocalAccess bool
+	// FreeSpace is the free space on the instance's filesystem
+	FreeSpace int64
 
 	// CategoryIndex maps lowercased category → lowercased name → set of hashes.
 	// Enables O(1) EXISTS_IN lookups while supporting self-exclusion.
@@ -304,6 +306,8 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareInt64(torrent.Uploaded, cond)
 	case FieldAmountLeft:
 		return compareInt64(torrent.AmountLeft, cond)
+	case FieldFreeSpace:
+		return compareInt64(ctx.FreeSpace, cond)
 
 	// Timestamp/duration fields (int64)
 	case FieldAddedOn:

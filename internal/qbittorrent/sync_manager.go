@@ -215,13 +215,13 @@ type OptimisticTorrentUpdate struct {
 // NewSyncManager creates a new sync manager
 func NewSyncManager(clientPool *ClientPool) *SyncManager {
 	sm := &SyncManager{
-		clientPool:             clientPool,
-		exprCache:              ttlcache.New(ttlcache.Options[string, *vm.Program]{}.SetDefaultTTL(5 * time.Minute)),
-		debouncedSyncTimers:    make(map[int]*time.Timer),
-		syncDebounceDelay:      200 * time.Millisecond,
-		syncDebounceMinJitter:  10 * time.Millisecond,
-		fileFetchSem:           make(map[int]chan struct{}),
-		fileFetchMaxConcurrent: 16,
+		clientPool:              clientPool,
+		exprCache:               ttlcache.New(ttlcache.Options[string, *vm.Program]{}.SetDefaultTTL(5 * time.Minute)),
+		debouncedSyncTimers:     make(map[int]*time.Timer),
+		syncDebounceDelay:       200 * time.Millisecond,
+		syncDebounceMinJitter:   10 * time.Millisecond,
+		fileFetchSem:            make(map[int]chan struct{}),
+		fileFetchMaxConcurrent:  16,
 		trackerHealthCache:      make(map[int]*TrackerHealthCounts),
 		trackerHealthCancel:     make(map[int]context.CancelFunc),
 		trackerHealthRefresh:    60 * time.Second,
@@ -5353,4 +5353,15 @@ func (sm *SyncManager) DeleteTorrentCreationTask(ctx context.Context, instanceID
 	}
 
 	return client.DeleteTorrentCreationTaskCtx(ctx, taskID)
+}
+
+// GetFreeSpace returns the free space on the instance's filesystem.
+func (sm *SyncManager) GetFreeSpace(ctx context.Context, instanceID int) (int64, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	state := client.syncManager.GetServerState()
+	return state.FreeSpaceOnDisk, nil
 }

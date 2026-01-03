@@ -592,6 +592,14 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		evalCtx.HardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
 	}
 
+	// Get free space for free space condition evaluation
+	freeSpace, err := s.syncManager.GetFreeSpace(ctx, instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get free space")
+		return err
+	}
+	evalCtx.FreeSpace = freeSpace
+
 	// Load tracker display names if any rule uses UseTrackerAsTag with UseDisplayName
 	if rulesUseTrackerDisplayName(eligibleRules) && s.trackerCustomizationStore != nil {
 		customizations, err := s.trackerCustomizationStore.List(ctx)
