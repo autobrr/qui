@@ -307,6 +307,9 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldAmountLeft:
 		return compareInt64(torrent.AmountLeft, cond)
 	case FieldFreeSpace:
+		if ctx == nil {
+			return false
+		}
 		return compareInt64(ctx.FreeSpace, cond)
 
 	// Timestamp/duration fields (int64)
