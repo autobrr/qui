@@ -10,14 +10,30 @@ on:
         type: number
 
 jobs:
+  # Workaround: claude-code-action doesn't support 'discussion' events directly.
+  # This job catches the discussion event and re-triggers via workflow_dispatch.
+  dispatch:
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'discussion' &&
+      (github.event.discussion.category.slug == 'issue-triage' ||
+       github.event.discussion.category.slug == 'feature-requests-ideas')
+    permissions:
+      actions: write
+    steps:
+      - name: Re-dispatch as workflow_dispatch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run discussion-deduplication.yml \
+            --repo ${{ github.repository }} \
+            --ref ${{ github.event.repository.default_branch }} \
+            -f discussion_number=${{ github.event.discussion.number }}
+
   deduplicate-discussion:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Only run for issue-triage and feature-requests-ideas categories (skip for manual runs)
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      github.event.discussion.category.slug == 'issue-triage' ||
-      github.event.discussion.category.slug == 'feature-requests-ideas'
+    if: github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
       discussions: write
