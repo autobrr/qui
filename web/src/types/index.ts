@@ -157,6 +157,7 @@ export type ConditionField =
   | "DOWNLOADED"
   | "UPLOADED"
   | "AMOUNT_LEFT"
+  | "FREE_SPACE"
   // Numeric fields (timestamps/seconds)
   | "ADDED_ON"
   | "COMPLETION_ON"

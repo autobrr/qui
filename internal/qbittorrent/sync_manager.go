@@ -5367,3 +5367,14 @@ func (sm *SyncManager) DeleteTorrentCreationTask(ctx context.Context, instanceID
 
 	return client.DeleteTorrentCreationTaskCtx(ctx, taskID)
 }
+
+// GetFreeSpace returns the free space on the instance's filesystem.
+func (sm *SyncManager) GetFreeSpace(ctx context.Context, instanceID int) (int64, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	state := client.syncManager.GetServerState()
+	return state.FreeSpaceOnDisk, nil
+}

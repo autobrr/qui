@@ -588,8 +588,18 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	}
 
 	// On-demand hardlink detection (only if rules use HARDLINK_SCOPE and instance has local access)
-	if instance.HasLocalFilesystemAccess && rulesUseHardlinkScopeCondition(eligibleRules) {
+	if instance.HasLocalFilesystemAccess && rulesUseCondition(eligibleRules, FieldHardlinkScope) {
 		evalCtx.HardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
+	}
+
+	// Get free space on instance (only if rules use FREE_SPACE field)
+	if rulesUseCondition(eligibleRules, FieldFreeSpace) {
+		freeSpace, err := s.syncManager.GetFreeSpace(ctx, instanceID)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get free space")
+			return fmt.Errorf("failed to get free space: %w", err)
+		}
+		evalCtx.FreeSpace = freeSpace
 	}
 
 	// Load tracker display names if any rule uses UseTrackerAsTag with UseDisplayName
@@ -1429,29 +1439,29 @@ func detectCrossSeeds(target qbt.Torrent, allTorrents []qbt.Torrent) bool {
 	return false
 }
 
-// rulesUseHardlinkScopeCondition checks if any enabled rule uses the HARDLINK_SCOPE field.
-func rulesUseHardlinkScopeCondition(rules []*models.Automation) bool {
+// rulesUseCondition checks if any enabled rule uses the given field.
+func rulesUseCondition(rules []*models.Automation, field ConditionField) bool {
 	for _, rule := range rules {
 		if rule.Conditions == nil || !rule.Enabled {
 			continue
 		}
 		ac := rule.Conditions
-		if ac.SpeedLimits != nil && ConditionUsesField(ac.SpeedLimits.Condition, FieldHardlinkScope) {
+		if ac.SpeedLimits != nil && ConditionUsesField(ac.SpeedLimits.Condition, field) {
 			return true
 		}
-		if ac.ShareLimits != nil && ConditionUsesField(ac.ShareLimits.Condition, FieldHardlinkScope) {
+		if ac.ShareLimits != nil && ConditionUsesField(ac.ShareLimits.Condition, field) {
 			return true
 		}
-		if ac.Pause != nil && ConditionUsesField(ac.Pause.Condition, FieldHardlinkScope) {
+		if ac.Pause != nil && ConditionUsesField(ac.Pause.Condition, field) {
 			return true
 		}
-		if ac.Delete != nil && ConditionUsesField(ac.Delete.Condition, FieldHardlinkScope) {
+		if ac.Delete != nil && ConditionUsesField(ac.Delete.Condition, field) {
 			return true
 		}
-		if ac.Tag != nil && ConditionUsesField(ac.Tag.Condition, FieldHardlinkScope) {
+		if ac.Tag != nil && ConditionUsesField(ac.Tag.Condition, field) {
 			return true
 		}
-		if ac.Category != nil && ConditionUsesField(ac.Category.Condition, FieldHardlinkScope) {
+		if ac.Category != nil && ConditionUsesField(ac.Category.Condition, field) {
 			return true
 		}
 	}
