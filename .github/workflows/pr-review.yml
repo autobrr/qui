@@ -229,8 +229,23 @@ jobs:
             - If the contributor has a valid point, acknowledge it
             - If you still think there's an issue, explain why respectfully
 
+            ## STEP 5: Apply Labels
+
+            After posting your review, apply appropriate labels to the PR:
+            ```bash
+            gh label list --json name --limit 100  # See available labels
+            gh pr edit ${{ steps.pr.outputs.number }} --add-label "label1,label2"
+            ```
+
+            **Label Guidelines:**
+            - Add area labels based on files changed (e.g., `area/frontend`, `area/backend`, `area/docs`)
+            - Add type labels (e.g., `type/feature`, `type/bugfix`, `type/refactor`, `type/chore`)
+            - Add `needs-docs` if documentation updates are needed
+            - Do NOT add priority labels unless there are critical security/performance issues
+            - Do NOT remove existing labels
+
             ## IMPORTANT GUIDELINES
-            - DO NOT make any code changes - only post comments
+            - DO NOT make any code changes - only post comments and apply labels
             - Be specific with file paths and line numbers where possible
             - Prioritize critical issues first
             - For documentation, be specific about which doc file needs updating
@@ -239,7 +254,7 @@ jobs:
             - On re-reviews, acknowledge what was fixed and focus on remaining/new issues
           # Available models: claude-sonnet-4-5-20250929 (default), claude-opus-4-5-20251101, claude-haiku-3-5-20241022
           claude_args: |
-            --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Read,Grep,Glob,Write,mcp__github__get_pull_request,mcp__github__get_pull_request_files"
+            --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr edit:*),Bash(gh label list:*),Read,Grep,Glob,Write,mcp__github__get_pull_request,mcp__github__get_pull_request_files"
             --max-turns 25
             --mcp-config /tmp/mcp-config/mcp-servers.json
           settings: |
