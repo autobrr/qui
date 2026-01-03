@@ -28,6 +28,9 @@ const (
 // RetryTransport wraps an http.RoundTripper with retry logic for transient network errors
 type RetryTransport struct {
 	base http.RoundTripper
+	// baseSelector allows choosing a per-request transport (e.g. instance-specific TLS settings).
+	// When nil or returning nil, base is used.
+	baseSelector func(*http.Request) http.RoundTripper
 }
 
 // NewRetryTransport creates a new RetryTransport that wraps the given RoundTripper
@@ -37,17 +40,99 @@ func NewRetryTransport(base http.RoundTripper) *RetryTransport {
 	}
 }
 
+// NewRetryTransportWithSelector creates a new RetryTransport using a per-request selector.
+// The selector may return nil to fall back to the default base transport.
+func NewRetryTransportWithSelector(base http.RoundTripper, selector func(*http.Request) http.RoundTripper) *RetryTransport {
+	return &RetryTransport{
+		base:         base,
+		baseSelector: selector,
+	}
+}
+
+func (t *RetryTransport) transportFor(req *http.Request) http.RoundTripper {
+	if t.baseSelector == nil {
+		return t.base
+	}
+	if selected := t.baseSelector(req); selected != nil {
+		return selected
+	}
+	return t.base
+}
+
+func (t *RetryTransport) retryBackoff(req *http.Request, attempt int, err error, base http.RoundTripper) (time.Duration, bool) {
+	// Check if the error is retryable
+	if !isRetryableError(err) {
+		log.Debug().
+			Str("error", redact.String(err.Error())).
+			Str("method", req.Method).
+			Str("url", redact.URLString(req.URL.String())).
+			Msg("Proxy request failed with non-retryable error")
+		return 0, false
+	}
+
+	// Close idle connections to clear potentially stale connections from the pool
+	// This helps recover from connection pool issues
+	t.closeIdleConnections(base)
+
+	// Check if the request method is safe to retry
+	if !isIdempotentMethod(req.Method) {
+		log.Debug().
+			Str("error", redact.String(err.Error())).
+			Str("method", req.Method).
+			Str("url", redact.URLString(req.URL.String())).
+			Msg("Proxy request failed but method is not idempotent, not retrying")
+		return 0, false
+	}
+
+	// Don't retry if we've exhausted our attempts
+	if attempt >= maxRetries {
+		log.Warn().
+			Str("error", redact.String(err.Error())).
+			Str("method", req.Method).
+			Str("url", redact.URLString(req.URL.String())).
+			Int("attempts", attempt+1).
+			Msg("Proxy request failed after max retries")
+		return 0, false
+	}
+
+	// Calculate backoff duration with exponential increase
+	backoff := calculateBackoff(attempt, initialRetryWait, maxRetryWait)
+
+	log.Debug().
+		Str("error", redact.String(err.Error())).
+		Str("method", req.Method).
+		Str("url", redact.URLString(req.URL.String())).
+		Int("attempt", attempt+1).
+		Dur("backoff", backoff).
+		Msg("Proxy request failed with retryable error, retrying")
+
+	return backoff, true
+}
+
+//nolint:wrapcheck // Callers expect unwrapped context errors from transports.
+func waitForRetry(req *http.Request, backoff time.Duration) error {
+	// Wait before retry
+	select {
+	case <-req.Context().Done():
+		return req.Context().Err()
+	case <-time.After(backoff):
+		return nil
+	}
+}
+
 // RoundTrip implements http.RoundTripper with retry logic for transient errors
 //
 //nolint:wrapcheck // RoundTrip should not wrap errors - callers expect unwrapped transport errors
 func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	var lastErr error
 
+	base := t.transportFor(req)
+
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		// Clone the request for retry attempts to ensure body can be replayed if needed
 		reqClone := req.Clone(req.Context())
 
-		resp, err := t.base.RoundTrip(reqClone)
+		resp, err := base.RoundTrip(reqClone)
 
 		// Success case
 		if err == nil {
@@ -63,57 +148,13 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		lastErr = err
 
-		// Check if the error is retryable
-		if !isRetryableError(err) {
-			log.Debug().
-				Str("error", redact.String(err.Error())).
-				Str("method", req.Method).
-				Str("url", redact.URLString(req.URL.String())).
-				Msg("Proxy request failed with non-retryable error")
+		backoff, shouldRetry := t.retryBackoff(req, attempt, err, base)
+		if !shouldRetry {
 			return nil, err
 		}
 
-		// Close idle connections to clear potentially stale connections from the pool
-		// This helps recover from connection pool issues
-		t.closeIdleConnections()
-
-		// Check if the request method is safe to retry
-		if !isIdempotentMethod(req.Method) {
-			log.Debug().
-				Str("error", redact.String(err.Error())).
-				Str("method", req.Method).
-				Str("url", redact.URLString(req.URL.String())).
-				Msg("Proxy request failed but method is not idempotent, not retrying")
+		if err := waitForRetry(req, backoff); err != nil {
 			return nil, err
-		}
-
-		// Don't retry if we've exhausted our attempts
-		if attempt >= maxRetries {
-			log.Warn().
-				Str("error", redact.String(err.Error())).
-				Str("method", req.Method).
-				Str("url", redact.URLString(req.URL.String())).
-				Int("attempts", attempt+1).
-				Msg("Proxy request failed after max retries")
-			return nil, err
-		}
-
-		// Calculate backoff duration with exponential increase
-		backoff := calculateBackoff(attempt, initialRetryWait, maxRetryWait)
-
-		log.Debug().
-			Str("error", redact.String(err.Error())).
-			Str("method", req.Method).
-			Str("url", redact.URLString(req.URL.String())).
-			Int("attempt", attempt+1).
-			Dur("backoff", backoff).
-			Msg("Proxy request failed with retryable error, retrying")
-
-		// Wait before retry
-		select {
-		case <-req.Context().Done():
-			return nil, req.Context().Err()
-		case <-time.After(backoff):
 		}
 	}
 
@@ -122,12 +163,12 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 // closeIdleConnections closes idle connections in the transport if supported
 // This helps clear potentially stale connections from the connection pool
-func (t *RetryTransport) closeIdleConnections() {
+func (t *RetryTransport) closeIdleConnections(base http.RoundTripper) {
 	type closeIdler interface {
 		CloseIdleConnections()
 	}
 
-	if tr, ok := t.base.(closeIdler); ok {
+	if tr, ok := base.(closeIdler); ok {
 		tr.CloseIdleConnections()
 		log.Debug().Msg("Closed idle connections after network error")
 	}
