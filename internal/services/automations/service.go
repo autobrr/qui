@@ -323,11 +323,14 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		}
 	}
 
-	// Check if rule uses hardlink conditions and populate context
+	// Check if rule uses hardlink/missing files conditions and populate context
 	if instance != nil && instance.HasLocalFilesystemAccess && rule.Conditions != nil && rule.Conditions.Delete != nil {
 		cond := rule.Conditions.Delete.Condition
 		if ConditionUsesField(cond, FieldHardlinkScope) {
 			evalCtx.HardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
+		}
+		if ConditionUsesField(cond, FieldHasMissingFiles) {
+			evalCtx.HasMissingFilesByHash = s.detectMissingFiles(ctx, instanceID, torrents)
 		}
 	}
 
@@ -424,11 +427,14 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 		evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
 	}
 
-	// Check if rule uses hardlink conditions
+	// Check if rule uses hardlink/missing files conditions
 	if instance != nil && instance.HasLocalFilesystemAccess && rule.Conditions != nil && rule.Conditions.Category != nil {
 		cond := rule.Conditions.Category.Condition
 		if ConditionUsesField(cond, FieldHardlinkScope) {
 			evalCtx.HardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
+		}
+		if ConditionUsesField(cond, FieldHasMissingFiles) {
+			evalCtx.HasMissingFilesByHash = s.detectMissingFiles(ctx, instanceID, torrents)
 		}
 	}
 
@@ -590,6 +596,11 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	// On-demand hardlink detection (only if rules use HARDLINK_SCOPE and instance has local access)
 	if instance.HasLocalFilesystemAccess && rulesUseCondition(eligibleRules, FieldHardlinkScope) {
 		evalCtx.HardlinkScopeByHash = s.detectHardlinkScope(ctx, instanceID, torrents)
+	}
+
+	// On-demand missing files detection (only if rules use HAS_MISSING_FILES and instance has local access)
+	if instance.HasLocalFilesystemAccess && rulesUseCondition(eligibleRules, FieldHasMissingFiles) {
+		evalCtx.HasMissingFilesByHash = s.detectMissingFiles(ctx, instanceID, torrents)
 	}
 
 	// Get free space on instance (only if rules use FREE_SPACE field)
@@ -1609,6 +1620,70 @@ func (s *Service) detectHardlinkScope(ctx context.Context, instanceID int, torre
 		Int("totalTorrents", len(torrents)).
 		Int("scopeComputed", len(result)).
 		Msg("automations: hardlink scope detection completed")
+
+	return result
+}
+
+// detectMissingFiles checks which completed torrents have missing files on disk.
+// Returns a map of torrent hash to missing files boolean.
+func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torrents []qbt.Torrent) map[string]bool {
+	result := make(map[string]bool)
+
+	// Only completed torrents
+	var completedHashes []string
+	torrentByHash := make(map[string]qbt.Torrent)
+	for _, t := range torrents {
+		if t.Progress >= 1.0 {
+			completedHashes = append(completedHashes, t.Hash)
+			torrentByHash[t.Hash] = t
+		}
+	}
+
+	if len(completedHashes) == 0 {
+		return result
+	}
+
+	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, completedHashes)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).
+			Msg("automations: failed to fetch files for missing files detection")
+		return result
+	}
+
+	for hash, files := range filesByHash {
+		torrent := torrentByHash[hash]
+		hasMissing := false
+		filesChecked := 0
+
+		for _, f := range files {
+			if f.Name == "" {
+				continue
+			}
+			fullPath := buildFullPath(torrent.SavePath, f.Name)
+			if _, err := os.Stat(fullPath); err != nil {
+				if os.IsNotExist(err) {
+					hasMissing = true
+					break
+				}
+				// Log warning for other errors, continue checking
+				log.Trace().Err(err).Str("path", fullPath).Str("torrent", torrent.Name).
+					Msg("automations: error checking file existence")
+				continue
+			}
+			filesChecked++
+		}
+
+		// Only set result if we checked at least one file or found missing
+		if filesChecked > 0 || hasMissing {
+			result[hash] = hasMissing
+		}
+	}
+
+	log.Debug().
+		Int("instanceID", instanceID).
+		Int("completedTorrents", len(completedHashes)).
+		Int("checked", len(result)).
+		Msg("automations: missing files detection completed")
 
 	return result
 }
