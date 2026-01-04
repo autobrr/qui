@@ -45,6 +45,7 @@ export const CONDITION_FIELDS = {
   // Boolean fields
   PRIVATE: { label: "Private", type: "boolean" as const, description: "Private tracker torrent" },
   IS_UNREGISTERED: { label: "Unregistered", type: "boolean" as const, description: "Tracker reports torrent as unregistered" },
+  HAS_MISSING_FILES: { label: "Has Missing Files", type: "boolean" as const, description: "Completed torrent has files missing on disk. Requires Local Filesystem Access." },
 
   // Enum-like fields
   HARDLINK_SCOPE: { label: "Hardlink scope", type: "hardlinkScope" as const, description: "Where hardlinks for this torrent's files exist. Requires Local Filesystem Access." },
@@ -204,7 +205,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Files",
-    fields: ["HARDLINK_SCOPE"],
+    fields: ["HARDLINK_SCOPE", "HAS_MISSING_FILES"],
   },
 ];
 
